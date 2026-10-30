@@ -1,439 +1,485 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-    <div class="w-full max-w-md">
-      <!-- Logo Section -->
-      <div class="text-center mb-8">
-        <div class="flex justify-center mb-4">
-          <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center">
-            <Database class="w-10 h-10 text-primary-foreground" />
-          </div>
+  <Card class="rounded-2xl border-border/70 shadow-e3">
+    <CardContent class="p-7 sm:p-8">
+      <!-- Forced Password Reset -->
+      <template v-if="requireResetPassword">
+        <div class="mb-6 space-y-1.5">
+          <h2 class="text-2xl font-semibold tracking-tight">
+            {{ t("resetPassword.title") }}
+          </h2>
+          <p class="text-sm text-muted-foreground">
+            {{ t("resetPassword.description") }}
+          </p>
         </div>
-        <h1 class="text-3xl font-bold">
-          MetaxisData
-        </h1>
-        <p class="text-muted-foreground mt-2">
-          {{ t("login.subtitle") }}
-        </p>
-      </div>
 
-      <!-- Login/Register Card -->
-      <Card class="p-2">
-        <CardContent class="pt-6">
-          <!-- Forced Password Reset -->
-          <template v-if="requireResetPassword">
-            <div class="space-y-2 mb-6">
-              <CardTitle>{{ t("resetPassword.title") }}</CardTitle>
-              <CardDescription>{{ t("resetPassword.description") }}</CardDescription>
-            </div>
-
-            <!-- Error Alert -->
-            <Alert
-              v-if="errorMessage"
-              variant="destructive"
-              class="mb-4"
-            >
-              <AlertCircle class="h-4 w-4" />
-              <AlertDescription>{{ errorMessage }}</AlertDescription>
-            </Alert>
-
-            <form
-              class="space-y-4"
-              @submit.prevent="handleResetPassword"
-            >
-              <FormField
-                v-model="resetForm.currentPassword"
-                :type="showResetPassword ? 'text' : 'password'"
-                :label="t('resetPassword.currentPassword')"
-                :placeholder="t('resetPassword.currentPasswordPlaceholder')"
-                required
-                class="pr-10"
-              >
-                <template #suffix>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    :aria-label="
-                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    :title="
-                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    @click="showResetPassword = !showResetPassword"
-                  >
-                    <EyeOff v-if="showResetPassword" class="h-4 w-4" />
-                    <Eye v-else class="h-4 w-4" />
-                  </Button>
-                </template>
-              </FormField>
-
-              <FormField
-                v-model="resetForm.newPassword"
-                :type="showResetPassword ? 'text' : 'password'"
-                :label="t('resetPassword.newPassword')"
-                :placeholder="t('resetPassword.newPasswordPlaceholder')"
-                required
-                class="pr-10"
-              >
-                <template #suffix>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    :aria-label="
-                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    :title="
-                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    @click="showResetPassword = !showResetPassword"
-                  >
-                    <EyeOff v-if="showResetPassword" class="h-4 w-4" />
-                    <Eye v-else class="h-4 w-4" />
-                  </Button>
-                </template>
-              </FormField>
-
-              <FormField
-                v-model="resetForm.confirmPassword"
-                :type="showResetPassword ? 'text' : 'password'"
-                :label="t('resetPassword.confirmPassword')"
-                :placeholder="t('resetPassword.confirmPasswordPlaceholder')"
-                required
-                class="pr-10"
-              >
-                <template #suffix>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    :aria-label="
-                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    :title="
-                      showResetPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    @click="showResetPassword = !showResetPassword"
-                  >
-                    <EyeOff v-if="showResetPassword" class="h-4 w-4" />
-                    <Eye v-else class="h-4 w-4" />
-                  </Button>
-                </template>
-              </FormField>
-
-              <Button
-                type="submit"
-                :disabled="isResetting"
-                class="w-full"
-                size="lg"
-              >
-                <Loader2
-                  v-if="isResetting"
-                  class="mr-2 h-4 w-4 animate-spin"
-                />
-                {{ isResetting ? t("resetPassword.submitting") : t("resetPassword.submit") }}
-              </Button>
-            </form>
-
-            <div class="mt-6 text-center text-sm">
-              <Button
-                variant="link"
-                class="px-1"
-                @click="handleResetSignOut"
-              >
-                {{ t("resetPassword.signOut") }}
-              </Button>
-            </div>
-          </template>
-
-          <!-- Login Mode -->
-          <template v-else-if="!isRegisterMode">
-            <div class="space-y-2 mb-6">
-              <CardTitle>{{ t("login.welcome") }}</CardTitle>
-              <CardDescription>{{ t("login.description") }}</CardDescription>
-            </div>
-
-            <!-- Error Alert -->
-            <Alert
-              v-if="errorMessage"
-              variant="destructive"
-              class="mb-4"
-            >
-              <AlertCircle class="h-4 w-4" />
-              <AlertDescription>{{ errorMessage }}</AlertDescription>
-            </Alert>
-
-            <form
-              class="space-y-4"
-              @submit.prevent="handleLogin"
-            >
-              <!-- Email Input -->
-              <FormField
-                v-model="loginForm.email"
-                type="text"
-                :label="t('login.email')"
-                :placeholder="t('login.emailPlaceholder')"
-                required
-              />
-
-              <!-- Password Input -->
-              <FormField
-                v-model="loginForm.password"
-                :type="showLoginPassword ? 'text' : 'password'"
-                :label="t('login.password')"
-                :placeholder="t('login.passwordPlaceholder')"
-                required
-                class="pr-10"
-              >
-                <template #suffix>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    :aria-label="
-                      showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    :title="
-                      showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    @click="showLoginPassword = !showLoginPassword"
-                  >
-                    <EyeOff v-if="showLoginPassword" class="h-4 w-4" />
-                    <Eye v-else class="h-4 w-4" />
-                  </Button>
-                </template>
-              </FormField>
-
-              <!-- Login Button -->
-              <Button
-                type="submit"
-                :disabled="isLoading"
-                class="w-full"
-                size="lg"
-              >
-                <Loader2
-                  v-if="isLoading"
-                  class="mr-2 h-4 w-4 animate-spin"
-                />
-                {{ isLoading ? t("login.loggingIn") : t("login.submit") }}
-              </Button>
-            </form>
-
-            <!-- SSO Login -->
-            <template v-if="oauthProviders.length > 0">
-              <div class="relative my-6">
-                <div class="absolute inset-0 flex items-center">
-                  <Separator class="w-full" />
-                </div>
-                <div class="relative flex justify-center text-xs uppercase">
-                  <span class="bg-card px-2 text-muted-foreground">{{ t("login.or") }}</span>
-                </div>
-              </div>
-
-              <div class="space-y-2">
-                <Button
-                  v-for="provider in oauthProviders"
-                  :key="provider.name"
-                  variant="outline"
-                  class="w-full"
-                  :disabled="isStartingSSO"
-                  @click="handleSSOLogin(provider)"
-                >
-                  <Loader2
-                    v-if="isStartingSSO"
-                    class="mr-2 h-4 w-4 animate-spin"
-                  />
-                  <Lock
-                    v-else
-                    class="mr-2 h-4 w-4"
-                  />
-                  {{ t("login.ssoWith", { provider: provider.title }) }}
-                </Button>
-              </div>
-            </template>
-
-            <!-- Switch to Register -->
-            <div
-              v-if="allowSignup"
-              class="mt-6 text-center text-sm"
-            >
-              <span class="text-muted-foreground">{{ t("login.noAccount") }}</span>
-              <Button
-                variant="link"
-                class="px-1"
-                @click="switchToRegister"
-              >
-                {{ t("login.signUp") }}
-              </Button>
-            </div>
-          </template>
-
-          <!-- Register Mode -->
-          <template v-else>
-            <div class="space-y-2 mb-6">
-              <CardTitle>{{ t("register.welcome") }}</CardTitle>
-              <CardDescription>{{ t("register.description") }}</CardDescription>
-            </div>
-
-            <!-- Error Alert -->
-            <Alert
-              v-if="errorMessage"
-              variant="destructive"
-              class="mb-4"
-            >
-              <AlertCircle class="h-4 w-4" />
-              <AlertDescription>{{ errorMessage }}</AlertDescription>
-            </Alert>
-
-            <!-- Success Alert -->
-            <Alert
-              v-if="successMessage"
-              variant="success"
-              class="mb-4"
-            >
-              <CheckCircle2 class="h-4 w-4" />
-              <AlertDescription>{{ successMessage }}</AlertDescription>
-            </Alert>
-
-            <form
-              class="space-y-4"
-              @submit.prevent="handleRegister"
-            >
-              <!-- Email Input -->
-              <FormField
-                v-model="registerForm.email"
-                type="email"
-                :label="t('login.email')"
-                :placeholder="t('login.emailPlaceholder')"
-                required
-              />
-
-              <!-- Title (Username) Input -->
-              <FormField
-                v-model="registerForm.title"
-                type="text"
-                :label="t('register.title')"
-                :placeholder="t('register.titlePlaceholder')"
-              />
-
-              <!-- Password Input -->
-              <FormField
-                v-model="registerForm.password"
-                :type="showRegisterPassword ? 'text' : 'password'"
-                :label="t('login.password')"
-                :placeholder="t('login.passwordPlaceholder')"
-                required
-                class="pr-10"
-              >
-                <template #suffix>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    :aria-label="
-                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    :title="
-                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    @click="showRegisterPassword = !showRegisterPassword"
-                  >
-                    <EyeOff v-if="showRegisterPassword" class="h-4 w-4" />
-                    <Eye v-else class="h-4 w-4" />
-                  </Button>
-                </template>
-              </FormField>
-
-              <!-- Confirm Password Input -->
-              <FormField
-                v-model="registerForm.confirmPassword"
-                :type="showRegisterPassword ? 'text' : 'password'"
-                :label="t('register.confirmPassword')"
-                :placeholder="t('register.confirmPasswordPlaceholder')"
-                required
-                class="pr-10"
-              >
-                <template #suffix>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    :aria-label="
-                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    :title="
-                      showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
-                    "
-                    @click="showRegisterPassword = !showRegisterPassword"
-                  >
-                    <EyeOff v-if="showRegisterPassword" class="h-4 w-4" />
-                    <Eye v-else class="h-4 w-4" />
-                  </Button>
-                </template>
-              </FormField>
-
-              <!-- Register Button -->
-              <Button
-                type="submit"
-                :disabled="isRegistering"
-                class="w-full"
-                size="lg"
-              >
-                <Loader2
-                  v-if="isRegistering"
-                  class="mr-2 h-4 w-4 animate-spin"
-                />
-                {{ isRegistering ? t("register.registering") : t("register.submit") }}
-              </Button>
-            </form>
-
-            <!-- Switch to Login -->
-            <div class="mt-6 text-center text-sm">
-              <span class="text-muted-foreground">{{ t("register.hasAccount") }}</span>
-              <Button
-                variant="link"
-                class="px-1"
-                @click="switchToLogin"
-              >
-                {{ t("register.signIn") }}
-              </Button>
-            </div>
-          </template>
-        </CardContent>
-      </Card>
-
-      <!-- Language Switcher at bottom -->
-      <div class="mt-6 text-center">
-        <Button
-          v-for="item in locales"
-          :key="item.value"
-          variant="ghost"
-          size="sm"
-          :class="currentLocale === item.value ? 'text-primary font-medium' : 'text-muted-foreground'"
-          @click="appStore.setLocale(item.value)"
+        <!-- Error Alert -->
+        <Alert
+          v-if="errorMessage"
+          variant="destructive"
+          class="mb-4"
         >
-          {{ item.label }}
-        </Button>
-      </div>
-    </div>
-  </div>
+          <AlertCircle class="h-4 w-4" />
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+        </Alert>
+
+        <form
+          class="space-y-4"
+          @submit.prevent="handleResetPassword"
+        >
+          <FormField
+            v-model="resetForm.currentPassword"
+            :type="showResetPassword ? 'text' : 'password'"
+            :label="t('resetPassword.currentPassword')"
+            :placeholder="t('resetPassword.currentPasswordPlaceholder')"
+            autocomplete="current-password"
+            required
+            class="pl-9 pr-10"
+          >
+            <template #prefix>
+              <KeyRound
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+            <template #suffix>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabindex="-1"
+                class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                :aria-label="
+                  showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                :title="
+                  showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                @click="showResetPassword = !showResetPassword"
+              >
+                <EyeOff v-if="showResetPassword" class="h-4 w-4" />
+                <Eye v-else class="h-4 w-4" />
+              </Button>
+            </template>
+          </FormField>
+
+          <FormField
+            v-model="resetForm.newPassword"
+            :type="showResetPassword ? 'text' : 'password'"
+            :label="t('resetPassword.newPassword')"
+            :placeholder="t('resetPassword.newPasswordPlaceholder')"
+            autocomplete="new-password"
+            required
+            class="pl-9 pr-10"
+          >
+            <template #prefix>
+              <Lock
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+            <template #suffix>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabindex="-1"
+                class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                :aria-label="
+                  showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                :title="
+                  showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                @click="showResetPassword = !showResetPassword"
+              >
+                <EyeOff v-if="showResetPassword" class="h-4 w-4" />
+                <Eye v-else class="h-4 w-4" />
+              </Button>
+            </template>
+          </FormField>
+
+          <FormField
+            v-model="resetForm.confirmPassword"
+            :type="showResetPassword ? 'text' : 'password'"
+            :label="t('resetPassword.confirmPassword')"
+            :placeholder="t('resetPassword.confirmPasswordPlaceholder')"
+            autocomplete="new-password"
+            required
+            class="pl-9 pr-10"
+          >
+            <template #prefix>
+              <Lock
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+            <template #suffix>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabindex="-1"
+                class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                :aria-label="
+                  showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                :title="
+                  showResetPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                @click="showResetPassword = !showResetPassword"
+              >
+                <EyeOff v-if="showResetPassword" class="h-4 w-4" />
+                <Eye v-else class="h-4 w-4" />
+              </Button>
+            </template>
+          </FormField>
+
+          <Button
+            type="submit"
+            :disabled="isResetting"
+            class="w-full"
+            size="lg"
+          >
+            <Loader2
+              v-if="isResetting"
+              class="mr-2 h-4 w-4 animate-spin"
+            />
+            {{ isResetting ? t("resetPassword.submitting") : t("resetPassword.submit") }}
+          </Button>
+        </form>
+
+        <div class="mt-6 text-center text-sm">
+          <Button
+            variant="link"
+            class="px-1"
+            @click="handleResetSignOut"
+          >
+            {{ t("resetPassword.signOut") }}
+          </Button>
+        </div>
+      </template>
+
+      <!-- Login Mode -->
+      <template v-else-if="!isRegisterMode">
+        <div class="mb-6 space-y-1.5">
+          <h2 class="text-2xl font-semibold tracking-tight">
+            {{ t("login.welcome") }}
+          </h2>
+          <p class="text-sm text-muted-foreground">
+            {{ t("login.description") }}
+          </p>
+        </div>
+
+        <!-- Error Alert -->
+        <Alert
+          v-if="errorMessage"
+          variant="destructive"
+          class="mb-4"
+        >
+          <AlertCircle class="h-4 w-4" />
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+        </Alert>
+
+        <form
+          class="space-y-4"
+          @submit.prevent="handleLogin"
+        >
+          <!-- Email Input -->
+          <FormField
+            v-model="loginForm.email"
+            type="text"
+            :label="t('login.email')"
+            :placeholder="t('login.emailPlaceholder')"
+            autocomplete="username"
+            required
+            class="pl-9"
+          >
+            <template #prefix>
+              <Mail
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+          </FormField>
+
+          <!-- Password Input -->
+          <FormField
+            v-model="loginForm.password"
+            :type="showLoginPassword ? 'text' : 'password'"
+            :label="t('login.password')"
+            :placeholder="t('login.passwordPlaceholder')"
+            autocomplete="current-password"
+            required
+            class="pl-9 pr-10"
+          >
+            <template #prefix>
+              <Lock
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+            <template #suffix>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabindex="-1"
+                class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                :aria-label="
+                  showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                :title="
+                  showLoginPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                @click="showLoginPassword = !showLoginPassword"
+              >
+                <EyeOff v-if="showLoginPassword" class="h-4 w-4" />
+                <Eye v-else class="h-4 w-4" />
+              </Button>
+            </template>
+          </FormField>
+
+          <!-- Login Button -->
+          <Button
+            type="submit"
+            :disabled="isLoading"
+            class="w-full"
+            size="lg"
+          >
+            <Loader2
+              v-if="isLoading"
+              class="mr-2 h-4 w-4 animate-spin"
+            />
+            {{ isLoading ? t("login.loggingIn") : t("login.submit") }}
+          </Button>
+        </form>
+
+        <!-- SSO Login -->
+        <template v-if="oauthProviders.length > 0">
+          <div class="relative my-6">
+            <div class="absolute inset-0 flex items-center">
+              <Separator class="w-full" />
+            </div>
+            <div class="relative flex justify-center text-xs uppercase">
+              <span class="bg-card px-2 text-muted-foreground">{{ t("login.or") }}</span>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <Button
+              v-for="provider in oauthProviders"
+              :key="provider.name"
+              variant="outline"
+              class="w-full"
+              :disabled="isStartingSSO"
+              @click="handleSSOLogin(provider)"
+            >
+              <Loader2
+                v-if="isStartingSSO"
+                class="mr-2 h-4 w-4 animate-spin"
+              />
+              <Lock
+                v-else
+                class="mr-2 h-4 w-4"
+              />
+              {{ t("login.ssoWith", { provider: provider.title }) }}
+            </Button>
+          </div>
+        </template>
+
+        <!-- Switch to Register -->
+        <div
+          v-if="allowSignup"
+          class="mt-6 text-center text-sm"
+        >
+          <span class="text-muted-foreground">{{ t("login.noAccount") }}</span>
+          <Button
+            variant="link"
+            class="px-1"
+            @click="switchToRegister"
+          >
+            {{ t("login.signUp") }}
+          </Button>
+        </div>
+      </template>
+
+      <!-- Register Mode -->
+      <template v-else>
+        <div class="mb-6 space-y-1.5">
+          <h2 class="text-2xl font-semibold tracking-tight">
+            {{ t("register.welcome") }}
+          </h2>
+          <p class="text-sm text-muted-foreground">
+            {{ t("register.description") }}
+          </p>
+        </div>
+
+        <!-- Error Alert -->
+        <Alert
+          v-if="errorMessage"
+          variant="destructive"
+          class="mb-4"
+        >
+          <AlertCircle class="h-4 w-4" />
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+        </Alert>
+
+        <!-- Success Alert -->
+        <Alert
+          v-if="successMessage"
+          variant="success"
+          class="mb-4"
+        >
+          <CheckCircle2 class="h-4 w-4" />
+          <AlertDescription>{{ successMessage }}</AlertDescription>
+        </Alert>
+
+        <form
+          class="space-y-4"
+          @submit.prevent="handleRegister"
+        >
+          <!-- Email Input -->
+          <FormField
+            v-model="registerForm.email"
+            type="email"
+            :label="t('login.email')"
+            :placeholder="t('login.emailPlaceholder')"
+            autocomplete="email"
+            required
+            class="pl-9"
+          >
+            <template #prefix>
+              <Mail
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+          </FormField>
+
+          <!-- Title (Username) Input -->
+          <FormField
+            v-model="registerForm.title"
+            type="text"
+            :label="t('register.title')"
+            :placeholder="t('register.titlePlaceholder')"
+            autocomplete="nickname"
+            class="pl-9"
+          >
+            <template #prefix>
+              <User
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+          </FormField>
+
+          <!-- Password Input -->
+          <FormField
+            v-model="registerForm.password"
+            :type="showRegisterPassword ? 'text' : 'password'"
+            :label="t('login.password')"
+            :placeholder="t('login.passwordPlaceholder')"
+            autocomplete="new-password"
+            required
+            class="pl-9 pr-10"
+          >
+            <template #prefix>
+              <Lock
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+            <template #suffix>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabindex="-1"
+                class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                :aria-label="
+                  showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                :title="
+                  showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                @click="showRegisterPassword = !showRegisterPassword"
+              >
+                <EyeOff v-if="showRegisterPassword" class="h-4 w-4" />
+                <Eye v-else class="h-4 w-4" />
+              </Button>
+            </template>
+          </FormField>
+
+          <!-- Confirm Password Input -->
+          <FormField
+            v-model="registerForm.confirmPassword"
+            :type="showRegisterPassword ? 'text' : 'password'"
+            :label="t('register.confirmPassword')"
+            :placeholder="t('register.confirmPasswordPlaceholder')"
+            autocomplete="new-password"
+            required
+            class="pl-9 pr-10"
+          >
+            <template #prefix>
+              <Lock
+                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </template>
+            <template #suffix>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                tabindex="-1"
+                class="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                :aria-label="
+                  showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                :title="
+                  showRegisterPassword ? t('login.hidePassword') : t('login.showPassword')
+                "
+                @click="showRegisterPassword = !showRegisterPassword"
+              >
+                <EyeOff v-if="showRegisterPassword" class="h-4 w-4" />
+                <Eye v-else class="h-4 w-4" />
+              </Button>
+            </template>
+          </FormField>
+
+          <!-- Register Button -->
+          <Button
+            type="submit"
+            :disabled="isRegistering"
+            class="w-full"
+            size="lg"
+          >
+            <Loader2
+              v-if="isRegistering"
+              class="mr-2 h-4 w-4 animate-spin"
+            />
+            {{ isRegistering ? t("register.registering") : t("register.submit") }}
+          </Button>
+        </form>
+
+        <!-- Switch to Login -->
+        <div class="mt-6 text-center text-sm">
+          <span class="text-muted-foreground">{{ t("register.hasAccount") }}</span>
+          <Button
+            variant="link"
+            class="px-1"
+            @click="switchToLogin"
+          >
+            {{ t("register.signIn") }}
+          </Button>
+        </div>
+      </template>
+    </CardContent>
+  </Card>
 </template>
 
 <script setup lang="ts">
 import {
   AlertCircle,
   CheckCircle2,
-  Database,
   Eye,
   EyeOff,
+  KeyRound,
   Loader2,
   Lock,
+  Mail,
+  User,
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -443,20 +489,13 @@ import { getWorkspaceProfileSetting } from "@/api/setting";
 import * as userApi from "@/api/user";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useSSOLogin } from "@/composables/useSSOLogin";
 import { notify } from "@/lib/notify";
 import { isKnownSpaRouteName, resolveSignInTarget } from "@/lib/signInRedirect";
-import type { AppLocale } from "@/locales";
-import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type IdentityProvider,
@@ -467,7 +506,6 @@ const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
-const appStore = useAppStore();
 const { formatError } = useErrorHandler();
 
 // Mode toggle
@@ -528,6 +566,10 @@ const loginForm = ref({
   email: "",
   password: "",
 });
+// These reveal toggles are out of the tab order (`tabindex="-1"` in the
+// template): Tab from a password field must reach the next field, not an
+// adornment inside the current one. Pointer and assistive-technology users can
+// still click or activate them.
 const showLoginPassword = ref(false);
 const showRegisterPassword = ref(false);
 const showResetPassword = ref(false);
@@ -553,13 +595,6 @@ const resetForm = ref({
   newPassword: "",
   confirmPassword: "",
 });
-
-const locales: Array<{ value: AppLocale; label: string }> = [
-  { value: "zh-CN", label: "简体中文" },
-  { value: "en-US", label: "English" },
-];
-
-const currentLocale = computed(() => appStore.locale);
 
 function switchToRegister() {
   isRegisterMode.value = true;

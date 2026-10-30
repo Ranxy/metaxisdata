@@ -1,33 +1,24 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-    <div class="w-full max-w-md">
-      <div class="text-center mb-8">
-        <div class="flex justify-center mb-4">
-          <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center">
-            <Database class="w-10 h-10 text-primary-foreground" />
-          </div>
+  <Card class="rounded-2xl border-border/70 shadow-e3">
+    <CardContent class="p-7 sm:p-8">
+      <!-- An authorization code is being exchanged. -->
+      <template v-if="!settled">
+        <div class="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          <span>{{ t("ssoCallback.signingIn") }}</span>
         </div>
-        <h1 class="text-3xl font-bold">
-          MetaxisData
-        </h1>
-      </div>
+      </template>
 
-      <Card class="p-2">
-        <CardContent class="pt-6">
-          <!-- An authorization code is being exchanged. -->
-          <template v-if="!settled">
-            <div class="flex items-center justify-center gap-2 py-6 text-muted-foreground">
-              <Loader2 class="h-4 w-4 animate-spin" />
-              <span>{{ t("ssoCallback.signingIn") }}</span>
-            </div>
-          </template>
-
-          <!-- A provider test: the administrator stays signed in. -->
-          <template v-else-if="isTest && identity">
-            <div class="space-y-2 mb-4">
-              <CardTitle>{{ t("ssoCallback.testSucceeded") }}</CardTitle>
-              <CardDescription>{{ t("ssoCallback.testDescription") }}</CardDescription>
-            </div>
+      <!-- A provider test: the administrator stays signed in. -->
+      <template v-else-if="isTest && identity">
+        <div class="mb-5 space-y-1.5">
+          <h2 class="text-2xl font-semibold tracking-tight">
+            {{ t("ssoCallback.testSucceeded") }}
+          </h2>
+          <p class="text-sm text-muted-foreground">
+            {{ t("ssoCallback.testDescription") }}
+          </p>
+        </div>
             <dl class="space-y-2 text-sm">
               <div
                 v-for="field in identityFields"
@@ -52,48 +43,45 @@
             </div>
           </template>
 
-          <!-- Anything that did not produce a session. -->
-          <template v-else>
-            <div class="space-y-2 mb-4">
-              <CardTitle>{{ t("ssoCallback.failed") }}</CardTitle>
-              <CardDescription>{{ t("ssoCallback.failedDescription") }}</CardDescription>
-            </div>
+      <!-- Anything that did not produce a session. -->
+      <template v-else>
+        <div class="mb-5 space-y-1.5">
+          <h2 class="text-2xl font-semibold tracking-tight">
+            {{ t("ssoCallback.failed") }}
+          </h2>
+          <p class="text-sm text-muted-foreground">
+            {{ t("ssoCallback.failedDescription") }}
+          </p>
+        </div>
 
-            <Alert
-              variant="destructive"
-              class="mb-4"
-            >
-              <AlertCircle class="h-4 w-4" />
-              <AlertDescription>{{ errorMessage }}</AlertDescription>
-            </Alert>
+        <Alert
+          variant="destructive"
+          class="mb-4"
+        >
+          <AlertCircle class="h-4 w-4" />
+          <AlertDescription>{{ errorMessage }}</AlertDescription>
+        </Alert>
 
-            <Button
-              class="w-full"
-              @click="backToSettings"
-            >
-              {{ isTest ? t("ssoCallback.backToSettings") : t("ssoCallback.backToLogin") }}
-            </Button>
-          </template>
-        </CardContent>
-      </Card>
-    </div>
-  </div>
+        <Button
+          class="w-full"
+          @click="backToSettings"
+        >
+          {{ isTest ? t("ssoCallback.backToSettings") : t("ssoCallback.backToLogin") }}
+        </Button>
+      </template>
+    </CardContent>
+  </Card>
 </template>
 
 <script setup lang="ts">
-import { AlertCircle, Database, Loader2 } from "lucide-vue-next";
+import { AlertCircle, Loader2 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { testIdentityProvider } from "@/api/identity-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { consumeSSOState } from "@/lib/oauth";
