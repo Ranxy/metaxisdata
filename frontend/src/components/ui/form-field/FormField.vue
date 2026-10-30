@@ -11,6 +11,9 @@
       >*</span>
     </Label>
     <div class="relative">
+      <!-- A leading affordance (an icon): the caller passes the matching
+           left padding on the field so the glyph never sits over the text. -->
+      <slot name="prefix" />
       <Input
         :id="fieldId"
         v-bind="$attrs"
