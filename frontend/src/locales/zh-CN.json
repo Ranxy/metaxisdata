@@ -2093,7 +2093,7 @@
     "featureLineage": "可追溯的表级与字段级血缘",
     "featureQuality": "可执行的数据质量检查",
     "featureRegistry": "跨实例的统一元数据注册表",
-    "footerNote": "自托管、单租户，数据完全由您掌控",
+    "footerNote": "自托管，完全由您掌控",
     "hidePassword": "隐藏密码",
     "loggingIn": "登录中...",
     "loginFailed": "登录失败，请检查邮箱和密码",

@@ -2093,7 +2093,7 @@
     "featureLineage": "Table-level and column-level lineage, fully traceable",
     "featureQuality": "Data quality checks with results you can act on",
     "featureRegistry": "One metadata registry across every instance",
-    "footerNote": "Self-hosted, single-tenant, and under your own control",
+    "footerNote": "Self-hosted and fully under your control",
     "hidePassword": "Hide password",
     "loggingIn": "Signing in...",
     "loginFailed": "Login failed. Please check your email and password",
