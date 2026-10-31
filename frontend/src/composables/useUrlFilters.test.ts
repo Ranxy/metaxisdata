@@ -130,5 +130,11 @@ describe("useUrlFilters", () => {
     await flushPromises();
 
     expect(adopted).toHaveBeenCalledWith({ q: "external", status: "-" });
+
+    // The superseded write must not leave a marker that swallows a later real
+    // navigation to the same query.
+    await router.replace({ query: { q: "def", status: "2" } });
+    await flushPromises();
+    expect(adopted).toHaveBeenLastCalledWith({ q: "def", status: "2" });
   });
 });

@@ -391,7 +391,7 @@ import {
   RefreshCcw,
   Target,
 } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
@@ -621,6 +621,10 @@ async function load() {
   error.value = "";
   await refreshIssue();
 }
+
+// An issue→issue navigation reuses this component (the router view is not
+// keyed), so the route name is what tells the page it now shows another issue.
+watch(issueName, () => void load());
 
 /** Best effort: a caller without rules.get still sees the issue by rule id. */
 async function loadRuleTitle(ruleName: string) {

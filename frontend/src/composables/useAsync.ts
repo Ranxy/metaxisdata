@@ -78,8 +78,10 @@ export function useAsync<T>(
   }
 
   if (getCurrentScope()) {
-    // A page the reader left must not keep a request on the wire.
+    // A page the reader left must not keep a request on the wire, and a load
+    // that ignores the abort must not write after it.
     onScopeDispose(() => {
+      ticket += 1;
       inFlight?.abort();
       inFlight = undefined;
     });

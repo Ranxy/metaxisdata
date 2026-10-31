@@ -45,6 +45,7 @@ export function usePolling(
   const active = ref(false);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | undefined;
   let deadline: number | undefined;
   let waiters: Array<() => void> = [];
@@ -53,6 +54,13 @@ export function usePolling(
     if (timer !== undefined) {
       clearTimeout(timer);
       timer = undefined;
+    }
+  }
+
+  function clearDeadlineTimer() {
+    if (deadlineTimer !== undefined) {
+      clearTimeout(deadlineTimer);
+      deadlineTimer = undefined;
     }
   }
 
@@ -77,6 +85,7 @@ export function usePolling(
   function stop() {
     active.value = false;
     clearTimer();
+    clearDeadlineTimer();
     controller?.abort();
     controller = undefined;
     deadline = undefined;
@@ -143,6 +152,11 @@ export function usePolling(
       options.timeoutMs === undefined
         ? undefined
         : Date.now() + options.timeoutMs;
+    // A deadline must expire even while a hidden tab pauses the rounds.
+    if (options.timeoutMs !== undefined) {
+      clearDeadlineTimer();
+      deadlineTimer = setTimeout(stop, options.timeoutMs);
+    }
     if (typeof document !== "undefined" && pauseWhenHidden) {
       document.addEventListener("visibilitychange", onVisibilityChange);
     }

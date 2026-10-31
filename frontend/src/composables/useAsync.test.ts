@@ -107,6 +107,26 @@ describe("useAsync", () => {
     expect(data.value).toBeUndefined();
   });
 
+  it("ignores a late answer after the owning scope is disposed", async () => {
+    const pending = deferred<string>();
+    const onError = vi.fn();
+    const load = vi.fn<(signal: AbortSignal) => Promise<string>>(
+      // A load that ignores the signal's abort, e.g. a driver call without
+      // cancellation support, must still not write into a dead scope.
+      () => pending.promise
+    );
+    const scope = effectScope();
+    const { data, error } = scope.run(() => useAsync(load, { onError }))!;
+
+    scope.stop();
+    pending.reject(new Error("late"));
+    await flush();
+
+    expect(data.value).toBeUndefined();
+    expect(error.value).toBeUndefined();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("aborts the request when the owning scope is disposed", async () => {
     const pending = deferred<string>();
     const load = vi

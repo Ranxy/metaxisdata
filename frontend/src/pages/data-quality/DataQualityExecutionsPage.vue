@@ -746,7 +746,6 @@
 </template>
 
 <script setup lang="ts">
-import { useDebounceFn } from "@vueuse/core";
 import {
   Activity,
   ChevronDown,
@@ -798,6 +797,7 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { usePolling } from "@/composables/usePolling";
+import { useDebounced } from "@/composables/useTimers";
 import { useUrlFilters } from "@/composables/useUrlFilters";
 import { partialQualityRunChecks } from "@/lib/qualityRun";
 import { useAuthStore } from "@/store/modules/auth";
@@ -1028,7 +1028,7 @@ function applyTargetSearch() {
 }
 
 /** One request answers a pause in typing, not every keystroke. */
-const debouncedTargetSearch = useDebounceFn(() => applyTargetSearch(), 300);
+const debouncedTargetSearch = useDebounced(() => applyTargetSearch(), 300);
 
 watch(targetSearch, () => void debouncedTargetSearch());
 
@@ -1567,10 +1567,17 @@ function hasInProgress(): boolean {
 
 // The poll keeps the table honest while the runner works; a manual refresh is
 // not needed to see PENDING become COMPLETED.
-const executionsPolling = usePolling(() => refreshExecutions(), {
-  intervalMs: POLL_INTERVAL_MS,
-  shouldContinue: hasInProgress,
-});
+const executionsPolling = usePolling(
+  async () => {
+    // A manual refresh may have cleared the in-progress rows since this round
+    // was scheduled; do not spend a request on a settled page.
+    if (!hasInProgress()) {
+      return;
+    }
+    await refreshExecutions();
+  },
+  { intervalMs: POLL_INTERVAL_MS, shouldContinue: hasInProgress }
+);
 
 // A flat page that shows a pending/running execution reloads until none is
 // left, so the state the user clicked through from is not frozen on screen.
