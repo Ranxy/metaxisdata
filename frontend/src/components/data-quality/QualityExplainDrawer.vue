@@ -88,7 +88,7 @@
             {{ t("dataQuality.llm.thinking") }}
           </div>
 
-          <MarkdownRender
+          <AsyncMarkdown
             v-if="state.content"
             mode="chat"
             :content="state.content"
@@ -135,10 +135,10 @@
 
 <script setup lang="ts">
 import { Loader2, RefreshCcw } from "lucide-vue-next";
-import MarkdownRender from "markstream-vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { explainQualityExecution } from "@/api/data-quality";
+import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

@@ -265,7 +265,7 @@
               {{ t("explainSQL.thinking") }}
             </div>
 
-            <MarkdownRender
+            <AsyncMarkdown
               v-if="resultText"
               mode="chat"
               :content="resultText"
@@ -299,7 +299,6 @@ import {
   Search,
   Sparkles,
 } from "lucide-vue-next";
-import MarkdownRender from "markstream-vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { type RouteLocationRaw, useRoute } from "vue-router";
@@ -307,6 +306,7 @@ import { getSchemaString, listMetadata, searchMetadata } from "@/api/database";
 import { explainSQL } from "@/api/explain";
 import { listProfiles } from "@/api/llm";
 import { getWorkspaceProfileSetting } from "@/api/setting";
+import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import DefinitionMonacoViewer from "@/components/metadata/DefinitionMonacoViewer.vue";

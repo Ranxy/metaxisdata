@@ -7,7 +7,6 @@ import router, { handleSessionExpired } from "./router";
 import { pinia } from "./store";
 import { initTheme } from "./store/modules/app";
 import "./assets/styles/main.css";
-import "markstream-vue/index.css";
 // vue-sonner's ESM build does not inject its own styles, so without this the
 // Toaster renders unstyled and unpositioned and every toast is invisible.
 import "vue-sonner/style.css";
