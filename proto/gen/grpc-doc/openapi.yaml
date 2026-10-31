@@ -6854,6 +6854,11 @@ paths:
                  capped sample summary and the monitoring basis. The document carries its own
                  styles and chart and loads nothing external, so it can be forwarded as a
                  file. The export is audited because it is a bulk read of quality evidence.
+
+                 The report includes real sample values from failed checks (capped), so it is
+                 a wider disclosure than the rules.list permission usually implies; the
+                 document itself warns about forwarding it. Its HTML body never enters the
+                 audit ledger (see ExportQualityReportResponse.html_content).
             operationId: DataQualityService_ExportQualityReport
             parameters:
                 - name: workspace
@@ -9155,7 +9160,7 @@ components:
                     type: string
                     description: |-
                         The download name, for example
-                         "quality-report-2026-10-31T120000Z.html".
+                         "quality-report-20261031T120000Z.html".
                 htmlContent:
                     type: string
                     description: |-

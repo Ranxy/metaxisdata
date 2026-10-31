@@ -5697,10 +5697,8 @@ export declare type ExportQualityDataChunk = Message<"metaxisdata.v1.ExportQuali
   rowCount: bigint;
 
   /**
-   * Whether max_rows cut the export short. A truncated file is still complete as
-   * a CSV document, but it is not the whole selection; set on the slice that
-   * reaches the ceiling (and therefore on every later slice is meaningless —
-   * nothing follows it).
+   * Whether max_rows cut the export short: the document is complete as a CSV
+   * file, but it does not hold the whole selection. Set on the final slice only.
    *
    * @generated from field: bool truncated = 3;
    */
@@ -6037,7 +6035,7 @@ export declare const ExportQualityReportRequestSchema: GenMessage<ExportQualityR
 export declare type ExportQualityReportResponse = Message<"metaxisdata.v1.ExportQualityReportResponse"> & {
   /**
    * The download name, for example
-   * "quality-report-2026-10-31T120000Z.html".
+   * "quality-report-20261031T120000Z.html".
    *
    * @generated from field: string file_name = 1;
    */
@@ -7681,6 +7679,11 @@ export declare const DataQualityService: GenService<{
    * capped sample summary and the monitoring basis. The document carries its own
    * styles and chart and loads nothing external, so it can be forwarded as a
    * file. The export is audited because it is a bulk read of quality evidence.
+   *
+   * The report includes real sample values from failed checks (capped), so it is
+   * a wider disclosure than the rules.list permission usually implies; the
+   * document itself warns about forwarding it. Its HTML body never enters the
+   * audit ledger (see ExportQualityReportResponse.html_content).
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ExportQualityReport
    */

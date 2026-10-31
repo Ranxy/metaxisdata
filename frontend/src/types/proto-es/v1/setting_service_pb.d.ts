@@ -205,8 +205,11 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
 
   /**
    * The weekly data quality digest. The digest is one workspace-level summary
-   * delivered through the outbound channels subscribed to
-   * NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy.
+   * delivered through the outbound channels that name
+   * NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient
+   * inbox copy. A data_quality update that omits this nested message keeps the
+   * stored schedule (so a client that predates the digest cannot clear it);
+   * sending the message explicitly replaces it, including with enabled=false.
    *
    * @generated from field: metaxisdata.v1.QualityDigestSetting weekly_digest = 12;
    */

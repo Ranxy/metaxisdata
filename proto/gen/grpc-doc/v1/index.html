@@ -13379,10 +13379,8 @@ report progress without counting the document. </p></td>
                   <td>truncated</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>Whether max_rows cut the export short. A truncated file is still complete as
-a CSV document, but it is not the whole selection; set on the slice that
-reaches the ceiling (and therefore on every later slice is meaningless —
-nothing follows it). </p></td>
+                  <td><p>Whether max_rows cut the export short: the document is complete as a CSV
+file, but it does not hold the whole selection. Set on the final slice only. </p></td>
                 </tr>
               
             </tbody>
@@ -13645,7 +13643,7 @@ report is capped at the 90-day execution retention. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The download name, for example
-&#34;quality-report-2026-10-31T120000Z.html&#34;. </p></td>
+&#34;quality-report-20261031T120000Z.html&#34;. </p></td>
                 </tr>
               
                 <tr>
@@ -21120,7 +21118,12 @@ is named by GUID because a target is not a resource of its own.</p></td>
 current state, the recent trend, the checks, the unresolved problems, a
 capped sample summary and the monitoring basis. The document carries its own
 styles and chart and loads nothing external, so it can be forwarded as a
-file. The export is audited because it is a bulk read of quality evidence.</p></td>
+file. The export is audited because it is a bulk read of quality evidence.
+
+The report includes real sample values from failed checks (capped), so it is
+a wider disclosure than the rules.list permission usually implies; the
+document itself warns about forwarding it. Its HTML body never enters the
+audit ledger (see ExportQualityReportResponse.html_content).</p></td>
               </tr>
             
               <tr>
@@ -30616,8 +30619,11 @@ means the server default (8); accepted range 1-64. </p></td>
                   <td><a href="#metaxisdata.v1.QualityDigestSetting">QualityDigestSetting</a></td>
                   <td></td>
                   <td><p>The weekly data quality digest. The digest is one workspace-level summary
-delivered through the outbound channels subscribed to
-NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy. </p></td>
+delivered through the outbound channels that name
+NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient
+inbox copy. A data_quality update that omits this nested message keeps the
+stored schedule (so a client that predates the digest cannot clear it);
+sending the message explicitly replaces it, including with enabled=false. </p></td>
                 </tr>
               
             </tbody>

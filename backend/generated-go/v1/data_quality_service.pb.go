@@ -12170,10 +12170,8 @@ type ExportQualityDataChunk struct {
 	// monotonic and the last value is the export's row count, which lets a client
 	// report progress without counting the document.
 	RowCount int64 `protobuf:"varint,2,opt,name=row_count,json=rowCount,proto3" json:"row_count,omitempty"`
-	// Whether max_rows cut the export short. A truncated file is still complete as
-	// a CSV document, but it is not the whole selection; set on the slice that
-	// reaches the ceiling (and therefore on every later slice is meaningless —
-	// nothing follows it).
+	// Whether max_rows cut the export short: the document is complete as a CSV
+	// file, but it does not hold the whole selection. Set on the final slice only.
 	Truncated     bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12730,7 +12728,7 @@ func (x *ExportQualityReportRequest) GetLanguage() string {
 type ExportQualityReportResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The download name, for example
-	// "quality-report-2026-10-31T120000Z.html".
+	// "quality-report-20261031T120000Z.html".
 	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
 	// The complete self-contained HTML document.
 	//

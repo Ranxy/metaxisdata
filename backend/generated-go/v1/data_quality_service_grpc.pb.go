@@ -216,6 +216,11 @@ type DataQualityServiceClient interface {
 	// capped sample summary and the monitoring basis. The document carries its own
 	// styles and chart and loads nothing external, so it can be forwarded as a
 	// file. The export is audited because it is a bulk read of quality evidence.
+	//
+	// The report includes real sample values from failed checks (capped), so it is
+	// a wider disclosure than the rules.list permission usually implies; the
+	// document itself warns about forwarding it. Its HTML body never enters the
+	// audit ledger (see ExportQualityReportResponse.html_content).
 	ExportQualityReport(ctx context.Context, in *ExportQualityReportRequest, opts ...grpc.CallOption) (*ExportQualityReportResponse, error)
 	// Update one target's schedule: how often its enabled checks run. Scheduling
 	// is per target, so this replaces the per-check schedule; a change takes
@@ -900,6 +905,11 @@ type DataQualityServiceServer interface {
 	// capped sample summary and the monitoring basis. The document carries its own
 	// styles and chart and loads nothing external, so it can be forwarded as a
 	// file. The export is audited because it is a bulk read of quality evidence.
+	//
+	// The report includes real sample values from failed checks (capped), so it is
+	// a wider disclosure than the rules.list permission usually implies; the
+	// document itself warns about forwarding it. Its HTML body never enters the
+	// audit ledger (see ExportQualityReportResponse.html_content).
 	ExportQualityReport(context.Context, *ExportQualityReportRequest) (*ExportQualityReportResponse, error)
 	// Update one target's schedule: how often its enabled checks run. Scheduling
 	// is per target, so this replaces the per-check schedule; a change takes

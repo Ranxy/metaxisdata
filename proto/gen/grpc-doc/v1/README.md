@@ -4478,7 +4478,7 @@ manual encoding choice.
 | ----- | ---- | ----- | ----------- |
 | data | [bytes](#bytes) |  | A slice of the CSV bytes. A slice may end in the middle of a value&#39;s UTF-8 sequence; the document is only meaningful once every slice is concatenated. |
 | row_count | [int64](#int64) |  | The total number of data rows written so far, across all slices. It is monotonic and the last value is the export&#39;s row count, which lets a client report progress without counting the document. |
-| truncated | [bool](#bool) |  | Whether max_rows cut the export short. A truncated file is still complete as a CSV document, but it is not the whole selection; set on the slice that reaches the ceiling (and therefore on every later slice is meaningless — nothing follows it). |
+| truncated | [bool](#bool) |  | Whether max_rows cut the export short: the document is complete as a CSV file, but it does not hold the whole selection. Set on the final slice only. |
 
 
 
@@ -4563,7 +4563,7 @@ ExportQualityReportResponse is the finished report file.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| file_name | [string](#string) |  | The download name, for example &#34;quality-report-2026-10-31T120000Z.html&#34;. |
+| file_name | [string](#string) |  | The download name, for example &#34;quality-report-20261031T120000Z.html&#34;. |
 | html_content | [string](#string) |  | The complete self-contained HTML document.
 
 Named html_content rather than content on purpose: the audit interceptor stores a response payload, and the audit layer redacts this field by name. A report carries failed-sample-derived data, so it must never enter the permanent ledger. |
@@ -7164,7 +7164,9 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 
 No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
-| ExportQualityReport | [ExportQualityReportRequest](#metaxisdata-v1-ExportQualityReportRequest) | [ExportQualityReportResponse](#metaxisdata-v1-ExportQualityReportResponse) | Render one target&#39;s quality report as a self-contained HTML document: the current state, the recent trend, the checks, the unresolved problems, a capped sample summary and the monitoring basis. The document carries its own styles and chart and loads nothing external, so it can be forwarded as a file. The export is audited because it is a bulk read of quality evidence. |
+| ExportQualityReport | [ExportQualityReportRequest](#metaxisdata-v1-ExportQualityReportRequest) | [ExportQualityReportResponse](#metaxisdata-v1-ExportQualityReportResponse) | Render one target&#39;s quality report as a self-contained HTML document: the current state, the recent trend, the checks, the unresolved problems, a capped sample summary and the monitoring basis. The document carries its own styles and chart and loads nothing external, so it can be forwarded as a file. The export is audited because it is a bulk read of quality evidence.
+
+The report includes real sample values from failed checks (capped), so it is a wider disclosure than the rules.list permission usually implies; the document itself warns about forwarding it. Its HTML body never enters the audit ledger (see ExportQualityReportResponse.html_content). |
 | UpdateQualityTargetSchedule | [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Update one target&#39;s schedule: how often its enabled checks run. Scheduling is per target, so this replaces the per-check schedule; a change takes effect from the next slot and never runs the target immediately. |
 | GetQualityTargetSchedule | [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Read one target&#39;s schedule without the target&#39;s rules, results and issues. A rule lifecycle change can move the target&#39;s next run; the workspace re-reads just this instead of the whole target after every check edit. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
@@ -10532,7 +10534,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | send_sample_values_to_llm | [bool](#bool) |  | Whether raw sample values may be sent to the LLM. Off by default: only aggregate profiles leave the deployment. |
 | daily_llm_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure explanations). Zero means the server default (10000); capped at 1000000. |
 | llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
-| weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy. |
+| weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
 
 
 

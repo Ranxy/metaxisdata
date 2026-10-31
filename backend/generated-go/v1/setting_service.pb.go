@@ -383,8 +383,11 @@ type DataQualitySetting struct {
 	// means the server default (8); accepted range 1-64.
 	LlmConcurrencyLimit int32 `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
 	// The weekly data quality digest. The digest is one workspace-level summary
-	// delivered through the outbound channels subscribed to
-	// NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy.
+	// delivered through the outbound channels that name
+	// NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient
+	// inbox copy. A data_quality update that omits this nested message keeps the
+	// stored schedule (so a client that predates the digest cannot clear it);
+	// sending the message explicitly replaces it, including with enabled=false.
 	WeeklyDigest  *QualityDigestSetting `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
