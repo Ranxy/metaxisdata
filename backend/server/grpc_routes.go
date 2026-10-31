@@ -377,6 +377,11 @@ func configureGrpcRouters(
 	e.GET("/oauth/authorize/complete", echo.WrapHandler(oauthServer.Audited(oauthServer.CompletionHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/token", echo.WrapHandler(oauthServer.Audited(oauthServer.TokenHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 	e.POST("/oauth/register", echo.WrapHandler(oauthServer.Audited(oauth.RegisterHandler(stores))), oauthEndpointMiddleware(profile.TrustedProxies))
+	// RFC 7009: the client's own way to end a connection, which is what an MCP
+	// client uses when a user forgets it. The credential is named in the body, so
+	// the route needs the same per-address budget as the other anonymous protocol
+	// endpoints even though most callers present a token.
+	e.POST("/oauth/revoke", echo.WrapHandler(oauthServer.Audited(oauthServer.RevokeHandler())), oauthEndpointMiddleware(profile.TrustedProxies))
 
 	// The MCP endpoint itself. Stateless, so it keeps no session and works behind
 	// a load balancer, and wrapped in the standard library's cross-origin

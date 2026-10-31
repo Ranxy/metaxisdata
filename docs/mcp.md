@@ -50,9 +50,9 @@ does the rest itself:
    the authorization code server-side and redirects it to the client — the code
    never passes through the page.
 5. The client exchanges the code at `POST /oauth/token` and presents the resulting
-   access token on every later `/mcp` request. The same response carries a refresh
-   token, which the client exchanges at the same endpoint when the access token
-   expires.
+   access token on every later `/mcp` request. The access token lives one hour —
+   short enough that a leaked copy is useless soon, and renewed from the refresh
+   token in the same response without another browser round trip.
 
 The access token is bound to `<external URL>/mcp` as its audience: a web or CLI
 session token is refused at `/mcp`, and an MCP token is refused on the ConnectRPC
@@ -76,6 +76,18 @@ refuses those older tokens once. A client with a valid refresh token recovers on
 its next refresh — the refresh credential lives in the database and survives the
 upgrade — and only a client whose refresh token has also expired needs the
 browser flow again.
+
+## Disconnecting
+
+A client can end its own connection without the browser or an administrator:
+`POST /oauth/revoke` (RFC 7009), form-encoded, with `token` set to either its
+access token or its refresh token. Either one revokes the whole connection — the
+two are halves of one authorization — so the other stops working too.
+`token_type_hint` is accepted and ignored, `client_id` is optional, and a
+revocation is answered with an empty `200` whether or not the token was valid, so
+the endpoint cannot be used to probe which tokens exist. The authorization-server
+metadata advertises it as `revocation_endpoint`. Revoking from **Connected apps**
+below does the same thing for a connection whose client is gone.
 
 ## The tools
 
@@ -124,12 +136,14 @@ when you need them.
   audience it carries. Because an MCP token names its client, the logout also
   revokes every connection that client holds for that user: their access tokens
   stop being accepted (immediately on the replica that handled the request,
-  within 30 seconds on another) and their refresh tokens can mint nothing. An
+  within 30 seconds on another) and their refresh tokens can mint nothing. The
+  client itself can end its connection with `POST /oauth/revoke` above, and an
   administrator or the user can do the same from Connected apps without holding
   the agent's token; see below.
-- **The anonymous endpoints are rate-limited per address** — registration, the
-  token exchange, and the two browser steps — and a disabled deployment answers
-  `404` without writing a ledger row, so probes cost nothing to keep.
+- **The plain-HTTP OAuth endpoints are rate-limited per address** — registration,
+  the token exchange, the two browser steps, and revocation (which carries a
+  token but the same ceiling) — and a disabled deployment answers `404` without
+  writing a ledger row, so probes cost nothing to keep.
 - **Pending authorizations are process-local**, like device logins. An approval
   and its completion must reach the same replica: run one replica, or put sticky
   routing in front. Refresh tokens are not: they live in the database, so a
@@ -138,8 +152,8 @@ when you need them.
   makes it safe behind a load balancer, and it is wrapped in the standard
   library's cross-origin protection.
 - Turning `mcp_enabled` off closes the surface immediately; it does not revoke
-  tokens or grants, which expire on their own. The Logout route above, or
-  Connected apps below, is the way to retire a live connection.
+  tokens or grants, which expire on their own. `POST /oauth/revoke` above, the
+  Logout route, or Connected apps below is the way to retire a live connection.
 
 ## Connected apps
 

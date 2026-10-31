@@ -127,11 +127,13 @@ type AuthServerMetadata struct {
 	AuthorizationEndpoint                      string   `json:"authorization_endpoint"`
 	TokenEndpoint                              string   `json:"token_endpoint"`
 	RegistrationEndpoint                       string   `json:"registration_endpoint"`
+	RevocationEndpoint                         string   `json:"revocation_endpoint"`
 	ScopesSupported                            []string `json:"scopes_supported"`
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`
 	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported"`
 	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
+	RevocationEndpointAuthMethodsSupported     []string `json:"revocation_endpoint_auth_methods_supported"`
 	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"`
 }
 
@@ -142,6 +144,7 @@ func (e Endpoints) AuthServerMetadata() AuthServerMetadata {
 		AuthorizationEndpoint: e.AuthorizationEndpoint(),
 		TokenEndpoint:         e.TokenEndpoint(),
 		RegistrationEndpoint:  e.RegistrationEndpoint(),
+		RevocationEndpoint:    e.RevocationEndpoint(),
 		ScopesSupported:       []string{MCPReadScope},
 		ResponseTypesSupported: []string{
 			"code",
@@ -159,6 +162,11 @@ func (e Endpoints) AuthServerMetadata() AuthServerMetadata {
 		// Public clients only: a client that can keep a secret is not required,
 		// and PKCE is mandatory for everyone.
 		TokenEndpointAuthMethodsSupported: []string{
+			"none",
+		},
+		// Public clients revoke with the token alone, so the endpoint asks for no
+		// client authentication either (RFC 7009 §2.1).
+		RevocationEndpointAuthMethodsSupported: []string{
 			"none",
 		},
 		AuthorizationResponseIssParameterSupported: true,

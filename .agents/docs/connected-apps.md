@@ -5,7 +5,7 @@
 
 ## What it is
 
-用户在 MCP 客户端上完成的一次 OAuth 授权就是一条**已连接应用**记录:一个用户 × 一个客户端 × 一次同意,落在 `oauth_refresh_token` 行(历史表名;Go 类型 `store.OAuthGrant`)。`ConnectedAppService` 把这份**已经存在的数据**列出来、派生状态并逐条撤销;它不管理浏览器登录会话、CLI device-login 令牌或 MCP 传输会话——`/mcp` 是无状态的,能持久、能撤销的只有授权。
+用户在 MCP 客户端上完成的一次 OAuth 授权就是一条**已连接应用**记录:一个用户 × 一个客户端 × 一次同意,落在 `oauth_refresh_token` 行(历史表名;Go 类型 `store.OAuthGrant`)。`ConnectedAppService` 把这份**已经存在的数据**列出来、派生状态并逐条撤销;客户端自己也可以经 RFC 7009 `POST /oauth/revoke` 撤销其连接。它不管理浏览器登录会话、CLI device-login 令牌或 MCP 传输会话——`/mcp` 是无状态的,能持久、能撤销的只有授权。
 
 ```
 用户 ──浏览器同意──▶ OAuth client(DCR) ──签发──▶ grant 行(id 稳定)
@@ -60,6 +60,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 - `RevokeOAuthGrant`:`UPDATE ... SET revoked_at=$2, revoked_by=$3 WHERE id=$1 AND revoked_at IS NULL RETURNING id`。0 行且行存在 = 幂等成功,保留第一次的 `revoked_by`;行不存在 = `NotFound`;无权限撤销他人 = `NotFound`(不暴露存在性)。
 - `revoked_by` 记录操作者(自助撤销记本人,Logout 记令牌所属用户);**NULL 只出现在系统路径**(refresh 时 principal 复核失败)。
 - 本副本在事务提交后调用 `GrantRevocationCache.Revoke("id")`,其他副本最迟一个 TTL 读到;`token_hash` 不清理,撤销后它换不出任何东西。
+- **客户端自助撤销(RFC 7009)**:`POST /oauth/revoke`(`backend/api/oauth/revoke.go`)接受 access token 或 refresh token 任一凭据——access 按本地验签得到的 `gid`、refresh 按摘要查行——两者落到同一条 grant 行,所以撤销一条连接、两种凭据同时失效。`revoked_by` 记凭据所属用户;未知/过期/伪造/已撤销 token、以及给出了与归属不符的 `client_id`,一律 `200` 空体且不写库(防探测);写后标记缓存,本副本立即拒绝该连接的 access token。
 - `Logout`(MCP 令牌,按 `cid` claim)撤销该用户该 client 的**全部**授权并逐个标记缓存(`auth_service.go:328-341`);web 会话仍删除自己的 refresh 行。撤销只作用于已签发授权,不清理进程内 pending 授权请求——用户重新同意会产生新行、新 id,这是预期语义。
 
 ### 工具活动时间
@@ -100,7 +101,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 2. **`revoked_at` 是终态**——任何路径不得清空;重新授权 = 新行、新 id。`expires_at` 是滑动过期,轮换从「现在」重算;`created_at` 永不改写成轮换时刻。
 3. **行 id 是稳定身份**——同时是 `connectedApps/{id}`、`gid` claim 与工具活动的外键;不得复用、重编号或在轮换时重建行。
 4. **无 `gid` 的 MCP access token 一律拒绝**;授权检查只对 `GrantID != 0` 的令牌执行,查询必须绑定 `id + user_id + client_id`,行不存在视为不存活,读失败失败关闭;缓存是独立实例(与 jti 缓存共用会被令牌流量挤出)。
-5. **refresh 寿命 > access token 寿命**(30 天 vs 7 天)——这是「行被清理 ⇒ 令牌本就过期」的前提;若将来把时长做成可配置,必须保留该大小关系,否则清理会提前杀死有效令牌。
+5. **refresh 寿命 > access token 寿命**(30 天 vs 1 小时)——这是「行被清理 ⇒ 令牌本就过期」的前提;若将来把时长做成可配置,必须保留该大小关系,否则清理会提前杀死有效令牌。
 6. **一条记录 = 一次授权**——同一 (user, client) 可有多行;列表不聚合,撤销一条不影响同客户端的另一条;`Logout` 是唯一的「按 (user, client) 全断」路径。
 7. **混合受众 RPC 先收窄再放宽**——list/revoke 无 permission 注解、在 `unannotatedMethods` 白名单;handler 必须先限定调用者可看的行,再按权限放宽;checker 报错必须失败关闭。`TestEveryMethodIsPermissionGated` 只看白名单成员,矩阵测试 `connected_app_test.go` 才是守卫。
 8. **审计**:撤销带 `audit=true`(响应是撤销后的快照,行被清理后账本仍自解释),并因此自动进入 principal 预算;列表不审计、不受预算。工具调用账本不含 client/grant 归因(见下)。
@@ -117,6 +118,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 | 已撤销后再撤销 | 幂等成功,返回当前快照,审计照记,保留首个 `revoked_by` |
 | `list`/`revoke` 的 DB 或 checker 失败 | `Internal`(checker 失败不放宽范围) |
 | 已撤销授权的 access token | `/mcp` 401 + `error="invalid_token"`(执行撤销的副本立即,其他 ≤30s) |
+| 客户端经 RFC 7009 撤销其连接(access 或 refresh 凭据) | 与 Connected apps 撤销同效:access token 本副本立即 401(其他 ≤30s)、refresh `invalid_grant`;未知/过期/伪造/已撤销 token 及 `client_id` 不符都 `200` 空体 |
 | 已撤销/过期/重放/跨 client/换 resource 的 refresh | `invalid_grant`;过期行保留为 `EXPIRED` 等 maintenance 清理 |
 | 升级前签发、无 `gid` 的 MCP token | 401;客户端 refresh 一次恢复(refresh 也过期才重新授权) |
 | 账号停用 | 状态 `INACTIVE`;access/refresh 由既有校验链拒绝,恢复账号后连接恢复,不自动撤销 |
@@ -141,7 +143,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 - Store:`backend/store/oauth_grant.go`(`Create/Get/Rotate/Revoke/RevokeByUserAndClient/IsLive/Touch/GetConnectedApp/ListConnectedApps/DeleteExpired`);形状守卫 `backend/store/oauth_grant_test.go`。
 - 服务:`backend/api/v1/connected_app_service.go`;筛选 `backend/api/v1/filter.go` 的 `parseConnectedAppFilter`;proto `proto/v1/v1/connected_app_service.proto`(生成物随 `buf generate` 提交)。
 - 令牌与校验:`backend/api/auth/auth.go`(`gid`/`GrantID`)、`backend/api/auth/mcp_token.go`、`backend/api/auth/authenticator.go`(`GrantStore`、`grantRevoked`、`ErrGrantRevoked`)、`backend/component/state/state.go`(`GrantRevocationCache`)、`backend/mcp/auth.go`(拒绝无 `gid`、`TokenInfo.Extra` 携带 grant)、`backend/api/oauth/token.go`(创建/轮换/失败撤销;`ServerConfig.TokenStores` 是 hermetic 测试接缝),`backend/api/oauth/token_test.go`(过期/已撤销/换资源/scope 漂移都不烧凭据、抢占失败、principal 拒绝置撤销并清缓存、authorization_code 先建行再签令牌)。
-- Logout 与清理:`backend/api/v1/auth_service.go`(MCP 分支撤销全部授权并清缓存)、`backend/runner/maintenance/maintenance.go`(`connectedAppRetention = 7d`,`DeleteExpiredOAuthGrants`)。
+- 撤销与清理:`backend/api/oauth/revoke.go`(RFC 7009 自助撤销)、`backend/api/v1/auth_service.go`(MCP 分支撤销全部授权并清缓存)、`backend/runner/maintenance/maintenance.go`(`connectedAppRetention = 7d`,`DeleteExpiredOAuthGrants`)。
 - 工具活动:`backend/mcp/server.go` 的 `dispatch`/`touchConnectedApp`/`lastToolCallThrottle`。
 - 权限:目录 `backend/common/permission/permission.json`(73 条,`connectedApps.*` 不在 workspaceMember 的 17 条基线里,`workspaceAdmin` 自动拥有);白名单 `backend/api/v1/acl_interceptor_test.go`;矩阵测试 `backend/api/v1/connected_app_test.go`。
 - 前端:路由 `frontend/src/router/index.ts`(管理员 `/settings/connected-apps`,自助 `/connected-apps`);页面 `frontend/src/pages/settings/ConnectedAppsSettingsPage.vue`、`frontend/src/pages/ConnectedAppsPage.vue`;共享组件 `frontend/src/components/connected-app/`;API `frontend/src/api/connected-app.ts`;入口 SettingsNav / UserMenu;权限镜像 `frontend/src/lib/permissions.ts`;i18n/词汇表见 `frontend/glossary.json`。

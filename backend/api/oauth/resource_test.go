@@ -97,6 +97,9 @@ func TestMetadataDocuments(t *testing.T) {
 		require.Equal(t, testExternalURL+"/oauth/authorize", document["authorization_endpoint"])
 		require.Equal(t, testExternalURL+"/oauth/token", document["token_endpoint"])
 		require.Equal(t, testExternalURL+"/oauth/register", document["registration_endpoint"])
+		require.Equal(t, testExternalURL+"/oauth/revoke", document["revocation_endpoint"])
+		require.Equal(t, []any{"none"}, document["revocation_endpoint_auth_methods_supported"],
+			"RFC 7009: a public client revokes with the token alone, so no client authentication is asked for")
 		require.Equal(t, []any{"code"}, document["response_types_supported"])
 		require.Equal(t, []any{"authorization_code", "refresh_token"}, document["grant_types_supported"])
 		require.Equal(t, []any{"S256"}, document["code_challenge_methods_supported"])

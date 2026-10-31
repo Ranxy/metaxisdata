@@ -19,6 +19,9 @@ import (
 // put a fake behind it.
 type TokenStore interface {
 	GetOAuthGrant(ctx context.Context, clientID, tokenHash string) (*store.OAuthGrant, error)
+	// GetOAuthGrantByTokenHash resolves a presented refresh credential without a
+	// client scope, which is what RFC 7009 revocation needs.
+	GetOAuthGrantByTokenHash(ctx context.Context, tokenHash string) (*store.OAuthGrant, error)
 	CreateOAuthGrant(ctx context.Context, create *store.OAuthGrant) (int64, error)
 	RotateOAuthGrant(ctx context.Context, clientID, oldHash, newHash string, expiresAt, now time.Time) (int64, bool, error)
 	RevokeOAuthGrant(ctx context.Context, id int64, revokedAt time.Time, revokedBy *int) (bool, error)

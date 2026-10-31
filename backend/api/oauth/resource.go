@@ -126,3 +126,7 @@ func (e Endpoints) TokenEndpoint() string { return e.Issuer + "/oauth/token" }
 
 // RegistrationEndpoint is where a client registers itself (RFC 7591).
 func (e Endpoints) RegistrationEndpoint() string { return e.Issuer + "/oauth/register" }
+
+// RevocationEndpoint is where a client revokes an access or refresh token it
+// holds (RFC 7009).
+func (e Endpoints) RevocationEndpoint() string { return e.Issuer + "/oauth/revoke" }

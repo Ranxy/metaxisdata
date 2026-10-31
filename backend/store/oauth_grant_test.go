@@ -14,6 +14,10 @@ func TestOAuthGrantQueriesBindTheHashAndScopeTheClient(t *testing.T) {
 	t.Parallel()
 
 	require.Contains(t, getOAuthGrantQuery, "WHERE token_hash = $1 AND client_id = $2")
+	require.Contains(t, getOAuthGrantByTokenHashQuery, "WHERE token_hash = $1",
+		"RFC 7009 revocation presents only the token, so that lookup cannot be client-scoped")
+	require.NotContains(t, getOAuthGrantByTokenHashQuery, "client_id =",
+		"a client-scoped predicate here would make another client's token look unknown instead of revocable by its owner")
 	require.Contains(t, rotateOAuthGrantQuery, "UPDATE oauth_refresh_token")
 	require.Contains(t, rotateOAuthGrantQuery, "WHERE token_hash = $1 AND client_id = $2")
 	require.Contains(t, rotateOAuthGrantQuery, "revoked_at IS NULL",
@@ -37,6 +41,7 @@ func TestOAuthGrantQueriesBindTheHashAndScopeTheClient(t *testing.T) {
 	for _, query := range []string{
 		createOAuthGrantQuery,
 		getOAuthGrantQuery,
+		getOAuthGrantByTokenHashQuery,
 		rotateOAuthGrantQuery,
 		revokeOAuthGrantQuery,
 		revokeOAuthGrantsByUserAndClientQuery,

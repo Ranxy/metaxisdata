@@ -60,9 +60,26 @@ type fakeTokenStore struct {
 	lastRotateExpiry time.Time
 	lastRotateNow    time.Time
 
-	revokedIDs []int64
-	revokedBys []*int
-	touched    []string
+	revokedIDs     []int64
+	revokedBys     []*int
+	touched        []string
+	alreadyRevoked bool
+
+	byTokenHash      *store.OAuthGrant
+	byTokenHashErr   error
+	byTokenHashCalls int
+	lastHashLookup   string
+}
+
+// GetOAuthGrantByTokenHash backs RFC 7009 revocation, which looks a credential
+// up without a client scope.
+func (f *fakeTokenStore) GetOAuthGrantByTokenHash(_ context.Context, tokenHash string) (*store.OAuthGrant, error) {
+	f.byTokenHashCalls++
+	f.lastHashLookup = tokenHash
+	if f.byTokenHashErr != nil {
+		return nil, f.byTokenHashErr
+	}
+	return f.byTokenHash, nil
 }
 
 func (f *fakeTokenStore) GetOAuthGrant(_ context.Context, clientID, tokenHash string) (*store.OAuthGrant, error) {
@@ -93,7 +110,7 @@ func (f *fakeTokenStore) RotateOAuthGrant(_ context.Context, _, oldHash, newHash
 func (f *fakeTokenStore) RevokeOAuthGrant(_ context.Context, id int64, _ time.Time, revokedBy *int) (bool, error) {
 	f.revokedIDs = append(f.revokedIDs, id)
 	f.revokedBys = append(f.revokedBys, revokedBy)
-	return true, f.revokeErr
+	return !f.alreadyRevoked, f.revokeErr
 }
 
 func (f *fakeTokenStore) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {
@@ -183,6 +200,7 @@ func TestRefreshGrantRotatesTheRowInPlace(t *testing.T) {
 	require.NotEmpty(t, response.RefreshToken)
 	require.NotEqual(t, "refresh-1", response.RefreshToken)
 	require.Equal(t, MCPReadScope, response.Scope)
+	require.Equal(t, int64(3600), response.ExpiresIn, "an MCP access token lives one hour")
 
 	// The old digest was claimed, the new one was stored, and the expiry slid
 	// from the pinned clock rather than from the wall clock.
@@ -198,6 +216,8 @@ func TestRefreshGrantRotatesTheRowInPlace(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(42), identity.GrantID)
 	require.Equal(t, "client-1", identity.ClientID)
+	require.WithinDuration(t, identity.IssuedAt.Add(auth.MCPAccessTokenDuration), identity.ExpiresAt, time.Second,
+		"the exp claim must carry the one-hour MCP lifetime, not the web session's")
 }
 
 func TestRefreshGrantRefusesBeforeBurningTheCredential(t *testing.T) {

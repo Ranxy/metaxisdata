@@ -29,10 +29,24 @@ const (
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`
 
+	// oauthGrantColumns is the projection every token-digest lookup returns, so
+	// the lookups cannot drift in what they scan.
+	oauthGrantColumns = `id, token_hash, client_id, user_id, resource, scope, expires_at, created_at, last_tool_call_at, revoked_at, revoked_by`
+
 	getOAuthGrantQuery = `
-		SELECT id, token_hash, client_id, user_id, resource, scope, expires_at, created_at, last_tool_call_at, revoked_at, revoked_by
+		SELECT ` + oauthGrantColumns + `
 		FROM oauth_refresh_token
 		WHERE token_hash = $1 AND client_id = $2`
+
+	// getOAuthGrantByTokenHashQuery looks a grant up by token digest alone, for
+	// RFC 7009 revocation: the client presents only the token, so this lookup
+	// cannot also be scoped by the client the way rotation is. An unknown token
+	// and another client's token are indistinguishable answers, and the caller
+	// reports both as an empty success.
+	getOAuthGrantByTokenHashQuery = `
+		SELECT ` + oauthGrantColumns + `
+		FROM oauth_refresh_token
+		WHERE token_hash = $1`
 
 	// rotateOAuthGrantQuery is the single-use rotation gate. It updates the row in
 	// place rather than deleting and reinserting it, so the id survives a refresh.
@@ -165,29 +179,43 @@ func (s *Store) CreateOAuthGrant(ctx context.Context, create *OAuthGrant) (int64
 // returned as-is; the caller decides, because a revocation and an unknown token
 // are the same refusal to the client.
 func (s *Store) GetOAuthGrant(ctx context.Context, clientID, tokenHash string) (*OAuthGrant, error) {
-	msg := &OAuthGrant{}
+	return queryOAuthGrant(s.GetDB().QueryRowContext(ctx, getOAuthGrantQuery, tokenHash, clientID), "failed to get OAuth grant")
+}
+
+// GetOAuthGrantByTokenHash returns the grant whose refresh credential has this
+// digest, or (nil, nil) when no row carries it. The lookup is not scoped to a
+// client because RFC 7009 revocation presents the token alone; the caller
+// compares any supplied client_id against the returned row.
+func (s *Store) GetOAuthGrantByTokenHash(ctx context.Context, tokenHash string) (*OAuthGrant, error) {
+	return queryOAuthGrant(s.GetDB().QueryRowContext(ctx, getOAuthGrantByTokenHashQuery, tokenHash), "failed to get OAuth grant by token hash")
+}
+
+// queryOAuthGrant scans the shared projection and maps sql.ErrNoRows to an
+// absent grant, which is not an error for a token lookup.
+func queryOAuthGrant(row *sql.Row, action string) (*OAuthGrant, error) {
+	grant := &OAuthGrant{}
 	var lastToolCallAt, revokedAt sql.NullTime
 	var revokedBy sql.NullInt32
-	if err := s.GetDB().QueryRowContext(ctx, getOAuthGrantQuery, tokenHash, clientID).Scan(
-		&msg.ID, &msg.TokenHash, &msg.ClientID, &msg.UserID, &msg.Resource, &msg.Scope,
-		&msg.ExpiresAt, &msg.CreatedAt, &lastToolCallAt, &revokedAt, &revokedBy,
+	if err := row.Scan(
+		&grant.ID, &grant.TokenHash, &grant.ClientID, &grant.UserID, &grant.Resource, &grant.Scope,
+		&grant.ExpiresAt, &grant.CreatedAt, &lastToolCallAt, &revokedAt, &revokedBy,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, errors.Wrap(err, "failed to get OAuth grant")
+		return nil, errors.Wrap(err, action)
 	}
 	if lastToolCallAt.Valid {
-		msg.LastToolCallAt = &lastToolCallAt.Time
+		grant.LastToolCallAt = &lastToolCallAt.Time
 	}
 	if revokedAt.Valid {
-		msg.RevokedAt = &revokedAt.Time
+		grant.RevokedAt = &revokedAt.Time
 	}
 	if revokedBy.Valid {
 		value := int(revokedBy.Int32)
-		msg.RevokedBy = &value
+		grant.RevokedBy = &value
 	}
-	return msg, nil
+	return grant, nil
 }
 
 // RotateOAuthGrant atomically replaces a grant's refresh token digest and expiry,

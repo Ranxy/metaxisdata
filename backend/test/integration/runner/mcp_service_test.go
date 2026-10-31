@@ -124,6 +124,8 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		require.Equal(t, env.BaseURL, metadata["issuer"])
 		require.Equal(t, []any{"S256"}, metadata["code_challenge_methods_supported"])
 		require.Equal(t, []any{"authorization_code", "refresh_token"}, metadata["grant_types_supported"])
+		require.Equal(t, env.BaseURL+"/oauth/revoke", metadata["revocation_endpoint"])
+		require.Equal(t, []any{"none"}, metadata["revocation_endpoint_auth_methods_supported"])
 		require.NotContains(t, metadata, "jwks_uri")
 	})
 
@@ -161,6 +163,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		first := exchange(t, protocol, env.BaseURL, resource, clientID, code, verifier)
 		require.NotEmpty(t, first["access_token"])
 		require.Equal(t, "Bearer", first["token_type"])
+		require.Equal(t, float64(3600), first["expires_in"], "an MCP access token lives one hour")
 		require.Equal(t, mcpScope, first["scope"])
 
 		replay := exchangeStatus(t, protocol, env.BaseURL, resource, clientID, mcpClientRedirect, code, verifier)
@@ -245,6 +248,43 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, wrongScopeStatus)
 		retryStatus, retryBody := refreshGrant(t, protocol, env.BaseURL, resource, clientID, rotatedToken, mcpScope)
 		require.Equal(t, http.StatusOK, retryStatus, retryBody)
+	})
+
+	t.Run("a client can revoke its own connection", func(t *testing.T) {
+		requestID := authorize(t, protocol, env.BaseURL, resource, clientID, adminToken, challenge)
+		approveRequest(ctx, t, admin, requestID)
+		grantCode := complete(t, protocol, env.BaseURL, requestID, adminToken)
+		granted := exchange(t, protocol, env.BaseURL, resource, clientID, grantCode, verifier)
+		accessToken, ok := granted["access_token"].(string)
+		require.True(t, ok)
+		refreshToken, ok := granted["refresh_token"].(string)
+		require.True(t, ok)
+
+		status, header, body := revokeToken(t, protocol, env.BaseURL, url.Values{
+			"token":           {accessToken},
+			"token_type_hint": {"access_token"},
+			"client_id":       {clientID},
+		})
+		require.Equal(t, http.StatusOK, status, body)
+		require.Empty(t, body, "RFC 7009: a successful revocation has an empty body")
+		require.Equal(t, "no-store", header.Get("Cache-Control"))
+
+		// The access token minted before the revocation stops working immediately
+		// on the replica that handled it.
+		status, _, body = rawRequest(t, protocol, http.MethodPost, env.BaseURL+mcpResourcePath, accessToken, mcpAccept, "application/json",
+			`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+		require.Equal(t, http.StatusUnauthorized, status, body)
+
+		// Revoking either credential ends the whole connection, so the refresh
+		// token the client still holds can mint nothing.
+		refreshStatus, _ := refreshGrant(t, protocol, env.BaseURL, resource, clientID, refreshToken, mcpScope)
+		require.Equal(t, http.StatusBadRequest, refreshStatus)
+
+		// An unknown token gets the same empty success, so the endpoint cannot be
+		// used to probe which tokens exist.
+		status, _, body = revokeToken(t, protocol, env.BaseURL, url.Values{"token": {"not-a-token-any-client-ever-saw"}})
+		require.Equal(t, http.StatusOK, status, body)
+		require.Empty(t, body)
 	})
 
 	t.Run("a connected app can be listed and revoked", func(t *testing.T) {
@@ -381,6 +421,8 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		// Registration is a POST; the SPA's fallback answers a GET on any path.
 		status, _, _ := rawRequest(t, protocol, http.MethodPost, env.BaseURL+"/oauth/register", adminToken, "", "application/json", `{"redirect_uris":["http://127.0.0.1:51004/callback"]}`)
 		require.Equal(t, http.StatusNotFound, status, "registration must not exist while the surface is off")
+		status, _, _ = rawRequest(t, protocol, http.MethodPost, env.BaseURL+"/oauth/revoke", adminToken, "", "application/x-www-form-urlencoded", "token=x")
+		require.Equal(t, http.StatusNotFound, status, "revocation must not exist while the surface is off")
 	})
 }
 
@@ -533,6 +575,13 @@ func refreshGrant(t *testing.T, client *http.Client, baseURL, resource, clientID
 	}
 	status, _, body := rawRequest(t, client, http.MethodPost, baseURL+"/oauth/token", "", "", "application/x-www-form-urlencoded", form.Encode())
 	return status, body
+}
+
+// revokeToken posts an RFC 7009 revocation request and reports the raw response.
+func revokeToken(t *testing.T, client *http.Client, baseURL string, form url.Values) (int, http.Header, string) {
+	t.Helper()
+
+	return rawRequest(t, client, http.MethodPost, baseURL+"/oauth/revoke", "", "", "application/x-www-form-urlencoded", form.Encode())
 }
 
 // rawRefreshStatus posts a refresh grant from a goroutine, where require is not
