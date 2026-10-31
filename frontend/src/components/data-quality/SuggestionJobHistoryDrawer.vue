@@ -451,7 +451,7 @@ const {
  * Live progress while the visible page still holds a job that can progress.
  * The drawer is a snapshot otherwise; a manual refresh is always one click away.
  */
-const polling = usePolling(() => refreshPage(), {
+const polling = usePolling((signal) => refreshPage({ signal }), {
   intervalMs: POLL_INTERVAL_MS,
   shouldContinue: () => props.open && jobs.value.some(isActiveSuggestionJob),
 });

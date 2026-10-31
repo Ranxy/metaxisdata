@@ -136,7 +136,7 @@
 <script setup lang="ts">
 import { Loader2, RefreshCcw } from "lucide-vue-next";
 import MarkdownRender from "markstream-vue";
-import { computed, onScopeDispose, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { explainQualityExecution } from "@/api/data-quality";
 import { Badge } from "@/components/ui/badge";
@@ -149,14 +149,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { QualityExecution } from "@/types/proto-es/v1/data_quality_service_pb";
+import { useStreaming } from "@/composables/useStreaming";
+import type {
+  ExplainQualityExecutionResponse,
+  QualityExecution,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   applyExplanationChunk,
   emptyExplanationState,
   explainErrorMessageKey,
   explanationComplete,
 } from "@/utils/dataQualityLlm";
-import { isAborted } from "@/utils/error";
 
 /**
  * The streaming explanation of one failed execution. It lives in a side sheet so
@@ -182,77 +185,52 @@ const streaming = computed(
   () => !explanationComplete(state) && error.value === undefined
 );
 
-/**
- * Identifies the newest stream. A superseded stream can still deliver one more
- * frame after its abort, and the drawer is reused for whichever execution the
- * reader picks next: only the current generation may write the document.
- */
-let generation = 0;
-let inFlight: AbortController | undefined;
-
-function abortInFlight() {
-  inFlight?.abort();
-  inFlight = undefined;
+function reset() {
+  Object.assign(state, emptyExplanationState());
+  error.value = undefined;
 }
+
+/**
+ * Reset, frame handling, generation and abort all live in `useStreaming`: a
+ * superseded stream can still deliver one more frame after its abort, and the
+ * drawer is reused for whichever execution the reader picks next, so only the
+ * newest run may write the document.
+ */
+const explain = useStreaming<ExplainQualityExecutionResponse, [boolean]>({
+  open: (signal, forceRegenerate) =>
+    explainQualityExecution({
+      name: props.execution?.name ?? "",
+      language: locale.value,
+      forceRegenerate,
+      signal,
+    }),
+  onReset: reset,
+  onChunk: (chunk) => applyExplanationChunk(state, chunk),
+  onError: (e) => {
+    error.value = e instanceof Error ? e : new Error(String(e));
+  },
+});
 
 // `immediate` matters: the drawer is usually mounted and opened in one step.
 watch(
   () => [props.open, props.execution?.name] as const,
   ([isOpen]) => {
     if (isOpen) {
-      void start(false);
+      start(false);
     } else {
+      explain.cancel();
       reset();
     }
   },
   { immediate: true }
 );
 
-function reset() {
-  generation += 1;
-  abortInFlight();
-  Object.assign(state, emptyExplanationState());
-  error.value = undefined;
-}
-
-async function start(forceRegenerate: boolean) {
-  const execution = props.execution;
-  reset();
-  if (!execution) {
+function start(forceRegenerate: boolean) {
+  if (!props.execution) {
+    explain.cancel();
+    reset();
     return;
   }
-  const mine = generation;
-  const controller = new AbortController();
-  inFlight = controller;
-  try {
-    const stream = explainQualityExecution({
-      name: execution.name,
-      language: locale.value,
-      forceRegenerate,
-      signal: controller.signal,
-    });
-    for await (const chunk of stream) {
-      if (mine !== generation) {
-        return;
-      }
-      applyExplanationChunk(state, chunk);
-    }
-  } catch (e: unknown) {
-    if (mine !== generation || isAborted(e)) {
-      return;
-    }
-    error.value = e instanceof Error ? e : new Error(String(e));
-  } finally {
-    if (mine === generation) {
-      inFlight = undefined;
-    }
-  }
+  void explain.run(forceRegenerate);
 }
-
-// Leaving the page must stop paying for a generation the server is still
-// producing, whatever the component's last state was.
-onScopeDispose(() => {
-  generation += 1;
-  abortInFlight();
-});
 </script>

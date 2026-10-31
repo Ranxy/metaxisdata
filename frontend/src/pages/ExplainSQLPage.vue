@@ -322,13 +322,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useStreaming } from "@/composables/useStreaming";
 import { useDebounced } from "@/composables/useTimers";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
+import type {
+  ExplainSQLProgress,
+  ExplainSQLResponse,
+} from "@/types/proto-es/v1/explain_sql_service_pb";
 import { formatDateTime } from "@/utils/datetime";
-import { isAborted } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { isProviderAllowed } from "@/utils/llmProvider";
 import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
@@ -511,13 +514,8 @@ const loadingSql = ref(false);
 const isExplaining = ref(false);
 const resultText = ref("");
 const explainError = ref<string | null>(null);
-/**
- * Identifies the newest explanation stream. The page is a route, but a reader
- * who navigates away must stop both the cost and any late frame; a superseded
- * stream may not write the document the next one owns.
- */
-let explainGeneration = 0;
-let explainStream: AbortController | undefined;
+/** Set when the page goes away; an awaited persistence write must not start a stream after it. */
+let disposed = false;
 
 // ExplainSQL may be restricted to an admin-configured set of provider profiles;
 // the picker lists the allowed profiles that have an enabled model.
@@ -573,10 +571,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  disposed = true;
   document.removeEventListener("mousedown", handleClickOutside);
-  explainGeneration += 1;
-  explainStream?.abort();
-  explainStream = undefined;
 });
 
 // ---- methods ----
@@ -733,72 +729,78 @@ async function selectSearchResult(item: SearchItem) {
   await fetchMetaSQL(item.guid, item.metaType);
 }
 
+/**
+ * The one server-streamed answer. Reset, frame handling, generation and abort
+ * live in `useStreaming`: leaving the page stops the cost, and a superseded
+ * stream cannot write the document the newest one owns.
+ */
+const explain = useStreaming<ExplainSQLResponse, [boolean]>({
+  open: (signal, forceRegen) => {
+    const input =
+      sourceMode.value === "metadata" && selectedMeta.value
+        ? {
+            metaGuid: selectedMeta.value.guid,
+            forceRegenerate: forceRegen,
+            providerName: selectedProvider.value,
+          }
+        : {
+            sqlText: customSQL.value.trim(),
+            forceRegenerate: forceRegen,
+            scopePrefix: scopePrefix.value,
+            providerName: selectedProvider.value,
+          };
+    return explainSQL(input, { signal });
+  },
+  onReset: () => {
+    isExplaining.value = true;
+    resultText.value = "";
+    explainError.value = null;
+    explainMeta.value = null;
+    progressSteps.value = [];
+    showProgress.value = true;
+  },
+  onChunk: (chunk) => {
+    if (chunk.payload?.case === "content" && chunk.payload.value) {
+      showProgress.value = false;
+      resultText.value += chunk.payload.value;
+    } else if (chunk.payload?.case === "progress" && chunk.payload.value) {
+      const p = chunk.payload.value;
+      if (p.type === "tool_start" || p.type === "tool_end") {
+        progressSteps.value.push(p);
+      }
+    } else if (chunk.payload?.case === "metadata" && chunk.payload.value) {
+      const m = chunk.payload.value;
+      explainMeta.value = {
+        provider: m.provider,
+        model: m.model,
+        fromCache: m.fromCache,
+        cacheCreatedAt: m.cacheCreatedAt,
+      };
+    }
+  },
+  onError: (e) => {
+    explainError.value = formatError(e);
+  },
+  onDone: () => {
+    isExplaining.value = false;
+  },
+});
+
 async function startExplain(forceRegen = false) {
   if (isExplaining.value) return;
-  const mine = ++explainGeneration;
-  explainStream?.abort();
-  const controller = new AbortController();
-  explainStream = controller;
-  isExplaining.value = true;
-  resultText.value = "";
-  explainError.value = null;
-  explainMeta.value = null;
-  progressSteps.value = [];
-  showProgress.value = true;
-
   // The server writes the answer in the language stored on the profile, so a
   // switch that is still in flight — or one whose write failed — is settled
   // first: explaining right after switching must not answer in the old language.
-  await authStore.ensureLanguagePersisted();
-
-  const input =
-    sourceMode.value === "metadata" && selectedMeta.value
-      ? {
-          metaGuid: selectedMeta.value.guid,
-          forceRegenerate: forceRegen,
-          providerName: selectedProvider.value,
-        }
-      : {
-          sqlText: customSQL.value.trim(),
-          forceRegenerate: forceRegen,
-          scopePrefix: scopePrefix.value,
-          providerName: selectedProvider.value,
-        };
-
+  isExplaining.value = true;
   try {
-    const stream = explainSQL(input, { signal: controller.signal });
-    for await (const chunk of stream) {
-      if (mine !== explainGeneration) {
-        return;
-      }
-      if (chunk.payload?.case === "content" && chunk.payload.value) {
-        showProgress.value = false;
-        resultText.value += chunk.payload.value;
-      } else if (chunk.payload?.case === "progress" && chunk.payload.value) {
-        const p = chunk.payload.value;
-        if (p.type === "tool_start" || p.type === "tool_end") {
-          progressSteps.value.push(p);
-        }
-      } else if (chunk.payload?.case === "metadata" && chunk.payload.value) {
-        const m = chunk.payload.value;
-        explainMeta.value = {
-          provider: m.provider,
-          model: m.model,
-          fromCache: m.fromCache,
-          cacheCreatedAt: m.cacheCreatedAt,
-        };
-      }
-    }
-  } catch (e) {
-    if (mine !== explainGeneration || isAborted(e)) {
-      return;
-    }
-    explainError.value = formatError(e);
-  } finally {
-    if (mine === explainGeneration) {
-      isExplaining.value = false;
-      explainStream = undefined;
-    }
+    await authStore.ensureLanguagePersisted();
+  } catch {
+    isExplaining.value = false;
+    return;
   }
+  if (disposed) {
+    return;
+  }
+  await explain.run(forceRegen);
 }
 </script>

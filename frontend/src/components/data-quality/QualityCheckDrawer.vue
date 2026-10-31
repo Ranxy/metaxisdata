@@ -687,9 +687,9 @@ let runSettled = false;
 let unmounted = false;
 
 const runPolling = usePolling(
-  async () => {
+  async (signal) => {
     const settled = await Promise.all(
-      pendingRunNames.map((name) => getQualityExecution(name))
+      pendingRunNames.map((name) => getQualityExecution(name, { signal }))
     );
     runSettled = settled.every(isExecutionSettled);
   },

@@ -179,6 +179,41 @@ describe("usePagedFetch", () => {
     await loading;
   });
 
+  it("forwards a caller's abort to the request it is waiting on", async () => {
+    const pending = deferred<ListPage<string>>();
+    let requestSignal: AbortSignal | undefined;
+    const fetchPage = vi.fn((_token: string, signal: AbortSignal) => {
+      requestSignal = signal;
+      return pending.promise;
+    });
+    const pager = usePagedFetch<string>({ fetchPage });
+
+    const round = new AbortController();
+    const refresh = pager.refresh({ signal: round.signal });
+    expect(requestSignal?.aborted).toBe(false);
+
+    round.abort();
+    expect(requestSignal?.aborted).toBe(true);
+    pending.resolve(page(["stale"]));
+    await refresh;
+
+    // The aborted round changes nothing.
+    expect(pager.items.value).toEqual([]);
+  });
+
+  it("does not start a request when the caller's signal is already aborted", async () => {
+    const fetchPage = vi.fn(async () => page(["ignored"]));
+    const pager = usePagedFetch<string>({ fetchPage });
+    const round = new AbortController();
+    round.abort();
+
+    await pager.reset({ signal: round.signal });
+    await pager.refresh({ signal: round.signal });
+
+    expect(fetchPage).not.toHaveBeenCalled();
+    expect(pager.items.value).toEqual([]);
+  });
+
   it("disposes a pager that never started a request", () => {
     const scope = effectScope();
     scope.run(() => usePagedFetch<string>({ fetchPage: vi.fn() }));

@@ -19,15 +19,20 @@ export interface PagedFetchOptions<T> {
   onError?: (error: unknown) => void;
 }
 
+/** A caller-owned abort signal, e.g. the round of a polling loop. */
+export interface FetchRequest {
+  signal?: AbortSignal;
+}
+
 export interface PagedFetch<T> {
   items: Ref<T[]>;
   isLoading: Ref<boolean>;
   hasNext: ComputedRef<boolean>;
   hasPrevious: ComputedRef<boolean>;
   /** Back to the first page, discarding the visited history. */
-  reset: () => Promise<void>;
+  reset: (request?: FetchRequest) => Promise<void>;
   /** Reload the page currently shown. */
-  refresh: () => Promise<void>;
+  refresh: (request?: FetchRequest) => Promise<void>;
   goNext: () => Promise<void>;
   goPrevious: () => Promise<void>;
 }
@@ -51,17 +56,31 @@ export function usePagedFetch<T>(options: PagedFetchOptions<T>): PagedFetch<T> {
   let ticket = 0;
   let inFlight: AbortController | undefined;
 
-  async function load(pageToken: string) {
+  async function load(pageToken: string, signal?: AbortSignal) {
+    // A round cancelled before it started must not reach the wire.
+    if (signal?.aborted) {
+      return;
+    }
     ticket += 1;
     const mine = ticket;
     inFlight?.abort();
     const controller = new AbortController();
     inFlight = controller;
+    // A caller's signal (a polling round going away) aborts this request too.
+    const forwardAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) {
+        controller.abort();
+      } else {
+        signal.addEventListener("abort", forwardAbort, { once: true });
+      }
+    }
 
     isLoading.value = true;
     try {
       const page = await options.fetchPage(pageToken, controller.signal);
-      if (mine !== ticket) {
+      // An aborted request's answer must not land, whoever aborted it.
+      if (mine !== ticket || controller.signal.aborted) {
         return;
       }
       items.value = page.items;
@@ -74,6 +93,7 @@ export function usePagedFetch<T>(options: PagedFetchOptions<T>): PagedFetch<T> {
       nextPageToken.value = "";
       options.onError?.(error);
     } finally {
+      signal?.removeEventListener("abort", forwardAbort);
       if (mine === ticket) {
         isLoading.value = false;
       }
@@ -94,13 +114,13 @@ export function usePagedFetch<T>(options: PagedFetchOptions<T>): PagedFetch<T> {
     hasNext: computed(() => nextPageToken.value !== ""),
     hasPrevious: computed(() => previousPageTokens.value.length > 0),
 
-    async reset() {
+    async reset(request?: FetchRequest) {
       previousPageTokens.value = [];
-      await load("");
+      await load("", request?.signal);
     },
 
-    async refresh() {
-      await load(currentPageToken.value);
+    async refresh(request?: FetchRequest) {
+      await load(currentPageToken.value, request?.signal);
     },
 
     async goNext() {
