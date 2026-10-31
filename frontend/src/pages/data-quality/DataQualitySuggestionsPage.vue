@@ -618,48 +618,50 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { useUrlFilters } from "@/composables/useUrlFilters";
 import { notify } from "@/lib/notify";
-import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import {
-  QualitySemanticType,
   QualitySeverity,
   type QualitySuggestion,
   QualitySuggestionKind,
   QualitySuggestionSource,
   QualitySuggestionStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   type QualityTargetScope,
-  qualityRuleTypeKey,
   qualitySeverityKey,
   qualitySeverityVariant,
 } from "@/utils/dataQuality";
 import { llmFeatureAvailability } from "@/utils/dataQualityLlm";
 import {
+  suggestionConfidence as confidenceOf,
+  suggestionConfidencePercent as confidencePercent,
+  suggestionSeverity as draftSeverity,
   formatConfidence,
+  suggestionGroupMetaType as groupMetaType,
+  groupSelectionState as groupSelectionStateIn,
   groupSuggestionsByTarget,
   isLabelSuggestion,
   isPendingDraft,
   isPendingLabel,
   isPendingSuggestion,
-  labelSuggestionOf,
+  suggestionLabelTypeKey as labelTypeKey,
   MAX_SUGGESTION_BATCH,
-  ruleDraftOf,
+  suggestionRuleDraftTypeKey as ruleDraftLabel,
   type SuggestionTargetGroup,
+  selectableSuggestions as selectableIn,
   selectionCountsByKind,
-  semanticTypeKey,
   suggestionKindKey,
   suggestionRationale,
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
   suggestionTargetLabel,
-  suggestionToEditorPrefill,
+  suggestionRowText as suggestionText,
 } from "@/utils/dataQualitySuggestion";
 import { scopeFromQuery, writeScopeToQuery } from "@/utils/dataQualityTarget";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -687,20 +689,12 @@ const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
-const authStore = useAuthStore();
 const instanceStore = useInstanceStore();
-
-const canDecide = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.suggest")
-);
-const canCreateRule = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
+const { canCreate: canCreateRule, canSuggest } = useDataQualityPermissions();
+/** Deciding a suggestion is the same permission as drafting one. */
+const canDecide = canSuggest;
 
 const llmEnabled = ref(false);
-const canSuggest = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.suggest")
-);
 const llmAvailability = computed(() =>
   llmFeatureAvailability(llmEnabled.value, canSuggest.value)
 );
@@ -1114,60 +1108,6 @@ function showAllStatuses() {
   void resetPage();
 }
 
-function suggestionText(suggestion: QualitySuggestion): string {
-  const draft = ruleDraftOf(suggestion);
-  if (draft?.title) {
-    return draft.title;
-  }
-  const label = labelSuggestionOf(suggestion);
-  if (label) {
-    // The kind and the semantic type already have their own badges; the row's
-    // own text is the column the label belongs to.
-    return (
-      label.column || (suggestion.name.split("/").pop() ?? suggestion.name)
-    );
-  }
-  return suggestion.name.split("/").pop() ?? suggestion.name;
-}
-
-function labelTypeKey(suggestion: QualitySuggestion): string | undefined {
-  const label = labelSuggestionOf(suggestion);
-  return label && label.label !== QualitySemanticType.UNSPECIFIED
-    ? semanticTypeKey(label.label)
-    : undefined;
-}
-
-/** The rule-type label of a draft this build can prefill, if it is one. */
-function ruleDraftLabel(suggestion: QualitySuggestion): string | undefined {
-  const prefill = suggestionToEditorPrefill(suggestion);
-  return prefill ? qualityRuleTypeKey(prefill.ruleType) : undefined;
-}
-
-function draftSeverity(
-  suggestion: QualitySuggestion
-): QualitySeverity | undefined {
-  const draft = ruleDraftOf(suggestion);
-  return draft?.severity ? draft.severity : undefined;
-}
-
-/** Both kinds carry their own confidence, 0-1; 0 reads as unset. */
-function confidenceOf(suggestion: QualitySuggestion): number {
-  const draft = ruleDraftOf(suggestion);
-  if (draft) {
-    return draft.confidence;
-  }
-  return labelSuggestionOf(suggestion)?.confidence ?? 0;
-}
-
-/** The same confidence as a 0-100 meter width. */
-function confidencePercent(suggestion: QualitySuggestion): number {
-  return Math.round(Math.min(1, Math.max(0, confidenceOf(suggestion))) * 100);
-}
-
-function groupMetaType(group: SuggestionTargetGroup): MetaType {
-  return group.suggestions[0]?.target?.metaType ?? MetaType.TABLE;
-}
-
 function selectedInstanceTitle(suggestion: QualitySuggestion): string {
   const guid = suggestion.target?.metaGuid ?? "";
   const instance = guid.split(";")[0] ?? "";
@@ -1178,24 +1118,10 @@ function canEditDraft(suggestion: QualitySuggestion): boolean {
   return isPendingDraft(suggestion) && canCreateRule.value;
 }
 
-function selectableIn(group: SuggestionTargetGroup): QualitySuggestion[] {
-  return group.suggestions.filter(isPendingSuggestion);
-}
-
 function groupSelectionState(
   group: SuggestionTargetGroup
 ): boolean | "indeterminate" {
-  const selectable = selectableIn(group);
-  if (selectable.length === 0) {
-    return false;
-  }
-  const selected = selectable.filter((suggestion) =>
-    selectedNames.value.includes(suggestion.name)
-  ).length;
-  if (selected === 0) {
-    return false;
-  }
-  return selected === selectable.length ? true : "indeterminate";
+  return groupSelectionStateIn(group, selectedNames.value);
 }
 
 function toggleGroup(group: SuggestionTargetGroup, checked: boolean) {

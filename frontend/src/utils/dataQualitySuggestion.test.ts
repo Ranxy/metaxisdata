@@ -28,6 +28,7 @@ import {
   SemanticLabelSuggestionSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityRuleTypeKey } from "@/utils/dataQuality";
 import { emptyConfig, emptyRuleForm } from "./dataQualityForm";
 import {
   buildRuleFromSuggestion,
@@ -38,6 +39,7 @@ import {
   diagnosticSummary,
   formatConfidence,
   formatDiagnosticCount,
+  groupSelectionState,
   groupSuggestionsByTarget,
   isActiveSuggestionJob,
   isLabelSuggestion,
@@ -55,15 +57,23 @@ import {
   MAX_SUGGESTION_JOB_TARGETS,
   ruleConfigEntries,
   ruleDraftOf,
+  selectableSuggestions,
   selectionCountsByKind,
   semanticTypeKey,
+  suggestionConfidence,
+  suggestionConfidencePercent,
+  suggestionGroupMetaType,
   suggestionJobProgress,
   suggestionJobStatusKey,
   suggestionJobStatusVariant,
   suggestionJobTargetStateKey,
   suggestionJobTargetStateVariant,
   suggestionKindKey,
+  suggestionLabelTypeKey,
   suggestionRationale,
+  suggestionRowText,
+  suggestionRuleDraftTypeKey,
+  suggestionSeverity,
   suggestionSourceKey,
   suggestionStatusKey,
   suggestionStatusVariant,
@@ -1066,5 +1076,134 @@ describe("empty draft defaults", () => {
   it("keeps an empty form usable", () => {
     expect(emptyRuleForm().config.minRows).toBe("");
     expect(emptyRuleForm().config.celSampleRows).toBe("10000");
+  });
+});
+
+describe("suggestion row readings", () => {
+  function labelSuggestion(
+    overrides: {
+      column?: string;
+      label?: QualitySemanticType;
+      confidence?: number;
+    } = {}
+  ) {
+    return create(QualitySuggestionSchema, {
+      name: "workspaces/ws/qualitySuggestions/l1",
+      kind: QualitySuggestionKind.LABEL,
+      status: QualitySuggestionStatus.PENDING,
+      target: create(QualityTargetSchema, {
+        metaGuid: "inst1;db1;public;orders",
+        metaType: MetaType.TABLE,
+      }),
+      payload: {
+        payload: {
+          case: "label",
+          value: create(SemanticLabelSuggestionSchema, {
+            column: overrides.column ?? "",
+            label: overrides.label ?? QualitySemanticType.UNSPECIFIED,
+            confidence: overrides.confidence ?? 0,
+          }),
+        },
+      },
+    });
+  }
+
+  it("uses a draft's title as the row text", () => {
+    expect(suggestionRowText(ruleSuggestion())).toBe("Orders should have rows");
+  });
+
+  it("uses a label's column as the row text", () => {
+    expect(suggestionRowText(labelSuggestion({ column: "email" }))).toBe(
+      "email"
+    );
+  });
+
+  it("falls back to the resource id", () => {
+    expect(suggestionRowText(labelSuggestion())).toBe("l1");
+  });
+
+  it("names the semantic type a label proposes", () => {
+    expect(
+      suggestionLabelTypeKey(
+        labelSuggestion({ label: QualitySemanticType.EMAIL })
+      )
+    ).toBe(semanticTypeKey(QualitySemanticType.EMAIL));
+    expect(
+      suggestionLabelTypeKey(
+        labelSuggestion({ label: QualitySemanticType.UNSPECIFIED })
+      )
+    ).toBeUndefined();
+    expect(suggestionLabelTypeKey(ruleSuggestion())).toBeUndefined();
+  });
+
+  it("names the rule type a draft would prefill", () => {
+    expect(suggestionRuleDraftTypeKey(ruleSuggestion())).toBe(
+      qualityRuleTypeKey(QualityRuleType.ROW_COUNT)
+    );
+    expect(suggestionRuleDraftTypeKey(labelSuggestion())).toBeUndefined();
+  });
+
+  it("reads the declared severity and confidence", () => {
+    expect(suggestionSeverity(ruleSuggestion())).toBe(QualitySeverity.ERROR);
+    expect(suggestionSeverity(labelSuggestion())).toBeUndefined();
+    expect(suggestionConfidence(ruleSuggestion())).toBeCloseTo(0.82);
+    expect(suggestionConfidence(labelSuggestion({ confidence: 0.9 }))).toBe(
+      0.9
+    );
+    expect(suggestionConfidencePercent(ruleSuggestion())).toBe(82);
+    expect(
+      suggestionConfidencePercent(labelSuggestion({ confidence: 1.4 }))
+    ).toBe(100);
+    expect(
+      suggestionConfidencePercent(labelSuggestion({ confidence: -0.2 }))
+    ).toBe(0);
+  });
+
+  it("reads a group's metadata type", () => {
+    const [group] = groupSuggestionsByTarget([ruleSuggestion()], {});
+    expect(suggestionGroupMetaType(group)).toBe(MetaType.TABLE);
+    expect(
+      suggestionGroupMetaType({
+        targetGuid: "",
+        targetLabel: "",
+        suggestions: [],
+      })
+    ).toBe(0);
+  });
+
+  it("selects only the pending rows of a group", () => {
+    const accepted = ruleSuggestion();
+    accepted.status = QualitySuggestionStatus.ACCEPTED;
+    const group = {
+      targetGuid: "g",
+      targetLabel: "orders",
+      suggestions: [ruleSuggestion(), accepted],
+    };
+
+    expect(selectableSuggestions(group)).toHaveLength(1);
+    expect(selectableSuggestions(group)[0]?.status).toBe(
+      QualitySuggestionStatus.PENDING
+    );
+  });
+
+  it("reports the tri-state of a group's selection", () => {
+    const first = ruleSuggestion();
+    const second = ruleSuggestion();
+    second.name = "workspaces/ws/qualitySuggestions/s2";
+    const closed = ruleSuggestion();
+    closed.name = "workspaces/ws/qualitySuggestions/s3";
+    closed.status = QualitySuggestionStatus.ACCEPTED;
+    const group = {
+      targetGuid: "g",
+      targetLabel: "orders",
+      suggestions: [first, second, closed],
+    };
+
+    expect(groupSelectionState(group, [])).toBe(false);
+    expect(groupSelectionState(group, [first.name])).toBe("indeterminate");
+    expect(groupSelectionState(group, [first.name, second.name])).toBe(true);
+    expect(groupSelectionState({ ...group, suggestions: [closed] }, [])).toBe(
+      false
+    );
   });
 });

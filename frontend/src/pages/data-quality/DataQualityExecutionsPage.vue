@@ -162,176 +162,16 @@
               </TableRow>
             </TableHeader>
             <TableBody>
-              <template
+              <TargetRunRow
                 v-for="summary in targets"
                 :key="targetGuid(summary)"
-              >
-                <TableRow :data-target-guid="targetGuid(summary)">
-                  <TableCell>
-                    <div class="flex max-w-[14rem] min-w-0 flex-wrap items-center gap-2 md:max-w-md">
-                      <RouterLink
-                        :to="targetRoute(summary)"
-                        class="truncate text-left font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-                        :title="targetPathLine(summary)"
-                      >
-                        {{ targetName(summary) }}
-                      </RouterLink>
-                      <Badge variant="outline">
-                        {{ metaTypeSingularLabel(summary.target?.metaType ?? MetaType.UNSPECIFIED, t) }}
-                      </Badge>
-                      <Badge
-                        v-if="summary.orphaned"
-                        variant="danger"
-                        :title="t('dataQuality.workspace.orphanedHint')"
-                      >
-                        {{ t("dataQuality.orphaned") }}
-                      </Badge>
-                    </div>
-                    <div
-                      class="max-w-[14rem] truncate font-mono text-xs text-muted-foreground md:max-w-md"
-                      :title="targetPathLine(summary)"
-                    >
-                      {{ targetPathLine(summary) }}
-                    </div>
-                    <!-- Below md the scan columns collapse in here. -->
-                    <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
-                      <template v-if="latestRun(summary)">
-                        <span :title="scanTimeTitle(summary)">
-                          {{ scanTimeLabel(summary) }}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span>
-                          {{ t(qualityExecutionTriggerKey(latestRun(summary)?.trigger ?? QualityExecutionTrigger.UNSPECIFIED)) }}
-                        </span>
-                      </template>
-                      <span v-else>-</span>
-                      <Badge
-                        v-if="runOutcome(summary) !== QualityStatus.UNSPECIFIED"
-                        :variant="qualityStatusVariant(runOutcome(summary))"
-                      >
-                        {{ t(qualityStatusKey(runOutcome(summary))) }}
-                      </Badge>
-                      <span
-                        v-if="runStateHint(summary)"
-                        class="min-w-0"
-                      >
-                        {{ runStateHint(summary) }}
-                      </span>
-                      <span class="tabular-nums">
-                        {{ t("dataQuality.executions.runCountValue", { count: summary.runCount }) }}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell
-                    class="hidden md:table-cell"
-                    :title="scanTimeTitle(summary)"
-                  >
-                    <template v-if="latestRun(summary)">
-                      <div class="whitespace-nowrap">
-                        {{ scanTimeLabel(summary) }}
-                      </div>
-                      <div class="mt-1 text-xs text-muted-foreground">
-                        {{ t(qualityExecutionTriggerKey(latestRun(summary)?.trigger ?? QualityExecutionTrigger.UNSPECIFIED)) }}
-                      </div>
-                    </template>
-                    <span
-                      v-else
-                      class="text-sm text-muted-foreground"
-                    >
-                      -
-                    </span>
-                  </TableCell>
-                  <TableCell
-                    class="hidden md:table-cell"
-                    :title="runStateHint(summary)"
-                  >
-                    <template v-if="latestRun(summary)">
-                      <Badge
-                        v-if="runOutcome(summary) !== QualityStatus.UNSPECIFIED"
-                        :variant="qualityStatusVariant(runOutcome(summary))"
-                      >
-                        {{ t(qualityStatusKey(runOutcome(summary))) }}
-                      </Badge>
-                      <Badge
-                        v-else-if="runState(summary) !== QualityExecutionState.COMPLETED"
-                        :variant="qualityExecutionStateVariant(runState(summary))"
-                      >
-                        {{ t(qualityExecutionStateKey(runState(summary))) }}
-                      </Badge>
-                      <div
-                        v-if="countsSummary(summary)"
-                        class="mt-1 text-xs text-muted-foreground tabular-nums"
-                      >
-                        {{ countsSummary(summary) }}
-                      </div>
-                      <div
-                        v-if="partialChecks(summary) > 0"
-                        class="mt-1 text-xs text-muted-foreground tabular-nums"
-                      >
-                        {{ t("dataQuality.executions.runPartial", { done: runCounts(summary)?.total ?? 0, all: partialChecks(summary) }) }}
-                      </div>
-                      <div
-                        v-if="unfinishedChecks(summary) > 0"
-                        class="mt-1 text-xs text-warning tabular-nums"
-                      >
-                        {{ t("dataQuality.executions.runIncomplete", { count: unfinishedChecks(summary) }) }}
-                      </div>
-                    </template>
-                    <span
-                      v-else
-                      class="text-sm text-muted-foreground"
-                    >
-                      -
-                    </span>
-                  </TableCell>
-                  <TableCell class="hidden whitespace-nowrap tabular-nums lg:table-cell">
-                    {{ runDurationLabel(summary) }}
-                  </TableCell>
-                  <TableCell class="hidden text-right tabular-nums md:table-cell">
-                    <span :class="{ 'text-destructive': failedChecks(summary) > 0 }">
-                      {{ failedChecks(summary) > 0 ? failedChecks(summary) : "-" }}
-                    </span>
-                  </TableCell>
-                  <TableCell class="hidden text-right tabular-nums md:table-cell">
-                    {{ t("dataQuality.executions.runCountValue", { count: summary.runCount }) }}
-                  </TableCell>
-                  <TableCell class="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="h-8 w-8"
-                      :aria-expanded="isExpanded(summary)"
-                      :aria-label="t('dataQuality.executions.historyTitle')"
-                      :title="t('dataQuality.executions.historyTitle')"
-                      @click="toggleTarget(summary)"
-                    >
-                      <ChevronDown
-                        v-if="isExpanded(summary)"
-                        class="h-4 w-4"
-                      />
-                      <ChevronRight
-                        v-else
-                        class="h-4 w-4"
-                      />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                <TableRow v-if="isExpanded(summary)">
-                  <TableCell
-                    :colspan="7"
-                    class="bg-muted/20 p-0"
-                  >
-                    <TargetScanHistory
-                      :target-guid="targetGuid(summary)"
-                      :meta-type="summary.target?.metaType ?? MetaType.UNSPECIFIED"
-                      :rule-titles="ruleTitles"
-                      :target-rule-count="summary.enabledRuleCount"
-                      :expand-run="expandedRun"
-                      @update:expand-run="onRunToggle"
-                    />
-                  </TableCell>
-                </TableRow>
-              </template>
+                :summary="summary"
+                :expanded="isExpanded(summary)"
+                :rule-titles="ruleTitles"
+                :expand-run="expandedRun"
+                @toggle="toggleTarget(summary)"
+                @update:expand-run="onRunToggle"
+              />
             </TableBody>
           </Table>
 
@@ -583,148 +423,14 @@
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow
+              <ExecutionRunRow
                 v-for="execution in executions"
                 :key="execution.name"
-                class="cursor-pointer"
-                @click="openExecution(execution)"
-              >
-                <TableCell>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <Badge
-                      :variant="qualityExecutionStateVariant(execution.state)"
-                    >
-                      {{ t(qualityExecutionStateKey(execution.state)) }}
-                    </Badge>
-                    <Badge
-                      v-if="execution.outcome !== QualityStatus.UNSPECIFIED"
-                      :variant="qualityStatusVariant(execution.outcome)"
-                      :title="t('dataQuality.outcome')"
-                    >
-                      {{ t(qualityStatusKey(execution.outcome)) }}
-                    </Badge>
-                  </div>
-                  <div class="mt-1 font-mono text-xs text-muted-foreground">
-                    {{ qualityExecutionID(execution.name) }}
-                  </div>
-                  <!-- Below md the rule, target, observed, rows, trigger,
-                       duration and started columns collapse in here. -->
-                  <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:hidden">
-                    <RouterLink
-                      v-if="canViewRule"
-                      :to="ruleTargetRoute(execution)"
-                      class="min-w-0 truncate hover:underline"
-                      @click.stop
-                    >
-                      {{ ruleLabel(execution.rule) }}
-                    </RouterLink>
-                    <span
-                      v-else
-                      class="min-w-0 truncate"
-                    >
-                      {{ ruleLabel(execution.rule) }}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <RouterLink
-                      v-if="hasTarget(execution)"
-                      :to="executionTargetRoute(execution)"
-                      class="min-w-0 truncate hover:underline"
-                      :title="targetTitle(execution)"
-                      @click.stop
-                    >
-                      {{ targetPath(execution) }}
-                    </RouterLink>
-                    <span
-                      v-else
-                      class="min-w-0 truncate"
-                      :title="targetTitle(execution)"
-                    >
-                      {{ targetPath(execution) }}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span class="tabular-nums">{{ observedLabel(execution) }}</span>
-                    <span aria-hidden="true">·</span>
-                    <span class="tabular-nums">{{ rowsLabel(execution) }}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{{ t(qualityExecutionTriggerKey(execution.trigger)) }}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{{ durationLabel(execution) }}</span>
-                    <span aria-hidden="true">·</span>
-                    <span :title="formatDateTime(execution.startTime, locale)">
-                      {{ formatRelativeTime(execution.startTime, locale) }}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell class="hidden md:table-cell">
-                  <RouterLink
-                    v-if="canViewRule"
-                    :to="ruleTargetRoute(execution)"
-                    class="block max-w-[11rem] truncate font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:max-w-[14rem]"
-                    :title="ruleLabel(execution.rule)"
-                    @click.stop
-                  >
-                    {{ ruleLabel(execution.rule) }}
-                  </RouterLink>
-                  <div
-                    v-else
-                    class="max-w-[11rem] truncate font-medium lg:max-w-[14rem]"
-                    :title="ruleLabel(execution.rule)"
-                  >
-                    {{ ruleLabel(execution.rule) }}
-                  </div>
-                </TableCell>
-                <TableCell class="hidden max-w-[14rem] md:table-cell">
-                  <RouterLink
-                    v-if="hasTarget(execution)"
-                    :to="executionTargetRoute(execution)"
-                    class="block truncate text-xs hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-                    :title="targetTitle(execution)"
-                    @click.stop
-                  >
-                    {{ targetPath(execution) }}
-                  </RouterLink>
-                  <div
-                    v-else
-                    class="truncate text-xs"
-                    :title="targetTitle(execution)"
-                  >
-                    {{ targetPath(execution) }}
-                  </div>
-                </TableCell>
-                <TableCell class="hidden whitespace-nowrap tabular-nums md:table-cell">
-                  {{ observedLabel(execution) }}
-                </TableCell>
-                <TableCell class="hidden whitespace-nowrap tabular-nums md:table-cell">
-                  {{ rowsLabel(execution) }}
-                </TableCell>
-                <TableCell class="hidden md:table-cell">
-                  {{ t(qualityExecutionTriggerKey(execution.trigger)) }}
-                </TableCell>
-                <TableCell
-                  class="hidden whitespace-nowrap text-muted-foreground md:table-cell"
-                  :title="formatDateTime(execution.startTime, locale)"
-                >
-                  {{ formatRelativeTime(execution.startTime, locale) }}
-                  <div class="mt-1 text-xs tabular-nums">
-                    {{ t("dataQuality.duration") }} {{ durationLabel(execution) }}
-                  </div>
-                </TableCell>
-                <TableCell
-                  class="text-right"
-                  @click.stop
-                >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                    :title="t('dataQuality.viewExecution')"
-                    :aria-label="t('dataQuality.viewExecution')"
-                    @click="openExecution(execution)"
-                  >
-                    <Eye class="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </TableCell>
-              </TableRow>
+                :execution="execution"
+                :rule-titles="ruleTitles"
+                :can-view-rule="canViewRule"
+                @open="openExecution(execution)"
+              />
             </TableBody>
           </Table>
 
@@ -746,33 +452,21 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Activity,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  RefreshCcw,
-  X,
-} from "lucide-vue-next";
+import { Activity, RefreshCcw, X } from "lucide-vue-next";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  type RouteLocationRaw,
-  RouterLink,
-  useRoute,
-  useRouter,
-} from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   listAllQualityRules,
   listQualityExecutions,
   listQualityTargets,
-  qualityExecutionID,
   qualityRuleID,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
-import TargetScanHistory from "@/components/data-quality/TargetScanHistory.vue";
+import ExecutionRunRow from "@/components/data-quality/ExecutionRunRow.vue";
+import TargetRunRow from "@/components/data-quality/TargetRunRow.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -789,7 +483,6 @@ import {
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -799,7 +492,6 @@ import { usePagedFetch } from "@/composables/usePagedFetch";
 import { usePolling } from "@/composables/usePolling";
 import { useDebounced } from "@/composables/useTimers";
 import { useUrlFilters } from "@/composables/useUrlFilters";
-import { partialQualityRunChecks } from "@/lib/qualityRun";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityExecution,
@@ -810,40 +502,8 @@ import {
   QualityTargetOrder,
   type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import {
-  executionDurationSeconds,
-  formatObservedValue,
-  formatRowCount,
-  formatSeconds,
-  formatTargetPath,
-  isExecutionInProgress,
-  qualityExecutionStateKey,
-  qualityExecutionStateVariant,
-  qualityExecutionTriggerKey,
-  qualityStatusKey,
-  qualityStatusVariant,
-  targetScopeLabel,
-} from "@/utils/dataQuality";
-import {
-  countsSummary as countsSummaryText,
-  failedChecks,
-  latestRun,
-  runCounts,
-  runDurationLabel,
-  runOutcome,
-  runState,
-  runStateHint as runStateHintText,
-  scanTimeLabel as scanTimeLabelText,
-  scanTimeTitle as scanTimeTitleText,
-  targetGuid,
-  targetName,
-  targetPathLine,
-  unfinishedChecks,
-} from "@/utils/dataQualityExecutions";
-import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
-import { guidToRouteParams } from "@/utils/guid";
-import { metaTypeSingularLabel } from "@/utils/metaType";
+import { isExecutionInProgress } from "@/utils/dataQuality";
+import { targetGuid } from "@/utils/dataQualityExecutions";
 import { enumFromFilter, queryString } from "@/utils/queryFilters";
 
 /**
@@ -864,7 +524,7 @@ import { enumFromFilter, queryString } from "@/utils/queryFilters";
 /** How often a page that still has pending/running executions is reloaded. */
 const POLL_INTERVAL_MS = 5000;
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
@@ -1064,6 +724,13 @@ const expandedRun = computed(() =>
   flatView.value ? "" : queryString(route.query.run)
 );
 
+function isExpanded(summary: QualityTargetSummary): boolean {
+  return (
+    expandedTargetGuid.value !== "" &&
+    expandedTargetGuid.value === targetGuid(summary)
+  );
+}
+
 function toggleTarget(summary: QualityTargetSummary) {
   const guid = targetGuid(summary);
   if (!guid) {
@@ -1104,43 +771,6 @@ watch(
 );
 
 // ---- target row helpers ----
-
-function targetRoute(summary: QualityTargetSummary): RouteLocationRaw {
-  return {
-    name: "DataQualityTarget",
-    params: { targetGuid: guidToRouteParams(targetGuid(summary)) },
-    query: {
-      metaType: String(summary.target?.metaType ?? MetaType.UNSPECIFIED),
-    },
-  };
-}
-
-function partialChecks(summary: QualityTargetSummary): number {
-  return partialQualityRunChecks(summary.latestRun, summary.enabledRuleCount);
-}
-
-function countsSummary(summary: QualityTargetSummary): string {
-  return countsSummaryText(summary, t);
-}
-
-function scanTimeLabel(summary: QualityTargetSummary): string {
-  return scanTimeLabelText(summary, locale.value);
-}
-
-function scanTimeTitle(summary: QualityTargetSummary): string {
-  return scanTimeTitleText(summary, locale.value);
-}
-
-function runStateHint(summary: QualityTargetSummary): string {
-  return runStateHintText(summary, t);
-}
-
-function isExpanded(summary: QualityTargetSummary): boolean {
-  return (
-    expandedTargetGuid.value !== "" &&
-    expandedTargetGuid.value === targetGuid(summary)
-  );
-}
 
 // ---- by execution (flat) ----
 
@@ -1321,99 +951,6 @@ function clearRunFilter() {
 
 function ruleLabel(ruleName: string): string {
   return ruleTitles.value[ruleName] || qualityRuleID(ruleName);
-}
-
-function ruleRoute(ruleName: string) {
-  return {
-    name: "DataQualityRuleRedirect",
-    params: { ruleId: ruleName.split("/") },
-  };
-}
-
-/** Whether the execution carries the target its rule watched. */
-function hasTarget(execution: QualityExecution): boolean {
-  return Boolean(execution.target?.metaGuid);
-}
-
-/**
- * The target workspace for one execution, opening the check drawer when a check
- * name is given. Undefined when the execution carries no target: historical
- * rows can predate the target snapshot.
- */
-function targetWorkspaceRoute(
-  execution: QualityExecution,
-  check = ""
-): RouteLocationRaw | undefined {
-  const target = execution.target;
-  if (!target?.metaGuid) {
-    return undefined;
-  }
-  // A snapshot without a type is not an error: the target page derives it from
-  // the summary or the rules, so the query carries only what it knows.
-  const query: Record<string, string> = {};
-  if (target.metaType !== MetaType.UNSPECIFIED) {
-    query.metaType = String(target.metaType);
-  }
-  if (check) {
-    query.check = check;
-  }
-  return {
-    name: "DataQualityTarget",
-    params: { targetGuid: guidToRouteParams(target.metaGuid) },
-    query,
-  };
-}
-
-/**
- * A rule name links into its target's workspace with the check selected. A row
- * without a target snapshot falls back to the retired per-rule URL, whose
- * redirect resolves the target itself.
- */
-function ruleTargetRoute(execution: QualityExecution): RouteLocationRaw {
-  return (
-    targetWorkspaceRoute(execution, execution.rule) ?? ruleRoute(execution.rule)
-  );
-}
-
-/** The target itself, without selecting a check. */
-function executionTargetRoute(execution: QualityExecution): RouteLocationRaw {
-  return targetWorkspaceRoute(execution) ?? ruleRoute(execution.rule);
-}
-
-function targetPath(execution: QualityExecution): string {
-  const path = formatTargetPath(execution.target?.path);
-  return path === "-" ? execution.target?.metaGuid || "-" : path;
-}
-
-/** Every target's instance and path, for the cell's tooltip. */
-function targetTitle(execution: QualityExecution): string {
-  const path = targetPath(execution);
-  const scope = targetScopeLabel(execution.target?.path);
-  return scope === "-" ? path : `${scope} · ${path}`;
-}
-
-/** The verdict's measured value, or "-" while there is no verdict yet. */
-function observedLabel(execution: QualityExecution): string {
-  if (execution.outcome === QualityStatus.UNSPECIFIED) {
-    return "-";
-  }
-  return formatObservedValue(
-    execution.observedValue,
-    execution.observedKind,
-    locale.value
-  );
-}
-
-function rowsLabel(execution: QualityExecution): string {
-  if (execution.outcome === QualityStatus.UNSPECIFIED) {
-    return "-";
-  }
-  return `${formatRowCount(execution.failedRows, locale.value)} / ${formatRowCount(execution.totalRows, locale.value)}`;
-}
-
-function durationLabel(execution: QualityExecution): string {
-  const seconds = executionDurationSeconds(execution);
-  return seconds === undefined ? "-" : formatSeconds(seconds);
 }
 
 /** A click that ends a text selection is a copy, not a navigation. */

@@ -26,7 +26,12 @@ import {
   type SemanticLabelEvidence,
   type SemanticLabelSuggestion,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { formatRowCount, type QualityBadgeVariant } from "@/utils/dataQuality";
+import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import {
+  formatRowCount,
+  type QualityBadgeVariant,
+  qualityRuleTypeKey,
+} from "@/utils/dataQuality";
 import {
   emptyConfig,
   formToRule,
@@ -549,6 +554,103 @@ export function selectionCountsByKind(
 // ---- suggestion → batch rule ----
 
 /** The server's batch limit for rules and suggestions in one call. */
+
+/** The row's own text: a draft's title, a label's column, or the resource id. */
+export function suggestionRowText(suggestion: QualitySuggestion): string {
+  const draft = ruleDraftOf(suggestion);
+  if (draft?.title) {
+    return draft.title;
+  }
+  const label = labelSuggestionOf(suggestion);
+  if (label) {
+    // The kind and the semantic type already have their own badges; the row's
+    // own text is the column the label belongs to.
+    return (
+      label.column || (suggestion.name.split("/").pop() ?? suggestion.name)
+    );
+  }
+  return suggestion.name.split("/").pop() ?? suggestion.name;
+}
+
+/** The semantic type a label suggestion proposes, as its badge key. */
+export function suggestionLabelTypeKey(
+  suggestion: QualitySuggestion
+): string | undefined {
+  const label = labelSuggestionOf(suggestion);
+  return label && label.label !== QualitySemanticType.UNSPECIFIED
+    ? semanticTypeKey(label.label)
+    : undefined;
+}
+
+/** The rule-type label of a draft this build can prefill, if it is one. */
+export function suggestionRuleDraftTypeKey(
+  suggestion: QualitySuggestion
+): string | undefined {
+  const prefill = suggestionToEditorPrefill(suggestion);
+  return prefill ? qualityRuleTypeKey(prefill.ruleType) : undefined;
+}
+
+/** A draft's declared severity, if it has one. */
+export function suggestionSeverity(
+  suggestion: QualitySuggestion
+): QualitySeverity | undefined {
+  const draft = ruleDraftOf(suggestion);
+  return draft?.severity ? draft.severity : undefined;
+}
+
+/** Both kinds carry their own confidence, 0-1; 0 reads as unset. */
+export function suggestionConfidence(suggestion: QualitySuggestion): number {
+  const draft = ruleDraftOf(suggestion);
+  if (draft) {
+    return draft.confidence;
+  }
+  return labelSuggestionOf(suggestion)?.confidence ?? 0;
+}
+
+/** The same confidence as a 0-100 meter width. */
+export function suggestionConfidencePercent(
+  suggestion: QualitySuggestion
+): number {
+  return Math.round(
+    Math.min(1, Math.max(0, suggestionConfidence(suggestion))) * 100
+  );
+}
+
+/** The metadata type a target group's rows share. */
+export function suggestionGroupMetaType(
+  group: SuggestionTargetGroup
+): MetaType {
+  return group.suggestions[0]?.target?.metaType ?? 0;
+}
+
+/** The rows in a group a batch decision may touch: every still-pending one. */
+export function selectableSuggestions(
+  group: SuggestionTargetGroup
+): QualitySuggestion[] {
+  return group.suggestions.filter(isPendingSuggestion);
+}
+
+/**
+ * The tri-state checkbox of one target group: none, all or some of its
+ * selectable rows are in the current selection.
+ */
+export function groupSelectionState(
+  group: SuggestionTargetGroup,
+  selectedNames: readonly string[]
+): boolean | "indeterminate" {
+  const selectable = selectableSuggestions(group);
+  if (selectable.length === 0) {
+    return false;
+  }
+  const selected = selectable.filter((suggestion) =>
+    selectedNames.includes(suggestion.name)
+  ).length;
+  if (selected === 0) {
+    return false;
+  }
+  return selected === selectable.length ? true : "indeterminate";
+}
+
 export const MAX_SUGGESTION_BATCH = 200;
 
 /** The common settings a batch review applies to every selected draft. */

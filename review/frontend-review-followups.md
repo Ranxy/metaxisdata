@@ -23,6 +23,9 @@
 | 13 | **FD3（第三步）**：`useTargetWorkspaceDialogs` + 14 条测试 | FD3 | `45a9741` |
 | 14 | **FD3（第四步）**：`useTargetScheduleEditor` + 7 条测试 | FD3 | `21c3b40` |
 | 15 | ExplainSQLPage 页面测试（补齐轮询/流式遗留） | ① | `e0bbba8` |
+| 16 | **FD3（第五步）**：Suggestions 行读数进 utils + 权限 composable | FD3 | `e475c03` |
+| 17 | **FD3（第六步）**：Executions target row 组件 + 3 条测试 | FD3 | `0886bbc` |
+| 18 | **FD3（第七步）**：Executions flat row 组件 + 5 条测试 | FD3 | `30a8b2a` |
 
 ## 实施说明
 
@@ -82,7 +85,11 @@
 - **抽屉状态机**（`45a9741`）：`composables/useTargetWorkspaceDialogs.ts` 承接 inline composer（新建/编辑/从 AI 草案打开）、check 侧栏、以及 `?check=`/`?add=1`/`?edit=1` 三条深链的解析与 URL 清理；TargetPage **1502 → 1355 行**，页面只剩提交/关闭时的业务处理。新增 **14 条测试**：三种打开方式、scope/列种子、侧栏开关与 query 清理、深链（有效/过期/与 add 冲突/edit 无对应规则）、`add=1` 无权限提示、无 query 时不写 URL。
 - **排期编辑器**（`21c3b40`）：`composables/useTargetScheduleEditor.ts` 承接打开时从 Duration 回填、客户端校验、保存并回写 summary；TargetPage **1355 → 1308 行**。7 条测试覆盖整点回填、空排期默认、非法/合法校验、非法不保存、成功保存与回写、失败保留对话框、开关绑定；覆盖率 100%。
 - **ExplainSQLPage 页面测试**（`e0bbba8`）：补齐上一轮遗留的页面级测试——切到自定义 SQL、输入、点击 Explain，断言 `explainSQL` 收到 `{ signal }`、流式内容渲染、卸载中止在途流、失败显示映射文案而非原始错误、无 SQL 时按钮禁用。3 条测试。
-- 剩余：`useSuggestionFilters`/`useExecutionFilters`；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
+- **Suggestions 行读数与权限**（`e475c03`）：`suggestionRowText`/`suggestionLabelTypeKey`/`suggestionRuleDraftTypeKey`/`suggestionSeverity`/`suggestionConfidence*`/`suggestionGroupMetaType`/`selectableSuggestions`/`groupSelectionState` 收进 `utils/dataQualitySuggestion.ts`（9 个纯函数），页面删除约 60 行；三个权限改走 `useDataQualityPermissions`。新增 9 条测试，util 覆盖率 98.2% 行 / 90.6% 分支。
+- **Executions 行组件**（`0886bbc`）：`components/data-quality/TargetRunRow.vue`（262 行）承接 target 行的全部展示（名称/类型/时间/状态/计数/失败数/展开按钮）与展开后的 `TargetScanHistory`；页面 **1493 → 1279 行**，只保留行点击/展开动作。新增 3 条组件测试（行读数、toggle emit、展开时渲染历史并转发 run 展开事件），Executions 页面 15 条测试保持通过。
+- **Executions 平铺行组件**（`30a8b2a`）：`components/data-quality/ExecutionRunRow.vue`（281 行）承接平铺执行表的一行（状态/verdict 徽标、execution id、规则与目标链接、观测值、失败行/总行、触发、开始时间、耗时、查看按钮），行内路由与展示 helper 一并迁入；`DataQualityExecutionsPage.vue` **1279 → 1030 行**。新增 5 条组件测试（行读数、规则标题、链接权限、打开事件、无 verdict 回退），页面 15 条测试保持通过。
+- 三个 DQ 页面现状：Executions 1030 行、Target 1301 行、Suggestions 1346 行（起始分别为 1635 / 1518 / 1506）。
+- 剩余：FD2 的 `useLineageGraphData`/`useLineageSelection`；FD3 的 Target/Suggestions 行组件可继续拆。
 
 ### 排序调整
 
