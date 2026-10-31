@@ -19,7 +19,7 @@
       M
     </span>
     <span class="truncate text-[15px] font-semibold tracking-tight">
-      {{ brandName }}
+      {{ BRAND_NAME }}
     </span>
   </header>
 </template>
@@ -28,10 +28,9 @@
 import { Menu } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
+import { BRAND_NAME } from "@/lib/brand";
 import { useAppStore } from "@/store/modules/app";
 
 const { t } = useI18n();
 const appStore = useAppStore();
-
-const brandName = "MetaxisData";
 </script>

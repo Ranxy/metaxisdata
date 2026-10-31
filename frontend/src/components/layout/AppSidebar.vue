@@ -24,7 +24,7 @@
     >
       <router-link
         to="/"
-        :title="rail ? brandName : undefined"
+        :title="rail ? BRAND_NAME : undefined"
         class="flex min-w-0 items-center gap-2 rounded-md"
       >
         <span
@@ -36,7 +36,7 @@
           v-if="!rail"
           class="truncate text-base font-bold tracking-tight"
         >
-          {{ brandName }}
+          {{ BRAND_NAME }}
         </span>
       </router-link>
 
@@ -213,6 +213,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useDrawerFocus } from "@/composables/useDrawerFocus";
+import { BRAND_NAME } from "@/lib/brand";
 import type { Permission } from "@/lib/permissions";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
@@ -223,8 +224,6 @@ const { t } = useI18n();
 const route = useRoute();
 const appStore = useAppStore();
 const authStore = useAuthStore();
-
-const brandName = "MetaxisData";
 
 // Below `lg` the sidebar is an overlay drawer, so the rail never applies there.
 const isDesktop = useMediaQuery("(min-width: 1024px)");
