@@ -561,6 +561,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { usePolling } from "@/composables/usePolling";
 import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
@@ -679,19 +680,32 @@ const explainOpen = ref(false);
 /** Guards a slow read of the previous check landing on the new one. */
 let loadTicket = 0;
 
-/** The pending run poll; cleared when the sheet closes, switches or unmounts. */
-let pollTimer: ReturnType<typeof setTimeout> | undefined;
-/** Bumped on every cancellation so a stale poll loop stops resolving work. */
-let pollToken = 0;
+/** The executions the wait in flight planned; refilled per manual run. */
+let pendingRunNames: string[] = [];
+let runSettled = false;
 /** True once the sheet is gone; a finishing run must then not paint or emit. */
 let unmounted = false;
 
-function stopPolling() {
-  pollToken += 1;
-  if (pollTimer !== undefined) {
-    clearTimeout(pollTimer);
-    pollTimer = undefined;
+const runPolling = usePolling(
+  async () => {
+    const settled = await Promise.all(
+      pendingRunNames.map((name) => getQualityExecution(name))
+    );
+    runSettled = settled.every(isExecutionSettled);
+  },
+  {
+    intervalMs: RUN_POLL_INTERVAL_MS,
+    shouldContinue: () => !runSettled,
+    timeoutMs: RUN_POLL_TIMEOUT_MS,
+    // A failed poll is not a failed run: keep trying until the deadline, and
+    // still let the caller refresh after a timeout.
+    continueOnError: true,
   }
+);
+
+/** Closing, switching or unmounting cancels the wait; `until()` then resolves. */
+function stopPolling() {
+  runPolling.stop();
 }
 
 /** A planned run is settled once the runner has completed or abandoned it. */
@@ -712,51 +726,10 @@ function isExecutionSettled(execution: QualityExecution): boolean {
  * the deadline, and a timeout still lets the caller refresh.
  */
 function waitForRun(names: string[]): Promise<void> {
-  return new Promise((resolve) => {
-    const token = ++pollToken;
-    const deadline = Date.now() + RUN_POLL_TIMEOUT_MS;
-    const finish = () => {
-      if (pollTimer !== undefined) {
-        clearTimeout(pollTimer);
-        pollTimer = undefined;
-      }
-      resolve();
-    };
-    const poll = async () => {
-      if (token !== pollToken) {
-        finish();
-        return;
-      }
-      try {
-        const settled = await Promise.all(
-          names.map((name) => getQualityExecution(name))
-        );
-        if (token !== pollToken) {
-          finish();
-          return;
-        }
-        if (settled.every(isExecutionSettled) || Date.now() >= deadline) {
-          finish();
-          return;
-        }
-      } catch {
-        if (token !== pollToken) {
-          finish();
-          return;
-        }
-        if (Date.now() >= deadline) {
-          finish();
-          return;
-        }
-      }
-      pollTimer = setTimeout(() => {
-        void poll();
-      }, RUN_POLL_INTERVAL_MS);
-    };
-    pollTimer = setTimeout(() => {
-      void poll();
-    }, RUN_POLL_INTERVAL_MS);
-  });
+  pendingRunNames = names;
+  runSettled = false;
+  runPolling.start();
+  return runPolling.until();
 }
 
 const ruleTitle = computed(

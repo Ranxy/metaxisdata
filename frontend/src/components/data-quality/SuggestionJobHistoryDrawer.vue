@@ -315,7 +315,7 @@ import {
   Loader2,
   RefreshCcw,
 } from "lucide-vue-next";
-import { onBeforeUnmount, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   cancelQualitySuggestionJob,
@@ -343,6 +343,7 @@ import {
 } from "@/components/ui/select";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { usePolling } from "@/composables/usePolling";
 import { useSuggestionSummary } from "@/composables/useSuggestionSummary";
 import { notify } from "@/lib/notify";
 import { useInstanceStore } from "@/store/modules/instance";
@@ -443,7 +444,6 @@ const {
   },
   onError: (e: unknown) => {
     error.value = formatError(e, "dataQuality.suggestions.jobs.fetchFailed");
-    schedulePoll();
   },
 });
 
@@ -451,24 +451,20 @@ const {
  * Live progress while the visible page still holds a job that can progress.
  * The drawer is a snapshot otherwise; a manual refresh is always one click away.
  */
-let pollTimer: ReturnType<typeof setTimeout> | undefined;
+const polling = usePolling(() => refreshPage(), {
+  intervalMs: POLL_INTERVAL_MS,
+  shouldContinue: () => props.open && jobs.value.some(isActiveSuggestionJob),
+});
 
 function stopPoll() {
-  if (pollTimer !== undefined) {
-    clearTimeout(pollTimer);
-    pollTimer = undefined;
-  }
+  polling.stop();
 }
 
 function schedulePoll() {
-  stopPoll();
-  if (!props.open || !jobs.value.some(isActiveSuggestionJob)) {
-    return;
+  polling.stop();
+  if (props.open && jobs.value.some(isActiveSuggestionJob)) {
+    polling.start();
   }
-  pollTimer = setTimeout(() => {
-    pollTimer = undefined;
-    void refreshPage().finally(schedulePoll);
-  }, POLL_INTERVAL_MS);
 }
 
 watch(
@@ -505,10 +501,6 @@ watch(pageSize, () => {
   }
 });
 watch(jobs, schedulePoll);
-
-onBeforeUnmount(() => {
-  stopPoll();
-});
 
 function onStatusChange(value: unknown) {
   statusFilter.value = String(value);

@@ -387,6 +387,7 @@ import {
   VueFlow,
 } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
+import { useTimeoutFn } from "@vueuse/core";
 import {
   computed,
   defineAsyncComponent,
@@ -492,6 +493,10 @@ const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const { fitView, getNodes } = useVueFlow();
+
+/** Layout settles after the graph is rebuilt; framing waits for the next paint. */
+const fitAfterRebuild = useTimeoutFn(() => fitView({ duration: 300 }), 50);
+const fitAfterInitial = useTimeoutFn(() => fitView({ duration: 300 }), 100);
 const instanceStore = useInstanceStore();
 
 const OPENLINEAGE_META_TYPE = 100;
@@ -1838,7 +1843,7 @@ function handleReset() {
   if (selectedNodeGuid.value && selectedNodeGuid.value !== currentGuid.value) {
     closeSelectedNode();
   }
-  setTimeout(() => fitView({ duration: 300 }), 50);
+  fitAfterRebuild.start();
 }
 
 function handleFitView() {
@@ -1939,7 +1944,7 @@ async function initializeGraph() {
   saveInitialSnapshot();
 
   initialLoading.value = false;
-  setTimeout(() => fitView({ duration: 300 }), 100);
+  fitAfterInitial.start();
 }
 
 onMounted(() => {

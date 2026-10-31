@@ -241,8 +241,9 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { useTimeoutFn } from "@vueuse/core";
 import { Check, Copy } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getOpenLineageRun } from "@/api/openlineage";
@@ -283,7 +284,10 @@ const run = ref<OpenLineageRun | null>(null);
 const payloadOpen = ref(false);
 const copied = ref(false);
 
-let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+/** The "copied" confirmation is a short-lived acknowledgement, not state. */
+const resetCopied = useTimeoutFn(() => {
+  copied.value = false;
+}, 2000);
 
 async function copyPayload() {
   if (!formattedPayload.value) {
@@ -291,20 +295,8 @@ async function copyPayload() {
   }
   await navigator.clipboard.writeText(formattedPayload.value);
   copied.value = true;
-  if (copiedTimer) {
-    clearTimeout(copiedTimer);
-  }
-  copiedTimer = setTimeout(() => {
-    copied.value = false;
-    copiedTimer = null;
-  }, 2000);
+  resetCopied.start();
 }
-
-onBeforeUnmount(() => {
-  if (copiedTimer) {
-    clearTimeout(copiedTimer);
-  }
-});
 
 const currentGuid = computed(() => {
   const guidParam = route.params.guid;

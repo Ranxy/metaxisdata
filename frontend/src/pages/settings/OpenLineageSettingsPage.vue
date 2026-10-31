@@ -568,6 +568,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { useTimeoutFn } from "@vueuse/core";
 import {
   Ban,
   Check,
@@ -889,22 +890,29 @@ async function handleRevokeKey() {
   }
 }
 
+/** The two "copied" confirmations are short-lived acknowledgements. */
+const resetCopiedKey = useTimeoutFn(() => {
+  copied.value = false;
+}, 2000);
+
+let copiedSnippetID = "";
+const resetCopiedSnippet = useTimeoutFn(() => {
+  if (copiedSnippet.value === copiedSnippetID) {
+    copiedSnippet.value = "";
+  }
+}, 2000);
+
 async function copyKey() {
   await navigator.clipboard.writeText(createdKeyValue.value);
   copied.value = true;
-  setTimeout(() => {
-    copied.value = false;
-  }, 2000);
+  resetCopiedKey.start();
 }
 
 async function copySnippet(text: string, id: string) {
   await navigator.clipboard.writeText(text);
   copiedSnippet.value = id;
-  setTimeout(() => {
-    if (copiedSnippet.value === id) {
-      copiedSnippet.value = "";
-    }
-  }, 2000);
+  copiedSnippetID = id;
+  resetCopiedSnippet.start();
 }
 
 onMounted(() => {

@@ -290,6 +290,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDebounceFn } from "@vueuse/core";
 import {
   ArrowLeft,
   ChevronDown,
@@ -501,7 +502,6 @@ function handleClickOutside(e: MouseEvent) {
 const metaSearch = ref("");
 const metaSearching = ref(false);
 const searchResults = ref<SearchItem[]>([]);
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Selected metadata
 const selectedMeta = ref<SelectedMeta | null>(null);
@@ -645,14 +645,17 @@ function clearSelection() {
   searchResults.value = [];
 }
 
+/** The box emits per keystroke; one request answers a pause in typing. */
+const debouncedSearch = useDebounceFn((q: string) => void doSearch(q), 300);
+
 function onSearchInput() {
-  if (searchTimer) clearTimeout(searchTimer);
+  debouncedSearch.cancel();
   const q = metaSearch.value.trim();
   if (!q) {
     searchResults.value = [];
     return;
   }
-  searchTimer = setTimeout(() => doSearch(q), 300);
+  void debouncedSearch(q);
 }
 
 async function doSearch(q: string) {

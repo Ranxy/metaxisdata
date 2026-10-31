@@ -411,6 +411,7 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { useDebounceFn } from "@vueuse/core";
 import {
   FileCode2,
   MoreHorizontal,
@@ -421,14 +422,7 @@ import {
   Trash2,
   X,
 } from "lucide-vue-next";
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import {
@@ -536,8 +530,6 @@ const isCheckingManualSqlId = ref(false);
 const manualSqlIdConflict = ref("");
 let schemaLoadSequence = 0;
 let manualSqlIdCheckSequence = 0;
-let manualSqlIdCheckTimer: ReturnType<typeof setTimeout> | null = null;
-let filterChangeTimer: ReturnType<typeof setTimeout> | null = null;
 
 const form = reactive({
   parent: "",
@@ -1028,24 +1020,24 @@ function openLineage(guid: string) {
   });
 }
 
+/** One request answers a pause in typing; a level change restarts immediately. */
+const debouncedFilterReset = useDebounceFn(
+  () => void resetManualSQLPage(),
+  250
+);
+
 watch(selectedParent, () => {
-  if (filterChangeTimer) {
-    clearTimeout(filterChangeTimer);
-    filterChangeTimer = null;
-  }
+  debouncedFilterReset.cancel();
   void resetManualSQLPage();
 });
 
-watch([searchQuery, schemaFilter, tagsFilterInput], () => {
-  if (filterChangeTimer) {
-    clearTimeout(filterChangeTimer);
-  }
+watch(
+  [searchQuery, schemaFilter, tagsFilterInput],
+  () => void debouncedFilterReset()
+);
 
-  filterChangeTimer = setTimeout(() => {
-    void resetManualSQLPage();
-    filterChangeTimer = null;
-  }, 250);
-});
+/** The typed id is checked once the reader pauses, not on every keystroke. */
+const debouncedIdCheck = useDebounceFn(() => checkManualSqlIdConflict(), 300);
 
 watch(
   () => form.parent,
@@ -1069,10 +1061,7 @@ watch(
       form.manualSqlId,
     ] as const,
   ([isVisible, editing, parent, manualSqlId]) => {
-    if (manualSqlIdCheckTimer) {
-      clearTimeout(manualSqlIdCheckTimer);
-      manualSqlIdCheckTimer = null;
-    }
+    debouncedIdCheck.cancel();
 
     if (!isVisible || editing || !parent.trim() || !manualSqlId.trim()) {
       manualSqlIdConflict.value = "";
@@ -1080,24 +1069,12 @@ watch(
       return;
     }
 
-    manualSqlIdCheckTimer = setTimeout(() => {
-      checkManualSqlIdConflict();
-    }, 300);
+    void debouncedIdCheck();
   }
 );
 
 onMounted(async () => {
   await fetchDatabases();
   await resetManualSQLPage();
-});
-
-onBeforeUnmount(() => {
-  if (manualSqlIdCheckTimer) {
-    clearTimeout(manualSqlIdCheckTimer);
-  }
-
-  if (filterChangeTimer) {
-    clearTimeout(filterChangeTimer);
-  }
 });
 </script>
