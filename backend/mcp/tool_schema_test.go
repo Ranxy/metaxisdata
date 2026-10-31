@@ -68,7 +68,11 @@ func TestToolSchemasMatchTheirArgumentStructs(t *testing.T) {
 			property, ok := properties[key].(map[string]any)
 			require.Truef(t, ok, "tool %s: %q is not an object schema", testCase.tool, key)
 			nestedSchema := property
-			if propertyType, _ := property["type"].(string); propertyType == "array" {
+			propertyType := ""
+			if raw, ok := property["type"].(string); ok {
+				propertyType = raw
+			}
+			if propertyType == "array" {
 				items, ok := property["items"].(map[string]any)
 				require.Truef(t, ok, "tool %s: %q is an array without items", testCase.tool, key)
 				nestedSchema = items
@@ -86,7 +90,10 @@ func TestToolSchemasMatchTheirArgumentStructs(t *testing.T) {
 func schemaObject(t *testing.T, schema map[string]any) (map[string]any, []string) {
 	t.Helper()
 
-	propertyType, _ := schema["type"].(string)
+	propertyType := ""
+	if raw, ok := schema["type"].(string); ok {
+		propertyType = raw
+	}
 	require.Equal(t, "object", propertyType, "tool schema must be an object")
 	properties, ok := schema["properties"].(map[string]any)
 	require.True(t, ok, "tool schema must carry properties")
