@@ -137,7 +137,6 @@
 </template>
 
 <script setup lang="ts">
-import { useTimeoutFn } from "@vueuse/core";
 import { AlertTriangle, Loader2 } from "lucide-vue-next";
 import { onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -153,6 +152,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useOneShot } from "@/composables/useTimers";
 import { notify } from "@/lib/notify";
 import type { GetQualitySuggestionJobTargetDebugResponse } from "@/types/proto-es/v1/data_quality_service_pb";
 
@@ -191,7 +191,7 @@ const response = ref<GetQualitySuggestionJobTargetDebugResponse>();
 /** Identifies the newest request; an older answer must never write state. */
 let requestID = 0;
 /** One delayed retry per open, for the asynchronous debug-log write. */
-const retryLoad = useTimeoutFn(() => void load(), AUTO_RETRY_MS);
+const retryLoad = useOneShot(() => void load(), AUTO_RETRY_MS);
 let autoRetried = false;
 
 function cancelRetry() {

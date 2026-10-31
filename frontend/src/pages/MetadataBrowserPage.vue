@@ -302,7 +302,7 @@
 
 <script setup lang="ts">
 import { Code } from "@connectrpc/connect";
-import { onClickOutside, useDebounceFn } from "@vueuse/core";
+import { onClickOutside } from "@vueuse/core";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -323,6 +323,7 @@ import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
 import MetadataList from "@/components/metadata/MetadataList.vue";
 import MetadataPagination from "@/components/metadata/MetadataPagination.vue";
 import MetadataTabNav from "@/components/metadata/MetadataTabNav.vue";
+import { useDebounced } from "@/composables/useTimers";
 
 // Detail components lazy-loaded — only needed in leaf views, not on the root page.
 const ExternalDatasetMetadataDetail = defineAsyncComponent(
@@ -1271,7 +1272,7 @@ function triggerSearchWithCurrentQuery() {
 }
 
 /** The bar emits per keystroke; one request answers a pause in typing. */
-const debouncedSearch = useDebounceFn(
+const debouncedSearch = useDebounced(
   (query: string) => void performSearch(query),
   300
 );

@@ -411,7 +411,6 @@
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { useDebounceFn } from "@vueuse/core";
 import {
   FileCode2,
   MoreHorizontal,
@@ -482,6 +481,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useDebounced } from "@/composables/useTimers";
 import { notify } from "@/lib/notify";
 import {
   type Database,
@@ -1021,10 +1021,7 @@ function openLineage(guid: string) {
 }
 
 /** One request answers a pause in typing; a level change restarts immediately. */
-const debouncedFilterReset = useDebounceFn(
-  () => void resetManualSQLPage(),
-  250
-);
+const debouncedFilterReset = useDebounced(() => void resetManualSQLPage(), 250);
 
 watch(selectedParent, () => {
   debouncedFilterReset.cancel();
@@ -1037,7 +1034,7 @@ watch(
 );
 
 /** The typed id is checked once the reader pauses, not on every keystroke. */
-const debouncedIdCheck = useDebounceFn(() => checkManualSqlIdConflict(), 300);
+const debouncedIdCheck = useDebounced(() => checkManualSqlIdConflict(), 300);
 
 watch(
   () => form.parent,

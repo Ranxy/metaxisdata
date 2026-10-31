@@ -263,7 +263,6 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { useDebounceFn } from "@vueuse/core";
 import {
   ClipboardList,
   Download,
@@ -313,6 +312,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useDebounced } from "@/composables/useTimers";
 import {
   type AuditLog,
   AuditLogSeverity,
@@ -813,7 +813,7 @@ watch(pageSize, () => void refreshLogs());
 
 // The bar emits on every keystroke, so a filter change restarts the walk on a
 // short debounce rather than firing one request per character.
-const refreshOnFilter = useDebounceFn(() => void refreshLogs(), 250);
+const refreshOnFilter = useDebounced(() => void refreshLogs(), 250);
 watch(
   [searchText, resourceFilter, actorFilter, severityFilter],
   () => void refreshOnFilter()

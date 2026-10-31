@@ -568,7 +568,6 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { useTimeoutFn } from "@vueuse/core";
 import {
   Ban,
   Check,
@@ -628,6 +627,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useOneShot } from "@/composables/useTimers";
 import { useInstanceStore } from "@/store/modules/instance";
 import type {
   APIKey,
@@ -891,12 +891,12 @@ async function handleRevokeKey() {
 }
 
 /** The two "copied" confirmations are short-lived acknowledgements. */
-const resetCopiedKey = useTimeoutFn(() => {
+const resetCopiedKey = useOneShot(() => {
   copied.value = false;
 }, 2000);
 
 let copiedSnippetID = "";
-const resetCopiedSnippet = useTimeoutFn(() => {
+const resetCopiedSnippet = useOneShot(() => {
   if (copiedSnippet.value === copiedSnippetID) {
     copiedSnippet.value = "";
   }
