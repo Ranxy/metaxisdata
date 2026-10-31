@@ -321,16 +321,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { ExplainSQLProgress } from "@/types/proto-es/v1/explain_sql_service_pb";
 import { formatDateTime } from "@/utils/datetime";
+import { isAborted } from "@/utils/error";
 import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { isProviderAllowed } from "@/utils/llmProvider";
 import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
 
 const { t, locale } = useI18n();
+const { formatError } = useErrorMessage();
 const route = useRoute();
 const authStore = useAuthStore();
 const instanceStore = useInstanceStore();
@@ -508,6 +511,13 @@ const loadingSql = ref(false);
 const isExplaining = ref(false);
 const resultText = ref("");
 const explainError = ref<string | null>(null);
+/**
+ * Identifies the newest explanation stream. The page is a route, but a reader
+ * who navigates away must stop both the cost and any late frame; a superseded
+ * stream may not write the document the next one owns.
+ */
+let explainGeneration = 0;
+let explainStream: AbortController | undefined;
 
 // ExplainSQL may be restricted to an admin-configured set of provider profiles;
 // the picker lists the allowed profiles that have an enabled model.
@@ -564,6 +574,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener("mousedown", handleClickOutside);
+  explainGeneration += 1;
+  explainStream?.abort();
+  explainStream = undefined;
 });
 
 // ---- methods ----
@@ -719,6 +732,10 @@ async function selectSearchResult(item: SearchItem) {
 
 async function startExplain(forceRegen = false) {
   if (isExplaining.value) return;
+  const mine = ++explainGeneration;
+  explainStream?.abort();
+  const controller = new AbortController();
+  explainStream = controller;
   isExplaining.value = true;
   resultText.value = "";
   explainError.value = null;
@@ -746,8 +763,11 @@ async function startExplain(forceRegen = false) {
         };
 
   try {
-    const stream = explainSQL(input);
+    const stream = explainSQL(input, { signal: controller.signal });
     for await (const chunk of stream) {
+      if (mine !== explainGeneration) {
+        return;
+      }
       if (chunk.payload?.case === "content" && chunk.payload.value) {
         showProgress.value = false;
         resultText.value += chunk.payload.value;
@@ -767,9 +787,15 @@ async function startExplain(forceRegen = false) {
       }
     }
   } catch (e) {
-    explainError.value = String(e);
+    if (mine !== explainGeneration || isAborted(e)) {
+      return;
+    }
+    explainError.value = formatError(e);
   } finally {
-    isExplaining.value = false;
+    if (mine === explainGeneration) {
+      isExplaining.value = false;
+      explainStream = undefined;
+    }
   }
 }
 </script>

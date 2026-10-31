@@ -40,6 +40,18 @@ export function errorCode(error: unknown): Code | undefined {
 }
 
 /**
+ * Whether `error` is the refusal of a request the caller aborted — a replaced
+ * stream's AbortSignal or a superseded fetch. Callers drop these instead of
+ * reporting them, because nothing the user did failed.
+ */
+export function isAborted(error: unknown): boolean {
+  return (
+    errorCode(error) === Code.Canceled ||
+    (error instanceof DOMException && error.name === "AbortError")
+  );
+}
+
+/**
  * Codes whose server wording is the only place the actual reason appears — the
  * name of a rejected field, the driver's own connection error, or (for a login)
  * which credential was wrong. Those keep the server's text.
