@@ -138,6 +138,8 @@ func TestRenderEnglishReport(t *testing.T) {
 	require.Contains(t, document, `class="seg-fail"`)
 	require.Contains(t, document, "Showing 2 of 7 failed checks in the window.")
 	require.Contains(t, document, "dq.v1")
+	require.Contains(t, document, "forwarding the file forwards those rows",
+		"the footer must warn that the report carries real sample values")
 	require.Contains(t, document, `</html>`)
 }
 
@@ -153,6 +155,8 @@ func TestRenderChineseReport(t *testing.T) {
 	}
 	require.Contains(t, document, "通过率")
 	require.Contains(t, document, "行数")
+	require.Contains(t, document, "转发本文件即转发这些数据",
+		"页脚必须提示报告含真实样本值")
 	require.NotContains(t, document, "Report scope")
 }
 
