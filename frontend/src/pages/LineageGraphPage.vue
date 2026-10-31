@@ -262,6 +262,7 @@ const SchemaDefinitionDialog = defineAsyncComponent(
 );
 
 import { useLineageGraphData } from "@/composables/useLineageGraphData";
+import { useLineageSelection } from "@/composables/useLineageSelection";
 import {
   settleNodeHeights as convergeNodeHeights,
   nodeHeightFor,
@@ -378,13 +379,6 @@ const schemaOpen = ref(false);
 let initialExpandedDirections = new Set<string>();
 let initialNodeDataMap = new Map<string, NodeLineageData>();
 
-// Field-level column selection state
-const selectedColumnGuid = ref<string | null>(null);
-const selectedColumnName = ref<string | null>(null);
-/**
- * The trail the selected column runs through the drawn graph, refreshed whenever
- * the graph is. Null when no column is selected.
- */
 const fieldTrail = ref<FieldTrail | null>(null);
 
 // Track which nodes have their fields panel visible (for layout height calculation)
@@ -397,11 +391,6 @@ const hasExpandedBeyondRoot = computed(() => {
     expandedDirections.value.size > initialExpandedDirections.size ||
     expandedColumns.value.size > 0
   );
-});
-
-const selectedNodeGuid = computed(() => {
-  const node = route.query.node;
-  return typeof node === "string" && node.length > 0 ? node : null;
 });
 
 const currentGuid = computed(() => routeParamToGuid(route.params.guid));
@@ -433,6 +422,24 @@ const {
   externalDatasetMap,
   drawnNodeIds: () => nodes.value.map((node) => node.id),
   onCountsLoaded: () => updateGraphState(),
+});
+
+const {
+  selectedNodeGuid,
+  selectedColumnGuid,
+  selectedColumnName,
+  selectedColumnContext,
+  closeSelectedNode,
+  clearColumnSelection,
+  handleSelectNode,
+  handleSelectColumn,
+  markSelectedColumn,
+} = useLineageSelection({
+  currentGuid,
+  fetchLineage: async (guid) => {
+    await fetchLineageForGuid(guid);
+  },
+  onChanged: () => updateGraphState(),
 });
 
 const selectedNodeSummary = computed(() => {
@@ -559,16 +566,6 @@ const fieldTrailSummary = computed(() => {
     downstream: trail.downstream,
     truncated: trail.truncated,
   };
-});
-
-const selectedColumnContext = computed(() => {
-  if (
-    selectedColumnGuid.value !== selectedNodeGuid.value ||
-    !selectedColumnName.value
-  ) {
-    return null;
-  }
-  return selectedColumnName.value;
 });
 
 const canOpenSelectedNodeColumnLineage = computed(() => {
@@ -766,16 +763,6 @@ function compareTimestamps(
     return 0;
   }
   return leftSeconds > rightSeconds ? 1 : -1;
-}
-
-function setSelectedNode(guid: string | null) {
-  const nextQuery = { ...route.query };
-  if (guid) {
-    nextQuery.node = guid;
-  } else {
-    delete nextQuery.node;
-  }
-  router.replace({ query: nextQuery });
 }
 
 function openOpenLineageRun(guid: string) {
@@ -1144,41 +1131,6 @@ function updateGraphState() {
   void settleNodeHeights();
 }
 
-function clearColumnSelection() {
-  selectedColumnGuid.value = null;
-  selectedColumnName.value = null;
-  updateGraphState();
-}
-
-async function handleSelectNode(guid: string) {
-  if (selectedNodeGuid.value === guid) {
-    closeSelectedNode();
-    return;
-  }
-  setSelectedNode(guid);
-
-  // Pre-fetch lineage data for non-root nodes so the drawer shows accurate
-  // upstream/downstream counts and related runs immediately, without expanding
-  // the graph (the user can do that via "Expand"). Every non-root node is asked,
-  // not just the ones the map has never seen: a node the user expanded in one
-  // direction only holds an empty list for the other, and the detail panel would
-  // otherwise report that empty direction as "no lineage". `fetchLineageForGuid`
-  // is the cache — it returns at once when both directions are already loaded.
-  if (guid !== currentGuid.value) {
-    await fetchLineageForGuid(guid);
-    // The fetch marks both directions as loaded but deliberately leaves the
-    // graph alone, so the node still renders the pre-fetch state. Refresh the
-    // node data (counts, and the expand affordances, which key off the
-    // expansion set rather than the fetch flags) without adding neighbours:
-    // `updateGraphState` only redraws edges between nodes that are on screen.
-    updateGraphState();
-  }
-}
-
-function closeSelectedNode() {
-  setSelectedNode(null);
-}
-
 function handleToggleFields(guid: string, visible: boolean) {
   if (visible) {
     openFieldLists([guid]);
@@ -1201,43 +1153,6 @@ function openFieldLists(guids: Iterable<string>) {
   for (const guid of guids) {
     fieldsVisibleGuids.value.add(guid);
     renderedHeights.delete(guid);
-  }
-}
-
-async function handleSelectColumn(guid: string, column: string) {
-  // Toggle off if same column clicked again
-  if (
-    selectedColumnGuid.value === guid &&
-    selectedColumnName.value === column
-  ) {
-    clearColumnSelection();
-    return;
-  }
-
-  await markSelectedColumn(guid, column);
-  // The trail is walked by `updateGraphState`, over the same drawn graph the edges
-  // come from — one implementation for both, so a column can never be highlighted
-  // without the edge that carries it.
-  updateGraphState();
-}
-
-/**
- * Points the detail panel and the trail at one field, without redrawing: the
- * caller decides which redraw follows, so an action that expands a field only
- * pays for one. A field click has to do what a node click does — select the node
- * and make sure its relations are loaded. Otherwise the detail panel stays empty
- * (and with it the field's trail summary) for every node whose relations were
- * never fetched, which is every node the user has not expanded or clicked before.
- */
-async function markSelectedColumn(guid: string, column: string) {
-  if (selectedNodeGuid.value !== guid) {
-    setSelectedNode(guid);
-  }
-  selectedColumnGuid.value = guid;
-  selectedColumnName.value = column;
-
-  if (guid !== currentGuid.value) {
-    await fetchLineageForGuid(guid);
   }
 }
 
