@@ -23,6 +23,9 @@ const (
 	SettingService_UpdateWorkspaceProfileSetting_FullMethodName = "/metaxisdata.v1.SettingService/UpdateWorkspaceProfileSetting"
 	SettingService_GetDebugConfig_FullMethodName                = "/metaxisdata.v1.SettingService/GetDebugConfig"
 	SettingService_UpdateDebugConfig_FullMethodName             = "/metaxisdata.v1.SettingService/UpdateDebugConfig"
+	SettingService_GetEmailSetting_FullMethodName               = "/metaxisdata.v1.SettingService/GetEmailSetting"
+	SettingService_UpdateEmailSetting_FullMethodName            = "/metaxisdata.v1.SettingService/UpdateEmailSetting"
+	SettingService_SendTestEmail_FullMethodName                 = "/metaxisdata.v1.SettingService/SendTestEmail"
 )
 
 // SettingServiceClient is the client API for SettingService service.
@@ -46,6 +49,16 @@ type SettingServiceClient interface {
 	// /debug/pprof, and allows panic handlers to return stack traces to the
 	// caller. Disabling it restores info-level logging and generic panic errors.
 	UpdateDebugConfig(ctx context.Context, in *UpdateDebugConfigRequest, opts ...grpc.CallOption) (*UpdateDebugConfigResponse, error)
+	// Get the workspace email setting. It is returned empty when email delivery
+	// is not configured, so the settings page can render one form either way.
+	GetEmailSetting(ctx context.Context, in *GetEmailSettingRequest, opts ...grpc.CallOption) (*EmailSetting, error)
+	// Update the workspace email setting. The password is write-only: an empty
+	// one on update keeps the stored password, and no read returns it.
+	UpdateEmailSetting(ctx context.Context, in *UpdateEmailSettingRequest, opts ...grpc.CallOption) (*EmailSetting, error)
+	// Send a test email to the caller's own address through the configured SMTP
+	// server. It is not audited: it changes nothing, and it is a diagnostic probe
+	// the settings page can repeat while an administrator types the server in.
+	SendTestEmail(ctx context.Context, in *SendTestEmailRequest, opts ...grpc.CallOption) (*SendTestEmailResponse, error)
 }
 
 type settingServiceClient struct {
@@ -96,6 +109,36 @@ func (c *settingServiceClient) UpdateDebugConfig(ctx context.Context, in *Update
 	return out, nil
 }
 
+func (c *settingServiceClient) GetEmailSetting(ctx context.Context, in *GetEmailSettingRequest, opts ...grpc.CallOption) (*EmailSetting, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmailSetting)
+	err := c.cc.Invoke(ctx, SettingService_GetEmailSetting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settingServiceClient) UpdateEmailSetting(ctx context.Context, in *UpdateEmailSettingRequest, opts ...grpc.CallOption) (*EmailSetting, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmailSetting)
+	err := c.cc.Invoke(ctx, SettingService_UpdateEmailSetting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settingServiceClient) SendTestEmail(ctx context.Context, in *SendTestEmailRequest, opts ...grpc.CallOption) (*SendTestEmailResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SendTestEmailResponse)
+	err := c.cc.Invoke(ctx, SettingService_SendTestEmail_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SettingServiceServer is the server API for SettingService service.
 // All implementations must embed UnimplementedSettingServiceServer
 // for forward compatibility.
@@ -117,6 +160,16 @@ type SettingServiceServer interface {
 	// /debug/pprof, and allows panic handlers to return stack traces to the
 	// caller. Disabling it restores info-level logging and generic panic errors.
 	UpdateDebugConfig(context.Context, *UpdateDebugConfigRequest) (*UpdateDebugConfigResponse, error)
+	// Get the workspace email setting. It is returned empty when email delivery
+	// is not configured, so the settings page can render one form either way.
+	GetEmailSetting(context.Context, *GetEmailSettingRequest) (*EmailSetting, error)
+	// Update the workspace email setting. The password is write-only: an empty
+	// one on update keeps the stored password, and no read returns it.
+	UpdateEmailSetting(context.Context, *UpdateEmailSettingRequest) (*EmailSetting, error)
+	// Send a test email to the caller's own address through the configured SMTP
+	// server. It is not audited: it changes nothing, and it is a diagnostic probe
+	// the settings page can repeat while an administrator types the server in.
+	SendTestEmail(context.Context, *SendTestEmailRequest) (*SendTestEmailResponse, error)
 	mustEmbedUnimplementedSettingServiceServer()
 }
 
@@ -138,6 +191,15 @@ func (UnimplementedSettingServiceServer) GetDebugConfig(context.Context, *GetDeb
 }
 func (UnimplementedSettingServiceServer) UpdateDebugConfig(context.Context, *UpdateDebugConfigRequest) (*UpdateDebugConfigResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDebugConfig not implemented")
+}
+func (UnimplementedSettingServiceServer) GetEmailSetting(context.Context, *GetEmailSettingRequest) (*EmailSetting, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetEmailSetting not implemented")
+}
+func (UnimplementedSettingServiceServer) UpdateEmailSetting(context.Context, *UpdateEmailSettingRequest) (*EmailSetting, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateEmailSetting not implemented")
+}
+func (UnimplementedSettingServiceServer) SendTestEmail(context.Context, *SendTestEmailRequest) (*SendTestEmailResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SendTestEmail not implemented")
 }
 func (UnimplementedSettingServiceServer) mustEmbedUnimplementedSettingServiceServer() {}
 func (UnimplementedSettingServiceServer) testEmbeddedByValue()                        {}
@@ -232,6 +294,60 @@ func _SettingService_UpdateDebugConfig_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SettingService_GetEmailSetting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEmailSettingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).GetEmailSetting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_GetEmailSetting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).GetEmailSetting(ctx, req.(*GetEmailSettingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettingService_UpdateEmailSetting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateEmailSettingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).UpdateEmailSetting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_UpdateEmailSetting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).UpdateEmailSetting(ctx, req.(*UpdateEmailSettingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettingService_SendTestEmail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendTestEmailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).SendTestEmail(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_SendTestEmail_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).SendTestEmail(ctx, req.(*SendTestEmailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SettingService_ServiceDesc is the grpc.ServiceDesc for SettingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -254,6 +370,18 @@ var SettingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateDebugConfig",
 			Handler:    _SettingService_UpdateDebugConfig_Handler,
+		},
+		{
+			MethodName: "GetEmailSetting",
+			Handler:    _SettingService_GetEmailSetting_Handler,
+		},
+		{
+			MethodName: "UpdateEmailSetting",
+			Handler:    _SettingService_UpdateEmailSetting_Handler,
+		},
+		{
+			MethodName: "SendTestEmail",
+			Handler:    _SettingService_SendTestEmail_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

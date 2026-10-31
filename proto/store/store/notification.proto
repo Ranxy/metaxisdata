@@ -201,12 +201,23 @@ message DataQualityDetail {
   string instance = 18;
 }
 
-// NotificationChannelKind is the protocol one outbound channel speaks.
+// NotificationChannelKind is the protocol one outbound channel speaks. The kind
+// decides the payload shape and which credential fields are required.
 enum NotificationChannelKind {
   NOTIFICATION_CHANNEL_KIND_UNSPECIFIED = 0;
   // A generic HTTP POST endpoint. The body is the stable delivery JSON and is
   // optionally signed with the channel's signing secret.
   NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
+  // A DingTalk group robot. The message is a markdown card; the robot may be
+  // signed with its signing secret.
+  NOTIFICATION_CHANNEL_KIND_DINGTALK = 2;
+  // A WeCom group robot. The message is a markdown card; the robot key is part
+  // of the endpoint.
+  NOTIFICATION_CHANNEL_KIND_WECOM = 3;
+  // A Feishu custom bot. The message is text; the bot may be signed.
+  NOTIFICATION_CHANNEL_KIND_FEISHU = 4;
+  // An email sent through the workspace's SMTP setting.
+  NOTIFICATION_CHANNEL_KIND_EMAIL = 5;
 }
 
 // NotificationChannel is the stored configuration of one outbound channel, as
@@ -230,6 +241,10 @@ message NotificationChannel {
 message NotificationChannelConfig {
   oneof config {
     WebhookChannelConfig webhook = 1;
+    DingTalkChannelConfig dingtalk = 2;
+    WeComChannelConfig wecom = 3;
+    FeishuChannelConfig feishu = 4;
+    EmailChannelConfig email = 5;
   }
 }
 
@@ -238,12 +253,42 @@ message WebhookChannelConfig {
   bool sign = 1;
 }
 
+message DingTalkChannelConfig {
+  // Whether the robot request is signed with the channel's signing secret.
+  bool sign = 1;
+}
+
+// WeComChannelConfig has no options: the robot key is the endpoint's query.
+message WeComChannelConfig {}
+
+message FeishuChannelConfig {
+  // Whether the bot request is signed with the channel's signing secret.
+  bool sign = 1;
+}
+
+// EmailChannelConfig decides who receives the email for an event.
+message EmailChannelConfig {
+  // Addresses that receive every event the channel subscribes to, for example a
+  // team or on-call list.
+  repeated string addresses = 1;
+  // Whether the people the event concerns also receive the email: the rule's
+  // owner, the initiator of a sync operation, or the workspace administrators
+  // for an event that concerns nobody in particular.
+  bool include_audience = 2;
+}
+
 // NotificationChannelSecret is the write-only half of a channel: what it takes
 // to deliver, kept as v1: AES-256-GCM ciphertext in notification_channel.secret
 // and never returned by a read.
 message NotificationChannelSecret {
-  string webhook_url = 1;
-  string webhook_signing_secret = 2;
+  // The endpoint to POST to. Required for every webhook-like kind: a generic
+  // webhook, a DingTalk or WeCom group robot, or a Feishu custom bot. Empty on
+  // update keeps the stored endpoint.
+  string endpoint = 1;
+
+  // The signing key: the HMAC-SHA256 key of a generic webhook, or the robot's
+  // signing secret for DingTalk and Feishu. Empty when the kind is unsigned.
+  string signing_secret = 2;
 }
 
 // NotificationDeliveryState is the lifecycle of one outbound delivery.
@@ -270,4 +315,10 @@ message NotificationDeliveryEvent {
     OpenLineageDetail openlineage = 4;
     DataQualityDetail data_quality = 5;
   }
+  // The user ids the event's in-app message addressed: the rule's owner, the
+  // initiator of a sync operation, or the workspace administrators. The email
+  // channel resolves them to addresses at send time; no other kind reads this
+  // field. Storing ids rather than addresses keeps a changed or deleted account
+  // resolving at delivery time.
+  repeated int32 audience_user_ids = 6;
 }

@@ -3,9 +3,15 @@ import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   type DataQualitySetting,
   DataQualitySettingSchema,
+  type EmailSetting,
+  EmailSettingSchema,
   GetDebugConfigRequestSchema,
+  GetEmailSettingRequestSchema,
   GetWorkspaceProfileSettingRequestSchema,
+  SendTestEmailRequestSchema,
+  SMTPConfigSchema,
   UpdateDebugConfigRequestSchema,
+  UpdateEmailSettingRequestSchema,
   UpdateWorkspaceProfileSettingRequestSchema,
   WorkspaceProfileSettingSchema,
 } from "@/types/proto-es/v1/setting_service_pb";
@@ -82,4 +88,45 @@ export async function updateDataQualitySetting(setting: DataQualitySetting) {
   return await settingClient.updateWorkspaceProfileSetting(
     buildUpdateDataQualitySettingRequest(setting)
   );
+}
+
+/**
+ * The workspace SMTP setting the EMAIL channels deliver through. A workspace
+ * that never configured one reads back as an empty setting, not a 404.
+ */
+export async function getEmailSetting(): Promise<EmailSetting> {
+  return await settingClient.getEmailSetting(
+    create(GetEmailSettingRequestSchema, {})
+  );
+}
+
+/**
+ * The update request for the email setting. Exported so its mask can be
+ * asserted without a transport: the whole `smtp` message is written, so the
+ * password is not named as a path — an empty one keeps the stored password.
+ */
+export function buildUpdateEmailSettingRequest(setting: EmailSetting) {
+  return create(UpdateEmailSettingRequestSchema, {
+    setting: create(EmailSettingSchema, {
+      from: setting.from,
+      fromName: setting.fromName,
+      smtp: create(SMTPConfigSchema, setting.smtp ?? {}),
+    }),
+    updateMask: create(FieldMaskSchema, {
+      paths: ["from", "from_name", "smtp"],
+    }),
+  });
+}
+
+export async function updateEmailSetting(
+  setting: EmailSetting
+): Promise<EmailSetting> {
+  return await settingClient.updateEmailSetting(
+    buildUpdateEmailSettingRequest(setting)
+  );
+}
+
+/** Send one test message through the stored SMTP setting. */
+export async function sendTestEmail(): Promise<void> {
+  await settingClient.sendTestEmail(create(SendTestEmailRequestSchema, {}));
 }

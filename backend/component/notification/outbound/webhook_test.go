@@ -128,13 +128,13 @@ func TestValidateChannel(t *testing.T) {
 			Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{}},
 		},
 	}
-	require.NoError(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com/hook"}))
+	require.NoError(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{Endpoint: "https://example.com/hook"}))
 
 	require.Error(t, ValidateChannel(valid, nil), "a webhook needs an endpoint")
-	require.Error(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{WebhookUrl: "ftp://example.com"}), "scheme")
-	require.Error(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{WebhookUrl: "https://"}), "host")
-	require.Error(t, ValidateChannel(&storepb.NotificationChannel{Kind: storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK}, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com"}))
-	require.Error(t, ValidateChannel(&storepb.NotificationChannel{}, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com"}))
+	require.Error(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{Endpoint: "ftp://example.com"}), "scheme")
+	require.Error(t, ValidateChannel(valid, &storepb.NotificationChannelSecret{Endpoint: "https://"}), "host")
+	require.Error(t, ValidateChannel(&storepb.NotificationChannel{Kind: storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK}, &storepb.NotificationChannelSecret{Endpoint: "https://example.com"}))
+	require.Error(t, ValidateChannel(&storepb.NotificationChannel{}, &storepb.NotificationChannelSecret{Endpoint: "https://example.com"}))
 
 	signed := &storepb.NotificationChannel{
 		DisplayName: "on-call",
@@ -143,8 +143,8 @@ func TestValidateChannel(t *testing.T) {
 			Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: true}},
 		},
 	}
-	require.Error(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com/hook"}))
-	require.NoError(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com/hook", WebhookSigningSecret: "s3cret"}))
+	require.Error(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{Endpoint: "https://example.com/hook"}))
+	require.NoError(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{Endpoint: "https://example.com/hook", SigningSecret: "s3cret"}))
 }
 
 // Redirects are not followed: a 307 would re-POST the signed body to the

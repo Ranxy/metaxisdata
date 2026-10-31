@@ -2,7 +2,7 @@
 // @generated from file v1/setting_service.proto (package metaxisdata.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Duration, FieldMask } from "@bufbuild/protobuf/wkt";
 
@@ -314,6 +314,242 @@ export declare type UpdateDebugConfigResponse = Message<"metaxisdata.v1.UpdateDe
 export declare const UpdateDebugConfigResponseSchema: GenMessage<UpdateDebugConfigResponse>;
 
 /**
+ * EmailSetting configures the SMTP server workspace notifications are emailed
+ * through. There is one per workspace: a channel of kind EMAIL delivers through
+ * it, and an email channel fails while it is unset.
+ *
+ * @generated from message metaxisdata.v1.EmailSetting
+ */
+export declare type EmailSetting = Message<"metaxisdata.v1.EmailSetting"> & {
+  /**
+   * The From address. It must be an address the SMTP server is allowed to send
+   * as. Empty means email delivery is not configured.
+   *
+   * @generated from field: string from = 1;
+   */
+  from: string;
+
+  /**
+   * The display name shown beside the From address.
+   *
+   * @generated from field: string from_name = 2;
+   */
+  fromName: string;
+
+  /**
+   * The SMTP server.
+   *
+   * @generated from field: metaxisdata.v1.SMTPConfig smtp = 3;
+   */
+  smtp?: SMTPConfig;
+
+  /**
+   * Whether a password is stored. The password itself is never returned.
+   *
+   * @generated from field: bool password_set = 4;
+   */
+  passwordSet: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.EmailSetting.
+ * Use `create(EmailSettingSchema)` to create a new message.
+ */
+export declare const EmailSettingSchema: GenMessage<EmailSetting>;
+
+/**
+ * @generated from message metaxisdata.v1.SMTPConfig
+ */
+export declare type SMTPConfig = Message<"metaxisdata.v1.SMTPConfig"> & {
+  /**
+   * The SMTP server host name.
+   *
+   * @generated from field: string host = 1;
+   */
+  host: string;
+
+  /**
+   * The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25
+   * on a trusted network.
+   *
+   * @generated from field: int32 port = 2;
+   */
+  port: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.SMTPEncryption encryption = 3;
+   */
+  encryption: SMTPEncryption;
+
+  /**
+   * @generated from field: metaxisdata.v1.SMTPAuthentication authentication = 4;
+   */
+  authentication: SMTPAuthentication;
+
+  /**
+   * The user name the login authenticates as. Required unless authentication is
+   * NONE.
+   *
+   * @generated from field: string username = 5;
+   */
+  username: string;
+
+  /**
+   * The login password. It is write-only: an empty value on update keeps the
+   * stored password, and no read returns it.
+   *
+   * @generated from field: string password = 6;
+   */
+  password: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SMTPConfig.
+ * Use `create(SMTPConfigSchema)` to create a new message.
+ */
+export declare const SMTPConfigSchema: GenMessage<SMTPConfig>;
+
+/**
+ * @generated from message metaxisdata.v1.GetEmailSettingRequest
+ */
+export declare type GetEmailSettingRequest = Message<"metaxisdata.v1.GetEmailSettingRequest"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetEmailSettingRequest.
+ * Use `create(GetEmailSettingRequestSchema)` to create a new message.
+ */
+export declare const GetEmailSettingRequestSchema: GenMessage<GetEmailSettingRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateEmailSettingRequest
+ */
+export declare type UpdateEmailSettingRequest = Message<"metaxisdata.v1.UpdateEmailSettingRequest"> & {
+  /**
+   * The setting to update.
+   *
+   * @generated from field: metaxisdata.v1.EmailSetting setting = 1;
+   */
+  setting?: EmailSetting;
+
+  /**
+   * The list of fields to update: from, from_name, smtp, or one of
+   * smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username,
+   * smtp.password.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateEmailSettingRequest.
+ * Use `create(UpdateEmailSettingRequestSchema)` to create a new message.
+ */
+export declare const UpdateEmailSettingRequestSchema: GenMessage<UpdateEmailSettingRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SendTestEmailRequest
+ */
+export declare type SendTestEmailRequest = Message<"metaxisdata.v1.SendTestEmailRequest"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.SendTestEmailRequest.
+ * Use `create(SendTestEmailRequestSchema)` to create a new message.
+ */
+export declare const SendTestEmailRequestSchema: GenMessage<SendTestEmailRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.SendTestEmailResponse
+ */
+export declare type SendTestEmailResponse = Message<"metaxisdata.v1.SendTestEmailResponse"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.SendTestEmailResponse.
+ * Use `create(SendTestEmailResponseSchema)` to create a new message.
+ */
+export declare const SendTestEmailResponseSchema: GenMessage<SendTestEmailResponse>;
+
+/**
+ * SMTPEncryption is the transport security of the SMTP connection.
+ *
+ * @generated from enum metaxisdata.v1.SMTPEncryption
+ */
+export enum SMTPEncryption {
+  /**
+   * @generated from enum value: SMTP_ENCRYPTION_UNSPECIFIED = 0;
+   */
+  SMTP_ENCRYPTION_UNSPECIFIED = 0,
+
+  /**
+   * No transport encryption. Only for a server on a trusted network.
+   *
+   * @generated from enum value: SMTP_ENCRYPTION_NONE = 1;
+   */
+  SMTP_ENCRYPTION_NONE = 1,
+
+  /**
+   * Upgrade the connection with STARTTLS after the greeting.
+   *
+   * @generated from enum value: SMTP_ENCRYPTION_STARTTLS = 2;
+   */
+  SMTP_ENCRYPTION_STARTTLS = 2,
+
+  /**
+   * Implicit TLS from the first byte, usually port 465.
+   *
+   * @generated from enum value: SMTP_ENCRYPTION_SSL_TLS = 3;
+   */
+  SMTP_ENCRYPTION_SSL_TLS = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.SMTPEncryption.
+ */
+export declare const SMTPEncryptionSchema: GenEnum<SMTPEncryption>;
+
+/**
+ * SMTPAuthentication is the login mechanism of the SMTP connection.
+ *
+ * @generated from enum metaxisdata.v1.SMTPAuthentication
+ */
+export enum SMTPAuthentication {
+  /**
+   * @generated from enum value: SMTP_AUTHENTICATION_UNSPECIFIED = 0;
+   */
+  SMTP_AUTHENTICATION_UNSPECIFIED = 0,
+
+  /**
+   * No login; only for a server that accepts mail from trusted hosts.
+   *
+   * @generated from enum value: SMTP_AUTHENTICATION_NONE = 1;
+   */
+  SMTP_AUTHENTICATION_NONE = 1,
+
+  /**
+   * @generated from enum value: SMTP_AUTHENTICATION_PLAIN = 2;
+   */
+  SMTP_AUTHENTICATION_PLAIN = 2,
+
+  /**
+   * @generated from enum value: SMTP_AUTHENTICATION_LOGIN = 3;
+   */
+  SMTP_AUTHENTICATION_LOGIN = 3,
+
+  /**
+   * @generated from enum value: SMTP_AUTHENTICATION_CRAM_MD5 = 4;
+   */
+  SMTP_AUTHENTICATION_CRAM_MD5 = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.SMTPAuthentication.
+ */
+export declare const SMTPAuthenticationSchema: GenEnum<SMTPAuthentication>;
+
+/**
  * @generated from service metaxisdata.v1.SettingService
  */
 export declare const SettingService: GenService<{
@@ -365,6 +601,40 @@ export declare const SettingService: GenService<{
     methodKind: "unary";
     input: typeof UpdateDebugConfigRequestSchema;
     output: typeof UpdateDebugConfigResponseSchema;
+  },
+  /**
+   * Get the workspace email setting. It is returned empty when email delivery
+   * is not configured, so the settings page can render one form either way.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.GetEmailSetting
+   */
+  getEmailSetting: {
+    methodKind: "unary";
+    input: typeof GetEmailSettingRequestSchema;
+    output: typeof EmailSettingSchema;
+  },
+  /**
+   * Update the workspace email setting. The password is write-only: an empty
+   * one on update keeps the stored password, and no read returns it.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.UpdateEmailSetting
+   */
+  updateEmailSetting: {
+    methodKind: "unary";
+    input: typeof UpdateEmailSettingRequestSchema;
+    output: typeof EmailSettingSchema;
+  },
+  /**
+   * Send a test email to the caller's own address through the configured SMTP
+   * server. It is not audited: it changes nothing, and it is a diagnostic probe
+   * the settings page can repeat while an administrator types the server in.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.SendTestEmail
+   */
+  sendTestEmail: {
+    methodKind: "unary";
+    input: typeof SendTestEmailRequestSchema;
+    output: typeof SendTestEmailResponseSchema;
   },
 }>;
 

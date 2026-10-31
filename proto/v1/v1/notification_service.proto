@@ -131,9 +131,10 @@ service NotificationService {
   }
 
   // Post a test message through one stored channel and report what the endpoint
-  // answered. It queues no delivery and is not audited: it is a diagnostic probe
-  // that changes nothing, and the endpoint's answer is third-party text that does
-  // not belong in the permanent ledger.
+  // answered. An email channel sends the message through the workspace SMTP
+  // setting instead, and its answer is empty. It queues no delivery and is not
+  // audited: it is a diagnostic probe that changes nothing, and the endpoint's
+  // answer is third-party text that does not belong in the permanent ledger.
   rpc TestNotificationChannel(TestNotificationChannelRequest) returns (TestNotificationChannelResponse) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/notificationChannels/*}:test"
@@ -437,11 +438,20 @@ message DataQualityDetail {
   string instance = 18;
 }
 
-// NotificationChannelKind is the protocol one outbound channel speaks.
+// NotificationChannelKind is the protocol one outbound channel speaks. The kind
+// decides the config shape and which credential fields are required.
 enum NotificationChannelKind {
   NOTIFICATION_CHANNEL_KIND_UNSPECIFIED = 0;
-  // A generic HTTP POST endpoint.
+  // A generic HTTP endpoint that receives the delivery JSON, optionally signed.
   NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
+  // A DingTalk group robot, optionally signed.
+  NOTIFICATION_CHANNEL_KIND_DINGTALK = 2;
+  // A WeCom group robot. Its bot key is part of the endpoint.
+  NOTIFICATION_CHANNEL_KIND_WECOM = 3;
+  // A Feishu custom bot, optionally signed.
+  NOTIFICATION_CHANNEL_KIND_FEISHU = 4;
+  // An email sent through the workspace email setting.
+  NOTIFICATION_CHANNEL_KIND_EMAIL = 5;
 }
 
 // NotificationChannel is one configured outbound destination. The credential is
@@ -472,6 +482,8 @@ message NotificationChannel {
   // BCP-47 tag the outbound text is written in. Empty means the server default.
   string language = 7;
 
+  // The kind's configuration. The oneof case must match kind and cannot change:
+  // the kind is immutable, and a config of another case has no delivery path.
   NotificationChannelConfig config = 8;
 
   // Whether a credential is stored. The credential itself is never returned.
@@ -484,6 +496,10 @@ message NotificationChannel {
 message NotificationChannelConfig {
   oneof config {
     WebhookChannelConfig webhook = 1;
+    DingTalkChannelConfig dingtalk = 2;
+    WeComChannelConfig wecom = 3;
+    FeishuChannelConfig feishu = 4;
+    EmailChannelConfig email = 5;
   }
 }
 
@@ -492,14 +508,43 @@ message WebhookChannelConfig {
   bool sign = 1;
 }
 
+message DingTalkChannelConfig {
+  // Whether the robot request is signed with the channel's signing secret.
+  bool sign = 1;
+}
+
+// WeComChannelConfig has no options: the robot key is the endpoint's query.
+message WeComChannelConfig {}
+
+message FeishuChannelConfig {
+  // Whether the bot request is signed with the channel's signing secret.
+  bool sign = 1;
+}
+
+// EmailChannelConfig decides who receives the email for an event.
+message EmailChannelConfig {
+  // Addresses that receive every event the channel subscribes to, for example a
+  // team or on-call list.
+  repeated string addresses = 1;
+
+  // Whether the people the event concerns also receive the email: the rule's
+  // owner, the initiator of a sync operation, or the workspace administrators
+  // for an event that concerns nobody in particular. At least one address or
+  // this flag is required.
+  bool include_audience = 2;
+}
+
 // NotificationChannelSecret is the write-only credential of a channel.
 message NotificationChannelSecret {
-  // The endpoint to POST to. Required when creating a webhook channel; an
-  // unset secret on update keeps the stored one.
-  string webhook_url = 1;
+  // The endpoint to POST to. Required when creating a webhook-like channel
+  // (webhook, DingTalk, WeCom or Feishu); an unset secret on update keeps the
+  // stored one.
+  string endpoint = 1;
 
-  // The HMAC-SHA256 key that signs the body when webhook.sign is set.
-  string webhook_signing_secret = 2;
+  // The signing key: the HMAC-SHA256 key of a webhook body, or the robot's
+  // signing secret. Required when the channel's config signs, and ignored
+  // otherwise.
+  string signing_secret = 2;
 }
 
 // NotificationDeliveryState is the lifecycle of one outbound delivery.

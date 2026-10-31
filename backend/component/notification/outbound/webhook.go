@@ -7,21 +7,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
-
-	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
-
-// maxWebhookURLLength bounds a configured endpoint. A URL longer than this is a
-// copy-paste accident, and storing it would only fail at delivery time.
-const maxWebhookURLLength = 2048
 
 // maxResponseBytes bounds how much of an endpoint's answer is kept in the error
 // or the test-send response. A chat endpoint answers with a short JSON document;
@@ -104,7 +96,7 @@ func (w *webhookReceiver) Post(ctx context.Context, message Message) (string, er
 		// The transport error quotes the request URL verbatim, and for a chat robot
 		// that URL is the credential. Replace it before the message reaches an API
 		// response, an audit row or the delivery's last_error.
-		return "", fmt.Errorf("the webhook endpoint could not be reached: %s", w.sanitize(err.Error()))
+		return "", fmt.Errorf("the webhook endpoint could not be reached: %s", sanitizeEndpoint(w.url, err.Error()))
 	}
 	defer resp.Body.Close()
 	answer, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
@@ -116,62 +108,4 @@ func (w *webhookReceiver) Post(ctx context.Context, message Message) (string, er
 		return "", fmt.Errorf("the webhook endpoint answered %s: %s", resp.Status, trimmed)
 	}
 	return trimmed, nil
-}
-
-// sanitize removes the endpoint from an error message.
-func (w *webhookReceiver) sanitize(message string) string {
-	message = strings.ReplaceAll(message, w.url, "<endpoint>")
-	// The transport quotes the parsed, normalized URL ("HTTPS://Host/path" becomes
-	// "https://host/path"), which the raw replacement would miss.
-	if parsed, err := url.Parse(w.url); err == nil {
-		message = strings.ReplaceAll(message, parsed.String(), "<endpoint>")
-	}
-	return message
-}
-
-// ValidateChannel checks the write-time invariants of one channel. It lives here
-// rather than in the API handler because the receiver is the thing that has to
-// be able to post with these values.
-func ValidateChannel(channel *storepb.NotificationChannel, secret *storepb.NotificationChannelSecret) error {
-	if channel == nil {
-		return errors.New("a notification channel is required")
-	}
-	if strings.TrimSpace(channel.GetDisplayName()) == "" {
-		return errors.New("a channel display name is required")
-	}
-	switch channel.GetKind() {
-	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK:
-		if err := validateWebhookURL(secret.GetWebhookUrl()); err != nil {
-			return err
-		}
-		if channel.GetConfig().GetWebhook().GetSign() && secret.GetWebhookSigningSecret() == "" {
-			return errors.New("a signing secret is required when the webhook body is signed")
-		}
-		return nil
-	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED:
-		return errors.New("a notification channel kind is required")
-	default:
-		return fmt.Errorf("unsupported notification channel kind %q", channel.GetKind().String())
-	}
-}
-
-func validateWebhookURL(endpoint string) error {
-	if strings.TrimSpace(endpoint) == "" {
-		return errors.New("a webhook endpoint is required")
-	}
-	if len(endpoint) > maxWebhookURLLength {
-		return fmt.Errorf("the webhook endpoint is longer than %d characters", maxWebhookURLLength)
-	}
-	parsed, err := url.Parse(endpoint)
-	if err != nil {
-		// Do not echo the parser error: it may carry the URL, which is a credential.
-		return errors.New("the webhook endpoint is not a valid URL")
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return errors.New("the webhook endpoint must use http or https")
-	}
-	if parsed.Host == "" {
-		return errors.New("the webhook endpoint has no host")
-	}
-	return nil
 }

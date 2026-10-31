@@ -121,6 +121,130 @@
       </CardContent>
     </Card>
 
+    <!-- Email delivery: the SMTP server an EMAIL channel sends through. -->
+    <Card>
+      <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 border-b">
+        <div class="space-y-1">
+          <CardTitle class="text-base">
+            {{ t("notificationSettings.emailDelivery") }}
+          </CardTitle>
+          <CardDescription>
+            {{ t("notificationSettings.emailDeliveryDescription") }}
+          </CardDescription>
+        </div>
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            :disabled="!canUpdate || emailLoading || emailSaving || emailTesting"
+            @click="onSendTestEmail"
+          >
+            <Loader2
+              v-if="emailTesting"
+              class="mr-1.5 h-4 w-4 animate-spin"
+            />
+            {{ t("notificationSettings.sendTestEmail") }}
+          </Button>
+          <Button
+            size="sm"
+            :disabled="!canUpdate || emailLoading || emailSaving || emailTesting"
+            @click="saveEmailSetting"
+          >
+            <Loader2
+              v-if="emailSaving"
+              class="mr-1.5 h-4 w-4 animate-spin"
+            />
+            {{ t("common.save") }}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <p
+          v-if="!canGetEmailSetting"
+          class="px-4 py-6 text-center text-sm text-muted-foreground"
+        >
+          {{ t("notificationSettings.emailReadOnly") }}
+        </p>
+        <PageState
+          v-else
+          :loading="emailLoading"
+        >
+          <div class="grid gap-4 sm:grid-cols-2">
+            <FormField
+              v-model="emailForm.from"
+              :label="t('notificationSettings.emailFrom')"
+              placeholder="notifications@example.com"
+            />
+            <FormField
+              v-model="emailForm.fromName"
+              :label="t('notificationSettings.emailFromName')"
+            />
+            <FormField
+              v-model="emailForm.host"
+              :label="t('notificationSettings.smtpHost')"
+              placeholder="smtp.example.com"
+            />
+            <FormField
+              v-model="emailForm.port"
+              type="number"
+              :label="t('notificationSettings.smtpPort')"
+            />
+            <div class="space-y-2.5">
+              <Label>{{ t("notificationSettings.smtpEncryption") }}</Label>
+              <Select
+                :model-value="String(emailForm.encryption)"
+                @update:model-value="onEncryptionChange"
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">
+                    {{ t("notificationSettings.encryptionNone") }}
+                  </SelectItem>
+                  <SelectItem value="2">STARTTLS</SelectItem>
+                  <SelectItem value="3">SSL/TLS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-2.5">
+              <Label>{{ t("notificationSettings.smtpAuthentication") }}</Label>
+              <Select
+                :model-value="String(emailForm.authentication)"
+                @update:model-value="onAuthenticationChange"
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">
+                    {{ t("notificationSettings.authenticationNone") }}
+                  </SelectItem>
+                  <SelectItem value="2">PLAIN</SelectItem>
+                  <SelectItem value="3">LOGIN</SelectItem>
+                  <SelectItem value="4">CRAM-MD5</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <FormField
+              v-model="emailForm.username"
+              :label="t('notificationSettings.smtpUsername')"
+            />
+            <FormField
+              v-model="emailForm.password"
+              type="password"
+              :label="t('notificationSettings.smtpPassword')"
+              :hint="
+                emailPasswordSet
+                  ? t('notificationSettings.smtpPasswordKeepHint')
+                  : ''
+              "
+            />
+          </div>
+        </PageState>
+      </CardContent>
+    </Card>
+
     <!-- Deliveries: what was queued, what was sent, what is stuck. -->
     <Card>
       <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 border-b">
@@ -297,41 +421,85 @@
             required
           />
 
-          <FormField
-            v-model="form.endpoint"
-            :label="t('notificationSettings.endpoint')"
-            placeholder="https://..."
-            :hint="
-              editingChannel
-                ? t('notificationSettings.endpointKeepHint')
-                : t('notificationSettings.endpointHint')
-            "
-            :required="!editingChannel"
-          />
-
-          <div class="flex items-center gap-2">
-            <Checkbox
-              :model-value="form.sign"
-              @update:model-value="onSignChange"
-            />
-            <Label class="text-sm">
-              {{ t("notificationSettings.signBody") }}
-            </Label>
+          <div class="space-y-2.5">
+            <Label>{{ t("notificationSettings.kind") }}</Label>
+            <Select
+              v-if="!editingChannel"
+              :model-value="String(form.kind)"
+              @update:model-value="onKindChange"
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="option in kindOptions"
+                  :key="option.value"
+                  :value="String(option.value)"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p
+              v-else
+              class="text-sm"
+            >
+              {{ channelKindLabel(form.kind) }}
+            </p>
           </div>
-          <FormField
-            v-if="form.sign"
-            v-model="form.signingSecret"
-            type="password"
-            :label="t('notificationSettings.signingSecret')"
-            :hint="
-              editingChannel
-                ? t('notificationSettings.secretKeepHint')
-                : t('notificationSettings.signingSecretHint')
-            "
-          />
+
+          <template v-if="isEmailKind">
+            <FormField
+              v-model="form.addresses"
+              :label="t('notificationSettings.recipients')"
+              :placeholder="t('notificationSettings.recipientsPlaceholder')"
+              :hint="t('notificationSettings.recipientsHint')"
+            />
+            <div class="flex items-start gap-2">
+              <Checkbox
+                :model-value="form.includeAudience"
+                @update:model-value="onIncludeAudienceChange"
+              />
+              <Label class="text-sm leading-5">
+                {{ t("notificationSettings.includeAudience") }}
+              </Label>
+            </div>
+            <p class="text-xs text-muted-foreground">
+              {{ t("notificationSettings.emailSmtpHint") }}
+            </p>
+          </template>
+          <template v-else>
+            <FormField
+              v-model="form.endpoint"
+              :label="t('notificationSettings.endpoint')"
+              placeholder="https://..."
+              :hint="endpointHint"
+              :required="!editingChannel"
+            />
+            <template v-if="supportsSigning">
+              <div class="flex items-center gap-2">
+                <Checkbox
+                  :model-value="form.sign"
+                  @update:model-value="onSignChange"
+                />
+                <Label class="text-sm">
+                  {{ signingLabel }}
+                </Label>
+              </div>
+              <FormField
+                v-if="form.sign"
+                v-model="form.signingSecret"
+                type="password"
+                :label="t('notificationSettings.signingSecret')"
+                :hint="signingSecretHint"
+              />
+            </template>
+          </template>
 
           <div class="grid gap-4 sm:grid-cols-2">
-            <FormField :label="t('notificationSettings.minSeverity')">
+            <div class="space-y-2.5">
+              <Label>{{ t("notificationSettings.minSeverity") }}</Label>
               <Select
                 :model-value="String(form.minSeverity)"
                 @update:model-value="onMinSeverityChange"
@@ -354,8 +522,9 @@
                   </SelectItem>
                 </SelectContent>
               </Select>
-            </FormField>
-            <FormField :label="t('notificationSettings.language')">
+            </div>
+            <div class="space-y-2.5">
+              <Label>{{ t("notificationSettings.language") }}</Label>
               <Select
                 :model-value="form.language"
                 @update:model-value="onLanguageChange"
@@ -368,10 +537,11 @@
                   <SelectItem value="en-US">English</SelectItem>
                 </SelectContent>
               </Select>
-            </FormField>
+            </div>
           </div>
 
-          <FormField :label="t('notificationSettings.eventTypes')">
+          <div class="space-y-2.5">
+            <Label>{{ t("notificationSettings.eventTypes") }}</Label>
             <div class="space-y-2">
               <label
                 v-for="option in eventTypeOptions"
@@ -388,7 +558,7 @@
                 {{ t("notificationSettings.eventTypesHint") }}
               </p>
             </div>
-          </FormField>
+          </div>
 
           <div class="flex items-center gap-2">
             <Checkbox
@@ -444,6 +614,11 @@ import {
   testNotificationChannel,
   updateNotificationChannel,
 } from "@/api/notification";
+import {
+  getEmailSetting,
+  sendTestEmail,
+  updateEmailSetting,
+} from "@/api/setting";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -487,6 +662,7 @@ import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type NotificationChannel,
+  NotificationChannelConfigSchema,
   NotificationChannelKind,
   NotificationChannelSchema,
   NotificationChannelSecretSchema,
@@ -495,14 +671,21 @@ import {
   NotificationSeverity,
   NotificationType,
 } from "@/types/proto-es/v1/notification_service_pb";
+import {
+  EmailSettingSchema,
+  SMTPAuthentication,
+  SMTPConfigSchema,
+  SMTPEncryption,
+} from "@/types/proto-es/v1/setting_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 
 /**
  * Outbound notification channels. A channel is a destination an administrator
  * configures; every in-app message an event produces is posted to it once. The
- * credential (the endpoint URL, and the HMAC key when signing) is write-only:
+ * credential (the endpoint URL, and the signing key when signing) is write-only:
  * the read reports only whether one is stored, so editing keeps it unless the
- * field is filled in again.
+ * field is filled in again. An email channel has no credential — it delivers
+ * through the workspace SMTP setting rendered above the delivery table.
  */
 
 const { t, locale } = useI18n();
@@ -511,6 +694,9 @@ const { formatError } = useErrorHandler();
 
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.settings.update")
+);
+const canGetEmailSetting = computed(() =>
+  authStore.hasPermission("metaxisdata.settings.get")
 );
 
 const loading = ref(false);
@@ -532,9 +718,12 @@ const deleteOpen = ref(false);
 
 interface ChannelForm {
   displayName: string;
+  kind: NotificationChannelKind;
   endpoint: string;
   signingSecret: string;
   sign: boolean;
+  addresses: string;
+  includeAudience: boolean;
   enabled: boolean;
   eventTypes: NotificationType[];
   minSeverity: NotificationSeverity;
@@ -543,13 +732,61 @@ interface ChannelForm {
 
 const form = reactive<ChannelForm>({
   displayName: "",
+  kind: NotificationChannelKind.WEBHOOK,
   endpoint: "",
   signingSecret: "",
   sign: false,
+  addresses: "",
+  includeAudience: false,
   enabled: true,
   eventTypes: [],
   minSeverity: NotificationSeverity.UNSPECIFIED,
   language: locale.value === "zh-CN" ? "zh-CN" : "en-US",
+});
+
+const isEmailKind = computed(() => form.kind === NotificationChannelKind.EMAIL);
+
+const supportsSigning = computed(
+  () =>
+    form.kind === NotificationChannelKind.WEBHOOK ||
+    form.kind === NotificationChannelKind.DINGTALK ||
+    form.kind === NotificationChannelKind.FEISHU
+);
+
+const kindOptions = computed(() =>
+  [
+    NotificationChannelKind.WEBHOOK,
+    NotificationChannelKind.DINGTALK,
+    NotificationChannelKind.WECOM,
+    NotificationChannelKind.FEISHU,
+    NotificationChannelKind.EMAIL,
+  ].map((value) => ({ value, label: channelKindLabel(value) }))
+);
+
+const endpointHint = computed(() => {
+  if (editingChannel.value) {
+    return t("notificationSettings.endpointKeepHint");
+  }
+  if (form.kind === NotificationChannelKind.WECOM) {
+    return t("notificationSettings.wecomEndpointHint");
+  }
+  return t("notificationSettings.endpointHint");
+});
+
+const signingLabel = computed(() =>
+  form.kind === NotificationChannelKind.WEBHOOK
+    ? t("notificationSettings.signBody")
+    : t("notificationSettings.signRequest")
+);
+
+const signingSecretHint = computed(() => {
+  if (editingChannel.value) {
+    return t("notificationSettings.secretKeepHint");
+  }
+  if (form.kind === NotificationChannelKind.WEBHOOK) {
+    return t("notificationSettings.signingSecretHint");
+  }
+  return t("notificationSettings.robotSigningSecretHint");
 });
 
 const eventTypeOptions = computed(() => [
@@ -627,11 +864,133 @@ async function loadMoreDeliveries() {
   await loadDeliveries(false);
 }
 
-function resetForm() {
-  form.displayName = "";
+// ---- Workspace SMTP setting ------------------------------------------------
+
+interface EmailForm {
+  from: string;
+  fromName: string;
+  host: string;
+  port: string;
+  encryption: SMTPEncryption;
+  authentication: SMTPAuthentication;
+  username: string;
+  password: string;
+}
+
+const emailLoading = ref(false);
+const emailSaving = ref(false);
+const emailTesting = ref(false);
+const emailPasswordSet = ref(false);
+
+// A sensible STARTTLS/587/PLAIN default, so an unset workspace starts from the
+// settings most providers document and the select always has a valid option.
+const emailForm = reactive<EmailForm>({
+  from: "",
+  fromName: "",
+  host: "",
+  port: "587",
+  encryption: SMTPEncryption.SMTP_ENCRYPTION_STARTTLS,
+  authentication: SMTPAuthentication.SMTP_AUTHENTICATION_PLAIN,
+  username: "",
+  password: "",
+});
+
+async function loadEmailSetting() {
+  if (!canGetEmailSetting.value) {
+    return;
+  }
+  emailLoading.value = true;
+  try {
+    const setting = await getEmailSetting();
+    const smtp = setting.smtp;
+    emailForm.from = setting.from;
+    emailForm.fromName = setting.fromName;
+    emailForm.host = smtp?.host ?? "";
+    emailForm.port = smtp?.port ? String(smtp.port) : "587";
+    // UNSPECIFIED is the zero value of an unset server, so a falsy enum keeps
+    // the documented STARTTLS / PLAIN default the select shows.
+    emailForm.encryption =
+      smtp?.encryption || SMTPEncryption.SMTP_ENCRYPTION_STARTTLS;
+    emailForm.authentication =
+      smtp?.authentication || SMTPAuthentication.SMTP_AUTHENTICATION_PLAIN;
+    emailForm.username = smtp?.username ?? "";
+    emailForm.password = "";
+    emailPasswordSet.value = setting.passwordSet;
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    emailLoading.value = false;
+  }
+}
+
+function buildEmailSetting() {
+  return create(EmailSettingSchema, {
+    from: emailForm.from.trim(),
+    fromName: emailForm.fromName.trim(),
+    smtp: create(SMTPConfigSchema, {
+      host: emailForm.host.trim(),
+      port: Number.parseInt(emailForm.port, 10) || 0,
+      encryption: emailForm.encryption,
+      authentication: emailForm.authentication,
+      username: emailForm.username.trim(),
+      password: emailForm.password,
+    }),
+  });
+}
+
+async function saveEmailSetting() {
+  if (!canUpdate.value) {
+    return;
+  }
+  emailSaving.value = true;
+  try {
+    await updateEmailSetting(buildEmailSetting());
+    notify.success(t("notificationSettings.emailSaved"));
+    await loadEmailSetting();
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    emailSaving.value = false;
+  }
+}
+
+async function onSendTestEmail() {
+  if (!canUpdate.value) {
+    return;
+  }
+  emailTesting.value = true;
+  try {
+    await sendTestEmail();
+    notify.success(t("notificationSettings.testEmailSent"));
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    emailTesting.value = false;
+  }
+}
+
+function onEncryptionChange(value: unknown) {
+  emailForm.encryption = Number(value) as SMTPEncryption;
+}
+
+function onAuthenticationChange(value: unknown) {
+  emailForm.authentication = Number(value) as SMTPAuthentication;
+}
+
+// ---- Channel dialog --------------------------------------------------------
+
+function resetKindFields() {
   form.endpoint = "";
   form.signingSecret = "";
   form.sign = false;
+  form.addresses = "";
+  form.includeAudience = false;
+}
+
+function resetForm() {
+  form.displayName = "";
+  form.kind = NotificationChannelKind.WEBHOOK;
+  resetKindFields();
   form.enabled = true;
   form.eventTypes = [];
   form.minSeverity = NotificationSeverity.UNSPECIFIED;
@@ -647,12 +1006,20 @@ function openCreate() {
 function openEdit(channel: NotificationChannel) {
   editingChannel.value = channel;
   form.displayName = channel.displayName;
-  form.endpoint = "";
-  form.signingSecret = "";
-  form.sign =
-    channel.config?.config?.case === "webhook"
-      ? Boolean(channel.config.config.value.sign)
-      : false;
+  form.kind = channel.kind;
+  resetKindFields();
+  const config = channel.config?.config;
+  if (
+    config?.case === "webhook" ||
+    config?.case === "dingtalk" ||
+    config?.case === "feishu"
+  ) {
+    form.sign = Boolean(config.value.sign);
+  }
+  if (config?.case === "email") {
+    form.addresses = config.value.addresses.join(", ");
+    form.includeAudience = config.value.includeAudience;
+  }
   form.enabled = channel.enabled;
   form.eventTypes = [...channel.eventTypes];
   form.minSeverity = channel.minSeverity;
@@ -664,8 +1031,17 @@ function onDeliveryFilter(value: unknown) {
   setDeliveryFilter(String(value));
 }
 
+function onKindChange(value: unknown) {
+  form.kind = Number(value) as NotificationChannelKind;
+  resetKindFields();
+}
+
 function onSignChange(value: boolean | "indeterminate") {
   form.sign = value === true;
+}
+
+function onIncludeAudienceChange(value: boolean | "indeterminate") {
+  form.includeAudience = value === true;
 }
 
 function onMinSeverityChange(value: unknown) {
@@ -690,33 +1066,70 @@ function toggleEventType(value: NotificationType, checked: boolean) {
   form.eventTypes = form.eventTypes.filter((item) => item !== value);
 }
 
+/** Recipients as typed: commas, semicolons, spaces or newlines separate addresses. */
+function parseRecipients(): string[] {
+  return form.addresses
+    .split(/[\s,;]+/)
+    .map((address) => address.trim())
+    .filter((address) => address !== "");
+}
+
+function buildConfig() {
+  switch (form.kind) {
+    case NotificationChannelKind.DINGTALK:
+      return create(NotificationChannelConfigSchema, {
+        config: { case: "dingtalk", value: { sign: form.sign } },
+      });
+    case NotificationChannelKind.WECOM:
+      return create(NotificationChannelConfigSchema, {
+        config: { case: "wecom", value: {} },
+      });
+    case NotificationChannelKind.FEISHU:
+      return create(NotificationChannelConfigSchema, {
+        config: { case: "feishu", value: { sign: form.sign } },
+      });
+    case NotificationChannelKind.EMAIL:
+      return create(NotificationChannelConfigSchema, {
+        config: {
+          case: "email",
+          value: {
+            addresses: parseRecipients(),
+            includeAudience: form.includeAudience,
+          },
+        },
+      });
+    default:
+      return create(NotificationChannelConfigSchema, {
+        config: { case: "webhook", value: { sign: form.sign } },
+      });
+  }
+}
+
 function buildChannel(): NotificationChannel {
   return create(NotificationChannelSchema, {
     name: editingChannel.value?.name ?? "",
     displayName: form.displayName.trim(),
-    kind: NotificationChannelKind.WEBHOOK,
+    kind: form.kind,
     enabled: form.enabled,
     eventTypes: form.eventTypes,
     minSeverity: form.minSeverity,
     language: form.language,
-    config: {
-      config: {
-        case: "webhook",
-        value: { sign: form.sign },
-      },
-    },
+    config: buildConfig(),
   });
 }
 
 function buildSecret() {
+  if (isEmailKind.value) {
+    return undefined;
+  }
   const endpoint = form.endpoint.trim();
-  const signingSecret = form.signingSecret;
+  const signingSecret = supportsSigning.value ? form.signingSecret : "";
   if (!endpoint && !signingSecret) {
     return undefined;
   }
   return create(NotificationChannelSecretSchema, {
-    webhookUrl: endpoint,
-    webhookSigningSecret: signingSecret,
+    endpoint,
+    signingSecret,
   });
 }
 
@@ -725,11 +1138,21 @@ async function saveChannel() {
     notify.error(t("notificationSettings.nameRequired"));
     return;
   }
-  if (!editingChannel.value && form.endpoint.trim() === "") {
+  if (isEmailKind.value) {
+    if (parseRecipients().length === 0 && !form.includeAudience) {
+      notify.error(t("notificationSettings.recipientsRequired"));
+      return;
+    }
+  } else if (!editingChannel.value && form.endpoint.trim() === "") {
     notify.error(t("notificationSettings.endpointRequired"));
     return;
   }
-  if (form.sign && !form.signingSecret && !editingChannel.value?.secretSet) {
+  if (
+    supportsSigning.value &&
+    form.sign &&
+    !form.signingSecret &&
+    !editingChannel.value?.secretSet
+  ) {
     notify.error(t("notificationSettings.signingSecretRequired"));
     return;
   }
@@ -810,6 +1233,14 @@ function channelKindLabel(kind: NotificationChannelKind): string {
   switch (kind) {
     case NotificationChannelKind.WEBHOOK:
       return t("notificationSettings.kindWebhook");
+    case NotificationChannelKind.DINGTALK:
+      return t("notificationSettings.kindDingTalk");
+    case NotificationChannelKind.WECOM:
+      return t("notificationSettings.kindWeCom");
+    case NotificationChannelKind.FEISHU:
+      return t("notificationSettings.kindFeishu");
+    case NotificationChannelKind.EMAIL:
+      return t("notificationSettings.kindEmail");
     default:
       return "—";
   }
@@ -884,6 +1315,6 @@ function deliveryStateVariant(
 }
 
 onMounted(async () => {
-  await Promise.all([loadChannels(), loadDeliveries(true)]);
+  await Promise.all([loadChannels(), loadDeliveries(true), loadEmailSetting()]);
 });
 </script>

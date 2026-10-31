@@ -24,6 +24,119 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// SMTPEncryption is the transport security of the SMTP connection.
+type SMTPEncryption int32
+
+const (
+	SMTPEncryption_SMTP_ENCRYPTION_UNSPECIFIED SMTPEncryption = 0
+	// No transport encryption. Only for a server on a trusted network.
+	SMTPEncryption_SMTP_ENCRYPTION_NONE SMTPEncryption = 1
+	// Upgrade the connection with STARTTLS after the greeting.
+	SMTPEncryption_SMTP_ENCRYPTION_STARTTLS SMTPEncryption = 2
+	// Implicit TLS from the first byte, usually port 465.
+	SMTPEncryption_SMTP_ENCRYPTION_SSL_TLS SMTPEncryption = 3
+)
+
+// Enum value maps for SMTPEncryption.
+var (
+	SMTPEncryption_name = map[int32]string{
+		0: "SMTP_ENCRYPTION_UNSPECIFIED",
+		1: "SMTP_ENCRYPTION_NONE",
+		2: "SMTP_ENCRYPTION_STARTTLS",
+		3: "SMTP_ENCRYPTION_SSL_TLS",
+	}
+	SMTPEncryption_value = map[string]int32{
+		"SMTP_ENCRYPTION_UNSPECIFIED": 0,
+		"SMTP_ENCRYPTION_NONE":        1,
+		"SMTP_ENCRYPTION_STARTTLS":    2,
+		"SMTP_ENCRYPTION_SSL_TLS":     3,
+	}
+)
+
+func (x SMTPEncryption) Enum() *SMTPEncryption {
+	p := new(SMTPEncryption)
+	*p = x
+	return p
+}
+
+func (x SMTPEncryption) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SMTPEncryption) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_setting_service_proto_enumTypes[0].Descriptor()
+}
+
+func (SMTPEncryption) Type() protoreflect.EnumType {
+	return &file_v1_setting_service_proto_enumTypes[0]
+}
+
+func (x SMTPEncryption) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SMTPEncryption.Descriptor instead.
+func (SMTPEncryption) EnumDescriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{0}
+}
+
+// SMTPAuthentication is the login mechanism of the SMTP connection.
+type SMTPAuthentication int32
+
+const (
+	SMTPAuthentication_SMTP_AUTHENTICATION_UNSPECIFIED SMTPAuthentication = 0
+	// No login; only for a server that accepts mail from trusted hosts.
+	SMTPAuthentication_SMTP_AUTHENTICATION_NONE     SMTPAuthentication = 1
+	SMTPAuthentication_SMTP_AUTHENTICATION_PLAIN    SMTPAuthentication = 2
+	SMTPAuthentication_SMTP_AUTHENTICATION_LOGIN    SMTPAuthentication = 3
+	SMTPAuthentication_SMTP_AUTHENTICATION_CRAM_MD5 SMTPAuthentication = 4
+)
+
+// Enum value maps for SMTPAuthentication.
+var (
+	SMTPAuthentication_name = map[int32]string{
+		0: "SMTP_AUTHENTICATION_UNSPECIFIED",
+		1: "SMTP_AUTHENTICATION_NONE",
+		2: "SMTP_AUTHENTICATION_PLAIN",
+		3: "SMTP_AUTHENTICATION_LOGIN",
+		4: "SMTP_AUTHENTICATION_CRAM_MD5",
+	}
+	SMTPAuthentication_value = map[string]int32{
+		"SMTP_AUTHENTICATION_UNSPECIFIED": 0,
+		"SMTP_AUTHENTICATION_NONE":        1,
+		"SMTP_AUTHENTICATION_PLAIN":       2,
+		"SMTP_AUTHENTICATION_LOGIN":       3,
+		"SMTP_AUTHENTICATION_CRAM_MD5":    4,
+	}
+)
+
+func (x SMTPAuthentication) Enum() *SMTPAuthentication {
+	p := new(SMTPAuthentication)
+	*p = x
+	return p
+}
+
+func (x SMTPAuthentication) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SMTPAuthentication) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_setting_service_proto_enumTypes[1].Descriptor()
+}
+
+func (SMTPAuthentication) Type() protoreflect.EnumType {
+	return &file_v1_setting_service_proto_enumTypes[1]
+}
+
+func (x SMTPAuthentication) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SMTPAuthentication.Descriptor instead.
+func (SMTPAuthentication) EnumDescriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{1}
+}
+
 type WorkspaceProfileSetting struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The external URL used for the SSO authentication callback.
@@ -575,6 +688,337 @@ func (x *UpdateDebugConfigResponse) GetEnabled() bool {
 	return false
 }
 
+// EmailSetting configures the SMTP server workspace notifications are emailed
+// through. There is one per workspace: a channel of kind EMAIL delivers through
+// it, and an email channel fails while it is unset.
+type EmailSetting struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The From address. It must be an address the SMTP server is allowed to send
+	// as. Empty means email delivery is not configured.
+	From string `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	// The display name shown beside the From address.
+	FromName string `protobuf:"bytes,2,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
+	// The SMTP server.
+	Smtp *SMTPConfig `protobuf:"bytes,3,opt,name=smtp,proto3" json:"smtp,omitempty"`
+	// Whether a password is stored. The password itself is never returned.
+	PasswordSet   bool `protobuf:"varint,4,opt,name=password_set,json=passwordSet,proto3" json:"password_set,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EmailSetting) Reset() {
+	*x = EmailSetting{}
+	mi := &file_v1_setting_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmailSetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmailSetting) ProtoMessage() {}
+
+func (x *EmailSetting) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmailSetting.ProtoReflect.Descriptor instead.
+func (*EmailSetting) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *EmailSetting) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *EmailSetting) GetFromName() string {
+	if x != nil {
+		return x.FromName
+	}
+	return ""
+}
+
+func (x *EmailSetting) GetSmtp() *SMTPConfig {
+	if x != nil {
+		return x.Smtp
+	}
+	return nil
+}
+
+func (x *EmailSetting) GetPasswordSet() bool {
+	if x != nil {
+		return x.PasswordSet
+	}
+	return false
+}
+
+type SMTPConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The SMTP server host name.
+	Host string `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	// The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25
+	// on a trusted network.
+	Port           int32              `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	Encryption     SMTPEncryption     `protobuf:"varint,3,opt,name=encryption,proto3,enum=metaxisdata.v1.SMTPEncryption" json:"encryption,omitempty"`
+	Authentication SMTPAuthentication `protobuf:"varint,4,opt,name=authentication,proto3,enum=metaxisdata.v1.SMTPAuthentication" json:"authentication,omitempty"`
+	// The user name the login authenticates as. Required unless authentication is
+	// NONE.
+	Username string `protobuf:"bytes,5,opt,name=username,proto3" json:"username,omitempty"`
+	// The login password. It is write-only: an empty value on update keeps the
+	// stored password, and no read returns it.
+	Password      string `protobuf:"bytes,6,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SMTPConfig) Reset() {
+	*x = SMTPConfig{}
+	mi := &file_v1_setting_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SMTPConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SMTPConfig) ProtoMessage() {}
+
+func (x *SMTPConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SMTPConfig.ProtoReflect.Descriptor instead.
+func (*SMTPConfig) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *SMTPConfig) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *SMTPConfig) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *SMTPConfig) GetEncryption() SMTPEncryption {
+	if x != nil {
+		return x.Encryption
+	}
+	return SMTPEncryption_SMTP_ENCRYPTION_UNSPECIFIED
+}
+
+func (x *SMTPConfig) GetAuthentication() SMTPAuthentication {
+	if x != nil {
+		return x.Authentication
+	}
+	return SMTPAuthentication_SMTP_AUTHENTICATION_UNSPECIFIED
+}
+
+func (x *SMTPConfig) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *SMTPConfig) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+type GetEmailSettingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEmailSettingRequest) Reset() {
+	*x = GetEmailSettingRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEmailSettingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEmailSettingRequest) ProtoMessage() {}
+
+func (x *GetEmailSettingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEmailSettingRequest.ProtoReflect.Descriptor instead.
+func (*GetEmailSettingRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{10}
+}
+
+type UpdateEmailSettingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The setting to update.
+	Setting *EmailSetting `protobuf:"bytes,1,opt,name=setting,proto3" json:"setting,omitempty"`
+	// The list of fields to update: from, from_name, smtp, or one of
+	// smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username,
+	// smtp.password.
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateEmailSettingRequest) Reset() {
+	*x = UpdateEmailSettingRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateEmailSettingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateEmailSettingRequest) ProtoMessage() {}
+
+func (x *UpdateEmailSettingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateEmailSettingRequest.ProtoReflect.Descriptor instead.
+func (*UpdateEmailSettingRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *UpdateEmailSettingRequest) GetSetting() *EmailSetting {
+	if x != nil {
+		return x.Setting
+	}
+	return nil
+}
+
+func (x *UpdateEmailSettingRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+type SendTestEmailRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendTestEmailRequest) Reset() {
+	*x = SendTestEmailRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendTestEmailRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendTestEmailRequest) ProtoMessage() {}
+
+func (x *SendTestEmailRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendTestEmailRequest.ProtoReflect.Descriptor instead.
+func (*SendTestEmailRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{12}
+}
+
+type SendTestEmailResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendTestEmailResponse) Reset() {
+	*x = SendTestEmailResponse{}
+	mi := &file_v1_setting_service_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendTestEmailResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendTestEmailResponse) ProtoMessage() {}
+
+func (x *SendTestEmailResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendTestEmailResponse.ProtoReflect.Descriptor instead.
+func (*SendTestEmailResponse) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{13}
+}
+
 var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
@@ -618,12 +1062,49 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x18UpdateDebugConfigRequest\x12\x1d\n" +
 	"\aenabled\x18\x01 \x01(\bB\x03\xe0A\x02R\aenabled\"5\n" +
 	"\x19UpdateDebugConfigResponse\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled2\x99\x06\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"\x97\x01\n" +
+	"\fEmailSetting\x12\x12\n" +
+	"\x04from\x18\x01 \x01(\tR\x04from\x12\x1b\n" +
+	"\tfrom_name\x18\x02 \x01(\tR\bfromName\x12.\n" +
+	"\x04smtp\x18\x03 \x01(\v2\x1a.metaxisdata.v1.SMTPConfigR\x04smtp\x12&\n" +
+	"\fpassword_set\x18\x04 \x01(\bB\x03\xe0A\x03R\vpasswordSet\"\xfd\x01\n" +
+	"\n" +
+	"SMTPConfig\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\x12>\n" +
+	"\n" +
+	"encryption\x18\x03 \x01(\x0e2\x1e.metaxisdata.v1.SMTPEncryptionR\n" +
+	"encryption\x12J\n" +
+	"\x0eauthentication\x18\x04 \x01(\x0e2\".metaxisdata.v1.SMTPAuthenticationR\x0eauthentication\x12\x1a\n" +
+	"\busername\x18\x05 \x01(\tR\busername\x12\x1f\n" +
+	"\bpassword\x18\x06 \x01(\tB\x03\xe0A\x04R\bpassword\"\x18\n" +
+	"\x16GetEmailSettingRequest\"\x95\x01\n" +
+	"\x19UpdateEmailSettingRequest\x12;\n" +
+	"\asetting\x18\x01 \x01(\v2\x1c.metaxisdata.v1.EmailSettingB\x03\xe0A\x02R\asetting\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\"\x16\n" +
+	"\x14SendTestEmailRequest\"\x17\n" +
+	"\x15SendTestEmailResponse*\x86\x01\n" +
+	"\x0eSMTPEncryption\x12\x1f\n" +
+	"\x1bSMTP_ENCRYPTION_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14SMTP_ENCRYPTION_NONE\x10\x01\x12\x1c\n" +
+	"\x18SMTP_ENCRYPTION_STARTTLS\x10\x02\x12\x1b\n" +
+	"\x17SMTP_ENCRYPTION_SSL_TLS\x10\x03*\xb7\x01\n" +
+	"\x12SMTPAuthentication\x12#\n" +
+	"\x1fSMTP_AUTHENTICATION_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18SMTP_AUTHENTICATION_NONE\x10\x01\x12\x1d\n" +
+	"\x19SMTP_AUTHENTICATION_PLAIN\x10\x02\x12\x1d\n" +
+	"\x19SMTP_AUTHENTICATION_LOGIN\x10\x03\x12 \n" +
+	"\x1cSMTP_AUTHENTICATION_CRAM_MD5\x10\x042\x94\n" +
+	"\n" +
 	"\x0eSettingService\x12\xbf\x01\n" +
 	"\x1aGetWorkspaceProfileSetting\x121.metaxisdata.v1.GetWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"E\x80\xea0\x01\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/settings/workspaceProfile\x12\xe7\x01\n" +
 	"\x1dUpdateWorkspaceProfileSetting\x124.metaxisdata.v1.UpdateWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"g\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02(:\asetting2\x1d/v1/settings/workspaceProfile\x12\x9d\x01\n" +
 	"\x0eGetDebugConfig\x12%.metaxisdata.v1.GetDebugConfigRequest\x1a&.metaxisdata.v1.GetDebugConfigResponse\"<\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/settings/debugConfig\x12\xba\x01\n" +
-	"\x11UpdateDebugConfig\x12(.metaxisdata.v1.UpdateDebugConfigRequest\x1a).metaxisdata.v1.UpdateDebugConfigResponse\"P\xdaA\aenabled\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/settings/debugConfigB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x11UpdateDebugConfig\x12(.metaxisdata.v1.UpdateDebugConfigRequest\x1a).metaxisdata.v1.UpdateDebugConfigResponse\"P\xdaA\aenabled\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/settings/debugConfig\x12\x8f\x01\n" +
+	"\x0fGetEmailSetting\x12&.metaxisdata.v1.GetEmailSettingRequest\x1a\x1c.metaxisdata.v1.EmailSetting\"6\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/settings/email\x12\xbb\x01\n" +
+	"\x12UpdateEmailSetting\x12).metaxisdata.v1.UpdateEmailSettingRequest\x1a\x1c.metaxisdata.v1.EmailSetting\"\\\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1d:\asetting2\x12/v1/settings/email\x12\xa8\x01\n" +
+	"\rSendTestEmail\x12$.metaxisdata.v1.SendTestEmailRequest\x1a%.metaxisdata.v1.SendTestEmailResponse\"J\x8a\xea0\x1bmetaxisdata.settings.update\x82\xd3\xe4\x93\x02%:\x01*\" /v1/settings/email:sendTestEmailB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_setting_service_proto_rawDescOnce sync.Once
@@ -637,37 +1118,57 @@ func file_v1_setting_service_proto_rawDescGZIP() []byte {
 	return file_v1_setting_service_proto_rawDescData
 }
 
-var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_v1_setting_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_v1_setting_service_proto_goTypes = []any{
-	(*WorkspaceProfileSetting)(nil),              // 0: metaxisdata.v1.WorkspaceProfileSetting
-	(*DataQualitySetting)(nil),                   // 1: metaxisdata.v1.DataQualitySetting
-	(*GetWorkspaceProfileSettingRequest)(nil),    // 2: metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	(*UpdateWorkspaceProfileSettingRequest)(nil), // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	(*GetDebugConfigRequest)(nil),                // 4: metaxisdata.v1.GetDebugConfigRequest
-	(*GetDebugConfigResponse)(nil),               // 5: metaxisdata.v1.GetDebugConfigResponse
-	(*UpdateDebugConfigRequest)(nil),             // 6: metaxisdata.v1.UpdateDebugConfigRequest
-	(*UpdateDebugConfigResponse)(nil),            // 7: metaxisdata.v1.UpdateDebugConfigResponse
-	(*durationpb.Duration)(nil),                  // 8: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),                // 9: google.protobuf.FieldMask
+	(SMTPEncryption)(0),                          // 0: metaxisdata.v1.SMTPEncryption
+	(SMTPAuthentication)(0),                      // 1: metaxisdata.v1.SMTPAuthentication
+	(*WorkspaceProfileSetting)(nil),              // 2: metaxisdata.v1.WorkspaceProfileSetting
+	(*DataQualitySetting)(nil),                   // 3: metaxisdata.v1.DataQualitySetting
+	(*GetWorkspaceProfileSettingRequest)(nil),    // 4: metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	(*UpdateWorkspaceProfileSettingRequest)(nil), // 5: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	(*GetDebugConfigRequest)(nil),                // 6: metaxisdata.v1.GetDebugConfigRequest
+	(*GetDebugConfigResponse)(nil),               // 7: metaxisdata.v1.GetDebugConfigResponse
+	(*UpdateDebugConfigRequest)(nil),             // 8: metaxisdata.v1.UpdateDebugConfigRequest
+	(*UpdateDebugConfigResponse)(nil),            // 9: metaxisdata.v1.UpdateDebugConfigResponse
+	(*EmailSetting)(nil),                         // 10: metaxisdata.v1.EmailSetting
+	(*SMTPConfig)(nil),                           // 11: metaxisdata.v1.SMTPConfig
+	(*GetEmailSettingRequest)(nil),               // 12: metaxisdata.v1.GetEmailSettingRequest
+	(*UpdateEmailSettingRequest)(nil),            // 13: metaxisdata.v1.UpdateEmailSettingRequest
+	(*SendTestEmailRequest)(nil),                 // 14: metaxisdata.v1.SendTestEmailRequest
+	(*SendTestEmailResponse)(nil),                // 15: metaxisdata.v1.SendTestEmailResponse
+	(*durationpb.Duration)(nil),                  // 16: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                // 17: google.protobuf.FieldMask
 }
 var file_v1_setting_service_proto_depIdxs = []int32{
-	1, // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
-	8, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	0, // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
-	9, // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	2, // 4: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	3, // 5: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	4, // 6: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
-	6, // 7: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
-	0, // 8: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	0, // 9: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	5, // 10: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
-	7, // 11: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
-	8, // [8:12] is the sub-list for method output_type
-	4, // [4:8] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3,  // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
+	16, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	2,  // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
+	17, // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	11, // 4: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
+	0,  // 5: metaxisdata.v1.SMTPConfig.encryption:type_name -> metaxisdata.v1.SMTPEncryption
+	1,  // 6: metaxisdata.v1.SMTPConfig.authentication:type_name -> metaxisdata.v1.SMTPAuthentication
+	10, // 7: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
+	17, // 8: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	4,  // 9: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	5,  // 10: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	6,  // 11: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
+	8,  // 12: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
+	12, // 13: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
+	13, // 14: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
+	14, // 15: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
+	2,  // 16: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	2,  // 17: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	7,  // 18: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
+	9,  // 19: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
+	10, // 20: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	10, // 21: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	15, // 22: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_v1_setting_service_proto_init() }
@@ -681,13 +1182,14 @@ func file_v1_setting_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_setting_service_proto_rawDesc), len(file_v1_setting_service_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   8,
+			NumEnums:      2,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_v1_setting_service_proto_goTypes,
 		DependencyIndexes: file_v1_setting_service_proto_depIdxs,
+		EnumInfos:         file_v1_setting_service_proto_enumTypes,
 		MessageInfos:      file_v1_setting_service_proto_msgTypes,
 	}.Build()
 	File_v1_setting_service_proto = out.File

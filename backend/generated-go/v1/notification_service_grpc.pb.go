@@ -94,9 +94,10 @@ type NotificationServiceClient interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(ctx context.Context, in *DeleteNotificationChannelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. It queues no delivery and is not audited: it is a diagnostic probe
-	// that changes nothing, and the endpoint's answer is third-party text that does
-	// not belong in the permanent ledger.
+	// answered. An email channel sends the message through the workspace SMTP
+	// setting instead, and its answer is empty. It queues no delivery and is not
+	// audited: it is a diagnostic probe that changes nothing, and the endpoint's
+	// answer is third-party text that does not belong in the permanent ledger.
 	TestNotificationChannel(ctx context.Context, in *TestNotificationChannelRequest, opts ...grpc.CallOption) (*TestNotificationChannelResponse, error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.
@@ -330,9 +331,10 @@ type NotificationServiceServer interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(context.Context, *DeleteNotificationChannelRequest) (*emptypb.Empty, error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. It queues no delivery and is not audited: it is a diagnostic probe
-	// that changes nothing, and the endpoint's answer is third-party text that does
-	// not belong in the permanent ledger.
+	// answered. An email channel sends the message through the workspace SMTP
+	// setting instead, and its answer is empty. It queues no delivery and is not
+	// audited: it is a diagnostic probe that changes nothing, and the endpoint's
+	// answer is third-party text that does not belong in the permanent ledger.
 	TestNotificationChannel(context.Context, *TestNotificationChannelRequest) (*TestNotificationChannelResponse, error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.

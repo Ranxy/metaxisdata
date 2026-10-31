@@ -45,6 +45,15 @@ const (
 	// SettingServiceUpdateDebugConfigProcedure is the fully-qualified name of the SettingService's
 	// UpdateDebugConfig RPC.
 	SettingServiceUpdateDebugConfigProcedure = "/metaxisdata.v1.SettingService/UpdateDebugConfig"
+	// SettingServiceGetEmailSettingProcedure is the fully-qualified name of the SettingService's
+	// GetEmailSetting RPC.
+	SettingServiceGetEmailSettingProcedure = "/metaxisdata.v1.SettingService/GetEmailSetting"
+	// SettingServiceUpdateEmailSettingProcedure is the fully-qualified name of the SettingService's
+	// UpdateEmailSetting RPC.
+	SettingServiceUpdateEmailSettingProcedure = "/metaxisdata.v1.SettingService/UpdateEmailSetting"
+	// SettingServiceSendTestEmailProcedure is the fully-qualified name of the SettingService's
+	// SendTestEmail RPC.
+	SettingServiceSendTestEmailProcedure = "/metaxisdata.v1.SettingService/SendTestEmail"
 )
 
 // SettingServiceClient is a client for the metaxisdata.v1.SettingService service.
@@ -66,6 +75,16 @@ type SettingServiceClient interface {
 	// /debug/pprof, and allows panic handlers to return stack traces to the
 	// caller. Disabling it restores info-level logging and generic panic errors.
 	UpdateDebugConfig(context.Context, *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error)
+	// Get the workspace email setting. It is returned empty when email delivery
+	// is not configured, so the settings page can render one form either way.
+	GetEmailSetting(context.Context, *connect.Request[v1.GetEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error)
+	// Update the workspace email setting. The password is write-only: an empty
+	// one on update keeps the stored password, and no read returns it.
+	UpdateEmailSetting(context.Context, *connect.Request[v1.UpdateEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error)
+	// Send a test email to the caller's own address through the configured SMTP
+	// server. It is not audited: it changes nothing, and it is a diagnostic probe
+	// the settings page can repeat while an administrator types the server in.
+	SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error)
 }
 
 // NewSettingServiceClient constructs a client for the metaxisdata.v1.SettingService service. By
@@ -103,6 +122,24 @@ func NewSettingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(settingServiceMethods.ByName("UpdateDebugConfig")),
 			connect.WithClientOptions(opts...),
 		),
+		getEmailSetting: connect.NewClient[v1.GetEmailSettingRequest, v1.EmailSetting](
+			httpClient,
+			baseURL+SettingServiceGetEmailSettingProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("GetEmailSetting")),
+			connect.WithClientOptions(opts...),
+		),
+		updateEmailSetting: connect.NewClient[v1.UpdateEmailSettingRequest, v1.EmailSetting](
+			httpClient,
+			baseURL+SettingServiceUpdateEmailSettingProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("UpdateEmailSetting")),
+			connect.WithClientOptions(opts...),
+		),
+		sendTestEmail: connect.NewClient[v1.SendTestEmailRequest, v1.SendTestEmailResponse](
+			httpClient,
+			baseURL+SettingServiceSendTestEmailProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("SendTestEmail")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -112,6 +149,9 @@ type settingServiceClient struct {
 	updateWorkspaceProfileSetting *connect.Client[v1.UpdateWorkspaceProfileSettingRequest, v1.WorkspaceProfileSetting]
 	getDebugConfig                *connect.Client[v1.GetDebugConfigRequest, v1.GetDebugConfigResponse]
 	updateDebugConfig             *connect.Client[v1.UpdateDebugConfigRequest, v1.UpdateDebugConfigResponse]
+	getEmailSetting               *connect.Client[v1.GetEmailSettingRequest, v1.EmailSetting]
+	updateEmailSetting            *connect.Client[v1.UpdateEmailSettingRequest, v1.EmailSetting]
+	sendTestEmail                 *connect.Client[v1.SendTestEmailRequest, v1.SendTestEmailResponse]
 }
 
 // GetWorkspaceProfileSetting calls metaxisdata.v1.SettingService.GetWorkspaceProfileSetting.
@@ -134,6 +174,21 @@ func (c *settingServiceClient) UpdateDebugConfig(ctx context.Context, req *conne
 	return c.updateDebugConfig.CallUnary(ctx, req)
 }
 
+// GetEmailSetting calls metaxisdata.v1.SettingService.GetEmailSetting.
+func (c *settingServiceClient) GetEmailSetting(ctx context.Context, req *connect.Request[v1.GetEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error) {
+	return c.getEmailSetting.CallUnary(ctx, req)
+}
+
+// UpdateEmailSetting calls metaxisdata.v1.SettingService.UpdateEmailSetting.
+func (c *settingServiceClient) UpdateEmailSetting(ctx context.Context, req *connect.Request[v1.UpdateEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error) {
+	return c.updateEmailSetting.CallUnary(ctx, req)
+}
+
+// SendTestEmail calls metaxisdata.v1.SettingService.SendTestEmail.
+func (c *settingServiceClient) SendTestEmail(ctx context.Context, req *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error) {
+	return c.sendTestEmail.CallUnary(ctx, req)
+}
+
 // SettingServiceHandler is an implementation of the metaxisdata.v1.SettingService service.
 type SettingServiceHandler interface {
 	// Get the workspace profile setting.
@@ -153,6 +208,16 @@ type SettingServiceHandler interface {
 	// /debug/pprof, and allows panic handlers to return stack traces to the
 	// caller. Disabling it restores info-level logging and generic panic errors.
 	UpdateDebugConfig(context.Context, *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error)
+	// Get the workspace email setting. It is returned empty when email delivery
+	// is not configured, so the settings page can render one form either way.
+	GetEmailSetting(context.Context, *connect.Request[v1.GetEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error)
+	// Update the workspace email setting. The password is write-only: an empty
+	// one on update keeps the stored password, and no read returns it.
+	UpdateEmailSetting(context.Context, *connect.Request[v1.UpdateEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error)
+	// Send a test email to the caller's own address through the configured SMTP
+	// server. It is not audited: it changes nothing, and it is a diagnostic probe
+	// the settings page can repeat while an administrator types the server in.
+	SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error)
 }
 
 // NewSettingServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -186,6 +251,24 @@ func NewSettingServiceHandler(svc SettingServiceHandler, opts ...connect.Handler
 		connect.WithSchema(settingServiceMethods.ByName("UpdateDebugConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingServiceGetEmailSettingHandler := connect.NewUnaryHandler(
+		SettingServiceGetEmailSettingProcedure,
+		svc.GetEmailSetting,
+		connect.WithSchema(settingServiceMethods.ByName("GetEmailSetting")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingServiceUpdateEmailSettingHandler := connect.NewUnaryHandler(
+		SettingServiceUpdateEmailSettingProcedure,
+		svc.UpdateEmailSetting,
+		connect.WithSchema(settingServiceMethods.ByName("UpdateEmailSetting")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingServiceSendTestEmailHandler := connect.NewUnaryHandler(
+		SettingServiceSendTestEmailProcedure,
+		svc.SendTestEmail,
+		connect.WithSchema(settingServiceMethods.ByName("SendTestEmail")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.SettingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingServiceGetWorkspaceProfileSettingProcedure:
@@ -196,6 +279,12 @@ func NewSettingServiceHandler(svc SettingServiceHandler, opts ...connect.Handler
 			settingServiceGetDebugConfigHandler.ServeHTTP(w, r)
 		case SettingServiceUpdateDebugConfigProcedure:
 			settingServiceUpdateDebugConfigHandler.ServeHTTP(w, r)
+		case SettingServiceGetEmailSettingProcedure:
+			settingServiceGetEmailSettingHandler.ServeHTTP(w, r)
+		case SettingServiceUpdateEmailSettingProcedure:
+			settingServiceUpdateEmailSettingHandler.ServeHTTP(w, r)
+		case SettingServiceSendTestEmailProcedure:
+			settingServiceSendTestEmailHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -219,4 +308,16 @@ func (UnimplementedSettingServiceHandler) GetDebugConfig(context.Context, *conne
 
 func (UnimplementedSettingServiceHandler) UpdateDebugConfig(context.Context, *connect.Request[v1.UpdateDebugConfigRequest]) (*connect.Response[v1.UpdateDebugConfigResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.UpdateDebugConfig is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) GetEmailSetting(context.Context, *connect.Request[v1.GetEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.GetEmailSetting is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) UpdateEmailSetting(context.Context, *connect.Request[v1.UpdateEmailSettingRequest]) (*connect.Response[v1.EmailSetting], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.UpdateEmailSetting is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.SendTestEmail is not implemented"))
 }

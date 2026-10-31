@@ -167,6 +167,9 @@
   
 - [store/notification.proto](#store_notification-proto)
     - [DataQualityDetail](#metaxisdata-store-DataQualityDetail)
+    - [DingTalkChannelConfig](#metaxisdata-store-DingTalkChannelConfig)
+    - [EmailChannelConfig](#metaxisdata-store-EmailChannelConfig)
+    - [FeishuChannelConfig](#metaxisdata-store-FeishuChannelConfig)
     - [Notification](#metaxisdata-store-Notification)
     - [NotificationChannel](#metaxisdata-store-NotificationChannel)
     - [NotificationChannelConfig](#metaxisdata-store-NotificationChannelConfig)
@@ -175,6 +178,7 @@
     - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
     - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
     - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
+    - [WeComChannelConfig](#metaxisdata-store-WeComChannelConfig)
     - [WebhookChannelConfig](#metaxisdata-store-WebhookChannelConfig)
   
     - [DataQualityNotificationKind](#metaxisdata-store-DataQualityNotificationKind)
@@ -199,12 +203,16 @@
   
 - [store/setting.proto](#store_setting-proto)
     - [DataQualitySetting](#metaxisdata-store-DataQualitySetting)
+    - [EmailSMTPConfig](#metaxisdata-store-EmailSMTPConfig)
+    - [EmailSetting](#metaxisdata-store-EmailSetting)
     - [EnvironmentSetting](#metaxisdata-store-EnvironmentSetting)
     - [EnvironmentSetting.Environment](#metaxisdata-store-EnvironmentSetting-Environment)
     - [EnvironmentSetting.Environment.TagsEntry](#metaxisdata-store-EnvironmentSetting-Environment-TagsEntry)
     - [PasswordRestrictionSetting](#metaxisdata-store-PasswordRestrictionSetting)
     - [WorkspaceProfileSetting](#metaxisdata-store-WorkspaceProfileSetting)
   
+    - [EmailSMTPAuthentication](#metaxisdata-store-EmailSMTPAuthentication)
+    - [EmailSMTPEncryption](#metaxisdata-store-EmailSMTPEncryption)
     - [SettingName](#metaxisdata-store-SettingName)
   
 - [store/user.proto](#store_user-proto)
@@ -3105,6 +3113,52 @@ only; the client renders the localized sentence from the kind and these fields.
 
 
 
+<a name="metaxisdata-store-DingTalkChannelConfig"></a>
+
+### DingTalkChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sign | [bool](#bool) |  | Whether the robot request is signed with the channel&#39;s signing secret. |
+
+
+
+
+
+
+<a name="metaxisdata-store-EmailChannelConfig"></a>
+
+### EmailChannelConfig
+EmailChannelConfig decides who receives the email for an event.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| addresses | [string](#string) | repeated | Addresses that receive every event the channel subscribes to, for example a team or on-call list. |
+| include_audience | [bool](#bool) |  | Whether the people the event concerns also receive the email: the rule&#39;s owner, the initiator of a sync operation, or the workspace administrators for an event that concerns nobody in particular. |
+
+
+
+
+
+
+<a name="metaxisdata-store-FeishuChannelConfig"></a>
+
+### FeishuChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sign | [bool](#bool) |  | Whether the bot request is signed with the channel&#39;s signing secret. |
+
+
+
+
+
+
 <a name="metaxisdata-store-Notification"></a>
 
 ### Notification
@@ -3171,6 +3225,10 @@ read of the channel returns everything except the credential.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | webhook | [WebhookChannelConfig](#metaxisdata-store-WebhookChannelConfig) |  |  |
+| dingtalk | [DingTalkChannelConfig](#metaxisdata-store-DingTalkChannelConfig) |  |  |
+| wecom | [WeComChannelConfig](#metaxisdata-store-WeComChannelConfig) |  |  |
+| feishu | [FeishuChannelConfig](#metaxisdata-store-FeishuChannelConfig) |  |  |
+| email | [EmailChannelConfig](#metaxisdata-store-EmailChannelConfig) |  |  |
 
 
 
@@ -3187,8 +3245,8 @@ and never returned by a read.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| webhook_url | [string](#string) |  |  |
-| webhook_signing_secret | [string](#string) |  |  |
+| endpoint | [string](#string) |  | The endpoint to POST to. Required for every webhook-like kind: a generic webhook, a DingTalk or WeCom group robot, or a Feishu custom bot. Empty on update keeps the stored endpoint. |
+| signing_secret | [string](#string) |  | The signing key: the HMAC-SHA256 key of a generic webhook, or the robot&#39;s signing secret for DingTalk and Feishu. Empty when the kind is unsigned. |
 
 
 
@@ -3210,6 +3268,7 @@ and is what the dispatcher renders and posts.
 | schema_sync | [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
+| audience_user_ids | [int32](#int32) | repeated | The user ids the event&#39;s in-app message addressed: the rule&#39;s owner, the initiator of a sync operation, or the workspace administrators. The email channel resolves them to addresses at send time; no other kind reads this field. Storing ids rather than addresses keeps a changed or deleted account resolving at delivery time. |
 
 
 
@@ -3280,6 +3339,16 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
 
 
 
+<a name="metaxisdata-store-WeComChannelConfig"></a>
+
+### WeComChannelConfig
+WeComChannelConfig has no options: the robot key is the endpoint&#39;s query.
+
+
+
+
+
+
 <a name="metaxisdata-store-WebhookChannelConfig"></a>
 
 ### WebhookChannelConfig
@@ -3315,12 +3384,17 @@ DataQualityNotificationKind is the event a data quality notification reports.
 <a name="metaxisdata-store-NotificationChannelKind"></a>
 
 ### NotificationChannelKind
-NotificationChannelKind is the protocol one outbound channel speaks.
+NotificationChannelKind is the protocol one outbound channel speaks. The kind
+decides the payload shape and which credential fields are required.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | NOTIFICATION_CHANNEL_KIND_UNSPECIFIED | 0 |  |
 | NOTIFICATION_CHANNEL_KIND_WEBHOOK | 1 | A generic HTTP POST endpoint. The body is the stable delivery JSON and is optionally signed with the channel&#39;s signing secret. |
+| NOTIFICATION_CHANNEL_KIND_DINGTALK | 2 | A DingTalk group robot. The message is a markdown card; the robot may be signed with its signing secret. |
+| NOTIFICATION_CHANNEL_KIND_WECOM | 3 | A WeCom group robot. The message is a markdown card; the robot key is part of the endpoint. |
+| NOTIFICATION_CHANNEL_KIND_FEISHU | 4 | A Feishu custom bot. The message is text; the bot may be signed. |
+| NOTIFICATION_CHANNEL_KIND_EMAIL | 5 | An email sent through the workspace&#39;s SMTP setting. |
 
 
 
@@ -3575,6 +3649,46 @@ metaxisdata.v1.DataQualitySetting.
 
 
 
+<a name="metaxisdata-store-EmailSMTPConfig"></a>
+
+### EmailSMTPConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| host | [string](#string) |  |  |
+| port | [int32](#int32) |  |  |
+| encryption | [EmailSMTPEncryption](#metaxisdata-store-EmailSMTPEncryption) |  |  |
+| authentication | [EmailSMTPAuthentication](#metaxisdata-store-EmailSMTPAuthentication) |  |  |
+| username | [string](#string) |  |  |
+| password | [string](#string) |  | The login password as v1: ciphertext. Empty when no password is stored. |
+
+
+
+
+
+
+<a name="metaxisdata-store-EmailSetting"></a>
+
+### EmailSetting
+EmailSetting is the stored form of metaxisdata.v1.EmailSetting: the workspace&#39;s
+SMTP server, as the SETTING_NAME_EMAIL row. The smtp.password field holds a v1:
+AES-256-GCM ciphertext; only the store writes and reads it, and no other
+reader ever sees the plaintext.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| from | [string](#string) |  |  |
+| from_name | [string](#string) |  |  |
+| smtp | [EmailSMTPConfig](#metaxisdata-store-EmailSMTPConfig) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-EnvironmentSetting"></a>
 
 ### EnvironmentSetting
@@ -3675,6 +3789,35 @@ Empty (the default) turns the feature off everywhere. The address claim is mutab
  
 
 
+<a name="metaxisdata-store-EmailSMTPAuthentication"></a>
+
+### EmailSMTPAuthentication
+EmailSMTPAuthentication is the login mechanism of the SMTP connection.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED | 0 |  |
+| EMAIL_SMTP_AUTHENTICATION_NONE | 1 | No login; only for a server that accepts mail from trusted hosts. |
+| EMAIL_SMTP_AUTHENTICATION_PLAIN | 2 |  |
+| EMAIL_SMTP_AUTHENTICATION_LOGIN | 3 |  |
+| EMAIL_SMTP_AUTHENTICATION_CRAM_MD5 | 4 |  |
+
+
+
+<a name="metaxisdata-store-EmailSMTPEncryption"></a>
+
+### EmailSMTPEncryption
+EmailSMTPEncryption is the transport security of the SMTP connection.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| EMAIL_SMTP_ENCRYPTION_UNSPECIFIED | 0 |  |
+| EMAIL_SMTP_ENCRYPTION_NONE | 1 | No transport encryption. Only for a server on a trusted network. |
+| EMAIL_SMTP_ENCRYPTION_STARTTLS | 2 | Upgrade the connection with STARTTLS after the greeting. |
+| EMAIL_SMTP_ENCRYPTION_SSL_TLS | 3 | Implicit TLS from the first byte, usually port 465. |
+
+
+
 <a name="metaxisdata-store-SettingName"></a>
 
 ### SettingName
@@ -3692,6 +3835,7 @@ leftovers keep their numbers reserved.
 | PASSWORD_RESTRICTION | 14 |  |
 | ENVIRONMENT | 15 |  |
 | ENCRYPTION_KEY | 16 | ENCRYPTION_KEY is the deployment&#39;s credential data key, in the bare base64 of 32 random bytes when no key-encryption key is configured, or a v1 ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on first startup and never leaves the process otherwise. |
+| EMAIL | 17 | EMAIL is the workspace SMTP configuration, an EmailSetting payload. It is absent until an administrator configures email delivery. |
 
 
  

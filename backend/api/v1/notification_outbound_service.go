@@ -120,13 +120,13 @@ func (s *NotificationService) UpdateNotificationChannel(ctx context.Context, req
 	}
 	secret := storeNotificationChannelSecret(req.Msg.GetSecret())
 	if secret != nil {
-		if secret.GetWebhookUrl() == "" {
-			secret.WebhookUrl = stored.GetWebhookUrl()
+		if secret.GetEndpoint() == "" {
+			secret.Endpoint = stored.GetEndpoint()
 		}
-		if secret.GetWebhookSigningSecret() == "" {
-			secret.WebhookSigningSecret = stored.GetWebhookSigningSecret()
+		if secret.GetSigningSecret() == "" {
+			secret.SigningSecret = stored.GetSigningSecret()
 		}
-		if secret.GetWebhookUrl() == "" && secret.GetWebhookSigningSecret() == "" {
+		if secret.GetEndpoint() == "" && secret.GetSigningSecret() == "" {
 			secret = nil
 		}
 	}
@@ -191,7 +191,38 @@ func (s *NotificationService) TestNotificationChannel(ctx context.Context, req *
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the notification channel credential"))
 	}
-	receiver, err := outbound.NewReceiver(channel.Payload, secret)
+
+	var emailSetting *storepb.EmailSetting
+	var recipients []string
+	if channel.Payload.GetKind() == storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL {
+		emailSetting, err = s.store.GetEmailSettingForDelivery(ctx)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the email setting"))
+		}
+		if emailSetting == nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("email delivery is not configured"))
+		}
+		// A test message concerns nobody, so the caller receives it when the
+		// channel includes its event audience. Fixed addresses come along either way.
+		var audience []int32
+		caller, ok := GetUserFromContext(ctx)
+		if ok && caller != nil {
+			audience = []int32{int32(caller.ID)}
+		}
+		recipients, err = outbound.EmailRecipients(ctx, channel.Payload.GetConfig().GetEmail(), audience, func(context.Context, int32) (string, error) {
+			if !ok || caller == nil {
+				return "", nil
+			}
+			return caller.Email, nil
+		})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+		if len(recipients) == 0 {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the email channel has no test recipient"))
+		}
+	}
+	receiver, err := outbound.NewReceiver(channel.Payload, secret, emailSetting)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
@@ -202,6 +233,7 @@ func (s *NotificationService) TestNotificationChannel(ctx context.Context, req *
 		Severity:   storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING,
 		Title:      "Metaxisdata test notification",
 		Text:       "This is a test message from Settings > Notifications. No data quality check failed.",
+		Recipients: recipients,
 		OccurredAt: time.Now(),
 	}
 	if outbound.NormalizeLanguage(channel.Payload.GetLanguage()) == "zh-CN" {
@@ -331,32 +363,95 @@ func storeNotificationChannelPayload(channel *v1pb.NotificationChannel) (*storep
 		Enabled:     channel.GetEnabled(),
 		MinSeverity: storepb.NotificationSeverity(channel.GetMinSeverity()),
 		Language:    strings.TrimSpace(channel.GetLanguage()),
-		Config:      &storepb.NotificationChannelConfig{},
 	}
 	payload.EventTypes = notificationEventTypes(channel.GetEventTypes())
-	if webhook := channel.GetConfig().GetWebhook(); webhook != nil {
-		payload.Config.Config = &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: webhook.GetSign()}}
-	} else {
-		payload.Config.Config = &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{}}
+	config, err := storeNotificationChannelConfig(payload.Kind, channel.GetConfig())
+	if err != nil {
+		return nil, err
 	}
+	payload.Config = config
 	if err := validateNotificationChannelPayload(payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
 }
 
+// storeNotificationChannelConfig converts the request's config for one kind. The
+// config case must match the channel's kind: the kind is immutable, and a config
+// of another case has no delivery path.
+func storeNotificationChannelConfig(kind storepb.NotificationChannelKind, config *v1pb.NotificationChannelConfig) (*storepb.NotificationChannelConfig, error) {
+	switch kind {
+	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK:
+		webhook := config.GetWebhook()
+		if webhook == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the webhook channel configuration is required"))
+		}
+		return &storepb.NotificationChannelConfig{
+			Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: webhook.GetSign()}},
+		}, nil
+	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_DINGTALK:
+		dingtalk := config.GetDingtalk()
+		if dingtalk == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the DingTalk channel configuration is required"))
+		}
+		return &storepb.NotificationChannelConfig{
+			Config: &storepb.NotificationChannelConfig_Dingtalk{Dingtalk: &storepb.DingTalkChannelConfig{Sign: dingtalk.GetSign()}},
+		}, nil
+	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WECOM:
+		if config.GetWecom() == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the WeCom channel configuration is required"))
+		}
+		return &storepb.NotificationChannelConfig{
+			Config: &storepb.NotificationChannelConfig_Wecom{Wecom: &storepb.WeComChannelConfig{}},
+		}, nil
+	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_FEISHU:
+		feishu := config.GetFeishu()
+		if feishu == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the Feishu channel configuration is required"))
+		}
+		return &storepb.NotificationChannelConfig{
+			Config: &storepb.NotificationChannelConfig_Feishu{Feishu: &storepb.FeishuChannelConfig{Sign: feishu.GetSign()}},
+		}, nil
+	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL:
+		email := config.GetEmail()
+		if email == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the email channel configuration is required"))
+		}
+		addresses, err := outbound.NormalizeEmailAddresses(email.GetAddresses())
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return &storepb.NotificationChannelConfig{
+			Config: &storepb.NotificationChannelConfig_Email{Email: &storepb.EmailChannelConfig{
+				Addresses:       addresses,
+				IncludeAudience: email.GetIncludeAudience(),
+			}},
+		}, nil
+	case storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED:
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a notification channel kind is required"))
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported notification channel kind %q", kind.String()))
+	}
+}
+
 // mergeNotificationChannelUpdate applies the update mask to the stored payload.
-// An empty mask is a full update; otherwise only the named fields are taken from
-// the request, so a masked update does not have to repeat the whole channel.
+// An empty mask is a full update of the mutable fields; the kind itself stays
+// immutable, so a full update replaces everything the request may change and
+// keeps the stored kind.
 func mergeNotificationChannelUpdate(update *v1pb.NotificationChannel, paths []string, existing *storepb.NotificationChannel) (*storepb.NotificationChannel, error) {
 	if update == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a notification channel is required"))
 	}
-	if len(paths) == 0 {
-		return storeNotificationChannelPayload(update)
-	}
 	if existing == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("the notification channel no longer exists"))
+	}
+	// The kind is immutable, so a full update that names another kind is a
+	// client mistake rather than a silent no-op.
+	if kind := storepb.NotificationChannelKind(update.GetKind()); kind != storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED && kind != existing.GetKind() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the notification channel kind is immutable"))
+	}
+	if len(paths) == 0 {
+		paths = []string{"display_name", "enabled", "event_types", "min_severity", "language", "config"}
 	}
 	merged, ok := proto.Clone(existing).(*storepb.NotificationChannel)
 	if !ok {
@@ -375,11 +470,11 @@ func mergeNotificationChannelUpdate(update *v1pb.NotificationChannel, paths []st
 		case "language":
 			merged.Language = strings.TrimSpace(update.GetLanguage())
 		case "config":
-			if webhook := update.GetConfig().GetWebhook(); webhook != nil {
-				merged.Config = &storepb.NotificationChannelConfig{
-					Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: webhook.GetSign()}},
-				}
+			config, err := storeNotificationChannelConfig(merged.Kind, update.GetConfig())
+			if err != nil {
+				return nil, err
 			}
+			merged.Config = config
 		case "kind":
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the notification channel kind is immutable"))
 		default:
@@ -428,12 +523,12 @@ func notificationEventTypes(types []v1pb.NotificationType) []storepb.Notificatio
 // storeNotificationChannelSecret converts the write-only credential. Nil means
 // "keep what is stored".
 func storeNotificationChannelSecret(secret *v1pb.NotificationChannelSecret) *storepb.NotificationChannelSecret {
-	if secret == nil || (strings.TrimSpace(secret.GetWebhookUrl()) == "" && secret.GetWebhookSigningSecret() == "") {
+	if secret == nil || (strings.TrimSpace(secret.GetEndpoint()) == "" && secret.GetSigningSecret() == "") {
 		return nil
 	}
 	return &storepb.NotificationChannelSecret{
-		WebhookUrl:           strings.TrimSpace(secret.GetWebhookUrl()),
-		WebhookSigningSecret: secret.GetWebhookSigningSecret(),
+		Endpoint:      strings.TrimSpace(secret.GetEndpoint()),
+		SigningSecret: secret.GetSigningSecret(),
 	}
 }
 
@@ -464,16 +559,51 @@ func convertToV1NotificationChannel(channel *store.NotificationChannelMessage, w
 	for _, eventType := range channel.Payload.GetEventTypes() {
 		converted.EventTypes = append(converted.EventTypes, v1pb.NotificationType(eventType))
 	}
-	if webhook := channel.Payload.GetConfig().GetWebhook(); webhook != nil {
-		converted.Config = &v1pb.NotificationChannelConfig{
-			Config: &v1pb.NotificationChannelConfig_Webhook{
-				Webhook: &v1pb.WebhookChannelConfig{Sign: webhook.GetSign()},
-			},
-		}
-	}
+	converted.Config = convertToV1NotificationChannelConfig(channel.Payload.GetConfig())
 	converted.CreateTime = timestamppb.New(channel.CreatedAt)
 	converted.UpdateTime = timestamppb.New(channel.UpdatedAt)
 	return converted
+}
+
+// convertToV1NotificationChannelConfig renders the oneof case matching the stored
+// channel's kind. An unknown case stays unset rather than sending a config the
+// kind cannot use.
+func convertToV1NotificationChannelConfig(config *storepb.NotificationChannelConfig) *v1pb.NotificationChannelConfig {
+	switch typed := config.GetConfig().(type) {
+	case *storepb.NotificationChannelConfig_Webhook:
+		return &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Webhook{
+				Webhook: &v1pb.WebhookChannelConfig{Sign: typed.Webhook.GetSign()},
+			},
+		}
+	case *storepb.NotificationChannelConfig_Dingtalk:
+		return &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Dingtalk{
+				Dingtalk: &v1pb.DingTalkChannelConfig{Sign: typed.Dingtalk.GetSign()},
+			},
+		}
+	case *storepb.NotificationChannelConfig_Wecom:
+		return &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Wecom{Wecom: &v1pb.WeComChannelConfig{}},
+		}
+	case *storepb.NotificationChannelConfig_Feishu:
+		return &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Feishu{
+				Feishu: &v1pb.FeishuChannelConfig{Sign: typed.Feishu.GetSign()},
+			},
+		}
+	case *storepb.NotificationChannelConfig_Email:
+		return &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Email{
+				Email: &v1pb.EmailChannelConfig{
+					Addresses:       typed.Email.GetAddresses(),
+					IncludeAudience: typed.Email.GetIncludeAudience(),
+				},
+			},
+		}
+	default:
+		return nil
+	}
 }
 
 // convertToV1NotificationDelivery renders one queued or attempted delivery.

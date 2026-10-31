@@ -1362,6 +1362,72 @@
           "钩子"
         ]
       }
+    },
+    {
+      "id": "dingtalk",
+      "category": "Notifications",
+      "definition": "A DingTalk group robot that receives notification text.",
+      "translations": {
+        "en-US": "DingTalk",
+        "zh-CN": "钉钉"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "钉钉机器人",
+          "钉钉群机器人"
+        ]
+      }
+    },
+    {
+      "id": "wecom",
+      "category": "Notifications",
+      "definition": "A WeCom group robot whose key is part of the webhook URL.",
+      "translations": {
+        "en-US": "WeCom",
+        "zh-CN": "企业微信"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "企微",
+          "企业微信号"
+        ]
+      }
+    },
+    {
+      "id": "feishu",
+      "category": "Notifications",
+      "definition": "A Feishu custom bot that receives notification text.",
+      "translations": {
+        "en-US": "Feishu",
+        "zh-CN": "飞书"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "飞书机器人",
+          "飞书群机器人"
+        ]
+      }
+    },
+    {
+      "id": "smtp",
+      "category": "Notifications",
+      "definition": "The mail transport the workspace email setting points at.",
+      "translations": {
+        "en-US": "SMTP",
+        "zh-CN": "SMTP"
+      },
+      "scope": [
+        "notificationSettings."
+      ]
     }
   ]
 }

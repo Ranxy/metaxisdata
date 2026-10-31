@@ -55,6 +55,36 @@ service SettingService {
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
     option (metaxisdata.v1.audit) = true;
   }
+
+  // Get the workspace email setting. It is returned empty when email delivery
+  // is not configured, so the settings page can render one form either way.
+  rpc GetEmailSetting(GetEmailSettingRequest) returns (EmailSetting) {
+    option (google.api.http) = {get: "/v1/settings/email"};
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Update the workspace email setting. The password is write-only: an empty
+  // one on update keeps the stored password, and no read returns it.
+  rpc UpdateEmailSetting(UpdateEmailSettingRequest) returns (EmailSetting) {
+    option (google.api.http) = {
+      patch: "/v1/settings/email"
+      body: "setting"
+    };
+    option (google.api.method_signature) = "setting,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Send a test email to the caller's own address through the configured SMTP
+  // server. It is not audited: it changes nothing, and it is a diagnostic probe
+  // the settings page can repeat while an administrator types the server in.
+  rpc SendTestEmail(SendTestEmailRequest) returns (SendTestEmailResponse) {
+    option (google.api.http) = {
+      post: "/v1/settings/email:sendTestEmail"
+      body: "*"
+    };
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
 }
 
 message WorkspaceProfileSetting {
@@ -182,3 +212,79 @@ message UpdateDebugConfigResponse {
   // The resulting runtime debug mode.
   bool enabled = 1;
 }
+
+// EmailSetting configures the SMTP server workspace notifications are emailed
+// through. There is one per workspace: a channel of kind EMAIL delivers through
+// it, and an email channel fails while it is unset.
+message EmailSetting {
+  // The From address. It must be an address the SMTP server is allowed to send
+  // as. Empty means email delivery is not configured.
+  string from = 1;
+
+  // The display name shown beside the From address.
+  string from_name = 2;
+
+  // The SMTP server.
+  SMTPConfig smtp = 3;
+
+  // Whether a password is stored. The password itself is never returned.
+  bool password_set = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message SMTPConfig {
+  // The SMTP server host name.
+  string host = 1;
+
+  // The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25
+  // on a trusted network.
+  int32 port = 2;
+
+  SMTPEncryption encryption = 3;
+
+  SMTPAuthentication authentication = 4;
+
+  // The user name the login authenticates as. Required unless authentication is
+  // NONE.
+  string username = 5;
+
+  // The login password. It is write-only: an empty value on update keeps the
+  // stored password, and no read returns it.
+  string password = 6 [(google.api.field_behavior) = INPUT_ONLY];
+}
+
+// SMTPEncryption is the transport security of the SMTP connection.
+enum SMTPEncryption {
+  SMTP_ENCRYPTION_UNSPECIFIED = 0;
+  // No transport encryption. Only for a server on a trusted network.
+  SMTP_ENCRYPTION_NONE = 1;
+  // Upgrade the connection with STARTTLS after the greeting.
+  SMTP_ENCRYPTION_STARTTLS = 2;
+  // Implicit TLS from the first byte, usually port 465.
+  SMTP_ENCRYPTION_SSL_TLS = 3;
+}
+
+// SMTPAuthentication is the login mechanism of the SMTP connection.
+enum SMTPAuthentication {
+  SMTP_AUTHENTICATION_UNSPECIFIED = 0;
+  // No login; only for a server that accepts mail from trusted hosts.
+  SMTP_AUTHENTICATION_NONE = 1;
+  SMTP_AUTHENTICATION_PLAIN = 2;
+  SMTP_AUTHENTICATION_LOGIN = 3;
+  SMTP_AUTHENTICATION_CRAM_MD5 = 4;
+}
+
+message GetEmailSettingRequest {}
+
+message UpdateEmailSettingRequest {
+  // The setting to update.
+  EmailSetting setting = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The list of fields to update: from, from_name, smtp, or one of
+  // smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username,
+  // smtp.password.
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message SendTestEmailRequest {}
+
+message SendTestEmailResponse {}

@@ -183,4 +183,8 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | channel | 渠道 | Notifications | An administrator-configured outbound destination for workspace notifications. | notificationSettings. | zh-CN: `通道`, `信道` |
 | delivery | 投递 | Notifications | One queued attempt to post one notification event to one channel. | notificationSettings. | zh-CN: `推送记录`, `发送记录` |
 | Webhook | Webhook | Notifications | A generic HTTP endpoint that receives a signed JSON body. | notificationSettings. | zh-CN: `网络钩子`, `回调地址`, `钩子` |
+| DingTalk | 钉钉 | Notifications | A DingTalk group robot that receives notification text. | notificationSettings. | zh-CN: `钉钉机器人`, `钉钉群机器人` |
+| WeCom | 企业微信 | Notifications | A WeCom group robot whose key is part of the webhook URL. | notificationSettings. | zh-CN: `企微`, `企业微信号` |
+| Feishu | 飞书 | Notifications | A Feishu custom bot that receives notification text. | notificationSettings. | zh-CN: `飞书机器人`, `飞书群机器人` |
+| SMTP | SMTP | Notifications | The mail transport the workspace email setting points at. | notificationSettings. | — |
 <!-- END GENERATED GLOSSARY -->

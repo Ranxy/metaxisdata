@@ -123,9 +123,10 @@ type NotificationServiceClient interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. It queues no delivery and is not audited: it is a diagnostic probe
-	// that changes nothing, and the endpoint's answer is third-party text that does
-	// not belong in the permanent ledger.
+	// answered. An email channel sends the message through the workspace SMTP
+	// setting instead, and its answer is empty. It queues no delivery and is not
+	// audited: it is a diagnostic probe that changes nothing, and the endpoint's
+	// answer is third-party text that does not belong in the permanent ledger.
 	TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.
@@ -376,9 +377,10 @@ type NotificationServiceHandler interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. It queues no delivery and is not audited: it is a diagnostic probe
-	// that changes nothing, and the endpoint's answer is third-party text that does
-	// not belong in the permanent ledger.
+	// answered. An email channel sends the message through the workspace SMTP
+	// setting instead, and its answer is empty. It queues no delivery and is not
+	// audited: it is a diagnostic probe that changes nothing, and the endpoint's
+	// answer is third-party text that does not belong in the permanent ledger.
 	TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.

@@ -265,7 +265,7 @@ func (s *Service) Send(ctx context.Context, n *storepb.Notification) error {
 		return err
 	}
 	if written {
-		s.enqueueOutbound(ctx, n)
+		s.enqueueOutbound(ctx, n, []int32{n.GetRecipientId()})
 	}
 	return nil
 }
@@ -328,7 +328,13 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 	if written {
 		// One event per call, however many administrators it addressed: the
 		// outbox is workspace-level, so the channel receives the message once.
-		s.enqueueOutbound(ctx, n)
+		// The audience is every administrator, because the event concerned all of
+		// them even though the delivery is one row.
+		audience := make([]int32, 0, len(admins))
+		for _, id := range admins {
+			audience = append(audience, int32(id))
+		}
+		s.enqueueOutbound(ctx, n, audience)
 	}
 	return nil
 }
