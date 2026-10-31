@@ -171,6 +171,34 @@ keeps receiving its events, while a channel marked **Only receive events selecte
 by a routing rule** receives an event only when a rule selects it. A deleted
 channel is ignored; the rule's other channels still deliver.
 
+The data quality digest is the one event routing rules never select: it is a
+scheduled workspace summary with no audience to match. Subscribe a channel to it
+through its event types instead.
+
+### The data quality digest
+
+When an administrator enables the weekly digest under Settings → Data Quality,
+the server posts one summary per week to every enabled channel whose event types
+include **Data quality digest**. This is **opt-in**: a channel with no event types
+(or with other types only) keeps receiving event notifications and no digest, so
+an existing configuration never starts receiving a new periodic message by
+itself. The digest goes only to outbound channels — it does not appear in the
+inbox.
+
+The payload is a rendered title and plain-text summary: the rolling seven-day
+period, executions by verdict, problems opened/recovered/still open, and the
+owners and targets with the most to look at, plus a link to the Data Quality
+overview when the deployment's external URL is configured. The generic webhook
+body carries the same structured summary.
+
+Email channels need at least one fixed address: the digest has no audience of its
+own, so **include the audience** cannot resolve recipients for it. Quiet hours
+still hold a digest delivery until the window ends (a channel can opt out), and
+delivery retries are the same as for any event. A digest is sent at most once per
+ISO week; if the server missed the scheduled minute it still sends within 24
+hours, and a longer outage skips that week (one warning is logged). See
+[data-quality.md](data-quality.md#reports-exports-and-the-weekly-digest).
+
 ## Deliveries
 
 The **Deliveries** card on the same page lists the most recent attempts: the

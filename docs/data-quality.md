@@ -202,6 +202,70 @@ same audience. Execution failures always notify the administrators and cannot be
 muted. When more than ten checks in one target's scan batch fail, one summary
 replaces the per-check messages. An administrator can also forward the same events to a webhook under Settings → Notifications; see [notifications.md](notifications.md).
 
+## Reports, exports and the weekly digest
+
+Three things leave the screen; all of them are read-only snapshots of what the
+checks already recorded.
+
+**CSV export.** The Executions, Issues and Targets directories each have an
+**Export CSV** button. It exports the **whole set your current filters select**,
+not just the visible page: state, outcome, trigger, rule, target, instance,
+owner, and time window all apply. The file is UTF-8 with a header row and opens
+directly in a spreadsheet.
+
+- The export stops at **100,000 rows**. When it does, the file ends with the rows
+  it could fit and the app tells you it was capped — narrow the filters (for
+  example the time window) to get the rest.
+- It is a sequence of queries, not a database snapshot: rows written while it
+  runs may land in this export or the next one. If the stream fails midway the
+  file is incomplete — discard it and run the export again.
+- Text cells that begin with `=`, `+`, `-`, `@`, a tab or a carriage return get
+  a leading single quote, so a check title or table name cannot turn into a
+  spreadsheet formula; numeric, enum and timestamp columns are left as they are.
+- Exporting is a **bulk read**, so it is recorded in the audit log (who exported,
+  with which filters, how many rows) and counts against the caller's request
+  budget. At most four exports or reports stream at once per server; a fifth
+  request is refused with "too many concurrent exports" rather than queued.
+- An export stops after 15 minutes; the app can also cancel it by navigating
+  away, and a cancelled export does not leave a file behind.
+- Exported files contain metadata and verdicts only — never the sampled failure
+  rows.
+
+**Target report.** The target workspace has **Export report**. It downloads one
+self-contained HTML file (styles and chart are embedded; nothing is loaded from
+the network) that you can open anywhere or forward as an attachment. It covers
+the last 30 days by default (up to 90) and contains the report scope, the current
+result summary and pass rate, the daily trend, the check list, the unresolved
+problems, a capped sample summary of failed checks, and the monitoring basis
+(target, instance, schedule, rule revisions, engine versions). It is generated in
+the interface language you are using.
+
+The report is the one export that contains **real values from your data** — up to
+5 sample rows per failed check (at most 20 checks), capped at 2 MiB in total, with
+an explicit note when anything was cut. Treat the file as sensitive: forwarding it
+forwards those rows. Generating it is audited; the HTML body itself is never
+written to the audit log.
+
+**Weekly digest.** Settings → Data Quality has a **Weekly digest** card: enable
+it, pick the weekday, the `HH:MM` time and the IANA time zone. The digest is a
+workspace-level summary of the last rolling seven days — executions by verdict,
+problems opened/recovered/still open, and the owners and targets with the most to
+look at — delivered to the outbound notification channels, not to the bell icon.
+
+- Configure the destination first under **Settings → Notifications**: create a
+  channel and tick **Data quality digest** in its event types. Delivery is
+  **opt-in**: a channel with no event types selected receives the event
+  notifications but *not* the digest.
+- Email channels need at least one fixed address; the digest has nobody in
+  particular to address, so "include the audience" cannot resolve recipients.
+- If the server is down at the scheduled minute, the digest is still sent when it
+  comes back within **24 hours**. A longer outage skips that week (one warning is
+  logged); the next week's digest runs normally.
+- Routing rules (owner/team) do not apply to the digest — it is one workspace
+  summary, with owners used as grouping inside the text.
+- A digest is queued once per ISO week; retries reuse the same delivery record, so
+  a restart cannot send the same week twice.
+
 ## Profiles, labels and suggestions
 
 The table detail page has a **Data Quality** tab: how many checks watch the table,
@@ -304,8 +368,10 @@ Settings → Data Quality controls: the model-analysis switch and provider,
 whether failure samples are stored and how many, the default schedule a target
 starts with when it gets its first check, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
 default 10,000)**, the daily column-analysis ceiling, the **concurrent LLM calls
-(default 8, range 1–64)**, the columns per analysis, and whether raw sample
-values may be sent to the model. A read-only **Today's AI usage** card shows
+(default 8, range 1–64)**, the columns per analysis, whether raw sample
+values may be sent to the model, and the **weekly digest** schedule (see
+[Reports, exports and the weekly digest](#reports-exports-and-the-weekly-digest)).
+A read-only **Today's AI usage** card shows
 used/limit for both analysis buckets, in-flight/concurrency and when the counters
 reset (00:00 UTC). The counters are process-local: a restart starts them at zero.
 Zero in a field means the server default; the page shows the effective values.
@@ -326,6 +392,7 @@ Executions are kept 90 days, resolved issues 90 days, column profiles and the
 model result cache 7 days, decided or superseded suggestions 90 days, finished AI drafting jobs
 90 days, and captured raw LLM request/response debug entries 7 days; the
 maintenance runner prunes them. Checks, open issues and accepted labels are not
+pruned. The weekly-digest period table gains at most one row per week and is not
 pruned.
 
 ## Troubleshooting
@@ -346,6 +413,10 @@ pruned.
 | An AI analysis is rejected as over quota | Settings → Data Quality → Today's AI usage shows used/limit and concurrency. Raise **Daily AI analyses** (L1+L2, max 1,000,000) or **Concurrent LLM calls** (1–64); the change applies to the next analysis without a restart. |
 | A model rejects the output budget | The provider profile's **Max output tokens** is above what that model accepts. The server first retries that request once at 4,096 tokens; if it is still rejected, lower the profile budget (Settings → LLM providers) or use a model with a larger output cap. The failure shows a provider-status diagnostic. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
+| A CSV export stops early | The selection is capped at 100,000 rows; the app warns when the file was cut. Narrow the filters (especially the time window) and export again. |
+| "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |
+| The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |
+| The digest email has no recipients | The digest has no per-person audience: an email channel must carry fixed addresses; "include the audience" cannot resolve anyone for it. |
 
 The API surface, resource names, data model and invariants are documented for
 maintainers in [.agents/docs/data-quality.md](../.agents/docs/data-quality.md).
