@@ -263,7 +263,7 @@
 - 组件（写入口 + 推送 hub）：[backend/component/notification/service.go](../../backend/component/notification/service.go)、[hub.go](../../backend/component/notification/hub.go)。
 - store：[backend/store/notification.go](../../backend/store/notification.go)。
 - API handler 与转换：[backend/api/v1/notification_service.go](../../backend/api/v1/notification_service.go)。
-- 同步聚合与后台失败通知：[backend/runner/schemasync/operation.go](../../backend/runner/schemasync/operation.go)、[syncer.go](../../backend/runner/schemasync/syncer.go)。
+- 同步聚合与后台失败通知：[backend/runner/schemasync/operation.go](../../backend/runner/schemasync/operation.go)、[instance_sync.go](../../backend/runner/schemasync/instance_sync.go)。
 - 摄取失败通知：[backend/api/v1/openlineage_handler.go:93-143](../../backend/api/v1/openlineage_handler.go#L93-L143)、[backend/plugin/openlineage/resolver.go](../../backend/plugin/openlineage/resolver.go)。
 - 接线与停机：[backend/server/grpc_routes.go:74-192](../../backend/server/grpc_routes.go#L74-L192)、[backend/server/server.go:128](../../backend/server/server.go#L128)、[:225-226](../../backend/server/server.go#L225-L226)。
 - proto：[proto/v1/v1/notification_service.proto](../../proto/v1/v1/notification_service.proto)、[proto/store/store/notification.proto](../../proto/store/store/notification.proto)；生成物 `backend/generated-go/`、`frontend/src/types/proto-es/`、`proto/gen/grpc-doc/` 一起提交。

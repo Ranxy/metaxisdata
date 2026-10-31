@@ -409,7 +409,7 @@ makes that change, against a deployment that actually has the rows.
 | Store | [backend/store/](../../backend/store/) — `application.go`, `application_api_key.go`, `application_sql.go` |
 | Ingest endpoint | [backend/api/v1/application_sql_handler.go](../../backend/api/v1/application_sql_handler.go); route in `backend/server/grpc_routes.go` |
 | Management service | [backend/api/v1/application_service.go](../../backend/api/v1/application_service.go), `proto/v1/v1/application_service.proto` |
-| Runner | [backend/runner/lineageanalyzer/analyzer.go](../../backend/runner/lineageanalyzer/analyzer.go) — `queueAll`, `buildSQL`, `classifyApplicationSQL` |
+| Runner | [backend/runner/lineageanalyzer/](../../backend/runner/lineageanalyzer/) — `queueAll`(`analyzer.go`), `buildSQL`(`build_sql.go`), `classifyApplicationSQL`(`classify.go`) |
 | Schema | `backend/migrator/migration/LATEST.sql` and `0.1/0019##application_sql.sql` |
 | SPA | `frontend/src/pages/ApplicationManagementPage.vue` (under `/settings/applications`), `ApplicationSQLPage.vue`, `src/components/application/ApplicationSelect.vue`, `src/components/metadata/ApplicationSQL{List,MetadataDetail}.vue`, `src/api/application.ts`, `src/lib/lineageOrigin.ts`, `src/lib/statementLabel.ts` |
 | Permissions | `backend/common/permission/permission.json` (`applications.*`, `applicationSqls.*`), `backend/store/predefined_roles.go` |

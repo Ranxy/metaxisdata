@@ -300,7 +300,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 **schemasync（`backend/runner/schemasync/`）**
 
-最关键的实现约束：`SyncInstance`（`syncer.go:662-670`）和 `SyncDatabaseSchema`（`syncer.go:792-800`）
+最关键的实现约束：`SyncInstance`（`instance_sync.go`）和 `SyncDatabaseSchema`（`database_sync.go`）
 的 per-resource gate 会让**非 owner 等待并复用 owner 的结果**。所以 outcome/耗时只能在 `owner == true`
 的分支记录；API 触发和后台触发走的是同一个函数（`instance_service.go:183,378,462`、
 `operation.go:378`），**只在共享函数里埋一次**，不要在 API handler 再埋。
@@ -317,7 +317,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | `metaxisdata_schemasync_driver_call_duration_seconds` | histogram | `engine,call=sync_instance\|sync_db_schema` | driver 调用处（`:635`、`:832`） | 把「目标库慢」和「元数据库慢」拆开 | P0 |
 | `metaxisdata_schemasync_queue_depth` | gauge | `state=queued\|retrying` | scrape-time `GaugeFunc`（Range 两个 `sync.Map`） | 队列没有 Len，用 Range 近似；含等待退避的项 | P1 |
 | `metaxisdata_schemasync_in_flight` | gauge | `kind=instance\|database` | gate 的 `count()`（需新访问器） | 正在跑的真实同步数（owner） | P1 |
-| `metaxisdata_schemasync_meta_resources_written_total` | counter | `object_type` | **commit 之后**（`syncer.go:1030` 之后） | 创建+更新合并计数（`diff()` 不区分 created/updated） | P0 |
+| `metaxisdata_schemasync_meta_resources_written_total` | counter | `object_type` | **commit 之后**（`database_sync.go` 的 `SyncDatabaseSchema`） | 创建+更新合并计数（`diff()` 不区分 created/updated） | P0 |
 | `metaxisdata_schemasync_meta_resources_deleted_total` | counter | `object_type` | `logSchemaSyncDeletion`（`:1350-1368`，已有按类型计数） | 破坏性同步的告警面；保持「只记日志」的既有决策不变 | P0 |
 | `metaxisdata_schemasync_ddl_refresh_total` | counter | `mode=full\|rotating\|changed` | commit 后（`:1056-1058`） | DDL 刷新节奏 | P1 |
 | `metaxisdata_schemasync_ddl_objects_total` | counter | `result=upserted\|deleted\|unchanged` | commit 后（`:1030`） | DDL 行写入；事务内不要埋 | P1 |
@@ -371,7 +371,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 ### 4.3 血缘：analyzer / OpenLineage 摄取 / revalidation
 
-**lineage analyzer（`backend/runner/lineageanalyzer/analyzer.go`）**
+**lineage analyzer（`backend/runner/lineageanalyzer/{analyzer,queue,analyze,persist}.go`）**
 
 最重要的实现约束：`drainAndAnalyze` **只能看到非 nil error**，而 `analyzeObject` 对
 「解析失败清空血缘」（`:548-550`）、「空定义清空」（`:499-501`）、「定义不可读保留旧边」（`:508-511`）、
@@ -430,7 +430,7 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 ### 4.4 数据质量：调度 / 规则执行 / 问题台账 / 目标库查询 / 画像
 
-**调度与执行（`backend/runner/qualityrunner/qualityrunner.go`、`backend/api/v1/data_quality_service.go`）**
+**调度与执行（`backend/runner/qualityrunner/{qualityrunner,schedule,plan,admission,execute,issue,notify}.go`、`backend/api/v1/data_quality_service.go`）**
 
 `quality_run` 是内部派发批次（连接准入、一个 tick 的分组、风暴聚合、保留期级联），
 **没有任何指标以它为单位**；对外指标一律按执行（`quality_execution`）计。

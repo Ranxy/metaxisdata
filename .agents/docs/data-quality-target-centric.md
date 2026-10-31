@@ -203,7 +203,7 @@ quality_contract_revision
 - **幂等发布**：相同 settings + 相同 checks 的 fingerprint 相同；发布事务在行锁内比较最新 revision 的 fingerprint，相同则返回既有版本（`no_changes=true`），不产生重复版本。
 - **不接管**：执行、问题、通知、配额、issue 唯一性全部保持规则粒度；契约不新增执行实体，也没有独立的契约编辑器。
 
-**实现位置**：`backend/store/quality_contract.go`（CRUD/发布事务/历史）、`backend/api/v1/data_quality_contract.go`（5 个 RPC、快照/差异/转换）、`backend/component/dataquality/contract.go`（filter 校验与合并）、`backend/runner/qualityrunner/qualityrunner.go`（执行前读契约 filter）、`frontend/src/components/data-quality/{TargetContractCard,ContractSettingsDialog,ContractPublishDialog,ContractHistoryDrawer}.vue`。
+**实现位置**：`backend/store/quality_contract.go`（CRUD/发布事务/历史）、`backend/api/v1/data_quality_contract.go`（5 个 RPC、快照/差异/转换）、`backend/component/dataquality/contract.go`（filter 校验与合并）、`backend/runner/qualityrunner/contract.go`（执行前读契约 filter）、`frontend/src/components/data-quality/{TargetContractCard,ContractSettingsDialog,ContractPublishDialog,ContractHistoryDrawer}.vue`。
 
 **测试**：`dataquality/contract_test.go` + 执行/校验测试、`api/v1/data_quality_contract_test.go`、集成 `TestDataQualityContractRealServerIntegration`（真实 PG+MySQL：settings 校验、发布/幂等/历史/差异、契约 filter 进入执行 SQL）。
 
@@ -303,7 +303,7 @@ API 语义：
 - 没有把目标组按 GUID 全局排序：那会把“最老 due 先跑”改成字母序，饥饿/公平性变差；GUID 只作为目标身份，不承担调度优先级。
 - 批次卡显示 “{count} 个目标”（多目标批次）让“一批 = 一个实例的一批规则，其中按目标连续”可见。
 
-文件：`backend/store/quality_rule.go`（due 查询按目标聚合 + `selectDueTargets`）、`backend/runner/qualityrunner/qualityrunner.go`（`planDueBatches`/`planInstanceDueBatches`、批次上限常量）、`backend/api/v1/data_quality_service.go`（手动选择排序）、对应单测；前端批次卡与目标视图的 “N/M 条检查” 提示。
+文件：`backend/store/quality_rule.go`（due 查询按目标聚合 + `selectDueTargets`）、`backend/runner/qualityrunner/plan.go`（`planDueBatches`/`planInstanceDueBatches`）、`backend/runner/qualityrunner/qualityrunner.go`（批次上限常量）、`backend/api/v1/data_quality_service.go`（手动选择排序）、对应单测；前端批次卡与目标视图的 “N/M 条检查” 提示。
 
 ### 3.10 目标级调度（Phase C）
 
@@ -318,7 +318,7 @@ API 语义：
 - `row_count_change` 的基线新鲜度窗口改用目标 interval（调度是目标级，规则不再有自己的 interval）。
 - 未做：一目标一批次的调度模型、`quality_run.target_guid`、连接租约与批次身份解耦；这些仍属新的产品决策。
 
-文件：`backend/migrator/migration/0.1/0030##quality_target_schedule.sql` + `LATEST.sql`、`backend/store/quality_target_schedule.go`、`backend/store/quality_rule.go`（删 schedule 列/事务内 ensure）、`backend/store/quality_target.go`（summary join）、`backend/runner/qualityrunner/qualityrunner.go`（due target 查询/规划/推进/基线）、`backend/api/v1/data_quality_target.go`（`UpdateQualityTargetSchedule` + summary）、`backend/api/v1/data_quality_service.go`（create/update/archive 同步目标 schedule）、`proto/v1/v1/data_quality_service.proto`；前端目标页调度卡/对话框、`TargetRuleComposer`/`QualityCheckDrawer`/`TargetCheckRow`/`ContractSettingsDialog`/`BatchCreateRulesDialog`、`utils/dataQualityForm.ts`、`utils/dataQualitySuggestion.ts`。测试：store 的 schedule 扫描/整目标预算、runner 的规划/推进/超限分片、integration 的“到期目标全部检查同批 + next slot 推进”、前端目标调度编辑/移除规则级 schedule。
+文件：`backend/migrator/migration/0.1/0030##quality_target_schedule.sql` + `LATEST.sql`、`backend/store/quality_target_schedule.go`、`backend/store/quality_rule.go`（删 schedule 列/事务内 ensure）、`backend/store/quality_target.go`（summary join）、`backend/runner/qualityrunner/{schedule,plan}.go`（due target 查询/规划/推进/基线）、`backend/api/v1/data_quality_target.go`（`UpdateQualityTargetSchedule` + summary）、`backend/api/v1/data_quality_service.go`（create/update/archive 同步目标 schedule）、`proto/v1/v1/data_quality_service.proto`；前端目标页调度卡/对话框、`TargetRuleComposer`/`QualityCheckDrawer`/`TargetCheckRow`/`ContractSettingsDialog`/`BatchCreateRulesDialog`、`utils/dataQualityForm.ts`、`utils/dataQualitySuggestion.ts`。测试：store 的 schedule 扫描/整目标预算、runner 的规划/推进/超限分片、integration 的“到期目标全部检查同批 + next slot 推进”、前端目标调度编辑/移除规则级 schedule。
 
 ### 3.11 一目标一批次 / 批次目标身份（Phase D）
 
@@ -332,7 +332,7 @@ API 语义：
 - 连接租约仍是批次级：一个实例同时只有有限批次，同实例串行；没有把租约提升到目标级。
 - 目标周期（D-71）：一次 due cycle 可跨批次/tick；未完成的检查在下一次扫描按 attempt 2/3 补跑，最多 3 次尝试；批次结束后检查目标是否还有 pending 规则，没有才把 schedule 推进到 `now + interval`；`QualityRun.retry_count`/`QualityExecution.attempt` 让补跑可见。
 
-文件：`backend/migrator/migration/0.1/0031##quality_run_target.sql` + `LATEST.sql`、`backend/store/quality_run.go`（target 列/过滤/目标最新批次/revision range）、`backend/runner/qualityrunner/qualityrunner.go`（一目标一批次、tick 目标预算）、`backend/api/v1/data_quality_service.go`（手动按目标拆批）、`data_quality_run.go`/`data_quality_target.go`/`data_quality_convert.go`、`proto/v1/v1/data_quality_service.proto`；前端 `QualityRunCard`/`TargetScanHistory`/`TargetRecentScanCard`/执行页、`api/data-quality.ts`。测试：store run 扫描/过滤、runner 一目标一批次 plan、API 转换、integration 手动跨目标拆批与 scheduled 批次 target。
+文件：`backend/migrator/migration/0.1/0031##quality_run_target.sql` + `LATEST.sql`、`backend/store/quality_run.go`（target 列/过滤/目标最新批次/revision range）、`backend/runner/qualityrunner/schedule.go`（一目标一批次、tick 目标预算）、`backend/api/v1/data_quality_service.go`（手动按目标拆批）、`data_quality_run.go`/`data_quality_target.go`/`data_quality_convert.go`、`proto/v1/v1/data_quality_service.proto`；前端 `QualityRunCard`/`TargetScanHistory`/`TargetRecentScanCard`/执行页、`api/data-quality.ts`。测试：store run 扫描/过滤、runner 一目标一批次 plan、API 转换、integration 手动跨目标拆批与 scheduled 批次 target。
 
 ## 4. 阶段计划
 
@@ -428,8 +428,8 @@ API 语义：
 | 目标列表 | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue`（测试同名 `.test.ts`） |
 | 目标工作台 | `frontend/src/pages/data-quality/DataQualityTargetPage.vue` + `components/data-quality/TargetCheckRow.vue`、`TargetDraftCard.vue`、`TargetCopilotPanel.vue`、`TargetRuleComposer.vue`（唯一检查编辑器）、`TargetCoverageCard.vue`、`TargetRuleHistoryStrip.vue`、`TargetRecentScanCard.vue`（最近扫描批次）、`QualityCheckDrawer.vue`（检查详情） |
 | 执行页（Phase A） | `frontend/src/pages/data-quality/DataQualityExecutionsPage.vue`（默认按目标；`?view=executions` 平铺）、`components/data-quality/QualityRunCard.vue`（批次卡 + 检查明细）、`TargetScanHistory.vue`（目标展开的批次历史） |
-| 批次目标身份（Phase D） | `backend/migrator/migration/0.1/0031##quality_run_target.sql`、`backend/store/quality_run.go`、`backend/runner/qualityrunner/qualityrunner.go`、`backend/api/v1/data_quality_service.go`、`data_quality_run.go`、`data_quality_target.go`、`proto/v1/v1/data_quality_service.proto`、`frontend/src/components/data-quality/QualityRunCard.vue`、`TargetScanHistory.vue`、`TargetRecentScanCard.vue`、`DataQualityExecutionsPage.vue` |
-| 目标调度（Phase C） | `backend/store/quality_target_schedule.go`（`Ensure`/`Update`/`Sync`/`FindDueQualityTargets`/`AdvanceQualityTargetNextRun`）、`backend/migrator/migration/0.1/0030##quality_target_schedule.sql` + `LATEST.sql`、`backend/runner/qualityrunner/qualityrunner.go`（due target 规划/目标推进/基线 interval）、`backend/api/v1/data_quality_target.go`（`UpdateQualityTargetSchedule`）、`proto/v1/v1/data_quality_service.proto`（`QualityTargetSchedule`、summary `schedule`）、前端目标页调度展示/编辑、`api/data-quality.ts` |
+| 批次目标身份（Phase D） | `backend/migrator/migration/0.1/0031##quality_run_target.sql`、`backend/store/quality_run.go`、`backend/runner/qualityrunner/{schedule,plan}.go`、`backend/api/v1/data_quality_service.go`、`data_quality_run.go`、`data_quality_target.go`、`proto/v1/v1/data_quality_service.proto`、`frontend/src/components/data-quality/QualityRunCard.vue`、`TargetScanHistory.vue`、`TargetRecentScanCard.vue`、`DataQualityExecutionsPage.vue` |
+| 目标调度（Phase C） | `backend/store/quality_target_schedule.go`（`Ensure`/`Update`/`Sync`/`FindDueQualityTargets`/`AdvanceQualityTargetNextRun`）、`backend/migrator/migration/0.1/0030##quality_target_schedule.sql` + `LATEST.sql`、`backend/runner/qualityrunner/{schedule,plan}.go`（due target 规划/目标推进/基线 interval）、`backend/api/v1/data_quality_target.go`（`UpdateQualityTargetSchedule`）、`proto/v1/v1/data_quality_service.proto`（`QualityTargetSchedule`、summary `schedule`）、前端目标页调度展示/编辑、`api/data-quality.ts` |
 | 批次读模型（Phase A） | `backend/store/quality_run.go`（`ListQualityRuns`/`GetQualityRun`/`ListQualityRunTargets`/`ListQualityTargetRunSummaries`）、`backend/api/v1/data_quality_run.go`、`data_quality_target.go`（`latest_run`/`run_count` 富化）、`data_quality_convert.go`、`proto/v1/v1/data_quality_service.proto`（`QualityRun`/`QualityRunTarget`/两个 RPC/`Execution.run`） |
 | 检查目录 | `frontend/src/pages/data-quality/DataQualityChecksPage.vue`（跨目标只读目录；取代已删除的 `DataQualityRulesPage.vue`） |
 | 已删除的旧页面 | `DataQualityRulesPage.vue`、`DataQualityRuleEditorPage.vue`、`DataQualityRuleDetailPage.vue` 及其测试（旧 URL 由 `RedirectQualityRulePage.vue` 兜底） |

@@ -63,10 +63,11 @@ Consequences worth knowing before changing this area:
 | --- | --- | --- |
 | runner interface + panic boundary | `backend/runner/runner.go` | `backend/runner/runner_test.go` |
 | startup/shutdown wiring | `backend/server/server.go` | integration suites |
-| sync queue/gates/operations | `backend/runner/schemasync/{syncer,operation}.go` | `syncer_test.go`, `operation_test.go`, MySQL integration |
-| analysis queue/cadence | `backend/runner/lineageanalyzer/analyzer.go` | `analyzer_test.go`, `backend/test/integration/runner/schemasync_lineage_mysql_service_test.go` |
+| sync queue/gates/operations | `backend/runner/schemasync/{syncer,queue,gate,instance_sync,database_sync,operation}.go` | `syncer_test.go`, `operation_test.go`, MySQL integration |
+| analysis queue/cadence | `backend/runner/lineageanalyzer/{analyzer,queue,analyze,persist}.go` | `analyzer_test.go`, `backend/test/integration/runner/schemasync_lineage_mysql_service_test.go` |
 | validation trigger/settle | `backend/runner/lineagevalidation/validation.go` | `validation_test.go` |
 | maintenance pass | `backend/runner/maintenance/maintenance.go` | `maintenance_test.go` |
+| quality scheduling/execution | `backend/runner/qualityrunner/{schedule,plan,admission,execute,issue,notify}.go` | `qualityrunner_test.go`, `backend/test/integration/runner` |
 | per-instance connection budget | `backend/component/state/connection.go` | `backend/component/state/connection_test.go` |
 
 ## Known accepted gaps

@@ -42,20 +42,20 @@ OceanBase 刻意不注册(`engines.go` 的包注释),`Analyze` 对它是 `ErrorE
 
 | 机制 | 代码 | 行为 |
 | --- | --- | --- |
-| 周期全扫 | `backend/runner/lineageanalyzer/analyzer.go:28,194` | `lineageAnalysisInterval = 1h`,启动时先扫一次;结果进入**扫描 backlog 队列**(`queueScan`) |
-| 队列消费 | `analyzer.go:29,239,282` | `analyzeCheckerInterval = 10s`,并发池 `MaxGoroutines = 10`;每 tick 先 drain **事件队列**,扫描 backlog 只填剩余预算,单 tick 上限 `maxAnalyzeBatch = MaxGoroutines*100`(1000),未取出的 key 留在队列 |
-| 单对象超时 | `analyzer.go:45,307` | 每个对象 `context.WithTimeout(analyzeObjectTimeout = 2m)`;超时/取消归类为瞬时失败(退避重试),**不写失败状态、不清边** |
-| 事件驱动 | `analyzer.go:105`;`backend/runner/schemasync/syncer.go`;`backend/api/v1/database_manual_sql.go:72,269` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由保存端点入队;APPLICATION_SQL 只在 upsert **创建了该语句**时入队([application-sql-ingestion.md](application-sql-ingestion.md)) —— 重复上报不重算 |
-| 类型解析 | `analyzer.go:268,528` | 一个对象的关联 GUID 用一次 `ListMetaRegistryResourceDigest{GUIDs}` 批量补类型;对象自身查询带 `ObjectType` 以命中 GUID+type 缓存 |
+| 周期全扫 | `backend/runner/lineageanalyzer/analyzer.go`（`Run`、`queueAllBounded`） | `lineageAnalysisInterval = 1h`,启动时先扫一次;结果进入**扫描 backlog 队列**(`queueScan`) |
+| 队列消费 | `queue.go`（`drainAndAnalyze`、`takeAnalyzeBatch`） | `analyzeCheckerInterval = 10s`,并发池 `MaxGoroutines = 10`;每 tick 先 drain **事件队列**,扫描 backlog 只填剩余预算,单 tick 上限 `maxAnalyzeBatch = MaxGoroutines*100`(1000),未取出的 key 留在队列 |
+| 单对象超时 | `analyze.go`（`analyzeObject`、`analysisTimedOut`） | 每个对象 `context.WithTimeout(analyzeObjectTimeout = 2m)`;超时/取消归类为瞬时失败(退避重试),**不写失败状态、不清边** |
+| 事件驱动 | `queue.go`（`QueueAnalysis`）;`backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 提交后）;`backend/api/v1/database_manual_sql.go:72,269` | schema sync 提交**之后**把变更的 VIEW / MV 入队;MANUAL_SQL 由保存端点入队;APPLICATION_SQL 只在 upsert **创建了该语句**时入队([application-sql-ingestion.md](application-sql-ingestion.md)) —— 重复上报不重算 |
+| 类型解析 | `analyze.go`（`analyzeObject`）、`queue.go`（`typeLookupGUIDs`） | 一个对象的关联 GUID 用一次 `ListMetaRegistryResourceDigest{GUIDs}` 批量补类型;对象自身查询带 `ObjectType` 以命中 GUID+type 缓存 |
 | 变更检测 | `analyzer.go` 的 `needsAnalysis` | 比较 `meta_registry_resource.metahash`、`column_lineage_version.meta_hash` **与 `analyzer_version`**:hash 相同且 analyzer 版本相同才跳过 |
 | 分析写入 | `analyzer.go` 的 `analyzeObject` | 包成 `CREATE VIEW name AS <definition>` → `Analyze` → 过滤 `IsTemp` → `ReplaceColumnLineageIfCurrent`(边 + version + 缺口消息同事务) |
 | 写入前置条件 | `store/column_lineage.go` 的 `lockAnalysisState` | 以分析时读到的 `meta_hash` 为前置条件 `SELECT ... FOR SHARE`;**对象已删 → 丢弃结果**(`ErrAnalysisGone`);hash 变 → 丢弃并立即重排(`ErrAnalysisStale`) |
 | 失败(解析/无定义) | `analyzer.go` 的 `markAnalysisFailed` | `MarkAnalysisFailedIfCurrent`:清空该对象血缘 + 写 `error_message` + **存当前 meta_hash**,同一事务提交;`cause=nil` 表示定义已变空 |
-| 失败(瞬时) | `analyzer.go:62-72,92-112` | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫;`RecordAnalysisError` 只更新 error_message,不清旧 hash。分析超时同上 |
+| 失败(瞬时) | `queue.go`（`analysisRetryBackoff`、`retryAfterFailure`） | 有界退避重试 30s / 2m / 5m,最多 3 次,之后等下一轮全扫;`RecordAnalysisError` 只更新 error_message,不清旧 hash。分析超时同上 |
 | Analyzer 版本 | `backend/plugin/lineage/lineage.go` 的 `AnalyzerVersion` | 分析规则变化(omni/方言升级、规则改动、注册新引擎)时递增;部署后小时扫描按版本不等自动全量重算 |
-| 引擎不支持 | `analyzer.go:296-301` | 记 `markAnalyzed` + "engine %s has no lineage analyzer; analysis skipped",不清边 |
+| 引擎不支持 | `analyze.go`（`analyzeObject` 的 `ErrorEngineNotSupported` 分支） | 记 `markAnalyzed` + "engine %s has no lineage analyzer; analysis skipped",不清边 |
 | 删除清理 | `backend/store/column_lineage.go` 的 `DeleteColumnLineageByMetaGUIDs` | 删除对象时按类型过滤(端点 TABLE/VIEW/MV/EXTERNAL_TABLE;producer VIEW/MV)后批量清 `source/target`、`meta_guid` 三向边与 `column_lineage_version`;语句数固定,与删除对象数无关 |
-| MANUAL_SQL 特例 | `analyzer.go:334-370` | 除真实 target 边外,额外写一条以自身为源、目标同名的边,让"这段 SQL 输出什么"在图上可见 |
+| MANUAL_SQL 特例 | `analyze.go`（`analyzeObject`） | 除真实 target 边外,额外写一条以自身为源、目标同名的边,让"这段 SQL 输出什么"在图上可见 |
 
 store 侧:`backend/store/column_lineage.go` 的 `BatchReplaceColumnLineage`(仅 OpenLineage 路径)、`ReplaceColumnLineageIfCurrent`、`MarkAnalyzedIfCurrent`、`MarkAnalysisFailedIfCurrent`、`RecordAnalysisError`、`DeleteColumnLineageByMetaGUIDs`、`ListColumnLineage`、`ListColumnLineageVersions`、`GetColumnLineageVersion`;表定义 `backend/migrator/migration/LATEST.sql` 的 `column_lineage` / `column_lineage_version`(含 `analyzer_version`)。
 
@@ -188,9 +188,9 @@ TiDB 和 MariaDB **没有自己的遍历**。`mysql/analyzer.go` 哨兵之下的
 | 装配 | `backend/plugin/lineage/lineage.go`、`engines/engines.go`、`backend/server/server.go:107` | `go test ./backend/plugin/lineage/engines/` |
 | 缺口模型 | `backend/plugin/lineage/model/diagnostic.go` | `go test ./backend/plugin/lineage/model/ -run TestDiagnostic` |
 | API / proto / CLI | `backend/api/v1/lineage_service_analyze.go`、`proto/v1/v1/lineage_service.proto:281-310`、`cli/cmd/lineage.go` | `go test ./cli/cmd/ -run TestDiagnosticText`;`cd proto && buf lint` |
-| runner | `backend/runner/lineageanalyzer/analyzer.go` | `go test ./backend/runner/lineageanalyzer/` |
+| runner | `backend/runner/lineageanalyzer/`（`analyzer.go`、`queue.go`、`analyze.go`、`persist.go`、`build_sql.go`、`classify.go`） | `go test ./backend/runner/lineageanalyzer/` |
 | store / schema | `backend/store/column_lineage.go`、`backend/store/meta_resource.go`(`GUIDFolded` + `idx_meta_registry_resource_guid_folded`)、`backend/migrator/migration/LATEST.sql:295,316` | `go test ./backend/store/`(schema 改动须补增量迁移) |
-| 清理 | `backend/runner/schemasync/syncer.go:757-762,1076-1090` | `go test ./backend/runner/schemasync/` |
+| 清理 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 中的 `DeleteColumnLineageByMetaGUIDs`） | `go test ./backend/runner/schemasync/` |
 | MySQL 家族生成 | `backend/plugin/lineage/mysql/analyzer.go` + `mysql/gen/` | `go generate ./backend/plugin/lineage/mysql`;`go test ./backend/plugin/lineage/mysql/gen/` |
 | 黄金语料 | `backend/plugin/lineage/{mysql,tidb,mariadb,postgresql,starrocks,doris,mssql}/testdata/analyze/` | `go test ./backend/plugin/lineage/...` |
 | 共享机制守门 | `backend/plugin/lineage/shared_analysis_test.go` | `go test ./backend/plugin/lineage/ -run TestSharedAnalysisStaysShared` |
