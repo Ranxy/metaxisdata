@@ -109,6 +109,53 @@ describe("useDrawerFocus", () => {
     scope.stop();
   });
 
+  it("ignores keys other than Escape and Tab", async () => {
+    const { container } = drawer();
+    const open = ref(true);
+    const close = vi.fn();
+    const scope = effectScope();
+    scope.run(() =>
+      useDrawerFocus(ref<HTMLElement | null>(container), open, close)
+    );
+    await flush();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+
+    expect(close).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it("does not trap Tab in a drawer with no focusable content", async () => {
+    const empty = document.createElement("div");
+    document.body.append(empty);
+    const open = ref(true);
+    const scope = effectScope();
+    scope.run(() =>
+      useDrawerFocus(ref<HTMLElement | null>(empty), open, vi.fn())
+    );
+    await flush();
+
+    const tab = new KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+    expect(() => document.dispatchEvent(tab)).not.toThrow();
+    expect(tab.defaultPrevented).toBe(false);
+    scope.stop();
+  });
+
+  it("handles a drawer whose element is not mounted yet", async () => {
+    const open = ref(true);
+    const scope = effectScope();
+    scope.run(() =>
+      useDrawerFocus(ref<HTMLElement | null>(null), open, vi.fn())
+    );
+    await flush();
+
+    const tab = new KeyboardEvent("keydown", { key: "Tab", cancelable: true });
+    document.dispatchEvent(tab);
+
+    expect(tab.defaultPrevented).toBe(false);
+    scope.stop();
+  });
+
   it("stops handling keys once closed", async () => {
     const { container } = drawer();
     const open = ref(true);
