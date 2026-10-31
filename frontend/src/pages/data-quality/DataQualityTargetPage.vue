@@ -614,9 +614,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
-import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityContract,
   type QualityExecutionSummary,
@@ -679,36 +679,20 @@ const RULE_PAGE_SIZE = 1000;
 const { t, locale } = useI18n();
 const route = useRoute();
 const router = useRouter();
-const authStore = useAuthStore();
 const { formatError } = useErrorMessage();
 
 const targetGuid = computed(() => routeParamToGuid(route.params.targetGuid));
 
-const canRun = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.run")
-);
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
-const canUpdate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
-);
-const canSuggest = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.suggest")
-);
-/** The one-click label pass profiles stale columns before asking the model. */
-const canProfile = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.profile.run")
-);
-const canListIssues = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.issues.list")
-);
-const canViewIssue = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.issues.get")
-);
-const canPublish = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.contracts.publish")
-);
+const {
+  canRun,
+  canCreate,
+  canUpdate,
+  canSuggest,
+  canProfile,
+  canListIssues,
+  canViewIssue,
+  canPublish,
+} = useDataQualityPermissions();
 
 const rules = ref<QualityRule[]>([]);
 /** Per-rule recent completed executions, newest first (server order). */

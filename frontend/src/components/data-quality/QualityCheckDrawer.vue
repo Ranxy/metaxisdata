@@ -560,11 +560,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { usePolling } from "@/composables/usePolling";
 import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
-import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityExecution,
   QualityExecutionState,
@@ -641,30 +641,17 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
 const router = useRouter();
-const authStore = useAuthStore();
 const { emailOf, load: loadUserDirectory } = useUserDirectory();
 
-const canView = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.get")
-);
-const canRun = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.run")
-);
-const canUpdate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
-);
-const canDelete = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.delete")
-);
-const canViewExecution = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.executions.get")
-);
-const canListExecutions = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.executions.list")
-);
-const canExplain = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.explain")
-);
+const {
+  canViewRule: canView,
+  canRun,
+  canUpdate,
+  canDelete,
+  canViewExecution,
+  canListExecutions,
+  canExplain,
+} = useDataQualityPermissions();
 
 const rule = ref<QualityRule>();
 const executions = ref<QualityExecution[]>([]);
