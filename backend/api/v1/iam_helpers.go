@@ -2,20 +2,27 @@ package v1
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 	"github.com/Ranxy/metaxisdata/backend/utils"
 )
 
-// hasActiveWorkspaceAdmin reports whether policy grants roles/workspaceAdmin to
-// at least one active end user, either directly, through a group, or via
-// allUsers. excludeUserID skips one user's membership (the delete/self-leave
-// last-admin guard); it must be 0 when no exclusion is wanted. Group expansion
-// excludes that user too, so a group containing only the departing admin does
-// not count as a surviving one.
+// hasActiveWorkspaceAdmin reports whether policy grants iam.setPolicy — the
+// permission that makes a workspace administrable — to at least one active end
+// user, either directly, through a group, or via allUsers. It resolves the bound
+// role's permissions the same way CheckPermission does rather than comparing the
+// role name to roles/workspaceAdmin, so a custom role granted setPolicy keeps the
+// last-admin guard in step with the authorization engine.
+//
+// excludeUserID skips one user's membership (the delete/self-leave last-admin
+// guard); it must be 0 when no exclusion is wanted. Group expansion excludes that
+// user too, so a group containing only the departing admin does not count as a
+// surviving one.
 //
 // A binding only counts while its condition holds at request time: the
 // permission check evaluates conditions (utils.GetUserIAMPolicyBindings), so a
@@ -25,7 +32,6 @@ import (
 // admins that lapse later — that would be the same permanent lockout one day
 // further out.
 func hasActiveWorkspaceAdmin(ctx context.Context, stores *store.Store, policy *storepb.IamPolicy, excludeUserID int) (bool, error) {
-	workspaceAdminRole := common.FormatRole(common.WorkspaceAdmin)
 	excludedMember := ""
 	if excludeUserID != 0 {
 		excludedMember = common.FormatUserUID(excludeUserID)
@@ -33,7 +39,11 @@ func hasActiveWorkspaceAdmin(ctx context.Context, stores *store.Store, policy *s
 
 	active, unconditional := false, false
 	for _, binding := range policy.GetBindings() {
-		if binding.GetRole() != workspaceAdminRole {
+		role, err := stores.GetRoleSnapshot(ctx, strings.TrimPrefix(binding.GetRole(), common.RolePrefix))
+		if err != nil {
+			return false, err
+		}
+		if role == nil || !role.Permissions[permission.IAMSetPolicy] {
 			continue
 		}
 		expression := binding.GetCondition().GetExpression()
