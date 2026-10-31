@@ -86,6 +86,27 @@ const (
 	httpMaxHeaderBytes = 1 << 20
 )
 
+// A unary ConnectRPC call needs a bound of its own, separate from the listener
+// timeouts above: those bound how long a client may take to send a request, not
+// how long the handler may take to answer it. Without one, a handler stuck on a
+// target database or a model holds a goroutine, its pool connection and, on the
+// REST form, a second connection to this same process for as long as the
+// dependency stays quiet. Streaming calls are exempt by construction: the
+// deadline interceptor leaves them untouched, because a notification
+// subscription or a streaming Explain call lives far longer than one request.
+const (
+	// connectUnaryTimeout bounds one unary call.
+	connectUnaryTimeout = 60 * time.Second
+	// connectLongUnaryTimeout is the ceiling for the unary methods whose work
+	// legitimately outlasts one request. Each of them already bounds its own work
+	// — a column profile budgets two 120s queries plus the connection wait, a
+	// batch sync carries a 5-minute budget, the LLM suggestions wait on a model —
+	// so this is only the outer backstop, and it must stay above the longest of
+	// those budgets, the schema sync's 15 minutes. The procedures are listed in
+	// connectLongUnaryMethods.
+	connectLongUnaryTimeout = 20 * time.Minute
+)
+
 // configureHTTPServerTimeouts applies the API listener's connection bounds.
 func configureHTTPServerTimeouts(e *echo.Echo) {
 	e.Server.ReadHeaderTimeout = httpReadHeaderTimeout

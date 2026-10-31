@@ -35,10 +35,12 @@ const maxBatchInstances = 1000
 // as failed instead of starting another sync.
 const batchSyncBudget = 5 * time.Minute
 
-// dataSourcePingTimeout bounds one test connection. The RPC carries no deadline
-// of its own, and the connection holds one of the instance's connection slots
-// while it runs, so a target that accepts the connection and then stalls must
-// not be able to keep that slot until the client gives up.
+// dataSourcePingTimeout bounds one test connection. The ConnectRPC unary deadline
+// covers the RPC, and the connection-testing methods are listed among the long
+// unary ones so a request that pings several data sources still has one ping's
+// worth of room per source. The connection also holds one of the instance's
+// connection slots while it runs, so a target that accepts the connection and
+// then stalls must not be able to keep that slot until the client gives up.
 const dataSourcePingTimeout = 60 * time.Second
 
 // dataSourceConnectionWait bounds how long a test connection waits for one of

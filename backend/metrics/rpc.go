@@ -25,7 +25,9 @@ func newRPCMetrics() rpcMetrics {
 			Subsystem: "rpc",
 			Name:      "request_duration_seconds",
 			Help:      "Unary ConnectRPC latency in seconds, by service and method.",
-			Buckets:   []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60},
+			// The long unary methods are bounded at twenty minutes, so the buckets run
+			// to 1200 seconds instead of stopping where the default ceiling does.
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200},
 		}, []string{"service", "method"}),
 	}
 }
