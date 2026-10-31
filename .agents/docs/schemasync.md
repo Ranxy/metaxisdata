@@ -38,7 +38,6 @@
 | --- | --- |
 | `MaximumOutstanding` 导出但仅包内使用且无 doc，应为 `maximumOutstanding`。 | `backend/runner/schemasync/syncer.go`（`MaximumOutstanding`） |
 | `Run` 的注释仍写 “will run the schema syncer once”，实际是永久循环。 | `backend/runner/schemasync/syncer.go`（`Run`） |
-| 两处死逻辑：`database := database` 是 Go 1.22 之前的写法，现已冗余（同函数的 instance 循环就没写）；`if instanceMeta.Version != …` 与无条件赋值等价（`metadata` 是 `instance.Metadata` 的克隆，`UpdateInstance` 反正都会调用）。 | `backend/runner/schemasync/instance_sync.go`（`SyncInstance`） |
 | deadline 写法与预算：`context.WithDeadline(time.Now().Add(syncTimeout))` 可简化为 `WithTimeout`；同一个 deadlineCtx 同时覆盖 `SyncDBSchema` 与 DDL 抓取，前者慢会挤压后者（失败保留旧 DDL，不致错，但值得知晓）。 | `backend/runner/schemasync/database_sync.go`（`SyncDatabaseSchema` 的 `deadlineCtx`） |
 | `SyncInstance` 返回 4 元组而调用方大量丢弃，签名演进后没收敛。 | `backend/runner/schemasync/instance_sync.go`（`SyncInstance` 的返回签名）；`backend/api/v1/instance_service.go:362` 是 `_, _, _, _` |
 | `supportsObjectDefinition` 预留了 FUNCTION/PROCEDURE，但目前只有 StarRocks 一个驱动实现了 `ObjectDefinitionReader`。 | `backend/runner/schemasync/object_definition.go:124-134`；`backend/plugin/db/starrocks/definition.go:20` |

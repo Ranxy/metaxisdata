@@ -307,28 +307,28 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_schemasync_scans_total` | counter | `outcome=success\|failure` | `trySyncAll` 的返回值（`syncer.go`） | 每轮 15 min 扫描一次；`trySyncAll` 现在返回 `ok bool`（store 读取失败或 panic 为 false；单个实例同步失败不算扫描失败） | P0 |
-| `metaxisdata_schemasync_scan_duration_seconds` | histogram | — | `trySyncAllOnce` 的 defer（`syncer.go`） | 一轮实例扫描的墙钟，**包含本轮对到期实例的枚举/同步**（`trySyncAll` 内同步调用 `SyncInstance`）；单库 schema 同步由 checker 并发入队，不在这里 | P0 |
-| `metaxisdata_schemasync_instance_syncs_total` | counter | `engine,outcome` | owner-only defer（`SyncInstance`，`:656`） | 每次真实的实例枚举 | P0 |
+| `metaxisdata_schemasync_scans_total` | counter | `outcome=success\|failure` | `trySyncAll` 的返回值（`queue.go`） | 每轮 15 min 扫描一次；`trySyncAll` 现在返回 `ok bool`（store 读取失败或 panic 为 false；单个实例同步失败不算扫描失败） | P0 |
+| `metaxisdata_schemasync_scan_duration_seconds` | histogram | — | `trySyncAllOnce` 的 defer（`queue.go`） | 一轮实例扫描的墙钟，**包含本轮对到期实例的枚举/同步**（`trySyncAll` 内同步调用 `SyncInstance`）；单库 schema 同步由 checker 并发入队，不在这里 | P0 |
+| `metaxisdata_schemasync_instance_syncs_total` | counter | `engine,outcome` | owner-only defer（`instance_sync.go` 的 `SyncInstance`） | 每次真实的实例枚举 | P0 |
 | `metaxisdata_schemasync_instance_sync_duration_seconds` | histogram | `engine` | 同上 | 含目标库往返 | P0 |
-| `metaxisdata_schemasync_database_syncs_total` | counter | `engine,outcome` | owner-only defer（`SyncDatabaseSchema`，`:781`） | 每次真实的库同步；checker 10s 与 API 共用 | P0 |
+| `metaxisdata_schemasync_database_syncs_total` | counter | `engine,outcome` | owner-only defer（`database_sync.go` 的 `SyncDatabaseSchema`） | 每次真实的库同步；checker 10s 与 API 共用 | P0 |
 | `metaxisdata_schemasync_database_sync_duration_seconds` | histogram | `engine` | 同上 | 从拿到 gate 之后算，排除等 owner 的时间；含连接租约、driver、元数据事务、DDL 抓取 | P0 |
 | `metaxisdata_schemasync_failures_total` | counter | `stage=instance\|database`,`reason` | 上述 defer | reason 只能用已有分支：`connection_limit`、`hidden`、`not_found`、`timeout`、`canceled`、`other`。**不要臆造 transient/permanent**（driver error 无类型） | P0 |
-| `metaxisdata_schemasync_driver_call_duration_seconds` | histogram | `engine,call=sync_instance\|sync_db_schema` | driver 调用处（`:635`、`:832`） | 把「目标库慢」和「元数据库慢」拆开 | P0 |
+| `metaxisdata_schemasync_driver_call_duration_seconds` | histogram | `engine,call=sync_instance\|sync_db_schema` | driver 调用处（`SyncInstance`/`SyncDatabaseSchema` 里的 `ObserveDriverCall`） | 把「目标库慢」和「元数据库慢」拆开 | P0 |
 | `metaxisdata_schemasync_queue_depth` | gauge | `state=queued\|retrying` | scrape-time `GaugeFunc`（Range 两个 `sync.Map`） | 队列没有 Len，用 Range 近似；含等待退避的项 | P1 |
 | `metaxisdata_schemasync_in_flight` | gauge | `kind=instance\|database` | gate 的 `count()`（需新访问器） | 正在跑的真实同步数（owner） | P1 |
 | `metaxisdata_schemasync_meta_resources_written_total` | counter | `object_type` | **commit 之后**（`database_sync.go` 的 `SyncDatabaseSchema`） | 创建+更新合并计数（`diff()` 不区分 created/updated） | P0 |
-| `metaxisdata_schemasync_meta_resources_deleted_total` | counter | `object_type` | `logSchemaSyncDeletion`（`:1350-1368`，已有按类型计数） | 破坏性同步的告警面；保持「只记日志」的既有决策不变 | P0 |
-| `metaxisdata_schemasync_ddl_refresh_total` | counter | `mode=full\|rotating\|changed` | commit 后（`:1056-1058`） | DDL 刷新节奏 | P1 |
-| `metaxisdata_schemasync_ddl_objects_total` | counter | `result=upserted\|deleted\|unchanged` | commit 后（`:1030`） | DDL 行写入；事务内不要埋 | P1 |
+| `metaxisdata_schemasync_meta_resources_deleted_total` | counter | `object_type` | `logSchemaSyncDeletion`（`metadata_batch.go`，已有按类型计数） | 破坏性同步的告警面；保持「只记日志」的既有决策不变 | P0 |
+| `metaxisdata_schemasync_ddl_refresh_total` | counter | `mode=full\|rotating\|changed` | commit 后（`database_sync.go` 的 `SyncDatabaseSchema`） | DDL 刷新节奏 | P1 |
+| `metaxisdata_schemasync_ddl_objects_total` | counter | `result=upserted\|deleted\|unchanged` | commit 后（`database_sync.go` 的 `SyncDatabaseSchema`） | DDL 行写入；事务内不要埋 | P1 |
 | `metaxisdata_schemasync_ddl_fetch_failures_total` | counter | — | `prepareObjectDefinitions`（`object_definition.go:167-176`） | 抓取失败在事务之前发生，即使回滚也应计数 | P1 |
-| `metaxisdata_schemasync_statistics_refresh_total` | counter | `outcome=refreshed\|read_failed\|write_failed` | 统计刷新分支（`:862-881`、`:1044-1051`） | best-effort 通道，失败不等于同步失败 | P1 |
-| `metaxisdata_schemasync_retries_total` | counter | `attempt=1\|2\|3` | `scheduleRetry`（`:281`） | 退避重排 | P0 |
-| `metaxisdata_schemasync_retries_exhausted_total` | counter | `engine` | 放弃分支（`:414-416`） | 「持续失败的库」告警信号 | P0 |
-| `metaxisdata_schemasync_connection_limit_deferrals_total` | counter | `kind=database\|instance` | checker/scan 的 TryAcquire 失败分支（`:390-397`、`:546-550`） | **背压不是失败**：预算打满时跳过本轮 | P0 |
-| `metaxisdata_schemasync_database_skips_total` | counter | `reason=hidden\|instance_gone` | `:398-405`、`:359` | 排队库被无同步地丢弃 | P1 |
-| `metaxisdata_schemasync_database_hides_total` | counter | `reason=driver_not_found\|snapshot_missing` | `markDatabaseDeleted`（`:1127-1142`）、`SyncInstance`（`:721-749`） | 清单收缩信号 | P1 |
-| `metaxisdata_schemasync_panics_total` | counter | `kind=database_sync\|instance_scan` | 两个 recover 分支（`:375-386`、`:445-453`） | 被吞掉的 panic | P1 |
+| `metaxisdata_schemasync_statistics_refresh_total` | counter | `outcome=refreshed\|read_failed\|write_failed` | 统计刷新分支（`database_sync.go` 的 `SyncDatabaseSchema`） | best-effort 通道，失败不等于同步失败 | P1 |
+| `metaxisdata_schemasync_retries_total` | counter | `attempt=1\|2\|3` | `scheduleRetry`（`queue.go`） | 退避重排 | P0 |
+| `metaxisdata_schemasync_retries_exhausted_total` | counter | `engine` | 放弃分支（`queue.go` 的 `scheduleRetry` 内） | 「持续失败的库」告警信号 | P0 |
+| `metaxisdata_schemasync_connection_limit_deferrals_total` | counter | `kind=database\|instance` | checker/scan 的 TryAcquire 失败分支（`instance_sync.go` 的 `acquireInstanceConnection`） | **背压不是失败**：预算打满时跳过本轮 | P0 |
+| `metaxisdata_schemasync_database_skips_total` | counter | `reason=hidden\|instance_gone` | `queue.go` 的 `trySyncAll`、`database_sync.go` 的 `markDatabaseDeleted` | 排队库被无同步地丢弃 | P1 |
+| `metaxisdata_schemasync_database_hides_total` | counter | `reason=driver_not_found\|snapshot_missing` | `markDatabaseDeleted`（`database_sync.go`）、`SyncInstance`（`instance_sync.go`） | 清单收缩信号 | P1 |
+| `metaxisdata_schemasync_panics_total` | counter | `kind=database_sync\|instance_scan` | 两个 recover 分支（`SyncInstance`/`SyncDatabaseSchema` 的 `defer recover`） | 被吞掉的 panic | P1 |
 | `metaxisdata_schemasync_operations_total` | counter | `outcome=succeeded\|partial\|failed` | `deliverOperation`（`operation.go:335-354`，每次 operation 恰好一次） | **用户可见的同步请求**，不是同步工作量；`abandoned` 暂不提供（`instanceErr` 只有字符串，无类型原因） | P1 |
 | `metaxisdata_schemasync_operation_databases_total` | counter | `state=succeeded\|failed\|unfinished` | 同上，`detail` 里已有三个计数 | 一次库结果会扇出给所有等待它的 operation（`operation.go:219-239`），计数单位是「报告」不是「同步」 | P2 |
 | `metaxisdata_schemasync_operation_expired_total` | counter | — | `expireOperations`（`:257-298`） | 2h 超时的兜底信号 | P2 |
@@ -371,28 +371,27 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 ### 4.3 血缘：analyzer / OpenLineage 摄取 / revalidation
 
-**lineage analyzer（`backend/runner/lineageanalyzer/{analyzer,queue,analyze,persist}.go`）**
+**lineage analyzer（`backend/runner/lineageanalyzer/{analyzer,queue,analyze,build_sql,persist,classify}.go`）**
 
 最重要的实现约束：`drainAndAnalyze` **只能看到非 nil error**，而 `analyzeObject` 对
-「解析失败清空血缘」（`:548-550`）、「空定义清空」（`:499-501`）、「定义不可读保留旧边」（`:508-511`）、
-「引擎无分析器跳过」（`:526-533`）、「成功」（`:683-697`）全部返回 `nil`。
+「解析失败清空血缘」、「空定义清空」、「定义不可读保留旧边」、「引擎无分析器跳过」、「成功」全部返回 `nil`。
 **如果只在 drain 的 err 分支计数，会永远显示零失败、系统看起来永远健康。**
 失败原因必须在 `analyzeObject` 的各个终态分支内埋（约 11 处），drain 只补 timeout/stale/panic。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
 | `metaxisdata_lineage_analysis_objects_total` | counter | `meta_type,engine,result` | `analyzeObject`/drain 的每个终态分支 | `result` ∈ `stored, engine_unsupported, definition_unavailable, definition_cleared, analysis_failed, interrupted, store_error, gone, stale, timeout, panic`。`stored` 包含「产出 0 条边」 | P0 |
-| `metaxisdata_lineage_analyze_duration_seconds` | histogram | `engine,meta_type` | 包住 `lineage.Analyze`（`:517`） | 纯解析耗时，不含 store 往返；上层用 `analysis_objects_total` 看规模 | P0 |
+| `metaxisdata_lineage_analyze_duration_seconds` | histogram | `engine,meta_type` | 包住 `lineage.Analyze`（`analyze.go` 的 `analyzeObject`） | 纯解析耗时，不含 store 往返；上层用 `analysis_objects_total` 看规模 | P0 |
 | `metaxisdata_lineage_analysis_queue_depth` | gauge | `queue=event\|scan` | scrape-time Range `analyzeMap`/`scanMap` | `sync.Map` 无 Len；含退避等待项，depth ≠ 可立即执行量 | P0 |
-| `metaxisdata_lineage_analysis_in_flight` | gauge | — | 工作函数 `:400` inc / defer dec | 并发上限 10（`:35`） | P0 |
-| `metaxisdata_lineage_edges_written_total` | counter | `meta_type,kind=column\|table` | 写成功后（`:683-685`） | **提交给 replace 的边数**（store 是删+重插，且 `ON CONFLICT DO NOTHING` 会丢重复，`RowsAffected` 被丢弃），精确插入数需要改 store，标为「上界」 | P0 |
-| `metaxisdata_lineage_analysis_retries_total` | counter | `attempt=1\|2\|3` | `scheduleRetry`（`:227`） | 30s/2m/5m 退避 | P1 |
-| `metaxisdata_lineage_analysis_retries_exhausted_total` | counter | `meta_type` | 放弃分支（`:218-225`） | 「持续失败、等下轮全量扫描」告警 | P0 |
-| `metaxisdata_lineage_analysis_batch_size` | histogram | — | `:389-392` | 10s tick 取多少；上限 1000/tick = 100 obj/s 天花板 | P1 |
-| `metaxisdata_lineage_scan_duration_seconds` | histogram | `outcome=completed\|deadline` | `queueAllBounded`（`:285-289`） | 每小时全量扫描，5 min 预算 | P1 |
-| `metaxisdata_lineage_scan_objects_total` | counter | `meta_type,action=queued\|skipped` | `:315-319` | `skipped` = 指纹/版本命中，不做重算 | P1 |
-| `metaxisdata_lineage_scan_errors_total` | counter | `meta_type,stage` | `:307`、`:312` | 全量扫描的列表读取失败 | P1 |
-| `metaxisdata_lineage_analysis_gaps_total` | counter | `category,meta_type` | `:555-558`（`*UnsupportedStatementError` 在手） | 部分分析（有边但有未建模 gap），与「完全没血缘」区分 | P1 |
+| `metaxisdata_lineage_analysis_in_flight` | gauge | — | 工作函数（`analyze.go` 的 `drainAndAnalyze`）inc / defer dec | 并发上限 10（`MaxGoroutines`） | P0 |
+| `metaxisdata_lineage_edges_written_total` | counter | `meta_type,kind=column\|table` | 写成功后（`analyze.go` 的 `analyzeObject`） | **提交给 replace 的边数**（store 是删+重插，且 `ON CONFLICT DO NOTHING` 会丢重复，`RowsAffected` 被丢弃），精确插入数需要改 store，标为「上界」 | P0 |
+| `metaxisdata_lineage_analysis_retries_total` | counter | `attempt=1\|2\|3` | `scheduleRetry`（`queue.go`） | 30s/2m/5m 退避 | P1 |
+| `metaxisdata_lineage_analysis_retries_exhausted_total` | counter | `meta_type` | 放弃分支（`queue.go` 的 `scheduleRetry` 内） | 「持续失败、等下轮全量扫描」告警 | P0 |
+| `metaxisdata_lineage_analysis_batch_size` | histogram | — | `queue.go` 的 `takeAnalyzeBatch` 返回值 | 10s tick 取多少；上限 1000/tick = 100 obj/s 天花板 | P1 |
+| `metaxisdata_lineage_scan_duration_seconds` | histogram | `outcome=completed\|deadline` | `queueAllBounded`（`analyzer.go`） | 每小时全量扫描，5 min 预算 | P1 |
+| `metaxisdata_lineage_scan_objects_total` | counter | `meta_type,action=queued\|skipped` | `analyzer.go` 的 `queueAll` | `skipped` = 指纹/版本命中，不做重算 | P1 |
+| `metaxisdata_lineage_scan_errors_total` | counter | `meta_type,stage` | `analyzer.go` 的 `queueAll` | 全量扫描的列表读取失败 | P1 |
+| `metaxisdata_lineage_analysis_gaps_total` | counter | `category,meta_type` | `analyze.go` 的 `analyzeObject`（`*UnsupportedStatementError` 在手） | 部分分析（有边但有未建模 gap），与「完全没血缘」区分 | P1 |
 
 > 不要 hook 在 `lineage.Analyze`（`backend/plugin/lineage/lineage.go:198`）：它有三个调用方
 > （runner、OpenLineage SQL facet、`AnalyzeSQL` RPC），混在一起会污染后台分析的数字。
@@ -430,7 +429,7 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 ### 4.4 数据质量：调度 / 规则执行 / 问题台账 / 目标库查询 / 画像
 
-**调度与执行（`backend/runner/qualityrunner/{qualityrunner,schedule,plan,admission,execute,issue,notify}.go`、`backend/api/v1/data_quality_service.go`）**
+**调度与执行（`backend/runner/qualityrunner/{qualityrunner,types,contract,schedule,plan,admission,execute,execution_result,issue,notify,format}.go`、`backend/api/v1/data_quality_service.go`）**
 
 `quality_run` 是内部派发批次（连接准入、一个 tick 的分组、风暴聚合、保留期级联），
 **没有任何指标以它为单位**；对外指标一律按执行（`quality_execution`）计。
