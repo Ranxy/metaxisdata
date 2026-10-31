@@ -570,7 +570,7 @@ func TestFailureExecutionMessageKeepsThePlannedSnapshot(t *testing.T) {
 	for i := range long {
 		long[i] = 'x'
 	}
-	result := failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
+	result := failureExecutionMessage(planned, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
 		dataquality.ErrCodeExecution, string(long))
 
 	require.Equal(t, int64(11), result.ID)
