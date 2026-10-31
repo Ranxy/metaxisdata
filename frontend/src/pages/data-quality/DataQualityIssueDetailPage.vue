@@ -391,7 +391,7 @@ import {
   RefreshCcw,
   Target,
 } from "lucide-vue-next";
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
@@ -431,6 +431,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAsync } from "@/composables/useAsync";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
@@ -463,7 +464,6 @@ const route = useRoute();
 const { formatError } = useErrorHandler();
 const authStore = useAuthStore();
 
-const issue = ref<QualityIssue>();
 // The issue opened against one rule of one target; the workspace is where the
 // rest of that target's checks live.
 const targetWorkspaceTo = computed(() => {
@@ -482,7 +482,6 @@ const targetWorkspaceTo = computed(() => {
 });
 const ruleTitle = ref("");
 const acknowledgedByLabel = ref("");
-const isLoading = ref(true);
 const error = ref("");
 const saveError = ref("");
 const saving = ref(false);
@@ -535,6 +534,28 @@ const issueName = computed(() => {
   const param = route.params.issueId;
   return Array.isArray(param) ? param.join("/") : String(param ?? "");
 });
+
+/**
+ * One issue's evidence. The ticket-and-abort behaviour lives in `useAsync`: a
+ * route change to another issue must not let the previous answer land.
+ */
+const {
+  data: issue,
+  loading: isLoading,
+  refresh: refreshIssue,
+} = useAsync(
+  async () => {
+    const loaded = await getQualityIssue(issueName.value);
+    void loadAcknowledgedBy(loaded.acknowledgedBy);
+    await loadRuleTitle(loaded.rule);
+    return loaded;
+  },
+  {
+    onError: (e: unknown) => {
+      error.value = formatError(e, "dataQuality.fetchIssueError");
+    },
+  }
+);
 
 function setResolveReason(value: unknown) {
   resolveReason.value = Number(value) as QualityResolutionReason;
@@ -597,18 +618,8 @@ function executionRoute(name: string) {
 }
 
 async function load() {
-  isLoading.value = true;
   error.value = "";
-  try {
-    const loaded = await getQualityIssue(issueName.value);
-    issue.value = loaded;
-    void loadAcknowledgedBy(loaded.acknowledgedBy);
-    await loadRuleTitle(loaded.rule);
-  } catch (e: unknown) {
-    error.value = formatError(e, "dataQuality.fetchIssueError");
-  } finally {
-    isLoading.value = false;
-  }
+  await refreshIssue();
 }
 
 /** Best effort: a caller without rules.get still sees the issue by rule id. */
@@ -687,6 +698,4 @@ async function mute() {
     notify.success(t("dataQuality.issueMutedToast"));
   }
 }
-
-onMounted(load);
 </script>

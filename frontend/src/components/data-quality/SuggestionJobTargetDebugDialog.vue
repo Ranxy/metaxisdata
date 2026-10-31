@@ -137,6 +137,7 @@
 </template>
 
 <script setup lang="ts">
+import { useTimeoutFn } from "@vueuse/core";
 import { AlertTriangle, Loader2 } from "lucide-vue-next";
 import { onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -190,14 +191,11 @@ const response = ref<GetQualitySuggestionJobTargetDebugResponse>();
 /** Identifies the newest request; an older answer must never write state. */
 let requestID = 0;
 /** One delayed retry per open, for the asynchronous debug-log write. */
-let retryTimer: ReturnType<typeof setTimeout> | undefined;
+const retryLoad = useTimeoutFn(() => void load(), AUTO_RETRY_MS);
 let autoRetried = false;
 
 function cancelRetry() {
-  if (retryTimer !== undefined) {
-    clearTimeout(retryTimer);
-    retryTimer = undefined;
-  }
+  retryLoad.stop();
 }
 
 watch(
@@ -234,10 +232,7 @@ async function load() {
       // The body may still be in the debug-writer queue: keep the spinner up and
       // ask once more before telling the reader the payload is gone.
       autoRetried = true;
-      retryTimer = setTimeout(() => {
-        retryTimer = undefined;
-        void load();
-      }, AUTO_RETRY_MS);
+      retryLoad.start();
       return;
     }
     response.value = fetched;
@@ -250,7 +245,7 @@ async function load() {
       "dataQuality.suggestions.diagnostic.payload.fetchFailed"
     );
   } finally {
-    if (ticket === requestID && retryTimer === undefined) {
+    if (ticket === requestID && !retryLoad.isPending.value) {
       loading.value = false;
     }
   }

@@ -436,7 +436,7 @@ import {
   XCircle,
 } from "lucide-vue-next";
 import type { Component } from "vue";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
@@ -459,6 +459,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { usePolling } from "@/composables/usePolling";
 import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
@@ -535,7 +536,6 @@ const canViewRule = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.get")
 );
 
-let pollTimer: number | undefined;
 let loading = false;
 
 // One path segment per resource-name segment; joining restores the name a Get
@@ -796,35 +796,27 @@ async function reload() {
  * The poll is silent. A transient failure stops it rather than raising a toast
  * per attempt; the next manual refresh or route visit starts it again.
  */
-async function poll() {
-  if (isPolling.value || loading) {
-    return;
+const polling = usePolling(
+  async () => {
+    isPolling.value = true;
+    try {
+      await load(false);
+    } finally {
+      isPolling.value = false;
+    }
+  },
+  {
+    intervalMs: POLL_INTERVAL_MS,
+    shouldContinue: () => inProgress.value,
   }
-  isPolling.value = true;
-  try {
-    await load(false);
-  } finally {
-    isPolling.value = false;
-  }
-  if (!inProgress.value) {
-    stopPolling();
-  }
-}
+);
 
 function startPolling() {
-  if (pollTimer !== undefined) {
-    return;
-  }
-  pollTimer = window.setInterval(() => {
-    void poll();
-  }, POLL_INTERVAL_MS);
+  polling.start();
 }
 
 function stopPolling() {
-  if (pollTimer !== undefined) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
+  polling.stop();
 }
 
 /** Best effort: a caller without rules.get still sees the execution by rule id. */
@@ -877,8 +869,6 @@ async function copySql(sql: string) {
 }
 
 onMounted(initialLoad);
-
-onBeforeUnmount(stopPolling);
 
 // A direct navigation from one execution to another reuses this component
 // instance, so the timers and the data must be reset with the route.

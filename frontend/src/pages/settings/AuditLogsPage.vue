@@ -263,6 +263,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { useDebounceFn } from "@vueuse/core";
 import {
   ClipboardList,
   Download,
@@ -270,14 +271,7 @@ import {
   UserRound,
 } from "lucide-vue-next";
 import type { DateRange } from "radix-vue";
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  shallowRef,
-  watch,
-} from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listAuditLogs } from "@/api/audit";
 import { listAll } from "@/api/list";
@@ -819,22 +813,11 @@ watch(pageSize, () => void refreshLogs());
 
 // The bar emits on every keystroke, so a filter change restarts the walk on a
 // short debounce rather than firing one request per character.
-let filterChangeTimer: ReturnType<typeof setTimeout> | null = null;
-watch([searchText, resourceFilter, actorFilter, severityFilter], () => {
-  if (filterChangeTimer) {
-    clearTimeout(filterChangeTimer);
-  }
-  filterChangeTimer = setTimeout(() => {
-    filterChangeTimer = null;
-    void refreshLogs();
-  }, 250);
-});
-
-onBeforeUnmount(() => {
-  if (filterChangeTimer) {
-    clearTimeout(filterChangeTimer);
-  }
-});
+const refreshOnFilter = useDebounceFn(() => void refreshLogs(), 250);
+watch(
+  [searchText, resourceFilter, actorFilter, severityFilter],
+  () => void refreshOnFilter()
+);
 
 // The actor display map is filled per page, not per row render.
 watch(logs, (page) => void hydrateAuditUserDisplay(page));

@@ -348,6 +348,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDebounceFn } from "@vueuse/core";
 import {
   Check,
   ChevronRight,
@@ -357,14 +358,7 @@ import {
   SearchX,
   ShieldCheck,
 } from "lucide-vue-next";
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   type LocationQuery,
@@ -398,6 +392,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAsync } from "@/composables/useAsync";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -459,9 +454,7 @@ interface TargetFilters {
 /** The query parameter each filter travels under. */
 const FILTER_QUERY_KEYS = ["q", "issues", "drafts", "failing", "sort"] as const;
 
-const summaries = ref<QualityTargetSummary[]>([]);
 const pickerOpen = ref(false);
-const isLoading = ref(true);
 const error = ref("");
 const search = ref("");
 const toggles = reactive<Record<TargetToggle, boolean>>({
@@ -577,6 +570,34 @@ toggles.issues = initialFilters.issues;
 toggles.drafts = initialFilters.drafts;
 order.value = initialFilters.order;
 
+/**
+ * The directory's one aggregate read. `useAsync` owns the loading, error and
+ * supersede behaviour; the page only renders the rows.
+ */
+const {
+  data: summaryData,
+  loading: isLoading,
+  refresh: refreshTargets,
+} = useAsync(
+  async () => {
+    const page = await listQualityTargets({
+      pageSize: 1000,
+      search: search.value.trim(),
+      hasOpenIssue: toggles.issues,
+      hasPendingDraft: toggles.drafts,
+      orderBy: selectedOrder.value,
+    });
+    return page.items;
+  },
+  {
+    initialData: [] as QualityTargetSummary[],
+    onError: (e: unknown) => {
+      error.value = formatError(e, "dataQuality.targets.loadFailed");
+    },
+  }
+);
+const summaries = computed(() => summaryData.value ?? []);
+
 /** Only the client-side "failing" filter narrows the rows afterwards. */
 const visible = computed(() =>
   toggles.failing
@@ -659,22 +680,16 @@ function clearFilters() {
 }
 
 /** One request when the reader pauses, not one per keystroke. */
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
-
-watch(search, () => {
-  if (searchTimer !== undefined) {
-    clearTimeout(searchTimer);
+const debouncedSearch = useDebounceFn(() => {
+  // An external navigation already adopted this query; do not answer it with
+  // a second request.
+  if (sameFilters(currentFilters(), filtersFromQuery(route.query))) {
+    return;
   }
-  searchTimer = setTimeout(() => {
-    searchTimer = undefined;
-    // An external navigation already adopted this query; do not answer it with
-    // a second request.
-    if (sameFilters(currentFilters(), filtersFromQuery(route.query))) {
-      return;
-    }
-    applyFilters();
-  }, 300);
-});
+  applyFilters();
+}, 300);
+
+watch(search, () => void debouncedSearch());
 
 // Back/forward or a pasted URL changes the query from outside; adopt it and let
 // the server answer. The replace this page itself writes matches the controls,
@@ -695,12 +710,6 @@ watch(
   }
 );
 
-onBeforeUnmount(() => {
-  if (searchTimer !== undefined) {
-    clearTimeout(searchTimer);
-  }
-});
-
 /** A target's workspace: the GUID as repeated path segments plus its meta type. */
 function workspaceRoute(summary: QualityTargetSummary) {
   return {
@@ -713,26 +722,8 @@ function workspaceRoute(summary: QualityTargetSummary) {
 }
 
 async function load() {
-  isLoading.value = true;
   error.value = "";
-  try {
-    // One aggregate read, server-filtered, server-ordered and large enough for
-    // the whole directory; the page has no pager and does not sort or filter
-    // the rows itself.
-    const page = await listQualityTargets({
-      pageSize: 1000,
-      search: search.value.trim(),
-      hasOpenIssue: toggles.issues,
-      hasPendingDraft: toggles.drafts,
-      orderBy: selectedOrder.value,
-    });
-    summaries.value = page.items;
-  } catch (e: unknown) {
-    error.value = formatError(e, "dataQuality.targets.loadFailed");
-    summaries.value = [];
-  } finally {
-    isLoading.value = false;
-  }
+  await refreshTargets();
 }
 
 onMounted(async () => {
@@ -747,7 +738,6 @@ onMounted(async () => {
     delete query.new;
     await router.replace({ query });
   }
-  await load();
 });
 
 function startMonitoring() {

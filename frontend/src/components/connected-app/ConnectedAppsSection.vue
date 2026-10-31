@@ -68,8 +68,9 @@
 </template>
 
 <script setup lang="ts">
+import { useDebounceFn } from "@vueuse/core";
 import { Link2 } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { listConnectedApps, revokeConnectedApp } from "@/api/connected-app";
 import { listAllUsers } from "@/api/user";
@@ -262,23 +263,10 @@ watch(pageSize, () => void reset());
 watch([userFilter, stateFilter, clientFilter], () => void reset());
 
 // The bar emits on every keystroke, so the search box restarts the walk on a
-// short debounce rather than firing one request per character.
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
-watch(searchText, () => {
-  if (searchTimer) {
-    clearTimeout(searchTimer);
-  }
-  searchTimer = setTimeout(() => {
-    searchTimer = null;
-    void reset();
-  }, 250);
-});
-
-onBeforeUnmount(() => {
-  if (searchTimer) {
-    clearTimeout(searchTimer);
-  }
-});
+// short debounce rather than firing one request per character. The debounced
+// call is cancelled when the component goes away.
+const restartOnSearch = useDebounceFn(() => void reset(), 250);
+watch(searchText, () => void restartOnSearch());
 
 function confirmRevoke(app: ConnectedApp) {
   revoking.value = app;

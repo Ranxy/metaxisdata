@@ -302,7 +302,7 @@
 
 <script setup lang="ts">
 import { Code } from "@connectrpc/connect";
-import { onClickOutside } from "@vueuse/core";
+import { onClickOutside, useDebounceFn } from "@vueuse/core";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -310,14 +310,7 @@ import {
   RefreshCw,
   SearchX,
 } from "lucide-vue-next";
-
-import {
-  computed,
-  defineAsyncComponent,
-  onBeforeUnmount,
-  ref,
-  watch,
-} from "vue";
+import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { getMetadata, listMetadata } from "@/api/database";
@@ -442,7 +435,6 @@ const searchError = computed(() =>
   search.error.value ? t("metadataBrowser.searchError") : null
 );
 const showSearchResults = ref(false);
-let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Filter state, owned by AdvancedSearchBar and read back from its pills.
 const typeFilter = ref<MetaType | null>(null);
@@ -1261,7 +1253,7 @@ function handleSelectSearchResult(result: MetadataChild) {
  *  The bar owns the visible search box and its pills, so it is cleared too —
  *  otherwise the field would still show the text the button just dismissed. */
 function clearSearch() {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  debouncedSearch.cancel();
   advancedSearchRef.value?.clear();
   searchQuery.value = "";
   search.reset();
@@ -1272,27 +1264,29 @@ function triggerSearchWithCurrentQuery() {
   if (!searchQuery.value.trim()) {
     return;
   }
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  debouncedSearch.cancel();
   // A filter change re-runs the search, so its results open again.
   showSearchResults.value = true;
   void performSearch(searchQuery.value);
 }
 
+/** The bar emits per keystroke; one request answers a pause in typing. */
+const debouncedSearch = useDebounceFn(
+  (query: string) => void performSearch(query),
+  300
+);
+
 watch(searchQuery, (val) => {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  debouncedSearch.cancel();
   showSearchResults.value = Boolean(val.trim());
   if (!val.trim()) {
     search.reset();
     return;
   }
-  searchDebounceTimer = setTimeout(() => performSearch(val), 300);
+  void debouncedSearch(val);
 });
 
 onClickOutside(searchBarRef, () => {
   showSearchResults.value = false;
-});
-
-onBeforeUnmount(() => {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 });
 </script>

@@ -470,6 +470,7 @@
 </template>
 
 <script setup lang="ts">
+import { useTimeoutFn } from "@vueuse/core";
 import {
   AlertCircle,
   CheckCircle2,
@@ -708,6 +709,12 @@ async function handleResetSignOut() {
 
 const REGISTRATION_SUCCESS_DELAY = 1500;
 
+/** Switching to the login form waits for the success message to be read. */
+const switchToLoginLater = useTimeoutFn(
+  () => switchToLogin(),
+  REGISTRATION_SUCCESS_DELAY
+);
+
 async function handleRegister() {
   if (
     !registerForm.value.email ||
@@ -744,10 +751,9 @@ async function handleRegister() {
       confirmPassword: "",
     };
 
-    // Switch to login after a short delay
-    setTimeout(() => {
-      switchToLogin();
-    }, REGISTRATION_SUCCESS_DELAY);
+    // Switch to login after a short delay; the timer is owned by the scope so a
+    // navigated-away page cannot flip a form it no longer shows.
+    switchToLoginLater.start();
   } catch (error) {
     errorMessage.value = formatError(error, "register.registerFailed");
     console.error("Register error:", error);

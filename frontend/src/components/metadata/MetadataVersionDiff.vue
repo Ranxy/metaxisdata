@@ -82,6 +82,7 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { useTimeoutFn } from "@vueuse/core";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { diffMetadata } from "@/api/database";
@@ -177,14 +178,17 @@ async function runDiff() {
   }
 }
 
+/** The "copied" confirmation is a short-lived acknowledgement, not state. */
+const resetCopied = useTimeoutFn(() => {
+  copied.value = false;
+}, 2000);
+
 async function copyDdl() {
   if (!result.value?.ddl) return;
   try {
     await navigator.clipboard.writeText(result.value.ddl);
     copied.value = true;
-    setTimeout(() => {
-      copied.value = false;
-    }, 2000);
+    resetCopied.start();
   } catch {
     // Clipboard not available
   }

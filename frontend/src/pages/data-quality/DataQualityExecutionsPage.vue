@@ -746,6 +746,7 @@
 </template>
 
 <script setup lang="ts">
+import { useDebounceFn } from "@vueuse/core";
 import {
   Activity,
   ChevronDown,
@@ -754,14 +755,7 @@ import {
   RefreshCcw,
   X,
 } from "lucide-vue-next";
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   type LocationQueryRaw,
@@ -804,6 +798,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { usePolling } from "@/composables/usePolling";
 import { partialQualityRunChecks } from "@/lib/qualityRun";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -996,22 +991,15 @@ const {
 // The template reads the rows through plain helpers; the paged ref is the one
 // source, so the expander and the scroll watcher see the same rows.
 
-let targetSearchTimer: ReturnType<typeof setTimeout> | undefined;
-
 function applyTargetSearch() {
   appliedTargetSearch.value = targetSearch.value.trim();
   void resetTargets();
 }
 
-watch(targetSearch, () => {
-  if (targetSearchTimer !== undefined) {
-    clearTimeout(targetSearchTimer);
-  }
-  targetSearchTimer = setTimeout(() => {
-    targetSearchTimer = undefined;
-    applyTargetSearch();
-  }, 300);
-});
+/** One request answers a pause in typing, not every keystroke. */
+const debouncedTargetSearch = useDebounceFn(() => applyTargetSearch(), 300);
+
+watch(targetSearch, () => void debouncedTargetSearch());
 
 watch(targetSort, () => void resetTargets());
 watch(targetPageSize, () => void resetTargets());
@@ -1562,47 +1550,26 @@ function refreshCurrent() {
   }
 }
 
-let pollTimer: number | undefined;
-
 function hasInProgress(): boolean {
   return executions.value.some((execution) =>
     isExecutionInProgress(execution.state)
   );
 }
 
-function startPolling() {
-  if (pollTimer !== undefined) {
-    return;
-  }
-  pollTimer = window.setInterval(() => {
-    // The poll keeps the table honest while the runner works; a manual refresh
-    // is not needed to see PENDING become COMPLETED.
-    if (hasInProgress()) {
-      void refreshExecutions();
-    } else {
-      stopPolling();
-    }
-  }, POLL_INTERVAL_MS);
-}
-
-function stopPolling() {
-  if (pollTimer !== undefined) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
-}
+// The poll keeps the table honest while the runner works; a manual refresh is
+// not needed to see PENDING become COMPLETED.
+const executionsPolling = usePolling(() => refreshExecutions(), {
+  intervalMs: POLL_INTERVAL_MS,
+  shouldContinue: hasInProgress,
+});
 
 // A flat page that shows a pending/running execution reloads until none is
 // left, so the state the user clicked through from is not frozen on screen.
 watch(executions, () => {
-  if (!flatView.value) {
-    stopPolling();
-    return;
-  }
-  if (hasInProgress()) {
-    startPolling();
+  if (flatView.value && hasInProgress()) {
+    executionsPolling.start();
   } else {
-    stopPolling();
+    executionsPolling.stop();
   }
 });
 
@@ -1612,7 +1579,7 @@ watch(flatView, (flat) => {
   if (flat) {
     void resetExecutions();
   } else {
-    stopPolling();
+    executionsPolling.stop();
     void resetTargets();
   }
 });
@@ -1623,13 +1590,6 @@ onMounted(() => {
     void resetExecutions();
   } else {
     void resetTargets();
-  }
-});
-
-onBeforeUnmount(() => {
-  stopPolling();
-  if (targetSearchTimer !== undefined) {
-    clearTimeout(targetSearchTimer);
   }
 });
 </script>

@@ -179,8 +179,9 @@
 </template>
 
 <script setup lang="ts">
+import { useDebounceFn } from "@vueuse/core";
 import { ArrowLeft, Check, ChevronRight, Loader2 } from "lucide-vue-next";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppLoading from "@/components/common/AppLoading.vue";
 import { Badge } from "@/components/ui/badge";
@@ -297,6 +298,26 @@ const {
   reset: resetBrowser,
 } = useMetadataChildren({ pageSize: PAGE_SIZE });
 
+/** The debounced server query; the caller cancels it when the level changes. */
+const applyFilter = useDebounceFn(
+  (term: string, parent: string, types: ReturnType<typeof currentTypes>) => {
+    // The reader may have drilled away while the delay ran; that level's own
+    // load already owns the list.
+    if (step.value === "instance" || parent !== currentParent()) {
+      return;
+    }
+    if (term === browseQuery.value && !browseError.value) {
+      return;
+    }
+    if (term === "") {
+      void loadChildren(parent, types);
+    } else {
+      void searchChildren(parent, types, term);
+    }
+  },
+  SEARCH_DELAY_MS
+);
+
 const step = ref<Step>("instance");
 const instanceId = ref("");
 const database = ref("");
@@ -310,8 +331,6 @@ const instanceTitle = ref("");
 const instanceEngine = ref<Engine>();
 /** Tables marked in multi-select mode, in the order they were marked. */
 const selected = ref<TargetSelection[]>([]);
-
-let filterTimer: ReturnType<typeof setTimeout> | undefined;
 
 const instances = computed(() => instanceStore.active);
 /** Instances are cached in full, so "more" only grows the rendered slice. */
@@ -504,10 +523,6 @@ watch(
   { immediate: true }
 );
 
-onBeforeUnmount(() => {
-  cancelFilterTimer();
-});
-
 function reset() {
   cancelFilterTimer();
   instanceLimit.value = INSTANCE_BATCH;
@@ -538,10 +553,7 @@ async function loadInstances() {
 }
 
 function cancelFilterTimer() {
-  if (filterTimer !== undefined) {
-    clearTimeout(filterTimer);
-    filterTimer = undefined;
-  }
+  applyFilter.cancel();
 }
 
 /**
@@ -587,26 +599,7 @@ function onFilterChanged(value: string | number) {
     instanceLimit.value = INSTANCE_BATCH;
     return;
   }
-  const term = String(value).trim();
-  const parent = currentParent();
-  const types = currentTypes();
-  cancelFilterTimer();
-  filterTimer = setTimeout(() => {
-    filterTimer = undefined;
-    // The reader may have drilled away while the delay ran; that level's own
-    // load already owns the list.
-    if (step.value === "instance" || parent !== currentParent()) {
-      return;
-    }
-    if (term === browseQuery.value && !browseError.value) {
-      return;
-    }
-    if (term === "") {
-      void loadChildren(parent, types);
-    } else {
-      void searchChildren(parent, types, term);
-    }
-  }, SEARCH_DELAY_MS);
+  void applyFilter(String(value).trim(), currentParent(), currentTypes());
 }
 
 function loadMore() {

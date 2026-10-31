@@ -156,6 +156,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { usePolling } from "@/composables/usePolling";
 import { notify } from "@/lib/notify";
 import {
   type QualitySuggestionJob,
@@ -219,7 +220,6 @@ const canceling = ref("");
 let activeNames = new Set<string>();
 /** Terminal jobs already announced, so a later poll cannot settle them twice. */
 const handled = new Set<string>();
-let pollTimer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
 let disposed = false;
 /** A reload asked for while a request was in flight must not be dropped. */
@@ -231,6 +231,12 @@ let retryNames: string[] = [];
 function hasActiveWork(): boolean {
   return jobs.value.some(isActiveSuggestionJob) || retryNames.length > 0;
 }
+
+/** The poll waits for a round to settle before scheduling the next one. */
+const polling = usePolling(() => loadJobs(), {
+  intervalMs: POLL_INTERVAL_MS,
+  shouldContinue: hasActiveWork,
+});
 const panelSummary = computed(() => {
   if (jobs.value.length === 0) {
     return "";
@@ -326,17 +332,11 @@ function scheduleNextPoll() {
   if (disposed) {
     return;
   }
-  if (pollTimer !== undefined) {
-    clearTimeout(pollTimer);
-    pollTimer = undefined;
+  if (hasActiveWork()) {
+    polling.start();
+  } else {
+    polling.stop();
   }
-  if (!hasActiveWork()) {
-    return;
-  }
-  pollTimer = setTimeout(() => {
-    pollTimer = undefined;
-    void poll();
-  }, POLL_INTERVAL_MS);
 }
 
 /**
@@ -419,10 +419,7 @@ async function loadJobs() {
     loading.value = false;
     if (reloadRequested) {
       reloadRequested = false;
-      if (pollTimer !== undefined) {
-        clearTimeout(pollTimer);
-        pollTimer = undefined;
-      }
+      polling.stop();
       // Run now: the deferred reload must not wait for the poll interval, and
       // its own finally re-arms polling from the fresh snapshot.
       void loadJobs();
@@ -432,15 +429,6 @@ async function loadJobs() {
       scheduleNextPoll();
     }
   }
-}
-
-/** Poll only while a job can still progress; never overlap a request. */
-async function poll() {
-  if (inFlight) {
-    scheduleNextPoll();
-    return;
-  }
-  await loadJobs();
 }
 
 /**
@@ -481,9 +469,5 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true;
-  if (pollTimer !== undefined) {
-    clearTimeout(pollTimer);
-    pollTimer = undefined;
-  }
 });
 </script>
