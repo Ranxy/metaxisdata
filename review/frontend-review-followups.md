@@ -17,6 +17,7 @@
 | 7 | 抽屉焦点边界分支测试 | — | `01f6887` |
 | 8 | **FD7**：`RuleConfigForm` 按规则族拆分 + `useSchemaDriftColumns` | FD7 | `ef870fe` |
 | 9 | **FD2（第一步）**：测高收敛下沉为 `lib/lineageLayout` | FD2 | `6ff94fc` |
+| 10 | **FD2（第二步）**：详情列抽成 `LineageNodeDetailPanel` + 9 条测试 | FD2 | `6d1c63b` |
 
 ## 实施说明
 
@@ -66,10 +67,11 @@
 ## FD2：god view 拆分（进行中）
 
 - 第一步已完成：`settleNodeHeights` 的四轮收敛（含测高未就绪时保留旧布局、pass 预算、全部节点测高）与 `heightFor` 回退下沉到 `lib/lineageLayout.ts`，6 条纯函数测试覆盖（100%），页面只保留 DOM 测量与 `stack()` 回调。
-- 页面仍 2024 行；`LineageNodeDetailPanel.vue`（模板 141-361 + 派生状态约 470 行）与 `useLineageGraphData`/`useLineageSelection` 两个 composable 待下一轮完成。
+- 第二步已完成（`6d1c63b`）：详情列抽成 `components/lineage/LineageNodeDetailPanel.vue`（402 行，含外部对象的 namespace/datasetType、字段 trail、来源徽标、相关 runs、空态），页面从 2016 行降到 1807 行；父页面只传 7 个派生值 + 7 个动作事件。新增 **9 条组件测试**（空态、身份/计数、外部对象、trail、runs、动作 emit、禁用态、无 trail）。
+- 仍需完成：`useLineageGraphData`（nodeDataMap/展开状态/单节点与度数取数）与 `useLineageSelection`（选中/字段揭示/跳转动作）两个 composable；页面目标降到约 300 行。
 
 ## 尚未开始
 
-- **FD2 后续**：`LineageGraphPage` 详情面板 + `useLineageGraphData`/`useLineageSelection`。
+- **FD2 后续**：`LineageGraphPage` 的 `useLineageGraphData`/`useLineageSelection` 两个 composable（页面目标约 300 行）。
 - **FD3**：三个 DQ god view（Executions/Target/Suggestions）的抽屉、URL、权限、轮询下沉。
 - **FD12**：随上述下沉补页面/纯函数测试。
