@@ -40,7 +40,7 @@
 2. The stored DDL is **display-only**. Nothing diffs, migrates or validates from it.
 3. A missing or unreadable definition degrades to reconstruction — it can never fail a sync or change what metadata is stored.
 4. A database's full refresh is never gated on the metadata hash; it happens at least once per `objectDefinitionFullRefreshInterval`. Between refreshes only changed objects are re-read, which is what keeps a StarRocks property change from being invisible forever without re-reading every object on every sync. The refresh clock/cursor advance only after a committed sync, so a rolled-back sync never skips objects.
-5. `db.Driver` stays unchanged; the capability is opt-in, and engines without it are skipped by a type assertion in `SyncDatabaseSchema` (`backend/runner/schemasync/syncer.go:730`).
+5. `db.Driver` stays unchanged; the capability is opt-in, and engines without it are skipped by a type assertion in `SyncDatabaseSchema` (`backend/runner/schemasync/database_sync.go`, `SyncDatabaseSchema`).
 
 ## Failure modes
 
@@ -56,7 +56,7 @@
 ## Where things live
 
 - Table, migration and store: `backend/migrator/migration/0.1/0010##meta_registry_resource_schema.sql`, `LATEST.sql:231`, `backend/store/meta_resource_schema.go`; guard `TestMigrateSchemaLATESTMatchesTheIncrementChain` (integration-tagged, `backend/migrator/migrator_integration_test.go:100`) and query-shape guards in `backend/store/meta_resource_schema_test.go`.
-- Fetch + write diff + sync call site: `backend/runner/schemasync/object_definition.go`, `backend/runner/schemasync/syncer.go` (`SyncDatabaseSchema`, guarded by `driver.(db.ObjectDefinitionReader)`; the refresh clock is `definitionRefreshDue`/`recordDefinitionRefresh`); hermetic tests `object_definition_test.go`. The schema a reader is handed comes from the object's GUID (`metaObjectSchema`), because the metadata row does not otherwise carry its container.
+- Fetch + write diff + sync call site: `backend/runner/schemasync/object_definition.go`, `backend/runner/schemasync/database_sync.go` (`SyncDatabaseSchema`, guarded by `driver.(db.ObjectDefinitionReader)`; the refresh clock is `definitionRefreshDue`/`recordDefinitionRefresh` in `refresh.go`); hermetic tests `object_definition_test.go`. The schema a reader is handed comes from the object's GUID (`metaObjectSchema`), because the metadata row does not otherwise carry its container.
 - Delete hook: `backend/store/meta_resource.go:516`. Read path: `backend/api/v1/database_metadata.go:20`. Driver capability: `backend/plugin/db/driver.go:133` with the impl + tests in `backend/plugin/db/starrocks/definition.go` / `definition_test.go`.
 - Gate: `gofmt`, `golangci-lint run --allow-parallel-runners`, `go test ./...`, build; `make test-integration-smoke` (migration guard).
 - Nothing to enable: an engine gains the behaviour by implementing `db.ObjectDefinitionReader` and nothing else.

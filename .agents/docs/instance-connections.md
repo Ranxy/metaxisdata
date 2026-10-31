@@ -115,9 +115,9 @@ governor 不是计数器，而是**公平、带优先级、可阻塞的队列**�
 | --- | --- |
 | governor / 优先级 / 队列 | `backend/component/state/connection.go` |
 | 状态持有与构造 | `backend/component/state/state.go`（`State.instanceConnections`） |
-| DQ 批次准入 | `backend/runner/qualityrunner/qualityrunner.go`（`admitBatch`、`instanceForAdmission`、`instanceConnectionLimit`、`abandonUnadmittedBatch`、`abandonBatch`） |
+| DQ 批次准入 | `backend/runner/qualityrunner/admission.go`（`admitBatch`、`instanceForAdmission`、`instanceConnectionLimit`、`abandonUnadmittedBatch`、`abandonBatch`） |
 | DQ 规则级兜底 | 同上（`ruleConnectionLease`：目标在准入后被改到别的实例时补领） |
-| schemasync 准入 | `backend/runner/schemasync/syncer.go`（`acquireInstanceConnection` → `TryAcquire`） |
+| schemasync 准入 | `backend/runner/schemasync/instance_sync.go`（`acquireInstanceConnection` → `TryAcquire`） |
 | 连通性测试准入 | `backend/api/v1/instance_service.go`（`pingDataSource`） |
 | 干跑/画像准入 | `backend/api/v1/data_quality_service.go`（`acquireQualityConnection`，供 `probeQualityRule` 与 `qualityReadOnlyQueryer` 使用） |
 | 测试 | `backend/component/state/connection_test.go`、`backend/runner/qualityrunner/qualityrunner_test.go`、`backend/runner/schemasync/syncer_test.go` |

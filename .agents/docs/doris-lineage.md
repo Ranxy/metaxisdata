@@ -161,7 +161,7 @@ omni 的 Doris 与 StarRocks 极其接近:关键字集合只差 3 个(StarRocks 
 | VARIANT 子列路径 | `expr.go`(`collectColumnSources`、`variantPathBase`、`variantBase`、`isVariantType`) | `variant_path_test.go`(13 + 6 + 1 例);`26_test_doris_forms_table.yaml` 八例(含 typed catalog fixture) |
 | Doris 独有语法 | 通用表达式走查 + `SelectStmt.GroupByWithRollup` + `groupByKeys`(分组集展平成列、重复键去重) | `testdata/analyze/26_test_doris_forms_table.yaml` 二十八例(含 `ROLLUP` / `CUBE` / `GROUPING SETS` 三例与重复分组键一例) |
 | 视图体的抽取 | `viewbody.go`(`extractViewDDL`)、`viewbody_test.go` | `go test ./backend/plugin/lineage/doris/` |
-| MV 定义来源 | `backend/plugin/db/starrocks/sync.go`(`mv_infos("database"=?)`)、`backend/runner/lineageanalyzer/analyzer.go`(`buildSQL`) | [starrocks-doris-driver.md](starrocks-doris-driver.md) |
+| MV 定义来源 | `backend/plugin/db/starrocks/sync.go`(`mv_infos("database"=?)`)、`backend/runner/lineageanalyzer/build_sql.go`(`buildSQL`) | [starrocks-doris-driver.md](starrocks-doris-driver.md) |
 | 端到端 | `test/e2e_etl/doris/*.sql`、`test/e2e_etl/dags/e2e_07_pg_to_doris.py` / `e2e_08_doris_transform.py`、`test/e2e_etl/tools/datax_lineage_doris.py` | `test/e2e_etl/run_chain.sh` + `verify_chain.sql` §23-32;证据见 `test/e2e_etl/FINDINGS.md` |
 | 上游 AST 差异记录 | 本篇 §方言事实 | — |
 
