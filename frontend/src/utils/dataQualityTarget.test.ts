@@ -42,12 +42,14 @@ import {
   isCrossColumnRule,
   ruleColumn,
   ruleSectionKey,
+  scopeFromQuery,
   sortQualityTargets,
   targetDisplayName,
   targetFullPath,
   targetMatchesSearch,
   targetScope,
   unresolvedIssuesByRule,
+  writeScopeToQuery,
 } from "./dataQualityTarget";
 
 // The server never writes the checked column into the target path snapshot; it
@@ -707,5 +709,52 @@ describe("sortQualityTargets", () => {
     expect(
       guids(sortQualityTargets(rows, QualityTargetOrder.LAST_RUN))
     ).toEqual(["g-same", "g-same"]);
+  });
+});
+
+describe("target scope URL helpers", () => {
+  it("reads a scope from the ids a URL carries", () => {
+    expect(
+      scopeFromQuery({
+        instance: "inst-1",
+        database: "db",
+        schema: "public",
+        table: "orders",
+      })
+    ).toEqual({
+      instance: "inst-1",
+      database: "db",
+      schema: "public",
+      table: "orders",
+      label: "inst-1 > db > public > orders",
+    });
+  });
+
+  it("reads no instance as no scope", () => {
+    expect(scopeFromQuery({ database: "db" })).toBeUndefined();
+    expect(scopeFromQuery({})).toBeUndefined();
+  });
+
+  it("writes the ids, not the picker label, and skips an empty scope", () => {
+    const query: Record<string, string> = {};
+    writeScopeToQuery(query, {
+      instance: "inst-1",
+      database: "db",
+      schema: "",
+      table: "",
+      label: "Inst One > db",
+    });
+    expect(query).toEqual({ instance: "inst-1", database: "db" });
+
+    const untouched: Record<string, string> = {};
+    writeScopeToQuery(untouched, undefined);
+    writeScopeToQuery(untouched, {
+      instance: "",
+      database: "",
+      schema: "",
+      table: "",
+      label: "",
+    });
+    expect(untouched).toEqual({});
   });
 });

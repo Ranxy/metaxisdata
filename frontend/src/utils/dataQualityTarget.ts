@@ -20,11 +20,16 @@ import {
   QualityTargetOrder,
   type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { formatTargetPath, targetScopeLabel } from "@/utils/dataQuality";
+import {
+  formatTargetPath,
+  type QualityTargetScope,
+  targetScopeLabel,
+} from "@/utils/dataQuality";
 import {
   ruleDraftOf,
   suggestionTargetPath,
 } from "@/utils/dataQualitySuggestion";
+import { type Query, queryString } from "@/utils/queryFilters";
 
 /** The three sections a target's checks are read in. */
 export type TargetCheckSectionKind = "dataset" | "multi" | "column";
@@ -366,4 +371,44 @@ export function unresolvedIssuesByRule(
     byRule.set(rule, list);
   }
   return byRule;
+}
+
+/** The target-scope filter from a URL; no instance means no scope. */
+export function scopeFromQuery(query: Query): QualityTargetScope | undefined {
+  const instance = queryString(query.instance).trim();
+  if (!instance) {
+    return undefined;
+  }
+  const database = queryString(query.database).trim();
+  const schema = queryString(query.schema).trim();
+  const table = queryString(query.table).trim();
+  return {
+    instance,
+    database,
+    schema,
+    table,
+    // The picker's label is "instance title > path"; a URL carries ids, so the
+    // id stands in until the reader picks the scope again.
+    label: [instance, database, schema, table].filter(Boolean).join(" > "),
+  };
+}
+
+/** Add a scope's ids to a query; the picker's label is not a URL value. */
+export function writeScopeToQuery(
+  query: Record<string, string>,
+  scope: QualityTargetScope | undefined
+): void {
+  if (!scope?.instance) {
+    return;
+  }
+  query.instance = scope.instance;
+  if (scope.database) {
+    query.database = scope.database;
+  }
+  if (scope.schema) {
+    query.schema = scope.schema;
+  }
+  if (scope.table) {
+    query.table = scope.table;
+  }
 }

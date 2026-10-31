@@ -758,7 +758,6 @@ import {
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
-  type LocationQueryRaw,
   type RouteLocationRaw,
   RouterLink,
   useRoute,
@@ -799,6 +798,7 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
 import { usePolling } from "@/composables/usePolling";
+import { useUrlFilters } from "@/composables/useUrlFilters";
 import { partialQualityRunChecks } from "@/lib/qualityRun";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -829,6 +829,7 @@ import {
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 import { metaTypeSingularLabel } from "@/utils/metaType";
+import { enumFromFilter, queryString } from "@/utils/queryFilters";
 
 /**
  * Quality runs, read two ways.
@@ -869,13 +870,6 @@ const viewOptions = computed<Array<{ value: ExecutionsView; label: string }>>(
   ]
 );
 
-function queryString(value: unknown): string {
-  if (Array.isArray(value)) {
-    return String(value[0] ?? "");
-  }
-  return value === undefined || value === null ? "" : String(value);
-}
-
 /** `?view=executions` is the flat list; anything else is the target view. */
 const viewParam = computed(() => queryString(route.query.view));
 /**
@@ -896,16 +890,53 @@ const activeView = computed<ExecutionsView>(() =>
   flatView.value ? "executions" : "targets"
 );
 
-function setQuery(patch: Record<string, string | undefined>) {
-  const next: LocationQueryRaw = { ...route.query };
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined || value === "") {
-      delete next[key];
-    } else {
-      next[key] = value;
+/** The four query parameters the view state travels under. */
+const LINK_QUERY_KEYS = ["view", "rule", "target", "run"] as const;
+
+interface LinkFilters {
+  view: string;
+  rule: string;
+  target: string;
+  run: string;
+}
+
+const linkFilters = useUrlFilters<LinkFilters>({
+  keys: LINK_QUERY_KEYS,
+  parse: (query) => ({
+    view: queryString(query.view),
+    rule: queryString(query.rule),
+    target: queryString(query.target),
+    run: queryString(query.run),
+  }),
+  serialize: (filters) => {
+    const owned: Record<string, string> = {};
+    if (filters.view) {
+      owned.view = filters.view;
     }
-  }
-  void router.replace({ query: next });
+    if (filters.rule) {
+      owned.rule = filters.rule;
+    }
+    if (filters.target) {
+      owned.target = filters.target;
+    }
+    if (filters.run) {
+      owned.run = filters.run;
+    }
+    return owned;
+  },
+});
+
+/** Change part of the view state, preserving the rest of it and foreign params. */
+function setQuery(
+  patch: Partial<Record<keyof LinkFilters, string | undefined>>
+) {
+  const current = linkFilters.read();
+  linkFilters.write({
+    view: "view" in patch ? (patch.view ?? "") : current.view,
+    rule: "rule" in patch ? (patch.rule ?? "") : current.rule,
+    target: "target" in patch ? (patch.target ?? "") : current.target,
+    run: "run" in patch ? (patch.run ?? "") : current.run,
+  });
 }
 
 function switchView(view: ExecutionsView) {
@@ -1368,16 +1399,6 @@ watch(
   }
 );
 
-/**
- * The Select's value as an enum member. `-` and any value the enum no longer
- * has mean "no filter", so a stale URL or a hand-edited state cannot break the
- * request.
- */
-function enumFromFilter<T extends number>(value: string, members: T[]): T {
-  const parsed = Number(value);
-  return members.includes(parsed as T) ? (parsed as T) : members[0];
-}
-
 function applyFilters() {
   appliedState.value = state.value;
   appliedOutcome.value = outcome.value;
@@ -1394,38 +1415,26 @@ function clearFilters() {
   appliedState.value = "-";
   appliedOutcome.value = "-";
   appliedTrigger.value = "-";
-  const query = { ...route.query };
-  delete query.rule;
-  delete query.target;
-  delete query.run;
-  if (Object.keys(query).length !== Object.keys(route.query).length) {
-    void router.replace({ query });
+  const next = { ...linkFilters.read(), rule: "", target: "", run: "" };
+  if (linkFilters.isCurrent(next)) {
+    void resetExecutions();
     return;
   }
-  void resetExecutions();
+  linkFilters.write(next);
 }
 
 function clearRuleFilter() {
-  const query = { ...route.query };
-  delete query.rule;
-  void router.replace({ query });
+  setQuery({ rule: "" });
 }
 
 function clearTargetFilter() {
-  const query = { ...route.query };
-  delete query.target;
-  void router.replace({ query });
+  setQuery({ target: "" });
 }
 
 function clearRunFilter() {
-  const query = { ...route.query };
-  delete query.run;
   // A run-only deep link is the flat list by derivation; dropping the chip must
   // keep the reader in that list instead of bouncing to the target view.
-  if (!viewParam.value) {
-    query.view = "executions";
-  }
-  void router.replace({ query });
+  setQuery({ run: "", ...(viewParam.value ? {} : { view: "executions" }) });
 }
 
 function ruleLabel(ruleName: string): string {
