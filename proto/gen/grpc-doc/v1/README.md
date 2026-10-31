@@ -476,24 +476,42 @@
   
 - [v1/notification_service.proto](#v1_notification_service-proto)
     - [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest)
+    - [CreateNotificationChannelRequest](#metaxisdata-v1-CreateNotificationChannelRequest)
     - [DataQualityDetail](#metaxisdata-v1-DataQualityDetail)
+    - [DeleteNotificationChannelRequest](#metaxisdata-v1-DeleteNotificationChannelRequest)
     - [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest)
+    - [GetNotificationChannelRequest](#metaxisdata-v1-GetNotificationChannelRequest)
     - [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest)
     - [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse)
     - [KeepAlive](#metaxisdata-v1-KeepAlive)
+    - [ListNotificationChannelsRequest](#metaxisdata-v1-ListNotificationChannelsRequest)
+    - [ListNotificationChannelsResponse](#metaxisdata-v1-ListNotificationChannelsResponse)
+    - [ListNotificationDeliveriesRequest](#metaxisdata-v1-ListNotificationDeliveriesRequest)
+    - [ListNotificationDeliveriesResponse](#metaxisdata-v1-ListNotificationDeliveriesResponse)
     - [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest)
     - [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse)
     - [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest)
     - [MarkNotificationsSeenRequest](#metaxisdata-v1-MarkNotificationsSeenRequest)
     - [Notification](#metaxisdata-v1-Notification)
+    - [NotificationChannel](#metaxisdata-v1-NotificationChannel)
+    - [NotificationChannelConfig](#metaxisdata-v1-NotificationChannelConfig)
+    - [NotificationChannelSecret](#metaxisdata-v1-NotificationChannelSecret)
+    - [NotificationDelivery](#metaxisdata-v1-NotificationDelivery)
     - [NotificationEvent](#metaxisdata-v1-NotificationEvent)
     - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
+    - [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest)
     - [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail)
     - [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest)
     - [SubscribeNotificationsResponse](#metaxisdata-v1-SubscribeNotificationsResponse)
     - [SyncDatabaseResult](#metaxisdata-v1-SyncDatabaseResult)
+    - [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest)
+    - [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse)
+    - [UpdateNotificationChannelRequest](#metaxisdata-v1-UpdateNotificationChannelRequest)
+    - [WebhookChannelConfig](#metaxisdata-v1-WebhookChannelConfig)
   
     - [DataQualityNotificationKind](#metaxisdata-v1-DataQualityNotificationKind)
+    - [NotificationChannelKind](#metaxisdata-v1-NotificationChannelKind)
+    - [NotificationDeliveryState](#metaxisdata-v1-NotificationDeliveryState)
     - [NotificationSeverity](#metaxisdata-v1-NotificationSeverity)
     - [NotificationType](#metaxisdata-v1-NotificationType)
     - [OpenLineageFailureKind](#metaxisdata-v1-OpenLineageFailureKind)
@@ -8494,6 +8512,23 @@ An update with an empty field mask writes this field only when it is non-zero (p
 
 
 
+<a name="metaxisdata-v1-CreateNotificationChannelRequest"></a>
+
+### CreateNotificationChannelRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace} |
+| channel | [NotificationChannel](#metaxisdata-v1-NotificationChannel) |  |  |
+| secret | [NotificationChannelSecret](#metaxisdata-v1-NotificationChannelSecret) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DataQualityDetail"></a>
 
 ### DataQualityDetail
@@ -8527,6 +8562,21 @@ only; the client renders the localized sentence from the kind and these fields.
 
 
 
+<a name="metaxisdata-v1-DeleteNotificationChannelRequest"></a>
+
+### DeleteNotificationChannelRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DeleteNotificationRequest"></a>
 
 ### DeleteNotificationRequest
@@ -8536,6 +8586,21 @@ only; the client renders the localized sentence from the kind and these fields.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/notifications/{id} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetNotificationChannelRequest"></a>
+
+### GetNotificationChannelRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
 
 
 
@@ -8577,6 +8642,71 @@ only; the client renders the localized sentence from the kind and these fields.
 
 ### KeepAlive
 KeepAlive is the notification stream&#39;s heartbeat. It carries no data.
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationChannelsRequest"></a>
+
+### ListNotificationChannelsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationChannelsResponse"></a>
+
+### ListNotificationChannelsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notification_channels | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationDeliveriesRequest"></a>
+
+### ListNotificationDeliveriesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace} |
+| channel | [string](#string) |  | Optional channel filter. Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
+| state | [NotificationDeliveryState](#metaxisdata-v1-NotificationDeliveryState) |  |  |
+| page_size | [int32](#int32) |  | Default 50, maximum 1000. |
+| page_token | [string](#string) |  | The token from the previous response; a follow-up keeps the page size the token was issued with when page_size is unset. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationDeliveriesResponse"></a>
+
+### ListNotificationDeliveriesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notification_deliveries | [NotificationDelivery](#metaxisdata-v1-NotificationDelivery) | repeated |  |
+| next_page_token | [string](#string) |  |  |
 
 
 
@@ -8669,6 +8799,89 @@ Notification is one in-app message for one recipient.
 
 
 
+<a name="metaxisdata-v1-NotificationChannel"></a>
+
+### NotificationChannel
+NotificationChannel is one configured outbound destination. The credential is
+write-only: reads report only whether one is stored.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
+| display_name | [string](#string) |  | The administrator-facing name, for example &#34;Data quality on-call&#34;. |
+| kind | [NotificationChannelKind](#metaxisdata-v1-NotificationChannelKind) |  |  |
+| enabled | [bool](#bool) |  | A disabled channel is kept but receives no new deliveries. |
+| event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type. |
+| min_severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  | The lowest severity this channel delivers. UNSPECIFIED means every severity. |
+| language | [string](#string) |  | BCP-47 tag the outbound text is written in. Empty means the server default. |
+| config | [NotificationChannelConfig](#metaxisdata-v1-NotificationChannelConfig) |  |  |
+| secret_set | [bool](#bool) |  | Whether a credential is stored. The credential itself is never returned. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-NotificationChannelConfig"></a>
+
+### NotificationChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| webhook | [WebhookChannelConfig](#metaxisdata-v1-WebhookChannelConfig) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-NotificationChannelSecret"></a>
+
+### NotificationChannelSecret
+NotificationChannelSecret is the write-only credential of a channel.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| webhook_url | [string](#string) |  | The endpoint to POST to. Required when creating a webhook channel; an unset secret on update keeps the stored one. |
+| webhook_signing_secret | [string](#string) |  | The HMAC-SHA256 key that signs the body when webhook.sign is set. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-NotificationDelivery"></a>
+
+### NotificationDelivery
+NotificationDelivery is one outbound attempt at one notification event for one
+channel. A failing event fans out to as many deliveries as channels it matched.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}. The last segment is the row id. |
+| channel | [string](#string) |  | Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
+| channel_name | [string](#string) |  | The channel display name as it was when the delivery was queued. |
+| event_type | [NotificationType](#metaxisdata-v1-NotificationType) |  |  |
+| severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  |  |
+| state | [NotificationDeliveryState](#metaxisdata-v1-NotificationDeliveryState) |  |  |
+| attempts | [int32](#int32) |  | How many automatic attempts were made. |
+| last_error | [string](#string) |  | Why the last attempt failed. Empty unless it did. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| next_attempt_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the next automatic attempt is due. Set while the delivery is PENDING or SENDING (where it is the lease deadline); unset for SENT and DEAD. |
+| sent_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When it was delivered. Unset unless it was. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-NotificationEvent"></a>
 
 ### NotificationEvent
@@ -8704,6 +8917,21 @@ fell through to an external dataset.
 | received_count | [int32](#int32) |  | How many events the request carried and how many of them failed. |
 | failed_count | [int32](#int32) |  |  |
 | error | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RetryNotificationDeliveryRequest"></a>
+
+### RetryNotificationDeliveryRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery} |
 
 
 
@@ -8780,6 +9008,68 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
 
 
 
+
+<a name="metaxisdata-v1-TestNotificationChannelRequest"></a>
+
+### TestNotificationChannelRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-TestNotificationChannelResponse"></a>
+
+### TestNotificationChannelResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| response | [string](#string) |  | The endpoint&#39;s answer, trimmed for display. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateNotificationChannelRequest"></a>
+
+### UpdateNotificationChannelRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| channel | [NotificationChannel](#metaxisdata-v1-NotificationChannel) |  |  |
+| secret | [NotificationChannelSecret](#metaxisdata-v1-NotificationChannelSecret) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-WebhookChannelConfig"></a>
+
+### WebhookChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sign | [bool](#bool) |  | Whether the delivery body is signed with the channel&#39;s signing secret. |
+
+
+
+
+
  
 
 
@@ -8795,6 +9085,33 @@ DataQualityNotificationKind is the event a data quality notification reports.
 | DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
 | DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
 | DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One run failed so many rules that the individual messages were merged. |
+
+
+
+<a name="metaxisdata-v1-NotificationChannelKind"></a>
+
+### NotificationChannelKind
+NotificationChannelKind is the protocol one outbound channel speaks.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_CHANNEL_KIND_UNSPECIFIED | 0 |  |
+| NOTIFICATION_CHANNEL_KIND_WEBHOOK | 1 | A generic HTTP POST endpoint. |
+
+
+
+<a name="metaxisdata-v1-NotificationDeliveryState"></a>
+
+### NotificationDeliveryState
+NotificationDeliveryState is the lifecycle of one outbound delivery.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_DELIVERY_STATE_UNSPECIFIED | 0 |  |
+| NOTIFICATION_DELIVERY_STATE_PENDING | 1 | Waiting for its next attempt, or for a retry an administrator asked for. |
+| NOTIFICATION_DELIVERY_STATE_SENDING | 2 | Leased by a dispatcher. |
+| NOTIFICATION_DELIVERY_STATE_SENT | 3 | Delivered. Terminal. |
+| NOTIFICATION_DELIVERY_STATE_DEAD | 4 | Out of automatic attempts; an administrator can retry it. |
 
 
 
@@ -8878,16 +9195,18 @@ SyncTrigger is what started the sync operation a notification reports.
 <a name="metaxisdata-v1-NotificationService"></a>
 
 ### NotificationService
-NotificationService serves the caller&#39;s own in-app messages: the outcome of a
-sync operation they asked for, and the ingestion failures a workspace
-administrator needs to see.
+NotificationService serves the caller&#39;s own in-app messages — the outcome of
+a sync operation they asked for, and the ingestion failures a workspace
+administrator needs to see — and the workspace&#39;s outbound delivery channels,
+which administrators configure.
 
-No method here carries a (metaxisdata.v1.permission) annotation, and none is
-reachable without credentials. An inbox belongs to one principal, which the
-workspace-scoped IAM catalog cannot express: every handler therefore scopes
-its query by the authenticated caller&#39;s id, the same way UserService&#39;s
-self-service paths do. Gating these methods on a permission instead would
-lock a custom role out of its own messages.
+The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+reachable without credentials: an inbox belongs to one principal, which the
+workspace-scoped IAM catalog cannot express, so every handler scopes its query
+by the authenticated caller&#39;s id, the same way UserService&#39;s self-service
+paths do. The outbound methods are workspace configuration and carry the
+settings permissions: reads use settings.get, writes, the test send and the
+delivery retry use settings.update.
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -8900,6 +9219,14 @@ lock a custom role out of its own messages.
 | SubscribeNotifications | [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest) | [SubscribeNotificationsResponse](#metaxisdata-v1-SubscribeNotificationsResponse) stream | Stream the caller&#39;s notifications as they are written, until the connection ends or the server ends it.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one — it answers &#34;streaming calls are not yet supported in the in-process transport&#34;, as the generated ExplainSQL gateway route does. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
+| ListNotificationChannels | [ListNotificationChannelsRequest](#metaxisdata-v1-ListNotificationChannelsRequest) | [ListNotificationChannelsResponse](#metaxisdata-v1-ListNotificationChannelsResponse) | List the outbound channels administrators have configured. The list is not paginated: a workspace configures a handful of destinations, and the delivery path reads the whole set anyway. |
+| GetNotificationChannel | [GetNotificationChannelRequest](#metaxisdata-v1-GetNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Read one outbound channel. The credential is never returned. |
+| CreateNotificationChannel | [CreateNotificationChannelRequest](#metaxisdata-v1-CreateNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Create one outbound channel. The secret is write-only: it is encrypted before it is stored and is never returned. |
+| UpdateNotificationChannel | [UpdateNotificationChannelRequest](#metaxisdata-v1-UpdateNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Update one outbound channel. An omitted secret keeps the stored one; a present secret replaces it. |
+| DeleteNotificationChannel | [DeleteNotificationChannelRequest](#metaxisdata-v1-DeleteNotificationChannelRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one outbound channel and the deliveries still queued for it. |
+| TestNotificationChannel | [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest) | [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse) | Post a test message through one stored channel and report what the endpoint answered. It queues no delivery and is not audited: it is a diagnostic probe that changes nothing, and the endpoint&#39;s answer is third-party text that does not belong in the permanent ledger. |
+| ListNotificationDeliveries | [ListNotificationDeliveriesRequest](#metaxisdata-v1-ListNotificationDeliveriesRequest) | [ListNotificationDeliveriesResponse](#metaxisdata-v1-ListNotificationDeliveriesResponse) | List outbound deliveries, newest first, for administrators to diagnose a channel. |
+| RetryNotificationDelivery | [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest) | [NotificationDelivery](#metaxisdata-v1-NotificationDelivery) | Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered or waiting one is left as it is. |
 
  
 

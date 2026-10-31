@@ -31,6 +31,12 @@ type fakeStore struct {
 	// (recipient_id, dedupe_key) does when it refuses a repeat: no row.
 	suppressNext bool
 
+	// Outbound: the channels an event may fan out to and the delivery rows the
+	// enqueue path wrote.
+	channels    []*store.NotificationChannelMessage
+	deliveries  []*store.CreateNotificationDeliveryMessage
+	deliveryErr error
+
 	unreadCount int
 	unseenCount int
 	countErr    error
@@ -91,6 +97,18 @@ func (f *fakeStore) CountNotificationCounts(context.Context, int) (int, int, err
 		return 0, 0, f.countErr
 	}
 	return unread, f.unseenCount, nil
+}
+
+func (f *fakeStore) ListNotificationChannels(context.Context) ([]*store.NotificationChannelMessage, error) {
+	return f.channels, nil
+}
+
+func (f *fakeStore) CreateNotificationDeliveries(_ context.Context, creates []*store.CreateNotificationDeliveryMessage) error {
+	if f.deliveryErr != nil {
+		return f.deliveryErr
+	}
+	f.deliveries = append(f.deliveries, creates...)
+	return nil
 }
 
 func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {

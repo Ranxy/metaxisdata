@@ -104,6 +104,17 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "notifications",
+        name: "NotificationSettings",
+        component: () =>
+          import("@/pages/settings/NotificationSettingsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.settings.get",
+        },
+      },
+      {
         path: "users",
         name: "UserManagement",
         component: () => import("@/pages/settings/UserManagementPage.vue"),

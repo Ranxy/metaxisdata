@@ -374,6 +374,115 @@ func (DataQualityNotificationKind) EnumDescriptor() ([]byte, []int) {
 	return file_store_notification_proto_rawDescGZIP(), []int{5}
 }
 
+// NotificationChannelKind is the protocol one outbound channel speaks.
+type NotificationChannelKind int32
+
+const (
+	NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED NotificationChannelKind = 0
+	// A generic HTTP POST endpoint. The body is the stable delivery JSON and is
+	// optionally signed with the channel's signing secret.
+	NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK NotificationChannelKind = 1
+)
+
+// Enum value maps for NotificationChannelKind.
+var (
+	NotificationChannelKind_name = map[int32]string{
+		0: "NOTIFICATION_CHANNEL_KIND_UNSPECIFIED",
+		1: "NOTIFICATION_CHANNEL_KIND_WEBHOOK",
+	}
+	NotificationChannelKind_value = map[string]int32{
+		"NOTIFICATION_CHANNEL_KIND_UNSPECIFIED": 0,
+		"NOTIFICATION_CHANNEL_KIND_WEBHOOK":     1,
+	}
+)
+
+func (x NotificationChannelKind) Enum() *NotificationChannelKind {
+	p := new(NotificationChannelKind)
+	*p = x
+	return p
+}
+
+func (x NotificationChannelKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NotificationChannelKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_notification_proto_enumTypes[6].Descriptor()
+}
+
+func (NotificationChannelKind) Type() protoreflect.EnumType {
+	return &file_store_notification_proto_enumTypes[6]
+}
+
+func (x NotificationChannelKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NotificationChannelKind.Descriptor instead.
+func (NotificationChannelKind) EnumDescriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{6}
+}
+
+// NotificationDeliveryState is the lifecycle of one outbound delivery.
+type NotificationDeliveryState int32
+
+const (
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_UNSPECIFIED NotificationDeliveryState = 0
+	// Waiting for its next attempt.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING NotificationDeliveryState = 1
+	// Leased by a dispatcher; a lease that expires is reclaimed as PENDING.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING NotificationDeliveryState = 2
+	// Delivered. Terminal.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT NotificationDeliveryState = 3
+	// Out of attempts. Terminal until an administrator retries it.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD NotificationDeliveryState = 4
+)
+
+// Enum value maps for NotificationDeliveryState.
+var (
+	NotificationDeliveryState_name = map[int32]string{
+		0: "NOTIFICATION_DELIVERY_STATE_UNSPECIFIED",
+		1: "NOTIFICATION_DELIVERY_STATE_PENDING",
+		2: "NOTIFICATION_DELIVERY_STATE_SENDING",
+		3: "NOTIFICATION_DELIVERY_STATE_SENT",
+		4: "NOTIFICATION_DELIVERY_STATE_DEAD",
+	}
+	NotificationDeliveryState_value = map[string]int32{
+		"NOTIFICATION_DELIVERY_STATE_UNSPECIFIED": 0,
+		"NOTIFICATION_DELIVERY_STATE_PENDING":     1,
+		"NOTIFICATION_DELIVERY_STATE_SENDING":     2,
+		"NOTIFICATION_DELIVERY_STATE_SENT":        3,
+		"NOTIFICATION_DELIVERY_STATE_DEAD":        4,
+	}
+)
+
+func (x NotificationDeliveryState) Enum() *NotificationDeliveryState {
+	p := new(NotificationDeliveryState)
+	*p = x
+	return p
+}
+
+func (x NotificationDeliveryState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NotificationDeliveryState) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_notification_proto_enumTypes[7].Descriptor()
+}
+
+func (NotificationDeliveryState) Type() protoreflect.EnumType {
+	return &file_store_notification_proto_enumTypes[7]
+}
+
+func (x NotificationDeliveryState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NotificationDeliveryState.Descriptor instead.
+func (NotificationDeliveryState) EnumDescriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{7}
+}
+
 // Notification is one in-app message for one recipient: the outcome of a sync
 // operation the recipient asked for, or an ingestion failure the workspace
 // administrators need to see. It is personal data, so every read is scoped by
@@ -1036,6 +1145,389 @@ func (x *DataQualityDetail) GetInstance() string {
 	return ""
 }
 
+// NotificationChannel is the stored configuration of one outbound channel, as
+// notification_channel.payload. The endpoint URL and the signing secret are not
+// part of it: they are write-only and live encrypted in the secret column, so a
+// read of the channel returns everything except the credential.
+type NotificationChannel struct {
+	state       protoimpl.MessageState  `protogen:"open.v1"`
+	DisplayName string                  `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Kind        NotificationChannelKind `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.store.NotificationChannelKind" json:"kind,omitempty"`
+	Enabled     bool                    `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// The notification types this channel subscribes to. Empty means every type.
+	EventTypes []NotificationType `protobuf:"varint,4,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.store.NotificationType" json:"event_types,omitempty"`
+	// The lowest severity this channel delivers. UNSPECIFIED means every severity.
+	MinSeverity NotificationSeverity `protobuf:"varint,5,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
+	// BCP-47 tag the outbound text is written in, for example "zh-CN". Empty
+	// means the server default.
+	Language      string                     `protobuf:"bytes,6,opt,name=language,proto3" json:"language,omitempty"`
+	Config        *NotificationChannelConfig `protobuf:"bytes,7,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationChannel) Reset() {
+	*x = NotificationChannel{}
+	mi := &file_store_notification_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationChannel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationChannel) ProtoMessage() {}
+
+func (x *NotificationChannel) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationChannel.ProtoReflect.Descriptor instead.
+func (*NotificationChannel) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *NotificationChannel) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *NotificationChannel) GetKind() NotificationChannelKind {
+	if x != nil {
+		return x.Kind
+	}
+	return NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED
+}
+
+func (x *NotificationChannel) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *NotificationChannel) GetEventTypes() []NotificationType {
+	if x != nil {
+		return x.EventTypes
+	}
+	return nil
+}
+
+func (x *NotificationChannel) GetMinSeverity() NotificationSeverity {
+	if x != nil {
+		return x.MinSeverity
+	}
+	return NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
+}
+
+func (x *NotificationChannel) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *NotificationChannel) GetConfig() *NotificationChannelConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+type NotificationChannelConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Config:
+	//
+	//	*NotificationChannelConfig_Webhook
+	Config        isNotificationChannelConfig_Config `protobuf_oneof:"config"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationChannelConfig) Reset() {
+	*x = NotificationChannelConfig{}
+	mi := &file_store_notification_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationChannelConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationChannelConfig) ProtoMessage() {}
+
+func (x *NotificationChannelConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationChannelConfig.ProtoReflect.Descriptor instead.
+func (*NotificationChannelConfig) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *NotificationChannelConfig) GetConfig() isNotificationChannelConfig_Config {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *NotificationChannelConfig) GetWebhook() *WebhookChannelConfig {
+	if x != nil {
+		if x, ok := x.Config.(*NotificationChannelConfig_Webhook); ok {
+			return x.Webhook
+		}
+	}
+	return nil
+}
+
+type isNotificationChannelConfig_Config interface {
+	isNotificationChannelConfig_Config()
+}
+
+type NotificationChannelConfig_Webhook struct {
+	Webhook *WebhookChannelConfig `protobuf:"bytes,1,opt,name=webhook,proto3,oneof"`
+}
+
+func (*NotificationChannelConfig_Webhook) isNotificationChannelConfig_Config() {}
+
+type WebhookChannelConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the delivery body is signed with the channel's signing secret.
+	Sign          bool `protobuf:"varint,1,opt,name=sign,proto3" json:"sign,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebhookChannelConfig) Reset() {
+	*x = WebhookChannelConfig{}
+	mi := &file_store_notification_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebhookChannelConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebhookChannelConfig) ProtoMessage() {}
+
+func (x *WebhookChannelConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebhookChannelConfig.ProtoReflect.Descriptor instead.
+func (*WebhookChannelConfig) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *WebhookChannelConfig) GetSign() bool {
+	if x != nil {
+		return x.Sign
+	}
+	return false
+}
+
+// NotificationChannelSecret is the write-only half of a channel: what it takes
+// to deliver, kept as v1: AES-256-GCM ciphertext in notification_channel.secret
+// and never returned by a read.
+type NotificationChannelSecret struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	WebhookUrl           string                 `protobuf:"bytes,1,opt,name=webhook_url,json=webhookUrl,proto3" json:"webhook_url,omitempty"`
+	WebhookSigningSecret string                 `protobuf:"bytes,2,opt,name=webhook_signing_secret,json=webhookSigningSecret,proto3" json:"webhook_signing_secret,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *NotificationChannelSecret) Reset() {
+	*x = NotificationChannelSecret{}
+	mi := &file_store_notification_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationChannelSecret) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationChannelSecret) ProtoMessage() {}
+
+func (x *NotificationChannelSecret) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationChannelSecret.ProtoReflect.Descriptor instead.
+func (*NotificationChannelSecret) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *NotificationChannelSecret) GetWebhookUrl() string {
+	if x != nil {
+		return x.WebhookUrl
+	}
+	return ""
+}
+
+func (x *NotificationChannelSecret) GetWebhookSigningSecret() string {
+	if x != nil {
+		return x.WebhookSigningSecret
+	}
+	return ""
+}
+
+// NotificationDeliveryEvent is the workspace-level half of a notification: the
+// message without its per-recipient columns. It is notification_delivery.payload
+// and is what the dispatcher renders and posts.
+type NotificationDeliveryEvent struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Type     NotificationType       `protobuf:"varint,1,opt,name=type,proto3,enum=metaxisdata.store.NotificationType" json:"type,omitempty"`
+	Severity NotificationSeverity   `protobuf:"varint,2,opt,name=severity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"severity,omitempty"`
+	// Types that are valid to be assigned to Detail:
+	//
+	//	*NotificationDeliveryEvent_SchemaSync
+	//	*NotificationDeliveryEvent_Openlineage
+	//	*NotificationDeliveryEvent_DataQuality
+	Detail        isNotificationDeliveryEvent_Detail `protobuf_oneof:"detail"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationDeliveryEvent) Reset() {
+	*x = NotificationDeliveryEvent{}
+	mi := &file_store_notification_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationDeliveryEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationDeliveryEvent) ProtoMessage() {}
+
+func (x *NotificationDeliveryEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationDeliveryEvent.ProtoReflect.Descriptor instead.
+func (*NotificationDeliveryEvent) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *NotificationDeliveryEvent) GetType() NotificationType {
+	if x != nil {
+		return x.Type
+	}
+	return NotificationType_NOTIFICATION_TYPE_UNSPECIFIED
+}
+
+func (x *NotificationDeliveryEvent) GetSeverity() NotificationSeverity {
+	if x != nil {
+		return x.Severity
+	}
+	return NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
+}
+
+func (x *NotificationDeliveryEvent) GetDetail() isNotificationDeliveryEvent_Detail {
+	if x != nil {
+		return x.Detail
+	}
+	return nil
+}
+
+func (x *NotificationDeliveryEvent) GetSchemaSync() *SchemaSyncDetail {
+	if x != nil {
+		if x, ok := x.Detail.(*NotificationDeliveryEvent_SchemaSync); ok {
+			return x.SchemaSync
+		}
+	}
+	return nil
+}
+
+func (x *NotificationDeliveryEvent) GetOpenlineage() *OpenLineageDetail {
+	if x != nil {
+		if x, ok := x.Detail.(*NotificationDeliveryEvent_Openlineage); ok {
+			return x.Openlineage
+		}
+	}
+	return nil
+}
+
+func (x *NotificationDeliveryEvent) GetDataQuality() *DataQualityDetail {
+	if x != nil {
+		if x, ok := x.Detail.(*NotificationDeliveryEvent_DataQuality); ok {
+			return x.DataQuality
+		}
+	}
+	return nil
+}
+
+type isNotificationDeliveryEvent_Detail interface {
+	isNotificationDeliveryEvent_Detail()
+}
+
+type NotificationDeliveryEvent_SchemaSync struct {
+	SchemaSync *SchemaSyncDetail `protobuf:"bytes,3,opt,name=schema_sync,json=schemaSync,proto3,oneof"`
+}
+
+type NotificationDeliveryEvent_Openlineage struct {
+	Openlineage *OpenLineageDetail `protobuf:"bytes,4,opt,name=openlineage,proto3,oneof"`
+}
+
+type NotificationDeliveryEvent_DataQuality struct {
+	DataQuality *DataQualityDetail `protobuf:"bytes,5,opt,name=data_quality,json=dataQuality,proto3,oneof"`
+}
+
+func (*NotificationDeliveryEvent_SchemaSync) isNotificationDeliveryEvent_Detail() {}
+
+func (*NotificationDeliveryEvent_Openlineage) isNotificationDeliveryEvent_Detail() {}
+
+func (*NotificationDeliveryEvent_DataQuality) isNotificationDeliveryEvent_Detail() {}
+
 var File_store_notification_proto protoreflect.FileDescriptor
 
 const file_store_notification_proto_rawDesc = "" +
@@ -1107,7 +1599,33 @@ const file_store_notification_proto_rawDesc = "" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
 	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
-	"\binstance\x18\x12 \x01(\tR\binstance*\x9f\x01\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance\"\x86\x03\n" +
+	"\x13NotificationChannel\x12!\n" +
+	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12>\n" +
+	"\x04kind\x18\x02 \x01(\x0e2*.metaxisdata.store.NotificationChannelKindR\x04kind\x12\x18\n" +
+	"\aenabled\x18\x03 \x01(\bR\aenabled\x12D\n" +
+	"\vevent_types\x18\x04 \x03(\x0e2#.metaxisdata.store.NotificationTypeR\n" +
+	"eventTypes\x12J\n" +
+	"\fmin_severity\x18\x05 \x01(\x0e2'.metaxisdata.store.NotificationSeverityR\vminSeverity\x12\x1a\n" +
+	"\blanguage\x18\x06 \x01(\tR\blanguage\x12D\n" +
+	"\x06config\x18\a \x01(\v2,.metaxisdata.store.NotificationChannelConfigR\x06config\"j\n" +
+	"\x19NotificationChannelConfig\x12C\n" +
+	"\awebhook\x18\x01 \x01(\v2'.metaxisdata.store.WebhookChannelConfigH\x00R\awebhookB\b\n" +
+	"\x06config\"*\n" +
+	"\x14WebhookChannelConfig\x12\x12\n" +
+	"\x04sign\x18\x01 \x01(\bR\x04sign\"r\n" +
+	"\x19NotificationChannelSecret\x12\x1f\n" +
+	"\vwebhook_url\x18\x01 \x01(\tR\n" +
+	"webhookUrl\x124\n" +
+	"\x16webhook_signing_secret\x18\x02 \x01(\tR\x14webhookSigningSecret\"\x80\x03\n" +
+	"\x19NotificationDeliveryEvent\x127\n" +
+	"\x04type\x18\x01 \x01(\x0e2#.metaxisdata.store.NotificationTypeR\x04type\x12C\n" +
+	"\bseverity\x18\x02 \x01(\x0e2'.metaxisdata.store.NotificationSeverityR\bseverity\x12F\n" +
+	"\vschema_sync\x18\x03 \x01(\v2#.metaxisdata.store.SchemaSyncDetailH\x00R\n" +
+	"schemaSync\x12H\n" +
+	"\vopenlineage\x18\x04 \x01(\v2$.metaxisdata.store.OpenLineageDetailH\x00R\vopenlineage\x12I\n" +
+	"\fdata_quality\x18\x05 \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQualityB\b\n" +
+	"\x06detail*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
@@ -1140,7 +1658,16 @@ const file_store_notification_proto_rawDesc = "" +
 	"+DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED\x10\x01\x122\n" +
 	".DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED\x10\x02\x123\n" +
 	"/DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED\x10\x03\x120\n" +
-	",DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY\x10\x04B\x14Z\x12generated-go/storeb\x06proto3"
+	",DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY\x10\x04*k\n" +
+	"\x17NotificationChannelKind\x12)\n" +
+	"%NOTIFICATION_CHANNEL_KIND_UNSPECIFIED\x10\x00\x12%\n" +
+	"!NOTIFICATION_CHANNEL_KIND_WEBHOOK\x10\x01*\xe6\x01\n" +
+	"\x19NotificationDeliveryState\x12+\n" +
+	"'NOTIFICATION_DELIVERY_STATE_UNSPECIFIED\x10\x00\x12'\n" +
+	"#NOTIFICATION_DELIVERY_STATE_PENDING\x10\x01\x12'\n" +
+	"#NOTIFICATION_DELIVERY_STATE_SENDING\x10\x02\x12$\n" +
+	" NOTIFICATION_DELIVERY_STATE_SENT\x10\x03\x12$\n" +
+	" NOTIFICATION_DELIVERY_STATE_DEAD\x10\x04B\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_notification_proto_rawDescOnce sync.Once
@@ -1154,45 +1681,62 @@ func file_store_notification_proto_rawDescGZIP() []byte {
 	return file_store_notification_proto_rawDescData
 }
 
-var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_store_notification_proto_goTypes = []any{
-	(NotificationType)(0),            // 0: metaxisdata.store.NotificationType
-	(NotificationSeverity)(0),        // 1: metaxisdata.store.NotificationSeverity
-	(SyncTrigger)(0),                 // 2: metaxisdata.store.SyncTrigger
-	(SyncDatabaseState)(0),           // 3: metaxisdata.store.SyncDatabaseState
-	(OpenLineageFailureKind)(0),      // 4: metaxisdata.store.OpenLineageFailureKind
-	(DataQualityNotificationKind)(0), // 5: metaxisdata.store.DataQualityNotificationKind
-	(*Notification)(nil),             // 6: metaxisdata.store.Notification
-	(*SchemaSyncDetail)(nil),         // 7: metaxisdata.store.SchemaSyncDetail
-	(*SyncDatabaseResult)(nil),       // 8: metaxisdata.store.SyncDatabaseResult
-	(*OpenLineageDetail)(nil),        // 9: metaxisdata.store.OpenLineageDetail
-	(*DataQualityDetail)(nil),        // 10: metaxisdata.store.DataQualityDetail
-	(*timestamppb.Timestamp)(nil),    // 11: google.protobuf.Timestamp
-	(QualityStatus)(0),               // 12: metaxisdata.store.QualityStatus
-	(QualitySeverity)(0),             // 13: metaxisdata.store.QualitySeverity
+	(NotificationType)(0),             // 0: metaxisdata.store.NotificationType
+	(NotificationSeverity)(0),         // 1: metaxisdata.store.NotificationSeverity
+	(SyncTrigger)(0),                  // 2: metaxisdata.store.SyncTrigger
+	(SyncDatabaseState)(0),            // 3: metaxisdata.store.SyncDatabaseState
+	(OpenLineageFailureKind)(0),       // 4: metaxisdata.store.OpenLineageFailureKind
+	(DataQualityNotificationKind)(0),  // 5: metaxisdata.store.DataQualityNotificationKind
+	(NotificationChannelKind)(0),      // 6: metaxisdata.store.NotificationChannelKind
+	(NotificationDeliveryState)(0),    // 7: metaxisdata.store.NotificationDeliveryState
+	(*Notification)(nil),              // 8: metaxisdata.store.Notification
+	(*SchemaSyncDetail)(nil),          // 9: metaxisdata.store.SchemaSyncDetail
+	(*SyncDatabaseResult)(nil),        // 10: metaxisdata.store.SyncDatabaseResult
+	(*OpenLineageDetail)(nil),         // 11: metaxisdata.store.OpenLineageDetail
+	(*DataQualityDetail)(nil),         // 12: metaxisdata.store.DataQualityDetail
+	(*NotificationChannel)(nil),       // 13: metaxisdata.store.NotificationChannel
+	(*NotificationChannelConfig)(nil), // 14: metaxisdata.store.NotificationChannelConfig
+	(*WebhookChannelConfig)(nil),      // 15: metaxisdata.store.WebhookChannelConfig
+	(*NotificationChannelSecret)(nil), // 16: metaxisdata.store.NotificationChannelSecret
+	(*NotificationDeliveryEvent)(nil), // 17: metaxisdata.store.NotificationDeliveryEvent
+	(*timestamppb.Timestamp)(nil),     // 18: google.protobuf.Timestamp
+	(QualityStatus)(0),                // 19: metaxisdata.store.QualityStatus
+	(QualitySeverity)(0),              // 20: metaxisdata.store.QualitySeverity
 }
 var file_store_notification_proto_depIdxs = []int32{
-	11, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
+	18, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.store.Notification.type:type_name -> metaxisdata.store.NotificationType
 	1,  // 2: metaxisdata.store.Notification.severity:type_name -> metaxisdata.store.NotificationSeverity
-	11, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
-	7,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
-	9,  // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
-	10, // 6: metaxisdata.store.Notification.data_quality:type_name -> metaxisdata.store.DataQualityDetail
+	18, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
+	9,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
+	11, // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
+	12, // 6: metaxisdata.store.Notification.data_quality:type_name -> metaxisdata.store.DataQualityDetail
 	2,  // 7: metaxisdata.store.SchemaSyncDetail.trigger:type_name -> metaxisdata.store.SyncTrigger
-	8,  // 8: metaxisdata.store.SchemaSyncDetail.databases:type_name -> metaxisdata.store.SyncDatabaseResult
+	10, // 8: metaxisdata.store.SchemaSyncDetail.databases:type_name -> metaxisdata.store.SyncDatabaseResult
 	3,  // 9: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
 	4,  // 10: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
 	5,  // 11: metaxisdata.store.DataQualityDetail.kind:type_name -> metaxisdata.store.DataQualityNotificationKind
-	12, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
-	12, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
-	13, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	19, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
+	19, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
+	20, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
+	6,  // 15: metaxisdata.store.NotificationChannel.kind:type_name -> metaxisdata.store.NotificationChannelKind
+	0,  // 16: metaxisdata.store.NotificationChannel.event_types:type_name -> metaxisdata.store.NotificationType
+	1,  // 17: metaxisdata.store.NotificationChannel.min_severity:type_name -> metaxisdata.store.NotificationSeverity
+	14, // 18: metaxisdata.store.NotificationChannel.config:type_name -> metaxisdata.store.NotificationChannelConfig
+	15, // 19: metaxisdata.store.NotificationChannelConfig.webhook:type_name -> metaxisdata.store.WebhookChannelConfig
+	0,  // 20: metaxisdata.store.NotificationDeliveryEvent.type:type_name -> metaxisdata.store.NotificationType
+	1,  // 21: metaxisdata.store.NotificationDeliveryEvent.severity:type_name -> metaxisdata.store.NotificationSeverity
+	9,  // 22: metaxisdata.store.NotificationDeliveryEvent.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
+	11, // 23: metaxisdata.store.NotificationDeliveryEvent.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
+	12, // 24: metaxisdata.store.NotificationDeliveryEvent.data_quality:type_name -> metaxisdata.store.DataQualityDetail
+	25, // [25:25] is the sub-list for method output_type
+	25, // [25:25] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_store_notification_proto_init() }
@@ -1206,13 +1750,21 @@ func file_store_notification_proto_init() {
 		(*Notification_Openlineage)(nil),
 		(*Notification_DataQuality)(nil),
 	}
+	file_store_notification_proto_msgTypes[6].OneofWrappers = []any{
+		(*NotificationChannelConfig_Webhook)(nil),
+	}
+	file_store_notification_proto_msgTypes[9].OneofWrappers = []any{
+		(*NotificationDeliveryEvent_SchemaSync)(nil),
+		(*NotificationDeliveryEvent_Openlineage)(nil),
+		(*NotificationDeliveryEvent_DataQuality)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_notification_proto_rawDesc), len(file_store_notification_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   5,
+			NumEnums:      8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

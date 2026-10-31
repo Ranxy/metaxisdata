@@ -34,6 +34,7 @@ type Metrics struct {
 	Maintenance        maintenanceMetrics
 	LineageValidation  lineageValidationMetrics
 	InstanceConnection instanceConnectionMetrics
+	Notification       notificationMetrics
 }
 
 // New builds every instrument without registering it. A test that wants
@@ -53,6 +54,7 @@ func New() *Metrics {
 		Maintenance:        newMaintenanceMetrics(),
 		LineageValidation:  newLineageValidationMetrics(),
 		InstanceConnection: newInstanceConnectionMetrics(),
+		Notification:       newNotificationMetrics(),
 	}
 }
 
@@ -83,5 +85,6 @@ func (m *Metrics) collectors() []prometheus.Collector {
 	collectors = append(collectors, m.Maintenance.collectors()...)
 	collectors = append(collectors, m.LineageValidation.collectors()...)
 	collectors = append(collectors, m.InstanceConnection.collectors()...)
+	collectors = append(collectors, m.Notification.collectors()...)
 	return collectors
 }

@@ -78,6 +78,7 @@ const ROUTES = [
   { path: "/openlineage/events", name: "openlineage events", tableTopMaxY: 400 },
   { path: "/settings/general", name: "settings general" },
   { path: "/settings/data-quality", name: "settings data quality" },
+  { path: "/settings/notifications", name: "settings notifications", tableTopMaxY: 160 },
   { path: "/settings/audit-logs", name: "settings audit logs", tableTopMaxY: 290 },
   // Same failure as audit-logs above: seven columns of long values inside the
   // section's reading column put the revoke action behind a scrollbar.

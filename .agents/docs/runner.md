@@ -2,7 +2,7 @@
 
 > Status: **implemented**. Covers the common lifecycle of `backend/runner/` and the state each runner keeps in the process. Per-runner contracts live in [schemasync.md](schemasync.md) and [lineage-analyzer.md](lineage-analyzer.md); this file is the cross-runner map: startup, shutdown, in-process state, cadences and the single-replica assumption.
 
-## The six runners
+## The seven runners
 
 | Runner | Package | Cadence | First run | Purpose |
 | --- | --- | --- | --- | --- |
@@ -11,6 +11,7 @@
 | `lineagevalidation` | `backend/runner/lineagevalidation` | event-driven, 5s settle | one pass at startup | revalidate ingested edges after a sync commits |
 | `maintenance` | `backend/runner/maintenance` | 6h | immediate | retention prunes, token cleanup, ingested-lineage sweep |
 | `qualityrunner` | `backend/runner/qualityrunner` | due scan 10s, manual queue priority | first tick | schedule data quality checks **per target**: a target's one timer (`quality_target_schedule.next_run_at`) makes all of its enabled checks due together, and each due target becomes **one batch** that carries the target identity (`quality_run.target_*`); a manual selection is split into one batch per target. The scan only plans; each instance's plans are handed to two scheduled workers, so a long batch never blocks the loop that drains manual runs. One tick is bounded by 200 rules and 50 targets; a >100-rule target (only data that bypassed the API limit) can span batches, and a timed-out/abandoned batch leaves its unfinished checks ABANDONED for a bounded retry on the next tick (attempt 1..3). The target schedule advances only when the whole due cycle settles, not when a chunk is planned. The runner drives the problem ledger and notifications, and each batch leases the instance's connection budget before it starts; after a deferred admission it skips that instance's remaining due targets for the pass so one busy instance cannot queue one wait per target (see [data-quality.md](data-quality.md), [instance-connections.md](instance-connections.md)) |
+| `notificationdispatcher` | `backend/runner/notificationdispatcher` | due-claim scan 2s | first tick | lease due outbound deliveries from `notification_delivery`, render the event in the channel's language and POST it to the channel's webhook; retry with backoff (1m/5m/15m/1h/6h) and dead after 6 attempts. A batch whose channel list cannot be read is released, never marked dead (see [notifications.md](notifications.md)) |
 | `qualitysuggestionrunner` | `backend/runner/qualitysuggestionrunner` | pending-job scan 5s | startup sweep, then drains pending immediately | claim a durable AI rule-drafting job (`quality_suggestion_job`, 1–20 targets), resolve the provider configuration once per job, draft one target at a time and persist per-target progress; drafts land in the review queue (see [data-quality.md](data-quality.md)) |
 
 Every runner implements `runner.Runner` (`Name()`, `Run(ctx)`) and is started by `runner.Go`, which wraps the body in a top-level `recover` and logs the runner's start and stop (name + run duration): a panic is logged with its stack and takes down that runner, never the process. `backend/server/server.go` starts the slice, so adding a runner is one entry, not another hard-coded `Add`.

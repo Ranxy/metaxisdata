@@ -2010,11 +2010,23 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateNotificationChannelRequest"><span class="badge">M</span>CreateNotificationChannelRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.DataQualityDetail"><span class="badge">M</span>DataQualityDetail</a>
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.DeleteNotificationChannelRequest"><span class="badge">M</span>DeleteNotificationChannelRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.DeleteNotificationRequest"><span class="badge">M</span>DeleteNotificationRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetNotificationChannelRequest"><span class="badge">M</span>GetNotificationChannelRequest</a>
                 </li>
               
                 <li>
@@ -2027,6 +2039,22 @@
               
                 <li>
                   <a href="#metaxisdata.v1.KeepAlive"><span class="badge">M</span>KeepAlive</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationChannelsRequest"><span class="badge">M</span>ListNotificationChannelsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationChannelsResponse"><span class="badge">M</span>ListNotificationChannelsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationDeliveriesRequest"><span class="badge">M</span>ListNotificationDeliveriesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationDeliveriesResponse"><span class="badge">M</span>ListNotificationDeliveriesResponse</a>
                 </li>
               
                 <li>
@@ -2050,11 +2078,31 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.NotificationChannel"><span class="badge">M</span>NotificationChannel</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationChannelConfig"><span class="badge">M</span>NotificationChannelConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationChannelSecret"><span class="badge">M</span>NotificationChannelSecret</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationDelivery"><span class="badge">M</span>NotificationDelivery</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.NotificationEvent"><span class="badge">M</span>NotificationEvent</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.v1.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RetryNotificationDeliveryRequest"><span class="badge">M</span>RetryNotificationDeliveryRequest</a>
                 </li>
               
                 <li>
@@ -2073,9 +2121,33 @@
                   <a href="#metaxisdata.v1.SyncDatabaseResult"><span class="badge">M</span>SyncDatabaseResult</a>
                 </li>
               
+                <li>
+                  <a href="#metaxisdata.v1.TestNotificationChannelRequest"><span class="badge">M</span>TestNotificationChannelRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.TestNotificationChannelResponse"><span class="badge">M</span>TestNotificationChannelResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateNotificationChannelRequest"><span class="badge">M</span>UpdateNotificationChannelRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.WebhookChannelConfig"><span class="badge">M</span>WebhookChannelConfig</a>
+                </li>
+              
               
                 <li>
                   <a href="#metaxisdata.v1.DataQualityNotificationKind"><span class="badge">E</span>DataQualityNotificationKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationChannelKind"><span class="badge">E</span>NotificationChannelKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationDeliveryState"><span class="badge">E</span>NotificationDeliveryState</a>
                 </li>
               
                 <li>
@@ -24771,6 +24843,44 @@ explicit `max_output_tokens` mask to reset it to the server default. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateNotificationChannelRequest">CreateNotificationChannelRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>channel</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannel">NotificationChannel</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>secret</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannelSecret">NotificationChannelSecret</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DataQualityDetail">DataQualityDetail</h3>
         <p>DataQualityDetail reports one data quality event. The message carries facts</p><p>only; the client renders the localized sentence from the kind and these fields.</p>
 
@@ -24915,6 +25025,30 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.DeleteNotificationChannelRequest">DeleteNotificationChannelRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DeleteNotificationRequest">DeleteNotificationRequest</h3>
         <p></p>
 
@@ -24930,6 +25064,30 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/notifications/{id} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetNotificationChannelRequest">GetNotificationChannelRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
                 </tr>
               
             </tbody>
@@ -25001,6 +25159,139 @@ clicked. </p></td>
         <p>KeepAlive is the notification stream's heartbeat. It carries no data.</p>
 
         
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationChannelsRequest">ListNotificationChannelsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationChannelsResponse">ListNotificationChannelsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>notification_channels</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannel">NotificationChannel</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationDeliveriesRequest">ListNotificationDeliveriesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>channel</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional channel filter.
+Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.NotificationDeliveryState">NotificationDeliveryState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Default 50, maximum 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The token from the previous response; a follow-up keeps the page size the
+token was issued with when page_size is unset. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationDeliveriesResponse">ListNotificationDeliveriesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>notification_deliveries</td>
+                  <td><a href="#metaxisdata.v1.NotificationDelivery">NotificationDelivery</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -25204,6 +25495,252 @@ to retrieve the subsequent page. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.NotificationChannel">NotificationChannel</h3>
+        <p>NotificationChannel is one configured outbound destination. The credential is</p><p>write-only: reads report only whether one is stored.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The administrator-facing name, for example &#34;Data quality on-call&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannelKind">NotificationChannelKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>A disabled channel is kept but receives no new deliveries. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_types</td>
+                  <td><a href="#metaxisdata.v1.NotificationType">NotificationType</a></td>
+                  <td>repeated</td>
+                  <td><p>The notification types this channel subscribes to. Empty means every type. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_severity</td>
+                  <td><a href="#metaxisdata.v1.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p>The lowest severity this channel delivers. UNSPECIFIED means every severity. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>BCP-47 tag the outbound text is written in. Empty means the server default. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>config</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannelConfig">NotificationChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>secret_set</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether a credential is stored. The credential itself is never returned. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.NotificationChannelConfig">NotificationChannelConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>webhook</td>
+                  <td><a href="#metaxisdata.v1.WebhookChannelConfig">WebhookChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.NotificationChannelSecret">NotificationChannelSecret</h3>
+        <p>NotificationChannelSecret is the write-only credential of a channel.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>webhook_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The endpoint to POST to. Required when creating a webhook channel; an
+unset secret on update keeps the stored one. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>webhook_signing_secret</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The HMAC-SHA256 key that signs the body when webhook.sign is set. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.NotificationDelivery">NotificationDelivery</h3>
+        <p>NotificationDelivery is one outbound attempt at one notification event for one</p><p>channel. A failing event fans out to as many deliveries as channels it matched.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}.
+The last segment is the row id. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>channel</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>channel_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The channel display name as it was when the delivery was queued. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_type</td>
+                  <td><a href="#metaxisdata.v1.NotificationType">NotificationType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.v1.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.NotificationDeliveryState">NotificationDeliveryState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>attempts</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many automatic attempts were made. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why the last attempt failed. Empty unless it did. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_attempt_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the next automatic attempt is due. Set while the delivery is PENDING or
+SENDING (where it is the lease deadline); unset for SENT and DEAD. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sent_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When it was delivered. Unset unless it was. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.NotificationEvent">NotificationEvent</h3>
         <p></p>
 
@@ -25318,6 +25855,30 @@ never the key itself. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.RetryNotificationDeliveryRequest">RetryNotificationDeliveryRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery} </p></td>
                 </tr>
               
             </tbody>
@@ -25498,6 +26059,116 @@ default. The client ignores it. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.TestNotificationChannelRequest">TestNotificationChannelRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.TestNotificationChannelResponse">TestNotificationChannelResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>response</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The endpoint&#39;s answer, trimmed for display. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateNotificationChannelRequest">UpdateNotificationChannelRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>channel</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannel">NotificationChannel</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>secret</td>
+                  <td><a href="#metaxisdata.v1.NotificationChannelSecret">NotificationChannelSecret</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.WebhookChannelConfig">WebhookChannelConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sign</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the delivery body is signed with the channel&#39;s signing secret. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
 
       
         <h3 id="metaxisdata.v1.DataQualityNotificationKind">DataQualityNotificationKind</h3>
@@ -25536,6 +26207,70 @@ default. The client ignores it. </p></td>
                 <td>DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY</td>
                 <td>4</td>
                 <td><p>One run failed so many rules that the individual messages were merged.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.NotificationChannelKind">NotificationChannelKind</h3>
+        <p>NotificationChannelKind is the protocol one outbound channel speaks.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_WEBHOOK</td>
+                <td>1</td>
+                <td><p>A generic HTTP POST endpoint.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.NotificationDeliveryState">NotificationDeliveryState</h3>
+        <p>NotificationDeliveryState is the lifecycle of one outbound delivery.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_PENDING</td>
+                <td>1</td>
+                <td><p>Waiting for its next attempt, or for a retry an administrator asked for.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_SENDING</td>
+                <td>2</td>
+                <td><p>Leased by a dispatcher.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_SENT</td>
+                <td>3</td>
+                <td><p>Delivered. Terminal.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_DEAD</td>
+                <td>4</td>
+                <td><p>Out of automatic attempts; an administrator can retry it.</p></td>
               </tr>
             
           </tbody>
@@ -25740,7 +26475,7 @@ administrators are the recipients.</p></td>
 
       
         <h3 id="metaxisdata.v1.NotificationService">NotificationService</h3>
-        <p>NotificationService serves the caller's own in-app messages: the outcome of a</p><p>sync operation they asked for, and the ingestion failures a workspace</p><p>administrator needs to see.</p><p>No method here carries a (metaxisdata.v1.permission) annotation, and none is</p><p>reachable without credentials. An inbox belongs to one principal, which the</p><p>workspace-scoped IAM catalog cannot express: every handler therefore scopes</p><p>its query by the authenticated caller's id, the same way UserService's</p><p>self-service paths do. Gating these methods on a permission instead would</p><p>lock a custom role out of its own messages.</p>
+        <p>NotificationService serves the caller's own in-app messages — the outcome of</p><p>a sync operation they asked for, and the ingestion failures a workspace</p><p>administrator needs to see — and the workspace's outbound delivery channels,</p><p>which administrators configure.</p><p>The inbox methods carry no (metaxisdata.v1.permission) annotation and none is</p><p>reachable without credentials: an inbox belongs to one principal, which the</p><p>workspace-scoped IAM catalog cannot express, so every handler scopes its query</p><p>by the authenticated caller's id, the same way UserService's self-service</p><p>paths do. The outbound methods are workspace configuration and carry the</p><p>settings permissions: reads use settings.get, writes, the test send and the</p><p>delivery retry use settings.update.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
@@ -25805,6 +26540,71 @@ REST gateway cannot carry one — it answers &#34;streaming calls are not yet
 supported in the in-process transport&#34;, as the generated ExplainSQL gateway
 route does. The browser reaches the Connect endpoint directly, the way it does
 for ExplainSQL.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListNotificationChannels</td>
+                <td><a href="#metaxisdata.v1.ListNotificationChannelsRequest">ListNotificationChannelsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListNotificationChannelsResponse">ListNotificationChannelsResponse</a></td>
+                <td><p>List the outbound channels administrators have configured. The list is not
+paginated: a workspace configures a handful of destinations, and the delivery
+path reads the whole set anyway.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetNotificationChannel</td>
+                <td><a href="#metaxisdata.v1.GetNotificationChannelRequest">GetNotificationChannelRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationChannel">NotificationChannel</a></td>
+                <td><p>Read one outbound channel. The credential is never returned.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateNotificationChannel</td>
+                <td><a href="#metaxisdata.v1.CreateNotificationChannelRequest">CreateNotificationChannelRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationChannel">NotificationChannel</a></td>
+                <td><p>Create one outbound channel. The secret is write-only: it is encrypted
+before it is stored and is never returned.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateNotificationChannel</td>
+                <td><a href="#metaxisdata.v1.UpdateNotificationChannelRequest">UpdateNotificationChannelRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationChannel">NotificationChannel</a></td>
+                <td><p>Update one outbound channel. An omitted secret keeps the stored one; a
+present secret replaces it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteNotificationChannel</td>
+                <td><a href="#metaxisdata.v1.DeleteNotificationChannelRequest">DeleteNotificationChannelRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete one outbound channel and the deliveries still queued for it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>TestNotificationChannel</td>
+                <td><a href="#metaxisdata.v1.TestNotificationChannelRequest">TestNotificationChannelRequest</a></td>
+                <td><a href="#metaxisdata.v1.TestNotificationChannelResponse">TestNotificationChannelResponse</a></td>
+                <td><p>Post a test message through one stored channel and report what the endpoint
+answered. It queues no delivery and is not audited: it is a diagnostic probe
+that changes nothing, and the endpoint&#39;s answer is third-party text that does
+not belong in the permanent ledger.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListNotificationDeliveries</td>
+                <td><a href="#metaxisdata.v1.ListNotificationDeliveriesRequest">ListNotificationDeliveriesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListNotificationDeliveriesResponse">ListNotificationDeliveriesResponse</a></td>
+                <td><p>List outbound deliveries, newest first, for administrators to diagnose a
+channel.</p></td>
+              </tr>
+            
+              <tr>
+                <td>RetryNotificationDelivery</td>
+                <td><a href="#metaxisdata.v1.RetryNotificationDeliveryRequest">RetryNotificationDeliveryRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationDelivery">NotificationDelivery</a></td>
+                <td><p>Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+or waiting one is left as it is.</p></td>
               </tr>
             
           </tbody>
@@ -25882,6 +26682,86 @@ for ExplainSQL.</p></td>
                 <td>DELETE</td>
                 <td>/v1/{name=workspaces/*/notifications/*}</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListNotificationChannels</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/notificationChannels</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetNotificationChannel</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/notificationChannels/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateNotificationChannel</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/notificationChannels</td>
+                <td>channel</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateNotificationChannel</td>
+                <td>PATCH</td>
+                <td>/v1/{channel.name=workspaces/*/notificationChannels/*}</td>
+                <td>channel</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteNotificationChannel</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/notificationChannels/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>TestNotificationChannel</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/notificationChannels/*}:test</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListNotificationDeliveries</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/notificationDeliveries</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>RetryNotificationDelivery</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/notificationDeliveries/*}:retry</td>
+                <td>*</td>
               </tr>
               
             

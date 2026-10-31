@@ -64,6 +64,40 @@ func RandomString(n int) (string, error) {
 	return sb.String(), nil
 }
 
+// resourceIDFirstLetters and resourceIDLetters spell the alphabet a resource id
+// may use: lowercase letters and digits, and the first character must be a
+// letter so the id matches IsValidResourceID. RandomString cannot be used for a
+// resource id: its alphabet includes uppercase letters and can start with a
+// digit, which the name parsers reject.
+var (
+	resourceIDFirstLetters = []rune("abcdefghijklmnopqrstuvwxyz")
+	resourceIDLetters      = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+)
+
+// RandomResourceID returns a random resource id of length n that
+// IsValidResourceID accepts.
+func RandomResourceID(n int) (string, error) {
+	if n < 2 {
+		return "", errors.New("a resource id needs at least two characters")
+	}
+	var sb strings.Builder
+	sb.Grow(n)
+	for i := 0; i < n; i++ {
+		alphabet := resourceIDLetters
+		if i == 0 {
+			alphabet = resourceIDFirstLetters
+		}
+		randNum, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		if err != nil {
+			return "", err
+		}
+		if _, err := sb.WriteRune(alphabet[randNum.Uint64()]); err != nil {
+			return "", err
+		}
+	}
+	return sb.String(), nil
+}
+
 // ValidatePhone validates the phone number.
 func ValidatePhone(phone string) error {
 	phoneNumber, err := phonenumbers.Parse(phone, "")

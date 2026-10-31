@@ -34,6 +34,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/lineageanalyzer"
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
+	"github.com/Ranxy/metaxisdata/backend/runner/notificationdispatcher"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitysuggestionrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
@@ -140,7 +141,9 @@ type Server struct {
 	qualityRunner   *qualityrunner.Runner
 	// suggestionRunner executes the durable AI drafting jobs the API queues.
 	suggestionRunner *qualitysuggestionrunner.Runner
-	llmRegistry      *llmcomp.Registry
+	// dispatcher posts queued outbound notification deliveries.
+	dispatcher  *notificationdispatcher.Runner
+	llmRegistry *llmcomp.Registry
 
 	// metrics owns the process instruments, metricsRegistry is the private
 	// Prometheus registry they are exposed through, and metricsServer is the
@@ -236,6 +239,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	ingestedLineage := openlineage.NewProcessor(stores, lineageEngines, nil, s.metrics)
 	s.lineageValidate = lineagevalidation.NewRunner(ingestedLineage, s.metrics)
 	s.maintenance = maintenance.NewRunner(stores, ingestedLineage, s.metrics)
+	s.dispatcher = notificationdispatcher.NewRunner(stores, s.metrics)
 
 	// The notification service is what a background runner reports through: a
 	// finished sync operation to the user who asked for it, and an ingestion or
@@ -275,7 +279,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.lineageValidate, s.maintenance}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.lineageValidate, s.maintenance, s.dispatcher}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}

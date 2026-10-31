@@ -9,7 +9,8 @@
     "Integration": "Protocols and endpoints this deployment exposes.",
     "Lineage": "How a derivation and its parts are named.",
     "OpenLineage": "The event-ingestion vocabulary.",
-    "Platform": "Deployment-level concepts."
+    "Platform": "Deployment-level concepts.",
+    "Notifications": "Outbound delivery of workspace notifications."
   },
   "description": "Canonical terminology for user-facing copy. `translations` fixes the one accepted rendering of a term per locale; `scope` limits the rules to the i18n key prefixes where the term applies (absent scope = every key); `when` fires a rule only on keys whose value in the named locale matches (usually the English source); an `avoid` pattern is a literal substring unless it is written as /regex/flags. Enforced by scripts/check-i18n-glossary.mjs and rendered into .agents/docs/i18n-glossary.md.",
   "locales": [
@@ -1304,6 +1305,61 @@
         "zh-CN": [
           "所有者",
           "拥有人"
+        ]
+      }
+    },
+    {
+      "id": "notification-channel",
+      "category": "Notifications",
+      "definition": "An administrator-configured outbound destination for workspace notifications.",
+      "translations": {
+        "en-US": "channel",
+        "zh-CN": "渠道"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "通道",
+          "信道"
+        ]
+      }
+    },
+    {
+      "id": "notification-delivery",
+      "category": "Notifications",
+      "definition": "One queued attempt to post one notification event to one channel.",
+      "translations": {
+        "en-US": "delivery",
+        "zh-CN": "投递"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "推送记录",
+          "发送记录"
+        ]
+      }
+    },
+    {
+      "id": "webhook",
+      "category": "Notifications",
+      "definition": "A generic HTTP endpoint that receives a signed JSON body.",
+      "translations": {
+        "en-US": "Webhook",
+        "zh-CN": "Webhook"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "网络钩子",
+          "回调地址",
+          "钩子"
         ]
       }
     }

@@ -135,6 +135,9 @@ func TestRegisteredInstruments(t *testing.T) {
 		"metaxisdata_lineagevalidation_edges_total":           {"result"},
 		// Instance connection governor.
 		"metaxisdata_instance_connection_try_acquire_rejected_total": nil,
+		// Outbound notifications.
+		"metaxisdata_notification_deliveries_attempted_total": {"outcome"},
+		"metaxisdata_notification_delivery_duration_seconds":  nil,
 	}
 
 	names := make([]string, 0, len(got))
@@ -235,6 +238,8 @@ func TestNilMetricsIsNoop(t *testing.T) {
 	m.CountQualityManualEnqueueRejected()
 	m.ObserveQualityRuleExecution(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualityStatus_QUALITY_STATUS_FAIL, time.Second)
 	m.CountQualityRuleError(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "CONNECTION")
+	m.CountNotificationDelivery(NotificationDeliverySent)
+	m.ObserveNotificationDeliveryDuration(time.Second)
 	m.ObserveReadOnlyQuery(QueryPurposeRuleAggregate, true, time.Second)
 	m.ObserveLLMCall("explain_sql", "openai", LLMOutcomeSuccess, time.Second, 1, 2)
 	m.CountLLMUsageMissing("explain_sql")
@@ -335,6 +340,8 @@ func TestRecordersEmitExpectedLabels(t *testing.T) {
 	m.CountSchemaSyncFailure(SyncStageDatabase, FailureReasonTimeout)
 	m.ObserveQualityRuleExecution(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualityStatus_QUALITY_STATUS_FAIL, time.Second)
 	m.CountQualityRuleError(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "CONNECTION")
+	m.CountNotificationDelivery(NotificationDeliverySent)
+	m.ObserveNotificationDeliveryDuration(time.Second)
 	m.ObserveLLMCall("explain_sql", "openai", LLMOutcomeSuccess, time.Second, 10, 5)
 	m.CountLLMQuotaRejection(LLMQuotaAnalysis)
 	m.CountInstanceConnectionTryAcquireRejected()

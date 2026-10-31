@@ -7,21 +7,25 @@ import "google/api/client.proto";
 import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "v1/annotation.proto";
 import "v1/data_quality_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
-// NotificationService serves the caller's own in-app messages: the outcome of a
-// sync operation they asked for, and the ingestion failures a workspace
-// administrator needs to see.
+// NotificationService serves the caller's own in-app messages — the outcome of
+// a sync operation they asked for, and the ingestion failures a workspace
+// administrator needs to see — and the workspace's outbound delivery channels,
+// which administrators configure.
 //
-// No method here carries a (metaxisdata.v1.permission) annotation, and none is
-// reachable without credentials. An inbox belongs to one principal, which the
-// workspace-scoped IAM catalog cannot express: every handler therefore scopes
-// its query by the authenticated caller's id, the same way UserService's
-// self-service paths do. Gating these methods on a permission instead would
-// lock a custom role out of its own messages.
+// The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+// reachable without credentials: an inbox belongs to one principal, which the
+// workspace-scoped IAM catalog cannot express, so every handler scopes its query
+// by the authenticated caller's id, the same way UserService's self-service
+// paths do. The outbound methods are workspace configuration and carry the
+// settings permissions: reads use settings.get, writes, the test send and the
+// delivery retry use settings.update.
 service NotificationService {
   // List the caller's notifications, newest first.
   rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {
@@ -77,6 +81,87 @@ service NotificationService {
   // route does. The browser reaches the Connect endpoint directly, the way it does
   // for ExplainSQL.
   rpc SubscribeNotifications(SubscribeNotificationsRequest) returns (stream SubscribeNotificationsResponse) {}
+
+  // List the outbound channels administrators have configured. The list is not
+  // paginated: a workspace configures a handful of destinations, and the delivery
+  // path reads the whole set anyway.
+  rpc ListNotificationChannels(ListNotificationChannelsRequest) returns (ListNotificationChannelsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notificationChannels"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Read one outbound channel. The credential is never returned.
+  rpc GetNotificationChannel(GetNotificationChannelRequest) returns (NotificationChannel) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/notificationChannels/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Create one outbound channel. The secret is write-only: it is encrypted
+  // before it is stored and is never returned.
+  rpc CreateNotificationChannel(CreateNotificationChannelRequest) returns (NotificationChannel) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/notificationChannels"
+      body: "channel"
+    };
+    option (google.api.method_signature) = "parent,channel,secret";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Update one outbound channel. An omitted secret keeps the stored one; a
+  // present secret replaces it.
+  rpc UpdateNotificationChannel(UpdateNotificationChannelRequest) returns (NotificationChannel) {
+    option (google.api.http) = {
+      patch: "/v1/{channel.name=workspaces/*/notificationChannels/*}"
+      body: "channel"
+    };
+    option (google.api.method_signature) = "channel,secret,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Delete one outbound channel and the deliveries still queued for it.
+  rpc DeleteNotificationChannel(DeleteNotificationChannelRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/notificationChannels/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Post a test message through one stored channel and report what the endpoint
+  // answered. It queues no delivery and is not audited: it is a diagnostic probe
+  // that changes nothing, and the endpoint's answer is third-party text that does
+  // not belong in the permanent ledger.
+  rpc TestNotificationChannel(TestNotificationChannelRequest) returns (TestNotificationChannelResponse) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/notificationChannels/*}:test"
+      body: "*"
+    };
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+
+  // List outbound deliveries, newest first, for administrators to diagnose a
+  // channel.
+  rpc ListNotificationDeliveries(ListNotificationDeliveriesRequest) returns (ListNotificationDeliveriesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notificationDeliveries"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+  // or waiting one is left as it is.
+  rpc RetryNotificationDelivery(RetryNotificationDeliveryRequest) returns (NotificationDelivery) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/notificationDeliveries/*}:retry"
+      body: "*"
+    };
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
 }
 
 // NotificationType is what a notification is about. It selects which detail
@@ -350,4 +435,195 @@ message DataQualityDetail {
   // The instance whose dispatch batch the summary describes. Format:
   // instances/{instance}. Empty for the per-execution kinds.
   string instance = 18;
+}
+
+// NotificationChannelKind is the protocol one outbound channel speaks.
+enum NotificationChannelKind {
+  NOTIFICATION_CHANNEL_KIND_UNSPECIFIED = 0;
+  // A generic HTTP POST endpoint.
+  NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
+}
+
+// NotificationChannel is one configured outbound destination. The credential is
+// write-only: reads report only whether one is stored.
+message NotificationChannel {
+  option (google.api.resource) = {
+    type: "metaxisdata/NotificationChannel"
+    pattern: "workspaces/{workspace}/notificationChannels/{notification_channel}"
+  };
+
+  // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The administrator-facing name, for example "Data quality on-call".
+  string display_name = 2 [(google.api.field_behavior) = REQUIRED];
+
+  NotificationChannelKind kind = 3 [(google.api.field_behavior) = IMMUTABLE];
+
+  // A disabled channel is kept but receives no new deliveries.
+  bool enabled = 4;
+
+  // The notification types this channel subscribes to. Empty means every type.
+  repeated NotificationType event_types = 5;
+
+  // The lowest severity this channel delivers. UNSPECIFIED means every severity.
+  NotificationSeverity min_severity = 6;
+
+  // BCP-47 tag the outbound text is written in. Empty means the server default.
+  string language = 7;
+
+  NotificationChannelConfig config = 8;
+
+  // Whether a credential is stored. The credential itself is never returned.
+  bool secret_set = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp create_time = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp update_time = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message NotificationChannelConfig {
+  oneof config {
+    WebhookChannelConfig webhook = 1;
+  }
+}
+
+message WebhookChannelConfig {
+  // Whether the delivery body is signed with the channel's signing secret.
+  bool sign = 1;
+}
+
+// NotificationChannelSecret is the write-only credential of a channel.
+message NotificationChannelSecret {
+  // The endpoint to POST to. Required when creating a webhook channel; an
+  // unset secret on update keeps the stored one.
+  string webhook_url = 1;
+
+  // The HMAC-SHA256 key that signs the body when webhook.sign is set.
+  string webhook_signing_secret = 2;
+}
+
+// NotificationDeliveryState is the lifecycle of one outbound delivery.
+enum NotificationDeliveryState {
+  NOTIFICATION_DELIVERY_STATE_UNSPECIFIED = 0;
+  // Waiting for its next attempt, or for a retry an administrator asked for.
+  NOTIFICATION_DELIVERY_STATE_PENDING = 1;
+  // Leased by a dispatcher.
+  NOTIFICATION_DELIVERY_STATE_SENDING = 2;
+  // Delivered. Terminal.
+  NOTIFICATION_DELIVERY_STATE_SENT = 3;
+  // Out of automatic attempts; an administrator can retry it.
+  NOTIFICATION_DELIVERY_STATE_DEAD = 4;
+}
+
+// NotificationDelivery is one outbound attempt at one notification event for one
+// channel. A failing event fans out to as many deliveries as channels it matched.
+message NotificationDelivery {
+  option (google.api.resource) = {
+    type: "metaxisdata/NotificationDelivery"
+    pattern: "workspaces/{workspace}/notificationDeliveries/{notification_delivery}"
+  };
+
+  // Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}.
+  // The last segment is the row id.
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+  string channel = 2 [(google.api.resource_reference) = {type: "metaxisdata/NotificationChannel"}];
+
+  // The channel display name as it was when the delivery was queued.
+  string channel_name = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  NotificationType event_type = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  NotificationSeverity severity = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  NotificationDeliveryState state = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many automatic attempts were made.
+  int32 attempts = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Why the last attempt failed. Empty unless it did.
+  string last_error = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp create_time = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // When the next automatic attempt is due. Set while the delivery is PENDING or
+  // SENDING (where it is the lease deadline); unset for SENT and DEAD.
+  google.protobuf.Timestamp next_attempt_time = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // When it was delivered. Unset unless it was.
+  google.protobuf.Timestamp sent_time = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListNotificationChannelsRequest {
+  // Format: workspaces/{workspace}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListNotificationChannelsResponse {
+  repeated NotificationChannel notification_channels = 1;
+}
+
+message GetNotificationChannelRequest {
+  // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateNotificationChannelRequest {
+  // Format: workspaces/{workspace}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  NotificationChannel channel = 2 [(google.api.field_behavior) = REQUIRED];
+
+  NotificationChannelSecret secret = 3;
+}
+
+message UpdateNotificationChannelRequest {
+  NotificationChannel channel = 1 [(google.api.field_behavior) = REQUIRED];
+
+  NotificationChannelSecret secret = 2;
+
+  google.protobuf.FieldMask update_mask = 3;
+}
+
+message DeleteNotificationChannelRequest {
+  // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TestNotificationChannelRequest {
+  // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TestNotificationChannelResponse {
+  // The endpoint's answer, trimmed for display.
+  string response = 1;
+}
+
+message ListNotificationDeliveriesRequest {
+  // Format: workspaces/{workspace}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Optional channel filter.
+  // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+  string channel = 2 [(google.api.resource_reference) = {type: "metaxisdata/NotificationChannel"}];
+
+  NotificationDeliveryState state = 3;
+
+  // Default 50, maximum 1000.
+  int32 page_size = 4;
+  // The token from the previous response; a follow-up keeps the page size the
+  // token was issued with when page_size is unset.
+  string page_token = 5;
+}
+
+message ListNotificationDeliveriesResponse {
+  repeated NotificationDelivery notification_deliveries = 1;
+  string next_page_token = 2;
+}
+
+message RetryNotificationDeliveryRequest {
+  // Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
 }

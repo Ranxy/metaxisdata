@@ -117,6 +117,10 @@ func (f *fakeStore) DeleteExpiredDataQualityLLMCache(ctx context.Context, cutoff
 	return f.delete(ctx, "data_quality_llm_cache", cutoff)
 }
 
+func (f *fakeStore) PruneNotificationDeliveries(ctx context.Context, before time.Time) (int64, error) {
+	return f.delete(ctx, "notification_deliveries", before)
+}
+
 func (f *fakeStore) DeleteEmptyOpenLineageDatasets(ctx context.Context, olderThan time.Time) (int64, error) {
 	return f.delete(ctx, "empty_openlineage_datasets", olderThan)
 }

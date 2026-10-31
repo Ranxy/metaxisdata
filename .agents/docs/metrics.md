@@ -475,7 +475,18 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 > 不要用 `acquireQualityConnection` 的 `action string`（人类文案 `"the dry run"`）当标签；
 > 用 typed purpose 或在两个调用点映射。
 
-### 4.5 LLM
+### 4.5 出站通知投递
+
+`backend/runner/notificationdispatcher` 是唯一埋点处：它认领 outbox 行、渲染并 POST。
+
+| 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
+| --- | --- | --- | --- | --- | --- |
+| `metaxisdata_notification_deliveries_attempted_total` | counter | `outcome=sent\|failed\|dead` | 每次认领的投递结束（`attempt`/`finishFailure`） | 一次事件 × 渠道的投递尝试结果；`dead` 含配置错误与 6 次耗尽 | P0 |
+| `metaxisdata_notification_delivery_duration_seconds` | histogram | — | `receiver.Post` 前后 | 单次 HTTP 投递耗时（不含认领/退避） | P0 |
+
+队列深度 gauge 尚未实现（需要 `COUNT(*) WHERE state IN (1,2)`），是 P1。
+
+### 4.6 LLM
 
 **推荐在 agent loop 内部统一埋点**，而不是在每个调用点各埋一遍：给 `llm.AgentConfig`
 （`backend/component/llm/event.go` 的 `AgentConfig`）加 `Feature string` 和 `Metrics *metrics.Metrics`，

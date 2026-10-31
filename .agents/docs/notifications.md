@@ -281,3 +281,71 @@
 - 前端 store/api/lib：[store/modules/notification.test.ts](../../frontend/src/store/modules/notification.test.ts)、[api/notification.test.ts](../../frontend/src/api/notification.test.ts)、[lib/notificationText.test.ts](../../frontend/src/lib/notificationText.test.ts) → `pnpm --dir frontend test run`（`src/lib/`、`src/utils/` 有 95% 行 / 85% 分支门槛；红点相关行为：打开即清、开着时刷新补一次水位、空下拉里到达的消息必须进列表）。
 - 前端组件交互：[components/layout/NotificationBell.test.ts](../../frontend/src/components/layout/NotificationBell.test.ts)（"点开铃铛 = 清红点且不标已读"、"点某条消息才标已读"、"开着下拉时卸载要归还 `openInboxCount`"）、[pages/NotificationsPage.test.ts](../../frontend/src/pages/NotificationsPage.test.ts)（"进页面清红点、离开后新消息又能点亮"）。
 - proto 门禁：`buf format -w proto && buf lint proto && (cd proto && buf generate)`。
+
+---
+
+## 出站渠道与投递（Outbound delivery）
+
+> 2026-10 增量：站内信之外，管理员可配置**出站渠道**，把同一事件投递到外部 HTTP 端点。上面的"仅站内信"决定（Decisions 站内信侧 #5）由本节取代；站内信本身的行为不变。
+
+### 它是什么
+
+一次 `Send` / `SendToWorkspaceAdmins` 调用 = **一个事件**。事件写入 N 条站内信（每个收件人一条），同时按渠道订阅过滤 fan-out 成 0..M 条 `notification_delivery`；每条投递由 dispatcher 渲染、POST、重试。**站内信与投递解耦**：投递失败不回滚、不阻塞站内信写入，也不改变现有 1h 去重与风暴抑制语义。
+
+| 概念 | 含义 |
+| --- | --- |
+| `notification_channel` | 管理员配置的目的地。当前只有 `WEBHOOK` 一种 kind；`payload` 存 `NotificationChannel`，凭据（endpoint URL、签名密钥）单独加密存 `secret` 列，**任何读路径都不返回** |
+| `notification_delivery` | 一条"事件 × 渠道"的投递。`state` = PENDING/SENDING/SENT/DEAD；`attempts` 记录已发起的尝试次数；`next_attempt_at` 同时是重试时间和 SENDING 租约 |
+| 事件身份 | `event_id` = 每次 Send 调用生成的随机串，同一事件的 N 条站内信共享；唯一索引 `(event_id, channel_id)` 保证同一事件对同一渠道至多一条投递 |
+
+### 决策
+
+| # | 决定 | 理由 / 影响 |
+| --- | --- | --- |
+| O-1 | 渠道是**工作区级**资源，凭据 write-only、`v1:` AES-256-GCM 加密（复用 `common/crypto` 与部署数据密钥） | 渠道配置属于出站能力，不属于某个收件人；读接口只返回 `secret_set` |
+| O-2 | 订阅过滤在**渠道级**：`event_types`（空=全部）+ `min_severity`；不做按 owner/团队路由的规则引擎 | 覆盖"哪类事件发到哪个群/端点"的常见需求；更细路由等有真实需求再加 |
+| O-3 | 投递异步 outbox + 独立 runner（tick 2s、单批 ≤20、并发 ≤4、租约 5m），失败退避 1m/5m/15m/1h/6h，**6 次后 DEAD**；管理员手动的"重试"把 attempts 归零，等于重新给 6 次 | 生产者不因渠道故障失败；租约过期可被重新认领，崩溃不丢投递 |
+| O-4 | 渲染在**发送时**做（渠道 `language`，空=服务端默认 en-US），`payload` 只存结构化事件 | 模板修复能作用于已排队的投递；outbox 不含收件人、已读态、样本值 |
+| O-5 | Webhook body 是稳定 JSON（eventId/deliveryId/eventType/severity/title/text/link/occurredAt）；`X-Metaxisdata-Event`/`X-Metaxisdata-Delivery` **总是**发送，`sign=true` 时另附 `X-Metaxisdata-Signature: sha256=<hex>`（HMAC-SHA256） | 端点可脚本化；签名密钥与 URL 一样不落日志/审计/错误 |
+| O-6 | 深链来自 `WorkspaceProfileSetting.external_url`；未配置时不生成 link | 消息里的链接必须能在浏览器打开；未配置时宁可不给链接 |
+| O-7 | 渠道管理复用 `settings.get` / `settings.update` 权限，变更与测试发送审计 | member 基线本来没有 settings 权限；不扩权限目录 |
+| O-8 | 投递记录保留 30 天（maintenance 清理终态行），队列行永不清理 | 诊断窗口足够，outbox 不无限增长 |
+| O-9 | 出站 SSRF 风险由"仅管理员可配置 + 审计 + 文档化"承担；IM 类渠道的域名白名单在接入对应 kind 时再加 | 与实例凭据可连任意数据库同一类接受决策；见 `docs/security-posture.md` |
+| O-10 | **不跟随重定向**（`CheckRedirect` 返回 `ErrUseLastResponse`），3xx 按失败重试 | 默认 client 会把 301/302/303 降级成无 body 的 GET（端点回 200，投递被记成 SENT 而正文根本没送到），307/308 会把 body 与签名重发到端点选择的另一个 host（超出管理员配置的目的地）；错误里 URL 归一化后也要脱敏 |
+
+### 失败模式
+
+| 场景 | 行为 |
+| --- | --- |
+| 渠道被删除 | `notification_delivery.channel_id` 是 `ON DELETE CASCADE`：该渠道的排队投递随渠道一起删除（`docs/notifications.md` 与 proto `Delete` 注释的语义） |
+| 渠道凭据缺失 | 适配器构造失败是配置错误，**立即 `DEAD`**（重试不会修好），错误进 `last_error` |
+| 渠道凭据无法解密 | 读取失败按普通失败重试；管理员修复密钥后 `DEAD` 的可手动重试 |
+| 渠道列表读取失败 | 本批已认领的投递**释放回 PENDING 且不消耗 attempt**，下个 tick 重试；绝不当作"渠道都不存在"标 DEAD |
+| 端点 5xx/超时/网络错误 | 退避重试；错误写入 `last_error`（Webhook 错误中的 URL 被替换为 `<endpoint>`，避免凭据进错误/审计） |
+| 端点 4xx | 同样按失败重试直至预算耗尽；管理员修正后可在投递记录里"重试"（仅 DEAD → PENDING，attempts 归零，幂等） |
+| 端点返回 3xx | 不跟随，按失败重试（见 O-10） |
+| 同一事件重复入队 | 唯一索引吞掉；不会重复投递 |
+| 站内信因去重未写入 | 不产生投递（事件不存在） |
+| 站内信写入成功但 outbox 写入失败 | 只记日志；站内信仍在，事件不投递（best effort，与包契约一致） |
+| dispatcher 崩溃在 POST 中途 | 租约过期，下一次 tick 重新认领并记一次 attempt |
+| 渲染缺 detail | 不产生投递 |
+| 管理员"测试发送" | 直接走适配器，不排队、不建投递、**不审计**（只读诊断，端点响应正文不落永久账本） |
+
+### Where things live（出站部分）
+
+- 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`LATEST.sql`。
+- store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/清理/列表）。
+- 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out 与订阅过滤）、`backend/component/notification/outbound/`（`outbound.go` 渠道与 Receiver、`render.go` zh/en 模板与深链、`webhook.go` 投递与签名/校验）。
+- runner：`backend/runner/notificationdispatcher/`；`backend/server/server.go` 注册第 7 个 runner。
+- API：`backend/api/v1/notification_outbound_service.go`（8 个 RPC，权限复用 settings.*）。
+- 前端：`frontend/src/pages/settings/NotificationSettingsPage.vue`、`frontend/src/api/notification.ts` 的出站部分、`components/layout/SettingsNav.vue`、`router/index.ts`、`locales/*.json` 的 `notificationSettings.*`、`glossary.json`（Notifications 类目）。
+- 文档：`docs/notifications.md`（运维侧）。
+- 测试：`go test ./backend/component/notification/... ./backend/runner/notificationdispatcher/... ./backend/runner/maintenance/... ./backend/api/v1/ ./backend/store/ ./backend/common/`；`backend/common/resource_name_test.go` 钉住"生成的 id 必须能被自己的 name parser 解析"；`backend/store/notification_delivery_test.go` 钉住 claim/list SQL 形状；前端 `frontend/src/pages/settings/NotificationSettingsPage.test.ts` 覆盖列表/权限门禁/弹窗状态/重试。
+
+### Open items（出站）
+
+1. 邮件（SMTP）与钉钉/企微/飞书群机器人：PR-2；proto 的 `NotificationChannelKind` 追加枚举值、`secret` 增加对应字段即可，无需迁移（`payload`/`secret` 都是 JSONB/TEXT）。
+2. 静默窗口（维护期只记录不发送）与"未确认 N 小时升级到第二渠道"：PR-3。
+3. 按 owner/团队路由到不同渠道（规则表）与按严重级别分渠道：在渠道级订阅之上再加。
+4. 投递的可观测性目前只有 `notification_deliveries_attempted_total{outcome}` 与耗时直方图；队列深度 gauge 待补。
+5. 跨副本 dispatcher：与单副本假设一致，不做；多副本需 `SKIP LOCKED` 之外的无害化重复投递语义（当前唯一索引只防同事件同渠道，跨副本各自认领不同行是安全的，但事件级重复仍需 `LISTEN/NOTIFY` 才能避免）。

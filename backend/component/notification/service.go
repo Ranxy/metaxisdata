@@ -78,6 +78,11 @@ type AdminStore interface {
 	GetWorkspaceIamPolicy(ctx context.Context) (*store.IamPolicyMessage, error)
 	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+	// ListNotificationChannels and CreateNotificationDeliveries are the outbound
+	// enqueue path: a written message is queued once per channel that subscribes
+	// to it, independently of how many inbox rows it produced.
+	ListNotificationChannels(ctx context.Context) ([]*store.NotificationChannelMessage, error)
+	CreateNotificationDeliveries(ctx context.Context, creates []*store.CreateNotificationDeliveryMessage) error
 }
 
 // Service writes notifications and works out who receives them. It is also where
@@ -252,11 +257,15 @@ func (s *Service) Send(ctx context.Context, n *storepb.Notification) error {
 	if !s.claim(key) {
 		return nil
 	}
-	if err := s.create(ctx, n); err != nil {
+	written, err := s.create(ctx, n)
+	if err != nil {
 		// A failed write must not consume the window: the next occurrence has to
 		// be allowed to try again.
 		s.release(key)
 		return err
+	}
+	if written {
+		s.enqueueOutbound(ctx, n)
 	}
 	return nil
 }
@@ -293,7 +302,10 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 		return nil
 	}
 
-	var firstErr error
+	var (
+		firstErr error
+		written  bool
+	)
 	for _, id := range admins {
 		clone, ok := proto.Clone(n).(*storepb.Notification)
 		if !ok {
@@ -304,12 +316,19 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 		clone.CreateTime = nil
 		clone.ReadTime = nil
 		clone.RecipientId = int32(id)
-		if err := s.create(ctx, clone); err != nil && firstErr == nil {
+		wrote, err := s.create(ctx, clone)
+		if err != nil && firstErr == nil {
 			firstErr = err
 		}
+		written = written || wrote
 	}
 	if firstErr != nil {
 		return fail(firstErr)
+	}
+	if written {
+		// One event per call, however many administrators it addressed: the
+		// outbox is workspace-level, so the channel receives the message once.
+		s.enqueueOutbound(ctx, n)
 	}
 	return nil
 }
@@ -350,26 +369,26 @@ func (s *Service) WorkspaceAdminIDs(ctx context.Context) ([]int, error) {
 // subscriptions of its recipient. The workspace is single tenant, but the resource
 // name and the list path both carry it, so the row records which one it belongs to
 // rather than relying on the caller.
-func (s *Service) create(ctx context.Context, n *storepb.Notification) error {
+func (s *Service) create(ctx context.Context, n *storepb.Notification) (bool, error) {
 	if strings.TrimSpace(n.GetParent()) == "" {
 		workspaceID, err := s.store.GetWorkspaceID(ctx)
 		if err != nil {
-			return errors.Wrap(err, "failed to resolve the workspace")
+			return false, errors.Wrap(err, "failed to resolve the workspace")
 		}
 		n.Parent = common.FormatWorkspace(workspaceID)
 	}
 	created, err := s.store.CreateNotification(ctx, n)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if created == nil {
 		// The unique index on (recipient_id, dedupe_key) refused a repeat, so no row
 		// was written and there is no new message to push: the inbox already holds
 		// the one this repeats.
-		return nil
+		return false, nil
 	}
 	s.publish(ctx, created)
-	return nil
+	return true, nil
 }
 
 // publish hands one written message to the live subscriptions of its recipient. The
