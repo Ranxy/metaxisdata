@@ -24,35 +24,14 @@ type CompileInput struct {
 // it. Every compiler returns exactly one statement with bound arguments.
 type compilerFunc func(input CompileInput) (CompiledQuery, error)
 
-// compilers maps each supported rule type to its compiler.
-var compilers = map[storepb.QualityRuleType]compilerFunc{
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:             compileRowCount,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:      compileRowCountChange,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:          compileNullPercent,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:                compileUnique,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:    compileUniqueCombination,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:       compileAcceptedValues,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:                 compileRange,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:                 compileRegex,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:         compileStringLength,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: compileReferentialIntegrity,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:          compileCrossColumn,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:             compileFreshness,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:            compileCustomSQL,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:        compileCelExpression,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:          compileSchemaDrift,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:           compileGroupCheck,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:             compileAggregate,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:           compileCrossTable,
-}
-
 // Compile produces the statement that observes the rule. It rejects a rule type
 // this build cannot compile for and a config whose arm does not match the type.
+// The per-type compiler is a field of the rule type descriptor.
 func Compile(input CompileInput) (CompiledQuery, error) {
 	if input.Dialect == nil {
 		return CompiledQuery{}, invalidConfig("a dialect is required")
 	}
-	compiler, ok := compilers[input.Type]
+	spec, ok := ruleTypeSpecFor(input.Type)
 	if !ok {
 		return CompiledQuery{}, invalidConfig("rule type %s has no compiler", input.Type)
 	}
@@ -66,7 +45,7 @@ func Compile(input CompileInput) (CompiledQuery, error) {
 	if arm != input.Type {
 		return CompiledQuery{}, invalidConfig("the config is for %s, not for the rule's %s", arm, input.Type)
 	}
-	return compiler(input)
+	return spec.Compiler(input)
 }
 
 // whereClause renders the predicate's WHERE keyword plus the rule's filter and the

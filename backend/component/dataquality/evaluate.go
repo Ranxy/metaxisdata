@@ -22,54 +22,15 @@ func Evaluate(rule RuleSnapshot, obs Observation, _ time.Time) ResultState {
 		}
 	}
 	onEmpty := emptyBehavior(rule.Config)
-	switch rule.Type {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:
-		return evaluateRowCount(rule.Config, obs, onEmpty)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
-		return evaluateRowCountChange(rule.Config, obs, onEmpty)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		return evaluateNullPercent(rule.Config, obs, onEmpty)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
-		return evaluateCount(rule.Config, rule.Config.GetUnique().FailThreshold, rule.Config.GetUnique().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		return evaluateCount(rule.Config, rule.Config.GetUniqueCombination().FailThreshold, rule.Config.GetUniqueCombination().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		return evaluateCount(rule.Config, rule.Config.GetAcceptedValues().FailThreshold, rule.Config.GetAcceptedValues().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
-		return evaluateCount(rule.Config, rule.Config.GetRange().FailThreshold, rule.Config.GetRange().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		return evaluateCount(rule.Config, rule.Config.GetRegex().FailThreshold, rule.Config.GetRegex().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
-		return evaluateCount(rule.Config, rule.Config.GetStringLength().FailThreshold, rule.Config.GetStringLength().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY:
-		return evaluateCount(rule.Config, rule.Config.GetReferentialIntegrity().FailThreshold, rule.Config.GetReferentialIntegrity().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		return evaluateCount(rule.Config, rule.Config.GetCrossColumn().FailThreshold, rule.Config.GetCrossColumn().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		// The custom statement counts failing rows itself; there is no total to
-		// divide by and "no failing rows" is a pass, not missing data.
-		return evaluateCount(rule.Config, rule.Config.GetCustomSql().FailThreshold, rule.Config.GetCustomSql().WarnThreshold, obs, onEmpty, false)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
-		// The observation is the drift-item count out of the snapshot; the metric is
-		// COUNT (validation refuses PERCENT) and there is always a snapshot.
-		return evaluateCount(rule.Config, rule.Config.GetSchemaDrift().FailThreshold, rule.Config.GetSchemaDrift().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		// total_rows is the group count: an empty table has no groups and follows
-		// on_empty, while a table with groups judges the failed-group count or rate.
-		return evaluateCount(rule.Config, rule.Config.GetGroupCheck().FailThreshold, rule.Config.GetGroupCheck().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
-		return evaluateAggregate(rule.Config, obs, onEmpty)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		return evaluateCrossTable(rule.Config, obs, onEmpty)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		return evaluateFreshness(rule.Config, obs, onEmpty)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		return evaluateCount(rule.Config, rule.Config.GetCelExpression().FailThreshold, rule.Config.GetCelExpression().WarnThreshold, obs, onEmpty, true)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR}
-	default:
+	spec, ok := ruleTypeSpecFor(rule.Type)
+	if !ok {
 		return ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR}
 	}
+	if spec.Judge != nil {
+		return spec.Judge(rule.Config, obs, onEmpty)
+	}
+	failThreshold, warnThreshold := spec.Thresholds(rule.Config)
+	return evaluateCount(rule.Config, failThreshold, warnThreshold, obs, onEmpty, spec.CountsTotal)
 }
 
 // evaluateRowCount judges a row count against its min/max/exact bounds. Zero rows

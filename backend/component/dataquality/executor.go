@@ -316,42 +316,11 @@ func observationFromAggregate(ruleType storepb.QualityRuleType, compiled Compile
 		return Observation{}, err
 	}
 
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
-		return observeRowCount(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		// The grouped statements return failed_rows and total_rows; the total is
-		// the whole filtered table, so a percentage threshold has the same
-		// denominator as every other count rule. "duplicate_groups" is
-		// informational (how many distinct duplicated keys there are) and has no
-		// observation field, so it is validated as part of the contract, not read.
-		return countObservation(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		return observeGroupCheck(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
-		return observeAggregate(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		return observeCrossTable(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		return freshnessObservation(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		return observeCustomSQL(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		return Observation{}, badData("rule type %s has no aggregate observation", ruleType)
-	default:
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok || spec.Observe == nil {
 		return Observation{}, badData("rule type %s has no aggregate observation", ruleType)
 	}
+	return spec.Observe(result, indexes)
 }
 
 // observeRowCount reads the row count. row_count_change compares this count with

@@ -216,3 +216,61 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		}
 	}
 }
+
+// TestRuleTypeSpecSupportedMatrix pins engine acceptance per type. Only regex
+// refuses an engine; every other type runs on every accepted dialect.
+// UNSPECIFIED, a value this build does not know and an engine with no dialect keep
+// their historical refusals.
+func TestRuleTypeSpecSupportedMatrix(t *testing.T) {
+	t.Parallel()
+
+	engines := []storepb.Engine{
+		storepb.Engine_MYSQL,
+		storepb.Engine_TIDB,
+		storepb.Engine_MARIADB,
+		storepb.Engine_OCEANBASE,
+		storepb.Engine_POSTGRES,
+		storepb.Engine_MSSQL,
+		storepb.Engine_STARROCKS,
+		storepb.Engine_DORIS,
+	}
+	for _, spec := range ruleTypeSpecs {
+		for _, engine := range engines {
+			ok, reason := Supported(engine, spec.Type)
+			if refusal, refused := spec.EngineRefusals[engine]; refused {
+				require.False(t, ok, "%s on %s", spec.Type, engine)
+				require.Equal(t, refusal, reason)
+				continue
+			}
+			require.True(t, ok, "%s on %s: %s", spec.Type, engine, reason)
+			require.Empty(t, reason)
+		}
+	}
+
+	ok, reason := Supported(storepb.Engine_POSTGRES, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED)
+	require.False(t, ok)
+	require.Equal(t, "the rule type is required", reason)
+
+	ok, reason = Supported(storepb.Engine_POSTGRES, storepb.QualityRuleType(99))
+	require.False(t, ok)
+	require.Equal(t, "unknown rule type", reason)
+
+	ok, reason = Supported(storepb.Engine_ENGINE_UNSPECIFIED, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)
+	require.False(t, ok)
+	require.Equal(t, "the target instance has no engine", reason)
+}
+
+// TestRuleTypeForTargetEdges pins the historical edges of the object-type gate: a
+// table accepts every value (the fast path runs before any rule type lookup), a
+// view accepts only the descriptor's view-capable types, and other registry
+// objects accept nothing.
+func TestRuleTypeForTargetEdges(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, RuleTypeForTarget(storepb.MetaType_TABLE, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED))
+	require.True(t, RuleTypeForTarget(storepb.MetaType_EXTERNAL_TABLE, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED))
+	require.False(t, RuleTypeForTarget(storepb.MetaType_VIEW, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED))
+	require.False(t, RuleTypeForTarget(storepb.MetaType_MATERIALIZED_VIEW, storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK))
+	require.False(t, RuleTypeForTarget(storepb.MetaType_DATABASE, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
+	require.False(t, IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED))
+}

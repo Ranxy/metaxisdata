@@ -151,46 +151,11 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 		return err
 	}
 
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:
-		return validateRowCountConfig(config.GetRowCount())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
-		return validateRowCountChangeConfig(config.GetRowCountChange())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		return validateNullPercentConfig(target, config.GetNullPercent())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
-		return validateUniqueConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		return validateUniqueCombinationConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		return validateAcceptedValuesConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
-		return validateRangeConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		return validateRegexConfig(target, config.GetRegex())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
-		return validateStringLengthConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY:
-		return validateReferentialIntegrityConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		return validateCrossColumnConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		return validateFreshnessConfig(target, config.GetFreshness())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		return validateCustomSQLConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
-		return validateSchemaDriftConfig(config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		return validateGroupCheckConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
-		return validateAggregateConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		return validateCrossTableConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		return validateCELExpressionConfig(target, config)
-	default:
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok {
 		return invalidConfig("unknown rule type %s", ruleType)
 	}
+	return spec.Validator(target, config)
 }
 
 // validateOnEmpty accepts the three real behaviors and UNSPECIFIED (which the
