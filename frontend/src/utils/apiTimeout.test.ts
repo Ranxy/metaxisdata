@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createRequestDeadline,
   DEFAULT_REQUEST_TIMEOUT_MS,
   requestTimeoutMs,
-  withRequestTimeout,
 } from "./apiTimeout";
 
 describe("requestTimeoutMs", () => {
@@ -12,7 +12,7 @@ describe("requestTimeoutMs", () => {
     ).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
   });
 
-  it("leaves LLM and explanation streams alone", () => {
+  it("leaves provider and explanation calls alone", () => {
     expect(
       requestTimeoutMs("/metaxisdata.v1.LLMService/ListProfiles")
     ).toBeUndefined();
@@ -26,38 +26,96 @@ describe("requestTimeoutMs", () => {
     ).toBeUndefined();
   });
 
-  it("leaves sync and run paths alone", () => {
+  it("leaves the LLM-backed data-quality work alone", () => {
+    expect(
+      requestTimeoutMs("/metaxisdata.v1.DataQualityService/SuggestQualityRule")
+    ).toBeUndefined();
+    expect(
+      requestTimeoutMs("/metaxisdata.v1.DataQualityService/SuggestColumnLabels")
+    ).toBeUndefined();
+    expect(
+      requestTimeoutMs("/metaxisdata.v1.DataQualityService/ProfileColumns")
+    ).toBeUndefined();
+  });
+
+  it("leaves sync, run and push streams alone", () => {
     expect(
       requestTimeoutMs("/metaxisdata.v1.InstanceService/SyncInstance")
     ).toBeUndefined();
     expect(
+      requestTimeoutMs("/metaxisdata.v1.InstanceService/BatchSyncInstances")
+    ).toBeUndefined();
+    expect(
       requestTimeoutMs("/metaxisdata.v1.DataQualityService/RunQualityRules")
+    ).toBeUndefined();
+    expect(
+      requestTimeoutMs(
+        "/metaxisdata.v1.NotificationService/SubscribeNotifications"
+      )
     ).toBeUndefined();
   });
 });
 
-describe("withRequestTimeout", () => {
-  it("keeps the caller's signal when there is no deadline", () => {
+describe("createRequestDeadline", () => {
+  it("passes the caller's signal through when there is no deadline", () => {
     const controller = new AbortController();
-    expect(withRequestTimeout(controller.signal, undefined)).toBe(
-      controller.signal
-    );
-    expect(withRequestTimeout(undefined, undefined)).toBeUndefined();
+    const deadline = createRequestDeadline(controller.signal, undefined);
+
+    expect(deadline.signal).toBe(controller.signal);
+    expect(deadline.timedOut()).toBe(false);
+    deadline.cleanup();
   });
 
-  it("aborts when the deadline passes", async () => {
-    const signal = withRequestTimeout(undefined, 5);
-    expect(signal?.aborted).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(signal?.aborted).toBe(true);
+  it("has no signal when neither a caller nor a deadline provides one", () => {
+    const deadline = createRequestDeadline(undefined, undefined);
+    expect(deadline.signal).toBeUndefined();
+    deadline.cleanup();
   });
 
-  it("still honours the caller's own abort", () => {
+  it("aborts and reports the deadline when it passes", async () => {
+    vi.useFakeTimers();
+    const deadline = createRequestDeadline(undefined, 50);
+
+    expect(deadline.signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(deadline.signal?.aborted).toBe(true);
+    expect(deadline.timedOut()).toBe(true);
+    deadline.cleanup();
+    vi.useRealTimers();
+  });
+
+  it("still honours the caller's own abort, which is not a timeout", () => {
     const controller = new AbortController();
-    const signal = withRequestTimeout(controller.signal, 60_000);
+    const deadline = createRequestDeadline(controller.signal, 60_000);
 
     controller.abort();
 
-    expect(signal?.aborted).toBe(true);
+    expect(deadline.signal?.aborted).toBe(true);
+    expect(deadline.timedOut()).toBe(false);
+    deadline.cleanup();
+  });
+
+  it("does not abort after cleanup", async () => {
+    vi.useFakeTimers();
+    const deadline = createRequestDeadline(undefined, 50);
+
+    deadline.cleanup();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(deadline.signal?.aborted).toBe(false);
+    expect(deadline.timedOut()).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("forwards an already-aborted caller immediately", () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const deadline = createRequestDeadline(controller.signal, 60_000);
+
+    expect(deadline.signal?.aborted).toBe(true);
+    expect(deadline.timedOut()).toBe(false);
+    deadline.cleanup();
   });
 });
