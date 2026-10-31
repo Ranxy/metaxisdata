@@ -7,8 +7,9 @@ import { useAuthStore } from "@/store/modules/auth";
  *
  * The same matrix used to be restated as `canX` computeds in each view — eight in
  * the target workspace, seven in the drawer — so a permission change meant
- * hunting for every copy. This is the one place the names map to identifiers;
- * `hasPermission` itself stays the single entry point for the check.
+ * hunting for every copy. The migrated views read their checks from here;
+ * `hasPermission` itself stays the single entry point for the check. Pages not
+ * migrated yet still hold local `canX` computeds.
  */
 export function useDataQualityPermissions() {
   const authStore = useAuthStore();

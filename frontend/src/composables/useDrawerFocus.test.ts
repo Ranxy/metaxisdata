@@ -47,6 +47,27 @@ describe("useDrawerFocus", () => {
     scope.stop();
   });
 
+  it("leaves an Escape a menu already handled alone", async () => {
+    const { container } = drawer();
+    const open = ref(true);
+    const close = vi.fn();
+    const scope = effectScope();
+    scope.run(() =>
+      useDrawerFocus(ref<HTMLElement | null>(container), open, close)
+    );
+    await flush();
+
+    const escape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    escape.preventDefault();
+    document.dispatchEvent(escape);
+
+    expect(close).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
   it("closes on Escape", async () => {
     const { container } = drawer();
     const open = ref(true);

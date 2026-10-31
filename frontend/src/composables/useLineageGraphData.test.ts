@@ -106,6 +106,25 @@ describe("lineage data cache", () => {
     expect(data.recordRelations).toHaveBeenCalledWith([DOWNSTREAM]);
   });
 
+  it("stores a new external dataset fact once", async () => {
+    const fact = create(ExternalDatasetInfoSchema, {
+      guid: "ext-1",
+      namespace: "snowflake://acct",
+    });
+    mocks.getLineage.mockResolvedValue({
+      relationsSource: [],
+      relationsTarget: [],
+      externalDatasets: [fact],
+    });
+    const data = setup();
+
+    await data.fetchLineageForGuid("pivot");
+
+    expect(data.externalDatasetMap.value.get("ext-1")?.namespace).toBe(
+      "snowflake://acct"
+    );
+  });
+
   it("stores only new external dataset facts", async () => {
     const fact = create(ExternalDatasetInfoSchema, {
       guid: "ext-1",
@@ -233,7 +252,7 @@ describe("batched degree read", () => {
 
     await data.ensureLineageCounts();
 
-    expect(mocks.getLineageCounts).toHaveBeenCalledWith(["b", "b"]);
+    expect(mocks.getLineageCounts).toHaveBeenCalledWith(["b"]);
     expect(data.lineageCounts.value.get("b")).toEqual({ upstream: 1 });
     expect(data.onCountsLoaded).toHaveBeenCalledOnce();
   });

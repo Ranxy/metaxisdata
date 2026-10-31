@@ -9,6 +9,8 @@
       variant="ghost"
       size="icon"
       :aria-label="t('header.openNav')"
+      aria-controls="app-sidebar"
+      :aria-expanded="appStore.mobileNavOpen"
       @click="appStore.setMobileNavOpen(true)"
     >
       <Menu class="h-5 w-5" />

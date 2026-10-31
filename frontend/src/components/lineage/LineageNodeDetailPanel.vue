@@ -308,7 +308,6 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import type { LineageOrigin } from "@/lib/lineageOrigin";
 import { originLabelKey } from "@/lib/lineageOrigin";
-import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 /** One object on the canvas, as the detail column prints it. */
 export interface NodeDetailSummary {
@@ -318,7 +317,6 @@ export interface NodeDetailSummary {
   scopeLabel: string;
   scopeColor: string;
   isExternal: boolean;
-  metaTypeValue: MetaType;
   metaTypeLabel: string;
   upstreamCount: number;
   downstreamCount: number;

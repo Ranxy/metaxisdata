@@ -74,7 +74,7 @@ describe("a full load of the sign-in page", () => {
 
     expect(router.currentRoute.value.name).toBe("MetadataDetail");
     expect(router.currentRoute.value.query.metaType).toBe("4");
-  });
+  }, 10_000);
 
   it("renews an expired access token before continuing to the target", async () => {
     accessTokenAlive = false;

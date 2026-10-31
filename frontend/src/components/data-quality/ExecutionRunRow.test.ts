@@ -114,5 +114,11 @@ describe("ExecutionRunRow", () => {
     });
 
     expect(wrapper.text()).not.toContain("4%");
+    const cells = wrapper.findAll("td").map((cell) => cell.text());
+    // The observed and failed/total cells both read "-" without a verdict.
+    expect(cells.filter((text) => text === "-")).toHaveLength(2);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.status.fail")
+    );
   });
 });

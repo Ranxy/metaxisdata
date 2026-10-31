@@ -1168,7 +1168,7 @@ describe("suggestion row readings", () => {
         targetLabel: "",
         suggestions: [],
       })
-    ).toBe(0);
+    ).toBe(MetaType.TABLE);
   });
 
   it("selects only the pending rows of a group", () => {

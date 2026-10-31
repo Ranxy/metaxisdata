@@ -231,7 +231,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { NodeLineageData } from "@/composables/useLineageGraphData";
+import {
+  type NodeLineageData,
+  useLineageGraphData,
+} from "@/composables/useLineageGraphData";
+import { useLineageSelection } from "@/composables/useLineageSelection";
 import {
   assignLayers,
   buildLineageEdges,
@@ -244,6 +248,10 @@ import {
   parseExpandDepth,
 } from "@/lib/lineageGraph";
 import {
+  settleNodeHeights as convergeNodeHeights,
+  nodeHeightFor,
+} from "@/lib/lineageLayout";
+import {
   countRelationsByOrigin,
   LINEAGE_ORIGINS,
   type LineageOrigin,
@@ -254,19 +262,6 @@ import {
   type FieldTrail,
   walkColumnExpansion,
 } from "@/lib/lineageTrail";
-
-// Loaded on demand: the dialog renders its definition in Monaco, and the lineage
-// canvas has no use for a 3MB editor until a reader asks for a schema.
-const SchemaDefinitionDialog = defineAsyncComponent(
-  () => import("@/components/metadata/SchemaDefinitionDialog.vue")
-);
-
-import { useLineageGraphData } from "@/composables/useLineageGraphData";
-import { useLineageSelection } from "@/composables/useLineageSelection";
-import {
-  settleNodeHeights as convergeNodeHeights,
-  nodeHeightFor,
-} from "@/lib/lineageLayout";
 import { openlineageRunLabel } from "@/lib/openlineageRun";
 import { statementLabel } from "@/lib/statementLabel";
 import { useInstanceStore } from "@/store/modules/instance";
@@ -286,6 +281,12 @@ import {
   scopeColor,
 } from "@/utils/lineageAsset";
 import { metaTypeLabel, parseMetaType } from "@/utils/metaType";
+
+// Loaded on demand: the dialog renders its definition in Monaco, and the lineage
+// canvas has no use for a 3MB editor until a reader asks for a schema.
+const SchemaDefinitionDialog = defineAsyncComponent(
+  () => import("@/components/metadata/SchemaDefinitionDialog.vue")
+);
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -384,15 +385,6 @@ const fieldTrail = ref<FieldTrail | null>(null);
 // Track which nodes have their fields panel visible (for layout height calculation)
 const fieldsVisibleGuids = ref<Set<string>>(new Set());
 
-const hasExpandedBeyondRoot = computed(() => {
-  // A field-scoped expansion counts as expanding, so it earns the Reset that
-  // takes it back — the root's own two directions are always expanded.
-  return (
-    expandedDirections.value.size > initialExpandedDirections.size ||
-    expandedColumns.value.size > 0
-  );
-});
-
 const currentGuid = computed(() => routeParamToGuid(route.params.guid));
 
 const currentMetaType = computed(
@@ -418,7 +410,7 @@ const {
 } = useLineageGraphData({
   metaTypeFor: (guid) =>
     guidMetaTypeMap.value.get(guid) ?? currentMetaType.value,
-  recordRelations: (relations) => recordGuids(relations),
+  recordRelations: recordGuids,
   externalDatasetMap,
   drawnNodeIds: () => nodes.value.map((node) => node.id),
   onCountsLoaded: () => updateGraphState(),
@@ -440,6 +432,15 @@ const {
     await fetchLineageForGuid(guid);
   },
   onChanged: () => updateGraphState(),
+});
+
+const hasExpandedBeyondRoot = computed(() => {
+  // A field-scoped expansion counts as expanding, so it earns the Reset that
+  // takes it back — the root's own two directions are always expanded.
+  return (
+    expandedDirections.value.size > initialExpandedDirections.size ||
+    expandedColumns.value.size > 0
+  );
 });
 
 const selectedNodeSummary = computed(() => {

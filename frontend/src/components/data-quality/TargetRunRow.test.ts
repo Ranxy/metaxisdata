@@ -73,9 +73,8 @@ describe("TargetRunRow", () => {
 
     expect(wrapper.text()).toContain("orders");
     expect(wrapper.text()).toContain("prod · shop · public.orders");
-    expect(wrapper.text()).toContain("3");
-    expect(wrapper.text()).toContain("1");
-    expect(wrapper.text()).toContain("2");
+    expect(wrapper.text()).toContain("3 Pass · 1 Fail");
+    expect(wrapper.text()).toContain("2 runs");
   });
 
   it("asks the page to expand the row", async () => {

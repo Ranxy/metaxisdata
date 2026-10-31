@@ -209,8 +209,6 @@ import { guidToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { lineageAssetView } from "@/utils/lineageAsset";
 import { parseMetaType } from "@/utils/metaType";
 
-const OPENLINEAGE_META_TYPE = 100;
-
 type RunSummary = {
   guid: string;
   label: string;
@@ -327,7 +325,7 @@ const relatedRuns = computed<RunSummary[]>(() => {
 
   const addRelation = (relation: LineageRelation) => {
     if (
-      Number(relation.metaType) !== OPENLINEAGE_META_TYPE ||
+      Number(relation.metaType) !== MetaType.OPENLINEAGE ||
       !relation.metaGuid
     ) {
       return;

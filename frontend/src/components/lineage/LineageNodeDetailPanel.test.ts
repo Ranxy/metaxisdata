@@ -1,7 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
-import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import LineageNodeDetailPanel, {
   type NodeDetailSummary,
 } from "./LineageNodeDetailPanel.vue";
@@ -16,7 +15,6 @@ function summary(
     scopeLabel: "prod / shop",
     scopeColor: "#64748b",
     isExternal: false,
-    metaTypeValue: MetaType.TABLE,
     metaTypeLabel: "Table",
     upstreamCount: 3,
     downstreamCount: 2,

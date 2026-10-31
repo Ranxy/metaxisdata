@@ -172,6 +172,7 @@ import {
   suggestionJobStatusVariant,
 } from "@/utils/dataQualitySuggestion";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
+import { isAborted } from "@/utils/error";
 
 /**
  * The recent AI drafting jobs, polled while one is still active.
@@ -420,7 +421,9 @@ async function loadJobs(fromPoll = false, signal?: AbortSignal) {
       activeNames.add(name);
     }
   } catch (e: unknown) {
-    error.value = formatError(e, "dataQuality.suggestions.jobs.fetchFailed");
+    if (!isAborted(e)) {
+      error.value = formatError(e, "dataQuality.suggestions.jobs.fetchFailed");
+    }
   } finally {
     inFlight = false;
     loading.value = false;
