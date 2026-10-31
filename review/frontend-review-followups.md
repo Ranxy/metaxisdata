@@ -27,6 +27,7 @@
 | 17 | **FD3（第六步）**：Executions target row 组件 + 3 条测试 | FD3 | `0886bbc` |
 | 18 | **FD3（第七步）**：Executions flat row 组件 + 5 条测试 | FD3 | `30a8b2a` |
 | 19 | **FD2（第三步）**：`useLineageGraphData` 数据层 + 13 条测试 | FD2 | `cf04e7a` |
+| 20 | **FD2（第四步）**：`useLineageSelection` 选中层 + 8 条测试 | FD2 | `edec083` |
 
 ## 实施说明
 
@@ -78,7 +79,8 @@
 - 第一步已完成：`settleNodeHeights` 的四轮收敛（含测高未就绪时保留旧布局、pass 预算、全部节点测高）与 `heightFor` 回退下沉到 `lib/lineageLayout.ts`，6 条纯函数测试覆盖（100%），页面只保留 DOM 测量与 `stack()` 回调。
 - **数据层**（`cf04e7a`）：`composables/useLineageGraphData.ts`（306 行）承接 fetch 缓存（两个方向独立加载）、方向/字段展开状态、`expandableColumns` 深度判断、reveal 请求与批量度数读取；页面通过依赖注入传入 metaType 解析、关系记录、外部数据集缓存、已绘制节点与重绘回调。LineageGraphPage **1807 → 1577 行**。新增 13 条 composable 测试（按方向缓存、失败缓存、外部数据集去重、字段深度、整节点展开优先、reveal 计数、度数批量与失败）＋ `parseExpandDepth` 移入 `lib/lineageGraph` 并补 3 条测试。
 - 第二步已完成（`6d1c63b`）：详情列抽成 `components/lineage/LineageNodeDetailPanel.vue`（402 行，含外部对象的 namespace/datasetType、字段 trail、来源徽标、相关 runs、空态），页面从 2016 行降到 1807 行；父页面只传 7 个派生值 + 7 个动作事件。新增 **9 条组件测试**（空态、身份/计数、外部对象、trail、runs、动作 emit、禁用态、无 trail）。
-- 仍需完成：`useLineageSelection`（选中/字段揭示/跳转动作）；页面目标约 300 行。
+- **选中层**（`edec083`）：`composables/useLineageSelection.ts` 承接选中节点（URL `?node=`）、选中字段（内存态）、`selectedColumnContext`、节点/字段点击语义（同节点二次点击关闭、非 root 节点预取关系、字段点击先选节点）、`onChanged` 重绘回调；页面 **1577 → 1492 行**。新增 8 条测试（URL 读写、root 不预取、二次点击关闭、字段选择/取消、field context 归属、root 字段不预取）。
+- FD2 完成度：`LineageGraphPage` 2021 → **1492 行**；详情列、测高收敛、数据层、选中层均已下沉且有测试。
 
 ## FD3：god view 下沉（进行中）
 
@@ -99,6 +101,6 @@ FD2 的两个 composable 与画布/路由/快照状态互相引用（`expandedDi
 
 ## 尚未开始
 
-- **FD2 后续**：`LineageGraphPage` 的 `useLineageGraphData`/`useLineageSelection` 两个 composable（页面目标约 300 行；依赖画布/路由/快照，需先补页面级测试）。
+- **FD2 后续**：剩余页面骨架（展开走查、fitView、快照重置、模板装配）仍在页面内；如需继续可再拆 `useLineageExpansion`/`useLineageViewport`，但不是本轮目标。
 - **FD3**：三个 DQ god view（Executions/Target/Suggestions）的抽屉、URL、权限、轮询下沉。
 - **FD12**：随上述下沉补页面/纯函数测试。
