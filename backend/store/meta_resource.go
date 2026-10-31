@@ -56,9 +56,13 @@ type FindMetaRegistryResourceMessage struct {
 	// know this name" rather than as "the name is not registered".
 	GUIDFolded *string
 	ObjectType *storepb.MetaType
-	Limit      *int
-	Offset     *int
-	ExtraArgs  []ExtraArgs
+	// ObjectTypes is the batch form of ObjectType: it matches any of the given
+	// types. An empty but non-nil slice matches nothing, so a caller that built
+	// an empty type list cannot accidentally read every kind of object.
+	ObjectTypes *[]storepb.MetaType
+	Limit       *int
+	Offset      *int
+	ExtraArgs   []ExtraArgs
 }
 
 type FindSubLevelMetaRegistryResourceMessage struct {
@@ -339,6 +343,13 @@ func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResour
 	}
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("%s.object_type = $%d", tableName, len(args)+1)), append(args, *v)
+	}
+	if v := find.ObjectTypes; v != nil {
+		if len(*v) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			where, args = append(where, fmt.Sprintf("%s.object_type = ANY($%d)", tableName, len(args)+1)), append(args, pq.Array(*v))
+		}
 	}
 	if v := find.ExtraArgs; len(v) > 0 {
 		for _, extraArg := range v {

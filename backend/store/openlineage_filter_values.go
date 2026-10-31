@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/pkg/errors"
 )
@@ -66,14 +67,20 @@ func (s *Store) CountOpenLineageTotals(ctx context.Context) (*OpenLineageTotals,
 // ListOpenLineageDatasetFilterValues: they describe the datasets of the window
 // the dataset list itself reads.
 func (s *Store) ListOpenLineageFilterValues(ctx context.Context) ([]*OpenLineageFilterValue, error) {
+	// Each branch is capped before the UNION merges them: the menu only keeps the
+	// most common values anyway, so the sort and the wire payload stop at the cap
+	// instead of materializing every distinct value in the table.
+	limit := fmt.Sprintf(" ORDER BY 3 DESC LIMIT %d", maxOpenLineageFilterValues)
 	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT '`+openLineageFilterJobNamespace+`', job_namespace, count(*) FROM openlineage_run WHERE job_namespace <> '' GROUP BY 2
-		UNION ALL
-		SELECT '`+openLineageFilterJobType+`', job_type, count(*) FROM openlineage_task WHERE job_type <> '' GROUP BY 2
-		UNION ALL
-		SELECT '`+openLineageFilterEventType+`', event_type, count(*) FROM openlineage_run WHERE event_type <> '' GROUP BY 2
-		UNION ALL
-		SELECT '`+openLineageFilterSource+`', source, count(*) FROM openlineage_run WHERE source <> '' GROUP BY 2
+		SELECT * FROM (
+			(SELECT '`+openLineageFilterJobNamespace+`', job_namespace, count(*) FROM openlineage_run WHERE job_namespace <> '' GROUP BY 2`+limit+`)
+			UNION ALL
+			(SELECT '`+openLineageFilterJobType+`', job_type, count(*) FROM openlineage_task WHERE job_type <> '' GROUP BY 2`+limit+`)
+			UNION ALL
+			(SELECT '`+openLineageFilterEventType+`', event_type, count(*) FROM openlineage_run WHERE event_type <> '' GROUP BY 2`+limit+`)
+			UNION ALL
+			(SELECT '`+openLineageFilterSource+`', source, count(*) FROM openlineage_run WHERE source <> '' GROUP BY 2`+limit+`)
+		) capped
 		ORDER BY 1, 3 DESC, 2`)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list openlineage filter values")

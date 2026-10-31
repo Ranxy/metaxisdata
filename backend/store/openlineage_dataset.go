@@ -703,16 +703,21 @@ func (s *Store) listOpenLineageDatasetRuns(ctx context.Context, clause string, a
 // the list down to nothing. Each count is the number of datasets carrying the
 // value.
 func (s *Store) ListOpenLineageDatasetFilterValues(ctx context.Context) ([]*OpenLineageFilterValue, error) {
+	// Each branch is capped before the UNION merges them; the caller keeps only
+	// the most common values, so the sort and the payload stop at the cap.
+	limit := fmt.Sprintf(" ORDER BY 3 DESC LIMIT %d", maxOpenLineageFilterValues)
 	rows, err := s.GetDB().QueryContext(ctx, openLineageDatasetWindowCTE()+`
-		SELECT '`+openLineageFilterDatasetNamespace+`', w.namespace, COUNT(*) FROM dataset_window w WHERE w.namespace <> '' GROUP BY 2
-		UNION ALL
-		SELECT '`+openLineageFilterDatasetIntegration+`', m.value, COUNT(*) FROM dataset_window w
-			JOIN openlineage_dataset_member m ON m.namespace = w.namespace AND m.name = w.name
-			WHERE m.kind = '`+openLineageDatasetMemberIntegration+`' AND m.value <> '' GROUP BY 2
-		UNION ALL
-		SELECT '`+openLineageFilterDatasetSource+`', m.value, COUNT(*) FROM dataset_window w
-			JOIN openlineage_dataset_member m ON m.namespace = w.namespace AND m.name = w.name
-			WHERE m.kind = '`+openLineageDatasetMemberSource+`' AND m.value <> '' GROUP BY 2
+		SELECT * FROM (
+			(SELECT '`+openLineageFilterDatasetNamespace+`', w.namespace, COUNT(*) FROM dataset_window w WHERE w.namespace <> '' GROUP BY 2`+limit+`)
+			UNION ALL
+			(SELECT '`+openLineageFilterDatasetIntegration+`', m.value, COUNT(*) FROM dataset_window w
+				JOIN openlineage_dataset_member m ON m.namespace = w.namespace AND m.name = w.name
+				WHERE m.kind = '`+openLineageDatasetMemberIntegration+`' AND m.value <> '' GROUP BY 2`+limit+`)
+			UNION ALL
+			(SELECT '`+openLineageFilterDatasetSource+`', m.value, COUNT(*) FROM dataset_window w
+				JOIN openlineage_dataset_member m ON m.namespace = w.namespace AND m.name = w.name
+				WHERE m.kind = '`+openLineageDatasetMemberSource+`' AND m.value <> '' GROUP BY 2`+limit+`)
+		) capped
 		ORDER BY 1, 3 DESC, 2`)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list openlineage dataset filter values")

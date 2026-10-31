@@ -382,18 +382,24 @@ func (s *DatabaseService) rebuildDatabaseObjects(ctx context.Context, guid strin
 		}},
 	}
 
+	metaTypes := make([]storepb.MetaType, 0, len(objectTypes))
+	collectors := make(map[storepb.MetaType]func(*storepb.SchemaMetadata, *storepb.StoredMetadata) bool, len(objectTypes))
 	for _, objectType := range objectTypes {
-		metaType := objectType.metaType
-		objects, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
-			GUIDPrefix: &guid,
-			ObjectType: &metaType,
-		}, asOfTime)
-		if err != nil {
-			return nil, err
+		metaTypes = append(metaTypes, objectType.metaType)
+		collectors[objectType.metaType] = objectType.collect
+	}
+	objects, err := s.store.ListMetaRegistryResourceAsOf(ctx, &store.FindMetaRegistryResourceMessage{
+		GUIDPrefix:  &guid,
+		ObjectTypes: &metaTypes,
+	}, asOfTime)
+	if err != nil {
+		return nil, err
+	}
+	for _, object := range objects {
+		if object.Metadata == nil {
+			continue
 		}
-		for _, object := range objects {
-			objectType.collect(result, object.Metadata)
-		}
+		collectors[object.ObjectType](result, object.Metadata)
 	}
 
 	return result, nil
