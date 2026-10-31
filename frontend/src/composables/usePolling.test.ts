@@ -101,6 +101,24 @@ describe("usePolling", () => {
     expect(task.mock.calls.length).toBe(rounds);
   });
 
+  it("expires the deadline while the document is hidden", async () => {
+    hidden = true;
+    const task = vi.fn();
+    const polling = usePolling(task, {
+      intervalMs: 100,
+      shouldContinue: () => true,
+      timeoutMs: 250,
+    });
+
+    polling.start();
+    const done = polling.until();
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(polling.active.value).toBe(false);
+    await expect(done).resolves.toBeUndefined();
+    expect(task).not.toHaveBeenCalled();
+  });
+
   it("pauses while the document is hidden and resumes when visible", async () => {
     hidden = true;
     const task = vi.fn();

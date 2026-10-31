@@ -41,7 +41,7 @@ export default [
       "@intlify/vue-i18n/no-unused-keys": [
         "error",
         {
-          src: "./src",
+          src: fileURLToPath(new URL("./src", import.meta.url)),
           extensions: [".js", ".vue", ".ts", ".tsx"],
           // The exemptions have a single source: scripts/check-vue-i18n.mjs.
           // This rule cannot follow a key our helpers return and has no prefix

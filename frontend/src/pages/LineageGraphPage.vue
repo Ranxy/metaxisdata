@@ -387,7 +387,6 @@ import {
   VueFlow,
 } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { useTimeoutFn } from "@vueuse/core";
 import {
   computed,
   defineAsyncComponent,
@@ -399,6 +398,7 @@ import {
 } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import { useOneShot } from "@/composables/useTimers";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
@@ -495,8 +495,8 @@ const router = useRouter();
 const { fitView, getNodes } = useVueFlow();
 
 /** Layout settles after the graph is rebuilt; framing waits for the next paint. */
-const fitAfterRebuild = useTimeoutFn(() => fitView({ duration: 300 }), 50);
-const fitAfterInitial = useTimeoutFn(() => fitView({ duration: 300 }), 100);
+const fitAfterRebuild = useOneShot(() => fitView({ duration: 300 }), 50);
+const fitAfterInitial = useOneShot(() => fitView({ duration: 300 }), 100);
 const instanceStore = useInstanceStore();
 
 const OPENLINEAGE_META_TYPE = 100;

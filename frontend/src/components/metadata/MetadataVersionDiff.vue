@@ -82,7 +82,6 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { useTimeoutFn } from "@vueuse/core";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { diffMetadata } from "@/api/database";
@@ -95,6 +94,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useOneShot } from "@/composables/useTimers";
 import type { MetadataHistoryTimelineEntry } from "@/types/proto-es/v1/database_service_pb";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
@@ -179,7 +179,7 @@ async function runDiff() {
 }
 
 /** The "copied" confirmation is a short-lived acknowledgement, not state. */
-const resetCopied = useTimeoutFn(() => {
+const resetCopied = useOneShot(() => {
   copied.value = false;
 }, 2000);
 

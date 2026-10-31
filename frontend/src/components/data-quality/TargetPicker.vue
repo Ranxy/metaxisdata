@@ -179,7 +179,6 @@
 </template>
 
 <script setup lang="ts">
-import { useDebounceFn } from "@vueuse/core";
 import { ArrowLeft, Check, ChevronRight, Loader2 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -200,6 +199,7 @@ import {
   type MetadataChild,
   useMetadataChildren,
 } from "@/composables/useMetadataChildren";
+import { useDebounced } from "@/composables/useTimers";
 import { useInstanceStore } from "@/store/modules/instance";
 import type { Engine } from "@/types/proto-es/v1/common_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -299,7 +299,7 @@ const {
 } = useMetadataChildren({ pageSize: PAGE_SIZE });
 
 /** The debounced server query; the caller cancels it when the level changes. */
-const applyFilter = useDebounceFn(
+const applyFilter = useDebounced(
   (term: string, parent: string, types: ReturnType<typeof currentTypes>) => {
     // The reader may have drilled away while the delay ran; that level's own
     // load already owns the list.

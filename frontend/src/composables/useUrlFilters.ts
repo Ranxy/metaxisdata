@@ -98,6 +98,10 @@ export function useUrlFilters<T>(options: UrlFiltersOptions<T>): UrlFilters<T> {
           written = undefined;
           return;
         }
+        // A write whose navigation never landed leaves a marker behind; the
+        // next query is not that replace, so clear it before adopting rather
+        // than swallowing a later navigation to the same query.
+        written = undefined;
         adopt(options.parse(query));
       }
     );

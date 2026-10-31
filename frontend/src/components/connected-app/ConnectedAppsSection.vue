@@ -68,7 +68,6 @@
 </template>
 
 <script setup lang="ts">
-import { useDebounceFn } from "@vueuse/core";
 import { Link2 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -87,6 +86,7 @@ import ConnectedAppTable from "@/components/connected-app/ConnectedAppTable.vue"
 import { Card, CardContent } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useDebounced } from "@/composables/useTimers";
 import { useAuthStore } from "@/store/modules/auth";
 import type { ConnectedApp } from "@/types/proto-es/v1/connected_app_service_pb";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
@@ -265,7 +265,7 @@ watch([userFilter, stateFilter, clientFilter], () => void reset());
 // The bar emits on every keystroke, so the search box restarts the walk on a
 // short debounce rather than firing one request per character. The debounced
 // call is cancelled when the component goes away.
-const restartOnSearch = useDebounceFn(() => void reset(), 250);
+const restartOnSearch = useDebounced(() => void reset(), 250);
 watch(searchText, () => void restartOnSearch());
 
 function confirmRevoke(app: ConnectedApp) {

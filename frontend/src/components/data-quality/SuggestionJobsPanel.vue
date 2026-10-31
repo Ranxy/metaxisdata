@@ -233,7 +233,7 @@ function hasActiveWork(): boolean {
 }
 
 /** The poll waits for a round to settle before scheduling the next one. */
-const polling = usePolling(() => loadJobs(), {
+const polling = usePolling(() => loadJobs(true), {
   intervalMs: POLL_INTERVAL_MS,
   shouldContinue: hasActiveWork,
 });
@@ -394,10 +394,13 @@ async function rereadMissingActiveJobs(
   return retry;
 }
 
-async function loadJobs() {
+async function loadJobs(fromPoll = false) {
   if (inFlight) {
-    // The caller wants fresh data (e.g. a submission): rerun instead of dropping.
-    reloadRequested = true;
+    // A user reload (e.g. after a submission) must rerun instead of dropping;
+    // a poll that merely collided with it waits for the next round.
+    if (!fromPoll) {
+      reloadRequested = true;
+    }
     return;
   }
   inFlight = true;

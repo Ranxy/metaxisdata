@@ -290,7 +290,6 @@
 </template>
 
 <script setup lang="ts">
-import { useDebounceFn } from "@vueuse/core";
 import {
   ArrowLeft,
   ChevronDown,
@@ -323,6 +322,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useDebounced } from "@/composables/useTimers";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -646,7 +646,7 @@ function clearSelection() {
 }
 
 /** The box emits per keystroke; one request answers a pause in typing. */
-const debouncedSearch = useDebounceFn((q: string) => void doSearch(q), 300);
+const debouncedSearch = useDebounced((q: string) => void doSearch(q), 300);
 
 function onSearchInput() {
   debouncedSearch.cancel();

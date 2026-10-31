@@ -241,7 +241,6 @@
 
 <script setup lang="ts">
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { useTimeoutFn } from "@vueuse/core";
 import { Check, Copy } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -260,6 +259,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useErrorHandler } from "@/composables/useErrorHandler";
+import { useOneShot } from "@/composables/useTimers";
 import {
   extractOpenLineageDatasets,
   extractOpenLineageExtractionErrors,
@@ -285,7 +285,7 @@ const payloadOpen = ref(false);
 const copied = ref(false);
 
 /** The "copied" confirmation is a short-lived acknowledgement, not state. */
-const resetCopied = useTimeoutFn(() => {
+const resetCopied = useOneShot(() => {
   copied.value = false;
 }, 2000);
 

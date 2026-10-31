@@ -470,7 +470,6 @@
 </template>
 
 <script setup lang="ts">
-import { useTimeoutFn } from "@vueuse/core";
 import {
   AlertCircle,
   CheckCircle2,
@@ -495,6 +494,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Separator } from "@/components/ui/separator";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { useSSOLogin } from "@/composables/useSSOLogin";
+import { useOneShot } from "@/composables/useTimers";
 import { notify } from "@/lib/notify";
 import { isKnownSpaRouteName, resolveSignInTarget } from "@/lib/signInRedirect";
 import { useAuthStore } from "@/store/modules/auth";
@@ -710,7 +710,7 @@ async function handleResetSignOut() {
 const REGISTRATION_SUCCESS_DELAY = 1500;
 
 /** Switching to the login form waits for the success message to be read. */
-const switchToLoginLater = useTimeoutFn(
+const switchToLoginLater = useOneShot(
   () => switchToLogin(),
   REGISTRATION_SUCCESS_DELAY
 );

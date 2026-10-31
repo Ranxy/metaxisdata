@@ -92,19 +92,35 @@ describe("permission call sites", () => {
       /hasPermission\(\s*["']([^"']+)["']/g,
       /(?:permission|anyPermission)\s*:\s*["']([^"']+)["']/g,
     ];
+    // An `anyPermission: ["a", "b"]` array carries identifiers too; the typed
+    // field catches them at compile time, and this scan catches the same list
+    // even if a future declaration widens it.
+    const arrayPattern = /anyPermission\s*:\s*\[([^\]]*)\]/g;
+    const quoted = /["']([^"']+)["']/g;
     const offenders: string[] = [];
+    const check = (file: string, permission: string) => {
+      if (!catalog.has(permission)) {
+        offenders.push(
+          `${file.slice(resolve(here, "../../..").length + 1)}: ${permission}`
+        );
+      }
+    };
     for (const file of sourceFiles(resolve(here, ".."))) {
       const source = readFileSync(file, "utf8");
       for (const pattern of patterns) {
         pattern.lastIndex = 0;
         let match: RegExpExecArray | null;
         while ((match = pattern.exec(source))) {
-          const permission = match[1];
-          if (!catalog.has(permission)) {
-            offenders.push(
-              `${file.slice(resolve(here, "../../..").length + 1)}: ${permission}`
-            );
-          }
+          check(file, match[1]);
+        }
+      }
+      arrayPattern.lastIndex = 0;
+      let list: RegExpExecArray | null;
+      while ((list = arrayPattern.exec(source))) {
+        quoted.lastIndex = 0;
+        let entry: RegExpExecArray | null;
+        while ((entry = quoted.exec(list[1]))) {
+          check(file, entry[1]);
         }
       }
     }

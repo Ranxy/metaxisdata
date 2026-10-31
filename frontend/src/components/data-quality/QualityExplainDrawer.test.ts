@@ -53,6 +53,25 @@ function streamed(chunks: ReturnType<typeof content>[]) {
   })();
 }
 
+/**
+ * A stream that delivers one frame, waits until its request is aborted, and
+ * then delivers a final frame — the ordering a real stream can produce when a
+ * server frame is already in flight.
+ */
+function staleFrameAfterAbort(signal: AbortSignal) {
+  return (async function* () {
+    yield content("Old answer");
+    await new Promise<void>((resolve) => {
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+      signal.addEventListener("abort", () => resolve(), { once: true });
+    });
+    yield content("Late frame");
+  })();
+}
+
 /** A stream that delivers its chunks and then never finishes on its own. */
 function hanging(chunks: ReturnType<typeof content>[]) {
   return (async function* () {
@@ -199,6 +218,36 @@ describe("QualityExplainDrawer", () => {
     expect(firstSignal.aborted).toBe(true);
     expect(document.body.textContent).toContain("New answer");
     expect(document.body.textContent).not.toContain("Old answer");
+    wrapper.unmount();
+  });
+
+  it("drops a frame the aborted stream delivers after the switch", async () => {
+    const first = create(QualityExecutionSchema, {
+      name: "workspaces/ws/qualityExecutions/r1",
+      outcome: QualityStatus.FAIL,
+    });
+    const second = create(QualityExecutionSchema, {
+      name: "workspaces/ws/qualityExecutions/r2",
+      outcome: QualityStatus.FAIL,
+    });
+    mocks.explainQualityExecution
+      .mockImplementationOnce((options: { signal: AbortSignal }) =>
+        staleFrameAfterAbort(options.signal)
+      )
+      .mockReturnValueOnce(streamed([content("New answer"), metadata()]));
+
+    const wrapper = mount(QualityExplainDrawer, {
+      attachTo: document.body,
+      props: { open: true, execution: first },
+      global: { plugins: [i18n] },
+    });
+    await settle();
+
+    await wrapper.setProps({ execution: second });
+    await settle();
+
+    expect(document.body.textContent).toContain("New answer");
+    expect(document.body.textContent).not.toContain("Late frame");
     wrapper.unmount();
   });
 

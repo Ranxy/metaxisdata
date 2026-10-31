@@ -348,7 +348,6 @@
 </template>
 
 <script setup lang="ts">
-import { useDebounceFn } from "@vueuse/core";
 import {
   Check,
   ChevronRight,
@@ -393,6 +392,7 @@ import {
 } from "@/components/ui/table";
 import { useAsync } from "@/composables/useAsync";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useDebounced } from "@/composables/useTimers";
 import { useUrlFilters } from "@/composables/useUrlFilters";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -641,7 +641,7 @@ function clearFilters() {
 }
 
 /** One request when the reader pauses, not one per keystroke. */
-const debouncedSearch = useDebounceFn(() => {
+const debouncedSearch = useDebounced(() => {
   // An external navigation already adopted this query; do not answer it with
   // a second request.
   if (urlFilters.isCurrent(currentFilters())) {
@@ -684,7 +684,7 @@ async function load() {
 }
 
 onMounted(async () => {
-  if (queryString(route.query.new) === "1") {
+  if (readFlag(route.query.new)) {
     // A link from the overview asks the directory to open its picker. Only a
     // caller allowed to create a check gets that; either way the flag is
     // consumed, so a refresh does not repeat the visit.
