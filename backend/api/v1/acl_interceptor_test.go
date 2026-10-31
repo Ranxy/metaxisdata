@@ -200,6 +200,52 @@ func TestEveryMethodIsPermissionGated(t *testing.T) {
 	}
 }
 
+// TestPublicMethodsThatAlsoDeclareAPermission pins the one annotation combination
+// the interceptor cannot honor. allow_without_credential short-circuits before the
+// permission check, so a permission beside it is catalog documentation at best and
+// a false assurance at worst: a reader sees a gated method that is actually
+// anonymous. Two reads carry both on purpose (their proto comments say so); they
+// are listed here so a third cannot join them by accident.
+func TestPublicMethodsThatAlsoDeclareAPermission(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"metaxisdata.v1.SettingService.GetWorkspaceProfileSetting":     permission.SettingsGet,
+		"metaxisdata.v1.IdentityProviderService.ListIdentityProviders": permission.IdentityProvidersList,
+	}
+	got := map[string]string{}
+	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		if fd.Package() != "metaxisdata.v1" {
+			return true
+		}
+		for i := range fd.Services().Len() {
+			service := fd.Services().Get(i)
+			for j := range service.Methods().Len() {
+				method := service.Methods().Get(j)
+				if !methodAllowsWithoutCredential(method) {
+					continue
+				}
+				if declared := methodPermission(method); declared != "" {
+					got[string(method.FullName())] = declared
+				}
+			}
+		}
+		return true
+	})
+	require.Equal(t, want, got,
+		"a public method must not also claim a permission unless this table says so deliberately")
+}
+
+// methodAllowsWithoutCredential reads the allow_without_credential method option.
+func methodAllowsWithoutCredential(method protoreflect.MethodDescriptor) bool {
+	options, ok := method.Options().(*descriptorpb.MethodOptions)
+	if !ok || options == nil {
+		return false
+	}
+	allow, ok := proto.GetExtension(options, v1pb.E_AllowWithoutCredential).(bool)
+	return ok && allow
+}
+
 // TestReadPathsAreGated pins the specific concern from the review: the read
 // RPCs that used to be "any authenticated caller" now carry permissions.
 func TestReadPathsAreGated(t *testing.T) {
