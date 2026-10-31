@@ -303,7 +303,7 @@
 | # | 决定 | 理由 / 影响 |
 | --- | --- | --- |
 | O-1 | 渠道是**工作区级**资源，凭据 write-only、`v1:` AES-256-GCM 加密（复用 `common/crypto` 与部署数据密钥） | 渠道配置属于出站能力，不属于某个收件人；读接口只返回 `secret_set` |
-| O-2 | 订阅过滤在**渠道级**：`event_types`（空=全部）+ `min_severity`；不做按 owner/团队路由的规则引擎 | 覆盖"哪类事件发到哪个群/端点"的常见需求；更细路由等有真实需求再加 |
+| O-2 | 订阅过滤在**渠道级**：`event_types`（空=全部）+ `min_severity`；不做按 owner/团队路由的规则引擎。**例外：数据质量周报 digest 必须显式订阅**（见 O-22） | 覆盖"哪类事件发到哪个群/端点"的常见需求；更细路由等有真实需求再加；空 event_types 的"全部"是在 digest 类型出现之前就存在的语义，不能被一条新周期消息悄悄扩大 |
 | O-3 | 投递异步 outbox + 独立 runner（tick 2s、单批 ≤20、并发 ≤4、租约 5m），失败退避 1m/5m/15m/1h/6h，**6 次后 DEAD**；管理员手动的"重试"把 attempts 归零，等于重新给 6 次 | 生产者不因渠道故障失败；租约过期可被重新认领，崩溃不丢投递 |
 | O-4 | 渲染在**发送时**做（渠道 `language`，空=服务端默认 en-US），`payload` 只存结构化事件；不存收件人的姓名/地址，但**存事件级 audience 用户 id**（`audience_user_ids`），供 EMAIL 渠道发送时解析 | 模板修复能作用于已排队的投递；邮箱地址在发送时才解析，账号改邮箱/被删都能反映；outbox 不含 per-recipient 列、已读态、样本值 |
 | O-5 | Webhook body 是稳定 JSON（eventId/deliveryId/eventType/severity/title/text/link/occurredAt）；`X-Metaxisdata-Event`/`X-Metaxisdata-Delivery` **总是**发送，`sign=true` 时另附 `X-Metaxisdata-Signature: sha256=<hex>`（HMAC-SHA256） | 端点可脚本化；签名密钥与 URL 一样不落日志/审计/错误 |
@@ -323,6 +323,7 @@
 | O-19 | 路由匹配在 **enqueue 时**做：audience 来自投递事件（规则 owner / 同步发起人 / 管理员），owner 直接命中，group 通过 IAM 组成员展开（只读规则点名的 group，走 `GetGroup` 缓存）；路由表或 group 读取失败**fail open** 回到订阅 fan-out（`routed_only` 渠道此时不投递，等管理员修复） | 事件写入时必须决定发到哪些渠道；失败时宁可多发（订阅）也不漏发；owner 归属变化只影响后续事件 |
 | O-20 | 路由目标渠道仍要满足自身 `enabled` + `event_types` + `min_severity` 过滤；`routed_only` 渠道未被任何规则选中则完全跳过 | 规则表达"谁的事发到哪个渠道"，渠道自己的过滤仍是第二道闸；避免配置矛盾时意外群发 |
 | O-21 | "未确认 N 小时升级到第二渠道"**不做** | 产品反馈并非所有部署喜欢自动升级（会重复打扰值班）；等有明确需求再评估，避免做成默认行为 |
+| O-22 | **数据质量周报 digest 是"仅投递"事件**：没有站内信、没有 audience，由 `qualitydigestrunner` 每周按 DQ 设置生成一次，用确定性 `event_id=dqdigest:<ISO 周>` 入队到**显式**订阅 `DATA_QUALITY_DIGEST` 的启用渠道；`routed_only` 渠道跳过、`notification_route` 不参与、无固定地址的 EMAIL 渠道跳过（digest 的 audience 为空，`include_audience` 解析不出人）；其余投递语义（outbox、重试、静默窗口、指标）完全复用 | 新周期消息必须是 opt-in，否则所有"空=全部"的存量渠道会突然收到周报；digest 无 audience，路由规则和 audience 邮件都失去意义；确定性事件 id 让重复 tick/重启/部分成功重试都不重复投递 |
 
 ### 失败模式
 
@@ -359,13 +360,19 @@
 | dispatcher 崩溃在 POST 中途 | 租约过期，下一次 tick 重新认领并记一次 attempt |
 | 渲染缺 detail | 不产生投递 |
 | 管理员"测试发送" | 直接走适配器，不排队、不建投递、**不审计**（只读诊断，端点响应正文不落永久账本） |
+| digest 的订阅渠道为空 event_types | 不投递（digest 是显式 opt-in，空=全部不包含它），记 debug 日志；周期照常记为已处理（channel_count=0） |
+| digest 的渠道是 routed_only 或无规则选中 | 完全跳过：digest 没有 audience，路由不参与 |
+| digest 的 EMAIL 渠道没有固定地址 | 入队时跳过并记 debug 日志；不建投递，避免每周一条注定 DEAD 的行 |
+| digest 入队失败（渠道读取/DB 写） | 不记录周期，runner 下个 tick 在 24h 窗口内重试；确定性 event_id 让部分成功后的重试无副作用 |
+| digest 入队与记录周期之间的崩溃 | 若入队成功、记录失败：下个 tick 用同一 event_id 重复入队，`(event_id,channel_id)` 唯一索引吞掉；若记录成功但入队前崩溃：该周期不发（可接受，宁可少发不重复） |
+| digest 计划时刻已过超过 24h | 不补发；每个被跨过的周期记一次 WARN（进程内去重），随后进入下一周期 |
 
 ### Where things live（出站部分）
 
 - 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`0034##notification_route.sql`、`LATEST.sql`。PR-2 的 kind/config/audience/EmailSetting 都是 proto 增量，无需新迁移（`payload`/`secret` 为 JSONB/TEXT，`setting.name` 为文本列）。唯一注意：PR-1 的 `NotificationChannelSecret` 字段叫 `webhook_url`/`webhook_signing_secret`，PR-2 改名为 `endpoint`/`signing_secret`；PR-1 从未发布，因此没有需要迁移的存量渠道。若在 PR-1 构建上建过渠道（仅开发环境可能），升级后凭据读不出，重新填写一次 endpoint/签名密钥即可（读接口仍显示 `secret_set`，编辑保存会覆盖）。
-- store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/静默推迟/清理/列表）、`backend/store/email_setting.go`（SMTP 配置读写、密码加解密、清空）、`backend/store/quiet_hours.go`、`backend/store/notification_route.go`。
-- 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out、订阅过滤、audience 写入）、`outbound_routing.go`（路由匹配与 group 展开）、`outbound/schedule.go`（静默窗口计算与校验，纯函数）、`outbound/` 的其余部分（`outbound.go` 渠道与 Receiver 工厂、`render.go` zh/en 模板与深链、`channel.go` 写时校验与邮箱地址规范化、`webhook.go`、`chat.go` + `dingtalk.go`/`wecom.go`/`feishu.go`、`email.go`（SMTP 发送与 MIME）、`recipients.go`（收件人解析））。
-- runner：`backend/runner/notificationdispatcher/`（静默窗口在此计算并推迟投递；EMAIL 渠道在此解析 SMTP 设置与 audience 邮箱）；`backend/server/server.go` 注册第 7 个 runner。
+- store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/静默推迟/清理/列表）、`backend/store/email_setting.go`（SMTP 配置读写、密码加解密、清空）、`backend/store/quiet_hours.go`、`backend/store/notification_route.go`。`notification_delivery.go` 里两条 SQL 形状是不变量：claim 的 `RETURNING` 必须用 `d.` 限定（`FROM due` 里也有 `id`，不限定会 42702 `column reference "id" is ambiguous`，认领永远失败）；完成语句的 `CASE WHEN $2::int4 = $5::int4` 必须显式定型（同一参数在赋值与比较里各推导一次，不 cast 会 42P08，投递永远停在 SENDING 并被租约重投）。`quality_digest_send` 的周期唯一索引是 digest 幂等的真正仲裁者，由 `backend/store/quality_digest.go` 读写。
+- 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out、订阅过滤、audience 写入）、`outbound_routing.go`（路由匹配与 group 展开）、`outbound/schedule.go`（静默窗口计算与校验，纯函数）、`data_quality_digest.go`（digest 的"仅投递"入队：显式订阅、跳过 routed_only/无地址 EMAIL、确定性 event id）、`outbound/` 的其余部分（`outbound.go` 渠道与 Receiver 工厂、`render.go` zh/en 模板与深链（含 digest 分支与 `/data-quality` 链接）、`channel.go` 写时校验与邮箱地址规范化、`webhook.go`、`chat.go` + `dingtalk.go`/`wecom.go`/`feishu.go`、`email.go`（SMTP 发送与 MIME）、`recipients.go`（收件人解析））。
+- runner：`backend/runner/notificationdispatcher/`（静默窗口在此计算并推迟投递；EMAIL 渠道在此解析 SMTP 设置与 audience 邮箱）；`backend/runner/qualitydigestrunner/`（digest 的周期计算/幂等/入队，见 [data-quality.md](data-quality.md)）；`backend/server/server.go` 注册第 7/8 个 runner。
 - API：`backend/api/v1/notification_outbound_service.go`（13 个 RPC：渠道/投递 + 路由 CRUD，权限复用 settings.*）、`backend/api/v1/notification_route_service.go`、`backend/api/v1/setting_service.go` 的 email 与 quiet-hours RPC；SMTP 密码字段标 `INPUT_ONLY`，审计按字段名脱敏（`endpoint`、`password`）。
 - 前端：`frontend/src/pages/settings/NotificationSettingsPage.vue`（渠道弹窗按 kind 切换字段 + SMTP 卡片）、`frontend/src/api/notification.ts`、`frontend/src/api/setting.ts` 的 email 部分、`components/layout/SettingsNav.vue`、`router/index.ts`、`locales/*.json` 的 `notificationSettings.*`、`glossary.json`（Notifications 类目：channel/delivery/webhook/dingtalk/wecom/feishu/smtp）。
 - 文档：`docs/notifications.md`（运维侧）。
