@@ -1,4 +1,3 @@
-import { Code } from "@connectrpc/connect";
 import {
   type ComputedRef,
   computed,
@@ -8,7 +7,7 @@ import {
   ref,
 } from "vue";
 import type { ListPage } from "@/api/list";
-import { errorCode } from "@/utils/error";
+import { isAborted } from "@/utils/error";
 
 export interface PagedFetchOptions<T> {
   /**
@@ -31,13 +30,6 @@ export interface PagedFetch<T> {
   refresh: () => Promise<void>;
   goNext: () => Promise<void>;
   goPrevious: () => Promise<void>;
-}
-
-function isSuperseded(error: unknown): boolean {
-  return (
-    errorCode(error) === Code.Canceled ||
-    (error instanceof DOMException && error.name === "AbortError")
-  );
 }
 
 /**
@@ -76,7 +68,7 @@ export function usePagedFetch<T>(options: PagedFetchOptions<T>): PagedFetch<T> {
       currentPageToken.value = pageToken;
       nextPageToken.value = page.nextPageToken;
     } catch (error) {
-      if (mine !== ticket || isSuperseded(error)) {
+      if (mine !== ticket || isAborted(error)) {
         return;
       }
       nextPageToken.value = "";
