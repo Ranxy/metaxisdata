@@ -308,7 +308,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
 | `metaxisdata_schemasync_scans_total` | counter | `outcome=success\|failure` | `trySyncAll` 的返回值（`queue.go`） | 每轮 15 min 扫描一次；`trySyncAll` 现在返回 `ok bool`（store 读取失败或 panic 为 false；单个实例同步失败不算扫描失败） | P0 |
-| `metaxisdata_schemasync_scan_duration_seconds` | histogram | — | `trySyncAllOnce` 的 defer（`queue.go`） | 一轮实例扫描的墙钟，**包含本轮对到期实例的枚举/同步**（`trySyncAll` 内同步调用 `SyncInstance`）；单库 schema 同步由 checker 并发入队，不在这里 | P0 |
+| `metaxisdata_schemasync_scan_duration_seconds` | histogram | — | `trySyncAllOnce` 返回后（`queue.go`） | 一轮实例扫描的墙钟，**包含本轮对到期实例的枚举/同步**（`trySyncAll` 内同步调用 `SyncInstance`）；单库 schema 同步由 checker 并发入队，不在这里 | P0 |
 | `metaxisdata_schemasync_instance_syncs_total` | counter | `engine,outcome` | owner-only defer（`instance_sync.go` 的 `SyncInstance`） | 每次真实的实例枚举 | P0 |
 | `metaxisdata_schemasync_instance_sync_duration_seconds` | histogram | `engine` | 同上 | 含目标库往返 | P0 |
 | `metaxisdata_schemasync_database_syncs_total` | counter | `engine,outcome` | owner-only defer（`database_sync.go` 的 `SyncDatabaseSchema`） | 每次真实的库同步；checker 10s 与 API 共用 | P0 |
@@ -324,11 +324,11 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | `metaxisdata_schemasync_ddl_fetch_failures_total` | counter | — | `prepareObjectDefinitions`（`object_definition.go:167-176`） | 抓取失败在事务之前发生，即使回滚也应计数 | P1 |
 | `metaxisdata_schemasync_statistics_refresh_total` | counter | `outcome=refreshed\|read_failed\|write_failed` | 统计刷新分支（`database_sync.go` 的 `SyncDatabaseSchema`） | best-effort 通道，失败不等于同步失败 | P1 |
 | `metaxisdata_schemasync_retries_total` | counter | `attempt=1\|2\|3` | `scheduleRetry`（`queue.go`） | 退避重排 | P0 |
-| `metaxisdata_schemasync_retries_exhausted_total` | counter | `engine` | 放弃分支（`queue.go` 的 `scheduleRetry` 内） | 「持续失败的库」告警信号 | P0 |
-| `metaxisdata_schemasync_connection_limit_deferrals_total` | counter | `kind=database\|instance` | checker/scan 的 TryAcquire 失败分支（`instance_sync.go` 的 `acquireInstanceConnection`） | **背压不是失败**：预算打满时跳过本轮 | P0 |
-| `metaxisdata_schemasync_database_skips_total` | counter | `reason=hidden\|instance_gone` | `queue.go` 的 `trySyncAll`、`database_sync.go` 的 `markDatabaseDeleted` | 排队库被无同步地丢弃 | P1 |
+| `metaxisdata_schemasync_retries_exhausted_total` | counter | `engine` | `scheduleRetry` 返回 true 的调用方（`syncer.go` 的 checker） | 「持续失败的库」告警信号 | P0 |
+| `metaxisdata_schemasync_connection_limit_deferrals_total` | counter | `kind=database\|instance` | checker/scan 的 TryAcquire 失败分支（`queue.go` 的 `trySyncAll`、`syncer.go` 的 checker） | **背压不是失败**：预算打满时跳过本轮 | P0 |
+| `metaxisdata_schemasync_database_skips_total` | counter | `reason=hidden\|instance_gone` | checker 的丢弃分支（`syncer.go`：实例消失、`ErrDatabaseHidden`）、`instance_sync.go` 的 `forgetQueuedDatabase` 调用点 | 排队库被无同步地丢弃 | P1 |
 | `metaxisdata_schemasync_database_hides_total` | counter | `reason=driver_not_found\|snapshot_missing` | `markDatabaseDeleted`（`database_sync.go`）、`SyncInstance`（`instance_sync.go`） | 清单收缩信号 | P1 |
-| `metaxisdata_schemasync_panics_total` | counter | `kind=database_sync\|instance_scan` | 两个 recover 分支（`SyncInstance`/`SyncDatabaseSchema` 的 `defer recover`） | 被吞掉的 panic | P1 |
+| `metaxisdata_schemasync_panics_total` | counter | `kind=database_sync\|instance_scan` | 终端 recover（`queue.go` 的 `trySyncAll`、`syncer.go` 的 checker；`SyncInstance`/`SyncDatabaseSchema` 的 recover 只释放 gate 后 re-panic，不重复计数） | 被吞掉的 panic | P1 |
 | `metaxisdata_schemasync_operations_total` | counter | `outcome=succeeded\|partial\|failed` | `deliverOperation`（`operation.go:335-354`，每次 operation 恰好一次） | **用户可见的同步请求**，不是同步工作量；`abandoned` 暂不提供（`instanceErr` 只有字符串，无类型原因） | P1 |
 | `metaxisdata_schemasync_operation_databases_total` | counter | `state=succeeded\|failed\|unfinished` | 同上，`detail` 里已有三个计数 | 一次库结果会扇出给所有等待它的 operation（`operation.go:219-239`），计数单位是「报告」不是「同步」 | P2 |
 | `metaxisdata_schemasync_operation_expired_total` | counter | — | `expireOperations`（`:257-298`） | 2h 超时的兜底信号 | P2 |
