@@ -26,6 +26,7 @@ service LLMService {
     };
     option (google.api.method_signature) = "profile";
     option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.create";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc UpdateLLMProviderProfile(UpdateLLMProviderProfileRequest) returns (LlmProviderProfile) {
@@ -35,12 +36,14 @@ service LLMService {
     };
     option (google.api.method_signature) = "profile,update_mask";
     option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.update";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc DeleteLLMProviderProfile(DeleteLLMProviderProfileRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/{name=llm-provider-profiles/*}"};
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.permission) = "metaxisdata.llm.profiles.delete";
+    option (metaxisdata.v1.audit) = true;
   }
 
   rpc FetchLLMModels(FetchLLMModelsRequest) returns (FetchLLMModelsResponse) {
