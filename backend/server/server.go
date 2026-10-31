@@ -79,7 +79,11 @@ const (
 	httpReadHeaderTimeout = 5 * time.Second
 	httpReadTimeout       = 30 * time.Second
 	httpIdleTimeout       = 120 * time.Second
-	httpMaxHeaderBytes    = 16 << 10
+	// MaxHeaderBytes stays at Go's 1 MiB default: a caller may legitimately send
+	// a long User-Agent, which the audit layer bounds and truncates rather than
+	// refusing the request. The read deadlines above, not the header ceiling, are
+	// what bound a slow client.
+	httpMaxHeaderBytes = 1 << 20
 )
 
 // configureHTTPServerTimeouts applies the API listener's connection bounds.
