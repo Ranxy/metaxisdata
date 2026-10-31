@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
@@ -90,7 +89,7 @@ func (s *Store) ListGroups(ctx context.Context, find *FindGroupMessage) ([]*Grou
 	return groups, nil
 }
 
-func (*Store) listGroupImpl(ctx context.Context, txn *sql.Tx, find *FindGroupMessage) ([]*GroupMessage, error) {
+func (*Store) listGroupImpl(ctx context.Context, q Queryer, find *FindGroupMessage) ([]*GroupMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if filter := find.Filter; filter != nil {
 		where = append(where, filter.Where)
@@ -117,7 +116,7 @@ func (*Store) listGroupImpl(ctx context.Context, txn *sql.Tx, find *FindGroupMes
 	}
 
 	var groups []*GroupMessage
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

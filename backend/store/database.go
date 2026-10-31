@@ -67,13 +67,9 @@ func (s *Store) GetDatabase(ctx context.Context, find *FindDatabaseMessage) (*Da
 		}
 	}
 
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	databases, err := s.listDatabaseImpl(ctx, tx, find)
+	databases, err := s.listDatabaseImpl(ctx, db, find)
 	if err != nil {
 		return nil, err
 	}
@@ -85,28 +81,16 @@ func (s *Store) GetDatabase(ctx context.Context, find *FindDatabaseMessage) (*Da
 	}
 	database := databases[0]
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
 	s.databaseCache.Add(getDatabaseCacheKey(database.InstanceID, database.DatabaseName), database)
 	return database, nil
 }
 
 // ListDatabases lists all databases.
 func (s *Store) ListDatabases(ctx context.Context, find *FindDatabaseMessage) ([]*DatabaseMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	databases, err := s.listDatabaseImpl(ctx, tx, find)
+	databases, err := s.listDatabaseImpl(ctx, db, find)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -374,11 +358,11 @@ func buildListDatabaseQuery(find *FindDatabaseMessage) (string, []any) {
 	return query, args
 }
 
-func (*Store) listDatabaseImpl(ctx context.Context, txn *sql.Tx, find *FindDatabaseMessage) ([]*DatabaseMessage, error) {
+func (*Store) listDatabaseImpl(ctx context.Context, q Queryer, find *FindDatabaseMessage) ([]*DatabaseMessage, error) {
 	query, args := buildListDatabaseQuery(find)
 
 	var databaseMessages []*DatabaseMessage
-	rows, err := txn.QueryContext(ctx, query,
+	rows, err := q.QueryContext(ctx, query,
 		args...,
 	)
 	if err != nil {

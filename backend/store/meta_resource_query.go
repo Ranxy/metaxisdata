@@ -13,7 +13,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
+func (*Store) listMetaRegistryResourceImpl(ctx context.Context, q Queryer, find *FindMetaRegistryResourceMessage, withMetadata bool) ([]*MetaRegistryResource, error) {
 	where, args := buildMetaRegistryWhereClause("meta_registry_resource", find)
 
 	var query string
@@ -50,7 +50,7 @@ func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, fin
 	}
 
 	var metaRegistryMessages []*MetaRegistryResource
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (*Store) listMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, fin
 	return metaRegistryMessages, nil
 }
 
-func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
+func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, q Queryer, find *FindMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
 	where, args := buildMetaRegistryWhereClause("meta_registry_resource_history", find)
 	args = append(args, asOf)
 	asOfArg := len(args)
@@ -111,7 +111,7 @@ func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.
 	}
 
 	var metaRegistryMessages []*MetaRegistryResource
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (*Store) listMetaRegistryResourceHistoryImpl(ctx context.Context, txn *sql.
 	return metaRegistryMessages, nil
 }
 
-func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, txn *sql.Tx, find *FindMetaRegistryHistoryMessage) ([]*MetaRegistryHistory, error) {
+func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, q Queryer, find *FindMetaRegistryHistoryMessage) ([]*MetaRegistryHistory, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.GUID; v != nil {
 		where, args = append(where, fmt.Sprintf("meta_registry_resource_history.guid = $%d", len(args)+1)), append(args, *v)
@@ -186,7 +186,7 @@ func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, txn *sql.Tx, find
 		query += fmt.Sprintf(" OFFSET %d", *v)
 	}
 
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (*Store) listMetaRegistryHistoryImpl(ctx context.Context, txn *sql.Tx, find
 	return list, nil
 }
 
-func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql.Tx, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int) ([]*MetaRegistryResource, error) {
+func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, q Queryer, parentGUID string, objectType storepb.MetaType, limitPreObjectType, offsetPreObjectType int) ([]*MetaRegistryResource, error) {
 	nextTypes := getNextLevelObjectType(objectType)
 	if len(nextTypes) == 0 {
 		return []*MetaRegistryResource{}, nil
@@ -237,7 +237,7 @@ func (*Store) listSublevelMetaRegistryResourceImpl(ctx context.Context, txn *sql
 	query, args := buildSublevelMetaRegistryResourceQuery(
 		"meta_registry_resource", nextTypes, parentGUID, limitPreObjectType, offsetPreObjectType, nil,
 	)
-	return scanMetaRegistryResources(ctx, txn, query, args)
+	return scanMetaRegistryResources(ctx, q, query, args)
 }
 
 // buildSublevelMetaRegistryResourceQuery builds the UNION ALL query that lists
@@ -291,9 +291,9 @@ func buildSublevelMetaRegistryResourceQuery(table string, nextTypes []storepb.Me
 	return qb.String(), args
 }
 
-func scanMetaRegistryResources(ctx context.Context, txn *sql.Tx, query string, args []any) ([]*MetaRegistryResource, error) {
+func scanMetaRegistryResources(ctx context.Context, q Queryer, query string, args []any) ([]*MetaRegistryResource, error) {
 	var metaRegistryMessages []*MetaRegistryResource
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -371,7 +371,7 @@ func upsertPolicyImpl(ctx context.Context, txn *sql.Tx, create *PolicyMessage) e
 	return nil
 }
 
-func (*Store) listPolicyImpl(ctx context.Context, txn *sql.Tx, find *FindPolicyMessage) ([]*PolicyMessage, error) {
+func (*Store) listPolicyImpl(ctx context.Context, q Queryer, find *FindPolicyMessage) ([]*PolicyMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ResourceType; v != nil {
 		where, args = append(where, fmt.Sprintf("resource_type = $%d", len(args)+1)), append(args, v.String())
@@ -386,7 +386,7 @@ func (*Store) listPolicyImpl(ctx context.Context, txn *sql.Tx, find *FindPolicyM
 		where, args = append(where, fmt.Sprintf("enforce = $%d", len(args)+1)), append(args, true)
 	}
 
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT
 			updated_at,
 			resource_type,

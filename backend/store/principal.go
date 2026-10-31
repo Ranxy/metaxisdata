@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -164,17 +163,10 @@ func userEmailCacheKey(email string) string {
 // "cache miss loads every user" path, which made each authenticated request an
 // unindexed full-table scan.
 func (s *Store) getUser(ctx context.Context, find *FindUserMessage) (*UserMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	users, err := listUserImpl(ctx, tx, find)
+	users, err := listUserImpl(ctx, db, find)
 	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	if len(users) == 0 {
@@ -253,7 +245,7 @@ func (s *Store) ListUsers(ctx context.Context, find *FindUserMessage) ([]*UserMe
 	return users, nil
 }
 
-func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*UserMessage, error) {
+func listUserImpl(ctx context.Context, q Queryer, find *FindUserMessage) ([]*UserMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if filter := find.Filter; filter != nil {
 		where = append(where, filter.Where)
@@ -314,7 +306,7 @@ func listUserImpl(ctx context.Context, txn *sql.Tx, find *FindUserMessage) ([]*U
 	}
 
 	var userMessages []*UserMessage
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -470,14 +470,10 @@ func (s *Store) GetQualitySuggestionJob(ctx context.Context, find *FindQualitySu
 
 // ListQualitySuggestionJobs lists jobs matching the filter, newest first.
 func (s *Store) ListQualitySuggestionJobs(ctx context.Context, find *FindQualitySuggestionJobMessage) ([]*QualitySuggestionJobMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin a quality suggestion job transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
 	query, args := qualitySuggestionJobQuery(find)
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query quality suggestion jobs")
 	}
@@ -493,9 +489,6 @@ func (s *Store) ListQualitySuggestionJobs(ctx context.Context, find *FindQuality
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "failed to iterate quality suggestion jobs")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit a quality suggestion job transaction")
 	}
 	return jobs, nil
 }
