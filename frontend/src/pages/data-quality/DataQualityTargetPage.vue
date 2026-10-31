@@ -69,6 +69,22 @@
           {{ t("dataQuality.workspace.runAll") }}
         </Button>
         <Button
+          variant="outline"
+          :disabled="!canExportReport"
+          :title="t('dataQuality.workspace.exportReportHint')"
+          @click="exportReport"
+        >
+          <Loader2
+            v-if="reportRunning"
+            class="mr-2 h-4 w-4 animate-spin"
+          />
+          <Download
+            v-else
+            class="mr-2 h-4 w-4"
+          />
+          {{ t("dataQuality.workspace.exportReport") }}
+        </Button>
+        <Button
           v-if="canCreate"
           variant="outline"
           :title="t('dataQuality.workspace.addRuleHint')"
@@ -558,6 +574,7 @@ import { create } from "@bufbuild/protobuf";
 import {
   ChevronRight,
   Clock,
+  Download,
   ExternalLink,
   Loader2,
   Pencil,
@@ -570,6 +587,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
+  exportQualityReport,
   getQualityContract,
   getQualityTarget,
   getQualityTargetSchedule,
@@ -633,6 +651,7 @@ import {
   QualityTargetSummarySchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { downloadBlob, fileTimestamp } from "@/utils/csv";
 import {
   formatScheduleInterval,
   qualityIssueStatusKey,
@@ -713,6 +732,20 @@ const error = ref("");
 const draftsFailed = ref(false);
 const runningAll = ref(false);
 const runningRule = ref("");
+/** One report download at a time; the server renders the whole document. */
+const reportRunning = ref(false);
+/**
+ * The report request needs the target's identity. Until the aggregate read
+ * resolves, `effectiveMetaType` is only a guess (it falls back to TABLE), so the
+ * action waits rather than asking the server about the wrong object.
+ */
+const canExportReport = computed(
+  () =>
+    !loading.value &&
+    error.value === "" &&
+    targetGuid.value !== "" &&
+    !reportRunning.value
+);
 const newNames = ref<Set<string>>(new Set());
 const {
   composerOpen,
@@ -1273,6 +1306,37 @@ async function runAll() {
     notify.error(formatError(cause, "dataQuality.workspace.runAllFailed"));
   } finally {
     runningAll.value = false;
+  }
+}
+
+/**
+ * Download this target's report as one self-contained HTML file. The server
+ * writes the document in the language the page is reading and names the file;
+ * the client only saves the returned bytes, so a report reads the same wherever
+ * it is opened.
+ */
+async function exportReport() {
+  if (reportRunning.value) {
+    return;
+  }
+  reportRunning.value = true;
+  try {
+    const report = await exportQualityReport({
+      targetGuid: targetGuid.value,
+      metaType: effectiveMetaType.value,
+      language: locale.value,
+    });
+    downloadBlob(
+      new Blob([report.htmlContent], { type: "text/html;charset=utf-8" }),
+      report.fileName || `quality-report-${fileTimestamp()}.html`
+    );
+    notify.success(t("dataQuality.workspace.reportDownloaded"));
+  } catch (cause: unknown) {
+    notify.error(
+      formatError(cause, "dataQuality.workspace.exportReportFailed")
+    );
+  } finally {
+    reportRunning.value = false;
   }
 }
 
