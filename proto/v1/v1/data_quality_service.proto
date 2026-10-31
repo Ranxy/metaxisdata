@@ -2387,9 +2387,9 @@ message QualityOverview {
   // Coverage. The denominator is every registry object this workspace can
   // monitor — a table, external table, view or materialized view under a live
   // instance. The numerator is the distinct target at least one enabled rule
-  // watches. Column counts follow the same split: total columns from the
-  // registry's own column lists, covered columns from the rules' checked
-  // columns. The formula is documented in docs/data-quality.md.
+  // watches and whose target still resolves; a covered column only counts when
+  // it still exists in the target's current registry column list. The formula is
+  // documented in docs/data-quality.md.
   int32 monitored_table_count = 4;
   int32 total_table_count = 13;
   int32 covered_column_count = 14;
@@ -2401,10 +2401,11 @@ message QualityOverview {
   int32 judged_table_count = 16;
 
   // The workspace quality score, 0-100. Unset when no enabled rule has a judged
-  // result.
+  // result; see docs/data-quality.md for the formula.
   optional double quality_score = 17;
   // Enabled rules whose latest result is judged / not judged. They partition the
-  // enabled rules the score covers.
+  // enabled rules the score covers; a rule whose target no longer resolves is in
+  // neither.
   int32 scored_rule_count = 18;
   int32 unscored_rule_count = 19;
 
@@ -2452,7 +2453,7 @@ message QualityCoverageBreakdown {
 // QualityDimensionScore is the quality score rolled up by quality dimension.
 message QualityDimensionScore {
   QualityDimension dimension = 1;
-  // Enabled rules of this dimension.
+  // Enabled rules of this dimension that still resolve to a registry row.
   int32 rule_count = 2;
   // Of those, rules whose latest result is judged / FAIL.
   int32 scored_rule_count = 3;
@@ -2465,6 +2466,7 @@ message QualityDimensionScore {
 message QualityOwnerScore {
   // Format: users/{user}. Empty for rules with no owner.
   string owner = 1;
+  // Enabled rules of this owner that still resolve to a registry row.
   int32 rule_count = 2;
   int32 scored_rule_count = 3;
   int32 failing_rule_count = 4;

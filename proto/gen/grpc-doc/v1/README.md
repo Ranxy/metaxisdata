@@ -5581,7 +5581,7 @@ QualityDimensionScore is the quality score rolled up by quality dimension.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | dimension | [QualityDimension](#metaxisdata-v1-QualityDimension) |  |  |
-| rule_count | [int32](#int32) |  | Enabled rules of this dimension. |
+| rule_count | [int32](#int32) |  | Enabled rules of this dimension that still resolve to a registry row. |
 | scored_rule_count | [int32](#int32) |  | Of those, rules whose latest result is judged / FAIL. |
 | failing_rule_count | [int32](#int32) |  |  |
 | quality_score | [double](#double) | optional | 0-100; unset when no rule of this dimension has a judged result. |
@@ -5789,13 +5789,13 @@ queries rather than paging through every result.
 | rule_count | [int32](#int32) |  | Rules by lifecycle state. |
 | enabled_rule_count | [int32](#int32) |  |  |
 | paused_rule_count | [int32](#int32) |  |  |
-| monitored_table_count | [int32](#int32) |  | Coverage. The denominator is every registry object this workspace can monitor — a table, external table, view or materialized view under a live instance. The numerator is the distinct target at least one enabled rule watches. Column counts follow the same split: total columns from the registry&#39;s own column lists, covered columns from the rules&#39; checked columns. The formula is documented in docs/data-quality.md. |
+| monitored_table_count | [int32](#int32) |  | Coverage. The denominator is every registry object this workspace can monitor — a table, external table, view or materialized view under a live instance. The numerator is the distinct target at least one enabled rule watches and whose target still resolves; a covered column only counts when it still exists in the target&#39;s current registry column list. The formula is documented in docs/data-quality.md. |
 | total_table_count | [int32](#int32) |  |  |
 | covered_column_count | [int32](#int32) |  |  |
 | total_column_count | [int32](#int32) |  |  |
 | judged_table_count | [int32](#int32) |  | Monitored targets with at least one judged result (PASS, WARN or FAIL) among their latest execution per enabled rule. A target whose checks never ran is monitored but not judged: no checks is never a 100% score. |
-| quality_score | [double](#double) | optional | The workspace quality score, 0-100. Unset when no enabled rule has a judged result. |
-| scored_rule_count | [int32](#int32) |  | Enabled rules whose latest result is judged / not judged. They partition the enabled rules the score covers. |
+| quality_score | [double](#double) | optional | The workspace quality score, 0-100. Unset when no enabled rule has a judged result; see docs/data-quality.md for the formula. |
+| scored_rule_count | [int32](#int32) |  | Enabled rules whose latest result is judged / not judged. They partition the enabled rules the score covers; a rule whose target no longer resolves is in neither. |
 | unscored_rule_count | [int32](#int32) |  |  |
 | coverage_by_instance | [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown) | repeated | Coverage and score by instance, environment, dimension and owner. Rows with no objects are absent; unassigned environment/owner is a row with an empty key. |
 | coverage_by_environment | [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown) | repeated |  |
@@ -5824,7 +5824,7 @@ QualityOwnerScore is the quality score rolled up by rule owner.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | owner | [string](#string) |  | Format: users/{user}. Empty for rules with no owner. |
-| rule_count | [int32](#int32) |  |  |
+| rule_count | [int32](#int32) |  | Enabled rules of this owner that still resolve to a registry row. |
 | scored_rule_count | [int32](#int32) |  |  |
 | failing_rule_count | [int32](#int32) |  |  |
 | quality_score | [double](#double) | optional | 0-100; unset when none of the owner&#39;s rules has a judged result. |

@@ -212,11 +212,12 @@ func TestQualityTargetScores(t *testing.T) {
 			storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualitySeverity_QUALITY_SEVERITY_WARNING),
 	}
 	latest := map[int64]*store.QualityExecutionMessage{
-		1: {RuleID: 1, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
-		2: {RuleID: 2, Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 1, TotalRows: 10},
-		3: {RuleID: 3, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
-		4: {RuleID: 4, Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
+		1: qualityTargetTestExecution(1, storepb.QualityStatus_QUALITY_STATUS_PASS),
+		2: qualityTargetTestExecution(2, storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		3: qualityTargetTestExecution(3, storepb.QualityStatus_QUALITY_STATUS_PASS),
+		4: qualityTargetTestExecution(4, storepb.QualityStatus_QUALITY_STATUS_ERROR),
 	}
+	latest[2].FailedRows, latest[2].TotalRows = 1, 10
 
 	scores := qualityTargetScores(rules, latest)
 	key := store.MetaGUIDKey{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE}
@@ -230,30 +231,55 @@ func TestQualityTargetScores(t *testing.T) {
 	require.Empty(t, none, "a target with no judged result has no score at all")
 }
 
-// The recent pass rate is PASS over the judged executions in the window: WARN and
-// FAIL count in the denominator, ERROR, SKIPPED and NOT_EVALUATED do not.
+// qualityTargetTestExecution builds one completed result for the target the test
+// rules watch; the score helper only trusts an execution that judged the rule's
+// current target.
+func qualityTargetTestExecution(ruleID int64, status storepb.QualityStatus) *store.QualityExecutionMessage {
+	return &store.QualityExecutionMessage{
+		RuleID:     ruleID,
+		TargetGUID: "instance-1;shop;;orders",
+		TargetType: storepb.MetaType_TABLE,
+		Status:     status,
+	}
+}
+
+// A moved rule's newest execution judged its old target, so it contributes no
+// score to the target it now watches.
+func TestQualityTargetScoresSkipsMovedRuleExecution(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityTargetTestRule(1, storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualitySeverity_QUALITY_SEVERITY_WARNING),
+	}
+	execution := qualityTargetTestExecution(1, storepb.QualityStatus_QUALITY_STATUS_PASS)
+	execution.TargetGUID = "instance-1;shop;;previous"
+	require.Empty(t, qualityTargetScores(rules, map[int64]*store.QualityExecutionMessage{1: execution}),
+		"an execution against the previous target is not a score")
+}
+
+// The recent pass rate is PASS over the judged verdicts in the window: WARN and
+// FAIL count in the denominator. The store's tally carries only those three, so
+// ERROR, SKIPPED and NOT_EVALUATED never reach the ratio.
 func TestQualityRecentPassRate(t *testing.T) {
 	t.Parallel()
 
-	rate, judgedCount := qualityRecentPassRate([]*store.QualityExecutionMessage{
-		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
-		{Status: storepb.QualityStatus_QUALITY_STATUS_WARN},
-		{Status: storepb.QualityStatus_QUALITY_STATUS_FAIL},
-		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
-		{Status: storepb.QualityStatus_QUALITY_STATUS_SKIPPED},
-		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED},
-	})
+	rate, judgedCount := qualityRecentPassRate(store.QualityTargetExecutionTally{Pass: 1, Warn: 1, Fail: 1})
 	require.NotNil(t, rate)
 	require.InDelta(t, 1.0/3.0, *rate, 1e-9)
 	require.Equal(t, int32(3), judgedCount)
 
-	rate, judgedCount = qualityRecentPassRate([]*store.QualityExecutionMessage{
-		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
-	})
-	require.Nil(t, rate, "no judged execution means no pass rate")
-	require.Zero(t, judgedCount)
+	// All-pass and all-fail boundaries.
+	rate, judgedCount = qualityRecentPassRate(store.QualityTargetExecutionTally{Pass: 4})
+	require.NotNil(t, rate)
+	require.InDelta(t, 1.0, *rate, 1e-9)
+	require.Equal(t, int32(4), judgedCount)
+	rate, judgedCount = qualityRecentPassRate(store.QualityTargetExecutionTally{Fail: 2})
+	require.NotNil(t, rate)
+	require.InDelta(t, 0.0, *rate, 1e-9)
+	require.Equal(t, int32(2), judgedCount)
 
-	rate, judgedCount = qualityRecentPassRate(nil)
-	require.Nil(t, rate)
+	rate, judgedCount = qualityRecentPassRate(store.QualityTargetExecutionTally{})
+	require.Nil(t, rate, "no judged execution means no pass rate")
 	require.Zero(t, judgedCount)
 }

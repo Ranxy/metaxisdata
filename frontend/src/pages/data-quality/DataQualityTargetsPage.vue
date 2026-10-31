@@ -323,7 +323,8 @@
                   :title="
                     summary.recentExecutionCount > 0
                       ? t('dataQuality.targets.scoreLineHint', {
-                          count: summary.recentExecutionCount,
+                          window: RECENT_PASS_RATE_WINDOW,
+                          judged: summary.recentExecutionCount,
                         })
                       : undefined
                   "
@@ -636,6 +637,14 @@ const hasActiveFilters = computed(
     toggles.issues ||
     toggles.drafts
 );
+
+/**
+ * How many of a target's most recent completed executions the server reads for
+ * its pass rate. Mirrors `qualityTargetRecentExecutionLimit` in the backend;
+ * `recentExecutionCount` is only the judged subset of this window, so the two
+ * must not be confused in the tooltip.
+ */
+const RECENT_PASS_RATE_WINDOW = 20;
 
 /**
  * The row's aggregate health under the latest result: the quality score over

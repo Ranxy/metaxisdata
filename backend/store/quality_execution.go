@@ -18,17 +18,6 @@ import (
 // returns, in the order scanQualityExecution reads it.
 const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at`
 
-// qualifyQualityExecutionColumns prefixes qualityExecutionColumns with a table
-// alias. A query that joins quality_rule needs it: both tables carry rule_id,
-// target_guid, target_type, state and started_at.
-func qualifyQualityExecutionColumns(alias string) string {
-	columns := strings.Split(qualityExecutionColumns, ", ")
-	for index := range columns {
-		columns[index] = alias + "." + columns[index]
-	}
-	return strings.Join(columns, ", ")
-}
-
 // QualityExecutionMessage is one rule checked once: the durable, user-facing
 // unit of the data quality engine. Its public resource name is built from ID,
 // so the row id is the resource identity.
@@ -781,43 +770,58 @@ func (s *Store) CountQualityExecutionsSince(ctx context.Context, since time.Time
 	return count, nil
 }
 
-// qualityExecutionRecentByTargetsStatement returns each target's newest completed
-// executions, at most limitPerTarget rows per target. The window partitions by the
-// target identity (guid and object type), which is what makes the recent pass rate
-// a per-target read rather than one query per row.
-var qualityExecutionRecentByTargetsStatement = `
-	WITH ranked AS (
-		SELECT ` + qualifyQualityExecutionColumns("e") + `,
-			ROW_NUMBER() OVER (
-				PARTITION BY e.target_guid, e.target_type
-				ORDER BY e.started_at DESC, e.id DESC
-			) AS rn
+// QualityTargetExecutionTally is the outcome tally of one target's most recent
+// completed executions. Only the judged verdicts are counted: ERROR, SKIPPED and
+// NOT_EVALUATED are not verdicts, so they are in neither the numerator nor the
+// denominator.
+type QualityTargetExecutionTally struct {
+	Pass int32
+	Warn int32
+	Fail int32
+}
+
+// Judged is how many of the window's executions carried a verdict.
+func (t QualityTargetExecutionTally) Judged() int32 {
+	return t.Pass + t.Warn + t.Fail
+}
+
+// qualityTargetExecutionTallyStatement counts the verdicts among each target's
+// newest completed executions. The per-key LATERAL applies the limit before the
+// aggregate, so the read stops at limitPerTarget index rows per target instead of
+// ranking all history; only the status column is read, never a sample or SQL
+// payload. The quality_rule join keeps the window to currently enabled rules and
+// pins the execution to the rule's current target, so a paused rule or a moved
+// rule's pre-move history does not occupy the target's window.
+const qualityTargetExecutionTallyStatement = `
+	SELECT k.guid, k.object_type,
+		COUNT(*) FILTER (WHERE recent.status = $3)::INT,
+		COUNT(*) FILTER (WHERE recent.status = $4)::INT,
+		COUNT(*) FILTER (WHERE recent.status = $5)::INT
+	FROM unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+	LEFT JOIN LATERAL (
+		SELECT e.status
 		FROM quality_execution e
-		JOIN quality_rule r ON r.id = e.rule_id AND r.state = $4 AND r.deleted = FALSE
-		WHERE (e.target_guid, e.target_type) IN (
-			SELECT guid, object_type FROM unnest($1::text[], $2::int2[]) AS k(guid, object_type)
-		) AND e.state = $3
-	)
-	SELECT ` + qualityExecutionColumns + `
-	FROM ranked
-	WHERE rn <= $5
-	ORDER BY target_guid, target_type, started_at DESC, id DESC
+		JOIN quality_rule r ON r.id = e.rule_id
+			AND r.state = $6 AND r.deleted = FALSE
+			AND e.target_guid = r.target_guid AND e.target_type = r.target_type
+		WHERE e.target_guid = k.guid AND e.target_type = k.object_type
+			AND e.state = $7
+		ORDER BY e.started_at DESC, e.id DESC
+		LIMIT $8
+	) recent ON TRUE
+	GROUP BY k.guid, k.object_type
+	ORDER BY k.guid, k.object_type
 `
 
-// ListRecentQualityExecutionsByTargets returns each target's newest completed
-// executions, up to limitPerTarget each, keyed by the target identity. It is the
-// batch form of ListRecentQualityExecutions: the target directory reads the recent
-// pass rate of a whole page in one statement.
-//
-// The window only holds executions of rules that are currently enabled, because
-// the recent pass rate describes what the target currently monitors: a paused or
-// archived rule's history is evidence, not a current verdict. The join filters
-// before ROW_NUMBER, so pausing rules does not shrink the window. Targets without
-// a completed execution are absent from the map, and an empty input is a no-op.
-func (s *Store) ListRecentQualityExecutionsByTargets(ctx context.Context, keys []MetaGUIDKey, limitPerTarget int) (map[MetaGUIDKey][]*QualityExecutionMessage, error) {
-	recent := make(map[MetaGUIDKey][]*QualityExecutionMessage, len(keys))
+// ListQualityTargetExecutionTallies returns the judged-verdict tally of each
+// target's newest completed executions, up to limitPerTarget each. It is the
+// target directory's recent-pass-rate read: counts instead of execution rows, one
+// statement for a whole page. A target with no judged execution is absent from
+// the map, and an empty input is a no-op.
+func (s *Store) ListQualityTargetExecutionTallies(ctx context.Context, keys []MetaGUIDKey, limitPerTarget int) (map[MetaGUIDKey]QualityTargetExecutionTally, error) {
+	tallies := make(map[MetaGUIDKey]QualityTargetExecutionTally, len(keys))
 	if len(keys) == 0 {
-		return recent, nil
+		return tallies, nil
 	}
 	if limitPerTarget <= 0 {
 		return nil, common.Errorf(common.Invalid, "a positive execution limit is required")
@@ -828,22 +832,35 @@ func (s *Store) ListRecentQualityExecutionsByTargets(ctx context.Context, keys [
 		guids = append(guids, key.GUID)
 		objectTypes = append(objectTypes, int16(key.ObjectType))
 	}
-	rows, err := s.GetDB().QueryContext(ctx, qualityExecutionRecentByTargetsStatement,
+	rows, err := s.GetDB().QueryContext(ctx, qualityTargetExecutionTallyStatement,
 		pq.Array(guids), pq.Array(objectTypes),
+		int16(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		int16(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
 		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
-		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED), limitPerTarget)
+		limitPerTarget)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list the targets' recent executions")
+		return nil, errors.Wrap(err, "failed to read the targets' execution tallies")
 	}
-	executions, err := scanQualityExecutions(rows)
-	if err != nil {
-		return nil, err
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			guid       string
+			objectType int16
+			tally      QualityTargetExecutionTally
+		)
+		scanErr := rows.Scan(&guid, &objectType, &tally.Pass, &tally.Warn, &tally.Fail)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a target's execution tally")
+		}
+		tallies[MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}] = tally
 	}
-	for _, execution := range executions {
-		key := MetaGUIDKey{GUID: execution.TargetGUID, ObjectType: execution.TargetType}
-		recent[key] = append(recent[key], execution)
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the targets' execution tallies")
 	}
-	return recent, nil
+	return tallies, nil
 }
 
 // ListRecentQualityExecutionsByRuleIDs returns each rule's newest completed

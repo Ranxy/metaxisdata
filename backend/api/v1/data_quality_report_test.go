@@ -192,7 +192,12 @@ func TestBuildQualityReportRenders(t *testing.T) {
 		require.NoError(t, err, language)
 		require.Contains(t, document, "instance-1/shop/orders")
 		require.Contains(t, document, "orders row count")
-		require.Contains(t, document, "100.0", "the report carries the target's quality score")
+		label := "Quality score"
+		if language == "zh-CN" {
+			label = "质量分"
+		}
+		require.Containsf(t, document, `<div class="value">100.0</div><div class="label">`+label+`</div>`,
+			"%s: the report renders the target's quality score card, not just any 100.0", language)
 		require.Contains(t, document, "<svg")
 	}
 }
@@ -296,6 +301,8 @@ func qualityReportWorkspaceFixture() *qualityTargetWorkspace {
 		latest: map[int64]*store.QualityExecutionMessage{
 			1: {
 				RuleID:            1,
+				TargetGUID:        "instance-1;shop;;orders",
+				TargetType:        storepb.MetaType_TABLE,
 				Status:            storepb.QualityStatus_QUALITY_STATUS_PASS,
 				ObservedValue:     qualityReportPtr(3.0),
 				ObservedKind:      storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,

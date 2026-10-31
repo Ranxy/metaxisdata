@@ -341,11 +341,15 @@ describe("DataQualityTargetsPage directory", () => {
         passRate: "90.0%",
       })
     );
-    // The pass rate's window (the last N completed executions) is the tooltip.
+    // The tooltip names the fixed read window, not the judged subset: 10 were
+    // judged but the last 20 completed executions are the window.
     expect(
       ordersResult
         ?.find(
-          `[title="${i18n.global.t("dataQuality.targets.scoreLineHint", { count: 10 })}"]`
+          `[title="${i18n.global.t("dataQuality.targets.scoreLineHint", {
+            window: 20,
+            judged: 10,
+          })}"]`
         )
         .exists()
     ).toBe(true);
@@ -371,6 +375,14 @@ describe("DataQualityTargetsPage directory", () => {
         passRate: "-",
       })
     );
+    // No judged execution means no window to explain.
+    expect(
+      result
+        ?.find(
+          `[title="${i18n.global.t("dataQuality.targets.scoreLineHint", { window: 20, judged: 0 })}"]`
+        )
+        .exists()
+    ).toBe(false);
   });
 
   it("shows the schema-changed and orphaned badges on a row", async () => {

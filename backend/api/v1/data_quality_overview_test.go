@@ -100,23 +100,23 @@ func TestAssembleQualityScoreOverview(t *testing.T) {
 	rules[1].RuleType = storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT
 	rules[2].RuleType = storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE
 	latest := map[int64]*store.QualityExecutionMessage{
-		1: {RuleID: 1, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
-		2: {RuleID: 2, Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 2, TotalRows: 10},
-		3: {RuleID: 3, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
-		4: {RuleID: 4, Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
+		1: {RuleID: 1, TargetGUID: orders, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		2: {RuleID: 2, TargetGUID: orders, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 2, TotalRows: 10},
+		3: {RuleID: 3, TargetGUID: events, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		4: {RuleID: 4, TargetGUID: users, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
 	}
 	coverage := []*store.QualityCoverageRow{
 		{InstanceResourceID: "inst-1", InstanceTitle: "Shop", Environment: "prod", TableCount: 5, ColumnCount: 20},
 		{InstanceResourceID: "inst-2", InstanceTitle: "Analytics", TableCount: 2, ColumnCount: 8},
 	}
 	environments := []*storepb.EnvironmentSetting_Environment{{Id: "prod", Title: "Production"}}
-	existing := map[store.MetaGUIDKey]struct{}{
-		{GUID: orders, ObjectType: storepb.MetaType_TABLE}: {},
-		{GUID: events, ObjectType: storepb.MetaType_TABLE}: {},
-		{GUID: users, ObjectType: storepb.MetaType_TABLE}:  {},
+	targetColumns := map[store.MetaGUIDKey]map[string]struct{}{
+		{GUID: orders, ObjectType: storepb.MetaType_TABLE}: {"id": {}, "email": {}, "amount": {}},
+		{GUID: events, ObjectType: storepb.MetaType_TABLE}: {"id": {}},
+		{GUID: users, ObjectType: storepb.MetaType_TABLE}:  {"id": {}},
 	}
 
-	overview := assembleQualityScoreOverview(rules, existing, latest, coverage, environments)
+	overview := assembleQualityScoreOverview(rules, targetColumns, latest, coverage, environments)
 
 	require.Equal(t, int32(3), overview.GetMonitoredTableCount())
 	require.Equal(t, int32(2), overview.GetCoveredColumnCount(), "only a column-checking rule covers a column")
@@ -210,12 +210,13 @@ func TestAssembleQualityScoreOverviewUsesRowScores(t *testing.T) {
 		storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, 0, qualityOverviewConfig("id"))
 	rule.RuleType = storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE
 	latest := map[int64]*store.QualityExecutionMessage{
-		1: {RuleID: 1, Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 1, TotalRows: 4},
+		1: {RuleID: 1, TargetGUID: "inst-1;shop;;orders", TargetType: storepb.MetaType_TABLE,
+			Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 1, TotalRows: 4},
 	}
-	existing := map[store.MetaGUIDKey]struct{}{
-		{GUID: "inst-1;shop;;orders", ObjectType: storepb.MetaType_TABLE}: {},
+	targetColumns := map[store.MetaGUIDKey]map[string]struct{}{
+		{GUID: "inst-1;shop;;orders", ObjectType: storepb.MetaType_TABLE}: {"id": {}},
 	}
-	overview := assembleQualityScoreOverview([]*store.QualityRuleMessage{rule}, existing, latest,
+	overview := assembleQualityScoreOverview([]*store.QualityRuleMessage{rule}, targetColumns, latest,
 		[]*store.QualityCoverageRow{{InstanceResourceID: "inst-1", TableCount: 1, ColumnCount: 2}}, nil)
 	require.NotNil(t, overview.QualityScore)
 	require.InDelta(t, 75.0, overview.GetQualityScore(), 1e-9)
@@ -236,15 +237,15 @@ func TestAssembleQualityScoreOverviewExcludesOrphanedTargets(t *testing.T) {
 			storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, 0, qualityOverviewConfig("id")),
 	}
 	latest := map[int64]*store.QualityExecutionMessage{
-		1: {RuleID: 1, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
-		2: {RuleID: 2, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		1: {RuleID: 1, TargetGUID: live, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		2: {RuleID: 2, TargetGUID: orphaned, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
 	}
-	existing := map[store.MetaGUIDKey]struct{}{
-		{GUID: live, ObjectType: storepb.MetaType_TABLE}: {},
+	targetColumns := map[store.MetaGUIDKey]map[string]struct{}{
+		{GUID: live, ObjectType: storepb.MetaType_TABLE}: {"email": {}},
 	}
 	coverage := []*store.QualityCoverageRow{{InstanceResourceID: "inst-1", TableCount: 1, ColumnCount: 2}}
 
-	overview := assembleQualityScoreOverview(rules, existing, latest, coverage, nil)
+	overview := assembleQualityScoreOverview(rules, targetColumns, latest, coverage, nil)
 	require.Equal(t, int32(1), overview.GetMonitoredTableCount(), "the orphaned target is not in the denominator")
 	require.Equal(t, int32(1), overview.GetCoveredColumnCount())
 	require.Equal(t, int32(1), overview.GetJudgedTableCount())
@@ -257,4 +258,52 @@ func TestAssembleQualityScoreOverviewExcludesOrphanedTargets(t *testing.T) {
 	require.Len(t, overview.GetCoverageByInstance(), 1)
 	require.Equal(t, int32(1), overview.GetCoverageByInstance()[0].GetMonitoredTableCount())
 	require.LessOrEqual(t, int(overview.GetMonitoredTableCount()), int(overview.GetTotalTableCount()))
+}
+
+// A checked column that no longer exists in the target's registry is not covered:
+// a dropped or renamed column must not keep column coverage above the
+// denominator, which is the G-1 invariant.
+func TestAssembleQualityScoreOverviewDroppedColumn(t *testing.T) {
+	t.Parallel()
+
+	target := "inst-1;shop;;orders"
+	rule := qualityOverviewRule(1, target, storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, 0, qualityOverviewConfig("dropped"))
+	latest := map[int64]*store.QualityExecutionMessage{
+		1: {RuleID: 1, TargetGUID: target, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+	}
+	targetColumns := map[store.MetaGUIDKey]map[string]struct{}{
+		{GUID: target, ObjectType: storepb.MetaType_TABLE}: {"kept": {}},
+	}
+	coverage := []*store.QualityCoverageRow{{InstanceResourceID: "inst-1", TableCount: 1, ColumnCount: 1}}
+
+	overview := assembleQualityScoreOverview([]*store.QualityRuleMessage{rule}, targetColumns, latest, coverage, nil)
+	require.Equal(t, int32(1), overview.GetMonitoredTableCount(), "the target still exists")
+	require.Zero(t, overview.GetCoveredColumnCount(), "the dropped column is no longer registry coverage")
+	require.LessOrEqual(t, int(overview.GetCoveredColumnCount()), int(overview.GetTotalColumnCount()))
+	require.Zero(t, overview.GetCoverageByInstance()[0].GetCoveredColumnCount())
+}
+
+// A moved rule's latest execution judged its previous target, so it is unscored
+// until it runs against the target it watches now.
+func TestAssembleQualityScoreOverviewSkipsMovedRuleExecution(t *testing.T) {
+	t.Parallel()
+
+	current := "inst-1;shop;;orders"
+	previous := "inst-1;shop;;archive"
+	rules := []*store.QualityRuleMessage{
+		qualityOverviewRule(1, current, storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			storepb.QualitySeverity_QUALITY_SEVERITY_WARNING, 0, qualityOverviewConfig("")),
+	}
+	latest := map[int64]*store.QualityExecutionMessage{
+		1: {RuleID: 1, TargetGUID: previous, TargetType: storepb.MetaType_TABLE, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+	}
+	targetColumns := map[store.MetaGUIDKey]map[string]struct{}{
+		{GUID: current, ObjectType: storepb.MetaType_TABLE}: {},
+	}
+	overview := assembleQualityScoreOverview(rules, targetColumns, latest,
+		[]*store.QualityCoverageRow{{InstanceResourceID: "inst-1", TableCount: 1, ColumnCount: 1}}, nil)
+	require.Zero(t, overview.GetScoredRuleCount())
+	require.Equal(t, int32(1), overview.GetUnscoredRuleCount())
+	require.Nil(t, overview.QualityScore, "an execution against the old target is not a score")
 }

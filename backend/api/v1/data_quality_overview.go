@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -50,9 +52,25 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	// A rule can outlive its target: the registry row may be gone while the rule
-	// stays enabled. Only a target that still resolves has a place in the coverage
-	// denominator, so the numerator is restricted to the same set.
+	// Read the coverage denominator before the numerator guard. Both reads are
+	// separate statements, so a schema sync can delete a registry row between
+	// them; reading the denominator first means such a row still counts as
+	// denominator but drops out of the numerator (its column set is gone), so the
+	// race can only under-count coverage, never push it past 100%.
+	coverage, err := s.store.ListQualityCoverage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Environment titles are presentation only: a breakdown row falls back to its
+	// key, so a settings read blip must not blank the whole overview.
+	environments, err := s.store.ListEnvironments(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to read the environments for the quality overview", clog.WithError(err))
+		environments = nil
+	}
+	// A rule can outlive its target or its column. The numerator is restricted to
+	// the targets (and columns) the coverage denominator still counts, so it can
+	// never claim coverage that no longer exists.
 	targetKeys := make([]store.MetaGUIDKey, 0, len(enabledRules))
 	seenTarget := make(map[store.MetaGUIDKey]struct{}, len(enabledRules))
 	for _, rule := range enabledRules {
@@ -63,17 +81,9 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 		seenTarget[key] = struct{}{}
 		targetKeys = append(targetKeys, key)
 	}
-	existingTargets, err := s.store.ListExistingMetaRegistryTargets(ctx, targetKeys)
+	targetColumns, err := s.store.ListMetaRegistryTargetColumns(ctx, targetKeys)
 	if err != nil {
 		return nil, err
-	}
-	coverage, err := s.store.ListQualityCoverage(ctx)
-	if err != nil {
-		return nil, err
-	}
-	environments, err := s.store.ListEnvironments(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the environments")
 	}
 	issueCounts, err := s.store.QualityOpenIssueSeverityCounts(ctx)
 	if err != nil {
@@ -97,7 +107,7 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 	}
 
 	enabled := int32(ruleCounts[storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED])
-	overview := assembleQualityScoreOverview(enabledRules, existingTargets, latest, coverage, environments)
+	overview := assembleQualityScoreOverview(enabledRules, targetColumns, latest, coverage, environments)
 	overview.RuleCount = enabled + int32(ruleCounts[storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED])
 	overview.EnabledRuleCount = enabled
 	overview.PausedRuleCount = int32(ruleCounts[storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED])
@@ -146,12 +156,14 @@ type qualityOverviewBreakdown struct {
 // coverage, and the per-dimension and per-owner scores. It is a pure function of
 // its inputs so every formula is testable without a store.
 //
-// Only a rule whose target still has a coverage denominator row counts: a rule
-// that outlived its target (or whose instance was soft-deleted) has no row to be
-// counted against, and counting it would push coverage past 100%. A rule is scored from its latest completed execution: ERROR, SKIPPED
-// and NOT_EVALUATED are not verdicts, so they leave the rule unscored instead of
+// Only a rule whose target still has a coverage denominator row, and whose
+// checked column is still in that target's registry, counts: a rule that outlived
+// its table, its instance or its column has no denominator row to be counted
+// against, and counting it would push coverage past 100%. A rule is scored from
+// its latest completed execution against its current target; ERROR, SKIPPED and
+// NOT_EVALUATED are not verdicts, so they leave the rule unscored instead of
 // pulling the score down. No judged rule means no score at all.
-func assembleQualityScoreOverview(enabledRules []*store.QualityRuleMessage, existingTargets map[store.MetaGUIDKey]struct{}, latest map[int64]*store.QualityExecutionMessage, coverage []*store.QualityCoverageRow, environments []*storepb.EnvironmentSetting_Environment) *v1pb.QualityOverview {
+func assembleQualityScoreOverview(enabledRules []*store.QualityRuleMessage, targetColumns map[store.MetaGUIDKey]map[string]struct{}, latest map[int64]*store.QualityExecutionMessage, coverage []*store.QualityCoverageRow, environments []*storepb.EnvironmentSetting_Environment) *v1pb.QualityOverview {
 	overview := &v1pb.QualityOverview{}
 
 	environmentTitles := make(map[string]string, len(environments))
@@ -170,7 +182,8 @@ func assembleQualityScoreOverview(enabledRules []*store.QualityRuleMessage, exis
 
 	for _, rule := range enabledRules {
 		key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
-		if _, ok := existingTargets[key]; !ok {
+		currentColumns, ok := targetColumns[key]
+		if !ok {
 			// The target no longer resolves, so there is no coverage denominator
 			// row to count this rule against.
 			continue
@@ -187,9 +200,13 @@ func assembleQualityScoreOverview(enabledRules []*store.QualityRuleMessage, exis
 		}
 		instance.monitored[rule.TargetGUID] = struct{}{}
 		if column := dataquality.ConfigColumn(rule.Config); column != "" {
-			columnKey := rule.TargetGUID + "\x00" + column
-			coveredColumns[columnKey] = struct{}{}
-			instance.covered[columnKey] = struct{}{}
+			// A dropped or renamed column is no longer in the registry, so it is
+			// no longer covered either.
+			if _, exists := currentColumns[column]; exists {
+				columnKey := rule.TargetGUID + "\x00" + column
+				coveredColumns[columnKey] = struct{}{}
+				instance.covered[columnKey] = struct{}{}
+			}
 		}
 		dimension := dimensions[rule.Dimension]
 		if dimension == nil {
@@ -205,7 +222,7 @@ func assembleQualityScoreOverview(enabledRules []*store.QualityRuleMessage, exis
 		}
 		owner.rules++
 
-		execution := latest[rule.ID]
+		execution := ruleLatestResult(rule, latest)
 		if execution == nil {
 			unscoredRules++
 			continue

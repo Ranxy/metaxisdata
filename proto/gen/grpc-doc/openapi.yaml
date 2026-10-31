@@ -12116,7 +12116,7 @@ components:
                     format: enum
                 ruleCount:
                     type: integer
-                    description: Enabled rules of this dimension.
+                    description: Enabled rules of this dimension that still resolve to a registry row.
                     format: int32
                 scoredRuleCount:
                     type: integer
@@ -12516,9 +12516,9 @@ components:
                         Coverage. The denominator is every registry object this workspace can
                          monitor — a table, external table, view or materialized view under a live
                          instance. The numerator is the distinct target at least one enabled rule
-                         watches. Column counts follow the same split: total columns from the
-                         registry's own column lists, covered columns from the rules' checked
-                         columns. The formula is documented in docs/data-quality.md.
+                         watches and whose target still resolves; a covered column only counts when
+                         it still exists in the target's current registry column list. The formula is
+                         documented in docs/data-quality.md.
                     format: int32
                 totalTableCount:
                     type: integer
@@ -12540,13 +12540,14 @@ components:
                     type: number
                     description: |-
                         The workspace quality score, 0-100. Unset when no enabled rule has a judged
-                         result.
+                         result; see docs/data-quality.md for the formula.
                     format: double
                 scoredRuleCount:
                     type: integer
                     description: |-
                         Enabled rules whose latest result is judged / not judged. They partition the
-                         enabled rules the score covers.
+                         enabled rules the score covers; a rule whose target no longer resolves is in
+                         neither.
                     format: int32
                 unscoredRuleCount:
                     type: integer
@@ -12613,6 +12614,7 @@ components:
                     description: 'Format: users/{user}. Empty for rules with no owner.'
                 ruleCount:
                     type: integer
+                    description: Enabled rules of this owner that still resolve to a registry row.
                     format: int32
                 scoredRuleCount:
                     type: integer

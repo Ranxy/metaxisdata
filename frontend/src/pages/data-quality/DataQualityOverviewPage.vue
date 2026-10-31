@@ -653,6 +653,7 @@ const coverageHint = computed(() =>
         overview.value.totalColumnCount
       )
     ),
+    judgedTables: overview.value.judgedTableCount,
   })
 );
 

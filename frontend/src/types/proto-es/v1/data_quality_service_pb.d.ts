@@ -4612,9 +4612,9 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
    * Coverage. The denominator is every registry object this workspace can
    * monitor — a table, external table, view or materialized view under a live
    * instance. The numerator is the distinct target at least one enabled rule
-   * watches. Column counts follow the same split: total columns from the
-   * registry's own column lists, covered columns from the rules' checked
-   * columns. The formula is documented in docs/data-quality.md.
+   * watches and whose target still resolves; a covered column only counts when
+   * it still exists in the target's current registry column list. The formula is
+   * documented in docs/data-quality.md.
    *
    * @generated from field: int32 monitored_table_count = 4;
    */
@@ -4646,7 +4646,7 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
 
   /**
    * The workspace quality score, 0-100. Unset when no enabled rule has a judged
-   * result.
+   * result; see docs/data-quality.md for the formula.
    *
    * @generated from field: optional double quality_score = 17;
    */
@@ -4654,7 +4654,8 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
 
   /**
    * Enabled rules whose latest result is judged / not judged. They partition the
-   * enabled rules the score covers.
+   * enabled rules the score covers; a rule whose target no longer resolves is in
+   * neither.
    *
    * @generated from field: int32 scored_rule_count = 18;
    */
@@ -4808,7 +4809,7 @@ export declare type QualityDimensionScore = Message<"metaxisdata.v1.QualityDimen
   dimension: QualityDimension;
 
   /**
-   * Enabled rules of this dimension.
+   * Enabled rules of this dimension that still resolve to a registry row.
    *
    * @generated from field: int32 rule_count = 2;
    */
@@ -4854,6 +4855,8 @@ export declare type QualityOwnerScore = Message<"metaxisdata.v1.QualityOwnerScor
   owner: string;
 
   /**
+   * Enabled rules of this owner that still resolve to a registry row.
+   *
    * @generated from field: int32 rule_count = 2;
    */
   ruleCount: number;

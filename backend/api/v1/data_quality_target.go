@@ -123,9 +123,9 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 			return nil, err
 		}
 		scores := qualityTargetScores(pageRules, latest)
-		recent, err := s.store.ListRecentQualityExecutionsByTargets(ctx, keys, qualityTargetRecentExecutionLimit)
+		tallies, err := s.store.ListQualityTargetExecutionTallies(ctx, keys, qualityTargetRecentExecutionLimit)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read the targets' recent executions")
+			return nil, errors.Wrap(err, "failed to read the targets' recent execution tallies")
 		}
 		for _, target := range targets {
 			key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}
@@ -138,7 +138,7 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 			score := scores[key]
 			target.QualityScore = score.score
 			target.ScoredRuleCount = score.scored
-			target.RecentPassRate, target.RecentExecutionCount = qualityRecentPassRate(recent[key])
+			target.RecentPassRate, target.RecentExecutionCount = qualityRecentPassRate(tallies[key])
 		}
 	}
 
@@ -439,11 +439,11 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	scores := qualityTargetScores(workspace.rules, workspace.latest)
 	summary.QualityScore = scores[runKey].score
 	summary.ScoredRuleCount = scores[runKey].scored
-	recent, err := s.store.ListRecentQualityExecutionsByTargets(ctx, []store.MetaGUIDKey{runKey}, qualityTargetRecentExecutionLimit)
+	tallies, err := s.store.ListQualityTargetExecutionTallies(ctx, []store.MetaGUIDKey{runKey}, qualityTargetRecentExecutionLimit)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's recent executions")
+		return nil, errors.Wrap(err, "failed to read the target's recent execution tallies")
 	}
-	summary.RecentPassRate, summary.RecentExecutionCount = qualityRecentPassRate(recent[runKey])
+	summary.RecentPassRate, summary.RecentExecutionCount = qualityRecentPassRate(tallies[runKey])
 
 	response := &v1pb.GetQualityTargetResponse{
 		Summary:        summary,
@@ -524,6 +524,18 @@ func qualityTargetOrderFromV1(order v1pb.QualityTargetOrder) store.QualityTarget
 	}
 }
 
+// ruleLatestResult returns the rule's newest completed execution when it judged
+// the rule's current target. A moved rule keeps executions against its previous
+// target; those are not a score for what the rule watches now, so the rule is
+// unscored until it has run against its new target.
+func ruleLatestResult(rule *store.QualityRuleMessage, latest map[int64]*store.QualityExecutionMessage) *store.QualityExecutionMessage {
+	execution := latest[rule.ID]
+	if execution == nil || execution.TargetGUID != rule.TargetGUID || execution.TargetType != rule.TargetType {
+		return nil
+	}
+	return execution
+}
+
 // qualityTargetScore is one target's optional score and its scored-rule count.
 type qualityTargetScore struct {
 	score  *float64
@@ -539,7 +551,7 @@ func qualityTargetScores(rules []*store.QualityRuleMessage, latest map[int64]*st
 		if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
 			continue
 		}
-		execution := latest[rule.ID]
+		execution := ruleLatestResult(rule, latest)
 		if execution == nil {
 			continue
 		}
@@ -563,31 +575,17 @@ func qualityTargetScores(rules []*store.QualityRuleMessage, latest map[int64]*st
 	return scores
 }
 
-// qualityRecentPassRate is the pass share of a target's most recent completed
+// qualityRecentPassRate is the pass share of a target's recent completed
 // executions: PASS / (PASS + WARN + FAIL), a ratio in [0, 1]. The second result
-// is how many executions were judged; ERROR, SKIPPED and NOT_EVALUATED are not
-// verdicts and are excluded.
-func qualityRecentPassRate(executions []*store.QualityExecutionMessage) (*float64, int32) {
-	pass, judged := 0, int32(0)
-	for _, execution := range executions {
-		switch execution.Status {
-		case storepb.QualityStatus_QUALITY_STATUS_PASS:
-			pass++
-			judged++
-		case storepb.QualityStatus_QUALITY_STATUS_WARN,
-			storepb.QualityStatus_QUALITY_STATUS_FAIL:
-			judged++
-		case storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-			storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
-			storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
-		default:
-		}
-	}
+// is how many executions were judged. The tally already holds only judged
+// verdicts: ERROR, SKIPPED and NOT_EVALUATED are not verdicts and are excluded by
+// the store.
+func qualityRecentPassRate(tally store.QualityTargetExecutionTally) (*float64, int32) {
+	judged := tally.Judged()
 	if judged == 0 {
 		return nil, 0
 	}
-	rate := float64(pass) / float64(judged)
+	rate := float64(tally.Pass) / float64(judged)
 	return &rate, judged
 }
 

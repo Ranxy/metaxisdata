@@ -213,9 +213,13 @@ have at least one enabled check.
   views, materialized views and external tables are read from the object
   definition in the registry.
 - **The numerator** is the distinct target with at least one enabled check, and
-  the distinct columns those checks inspect — the column named in a check's
-  configuration, not the display snapshot stored on the check. Table-level and
-  multi-column checks cover their target but no single column.
+  the distinct columns those checks inspect, each counted only while it still
+  exists in the target's current registry column list — the column named in a
+  check's configuration, not the display snapshot stored on the check.
+  Table-level and multi-column checks cover their target but no single column. A
+  column dropped or renamed by schema sync stops counting immediately: the check
+  stays enabled (and starts returning execution errors) but it no longer covers
+  a column, so schema drift cannot push coverage past 100% either.
 - The overview breaks coverage down by instance and by environment; the row for
   instances with no environment has a blank key.
 - An enabled check whose target has no registry row any more (the object was
@@ -249,6 +253,11 @@ breakdowns. The workspace score is weighted over checks, not an average of
 target scores, so a table with many checks carries more weight than a table with
 one.
 
+A check is only scored from an execution against the target it currently
+watches. After a check is moved to another table, it is not judged until it
+completes a run there, and its earlier executions are not attributed to the new
+target.
+
 A dash (`-`) means **nothing was judged** — never "0" and never "100". The score
 is unset when no enabled check has a judged result: there is no enabled check,
 none has run yet, or all of them ended in `ERROR`, `SKIPPED` or
@@ -261,8 +270,12 @@ A target's row shows a second number: the pass share of its **most recent 20
 completed executions** (across the checks that are currently enabled):
 `PASS / (PASS + WARN + FAIL)`. The window is taken after filtering to enabled
 checks, so a paused or archived check's executions never occupy one of the 20
-slots. `ERROR`, `SKIPPED` and `NOT_EVALUATED` are excluded because they are not
-verdicts, and a warning is not a pass. This is a different measure from the
+slots. The window also follows a check to its current target: when a check is
+moved to another table, the executions it recorded against the old table leave
+the old target's window (they remain in the Executions list) and they do not
+count for the new target until the check runs there. `ERROR`, `SKIPPED` and
+`NOT_EVALUATED` are excluded because they are not verdicts, and a warning is not
+a pass. This is a different measure from the
 quality score — the score weights each check once by severity and always looks
 at the latest execution, while the pass rate counts executions — so do not
 compare the two as if they were one number. A dash means none of the recent

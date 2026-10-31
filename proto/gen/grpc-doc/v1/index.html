@@ -16267,7 +16267,7 @@ or the id no longer resolves. </p></td>
                   <td>rule_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>Enabled rules of this dimension. </p></td>
+                  <td><p>Enabled rules of this dimension that still resolve to a registry row. </p></td>
                 </tr>
               
                 <tr>
@@ -16987,9 +16987,9 @@ TIMEOUT, PARSE, UNKNOWN. </p></td>
                   <td><p>Coverage. The denominator is every registry object this workspace can
 monitor — a table, external table, view or materialized view under a live
 instance. The numerator is the distinct target at least one enabled rule
-watches. Column counts follow the same split: total columns from the
-registry&#39;s own column lists, covered columns from the rules&#39; checked
-columns. The formula is documented in docs/data-quality.md. </p></td>
+watches and whose target still resolves; a covered column only counts when
+it still exists in the target&#39;s current registry column list. The formula is
+documented in docs/data-quality.md. </p></td>
                 </tr>
               
                 <tr>
@@ -17027,7 +17027,7 @@ ran is monitored but not judged: no checks is never a 100% score. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p>The workspace quality score, 0-100. Unset when no enabled rule has a judged
-result. </p></td>
+result; see docs/data-quality.md for the formula. </p></td>
                 </tr>
               
                 <tr>
@@ -17035,7 +17035,8 @@ result. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p>Enabled rules whose latest result is judged / not judged. They partition the
-enabled rules the score covers. </p></td>
+enabled rules the score covers; a rule whose target no longer resolves is in
+neither. </p></td>
                 </tr>
               
                 <tr>
@@ -17160,7 +17161,7 @@ were planned (any lifecycle state), and how the completed ones tallied. </p></td
                   <td>rule_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>Enabled rules of this owner that still resolve to a registry row. </p></td>
                 </tr>
               
                 <tr>

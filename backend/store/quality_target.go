@@ -107,7 +107,7 @@ type QualityTargetMessage struct {
 	// RecentPassRate is the 0-1 pass share (PASS / PASS+WARN+FAIL) of the target's
 	// newest completed executions, and RecentExecutionCount is how many of those
 	// were judged. Nil when none was judged. The API fills both from
-	// ListRecentQualityExecutionsByTargets.
+	// ListQualityTargetExecutionTallies.
 	RecentPassRate       *float64
 	RecentExecutionCount int32
 }

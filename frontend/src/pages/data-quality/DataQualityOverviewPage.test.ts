@@ -393,6 +393,7 @@ describe("DataQualityOverviewPage", () => {
         coveredColumns: 12,
         totalColumns: 30,
         columnPercent: "40.0%",
+        judgedTables: 3,
       })
     );
 

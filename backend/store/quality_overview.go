@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/lib/pq"
@@ -74,29 +75,44 @@ const qualityCoverageQuery = `
 	ORDER BY i.resource_id
 `
 
-// qualityTargetExistenceQuery reports which of the given (guid, object type)
-// keys still have a coverage denominator row. It is the guard that keeps the
-// coverage numerator inside its denominator: an enabled rule can outlive the
-// object it watches, and its target then has no coverage row to count against.
-// The live-instance join is part of that guard, exactly as in
-// qualityCoverageQuery: DeleteInstance soft-deletes the instance without deleting
-// its registry rows, and those objects are not coverage either.
-const qualityTargetExistenceQuery = `
-	SELECT r.guid, r.object_type
-	FROM meta_registry_resource r
-	JOIN instance i ON i.resource_id = split_part(r.guid, ';', 1) AND i.deleted = FALSE
-	JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
-		ON r.guid = k.guid AND r.object_type = k.object_type
+// qualityTargetColumnQuery returns each requested target's current registry
+// columns, i.e. the column names the coverage denominator counts for it. It is
+// the numerator's guard: an enabled rule outlives a dropped or renamed column
+// just as it outlives a dropped table, and a column that is no longer in the
+// registry cannot be covered. The live-instance join and the object-type
+// predicate are the coverage denominator's own, so both sides count the same
+// objects; the LEFT JOIN LATERAL keeps a zero-column object as a row with a NULL
+// name, so its key is still known to exist.
+const qualityTargetColumnQuery = `
+	SELECT k.guid, k.object_type, c.name
+	FROM unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+	JOIN instance i ON i.resource_id = split_part(k.guid, ';', 1) AND i.deleted = FALSE
+	JOIN meta_registry_resource r ON r.guid = k.guid AND r.object_type = k.object_type
+	LEFT JOIN LATERAL (
+		SELECT cols.value->>'name' AS name
+		FROM (
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'tableMetadata'->'columns', '[]'::jsonb)) AS value
+			UNION ALL
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'externalTableMetadata'->'columns', '[]'::jsonb))
+			UNION ALL
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'viewMetadata'->'columns', '[]'::jsonb))
+			UNION ALL
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'materializedViewMetadata'->'columns', '[]'::jsonb))
+		) AS cols
+	) c ON TRUE
+	WHERE r.object_type = ANY($3::int2[])
+	ORDER BY k.guid, k.object_type, c.name
 `
 
-// ListExistingMetaRegistryTargets returns the subset of keys that still resolve to
-// a registry row under a live instance, i.e. the keys the coverage query can count
-// a denominator for. One batch statement serves a whole rule set, and an empty
-// input is a no-op.
-func (s *Store) ListExistingMetaRegistryTargets(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]struct{}, error) {
-	existing := make(map[MetaGUIDKey]struct{}, len(keys))
+// ListMetaRegistryTargetColumns returns each target's current registry column
+// names, keyed by target identity. A key is present exactly when the target has a
+// coverage denominator row under a live instance; a target with no columns maps
+// to an empty set. One batch statement serves a whole rule set, and an empty input
+// is a no-op.
+func (s *Store) ListMetaRegistryTargetColumns(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]map[string]struct{}, error) {
+	columns := make(map[MetaGUIDKey]map[string]struct{}, len(keys))
 	if len(keys) == 0 {
-		return existing, nil
+		return columns, nil
 	}
 	guids := make([]string, 0, len(keys))
 	objectTypes := make([]int16, 0, len(keys))
@@ -104,9 +120,10 @@ func (s *Store) ListExistingMetaRegistryTargets(ctx context.Context, keys []Meta
 		guids = append(guids, key.GUID)
 		objectTypes = append(objectTypes, int16(key.ObjectType))
 	}
-	rows, err := s.GetDB().QueryContext(ctx, qualityTargetExistenceQuery, pq.Array(guids), pq.Array(objectTypes))
+	rows, err := s.GetDB().QueryContext(ctx, qualityTargetColumnQuery,
+		pq.Array(guids), pq.Array(objectTypes), pq.Array(qualityCoverageObjectTypes))
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the targets' registry rows")
+		return nil, errors.Wrap(err, "failed to read the targets' registry columns")
 	}
 	defer rows.Close()
 
@@ -114,16 +131,26 @@ func (s *Store) ListExistingMetaRegistryTargets(ctx context.Context, keys []Meta
 		var (
 			guid       string
 			objectType int16
+			name       sql.NullString
 		)
-		if err := rows.Scan(&guid, &objectType); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a target's registry row")
+		scanErr := rows.Scan(&guid, &objectType, &name)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a target's registry column")
 		}
-		existing[MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}] = struct{}{}
+		key := MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}
+		targetColumns := columns[key]
+		if targetColumns == nil {
+			targetColumns = map[string]struct{}{}
+			columns[key] = targetColumns
+		}
+		if name.Valid {
+			targetColumns[name.String] = struct{}{}
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate the targets' registry rows")
+		return nil, errors.Wrap(err, "failed to iterate the targets' registry columns")
 	}
-	return existing, nil
+	return columns, nil
 }
 
 // QualityCoverageRow is one live instance's registry coverage, the denominator of

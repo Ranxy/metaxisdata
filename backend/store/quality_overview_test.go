@@ -33,21 +33,25 @@ func TestQualityCoverageQueryShape(t *testing.T) {
 	require.NotContains(t, qualityCoverageQuery, "SELECT *")
 }
 
-// The coverage numerator may only count rules whose target still resolves, so the
-// existence probe is a batch (guid, object type) join against the registry and
-// reads no quality table.
-func TestQualityTargetExistenceQueryShape(t *testing.T) {
+// The coverage numerator only counts a column that is still in the target's
+// registry: the read returns each target's current column names from the same
+// live-instance object set as the denominator, and keeps a zero-column target as a
+// key with no names.
+func TestQualityTargetColumnQueryShape(t *testing.T) {
 	t.Parallel()
 
-	require.Contains(t, qualityTargetExistenceQuery, "FROM meta_registry_resource r")
-	// The instance join mirrors the coverage denominator: a soft-deleted instance
-	// keeps its registry rows, but those objects are not coverage.
-	require.Contains(t, qualityTargetExistenceQuery,
-		"JOIN instance i ON i.resource_id = split_part(r.guid, ';', 1) AND i.deleted = FALSE")
-	require.Contains(t, qualityTargetExistenceQuery, "JOIN unnest($1::text[], $2::int2[])")
-	require.Contains(t, qualityTargetExistenceQuery, "ON r.guid = k.guid AND r.object_type = k.object_type")
-	require.NotContains(t, qualityTargetExistenceQuery, "quality_rule")
-	require.NotContains(t, qualityTargetExistenceQuery, "SELECT *")
+	require.Contains(t, qualityTargetColumnQuery, "JOIN instance i ON i.resource_id = split_part(k.guid, ';', 1) AND i.deleted = FALSE")
+	require.Contains(t, qualityTargetColumnQuery, "JOIN meta_registry_resource r ON r.guid = k.guid AND r.object_type = k.object_type")
+	require.Contains(t, qualityTargetColumnQuery, "LEFT JOIN LATERAL (")
+	require.Contains(t, qualityTargetColumnQuery, "jsonb_array_elements(COALESCE(r.metadata->'tableMetadata'->'columns', '[]'::jsonb))")
+	require.Contains(t, qualityTargetColumnQuery, "jsonb_array_elements(COALESCE(r.metadata->'externalTableMetadata'->'columns', '[]'::jsonb))")
+	require.Contains(t, qualityTargetColumnQuery, "jsonb_array_elements(COALESCE(r.metadata->'viewMetadata'->'columns', '[]'::jsonb))")
+	require.Contains(t, qualityTargetColumnQuery, "jsonb_array_elements(COALESCE(r.metadata->'materializedViewMetadata'->'columns', '[]'::jsonb))")
+	require.Contains(t, qualityTargetColumnQuery, "WHERE r.object_type = ANY($3::int2[])",
+		"the numerator's object-type set is the denominator's")
+	require.NotContains(t, qualityTargetColumnQuery, "quality_rule")
+	require.NotContains(t, qualityTargetColumnQuery, "target_path", "target_path.column is never written and must not be read")
+	require.NotContains(t, qualityTargetColumnQuery, "SELECT *")
 }
 
 // The four monitorable object types are the coverage denominator, and they are

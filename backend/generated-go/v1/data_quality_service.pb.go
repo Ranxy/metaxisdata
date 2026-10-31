@@ -10156,9 +10156,9 @@ type QualityOverview struct {
 	// Coverage. The denominator is every registry object this workspace can
 	// monitor — a table, external table, view or materialized view under a live
 	// instance. The numerator is the distinct target at least one enabled rule
-	// watches. Column counts follow the same split: total columns from the
-	// registry's own column lists, covered columns from the rules' checked
-	// columns. The formula is documented in docs/data-quality.md.
+	// watches and whose target still resolves; a covered column only counts when
+	// it still exists in the target's current registry column list. The formula is
+	// documented in docs/data-quality.md.
 	MonitoredTableCount int32 `protobuf:"varint,4,opt,name=monitored_table_count,json=monitoredTableCount,proto3" json:"monitored_table_count,omitempty"`
 	TotalTableCount     int32 `protobuf:"varint,13,opt,name=total_table_count,json=totalTableCount,proto3" json:"total_table_count,omitempty"`
 	CoveredColumnCount  int32 `protobuf:"varint,14,opt,name=covered_column_count,json=coveredColumnCount,proto3" json:"covered_column_count,omitempty"`
@@ -10168,10 +10168,11 @@ type QualityOverview struct {
 	// ran is monitored but not judged: no checks is never a 100% score.
 	JudgedTableCount int32 `protobuf:"varint,16,opt,name=judged_table_count,json=judgedTableCount,proto3" json:"judged_table_count,omitempty"`
 	// The workspace quality score, 0-100. Unset when no enabled rule has a judged
-	// result.
+	// result; see docs/data-quality.md for the formula.
 	QualityScore *float64 `protobuf:"fixed64,17,opt,name=quality_score,json=qualityScore,proto3,oneof" json:"quality_score,omitempty"`
 	// Enabled rules whose latest result is judged / not judged. They partition the
-	// enabled rules the score covers.
+	// enabled rules the score covers; a rule whose target no longer resolves is in
+	// neither.
 	ScoredRuleCount   int32 `protobuf:"varint,18,opt,name=scored_rule_count,json=scoredRuleCount,proto3" json:"scored_rule_count,omitempty"`
 	UnscoredRuleCount int32 `protobuf:"varint,19,opt,name=unscored_rule_count,json=unscoredRuleCount,proto3" json:"unscored_rule_count,omitempty"`
 	// Coverage and score by instance, environment, dimension and owner. Rows with
@@ -10484,7 +10485,7 @@ func (x *QualityCoverageBreakdown) GetCoveredColumnCount() int32 {
 type QualityDimensionScore struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Dimension QualityDimension       `protobuf:"varint,1,opt,name=dimension,proto3,enum=metaxisdata.v1.QualityDimension" json:"dimension,omitempty"`
-	// Enabled rules of this dimension.
+	// Enabled rules of this dimension that still resolve to a registry row.
 	RuleCount int32 `protobuf:"varint,2,opt,name=rule_count,json=ruleCount,proto3" json:"rule_count,omitempty"`
 	// Of those, rules whose latest result is judged / FAIL.
 	ScoredRuleCount  int32 `protobuf:"varint,3,opt,name=scored_rule_count,json=scoredRuleCount,proto3" json:"scored_rule_count,omitempty"`
@@ -10564,10 +10565,11 @@ func (x *QualityDimensionScore) GetQualityScore() float64 {
 type QualityOwnerScore struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: users/{user}. Empty for rules with no owner.
-	Owner            string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
-	RuleCount        int32  `protobuf:"varint,2,opt,name=rule_count,json=ruleCount,proto3" json:"rule_count,omitempty"`
-	ScoredRuleCount  int32  `protobuf:"varint,3,opt,name=scored_rule_count,json=scoredRuleCount,proto3" json:"scored_rule_count,omitempty"`
-	FailingRuleCount int32  `protobuf:"varint,4,opt,name=failing_rule_count,json=failingRuleCount,proto3" json:"failing_rule_count,omitempty"`
+	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
+	// Enabled rules of this owner that still resolve to a registry row.
+	RuleCount        int32 `protobuf:"varint,2,opt,name=rule_count,json=ruleCount,proto3" json:"rule_count,omitempty"`
+	ScoredRuleCount  int32 `protobuf:"varint,3,opt,name=scored_rule_count,json=scoredRuleCount,proto3" json:"scored_rule_count,omitempty"`
+	FailingRuleCount int32 `protobuf:"varint,4,opt,name=failing_rule_count,json=failingRuleCount,proto3" json:"failing_rule_count,omitempty"`
 	// 0-100; unset when none of the owner's rules has a judged result.
 	QualityScore  *float64 `protobuf:"fixed64,5,opt,name=quality_score,json=qualityScore,proto3,oneof" json:"quality_score,omitempty"`
 	unknownFields protoimpl.UnknownFields
