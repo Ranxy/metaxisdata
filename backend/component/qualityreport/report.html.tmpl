@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="{{.Labels.HTMLLang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.HTMLTitle}}</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #666666;
+  --border: #d9d9d9;
+  --surface: #f6f7f8;
+  --pass: #2e7d32;
+  --warn: #b26a00;
+  --fail: #c62828;
+  --error: #6a1b9a;
+  --skipped: #607d8b;
+  --not-evaluated: #9e9e9e;
+  --accent: #1565c0;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  max-width: 1040px;
+  padding: 32px 24px 48px;
+  color: var(--fg);
+  background: var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+h1 { margin: 0 0 4px; font-size: 24px; }
+h2 { margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); font-size: 18px; }
+h3 { margin: 0 0 8px; font-size: 15px; }
+p { margin: 6px 0; }
+.subtitle { margin: 0; color: var(--muted); }
+.banner { margin: 16px 0; padding: 10px 14px; border-left: 4px solid var(--fail); background: #fdf3f3; }
+.banner.info { border-color: var(--warn); background: #fff8ec; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+dl.facts { margin: 0; }
+dl.facts div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dotted var(--border); }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; text-align: right; word-break: break-word; }
+table { width: 100%; margin: 8px 0 4px; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 6px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+th { background: var(--surface); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.null { color: var(--muted); font-style: italic; }
+.card { padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.card .value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; color: #ffffff; font-size: 12px; white-space: nowrap; }
+.status-pass { background-color: var(--pass); }
+.status-warn { background-color: var(--warn); }
+.status-fail { background-color: var(--fail); }
+.status-error { background-color: var(--error); }
+.status-skipped { background-color: var(--skipped); }
+.status-not_evaluated { background-color: var(--not-evaluated); }
+.status-unspecified { background-color: #aaaaaa; }
+.severity-warning { background-color: var(--warn); }
+.severity-error { background-color: var(--fail); }
+.severity-critical { background-color: #7f0000; }
+.severity-unspecified { background-color: #aaaaaa; }
+.state-enabled { background-color: var(--pass); }
+.state-paused { background-color: var(--skipped); }
+.state-open { background-color: var(--warn); }
+.state-acknowledged { background-color: var(--accent); }
+.muted { color: var(--muted); }
+.chart { display: block; width: 100%; height: auto; margin-top: 8px; }
+.chart .axis { stroke: var(--border); stroke-width: 1; }
+.chart .gridline { stroke: #eeeeee; stroke-width: 1; }
+.chart text { fill: var(--muted); font-size: 10px; }
+.chart .seg-pass { fill: var(--pass); }
+.chart .seg-warn { fill: var(--warn); }
+.chart .seg-fail { fill: var(--fail); }
+.chart .seg-error { fill: var(--error); }
+.chart .seg-skipped { fill: var(--skipped); }
+.chart .seg-not_evaluated { fill: var(--not-evaluated); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: baseline; }
+.check { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.note { margin: 6px 0 0; color: var(--warn); font-size: 12px; }
+footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+@media print {
+  body { max-width: none; padding: 0; font-size: 11px; }
+  h2 { page-break-after: avoid; }
+  table, .check, .card, .chart { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>{{.ReportTitle}}</h1>
+  <p class="subtitle">{{.Scope.Path}}</p>
+</header>
+
+{{if .Orphaned}}
+<div class="banner">
+  <strong>{{.Labels.OrphanTitle}}</strong><br>
+  {{.Labels.OrphanNote}}{{if .OrphanReason}}<br>{{.Labels.OrphanReasonLabel}}: {{.OrphanReason}}{{end}}
+</div>
+{{end}}
+{{if .Trimmed}}
+<div class="banner info">{{.Labels.TrimNote}}</div>
+{{end}}
+
+<h2>{{.Labels.SectionScope}}</h2>
+<div class="grid">
+  <dl class="facts">
+    <div><dt>{{.Labels.LabelTargetPath}}</dt><dd>{{.Scope.Path}}</dd></div>
+    <div><dt>{{.Labels.LabelTargetGUID}}</dt><dd>{{.Scope.GUID}}</dd></div>
+    <div><dt>{{.Labels.LabelTargetType}}</dt><dd>{{.Scope.Type}}</dd></div>
+    <div><dt>{{.Labels.LabelInstance}}</dt><dd>{{.Scope.Instance}}</dd></div>
+  </dl>
+  <dl class="facts">
+    <div><dt>{{.Labels.LabelEngine}}</dt><dd>{{.Scope.Engine}}</dd></div>
+    <div><dt>{{.Labels.LabelWindow}}</dt><dd>{{.Scope.Window}}</dd></div>
+    <div><dt>{{.Labels.LabelGeneratedAt}}</dt><dd>{{.Scope.GeneratedAt}}</dd></div>
+    <div><dt>{{.Labels.LabelGeneratedBy}}</dt><dd>{{.Scope.GeneratedBy}}</dd></div>
+  </dl>
+</div>
+
+<h2>{{.Labels.SectionResult}}</h2>
+<div class="grid">
+  <div class="card"><div class="value">{{.Summary.TotalChecks}}</div><div class="label">{{.Labels.LabelCompleted}}</div></div>
+  <div class="card"><div class="value">{{.Summary.PassRate}}</div><div class="label">{{.Labels.LabelPassRate}}</div></div>
+  <div class="card"><div class="value">{{.Summary.RulePassRate}}</div><div class="label">{{.Labels.LabelRulePassRate}}</div></div>
+  <div class="card"><div class="value">{{.Summary.RuleCount}} / {{.Summary.EnabledRuleCount}}</div><div class="label">{{.Labels.LabelRuleCount}} / {{.Labels.LabelEnabledRules}}</div></div>
+  <div class="card"><div class="value">{{.Summary.OpenIssueCount}}</div><div class="label">{{.Labels.LabelOpenIssues}}</div></div>
+  <div class="card"><div class="value">{{if .Summary.WorstClass}}<span class="badge {{.Summary.WorstClass}}">{{.Summary.WorstResult}}</span>{{else}}{{.Summary.WorstResult}}{{end}}</div><div class="label">{{.Labels.LabelWorstResult}}</div></div>
+</div>
+<table>
+  <thead><tr><th>{{.Labels.StatusCountHeader}}</th><th class="num">{{.Labels.CountHeader}}</th></tr></thead>
+  <tbody>
+  {{range .Summary.Counts}}
+    <tr><td><span class="badge {{.Class}}">{{.Label}}</span></td><td class="num">{{.Count}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .Summary.SeverityCounts}}
+<table>
+  <thead><tr><th>{{.Labels.SeverityHeader}}</th><th class="num">{{.Labels.CountHeader}}</th></tr></thead>
+  <tbody>
+  {{range .Summary.SeverityCounts}}
+    <tr><td><span class="badge {{.Class}}">{{.Label}}</span></td><td class="num">{{.Count}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
+
+<h2>{{.Labels.SectionTrend}}</h2>
+<p class="muted">{{.Trend.Caption}}</p>
+{{if .Trend.Empty}}
+<p class="muted">{{.Labels.TrendEmpty}}</p>
+{{else}}
+<svg class="chart" viewBox="0 0 {{.Trend.Width}} {{.Trend.Height}}" role="img" aria-label="{{.Labels.SectionTrend}}">
+  {{range .Trend.Grid}}<line class="gridline" x1="{{.X1}}" y1="{{.Y}}" x2="{{.X2}}" y2="{{.Y}}"></line>{{end}}
+  <line class="axis" x1="{{.Trend.AxisX1}}" y1="{{.Trend.AxisY}}" x2="{{.Trend.AxisX2}}" y2="{{.Trend.AxisY}}"></line>
+  <text x="{{.Trend.AxisX1}}" y="{{.Trend.MaxTextY}}" dx="-6" text-anchor="end" dominant-baseline="middle">{{.Trend.MaxText}}</text>
+  {{range .Trend.Bars}}
+  <g>
+    {{range .Segments}}<rect class="seg-{{.Class}}" x="{{.X}}" y="{{.Y}}" width="{{.Width}}" height="{{.Height}}"></rect>{{end}}
+    <title>{{.Title}}</title>
+  </g>
+  {{end}}
+  {{range .Trend.XLabels}}<text x="{{.X}}" y="{{.Y}}" text-anchor="middle">{{.Text}}</text>{{end}}
+</svg>
+<div class="legend">
+  {{range .Trend.Legend}}<span><span class="swatch {{.Class}}"></span>{{.Label}}</span>{{end}}
+</div>
+{{end}}
+
+<h2>{{.Labels.SectionRules}}</h2>
+{{if .RulesEmpty}}
+<p class="muted">{{if .RulesTrimmed}}{{.Labels.RulesTrimmed}}{{else}}{{.Labels.RulesEmpty}}{{end}}</p>
+{{else}}
+<table>
+  <thead>
+  <tr>
+    <th>{{.Labels.ColumnTitle}}</th>
+    <th>{{.Labels.ColumnType}}</th>
+    <th>{{.Labels.ColumnColumn}}</th>
+    <th>{{.Labels.ColumnDimension}}</th>
+    <th>{{.Labels.ColumnSeverity}}</th>
+    <th>{{.Labels.ColumnState}}</th>
+    <th>{{.Labels.ColumnOwner}}</th>
+    <th>{{.Labels.ColumnLastResult}}</th>
+    <th>{{.Labels.ColumnObserved}}</th>
+    <th>{{.Labels.ColumnThreshold}}</th>
+    <th>{{.Labels.ColumnLastRun}}</th>
+    <th class="num">{{.Labels.ColumnRevision}}</th>
+  </tr>
+  </thead>
+  <tbody>
+  {{range .Rules}}
+  <tr>
+    <td>{{.Title}}</td>
+    <td>{{.Type}}</td>
+    <td>{{.Column}}</td>
+    <td>{{.Dimension}}</td>
+    <td>{{if .SeverityClass}}<span class="badge {{.SeverityClass}}">{{.Severity}}</span>{{else}}{{.Severity}}{{end}}</td>
+    <td>{{if .StateClass}}<span class="badge {{.StateClass}}">{{.State}}</span>{{else}}{{.State}}{{end}}</td>
+    <td>{{.Owner}}</td>
+    <td>{{if .LastResultClass}}<span class="badge {{.LastResultClass}}">{{.LastResult}}</span>{{else}}{{.LastResult}}{{end}}</td>
+    <td>{{.Observed}}</td>
+    <td>{{.Thresholds}}</td>
+    <td>{{.LastRun}}</td>
+    <td class="num">{{.Revision}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .RulesTrimmed}}<p class="note">{{.Labels.TrimmedSectionNote}}</p>{{end}}
+{{end}}
+
+<h2>{{.Labels.SectionIssues}}</h2>
+{{if .IssuesEmpty}}
+<p class="muted">{{if .IssuesTrimmed}}{{.Labels.IssuesTrimmed}}{{else}}{{.Labels.IssuesEmpty}}{{end}}</p>
+{{else}}
+<table>
+  <thead>
+  <tr>
+    <th>{{.Labels.ColumnRule}}</th>
+    <th>{{.Labels.ColumnSeverity}}</th>
+    <th>{{.Labels.ColumnState}}</th>
+    <th>{{.Labels.ColumnFirstSeen}}</th>
+    <th>{{.Labels.ColumnLastSeen}}</th>
+    <th class="num">{{.Labels.ColumnOccurrences}}</th>
+  </tr>
+  </thead>
+  <tbody>
+  {{range .Issues}}
+  <tr>
+    <td>{{.Rule}}</td>
+    <td><span class="badge {{.SeverityClass}}">{{.Severity}}</span></td>
+    <td><span class="badge {{.StatusClass}}">{{.Status}}</span></td>
+    <td>{{.FirstSeen}}</td>
+    <td>{{.LastSeen}}</td>
+    <td class="num">{{.Occurrences}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .IssuesTrimmed}}<p class="note">{{.Labels.TrimmedSectionNote}}</p>{{end}}
+{{end}}
+
+<h2>{{.Labels.SectionSample}}</h2>
+<p class="muted">{{.Samples.Caption}}</p>
+{{if .Samples.Showing}}<p class="muted">{{.Samples.Showing}}</p>{{end}}
+{{if .Samples.Empty}}
+<p class="muted">{{if .Samples.Trimmed}}{{.Labels.SamplesTrimmed}}{{else}}{{.Labels.SamplesEmpty}}{{end}}</p>
+{{else}}
+{{if .Samples.Trimmed}}<p class="note">{{.Labels.TrimmedSectionNote}}</p>{{end}}
+{{range .Samples.Checks}}
+<div class="check">
+  <h3>{{.Rule}} <span class="muted">· {{.Column}}</span></h3>
+  <dl class="facts">
+    <div><dt>{{$.Labels.LabelCheckTime}}</dt><dd>{{.Time}}</dd></div>
+    <div><dt>{{$.Labels.LabelFailedRows}}</dt><dd>{{.Rows}}</dd></div>
+    <div><dt>{{$.Labels.LabelSampled}}</dt><dd>{{.Sampled}}</dd></div>
+    {{if .ErrorCode}}<div><dt>{{$.Labels.LabelErrorCode}}</dt><dd>{{.ErrorCode}}</dd></div>{{end}}
+    {{if .ErrorMessage}}<div><dt>{{$.Labels.LabelErrorMessage}}</dt><dd>{{.ErrorMessage}}</dd></div>{{end}}
+  </dl>
+  {{if .Note}}<p class="note">{{.Note}}</p>{{end}}
+  {{if .HasTable}}
+  <table>
+    <thead><tr>{{range .Table.Columns}}<th>{{.}}</th>{{end}}</tr></thead>
+    <tbody>
+    {{range .Table.Rows}}<tr>{{range .}}{{if .IsNull}}<td class="null">{{.Value}}</td>{{else}}<td>{{.Value}}</td>{{end}}{{end}}</tr>{{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="muted">{{$.Labels.CheckNoSamples}}</p>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+<h2>{{.Labels.SectionBasis}}</h2>
+<dl class="facts">
+  <div><dt>{{.Labels.BasisPath}}</dt><dd>{{.Basis.Path}}</dd></div>
+  <div><dt>{{.Labels.BasisSchedule}}</dt><dd>{{.Basis.Schedule}}</dd></div>
+  <div><dt>{{.Labels.BasisNextRun}}</dt><dd>{{.Basis.NextRun}}</dd></div>
+  <div><dt>{{.Labels.BasisRevision}}</dt><dd>{{.Basis.Revision}}</dd></div>
+  <div><dt>{{.Labels.BasisEngines}}</dt><dd>{{.Basis.Engines}}</dd></div>
+  <div><dt>{{.Labels.BasisColumns}}</dt><dd>{{.Basis.Columns}}</dd></div>
+</dl>
+
+<footer>{{.Labels.FooterNote}}</footer>
+</body>
+</html>

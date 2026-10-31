@@ -18,6 +18,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   ColumnProfileSchema,
   ColumnProfileStatsSchema,
+  ExportQualityReportResponseSchema,
   GetQualityTargetResponseSchema,
   NullPercentConfigSchema,
   type QualityContract,
@@ -86,6 +87,7 @@ const mocks = vi.hoisted(() => ({
   suggestColumnLabels: vi.fn(),
   listColumnProfiles: vi.fn(),
   profileColumns: vi.fn(),
+  exportQualityReport: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -107,6 +109,16 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   suggestColumnLabels: mocks.suggestColumnLabels,
   listColumnProfiles: mocks.listColumnProfiles,
   profileColumns: mocks.profileColumns,
+  exportQualityReport: mocks.exportQualityReport,
+}));
+
+// jsdom has no object-URL download path; the download itself is covered by the
+// CSV helper's own test, so these tests only assert what it was handed.
+const csvMocks = vi.hoisted(() => ({ downloadBlob: vi.fn() }));
+
+vi.mock("@/utils/csv", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/csv")>()),
+  downloadBlob: csvMocks.downloadBlob,
 }));
 
 // The inline composer lists the target's columns through this API.
@@ -690,6 +702,115 @@ describe("DataQualityTargetPage", () => {
       freshProfile("amount"),
     ]);
     mocks.profileColumns.mockResolvedValue([]);
+    mocks.exportQualityReport.mockResolvedValue(
+      create(ExportQualityReportResponseSchema, {
+        fileName: "quality-report-2026-10-31T120000Z.html",
+        htmlContent: "<html><body>orders</body></html>",
+      })
+    );
+  });
+
+  it("downloads the target's report in the language the page is reading", async () => {
+    const success = vi.spyOn(notify, "success");
+    const { wrapper } = await mountPage();
+
+    const exportButton = wrapper
+      .findAll("button")
+      .find((button) =>
+        button
+          .text()
+          .includes(i18n.global.t("dataQuality.workspace.exportReport"))
+      );
+    await exportButton?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.exportQualityReport).toHaveBeenCalledWith({
+      targetGuid: TARGET,
+      metaType: MetaType.TABLE,
+      language: "en-US",
+    });
+    // The server names the file and writes the HTML; the page only saves it.
+    expect(csvMocks.downloadBlob).toHaveBeenCalledTimes(1);
+    const [blob, fileName] = csvMocks.downloadBlob.mock.calls[0] ?? [];
+    expect(fileName).toBe("quality-report-2026-10-31T120000Z.html");
+    expect((blob as Blob).type).toBe("text/html;charset=utf-8");
+    expect(await (blob as Blob).text()).toContain("orders");
+    expect(success).toHaveBeenCalledWith(
+      i18n.global.t("dataQuality.workspace.reportDownloaded")
+    );
+  });
+
+  it("reports a failed report export instead of downloading nothing", async () => {
+    const error = vi.spyOn(notify, "error");
+    mocks.exportQualityReport.mockRejectedValueOnce(new Error("render broke"));
+    const { wrapper } = await mountPage();
+
+    const exportButton = wrapper
+      .findAll("button")
+      .find((button) =>
+        button
+          .text()
+          .includes(i18n.global.t("dataQuality.workspace.exportReport"))
+      );
+    await exportButton?.trigger("click");
+    await flushPromises();
+
+    expect(csvMocks.downloadBlob).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      i18n.global.t("dataQuality.workspace.exportReportFailed")
+    );
+  });
+
+  it("keeps the report export disabled until the target has loaded", async () => {
+    let finishLoad: (value: unknown) => void = () => {};
+    mocks.getQualityTarget.mockReturnValue(
+      new Promise((resolve) => {
+        finishLoad = resolve;
+      })
+    );
+    const { wrapper } = await mountPage();
+    const reportButton = () =>
+      buttonByText(label("dataQuality.workspace.exportReport")) as
+        | HTMLButtonElement
+        | undefined;
+
+    // Until the aggregate read resolves the page only guesses the meta type, so
+    // exporting now could ask the server about the wrong object.
+    expect(reportButton()?.disabled).toBe(true);
+
+    finishLoad(response());
+    await flushPromises();
+
+    expect(reportButton()?.disabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("keeps the report export disabled while it is running", async () => {
+    let finishReport: (value: unknown) => void = () => {};
+    mocks.exportQualityReport.mockReturnValue(
+      new Promise((resolve) => {
+        finishReport = resolve;
+      })
+    );
+    const { wrapper } = await mountPage();
+    const reportButton = () =>
+      buttonByText(label("dataQuality.workspace.exportReport")) as
+        | HTMLButtonElement
+        | undefined;
+
+    reportButton()?.click();
+    await flushPromises();
+    expect(reportButton()?.disabled).toBe(true);
+
+    finishReport(
+      create(ExportQualityReportResponseSchema, {
+        fileName: "quality-report.html",
+        htmlContent: "<html></html>",
+      })
+    );
+    await flushPromises();
+    expect(reportButton()?.disabled).toBe(false);
+    wrapper.unmount();
   });
 
   it("reads the target's whole workspace in one call and groups its rules", async () => {

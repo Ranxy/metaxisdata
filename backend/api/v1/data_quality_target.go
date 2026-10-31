@@ -221,6 +221,135 @@ func qualityTargetWorstStatusFromV1(status v1pb.QualityStatus) (storepb.QualityS
 	}
 }
 
+// qualityTargetWorkspace is one target's assembled read model: the rules with
+// their latest results and history, the unresolved issues, the resolved target,
+// the schedule and the orphan state. GetQualityTarget maps it to the API and
+// ExportQualityReport renders it, so both read the target exactly once and
+// exactly the same way.
+type qualityTargetWorkspace struct {
+	targetGUID string
+	metaType   storepb.MetaType
+	rules      []*store.QualityRuleMessage
+	latest     map[int64]*store.QualityExecutionMessage
+	// history is keyed by rule id and empty when the caller asked for no history.
+	history       map[int64][]*store.QualityExecutionMessage
+	schemaChanged map[int64]bool
+	orphanReasons map[int64]string
+	openIssues    []*store.QualityIssueMessage
+	// path is the target display snapshot. It comes from the rules' snapshot and
+	// is replaced by the resolved path when the target still resolves.
+	path       *storepb.QualityTargetPath
+	resolution *dataquality.Resolution
+	// orphanedReason is empty while the target resolves; when set, the target is
+	// gone and the workspace is readable only from the stored snapshots.
+	orphanedReason string
+	schedule       *store.QualityTargetScheduleMessage
+	runSummaries   map[store.MetaGUIDKey]*store.QualityTargetRunSummaryMessage
+}
+
+// loadQualityTargetWorkspace assembles one target's read model. historyLimit 0
+// skips the per-rule execution history; issueLimit bounds the unresolved issues.
+// The caller has already resolved and validated the workspace.
+func (s *DataQualityService) loadQualityTargetWorkspace(ctx context.Context, targetGUID string, metaType storepb.MetaType, historyLimit, issueLimit int) (*qualityTargetWorkspace, error) {
+	workspace := &qualityTargetWorkspace{
+		targetGUID: targetGUID,
+		metaType:   metaType,
+		history:    map[int64][]*store.QualityExecutionMessage{},
+	}
+
+	// A target is not a resource of its own: the rules are the durable record of
+	// which targets exist, and the registry says where it lives.
+	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's quality rules")
+	}
+	workspace.rules = rules
+	if workspace.metaType == storepb.MetaType_UNSPECIFIED && len(rules) > 0 {
+		workspace.metaType = rules[0].TargetType
+	}
+	if len(rules) > 0 {
+		workspace.path = rules[0].TargetPath
+	}
+	if resolved, resolveErr := dataquality.ResolveTarget(ctx, s.store, targetGUID, workspace.metaType); resolveErr != nil {
+		if !errors.Is(resolveErr, dataquality.ErrOrphaned) {
+			return nil, resolveErr
+		}
+		// The rules stay readable when the target is gone: their target path is a
+		// snapshot, and a rule that no longer resolves is a state the reader must
+		// be able to fix. With no rule and no registry row there is nothing to show.
+		if len(rules) == 0 {
+			return nil, resolveErr
+		}
+		workspace.orphanedReason = resolveErr.Error()
+	} else {
+		workspace.resolution = resolved
+		workspace.path = resolved.Target.Path
+	}
+
+	latest, err := s.latestQualityExecutions(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
+	workspace.latest = latest
+	if historyLimit > 0 {
+		ruleIDs := make([]int64, 0, len(rules))
+		for _, rule := range rules {
+			ruleIDs = append(ruleIDs, rule.ID)
+		}
+		history, err := s.store.ListRecentQualityExecutionsByRuleIDs(ctx, ruleIDs, historyLimit)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read the rules' recent executions")
+		}
+		workspace.history = history
+	}
+	schemaChanged, err := s.targetSchemaChanges(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
+	workspace.schemaChanged = schemaChanged
+	orphanReasons, err := s.targetOrphanReasons(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
+	workspace.orphanReasons = orphanReasons
+	openIssues, err := s.store.ListQualityIssues(ctx, &store.FindQualityIssueMessage{
+		TargetGUID: &targetGUID,
+		OpenOnly:   true,
+		Limit:      &issueLimit,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's open issues")
+	}
+	// The target's rules exclude archived and deleted ones, so their issues must
+	// too: an archived rule keeps its open issue for the audit trail, but it is not
+	// part of what this workspace currently promises. Filtering here also keeps
+	// rule names complete, so an issue row never renders without a rule title.
+	liveRuleIDs := make(map[int64]struct{}, len(rules))
+	for _, rule := range rules {
+		liveRuleIDs[rule.ID] = struct{}{}
+	}
+	liveIssues := make([]*store.QualityIssueMessage, 0, len(openIssues))
+	for _, issue := range openIssues {
+		if _, ok := liveRuleIDs[issue.RuleID]; ok {
+			liveIssues = append(liveIssues, issue)
+		}
+	}
+	workspace.openIssues = liveIssues
+
+	schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, workspace.metaType)
+	if err != nil {
+		return nil, err
+	}
+	workspace.schedule = schedule
+	runKey := store.MetaGUIDKey{GUID: targetGUID, ObjectType: workspace.metaType}
+	runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, []store.MetaGUIDKey{runKey})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's latest run")
+	}
+	workspace.runSummaries = runSummaries
+	return workspace, nil
+}
+
 // GetQualityTarget reads one target's workspace: its rules with their latest
 // results, the unresolved issues, and the health summary, in one call. AI drafts
 // are not part of the response because reading them needs the suggest permission,
@@ -235,57 +364,8 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
 	}
-	metaType := storepb.MetaType(req.Msg.GetMetaType())
-
-	// A target is not a resource of its own: the rules are the durable record of
-	// which targets exist, and the registry says where it lives.
-	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's quality rules")
-	}
-	if metaType == storepb.MetaType_UNSPECIFIED && len(rules) > 0 {
-		metaType = rules[0].TargetType
-	}
-
-	orphanedReason := ""
-	var path *storepb.QualityTargetPath
-	if len(rules) > 0 {
-		path = rules[0].TargetPath
-	}
-	var resolution *dataquality.Resolution
-	if resolved, resolveErr := dataquality.ResolveTarget(ctx, s.store, targetGUID, metaType); resolveErr != nil {
-		if !errors.Is(resolveErr, dataquality.ErrOrphaned) {
-			return nil, resolveErr
-		}
-		// The rules stay readable when the target is gone: their target path is a
-		// snapshot, and a rule that no longer resolves is a state the reader must
-		// be able to fix. With no rule and no registry row there is nothing to show.
-		if len(rules) == 0 {
-			return nil, resolveErr
-		}
-		orphanedReason = resolveErr.Error()
-	} else {
-		resolution = resolved
-		path = resolved.Target.Path
-	}
-
-	latest, err := s.latestQualityExecutions(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-	ruleIDs := make([]int64, 0, len(rules))
-	for _, rule := range rules {
-		ruleIDs = append(ruleIDs, rule.ID)
-	}
-	history, err := s.store.ListRecentQualityExecutionsByRuleIDs(ctx, ruleIDs, qualityTargetRuleHistoryLimit)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the rules' recent executions")
-	}
-	schemaChanged, err := s.targetSchemaChanges(ctx, rules)
-	if err != nil {
-		return nil, err
-	}
-	orphanReasons, err := s.targetOrphanReasons(ctx, rules)
+	workspace, err := s.loadQualityTargetWorkspace(ctx, targetGUID,
+		storepb.MetaType(req.Msg.GetMetaType()), qualityTargetRuleHistoryLimit, qualityTargetOpenIssueLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -293,44 +373,20 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	if err != nil {
 		return nil, err
 	}
-	issueLimit := qualityTargetOpenIssueLimit
-	openIssues, err := s.store.ListQualityIssues(ctx, &store.FindQualityIssueMessage{
-		TargetGUID: &targetGUID,
-		OpenOnly:   true,
-		Limit:      &issueLimit,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's open issues")
-	}
-	// The target's rules exclude archived and deleted ones, so their issues must
-	// too: an archived rule keeps its open issue for the audit trail, but it is not
-	// part of what this workspace currently promises. Filtering here also keeps
-	// ruleNames complete, so an issue row never renders without a rule title.
-	liveRuleIDs := make(map[int64]struct{}, len(rules))
-	for _, rule := range rules {
-		liveRuleIDs[rule.ID] = struct{}{}
-	}
-	liveIssues := make([]*store.QualityIssueMessage, 0, len(openIssues))
-	for _, issue := range openIssues {
-		if _, ok := liveRuleIDs[issue.RuleID]; ok {
-			liveIssues = append(liveIssues, issue)
-		}
-	}
-	openIssues = liveIssues
 
 	summary := &v1pb.QualityTargetSummary{
 		Target: &v1pb.QualityTarget{
 			MetaGuid: targetGUID,
-			MetaType: v1pb.MetaType(metaType),
-			Path:     convertQualityTargetPathToV1(path),
+			MetaType: v1pb.MetaType(workspace.metaType),
+			Path:     convertQualityTargetPathToV1(workspace.path),
 		},
-		OpenIssueCount:    int32(len(openIssues)),
+		OpenIssueCount:    int32(len(workspace.openIssues)),
 		PendingDraftCount: drafts,
 		PendingLabelCount: labels,
-		Orphaned:          orphanedReason != "",
+		Orphaned:          workspace.orphanedReason != "",
 	}
-	columns := make(map[string]struct{}, len(rules))
-	for _, rule := range rules {
+	columns := make(map[string]struct{}, len(workspace.rules))
+	for _, rule := range workspace.rules {
 		summary.RuleCount++
 		switch rule.State {
 		case storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED:
@@ -344,35 +400,27 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		if column := dataquality.ConfigColumn(rule.Config); column != "" {
 			columns[column] = struct{}{}
 		}
-		if schemaChanged[rule.ID] {
+		if workspace.schemaChanged[rule.ID] {
 			summary.SchemaChanged = true
 		}
 	}
 	summary.ColumnCount = int32(len(columns))
-	schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, metaType)
-	if err != nil {
-		return nil, err
-	}
-	summary.Schedule = convertQualityTargetSchedule(schedule)
-	runKey := store.MetaGUIDKey{GUID: targetGUID, ObjectType: metaType}
-	runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, []store.MetaGUIDKey{runKey})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's latest run")
-	}
-	if entry := runSummaries[runKey]; entry != nil {
+	summary.Schedule = convertQualityTargetSchedule(workspace.schedule)
+	runKey := store.MetaGUIDKey{GUID: targetGUID, ObjectType: workspace.metaType}
+	if entry := workspace.runSummaries[runKey]; entry != nil {
 		summary.LatestRun = convertQualityRun(workspaceID, entry.Run)
 		summary.RunCount = entry.RunCount
 	}
 
 	response := &v1pb.GetQualityTargetResponse{
 		Summary:        summary,
-		OrphanedReason: orphanedReason,
+		OrphanedReason: workspace.orphanedReason,
 	}
-	if resolution != nil {
+	if workspace.resolution != nil {
 		// The resolved metadata is the only place that has the columns of a view or
 		// external table (those have no COLUMN registry rows), so the workspace gets
 		// them from here rather than from ListMetadata.
-		for _, column := range resolution.Target.Columns {
+		for _, column := range workspace.resolution.Target.Columns {
 			response.TargetColumns = append(response.TargetColumns, &v1pb.QualityTargetColumn{
 				Name:     column.Name,
 				Type:     column.Type,
@@ -380,13 +428,13 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 			})
 		}
 	}
-	ruleNames := make(map[int64]string, len(rules))
-	for _, rule := range rules {
+	ruleNames := make(map[int64]string, len(workspace.rules))
+	for _, rule := range workspace.rules {
 		ruleNames[rule.ID] = formatQualityRuleName(workspaceID, rule.ResourceID)
 		converted := convertQualityRule(workspaceID, rule)
-		converted.TargetSchemaChanged = schemaChanged[rule.ID]
-		converted.OrphanedReason = orphanReasons[rule.ID]
-		if execution := latest[rule.ID]; execution != nil {
+		converted.TargetSchemaChanged = workspace.schemaChanged[rule.ID]
+		converted.OrphanedReason = workspace.orphanReasons[rule.ID]
+		if execution := workspace.latest[rule.ID]; execution != nil {
 			converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
 			summary.WorstStatus = worstQualityStatus(summary.WorstStatus, v1pb.QualityStatus(execution.Status))
 			if !execution.FinishedAt.IsZero() {
@@ -396,7 +444,7 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 			}
 		}
 		response.QualityRules = append(response.QualityRules, converted)
-		if executions := history[rule.ID]; len(executions) > 0 {
+		if executions := workspace.history[rule.ID]; len(executions) > 0 {
 			entry := &v1pb.QualityRuleHistory{Rule: formatQualityRuleName(workspaceID, rule.ResourceID)}
 			for _, execution := range executions {
 				entry.Executions = append(entry.Executions, convertQualityExecutionSummary(workspaceID, execution))
@@ -404,7 +452,7 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 			response.RuleHistory = append(response.RuleHistory, entry)
 		}
 	}
-	for _, issue := range openIssues {
+	for _, issue := range workspace.openIssues {
 		response.OpenIssues = append(response.OpenIssues, convertQualityIssue(workspaceID, issue, ruleNames[issue.RuleID]))
 	}
 	return connect.NewResponse(response), nil
