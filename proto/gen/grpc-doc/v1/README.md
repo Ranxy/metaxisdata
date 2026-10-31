@@ -477,13 +477,16 @@
 - [v1/notification_service.proto](#v1_notification_service-proto)
     - [BatchMarkNotificationsReadRequest](#metaxisdata-v1-BatchMarkNotificationsReadRequest)
     - [CreateNotificationChannelRequest](#metaxisdata-v1-CreateNotificationChannelRequest)
+    - [CreateNotificationRouteRequest](#metaxisdata-v1-CreateNotificationRouteRequest)
     - [DataQualityDetail](#metaxisdata-v1-DataQualityDetail)
     - [DeleteNotificationChannelRequest](#metaxisdata-v1-DeleteNotificationChannelRequest)
     - [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest)
+    - [DeleteNotificationRouteRequest](#metaxisdata-v1-DeleteNotificationRouteRequest)
     - [DingTalkChannelConfig](#metaxisdata-v1-DingTalkChannelConfig)
     - [EmailChannelConfig](#metaxisdata-v1-EmailChannelConfig)
     - [FeishuChannelConfig](#metaxisdata-v1-FeishuChannelConfig)
     - [GetNotificationChannelRequest](#metaxisdata-v1-GetNotificationChannelRequest)
+    - [GetNotificationRouteRequest](#metaxisdata-v1-GetNotificationRouteRequest)
     - [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest)
     - [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse)
     - [KeepAlive](#metaxisdata-v1-KeepAlive)
@@ -491,6 +494,8 @@
     - [ListNotificationChannelsResponse](#metaxisdata-v1-ListNotificationChannelsResponse)
     - [ListNotificationDeliveriesRequest](#metaxisdata-v1-ListNotificationDeliveriesRequest)
     - [ListNotificationDeliveriesResponse](#metaxisdata-v1-ListNotificationDeliveriesResponse)
+    - [ListNotificationRoutesRequest](#metaxisdata-v1-ListNotificationRoutesRequest)
+    - [ListNotificationRoutesResponse](#metaxisdata-v1-ListNotificationRoutesResponse)
     - [ListNotificationsRequest](#metaxisdata-v1-ListNotificationsRequest)
     - [ListNotificationsResponse](#metaxisdata-v1-ListNotificationsResponse)
     - [MarkAllNotificationsReadRequest](#metaxisdata-v1-MarkAllNotificationsReadRequest)
@@ -501,6 +506,8 @@
     - [NotificationChannelSecret](#metaxisdata-v1-NotificationChannelSecret)
     - [NotificationDelivery](#metaxisdata-v1-NotificationDelivery)
     - [NotificationEvent](#metaxisdata-v1-NotificationEvent)
+    - [NotificationRoute](#metaxisdata-v1-NotificationRoute)
+    - [NotificationRouteMatch](#metaxisdata-v1-NotificationRouteMatch)
     - [OpenLineageDetail](#metaxisdata-v1-OpenLineageDetail)
     - [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest)
     - [SchemaSyncDetail](#metaxisdata-v1-SchemaSyncDetail)
@@ -510,6 +517,7 @@
     - [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest)
     - [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse)
     - [UpdateNotificationChannelRequest](#metaxisdata-v1-UpdateNotificationChannelRequest)
+    - [UpdateNotificationRouteRequest](#metaxisdata-v1-UpdateNotificationRouteRequest)
     - [WeComChannelConfig](#metaxisdata-v1-WeComChannelConfig)
     - [WebhookChannelConfig](#metaxisdata-v1-WebhookChannelConfig)
   
@@ -585,16 +593,22 @@
     - [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest)
     - [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse)
     - [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest)
+    - [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest)
     - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
+    - [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow)
+    - [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting)
+    - [QuietWindow](#metaxisdata-v1-QuietWindow)
     - [SMTPConfig](#metaxisdata-v1-SMTPConfig)
     - [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest)
     - [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse)
     - [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest)
     - [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse)
     - [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest)
+    - [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest)
     - [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest)
     - [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting)
   
+    - [DayOfWeek](#metaxisdata-v1-DayOfWeek)
     - [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication)
     - [SMTPEncryption](#metaxisdata-v1-SMTPEncryption)
   
@@ -8542,6 +8556,22 @@ An update with an empty field mask writes this field only when it is non-zero (p
 
 
 
+<a name="metaxisdata-v1-CreateNotificationRouteRequest"></a>
+
+### CreateNotificationRouteRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace} |
+| route | [NotificationRoute](#metaxisdata-v1-NotificationRoute) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DataQualityDetail"></a>
 
 ### DataQualityDetail
@@ -8605,6 +8635,21 @@ only; the client renders the localized sentence from the kind and these fields.
 
 
 
+<a name="metaxisdata-v1-DeleteNotificationRouteRequest"></a>
+
+### DeleteNotificationRouteRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationRoutes/{notification_route} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DingTalkChannelConfig"></a>
 
 ### DingTalkChannelConfig
@@ -8660,6 +8705,21 @@ EmailChannelConfig decides who receives the email for an event.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetNotificationRouteRequest"></a>
+
+### GetNotificationRouteRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationRoutes/{notification_route} |
 
 
 
@@ -8772,6 +8832,36 @@ KeepAlive is the notification stream&#39;s heartbeat. It carries no data.
 
 
 
+<a name="metaxisdata-v1-ListNotificationRoutesRequest"></a>
+
+### ListNotificationRoutesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListNotificationRoutesResponse"></a>
+
+### ListNotificationRoutesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| notification_routes | [NotificationRoute](#metaxisdata-v1-NotificationRoute) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListNotificationsRequest"></a>
 
 ### ListNotificationsRequest
@@ -8876,6 +8966,8 @@ write-only: reads report only whether one is stored.
 | language | [string](#string) |  | BCP-47 tag the outbound text is written in. Empty means the server default. |
 | config | [NotificationChannelConfig](#metaxisdata-v1-NotificationChannelConfig) |  | The kind&#39;s configuration. The oneof case must match kind and cannot change: the kind is immutable, and a config of another case has no delivery path. |
 | secret_set | [bool](#bool) |  | Whether a credential is stored. The credential itself is never returned. |
+| bypass_quiet_hours | [bool](#bool) |  | Whether the channel ignores the workspace quiet-hours schedule. An on-call channel that must page during a maintenance window sets it. |
+| routed_only | [bool](#bool) |  | Whether the channel receives only events a routing rule selected. A team channel sets it so it does not also receive every event its subscription filter would otherwise admit. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
@@ -8956,6 +9048,50 @@ channel. A failing event fans out to as many deliveries as channels it matched.
 | notification | [Notification](#metaxisdata-v1-Notification) |  |  |
 | unread_count | [int32](#int32) | optional | The recipient&#39;s unread count after this notification was written. Absent when it could not be read, in which case the client asks for the count itself rather than showing a wrong number. |
 | unseen_count | [int32](#int32) | optional | The recipient&#39;s unseen count after this notification was written — see GetUnreadNotificationCountResponse.unseen_count. Absent under the same condition as unread_count. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-NotificationRoute"></a>
+
+### NotificationRoute
+NotificationRoute is one owner/team routing rule. When an event&#39;s in-app
+audience matches the rule, the rule&#39;s channels receive the event even if they
+are routed_only; a channel that is not routed_only keeps receiving events from
+its own subscription as before.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/notificationRoutes/{notification_route} |
+| display_name | [string](#string) |  | The administrator-facing name, for example &#34;Data platform team&#34;. |
+| enabled | [bool](#bool) |  | A disabled route selects no channel and keeps its configuration. |
+| match | [NotificationRouteMatch](#metaxisdata-v1-NotificationRouteMatch) |  |  |
+| channels | [string](#string) | repeated | The channels the route delivers to, as channel resource names. A deleted channel is ignored; the rule&#39;s other channels still receive the event. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-NotificationRouteMatch"></a>
+
+### NotificationRouteMatch
+NotificationRouteMatch is who and what a route selects. An empty field is a
+wildcard: a route with no event types, severity floor, owners and groups
+selects every event.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this route selects. Empty means every type. |
+| min_severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  | The lowest severity this route selects. UNSPECIFIED means every severity. |
+| owners | [string](#string) | repeated | Audience filters, as users/{user} resource names. Empty means any audience. |
+| groups | [string](#string) | repeated | Audience filters, as group emails of IAM groups. Empty means any audience. |
 
 
 
@@ -9112,6 +9248,22 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
 | ----- | ---- | ----- | ----------- |
 | channel | [NotificationChannel](#metaxisdata-v1-NotificationChannel) |  |  |
 | secret | [NotificationChannelSecret](#metaxisdata-v1-NotificationChannelSecret) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateNotificationRouteRequest"></a>
+
+### UpdateNotificationRouteRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| route | [NotificationRoute](#metaxisdata-v1-NotificationRoute) |  |  |
 | update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
 
 
@@ -9305,6 +9457,11 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 | TestNotificationChannel | [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest) | [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse) | Post a test message through one stored channel and report what the endpoint answered. An email channel sends the message through the workspace SMTP setting instead, and its answer is empty. It queues no delivery and is not audited: it is a diagnostic probe that changes nothing, and the endpoint&#39;s answer is third-party text that does not belong in the permanent ledger. |
 | ListNotificationDeliveries | [ListNotificationDeliveriesRequest](#metaxisdata-v1-ListNotificationDeliveriesRequest) | [ListNotificationDeliveriesResponse](#metaxisdata-v1-ListNotificationDeliveriesResponse) | List outbound deliveries, newest first, for administrators to diagnose a channel. |
 | RetryNotificationDelivery | [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest) | [NotificationDelivery](#metaxisdata-v1-NotificationDelivery) | Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered or waiting one is left as it is. |
+| ListNotificationRoutes | [ListNotificationRoutesRequest](#metaxisdata-v1-ListNotificationRoutesRequest) | [ListNotificationRoutesResponse](#metaxisdata-v1-ListNotificationRoutesResponse) | List the owner/team routing rules. A route selects extra channels for the events whose in-app audience matches it. |
+| GetNotificationRoute | [GetNotificationRouteRequest](#metaxisdata-v1-GetNotificationRouteRequest) | [NotificationRoute](#metaxisdata-v1-NotificationRoute) | Read one routing rule. |
+| CreateNotificationRoute | [CreateNotificationRouteRequest](#metaxisdata-v1-CreateNotificationRouteRequest) | [NotificationRoute](#metaxisdata-v1-NotificationRoute) | Create one routing rule. |
+| UpdateNotificationRoute | [UpdateNotificationRouteRequest](#metaxisdata-v1-UpdateNotificationRouteRequest) | [NotificationRoute](#metaxisdata-v1-NotificationRoute) | Update one routing rule: a masked update, or a full update of its mutable fields when the mask is empty. |
+| DeleteNotificationRoute | [DeleteNotificationRouteRequest](#metaxisdata-v1-DeleteNotificationRouteRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one routing rule. |
 
  
 
@@ -10282,10 +10439,74 @@ it, and an email channel fails while it is unset.
 
 
 
+<a name="metaxisdata-v1-GetQuietHoursSettingRequest"></a>
+
+### GetQuietHoursSettingRequest
+
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetWorkspaceProfileSettingRequest"></a>
 
 ### GetWorkspaceProfileSettingRequest
 
+
+
+
+
+
+
+<a name="metaxisdata-v1-MaintenanceWindow"></a>
+
+### MaintenanceWindow
+MaintenanceWindow is one absolute quiet window, for planned maintenance.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QuietHoursSetting"></a>
+
+### QuietHoursSetting
+QuietHoursSetting is the workspace schedule during which outbound
+notifications are held rather than delivered. Held deliveries keep their
+place and are sent once the window ends; a channel that sets bypass_quiet_hours
+keeps delivering during the window.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether quiet hours are on. A disabled schedule is kept but selects nothing. |
+| timezone | [string](#string) |  | The IANA time zone the windows are evaluated in, for example &#34;Asia/Shanghai&#34;. Required while enabled. |
+| windows | [QuietWindow](#metaxisdata-v1-QuietWindow) | repeated | Recurring weekly windows. At least one window or maintenance window is required while enabled. |
+| maintenance_windows | [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow) | repeated | One-off absolute windows for planned maintenance. A window whose end has passed is inert and can be removed. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QuietWindow"></a>
+
+### QuietWindow
+QuietWindow is one recurring weekly quiet window.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| days | [DayOfWeek](#metaxisdata-v1-DayOfWeek) | repeated | The days the window starts on. A window whose end is at or before its start crosses midnight into the following day. |
+| start | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
+| end | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
 
 
 
@@ -10378,6 +10599,22 @@ it, and an email channel fails while it is unset.
 
 
 
+<a name="metaxisdata-v1-UpdateQuietHoursSettingRequest"></a>
+
+### UpdateQuietHoursSettingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| setting | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) |  | The schedule to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update: enabled, timezone, windows or maintenance_windows. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-UpdateWorkspaceProfileSettingRequest"></a>
 
 ### UpdateWorkspaceProfileSettingRequest
@@ -10420,6 +10657,24 @@ Empty (the default) turns the feature off for every provider. The address claim 
 
 
  
+
+
+<a name="metaxisdata-v1-DayOfWeek"></a>
+
+### DayOfWeek
+DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DAY_OF_WEEK_UNSPECIFIED | 0 |  |
+| DAY_OF_WEEK_MONDAY | 1 |  |
+| DAY_OF_WEEK_TUESDAY | 2 |  |
+| DAY_OF_WEEK_WEDNESDAY | 3 |  |
+| DAY_OF_WEEK_THURSDAY | 4 |  |
+| DAY_OF_WEEK_FRIDAY | 5 |  |
+| DAY_OF_WEEK_SATURDAY | 6 |  |
+| DAY_OF_WEEK_SUNDAY | 7 |  |
+
 
 
 <a name="metaxisdata-v1-SMTPAuthentication"></a>
@@ -10473,6 +10728,8 @@ Enabling it switches the process-wide log level to debug, gates the verbose requ
 | GetEmailSetting | [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Get the workspace email setting. It is returned empty when email delivery is not configured, so the settings page can render one form either way. |
 | UpdateEmailSetting | [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Update the workspace email setting. The password is write-only: an empty one on update keeps the stored password, and no read returns it. |
 | SendTestEmail | [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest) | [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse) | Send a test email to the caller&#39;s own address through the configured SMTP server. It is not audited: it changes nothing, and it is a diagnostic probe the settings page can repeat while an administrator types the server in. |
+| GetQuietHoursSetting | [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Get the workspace quiet-hours schedule for outbound notifications. |
+| UpdateQuietHoursSetting | [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Update the workspace quiet-hours schedule. Any update releases the deliveries the previous schedule was holding, so shortening or disabling it takes effect immediately; held rows are then re-evaluated by the next dispatcher tick. |
 
  
 

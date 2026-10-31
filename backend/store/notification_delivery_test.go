@@ -53,3 +53,20 @@ func TestBuildListNotificationDeliveriesQuery(t *testing.T) {
 	require.Contains(t, query, "WHERE state = $1")
 	require.Equal(t, []any{int16(1), 10, 0}, args)
 }
+
+// A quiet-hours deferral is not an attempt: the statement must return the row to
+// PENDING, give the claim's increment back and schedule the window's end.
+func TestDeferNotificationDeliveryQuery(t *testing.T) {
+	t.Parallel()
+
+	for _, fragment := range []string{
+		"UPDATE notification_delivery",
+		"SET state = $2",
+		"attempts = GREATEST(attempts - 1, 0)",
+		"next_attempt_at = $3",
+		"quiet_deferred = TRUE",
+		"WHERE id = $1 AND state = $4",
+	} {
+		require.Contains(t, deferNotificationDeliveryQuery, fragment)
+	}
+}

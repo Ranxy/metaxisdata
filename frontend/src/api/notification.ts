@@ -3,11 +3,14 @@ import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   BatchMarkNotificationsReadRequestSchema,
   CreateNotificationChannelRequestSchema,
+  CreateNotificationRouteRequestSchema,
   DeleteNotificationChannelRequestSchema,
   DeleteNotificationRequestSchema,
+  DeleteNotificationRouteRequestSchema,
   GetUnreadNotificationCountRequestSchema,
   ListNotificationChannelsRequestSchema,
   ListNotificationDeliveriesRequestSchema,
+  ListNotificationRoutesRequestSchema,
   ListNotificationsRequestSchema,
   MarkAllNotificationsReadRequestSchema,
   MarkNotificationsSeenRequestSchema,
@@ -16,10 +19,12 @@ import {
   type NotificationChannelSecret,
   type NotificationDelivery,
   NotificationDeliveryState,
+  type NotificationRoute,
   RetryNotificationDeliveryRequestSchema,
   SubscribeNotificationsRequestSchema,
   TestNotificationChannelRequestSchema,
   UpdateNotificationChannelRequestSchema,
+  UpdateNotificationRouteRequestSchema,
 } from "@/types/proto-es/v1/notification_service_pb";
 import { notificationClient } from "./client";
 import type { ListPage } from "./list";
@@ -228,5 +233,54 @@ export async function retryNotificationDelivery(
 ): Promise<NotificationDelivery> {
   return await notificationClient.retryNotificationDelivery(
     create(RetryNotificationDeliveryRequestSchema, { name })
+  );
+}
+
+// ---- Routing rules ---------------------------------------------------------
+//
+// A route is an owner/team rule: when an event's in-app audience matches, the
+// route's channels receive it even when they are routed_only. A channel that is
+// not routed_only keeps receiving events from its own subscription.
+
+/** Every configured routing rule. The list is not paged. */
+export async function listNotificationRoutes(
+  signal?: AbortSignal
+): Promise<NotificationRoute[]> {
+  const response = await notificationClient.listNotificationRoutes(
+    create(ListNotificationRoutesRequestSchema, { parent: WORKSPACE_PARENT }),
+    { signal }
+  );
+  return response.notificationRoutes;
+}
+
+/** Create one routing rule under the current workspace. */
+export async function createNotificationRoute(
+  route: NotificationRoute
+): Promise<NotificationRoute> {
+  return await notificationClient.createNotificationRoute(
+    create(CreateNotificationRouteRequestSchema, {
+      parent: WORKSPACE_PARENT,
+      route,
+    })
+  );
+}
+
+/** Update the fields named by `updateMask`; an empty mask writes every mutable field. */
+export async function updateNotificationRoute(
+  route: NotificationRoute,
+  updateMask: string[]
+): Promise<NotificationRoute> {
+  return await notificationClient.updateNotificationRoute(
+    create(UpdateNotificationRouteRequestSchema, {
+      route,
+      updateMask: create(FieldMaskSchema, { paths: updateMask }),
+    })
+  );
+}
+
+/** Delete one routing rule. Its channels keep their own subscriptions. */
+export async function deleteNotificationRoute(name: string): Promise<void> {
+  await notificationClient.deleteNotificationRoute(
+    create(DeleteNotificationRouteRequestSchema, { name })
   );
 }

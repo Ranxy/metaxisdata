@@ -1340,6 +1340,9 @@ CREATE TABLE IF NOT EXISTS notification_delivery (
     payload JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sent_at TIMESTAMPTZ,
+    -- TRUE while the workspace quiet-hours schedule is holding this row, so a
+    -- schedule change can release it early.
+    quiet_deferred BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT uk_notification_delivery_event_channel UNIQUE (event_id, channel_id)
 );
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_due
@@ -1355,3 +1358,17 @@ COMMENT ON COLUMN notification_channel.secret IS 'Encrypted NotificationChannelS
 COMMENT ON TABLE notification_delivery IS 'Queued and attempted outbound deliveries, one per (event, channel)';
 COMMENT ON COLUMN notification_delivery.payload IS 'Stored as NotificationDeliveryEvent (proto/store/store/notification.proto)';
 COMMENT ON COLUMN notification_delivery.next_attempt_at IS 'Next automatic attempt, or the SENDING lease deadline';
+
+-- Notification routing
+CREATE TABLE IF NOT EXISTS notification_route (
+    id SERIAL PRIMARY KEY,
+    resource_id TEXT NOT NULL,
+    -- Stored as NotificationRoute (proto/store/store/notification.proto)
+    payload JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uk_notification_route_resource_id UNIQUE (resource_id)
+);
+
+COMMENT ON TABLE notification_route IS 'Owner/team routing rules for outbound notifications';
+COMMENT ON COLUMN notification_route.payload IS 'Stored as NotificationRoute (proto/store/store/notification.proto)';

@@ -44,6 +44,12 @@ A channel is one destination and the rules for what it receives:
   `X-Metaxisdata-Signature: sha256=<hex>` computed with your signing secret over
   the raw body, plus `X-Metaxisdata-Event` and `X-Metaxisdata-Delivery` headers.
   DingTalk and Feishu verify a timestamp and signature (below).
+- **Deliver during quiet hours** — the channel ignores the workspace quiet-hours
+  schedule; use it for an on-call channel that must page during a maintenance
+  window.
+- **Only receive events selected by a routing rule** — the channel does not
+  receive events from its own subscription; a routing rule has to select it. Team
+  channels use this so they do not also receive the whole workspace.
 
 Delivery is asynchronous: the platform queues the event, posts it, and retries a
 failure with backoff (1m, 5m, 15m, 1h, 6h). After six attempts the delivery is
@@ -130,6 +136,41 @@ sent delivery has no error and no endpoint body. The **Test** action on an email
 channel sends one message to that channel's fixed recipients (the SMTP card's
 **Send test email** goes to your own address).
 
+### Quiet hours and maintenance windows
+
+A workspace schedule can hold outbound delivery during nights, weekends or a
+planned maintenance window. Configure it on the same page under **Quiet hours**:
+a time zone, one or more recurring weekly windows (days, start `HH:MM`, end
+`HH:MM`; an end at or before the start crosses midnight), and optional one-off
+maintenance windows with absolute start and end times. Channels can opt out with
+**Deliver during quiet hours**.
+
+Quiet hours **hold, never drop**: a delivery that falls inside a window is put
+back to *pending* with its next attempt set to the moment the window ends. It
+does not consume an attempt, so the six-attempt budget is not spent waiting, and
+the first dispatcher tick after the window sends it. The inbox is unaffected. An
+invalid or unreadable schedule is ignored (deliveries proceed) rather than
+blocking alerts, and a window whose bounds fall into a daylight-saving transition
+(a skipped local hour) is ignored for that day rather than stretching into a
+day-long hold. A maintenance window is capped at 30 days, so a typo cannot hold
+alerting indefinitely.
+
+Saving a new schedule releases the deliveries the previous schedule was holding,
+so shortening or disabling quiet hours during an incident sends them on the next
+dispatcher tick instead of at the old window's end. A delivery held by a window
+shows as *pending*; the Deliveries card shows its next attempt.
+
+### Routing rules
+
+A routing rule selects extra channels for the events whose in-app audience
+matches it. Create one under **Routing rules**: match by event type, minimum
+severity, rule owners and/or IAM groups (members of the group), then pick the
+channels to deliver to. Empty fields are wildcards; a rule with no filters
+selects every event. Routes are additive: a channel with a normal subscription
+keeps receiving its events, while a channel marked **Only receive events selected
+by a routing rule** receives an event only when a rule selects it. A deleted
+channel is ignored; the rule's other channels still deliver.
+
 ## Deliveries
 
 The **Deliveries** card on the same page lists the most recent attempts: the
@@ -140,10 +181,11 @@ queued deliveries are removed with it.
 
 ## Permissions and safety
 
-Reading channels and deliveries needs `metaxisdata.settings.get`; changing a
-channel, changing the SMTP setting, testing either, and retrying a delivery need
-`metaxisdata.settings.update`. Channel changes, SMTP changes and delivery retries
-are recorded in the audit log, with the endpoint credential and the SMTP password
+Reading channels, deliveries, routing rules and quiet hours needs
+`metaxisdata.settings.get`; changing a channel, a routing rule, the SMTP setting
+or the quiet-hours schedule, testing a channel or email, and retrying a delivery
+need `metaxisdata.settings.update`. Those changes and delivery retries are
+recorded in the audit log, with the endpoint credential and the SMTP password
 redacted. A test send (channel or email) is not audited: it queues nothing and
 its response is third-party text that does not belong in the permanent ledger.
 
@@ -172,4 +214,6 @@ mid-request is retried after its lease expires.
 | Email test fails with "SMTP authentication failed" or "unencrypted connection" | Choose STARTTLS or SSL/TLS; authentication is not allowed over an unencrypted connection. Check the user name and re-enter the password if it was rotated |
 | Email test succeeds but an owner did not receive the email | The channel lists fixed recipients only, the owner's account has no address or was deleted, or the message is in spam. Add a fixed team address as the fallback |
 | The message has no link | Configure **external URL** in Settings → General |
+| A delivery stays *pending* for hours | It is inside a quiet or maintenance window. It is sent when the window ends; the channel bypasses the schedule with **Deliver during quiet hours** |
+| A routed team channel receives nothing | The channel is marked routed-only and no rule selects this event, the rule is disabled, the owner is not in the named group, or the event type/severity does not match the rule |
 | The endpoint receives a duplicate | Retries are at-least-once: a POST that timed out after the endpoint accepted it is retried. Deduplicate on `eventId`/`deliveryId` |

@@ -37,6 +37,7 @@ const (
 	NotificationPrefix         = "notifications/"
 	NotificationChannelPrefix  = "notificationChannels/"
 	NotificationDeliveryPrefix = "notificationDeliveries/"
+	NotificationRoutePrefix    = "notificationRoutes/"
 )
 
 // GetOpenLineageToken returns the last segment of an OpenLineage resource name.
@@ -339,6 +340,19 @@ func GetNotificationChannelID(name string) (string, error) {
 	}
 	if !IsValidResourceID(parts[3]) {
 		return "", errors.Errorf("invalid notification channel id in %q", name)
+	}
+	return parts[3], nil
+}
+
+// GetNotificationRouteID returns the resource id from
+// workspaces/{workspace}/notificationRoutes/{route}.
+func GetNotificationRouteID(name string) (string, error) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 4 || parts[0] != "workspaces" || parts[1] == "" || parts[2] != "notificationRoutes" {
+		return "", errors.Errorf("invalid notification route name %q", name)
+	}
+	if !IsValidResourceID(parts[3]) {
+		return "", errors.Errorf("invalid notification route id in %q", name)
 	}
 	return parts[3], nil
 }

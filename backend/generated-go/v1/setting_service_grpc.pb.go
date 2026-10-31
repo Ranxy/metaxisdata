@@ -26,6 +26,8 @@ const (
 	SettingService_GetEmailSetting_FullMethodName               = "/metaxisdata.v1.SettingService/GetEmailSetting"
 	SettingService_UpdateEmailSetting_FullMethodName            = "/metaxisdata.v1.SettingService/UpdateEmailSetting"
 	SettingService_SendTestEmail_FullMethodName                 = "/metaxisdata.v1.SettingService/SendTestEmail"
+	SettingService_GetQuietHoursSetting_FullMethodName          = "/metaxisdata.v1.SettingService/GetQuietHoursSetting"
+	SettingService_UpdateQuietHoursSetting_FullMethodName       = "/metaxisdata.v1.SettingService/UpdateQuietHoursSetting"
 )
 
 // SettingServiceClient is the client API for SettingService service.
@@ -59,6 +61,12 @@ type SettingServiceClient interface {
 	// server. It is not audited: it changes nothing, and it is a diagnostic probe
 	// the settings page can repeat while an administrator types the server in.
 	SendTestEmail(ctx context.Context, in *SendTestEmailRequest, opts ...grpc.CallOption) (*SendTestEmailResponse, error)
+	// Get the workspace quiet-hours schedule for outbound notifications.
+	GetQuietHoursSetting(ctx context.Context, in *GetQuietHoursSettingRequest, opts ...grpc.CallOption) (*QuietHoursSetting, error)
+	// Update the workspace quiet-hours schedule. Any update releases the deliveries
+	// the previous schedule was holding, so shortening or disabling it takes effect
+	// immediately; held rows are then re-evaluated by the next dispatcher tick.
+	UpdateQuietHoursSetting(ctx context.Context, in *UpdateQuietHoursSettingRequest, opts ...grpc.CallOption) (*QuietHoursSetting, error)
 }
 
 type settingServiceClient struct {
@@ -139,6 +147,26 @@ func (c *settingServiceClient) SendTestEmail(ctx context.Context, in *SendTestEm
 	return out, nil
 }
 
+func (c *settingServiceClient) GetQuietHoursSetting(ctx context.Context, in *GetQuietHoursSettingRequest, opts ...grpc.CallOption) (*QuietHoursSetting, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuietHoursSetting)
+	err := c.cc.Invoke(ctx, SettingService_GetQuietHoursSetting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settingServiceClient) UpdateQuietHoursSetting(ctx context.Context, in *UpdateQuietHoursSettingRequest, opts ...grpc.CallOption) (*QuietHoursSetting, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QuietHoursSetting)
+	err := c.cc.Invoke(ctx, SettingService_UpdateQuietHoursSetting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SettingServiceServer is the server API for SettingService service.
 // All implementations must embed UnimplementedSettingServiceServer
 // for forward compatibility.
@@ -170,6 +198,12 @@ type SettingServiceServer interface {
 	// server. It is not audited: it changes nothing, and it is a diagnostic probe
 	// the settings page can repeat while an administrator types the server in.
 	SendTestEmail(context.Context, *SendTestEmailRequest) (*SendTestEmailResponse, error)
+	// Get the workspace quiet-hours schedule for outbound notifications.
+	GetQuietHoursSetting(context.Context, *GetQuietHoursSettingRequest) (*QuietHoursSetting, error)
+	// Update the workspace quiet-hours schedule. Any update releases the deliveries
+	// the previous schedule was holding, so shortening or disabling it takes effect
+	// immediately; held rows are then re-evaluated by the next dispatcher tick.
+	UpdateQuietHoursSetting(context.Context, *UpdateQuietHoursSettingRequest) (*QuietHoursSetting, error)
 	mustEmbedUnimplementedSettingServiceServer()
 }
 
@@ -200,6 +234,12 @@ func (UnimplementedSettingServiceServer) UpdateEmailSetting(context.Context, *Up
 }
 func (UnimplementedSettingServiceServer) SendTestEmail(context.Context, *SendTestEmailRequest) (*SendTestEmailResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendTestEmail not implemented")
+}
+func (UnimplementedSettingServiceServer) GetQuietHoursSetting(context.Context, *GetQuietHoursSettingRequest) (*QuietHoursSetting, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQuietHoursSetting not implemented")
+}
+func (UnimplementedSettingServiceServer) UpdateQuietHoursSetting(context.Context, *UpdateQuietHoursSettingRequest) (*QuietHoursSetting, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQuietHoursSetting not implemented")
 }
 func (UnimplementedSettingServiceServer) mustEmbedUnimplementedSettingServiceServer() {}
 func (UnimplementedSettingServiceServer) testEmbeddedByValue()                        {}
@@ -348,6 +388,42 @@ func _SettingService_SendTestEmail_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SettingService_GetQuietHoursSetting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQuietHoursSettingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).GetQuietHoursSetting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_GetQuietHoursSetting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).GetQuietHoursSetting(ctx, req.(*GetQuietHoursSettingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettingService_UpdateQuietHoursSetting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQuietHoursSettingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingServiceServer).UpdateQuietHoursSetting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingService_UpdateQuietHoursSetting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingServiceServer).UpdateQuietHoursSetting(ctx, req.(*UpdateQuietHoursSettingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SettingService_ServiceDesc is the grpc.ServiceDesc for SettingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -382,6 +458,14 @@ var SettingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendTestEmail",
 			Handler:    _SettingService_SendTestEmail_Handler,
+		},
+		{
+			MethodName: "GetQuietHoursSetting",
+			Handler:    _SettingService_GetQuietHoursSetting_Handler,
+		},
+		{
+			MethodName: "UpdateQuietHoursSetting",
+			Handler:    _SettingService_UpdateQuietHoursSetting_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

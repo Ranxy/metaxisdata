@@ -8,9 +8,10 @@ import (
 
 // Notification delivery outcomes, as the dispatcher classifies one attempt.
 const (
-	NotificationDeliverySent   = "sent"
-	NotificationDeliveryFailed = "failed"
-	NotificationDeliveryDead   = "dead"
+	NotificationDeliverySent     = "sent"
+	NotificationDeliveryFailed   = "failed"
+	NotificationDeliveryDead     = "dead"
+	NotificationDeliveryDeferred = "deferred"
 )
 
 type notificationMetrics struct {

@@ -2014,6 +2014,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateNotificationRouteRequest"><span class="badge">M</span>CreateNotificationRouteRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.DataQualityDetail"><span class="badge">M</span>DataQualityDetail</a>
                 </li>
               
@@ -2023,6 +2027,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DeleteNotificationRequest"><span class="badge">M</span>DeleteNotificationRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteNotificationRouteRequest"><span class="badge">M</span>DeleteNotificationRouteRequest</a>
                 </li>
               
                 <li>
@@ -2039,6 +2047,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetNotificationChannelRequest"><span class="badge">M</span>GetNotificationChannelRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetNotificationRouteRequest"><span class="badge">M</span>GetNotificationRouteRequest</a>
                 </li>
               
                 <li>
@@ -2067,6 +2079,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListNotificationDeliveriesResponse"><span class="badge">M</span>ListNotificationDeliveriesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationRoutesRequest"><span class="badge">M</span>ListNotificationRoutesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListNotificationRoutesResponse"><span class="badge">M</span>ListNotificationRoutesResponse</a>
                 </li>
               
                 <li>
@@ -2110,6 +2130,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.NotificationRoute"><span class="badge">M</span>NotificationRoute</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.NotificationRouteMatch"><span class="badge">M</span>NotificationRouteMatch</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
                 </li>
               
@@ -2143,6 +2171,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.UpdateNotificationChannelRequest"><span class="badge">M</span>UpdateNotificationChannelRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateNotificationRouteRequest"><span class="badge">M</span>UpdateNotificationRouteRequest</a>
                 </li>
               
                 <li>
@@ -2434,7 +2466,23 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQuietHoursSettingRequest"><span class="badge">M</span>GetQuietHoursSettingRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetWorkspaceProfileSettingRequest"><span class="badge">M</span>GetWorkspaceProfileSettingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.MaintenanceWindow"><span class="badge">M</span>MaintenanceWindow</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QuietHoursSetting"><span class="badge">M</span>QuietHoursSetting</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QuietWindow"><span class="badge">M</span>QuietWindow</a>
                 </li>
               
                 <li>
@@ -2462,6 +2510,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.UpdateQuietHoursSettingRequest"><span class="badge">M</span>UpdateQuietHoursSettingRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.UpdateWorkspaceProfileSettingRequest"><span class="badge">M</span>UpdateWorkspaceProfileSettingRequest</a>
                 </li>
               
@@ -2469,6 +2521,10 @@
                   <a href="#metaxisdata.v1.WorkspaceProfileSetting"><span class="badge">M</span>WorkspaceProfileSetting</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.v1.DayOfWeek"><span class="badge">E</span>DayOfWeek</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.v1.SMTPAuthentication"><span class="badge">E</span>SMTPAuthentication</a>
@@ -24929,6 +24985,37 @@ explicit `max_output_tokens` mask to reset it to the server default. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateNotificationRouteRequest">CreateNotificationRouteRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>route</td>
+                  <td><a href="#metaxisdata.v1.NotificationRoute">NotificationRoute</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DataQualityDetail">DataQualityDetail</h3>
         <p>DataQualityDetail reports one data quality event. The message carries facts</p><p>only; the client renders the localized sentence from the kind and these fields.</p>
 
@@ -25121,6 +25208,30 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.DeleteNotificationRouteRequest">DeleteNotificationRouteRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationRoutes/{notification_route} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DingTalkChannelConfig">DingTalkChannelConfig</h3>
         <p></p>
 
@@ -25219,6 +25330,30 @@ this flag is required. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetNotificationRouteRequest">GetNotificationRouteRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationRoutes/{notification_route} </p></td>
                 </tr>
               
             </tbody>
@@ -25416,6 +25551,54 @@ token was issued with when page_size is unset. </p></td>
                   <td>next_page_token</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationRoutesRequest">ListNotificationRoutesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListNotificationRoutesResponse">ListNotificationRoutesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>notification_routes</td>
+                  <td><a href="#metaxisdata.v1.NotificationRoute">NotificationRoute</a></td>
+                  <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -25701,6 +25884,23 @@ the kind is immutable, and a config of another case has no delivery path. </p></
                 </tr>
               
                 <tr>
+                  <td>bypass_quiet_hours</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the channel ignores the workspace quiet-hours schedule. An on-call
+channel that must page during a maintenance window sets it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>routed_only</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the channel receives only events a routing rule selected. A team
+channel sets it so it does not also receive every event its subscription
+filter would otherwise admit. </p></td>
+                </tr>
+              
+                <tr>
                   <td>create_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
@@ -25937,6 +26137,118 @@ rather than showing a wrong number. </p></td>
                   <td><p>The recipient&#39;s unseen count after this notification was written — see
 GetUnreadNotificationCountResponse.unseen_count. Absent under the same
 condition as unread_count. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.NotificationRoute">NotificationRoute</h3>
+        <p>NotificationRoute is one owner/team routing rule. When an event's in-app</p><p>audience matches the rule, the rule's channels receive the event even if they</p><p>are routed_only; a channel that is not routed_only keeps receiving events from</p><p>its own subscription as before.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/notificationRoutes/{notification_route} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The administrator-facing name, for example &#34;Data platform team&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>A disabled route selects no channel and keeps its configuration. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>match</td>
+                  <td><a href="#metaxisdata.v1.NotificationRouteMatch">NotificationRouteMatch</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>channels</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The channels the route delivers to, as channel resource names. A deleted
+channel is ignored; the rule&#39;s other channels still receive the event. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.NotificationRouteMatch">NotificationRouteMatch</h3>
+        <p>NotificationRouteMatch is who and what a route selects. An empty field is a</p><p>wildcard: a route with no event types, severity floor, owners and groups</p><p>selects every event.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>event_types</td>
+                  <td><a href="#metaxisdata.v1.NotificationType">NotificationType</a></td>
+                  <td>repeated</td>
+                  <td><p>The notification types this route selects. Empty means every type. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_severity</td>
+                  <td><a href="#metaxisdata.v1.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p>The lowest severity this route selects. UNSPECIFIED means every severity. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owners</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Audience filters, as users/{user} resource names. Empty means any audience. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>groups</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Audience filters, as group emails of IAM groups. Empty means any audience. </p></td>
                 </tr>
               
             </tbody>
@@ -26290,6 +26602,37 @@ default. The client ignores it. </p></td>
                 <tr>
                   <td>secret</td>
                   <td><a href="#metaxisdata.v1.NotificationChannelSecret">NotificationChannelSecret</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateNotificationRouteRequest">UpdateNotificationRouteRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>route</td>
+                  <td><a href="#metaxisdata.v1.NotificationRoute">NotificationRoute</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -26802,6 +27145,43 @@ channel.</p></td>
 or waiting one is left as it is.</p></td>
               </tr>
             
+              <tr>
+                <td>ListNotificationRoutes</td>
+                <td><a href="#metaxisdata.v1.ListNotificationRoutesRequest">ListNotificationRoutesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListNotificationRoutesResponse">ListNotificationRoutesResponse</a></td>
+                <td><p>List the owner/team routing rules. A route selects extra channels for the
+events whose in-app audience matches it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetNotificationRoute</td>
+                <td><a href="#metaxisdata.v1.GetNotificationRouteRequest">GetNotificationRouteRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationRoute">NotificationRoute</a></td>
+                <td><p>Read one routing rule.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateNotificationRoute</td>
+                <td><a href="#metaxisdata.v1.CreateNotificationRouteRequest">CreateNotificationRouteRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationRoute">NotificationRoute</a></td>
+                <td><p>Create one routing rule.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateNotificationRoute</td>
+                <td><a href="#metaxisdata.v1.UpdateNotificationRouteRequest">UpdateNotificationRouteRequest</a></td>
+                <td><a href="#metaxisdata.v1.NotificationRoute">NotificationRoute</a></td>
+                <td><p>Update one routing rule: a masked update, or a full update of its mutable
+fields when the mask is empty.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteNotificationRoute</td>
+                <td><a href="#metaxisdata.v1.DeleteNotificationRouteRequest">DeleteNotificationRouteRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete one routing rule.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -26957,6 +27337,56 @@ or waiting one is left as it is.</p></td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/notificationDeliveries/*}:retry</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListNotificationRoutes</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/notificationRoutes</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetNotificationRoute</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/notificationRoutes/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateNotificationRoute</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/notificationRoutes</td>
+                <td>route</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateNotificationRoute</td>
+                <td>PATCH</td>
+                <td>/v1/{route.name=workspaces/*/notificationRoutes/*}</td>
+                <td>route</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteNotificationRoute</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/notificationRoutes/*}</td>
+                <td></td>
               </tr>
               
             
@@ -29747,10 +30177,135 @@ as. Empty means email delivery is not configured. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQuietHoursSettingRequest">GetQuietHoursSettingRequest</h3>
+        <p></p>
+
+        
+
+        
+      
         <h3 id="metaxisdata.v1.GetWorkspaceProfileSettingRequest">GetWorkspaceProfileSettingRequest</h3>
         <p></p>
 
         
+
+        
+      
+        <h3 id="metaxisdata.v1.MaintenanceWindow">MaintenanceWindow</h3>
+        <p>MaintenanceWindow is one absolute quiet window, for planned maintenance.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>start</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>end</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QuietHoursSetting">QuietHoursSetting</h3>
+        <p>QuietHoursSetting is the workspace schedule during which outbound</p><p>notifications are held rather than delivered. Held deliveries keep their</p><p>place and are sent once the window ends; a channel that sets bypass_quiet_hours</p><p>keeps delivering during the window.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether quiet hours are on. A disabled schedule is kept but selects nothing. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The IANA time zone the windows are evaluated in, for example
+&#34;Asia/Shanghai&#34;. Required while enabled. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>windows</td>
+                  <td><a href="#metaxisdata.v1.QuietWindow">QuietWindow</a></td>
+                  <td>repeated</td>
+                  <td><p>Recurring weekly windows. At least one window or maintenance window is
+required while enabled. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>maintenance_windows</td>
+                  <td><a href="#metaxisdata.v1.MaintenanceWindow">MaintenanceWindow</a></td>
+                  <td>repeated</td>
+                  <td><p>One-off absolute windows for planned maintenance. A window whose end has
+passed is inert and can be removed. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QuietWindow">QuietWindow</h3>
+        <p>QuietWindow is one recurring weekly quiet window.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>days</td>
+                  <td><a href="#metaxisdata.v1.DayOfWeek">DayOfWeek</a></td>
+                  <td>repeated</td>
+                  <td><p>The days the window starts on. A window whose end is at or before its start
+crosses midnight into the following day. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>start</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>&#34;HH:MM&#34; in the setting&#39;s time zone. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>end</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>&#34;HH:MM&#34; in the setting&#39;s time zone. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -29911,6 +30466,38 @@ smtp.password. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.UpdateQuietHoursSettingRequest">UpdateQuietHoursSettingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>setting</td>
+                  <td><a href="#metaxisdata.v1.QuietHoursSetting">QuietHoursSetting</a></td>
+                  <td></td>
+                  <td><p>The schedule to update. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The list of fields to update: enabled, timezone, windows or
+maintenance_windows. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.UpdateWorkspaceProfileSettingRequest">UpdateWorkspaceProfileSettingRequest</h3>
         <p></p>
 
@@ -30048,6 +30635,65 @@ which is why the reader resolves defaults instead of trusting the wire value. </
         
       
 
+      
+        <h3 id="metaxisdata.v1.DayOfWeek">DayOfWeek</h3>
+        <p>DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DAY_OF_WEEK_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_MONDAY</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_TUESDAY</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_WEDNESDAY</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_THURSDAY</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_FRIDAY</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_SATURDAY</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_SUNDAY</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
       
         <h3 id="metaxisdata.v1.SMTPAuthentication">SMTPAuthentication</h3>
         <p>SMTPAuthentication is the login mechanism of the SMTP connection.</p>
@@ -30199,6 +30845,22 @@ server. It is not audited: it changes nothing, and it is a diagnostic probe
 the settings page can repeat while an administrator types the server in.</p></td>
               </tr>
             
+              <tr>
+                <td>GetQuietHoursSetting</td>
+                <td><a href="#metaxisdata.v1.GetQuietHoursSettingRequest">GetQuietHoursSettingRequest</a></td>
+                <td><a href="#metaxisdata.v1.QuietHoursSetting">QuietHoursSetting</a></td>
+                <td><p>Get the workspace quiet-hours schedule for outbound notifications.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateQuietHoursSetting</td>
+                <td><a href="#metaxisdata.v1.UpdateQuietHoursSettingRequest">UpdateQuietHoursSettingRequest</a></td>
+                <td><a href="#metaxisdata.v1.QuietHoursSetting">QuietHoursSetting</a></td>
+                <td><p>Update the workspace quiet-hours schedule. Any update releases the deliveries
+the previous schedule was holding, so shortening or disabling it takes effect
+immediately; held rows are then re-evaluated by the next dispatcher tick.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -30284,6 +30946,26 @@ the settings page can repeat while an administrator types the server in.</p></td
                 <td>POST</td>
                 <td>/v1/settings/email:sendTestEmail</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQuietHoursSetting</td>
+                <td>GET</td>
+                <td>/v1/settings/quietHours</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateQuietHoursSetting</td>
+                <td>PATCH</td>
+                <td>/v1/settings/quietHours</td>
+                <td>setting</td>
               </tr>
               
             

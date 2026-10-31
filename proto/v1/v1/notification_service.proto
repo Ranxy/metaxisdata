@@ -163,6 +163,52 @@ service NotificationService {
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
     option (metaxisdata.v1.audit) = true;
   }
+
+  // List the owner/team routing rules. A route selects extra channels for the
+  // events whose in-app audience matches it.
+  rpc ListNotificationRoutes(ListNotificationRoutesRequest) returns (ListNotificationRoutesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notificationRoutes"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Read one routing rule.
+  rpc GetNotificationRoute(GetNotificationRouteRequest) returns (NotificationRoute) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/notificationRoutes/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Create one routing rule.
+  rpc CreateNotificationRoute(CreateNotificationRouteRequest) returns (NotificationRoute) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/notificationRoutes"
+      body: "route"
+    };
+    option (google.api.method_signature) = "parent,route";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Update one routing rule: a masked update, or a full update of its mutable
+  // fields when the mask is empty.
+  rpc UpdateNotificationRoute(UpdateNotificationRouteRequest) returns (NotificationRoute) {
+    option (google.api.http) = {
+      patch: "/v1/{route.name=workspaces/*/notificationRoutes/*}"
+      body: "route"
+    };
+    option (google.api.method_signature) = "route,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
+
+  // Delete one routing rule.
+  rpc DeleteNotificationRoute(DeleteNotificationRouteRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/notificationRoutes/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
+  }
 }
 
 // NotificationType is what a notification is about. It selects which detail
@@ -489,6 +535,15 @@ message NotificationChannel {
   // Whether a credential is stored. The credential itself is never returned.
   bool secret_set = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Whether the channel ignores the workspace quiet-hours schedule. An on-call
+  // channel that must page during a maintenance window sets it.
+  bool bypass_quiet_hours = 12;
+
+  // Whether the channel receives only events a routing rule selected. A team
+  // channel sets it so it does not also receive every event its subscription
+  // filter would otherwise admit.
+  bool routed_only = 13;
+
   google.protobuf.Timestamp create_time = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
   google.protobuf.Timestamp update_time = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
@@ -670,5 +725,83 @@ message ListNotificationDeliveriesResponse {
 
 message RetryNotificationDeliveryRequest {
   // Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// NotificationRoute is one owner/team routing rule. When an event's in-app
+// audience matches the rule, the rule's channels receive the event even if they
+// are routed_only; a channel that is not routed_only keeps receiving events from
+// its own subscription as before.
+message NotificationRoute {
+  option (google.api.resource) = {
+    type: "metaxisdata/NotificationRoute"
+    pattern: "workspaces/{workspace}/notificationRoutes/{notification_route}"
+  };
+
+  // Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The administrator-facing name, for example "Data platform team".
+  string display_name = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // A disabled route selects no channel and keeps its configuration.
+  bool enabled = 3;
+
+  NotificationRouteMatch match = 4;
+
+  // The channels the route delivers to, as channel resource names. A deleted
+  // channel is ignored; the rule's other channels still receive the event.
+  repeated string channels = 5 [(google.api.resource_reference) = {type: "metaxisdata/NotificationChannel"}];
+
+  google.protobuf.Timestamp create_time = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp update_time = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// NotificationRouteMatch is who and what a route selects. An empty field is a
+// wildcard: a route with no event types, severity floor, owners and groups
+// selects every event.
+message NotificationRouteMatch {
+  // The notification types this route selects. Empty means every type.
+  repeated NotificationType event_types = 1;
+
+  // The lowest severity this route selects. UNSPECIFIED means every severity.
+  NotificationSeverity min_severity = 2;
+
+  // Audience filters, as users/{user} resource names. Empty means any audience.
+  repeated string owners = 3 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // Audience filters, as group emails of IAM groups. Empty means any audience.
+  repeated string groups = 4;
+}
+
+message ListNotificationRoutesRequest {
+  // Format: workspaces/{workspace}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListNotificationRoutesResponse {
+  repeated NotificationRoute notification_routes = 1;
+}
+
+message GetNotificationRouteRequest {
+  // Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateNotificationRouteRequest {
+  // Format: workspaces/{workspace}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  NotificationRoute route = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateNotificationRouteRequest {
+  NotificationRoute route = 1 [(google.api.field_behavior) = REQUIRED];
+
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteNotificationRouteRequest {
+  // Format: workspaces/{workspace}/notificationRoutes/{notification_route}
   string name = 1 [(google.api.field_behavior) = REQUIRED];
 }

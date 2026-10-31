@@ -99,3 +99,33 @@ func TestGetNotificationChannelIDRejectsMalformedNames(t *testing.T) {
 		require.Errorf(t, err, "%q should be rejected", name)
 	}
 }
+
+func TestRandomResourceIDIsAValidNotificationRouteName(t *testing.T) {
+	t.Parallel()
+
+	for i := 0; i < 200; i++ {
+		id, err := RandomResourceID(12)
+		require.NoError(t, err)
+
+		name := "workspaces/ws-1/notificationRoutes/" + id
+		parsed, err := GetNotificationRouteID(name)
+		require.NoErrorf(t, err, "%q should parse", name)
+		require.Equal(t, id, parsed)
+	}
+}
+
+func TestGetNotificationRouteIDRejectsMalformedNames(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"",
+		"notificationRoutes/abc",
+		"workspaces/ws-1/notificationRoutes/",
+		"workspaces/ws-1/notificationRoutes/ABC",
+		"workspaces/ws-1/notificationRoutes/1abc",
+		"workspaces/ws-1/notificationChannels/abc",
+	} {
+		_, err := GetNotificationRouteID(name)
+		require.Errorf(t, err, "%q should be rejected", name)
+	}
+}

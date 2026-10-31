@@ -34,6 +34,8 @@ type fakeStore struct {
 	// Outbound: the channels an event may fan out to and the delivery rows the
 	// enqueue path wrote.
 	channels    []*store.NotificationChannelMessage
+	routes      []*store.NotificationRouteMessage
+	routesErr   error
 	deliveries  []*store.CreateNotificationDeliveryMessage
 	deliveryErr error
 
@@ -101,6 +103,10 @@ func (f *fakeStore) CountNotificationCounts(context.Context, int) (int, int, err
 
 func (f *fakeStore) ListNotificationChannels(context.Context) ([]*store.NotificationChannelMessage, error) {
 	return f.channels, nil
+}
+
+func (f *fakeStore) ListNotificationRoutes(context.Context) ([]*store.NotificationRouteMessage, error) {
+	return f.routes, f.routesErr
 }
 
 func (f *fakeStore) CreateNotificationDeliveries(_ context.Context, creates []*store.CreateNotificationDeliveryMessage) error {

@@ -861,6 +861,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.NotificationRoute"><span class="badge">M</span>NotificationRoute</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationRouteMatch"><span class="badge">M</span>NotificationRouteMatch</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
                 </li>
               
@@ -994,13 +1002,29 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.MaintenanceWindow"><span class="badge">M</span>MaintenanceWindow</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.PasswordRestrictionSetting"><span class="badge">M</span>PasswordRestrictionSetting</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QuietHoursSetting"><span class="badge">M</span>QuietHoursSetting</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QuietWindow"><span class="badge">M</span>QuietWindow</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.store.WorkspaceProfileSetting"><span class="badge">M</span>WorkspaceProfileSetting</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.store.DayOfWeek"><span class="badge">E</span>DayOfWeek</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.store.EmailSMTPAuthentication"><span class="badge">E</span>EmailSMTPAuthentication</a>
@@ -9414,6 +9438,23 @@ means the server default. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>bypass_quiet_hours</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the channel ignores the workspace quiet-hours schedule. An on-call
+channel that must page during a maintenance window sets it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>routed_only</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the channel receives only events a routing rule selected. A team
+channel sets it so it does not also receive every event its subscription
+filter would otherwise admit. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -9561,6 +9602,97 @@ initiator of a sync operation, or the workspace administrators. The email
 channel resolves them to addresses at send time; no other kind reads this
 field. Storing ids rather than addresses keeps a changed or deleted account
 resolving at delivery time. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.NotificationRoute">NotificationRoute</h3>
+        <p>NotificationRoute is one owner/team routing rule, as notification_route.payload.</p><p>It selects extra channels for the events whose in-app audience matches the</p><p>rule, so a team can watch its own rules without receiving the whole workspace.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>match</td>
+                  <td><a href="#metaxisdata.store.NotificationRouteMatch">NotificationRouteMatch</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>channels</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Target channels by notification channel resource id. A channel deleted after
+the route was written is ignored at enqueue time rather than dropping the rule. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.NotificationRouteMatch">NotificationRouteMatch</h3>
+        <p>NotificationRouteMatch is who and what a route selects. An empty field is a</p><p>wildcard, and so is a match with no filters at all: every event concerns the</p><p>rule's audience, so a route with no owner and no group selects every event.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>event_types</td>
+                  <td><a href="#metaxisdata.store.NotificationType">NotificationType</a></td>
+                  <td>repeated</td>
+                  <td><p>The notification types this route selects. Empty means every type. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_severity</td>
+                  <td><a href="#metaxisdata.store.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p>The lowest severity this route selects. UNSPECIFIED means every severity. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owners</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Audience filters, as users/{user} resource names. Empty means any audience. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>groups</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Audience filters, as group emails of IAM groups. Empty means any audience. </p></td>
                 </tr>
               
             </tbody>
@@ -10621,6 +10753,37 @@ are /[a-z0-9-]/. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.MaintenanceWindow">MaintenanceWindow</h3>
+        <p>MaintenanceWindow is one absolute quiet window, for planned maintenance.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>start</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>end</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.PasswordRestrictionSetting">PasswordRestrictionSetting</h3>
         <p></p>
 
@@ -10678,6 +10841,90 @@ are /[a-z0-9-]/. </p></td>
                   <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
                   <td></td>
                   <td><p>password_rotation requires users to reset their password after the duration. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QuietHoursSetting">QuietHoursSetting</h3>
+        <p>QuietHoursSetting is the stored form of metaxisdata.v1.QuietHoursSetting: the</p><p>schedule during which outbound deliveries are held, as SETTING_NAME_QUIET_HOURS.</p><p>Every window is evaluated in timezone on the server's clock; the setting is</p><p>absent (or disabled) when quiet hours are off.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>IANA time zone the windows are evaluated in, for example &#34;Asia/Shanghai&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>windows</td>
+                  <td><a href="#metaxisdata.store.QuietWindow">QuietWindow</a></td>
+                  <td>repeated</td>
+                  <td><p>Recurring weekly windows. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>maintenance_windows</td>
+                  <td><a href="#metaxisdata.store.MaintenanceWindow">MaintenanceWindow</a></td>
+                  <td>repeated</td>
+                  <td><p>One-off absolute windows; a window whose end has passed is inert. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QuietWindow">QuietWindow</h3>
+        <p>QuietWindow is one recurring weekly quiet window.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>days</td>
+                  <td><a href="#metaxisdata.store.DayOfWeek">DayOfWeek</a></td>
+                  <td>repeated</td>
+                  <td><p>The days the window starts on. A window whose end is at or before its start
+crosses midnight into the following day. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>start</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>&#34;HH:MM&#34; in the setting&#39;s time zone. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>end</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>&#34;HH:MM&#34; in the setting&#39;s time zone. </p></td>
                 </tr>
               
             </tbody>
@@ -10796,6 +11043,65 @@ reader resolves defaults rather than trusting the stored value. </p></td>
         
       
 
+      
+        <h3 id="metaxisdata.store.DayOfWeek">DayOfWeek</h3>
+        <p>DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DAY_OF_WEEK_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_MONDAY</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_TUESDAY</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_WEDNESDAY</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_THURSDAY</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_FRIDAY</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_SATURDAY</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DAY_OF_WEEK_SUNDAY</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
       
         <h3 id="metaxisdata.store.EmailSMTPAuthentication">EmailSMTPAuthentication</h3>
         <p>EmailSMTPAuthentication is the login mechanism of the SMTP connection.</p>
@@ -10937,6 +11243,13 @@ first startup and never leaves the process otherwise.</p></td>
                 <td>17</td>
                 <td><p>EMAIL is the workspace SMTP configuration, an EmailSetting payload. It is
 absent until an administrator configures email delivery.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUIET_HOURS</td>
+                <td>18</td>
+                <td><p>QUIET_HOURS is the outbound notification quiet-hours schedule, a
+QuietHoursSetting payload. It is absent when quiet hours are off.</p></td>
               </tr>
             
           </tbody>

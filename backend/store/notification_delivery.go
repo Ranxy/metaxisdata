@@ -18,7 +18,7 @@ import (
 // notificationDeliveryColumns is the column list every notification_delivery
 // read returns, in the order scanNotificationDelivery consumes it.
 const notificationDeliveryColumns = `id, event_id, channel_id, state,
-	attempts, next_attempt_at, last_error, payload, created_at, sent_at`
+	attempts, next_attempt_at, last_error, payload, created_at, sent_at, quiet_deferred`
 
 // NotificationDeliveryMessage is one queued outbound delivery.
 type NotificationDeliveryMessage struct {
@@ -33,6 +33,9 @@ type NotificationDeliveryMessage struct {
 	Payload     *storepb.NotificationDeliveryEvent
 	CreatedAt   time.Time
 	SentAt      *time.Time
+	// QuietDeferred marks a row held by the workspace quiet-hours schedule, so a
+	// schedule change can release it without touching retry backoff rows.
+	QuietDeferred bool
 }
 
 // CreateNotificationDeliveryMessage is one row of an enqueue batch.
@@ -112,7 +115,7 @@ func scanNotificationDelivery(row deliveryScanner) (*NotificationDeliveryMessage
 		payload []byte
 		sentAt  sql.NullTime
 	)
-	if err := row.Scan(
+	dest := []any{
 		&message.ID,
 		&message.EventID,
 		&message.ChannelID,
@@ -123,7 +126,9 @@ func scanNotificationDelivery(row deliveryScanner) (*NotificationDeliveryMessage
 		&payload,
 		&message.CreatedAt,
 		&sentAt,
-	); err != nil {
+		&message.QuietDeferred,
+	}
+	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
 	message.State = storepb.NotificationDeliveryState(state)
@@ -182,19 +187,73 @@ func (s *Store) FinishNotificationDelivery(ctx context.Context, id int64, state 
 	if id <= 0 {
 		return common.Errorf(common.Invalid, "a notification delivery id is required")
 	}
-	if _, err := s.GetDB().ExecContext(ctx, `
+	const query = `
 		UPDATE notification_delivery
 		SET state = $2,
 		    last_error = $3,
 		    next_attempt_at = $4,
-		    sent_at = CASE WHEN $2 = $5 THEN NOW() ELSE NULL END
-		WHERE id = $1`,
+		    sent_at = CASE WHEN $2 = $5 THEN NOW() ELSE NULL END,
+		    quiet_deferred = FALSE
+		WHERE id = $1`
+	_, err := s.GetDB().ExecContext(ctx, query,
 		id, int16(state), lastError, nextAttempt,
 		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT),
-	); err != nil {
+	)
+	if err != nil {
 		return errors.Wrap(err, "failed to finish the notification delivery")
 	}
 	return nil
+}
+
+// deferNotificationDeliveryQuery is the quiet-hours reschedule. It must put the
+// row back to PENDING and give the attempt back, or a deferral would consume the
+// delivery's retry budget.
+const deferNotificationDeliveryQuery = `
+	UPDATE notification_delivery
+	SET state = $2,
+	    attempts = GREATEST(attempts - 1, 0),
+	    next_attempt_at = $3,
+	    quiet_deferred = TRUE
+	WHERE id = $1 AND state = $4`
+
+// DeferNotificationDelivery reschedules a claimed delivery without charging it an
+// attempt: a quiet-hours deferral is scheduling, not a failed post, and the claim
+// already incremented the counter. It leaves the row PENDING with the given next
+// attempt, so the first tick after the window ends picks it up.
+func (s *Store) DeferNotificationDelivery(ctx context.Context, id int64, nextAttempt time.Time) error {
+	if id <= 0 {
+		return common.Errorf(common.Invalid, "a notification delivery id is required")
+	}
+	_, err := s.GetDB().ExecContext(ctx, deferNotificationDeliveryQuery,
+		id,
+		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING),
+		nextAttempt,
+		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING),
+	)
+	if err != nil {
+		return errors.Wrap(err, "failed to defer the notification delivery")
+	}
+	return nil
+}
+
+// ReleaseQuietDeferredDeliveries releases every delivery the quiet-hours schedule
+// is holding, so a schedule change takes effect immediately instead of at the old
+// window's end. It returns how many rows were released.
+func (s *Store) ReleaseQuietDeferredDeliveries(ctx context.Context) (int64, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE notification_delivery
+		SET next_attempt_at = NOW(), quiet_deferred = FALSE
+		WHERE state = $1 AND quiet_deferred`,
+		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING),
+	)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to release the quiet-deferred notification deliveries")
+	}
+	released, err := result.RowsAffected()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count the released notification deliveries")
+	}
+	return released, nil
 }
 
 // GetNotificationDelivery reads one delivery by row id. A nil message means no
@@ -269,7 +328,8 @@ func (s *Store) RequeueNotificationDelivery(ctx context.Context, id int64) (*Not
 		SET state = $2,
 		    attempts = 0,
 		    next_attempt_at = NOW(),
-		    last_error = ''
+		    last_error = '',
+		    quiet_deferred = FALSE
 		WHERE id = $1 AND state = $3
 		RETURNING `+notificationDeliveryColumns,
 		id,
@@ -360,16 +420,19 @@ func (s *Store) ReleaseNotificationDelivery(ctx context.Context, id int64) error
 	if id <= 0 {
 		return common.Errorf(common.Invalid, "a notification delivery id is required")
 	}
-	if _, err := s.GetDB().ExecContext(ctx, `
+	const query = `
 		UPDATE notification_delivery
 		SET state = $2,
 		    attempts = GREATEST(attempts - 1, 0),
-		    next_attempt_at = NOW()
-		WHERE id = $1 AND state = $3`,
+		    next_attempt_at = NOW(),
+		    quiet_deferred = FALSE
+		WHERE id = $1 AND state = $3`
+	_, err := s.GetDB().ExecContext(ctx, query,
 		id,
 		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING),
 		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING),
-	); err != nil {
+	)
+	if err != nil {
 		return errors.Wrap(err, "failed to release the notification delivery")
 	}
 	return nil

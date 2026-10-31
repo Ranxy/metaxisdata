@@ -7,6 +7,7 @@ import "google/api/client.proto";
 import "google/api/field_behavior.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
 import "v1/annotation.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
@@ -84,6 +85,24 @@ service SettingService {
       body: "*"
     };
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+  // Get the workspace quiet-hours schedule for outbound notifications.
+  rpc GetQuietHoursSetting(GetQuietHoursSettingRequest) returns (QuietHoursSetting) {
+    option (google.api.http) = {get: "/v1/settings/quietHours"};
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
+  }
+
+  // Update the workspace quiet-hours schedule. Any update releases the deliveries
+  // the previous schedule was holding, so shortening or disabling it takes effect
+  // immediately; held rows are then re-evaluated by the next dispatcher tick.
+  rpc UpdateQuietHoursSetting(UpdateQuietHoursSettingRequest) returns (QuietHoursSetting) {
+    option (google.api.http) = {
+      patch: "/v1/settings/quietHours"
+      body: "setting"
+    };
+    option (google.api.method_signature) = "setting,update_mask";
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.audit) = true;
   }
 }
 
@@ -288,3 +307,66 @@ message UpdateEmailSettingRequest {
 message SendTestEmailRequest {}
 
 message SendTestEmailResponse {}
+
+// DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+enum DayOfWeek {
+  DAY_OF_WEEK_UNSPECIFIED = 0;
+  DAY_OF_WEEK_MONDAY = 1;
+  DAY_OF_WEEK_TUESDAY = 2;
+  DAY_OF_WEEK_WEDNESDAY = 3;
+  DAY_OF_WEEK_THURSDAY = 4;
+  DAY_OF_WEEK_FRIDAY = 5;
+  DAY_OF_WEEK_SATURDAY = 6;
+  DAY_OF_WEEK_SUNDAY = 7;
+}
+
+// QuietHoursSetting is the workspace schedule during which outbound
+// notifications are held rather than delivered. Held deliveries keep their
+// place and are sent once the window ends; a channel that sets bypass_quiet_hours
+// keeps delivering during the window.
+message QuietHoursSetting {
+  // Whether quiet hours are on. A disabled schedule is kept but selects nothing.
+  bool enabled = 1;
+
+  // The IANA time zone the windows are evaluated in, for example
+  // "Asia/Shanghai". Required while enabled.
+  string timezone = 2;
+
+  // Recurring weekly windows. At least one window or maintenance window is
+  // required while enabled.
+  repeated QuietWindow windows = 3;
+
+  // One-off absolute windows for planned maintenance. A window whose end has
+  // passed is inert and can be removed.
+  repeated MaintenanceWindow maintenance_windows = 4;
+}
+
+// QuietWindow is one recurring weekly quiet window.
+message QuietWindow {
+  // The days the window starts on. A window whose end is at or before its start
+  // crosses midnight into the following day.
+  repeated DayOfWeek days = 1;
+
+  // "HH:MM" in the setting's time zone.
+  string start = 2;
+
+  // "HH:MM" in the setting's time zone.
+  string end = 3;
+}
+
+// MaintenanceWindow is one absolute quiet window, for planned maintenance.
+message MaintenanceWindow {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+message GetQuietHoursSettingRequest {}
+
+message UpdateQuietHoursSettingRequest {
+  // The schedule to update.
+  QuietHoursSetting setting = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The list of fields to update: enabled, timezone, windows or
+  // maintenance_windows.
+  google.protobuf.FieldMask update_mask = 2;
+}

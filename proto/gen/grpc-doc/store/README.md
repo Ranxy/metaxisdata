@@ -175,6 +175,8 @@
     - [NotificationChannelConfig](#metaxisdata-store-NotificationChannelConfig)
     - [NotificationChannelSecret](#metaxisdata-store-NotificationChannelSecret)
     - [NotificationDeliveryEvent](#metaxisdata-store-NotificationDeliveryEvent)
+    - [NotificationRoute](#metaxisdata-store-NotificationRoute)
+    - [NotificationRouteMatch](#metaxisdata-store-NotificationRouteMatch)
     - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
     - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
     - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
@@ -208,9 +210,13 @@
     - [EnvironmentSetting](#metaxisdata-store-EnvironmentSetting)
     - [EnvironmentSetting.Environment](#metaxisdata-store-EnvironmentSetting-Environment)
     - [EnvironmentSetting.Environment.TagsEntry](#metaxisdata-store-EnvironmentSetting-Environment-TagsEntry)
+    - [MaintenanceWindow](#metaxisdata-store-MaintenanceWindow)
     - [PasswordRestrictionSetting](#metaxisdata-store-PasswordRestrictionSetting)
+    - [QuietHoursSetting](#metaxisdata-store-QuietHoursSetting)
+    - [QuietWindow](#metaxisdata-store-QuietWindow)
     - [WorkspaceProfileSetting](#metaxisdata-store-WorkspaceProfileSetting)
   
+    - [DayOfWeek](#metaxisdata-store-DayOfWeek)
     - [EmailSMTPAuthentication](#metaxisdata-store-EmailSMTPAuthentication)
     - [EmailSMTPEncryption](#metaxisdata-store-EmailSMTPEncryption)
     - [SettingName](#metaxisdata-store-SettingName)
@@ -3210,6 +3216,8 @@ read of the channel returns everything except the credential.
 | min_severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  | The lowest severity this channel delivers. UNSPECIFIED means every severity. |
 | language | [string](#string) |  | BCP-47 tag the outbound text is written in, for example &#34;zh-CN&#34;. Empty means the server default. |
 | config | [NotificationChannelConfig](#metaxisdata-store-NotificationChannelConfig) |  |  |
+| bypass_quiet_hours | [bool](#bool) |  | Whether the channel ignores the workspace quiet-hours schedule. An on-call channel that must page during a maintenance window sets it. |
+| routed_only | [bool](#bool) |  | Whether the channel receives only events a routing rule selected. A team channel sets it so it does not also receive every event its subscription filter would otherwise admit. |
 
 
 
@@ -3269,6 +3277,46 @@ and is what the dispatcher renders and posts.
 | openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
 | audience_user_ids | [int32](#int32) | repeated | The user ids the event&#39;s in-app message addressed: the rule&#39;s owner, the initiator of a sync operation, or the workspace administrators. The email channel resolves them to addresses at send time; no other kind reads this field. Storing ids rather than addresses keeps a changed or deleted account resolving at delivery time. |
+
+
+
+
+
+
+<a name="metaxisdata-store-NotificationRoute"></a>
+
+### NotificationRoute
+NotificationRoute is one owner/team routing rule, as notification_route.payload.
+It selects extra channels for the events whose in-app audience matches the
+rule, so a team can watch its own rules without receiving the whole workspace.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| display_name | [string](#string) |  |  |
+| enabled | [bool](#bool) |  |  |
+| match | [NotificationRouteMatch](#metaxisdata-store-NotificationRouteMatch) |  |  |
+| channels | [string](#string) | repeated | Target channels by notification channel resource id. A channel deleted after the route was written is ignored at enqueue time rather than dropping the rule. |
+
+
+
+
+
+
+<a name="metaxisdata-store-NotificationRouteMatch"></a>
+
+### NotificationRouteMatch
+NotificationRouteMatch is who and what a route selects. An empty field is a
+wildcard, and so is a match with no filters at all: every event concerns the
+rule&#39;s audience, so a route with no owner and no group selects every event.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| event_types | [NotificationType](#metaxisdata-store-NotificationType) | repeated | The notification types this route selects. Empty means every type. |
+| min_severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  | The lowest severity this route selects. UNSPECIFIED means every severity. |
+| owners | [string](#string) | repeated | Audience filters, as users/{user} resource names. Empty means any audience. |
+| groups | [string](#string) | repeated | Audience filters, as group emails of IAM groups. Empty means any audience. |
 
 
 
@@ -3738,6 +3786,22 @@ reader ever sees the plaintext.
 
 
 
+<a name="metaxisdata-store-MaintenanceWindow"></a>
+
+### MaintenanceWindow
+MaintenanceWindow is one absolute quiet window, for planned maintenance.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-PasswordRestrictionSetting"></a>
 
 ### PasswordRestrictionSetting
@@ -3753,6 +3817,44 @@ reader ever sees the plaintext.
 | require_special_character | [bool](#bool) |  | require_uppercase_letter requires the password must contains at least one special character. |
 | require_reset_password_for_first_login | [bool](#bool) |  | require_reset_password_for_first_login requires users to reset their password after the 1st login. |
 | password_rotation | [google.protobuf.Duration](#google-protobuf-Duration) |  | password_rotation requires users to reset their password after the duration. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QuietHoursSetting"></a>
+
+### QuietHoursSetting
+QuietHoursSetting is the stored form of metaxisdata.v1.QuietHoursSetting: the
+schedule during which outbound deliveries are held, as SETTING_NAME_QUIET_HOURS.
+Every window is evaluated in timezone on the server&#39;s clock; the setting is
+absent (or disabled) when quiet hours are off.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  |  |
+| timezone | [string](#string) |  | IANA time zone the windows are evaluated in, for example &#34;Asia/Shanghai&#34;. |
+| windows | [QuietWindow](#metaxisdata-store-QuietWindow) | repeated | Recurring weekly windows. |
+| maintenance_windows | [MaintenanceWindow](#metaxisdata-store-MaintenanceWindow) | repeated | One-off absolute windows; a window whose end has passed is inert. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QuietWindow"></a>
+
+### QuietWindow
+QuietWindow is one recurring weekly quiet window.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| days | [DayOfWeek](#metaxisdata-store-DayOfWeek) | repeated | The days the window starts on. A window whose end is at or before its start crosses midnight into the following day. |
+| start | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
+| end | [string](#string) |  | &#34;HH:MM&#34; in the setting&#39;s time zone. |
 
 
 
@@ -3787,6 +3889,24 @@ Empty (the default) turns the feature off everywhere. The address claim is mutab
 
 
  
+
+
+<a name="metaxisdata-store-DayOfWeek"></a>
+
+### DayOfWeek
+DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DAY_OF_WEEK_UNSPECIFIED | 0 |  |
+| DAY_OF_WEEK_MONDAY | 1 |  |
+| DAY_OF_WEEK_TUESDAY | 2 |  |
+| DAY_OF_WEEK_WEDNESDAY | 3 |  |
+| DAY_OF_WEEK_THURSDAY | 4 |  |
+| DAY_OF_WEEK_FRIDAY | 5 |  |
+| DAY_OF_WEEK_SATURDAY | 6 |  |
+| DAY_OF_WEEK_SUNDAY | 7 |  |
+
 
 
 <a name="metaxisdata-store-EmailSMTPAuthentication"></a>
@@ -3836,6 +3956,7 @@ leftovers keep their numbers reserved.
 | ENVIRONMENT | 15 |  |
 | ENCRYPTION_KEY | 16 | ENCRYPTION_KEY is the deployment&#39;s credential data key, in the bare base64 of 32 random bytes when no key-encryption key is configured, or a v1 ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on first startup and never leaves the process otherwise. |
 | EMAIL | 17 | EMAIL is the workspace SMTP configuration, an EmailSetting payload. It is absent until an administrator configures email delivery. |
+| QUIET_HOURS | 18 | QUIET_HOURS is the outbound notification quiet-hours schedule, a QuietHoursSetting payload. It is absent when quiet hours are off. |
 
 
  

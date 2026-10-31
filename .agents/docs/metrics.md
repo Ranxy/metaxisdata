@@ -481,7 +481,7 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_notification_deliveries_attempted_total` | counter | `outcome=sent\|failed\|dead` | 每次认领的投递结束（`attempt`/`finishFailure`） | 一次事件 × 渠道的投递尝试结果；`dead` 含配置错误与 6 次耗尽 | P0 |
+| `metaxisdata_notification_deliveries_attempted_total` | counter | `outcome=sent\|failed\|dead\|deferred` | 每次认领的投递结束（`attempt`/`finishFailure`） | 一次事件 × 渠道的投递尝试结果；`dead` 含配置错误与 6 次耗尽；`deferred` 是静默窗口推迟（不算 attempt） | P0 |
 | `metaxisdata_notification_delivery_duration_seconds` | histogram | — | `receiver.Post` 前后 | 单次出站投递耗时（HTTP 或 SMTP，不含认领/退避） | P0 |
 
 队列深度 gauge 尚未实现（需要 `COUNT(*) WHERE state IN (1,2)`），是 P1。
