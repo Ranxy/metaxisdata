@@ -362,7 +362,6 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   type LocationQuery,
-  type LocationQueryRaw,
   RouterLink,
   useRoute,
   useRouter,
@@ -394,6 +393,7 @@ import {
 } from "@/components/ui/table";
 import { useAsync } from "@/composables/useAsync";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useUrlFilters } from "@/composables/useUrlFilters";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityStatus,
@@ -411,6 +411,7 @@ import {
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 import { metaTypeSingularLabel } from "@/utils/metaType";
+import { queryString, readFlag } from "@/utils/queryFilters";
 
 /**
  * The quality directory: every target with rules, one row per table or view.
@@ -497,21 +498,14 @@ const toggleOptions = computed<Array<{ key: TargetToggle; label: string }>>(
   ]
 );
 
-function queryString(value: unknown): string {
-  if (Array.isArray(value)) {
-    return String(value[0] ?? "");
-  }
-  return value === undefined || value === null ? "" : String(value);
-}
-
 /** The filters a URL carries: reload, shared link and back/forward. */
-function filtersFromQuery(query: LocationQuery): TargetFilters {
+function parseFilters(query: LocationQuery): TargetFilters {
   const sort = queryString(query.sort);
   return {
     search: queryString(query.q).trim(),
-    failing: queryString(query.failing) === "1",
-    issues: queryString(query.issues) === "1",
-    drafts: queryString(query.drafts) === "1",
+    failing: readFlag(query.failing),
+    issues: readFlag(query.issues),
+    drafts: readFlag(query.drafts),
     order:
       sort === "name" || sort === "rules" || sort === "lastRun"
         ? sort
@@ -520,34 +514,24 @@ function filtersFromQuery(query: LocationQuery): TargetFilters {
 }
 
 /** Only non-default values are written, so the URL stays readable. */
-function queryFromFilters(filters: TargetFilters): Record<string, string> {
-  const query: Record<string, string> = {};
+function serializeFilters(filters: TargetFilters): Record<string, string> {
+  const owned: Record<string, string> = {};
   if (filters.search) {
-    query.q = filters.search;
+    owned.q = filters.search;
   }
   if (filters.failing) {
-    query.failing = "1";
+    owned.failing = "1";
   }
   if (filters.issues) {
-    query.issues = "1";
+    owned.issues = "1";
   }
   if (filters.drafts) {
-    query.drafts = "1";
+    owned.drafts = "1";
   }
   if (filters.order !== "attention") {
-    query.sort = filters.order;
+    owned.sort = filters.order;
   }
-  return query;
-}
-
-function sameFilters(a: TargetFilters, b: TargetFilters): boolean {
-  return (
-    a.search === b.search &&
-    a.failing === b.failing &&
-    a.issues === b.issues &&
-    a.drafts === b.drafts &&
-    a.order === b.order
-  );
+  return owned;
 }
 
 /** The filters the controls currently express. */
@@ -561,9 +545,15 @@ function currentFilters(): TargetFilters {
   };
 }
 
+const urlFilters = useUrlFilters<TargetFilters>({
+  keys: FILTER_QUERY_KEYS,
+  parse: parseFilters,
+  serialize: serializeFilters,
+});
+
 // Read the URL before the first request: the first read already carries the
 // filters, so a reloaded or shared link never flashes the unfiltered directory.
-const initialFilters = filtersFromQuery(route.query);
+const initialFilters = urlFilters.read();
 search.value = initialFilters.search;
 toggles.failing = initialFilters.failing;
 toggles.issues = initialFilters.issues;
@@ -617,38 +607,9 @@ const hasActiveFilters = computed(
     toggles.drafts
 );
 
-/**
- * Write exactly the filters into the URL, preserving any parameter this page
- * does not own (the overview's `new=1`, a future deep link). `replace` keeps
- * history clean: narrowing a list is not a navigation the back button should
- * walk.
- */
-function writeFiltersToUrl(filters: TargetFilters) {
-  const next: LocationQueryRaw = { ...route.query };
-  for (const key of FILTER_QUERY_KEYS) {
-    delete next[key];
-  }
-  Object.assign(next, queryFromFilters(filters));
-  if (sameQuery(next, route.query)) {
-    return;
-  }
-  void router.replace({ query: next });
-}
-
-/** Whether a query about to be written already reads like the current one. */
-function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
-  const keys = Object.keys(next);
-  if (keys.length !== Object.keys(current).length) {
-    return false;
-  }
-  return keys.every(
-    (key) => queryString(next[key]) === queryString(current[key])
-  );
-}
-
 /** Push the current filters to the URL and let the server answer them. */
 function applyFilters() {
-  writeFiltersToUrl(currentFilters());
+  urlFilters.write(currentFilters());
   void load();
 }
 
@@ -657,7 +618,7 @@ function toggle(key: TargetToggle) {
   if (key === "failing") {
     // Client-side only: the API filters one status at a time, so a target that
     // failed vs. one that errored would otherwise need two requests.
-    writeFiltersToUrl(currentFilters());
+    urlFilters.write(currentFilters());
     return;
   }
   applyFilters();
@@ -683,7 +644,7 @@ function clearFilters() {
 const debouncedSearch = useDebounceFn(() => {
   // An external navigation already adopted this query; do not answer it with
   // a second request.
-  if (sameFilters(currentFilters(), filtersFromQuery(route.query))) {
+  if (urlFilters.isCurrent(currentFilters())) {
     return;
   }
   applyFilters();
@@ -692,23 +653,19 @@ const debouncedSearch = useDebounceFn(() => {
 watch(search, () => void debouncedSearch());
 
 // Back/forward or a pasted URL changes the query from outside; adopt it and let
-// the server answer. The replace this page itself writes matches the controls,
+// the server answer. The replace this composable writes matches the controls,
 // so it is ignored and cannot loop.
-watch(
-  () => route.query,
-  (query) => {
-    const next = filtersFromQuery(query);
-    if (sameFilters(next, currentFilters())) {
-      return;
-    }
-    search.value = next.search;
-    toggles.failing = next.failing;
-    toggles.issues = next.issues;
-    toggles.drafts = next.drafts;
-    order.value = next.order;
-    void load();
+urlFilters.watchExternal((next) => {
+  if (urlFilters.isCurrent(currentFilters())) {
+    return;
   }
-);
+  search.value = next.search;
+  toggles.failing = next.failing;
+  toggles.issues = next.issues;
+  toggles.drafts = next.drafts;
+  order.value = next.order;
+  void load();
+});
 
 /** A target's workspace: the GUID as repeated path segments plus its meta type. */
 function workspaceRoute(summary: QualityTargetSummary) {

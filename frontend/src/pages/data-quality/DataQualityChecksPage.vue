@@ -490,13 +490,7 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  type LocationQuery,
-  type LocationQueryRaw,
-  RouterLink,
-  useRoute,
-  useRouter,
-} from "vue-router";
+import { type LocationQuery, RouterLink, useRouter } from "vue-router";
 import {
   listQualityRules,
   qualityRuleID,
@@ -530,6 +524,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useUrlFilters } from "@/composables/useUrlFilters";
 import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
@@ -554,8 +549,15 @@ import {
   targetScopeLabel,
 } from "@/utils/dataQuality";
 import { EDITABLE_RULE_TYPES } from "@/utils/dataQualityForm";
+import { scopeFromQuery, writeScopeToQuery } from "@/utils/dataQualityTarget";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import {
+  enumFilterValue,
+  enumFromFilter,
+  queryString,
+  readFlag,
+} from "@/utils/queryFilters";
 
 /**
  * The cross-target check directory: every check the workspace holds, for audit
@@ -565,7 +567,6 @@ import { guidToRouteParams } from "@/utils/guid";
  */
 
 const { t, locale } = useI18n();
-const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 const authStore = useAuthStore();
@@ -713,115 +714,46 @@ interface RuleFilters {
   state: string;
 }
 
-function queryString(value: unknown): string {
-  if (Array.isArray(value)) {
-    return String(value[0] ?? "");
-  }
-  return value === undefined || value === null ? "" : String(value);
-}
-
-/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
-function enumFilter(value: unknown, members: readonly number[]): string {
-  const raw = queryString(value).trim();
-  if (!raw || raw === "-") {
-    return "-";
-  }
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
-    ? String(parsed)
-    : "-";
-}
-
-/** The target-scope filter from the URL; no instance means no scope. */
-function scopeFromQuery(query: LocationQuery): QualityTargetScope | undefined {
-  const instance = queryString(query.instance).trim();
-  if (!instance) {
-    return undefined;
-  }
-  const database = queryString(query.database).trim();
-  const schema = queryString(query.schema).trim();
-  const table = queryString(query.table).trim();
-  return {
-    instance,
-    database,
-    schema,
-    table,
-    // The picker's label is "instance title > path"; a URL carries ids, so the
-    // id stands in until the reader picks the scope again.
-    label: [instance, database, schema, table].filter(Boolean).join(" > "),
-  };
-}
-
 /** The filters a URL carries: reload, shared link and back/forward. */
-function filtersFromQuery(query: LocationQuery): RuleFilters {
+function parseFilters(query: LocationQuery): RuleFilters {
   const owner = queryString(query.owner).trim();
   return {
     search: queryString(query.q).trim(),
     scope: scopeFromQuery(query),
     // A named member wins: the server rejects it combined with the flag.
-    owner:
-      owner ||
-      (queryString(query.ownerUnassigned) === "1" ? UNASSIGNED_OWNER : ""),
-    dimension: enumFilter(query.dimension, DIMENSION_FILTER_VALUES),
-    ruleType: enumFilter(query.ruleType, RULE_TYPE_FILTER_VALUES),
-    severity: enumFilter(query.severity, SEVERITY_FILTER_VALUES),
-    state: enumFilter(query.state, STATE_FILTER_VALUES),
+    owner: owner || (readFlag(query.ownerUnassigned) ? UNASSIGNED_OWNER : ""),
+    dimension: enumFilterValue(query.dimension, DIMENSION_FILTER_VALUES),
+    ruleType: enumFilterValue(query.ruleType, RULE_TYPE_FILTER_VALUES),
+    severity: enumFilterValue(query.severity, SEVERITY_FILTER_VALUES),
+    state: enumFilterValue(query.state, STATE_FILTER_VALUES),
   };
 }
 
 /** Only non-default values are written, so the URL stays readable. */
-function queryFromFilters(filters: RuleFilters): Record<string, string> {
-  const query: Record<string, string> = {};
+function serializeFilters(filters: RuleFilters): Record<string, string> {
+  const owned: Record<string, string> = {};
   if (filters.search) {
-    query.q = filters.search;
+    owned.q = filters.search;
   }
-  if (filters.scope?.instance) {
-    query.instance = filters.scope.instance;
-    if (filters.scope.database) {
-      query.database = filters.scope.database;
-    }
-    if (filters.scope.schema) {
-      query.schema = filters.scope.schema;
-    }
-    if (filters.scope.table) {
-      query.table = filters.scope.table;
-    }
-  }
+  writeScopeToQuery(owned, filters.scope);
   if (filters.owner === UNASSIGNED_OWNER) {
-    query.ownerUnassigned = "1";
+    owned.ownerUnassigned = "1";
   } else if (filters.owner) {
-    query.owner = filters.owner;
+    owned.owner = filters.owner;
   }
   if (filters.dimension !== "-") {
-    query.dimension = filters.dimension;
+    owned.dimension = filters.dimension;
   }
   if (filters.ruleType !== "-") {
-    query.ruleType = filters.ruleType;
+    owned.ruleType = filters.ruleType;
   }
   if (filters.severity !== "-") {
-    query.severity = filters.severity;
+    owned.severity = filters.severity;
   }
   if (filters.state !== "-") {
-    query.state = filters.state;
+    owned.state = filters.state;
   }
-  return query;
-}
-
-function sameFilters(a: RuleFilters, b: RuleFilters): boolean {
-  const aScope = a.scope;
-  const bScope = b.scope;
-  return (
-    a.search === b.search &&
-    a.owner === b.owner &&
-    a.dimension === b.dimension &&
-    a.ruleType === b.ruleType &&
-    a.severity === b.severity &&
-    a.state === b.state &&
-    (aScope?.instance ?? "") === (bScope?.instance ?? "") &&
-    (aScope?.database ?? "") === (bScope?.database ?? "") &&
-    (aScope?.schema ?? "") === (bScope?.schema ?? "") &&
-    (aScope?.table ?? "") === (bScope?.table ?? "")
-  );
+  return owned;
 }
 
 /** The filters the request currently applies. */
@@ -837,10 +769,16 @@ function appliedFilters(): RuleFilters {
   };
 }
 
+const urlFilters = useUrlFilters<RuleFilters>({
+  keys: FILTER_QUERY_KEYS,
+  parse: parseFilters,
+  serialize: serializeFilters,
+});
+
 // Read the URL before the first request: a reloaded or shared link queries what
 // it carries instead of flashing the unfiltered directory first. Both the
 // controls and the applied set start there, so Apply has nothing pending.
-const initialFilters = filtersFromQuery(route.query);
+const initialFilters = urlFilters.read();
 search.value = initialFilters.search;
 dimension.value = initialFilters.dimension;
 ruleType.value = initialFilters.ruleType;
@@ -902,72 +840,29 @@ const {
 // the walk at the first page.
 watch(pageSize, () => void resetPage());
 
-/**
- * Write exactly the applied filters into the URL, preserving any parameter this
- * page does not own. `replace` keeps history clean: applying a filter is not a
- * navigation the back button should walk.
- */
-function writeFiltersToUrl(filters: RuleFilters) {
-  const next: LocationQueryRaw = { ...route.query };
-  for (const key of FILTER_QUERY_KEYS) {
-    delete next[key];
-  }
-  Object.assign(next, queryFromFilters(filters));
-  if (sameQuery(next, route.query)) {
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts those filters. The replace this composable performs matches the
+// applied set, so it is not adopted and cannot cause a second request.
+urlFilters.watchExternal((next) => {
+  if (urlFilters.isCurrent(appliedFilters())) {
     return;
   }
-  void router.replace({ query: next });
-}
-
-/** Whether a query about to be written already reads like the current one. */
-function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
-  const keys = Object.keys(next);
-  if (keys.length !== Object.keys(current).length) {
-    return false;
-  }
-  return keys.every(
-    (key) => queryString(next[key]) === queryString(current[key])
-  );
-}
-
-// A reload, a shared link or back/forward changes the query from outside; the
-// page adopts those filters. The replace this page itself performs writes
-// exactly the applied filters, so the watcher recognizes it and stops — no loop,
-// no second request.
-watch(
-  () => route.query,
-  (query) => {
-    const next = filtersFromQuery(query);
-    if (sameFilters(next, appliedFilters())) {
-      return;
-    }
-    search.value = next.search;
-    dimension.value = next.dimension;
-    ruleType.value = next.ruleType;
-    severity.value = next.severity;
-    state.value = next.state;
-    scope.value = next.scope ? { ...next.scope } : undefined;
-    owner.value = next.owner;
-    appliedSearch.value = next.search;
-    appliedDimension.value = next.dimension;
-    appliedRuleType.value = next.ruleType;
-    appliedSeverity.value = next.severity;
-    appliedState.value = next.state;
-    appliedScope.value = next.scope ? { ...next.scope } : undefined;
-    appliedOwner.value = next.owner;
-    void resetPage();
-  }
-);
-
-/**
- * The Select's value as an enum member. `-` and any value the enum no longer
- * has mean "no filter", so a stale URL or a hand-edited state cannot break the
- * request.
- */
-function enumFromFilter<T extends number>(value: string, members: T[]): T {
-  const parsed = Number(value);
-  return members.includes(parsed as T) ? (parsed as T) : members[0];
-}
+  search.value = next.search;
+  dimension.value = next.dimension;
+  ruleType.value = next.ruleType;
+  severity.value = next.severity;
+  state.value = next.state;
+  scope.value = next.scope ? { ...next.scope } : undefined;
+  owner.value = next.owner;
+  appliedSearch.value = next.search;
+  appliedDimension.value = next.dimension;
+  appliedRuleType.value = next.ruleType;
+  appliedSeverity.value = next.severity;
+  appliedState.value = next.state;
+  appliedScope.value = next.scope ? { ...next.scope } : undefined;
+  appliedOwner.value = next.owner;
+  void resetPage();
+});
 
 function applyFilters() {
   appliedSearch.value = search.value.trim();
@@ -979,7 +874,7 @@ function applyFilters() {
   appliedOwner.value = owner.value;
   // The URL is written first: the watcher then sees the applied set already
   // agrees with it, so adopting the route costs no second request.
-  writeFiltersToUrl(appliedFilters());
+  urlFilters.write(appliedFilters());
   void resetPage();
 }
 

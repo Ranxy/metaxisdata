@@ -620,6 +620,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useUrlFilters } from "@/composables/useUrlFilters";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
@@ -660,9 +661,17 @@ import {
   suggestionTargetLabel,
   suggestionToEditorPrefill,
 } from "@/utils/dataQualitySuggestion";
+import { scopeFromQuery, writeScopeToQuery } from "@/utils/dataQualityTarget";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 import { metaTypeSingularLabel } from "@/utils/metaType";
+import {
+  enumFilterValue,
+  enumFromFilter,
+  type QueryValue,
+  queryString,
+  readFlag,
+} from "@/utils/queryFilters";
 
 /**
  * The suggestion center: model rule drafts and semantic labels waiting for a
@@ -770,32 +779,13 @@ interface SuggestionFilters {
   scope: QualityTargetScope | undefined;
 }
 
-function queryString(value: unknown): string {
-  if (Array.isArray(value)) {
-    return String(value[0] ?? "");
-  }
-  return value === undefined || value === null ? "" : String(value);
-}
-
-/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
-function enumFilter(value: unknown, members: readonly number[]): string {
-  const raw = queryString(value).trim();
-  if (!raw || raw === "-") {
-    return "-";
-  }
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
-    ? String(parsed)
-    : "-";
-}
-
 /**
  * The status filter travels differently from the others: absent means the
  * page's default pending queue, and `0` (the API's UNSPECIFIED) means every
  * status, which the controls show as "-" and which must be written because it is
  * not the default.
  */
-function statusFromQuery(value: unknown): string {
+function statusFromQuery(value: QueryValue | QueryValue[]): string {
   const raw = queryString(value).trim();
   if (!raw) {
     return PENDING;
@@ -807,75 +797,30 @@ function statusFromQuery(value: unknown): string {
   return STATUS_FILTER_VALUES.includes(parsed) ? String(parsed) : PENDING;
 }
 
-/** The target-scope filter from the URL; no instance means no scope. */
-function scopeFromQuery(query: LocationQuery): QualityTargetScope | undefined {
-  const instance = queryString(query.instance).trim();
-  if (!instance) {
-    return undefined;
-  }
-  const database = queryString(query.database).trim();
-  const schema = queryString(query.schema).trim();
-  const table = queryString(query.table).trim();
-  return {
-    instance,
-    database,
-    schema,
-    table,
-    // The picker's label is "instance title > path"; a URL carries ids, so the
-    // id stands in until the reader picks the scope again.
-    label: [instance, database, schema, table].filter(Boolean).join(" > "),
-  };
-}
-
 /** The filters a URL carries: reload, shared link and back/forward. */
-function filtersFromQuery(query: LocationQuery): SuggestionFilters {
+function parseFilters(query: LocationQuery): SuggestionFilters {
   return {
     status: statusFromQuery(query.status),
-    kind: enumFilter(query.kind, KIND_FILTER_VALUES),
-    source: enumFilter(query.source, SOURCE_FILTER_VALUES),
+    kind: enumFilterValue(query.kind, KIND_FILTER_VALUES),
+    source: enumFilterValue(query.source, SOURCE_FILTER_VALUES),
     scope: scopeFromQuery(query),
   };
 }
 
 /** Only non-default values are written, so the URL stays readable. */
-function queryFromFilters(filters: SuggestionFilters): Record<string, string> {
-  const query: Record<string, string> = {};
+function serializeFilters(filters: SuggestionFilters): Record<string, string> {
+  const owned: Record<string, string> = {};
   if (filters.status !== PENDING) {
-    query.status = filters.status === "-" ? "0" : filters.status;
+    owned.status = filters.status === "-" ? "0" : filters.status;
   }
   if (filters.kind !== "-") {
-    query.kind = filters.kind;
+    owned.kind = filters.kind;
   }
   if (filters.source !== "-") {
-    query.source = filters.source;
+    owned.source = filters.source;
   }
-  if (filters.scope?.instance) {
-    query.instance = filters.scope.instance;
-    if (filters.scope.database) {
-      query.database = filters.scope.database;
-    }
-    if (filters.scope.schema) {
-      query.schema = filters.scope.schema;
-    }
-    if (filters.scope.table) {
-      query.table = filters.scope.table;
-    }
-  }
-  return query;
-}
-
-function sameFilters(a: SuggestionFilters, b: SuggestionFilters): boolean {
-  const aScope = a.scope;
-  const bScope = b.scope;
-  return (
-    a.status === b.status &&
-    a.kind === b.kind &&
-    a.source === b.source &&
-    (aScope?.instance ?? "") === (bScope?.instance ?? "") &&
-    (aScope?.database ?? "") === (bScope?.database ?? "") &&
-    (aScope?.schema ?? "") === (bScope?.schema ?? "") &&
-    (aScope?.table ?? "") === (bScope?.table ?? "")
-  );
+  writeScopeToQuery(owned, filters.scope);
+  return owned;
 }
 
 /** The filters the request currently applies. */
@@ -888,10 +833,16 @@ function appliedFilters(): SuggestionFilters {
   };
 }
 
+const urlFilters = useUrlFilters<SuggestionFilters>({
+  keys: FILTER_QUERY_KEYS,
+  parse: parseFilters,
+  serialize: serializeFilters,
+});
+
 // Read the URL before the first request: a reloaded or shared link queries what
 // it carries instead of flashing the default pending queue first. `?draft=1` is
 // not a filter — it stays in the query untouched.
-const initialFilters = filtersFromQuery(route.query);
+const initialFilters = urlFilters.read();
 const status = ref(initialFilters.status);
 const kind = ref(initialFilters.kind);
 const source = ref(initialFilters.source);
@@ -1055,62 +1006,30 @@ const emptyDescription = computed(() => {
 
 watch(pageSize, () => void resetPage());
 
-/**
- * Write exactly the applied filters into the URL. The query is edited rather
- * than rebuilt, so `?draft=1` and any other parameter this page does not own
- * survive an Apply or a Clear. `replace` keeps history clean.
- */
-function writeFiltersToUrl(filters: SuggestionFilters) {
-  const next: LocationQueryRaw = { ...route.query };
-  for (const key of FILTER_QUERY_KEYS) {
-    delete next[key];
-  }
-  Object.assign(next, queryFromFilters(filters));
-  if (sameQuery(next, route.query)) {
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts the filters it names. The replace this composable performs matches
+// the applied set, so it is not adopted and cannot loop. `draft` is not a
+// filter and never reaches here.
+urlFilters.watchExternal((next) => {
+  if (urlFilters.isCurrent(appliedFilters())) {
     return;
   }
-  void router.replace({ query: next });
-}
-
-/** Whether a query about to be written already reads like the current one. */
-function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
-  const keys = Object.keys(next);
-  if (keys.length !== Object.keys(current).length) {
-    return false;
-  }
-  return keys.every(
-    (key) => queryString(next[key]) === queryString(current[key])
-  );
-}
-
-// A reload, a shared link or back/forward changes the query from outside; the
-// page adopts the filters it names. The replace this page itself performs
-// writes exactly the applied filters, so the watcher recognizes it and stops —
-// no loop, no second request. `draft` is not a filter and never reaches here.
-watch(
-  () => route.query,
-  (query) => {
-    const next = filtersFromQuery(query);
-    if (sameFilters(next, appliedFilters())) {
-      return;
-    }
-    status.value = next.status;
-    kind.value = next.kind;
-    source.value = next.source;
-    scope.value = next.scope ? { ...next.scope } : undefined;
-    appliedStatus.value = next.status;
-    appliedKind.value = next.kind;
-    appliedSource.value = next.source;
-    appliedScope.value = next.scope ? { ...next.scope } : undefined;
-    selectedNames.value = [];
-    void resetPage();
-  }
-);
+  status.value = next.status;
+  kind.value = next.kind;
+  source.value = next.source;
+  scope.value = next.scope ? { ...next.scope } : undefined;
+  appliedStatus.value = next.status;
+  appliedKind.value = next.kind;
+  appliedSource.value = next.source;
+  appliedScope.value = next.scope ? { ...next.scope } : undefined;
+  selectedNames.value = [];
+  void resetPage();
+});
 
 // Closing the workbench is the one action that retires its deep link: the query
 // keeps every filter, and only `draft` goes.
 watch(workbenchOpen, (open) => {
-  if (open || queryString(route.query.draft) !== "1") {
+  if (open || !readFlag(route.query.draft)) {
     return;
   }
   const next: LocationQueryRaw = { ...route.query };
@@ -1127,11 +1046,6 @@ watch(suggestions, () => {
   );
   selectedNames.value = selectedNames.value.filter((name) => pending.has(name));
 });
-
-function enumFromFilter<T extends number>(value: string, members: T[]): T {
-  const parsed = Number(value);
-  return members.includes(parsed as T) ? (parsed as T) : members[0];
-}
 
 function scopeFilters(selection: QualityTargetScope | undefined) {
   if (!selection) {
@@ -1153,7 +1067,7 @@ function applyFilters() {
   selectedNames.value = [];
   // The URL is written first: the watcher then sees the applied set already
   // agrees with it, so adopting the route costs no second request.
-  writeFiltersToUrl(appliedFilters());
+  urlFilters.write(appliedFilters());
   void resetPage();
 }
 
@@ -1188,7 +1102,7 @@ function removeFilter(key: string) {
       return;
   }
   selectedNames.value = [];
-  writeFiltersToUrl(appliedFilters());
+  urlFilters.write(appliedFilters());
   void resetPage();
 }
 
@@ -1196,7 +1110,7 @@ function showAllStatuses() {
   status.value = "-";
   appliedStatus.value = "-";
   selectedNames.value = [];
-  writeFiltersToUrl(appliedFilters());
+  urlFilters.write(appliedFilters());
   void resetPage();
 }
 

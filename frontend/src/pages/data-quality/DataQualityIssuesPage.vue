@@ -256,10 +256,8 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   type LocationQuery,
-  type LocationQueryRaw,
   type RouteLocationRaw,
   RouterLink,
-  useRoute,
   useRouter,
 } from "vue-router";
 import {
@@ -292,6 +290,7 @@ import {
 } from "@/components/ui/table";
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { usePagedFetch } from "@/composables/usePagedFetch";
+import { useUrlFilters } from "@/composables/useUrlFilters";
 import {
   type QualityIssue,
   QualityIssueStatus,
@@ -309,6 +308,7 @@ import {
 } from "@/utils/dataQuality";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
+import { enumFilterValue, enumFromFilter } from "@/utils/queryFilters";
 
 /**
  * The issue directory. An issue is the persistent problem behind a rule's
@@ -318,7 +318,6 @@ import { guidToRouteParams } from "@/utils/guid";
  */
 
 const { t, locale } = useI18n();
-const route = useRoute();
 const router = useRouter();
 const { handleError } = useErrorHandler();
 
@@ -371,47 +370,24 @@ interface IssueFilters {
   severity: string;
 }
 
-function queryString(value: unknown): string {
-  if (Array.isArray(value)) {
-    return String(value[0] ?? "");
-  }
-  return value === undefined || value === null ? "" : String(value);
-}
-
-/** A numeric enum filter from the URL; anything the enum lacks reads as "any". */
-function enumFilter(value: unknown, members: readonly number[]): string {
-  const raw = queryString(value).trim();
-  if (!raw || raw === "-") {
-    return "-";
-  }
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 && members.includes(parsed)
-    ? String(parsed)
-    : "-";
-}
-
 /** The filters a URL carries: reload, shared link and back/forward. */
-function filtersFromQuery(query: LocationQuery): IssueFilters {
+function parseFilters(query: LocationQuery): IssueFilters {
   return {
-    status: enumFilter(query.status, STATUS_FILTER_VALUES),
-    severity: enumFilter(query.severity, SEVERITY_FILTER_VALUES),
+    status: enumFilterValue(query.status, STATUS_FILTER_VALUES),
+    severity: enumFilterValue(query.severity, SEVERITY_FILTER_VALUES),
   };
 }
 
 /** Only non-default values are written, so the URL stays readable. */
-function queryFromFilters(filters: IssueFilters): Record<string, string> {
-  const query: Record<string, string> = {};
+function serializeFilters(filters: IssueFilters): Record<string, string> {
+  const owned: Record<string, string> = {};
   if (filters.status !== "-") {
-    query.status = filters.status;
+    owned.status = filters.status;
   }
   if (filters.severity !== "-") {
-    query.severity = filters.severity;
+    owned.severity = filters.severity;
   }
-  return query;
-}
-
-function sameFilters(a: IssueFilters, b: IssueFilters): boolean {
-  return a.status === b.status && a.severity === b.severity;
+  return owned;
 }
 
 /** The filters the request currently applies. */
@@ -422,9 +398,15 @@ function appliedFilters(): IssueFilters {
   };
 }
 
+const urlFilters = useUrlFilters<IssueFilters>({
+  keys: FILTER_QUERY_KEYS,
+  parse: parseFilters,
+  serialize: serializeFilters,
+});
+
 // Read the URL before the first request: a reloaded or shared link queries what
 // it carries instead of flashing the unfiltered directory first.
-const initialFilters = filtersFromQuery(route.query);
+const initialFilters = urlFilters.read();
 status.value = initialFilters.status;
 severity.value = initialFilters.severity;
 appliedStatus.value = initialFilters.status;
@@ -457,64 +439,26 @@ const {
 
 watch(pageSize, () => void resetPage());
 
-/**
- * Write exactly the applied filters into the URL, preserving any parameter this
- * page does not own. `replace` keeps history clean: applying a filter is not a
- * navigation the back button should walk.
- */
-function writeFiltersToUrl(filters: IssueFilters) {
-  const next: LocationQueryRaw = { ...route.query };
-  for (const key of FILTER_QUERY_KEYS) {
-    delete next[key];
-  }
-  Object.assign(next, queryFromFilters(filters));
-  if (sameQuery(next, route.query)) {
+// A reload, a shared link or back/forward changes the query from outside; the
+// page adopts those filters. The replace this composable performs matches the
+// applied set, so it is not adopted and cannot cause a second request.
+urlFilters.watchExternal((next) => {
+  if (urlFilters.isCurrent(appliedFilters())) {
     return;
   }
-  void router.replace({ query: next });
-}
-
-/** Whether a query about to be written already reads like the current one. */
-function sameQuery(next: LocationQueryRaw, current: LocationQuery): boolean {
-  const keys = Object.keys(next);
-  if (keys.length !== Object.keys(current).length) {
-    return false;
-  }
-  return keys.every(
-    (key) => queryString(next[key]) === queryString(current[key])
-  );
-}
-
-// A reload, a shared link or back/forward changes the query from outside; the
-// page adopts those filters. The replace this page itself performs writes
-// exactly the applied filters, so the watcher recognizes it and stops — no loop,
-// no second request.
-watch(
-  () => route.query,
-  (query) => {
-    const next = filtersFromQuery(query);
-    if (sameFilters(next, appliedFilters())) {
-      return;
-    }
-    status.value = next.status;
-    severity.value = next.severity;
-    appliedStatus.value = next.status;
-    appliedSeverity.value = next.severity;
-    void resetPage();
-  }
-);
-
-function enumFromFilter<T extends number>(value: string, members: T[]): T {
-  const parsed = Number(value);
-  return members.includes(parsed as T) ? (parsed as T) : members[0];
-}
+  status.value = next.status;
+  severity.value = next.severity;
+  appliedStatus.value = next.status;
+  appliedSeverity.value = next.severity;
+  void resetPage();
+});
 
 function applyFilters() {
   appliedStatus.value = status.value;
   appliedSeverity.value = severity.value;
   // The URL is written first: the watcher then sees the applied set already
   // agrees with it, so adopting the route costs no second request.
-  writeFiltersToUrl(appliedFilters());
+  urlFilters.write(appliedFilters());
   void resetPage();
 }
 
