@@ -242,8 +242,8 @@ func methodAllowsWithoutCredential(method protoreflect.MethodDescriptor) bool {
 	if !ok || options == nil {
 		return false
 	}
-	allow, _ := proto.GetExtension(options, v1pb.E_AllowWithoutCredential).(bool)
-	return allow
+	allow, ok := proto.GetExtension(options, v1pb.E_AllowWithoutCredential).(bool)
+	return ok && allow
 }
 
 // TestReadPathsAreGated pins the specific concern from the review: the read
