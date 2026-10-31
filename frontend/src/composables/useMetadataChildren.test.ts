@@ -165,7 +165,13 @@ describe("useMetadataChildren", () => {
 
     await browser.load("inst;db", [MetaType.SCHEMA]);
 
-    expect(browser.items.value).toEqual([
+    expect(
+      browser.items.value.map(({ guid, name, metaType }) => ({
+        guid,
+        name,
+        metaType,
+      }))
+    ).toEqual([
       { guid: "inst;db;public", name: "public", metaType: MetaType.SCHEMA },
       {
         guid: "inst;db;no-name",
@@ -603,5 +609,90 @@ describe("useMetadataChildren", () => {
 
     expect(signalOf(mocks.listMetadata, 0).aborted).toBe(true);
     expect(browser.items.value).toEqual([]);
+  });
+
+  it("keeps every group the response carried when no meta types are requested", async () => {
+    mocks.listMetadata.mockResolvedValue(
+      listResponse([
+        { metaType: MetaType.DATABASE, rows: [["db1", "db1"]] },
+        { metaType: MetaType.SCHEMA, rows: [["db1;public", "public"]] },
+      ])
+    );
+    const browser = useMetadataChildren();
+
+    const children = await browser.load("inst", []);
+
+    expect(children?.map((child) => child.guid)).toEqual(["db1", "db1;public"]);
+    expect(children?.[0].metadata?.guid).toBe("db1");
+    expect(browser.items.value.map((child) => child.metaType)).toEqual([
+      MetaType.DATABASE,
+      MetaType.SCHEMA,
+    ]);
+  });
+
+  it("searches once without a type when no meta types are requested", async () => {
+    mocks.searchMetadata
+      .mockResolvedValueOnce(searchResponse([["g1", "g1"]], "next"))
+      .mockResolvedValueOnce(searchResponse([["g2", "g2"]]));
+    const browser = useMetadataChildren();
+
+    await browser.search("inst", [], "orders");
+    expect(mocks.searchMetadata).toHaveBeenCalledTimes(1);
+    const first = mocks.searchMetadata.mock.calls[0][0] as {
+      metaType?: MetaType;
+    };
+    expect(first.metaType).toBeUndefined();
+    expect(browser.items.value.map((child) => child.guid)).toEqual(["g1"]);
+
+    await browser.loadMore();
+    expect(mocks.searchMetadata).toHaveBeenCalledTimes(2);
+    const second = mocks.searchMetadata.mock.calls[1][0] as {
+      metaType?: MetaType;
+    };
+    expect(second.metaType).toBeUndefined();
+    expect(browser.items.value.map((child) => child.guid)).toEqual([
+      "g1",
+      "g2",
+    ]);
+  });
+
+  it("load more can advance one meta type only", async () => {
+    mocks.listMetadata
+      .mockResolvedValueOnce(
+        listResponse([
+          {
+            metaType: MetaType.TABLE,
+            rows: [["t1", "t1"]],
+            nextPageToken: "table-page",
+          },
+          {
+            metaType: MetaType.VIEW,
+            rows: [["v1", "v1"]],
+            nextPageToken: "view-page",
+          },
+        ])
+      )
+      .mockResolvedValueOnce(
+        listResponse([{ metaType: MetaType.TABLE, rows: [["t2", "t2"]] }])
+      );
+    const browser = useMetadataChildren();
+
+    await browser.load("inst;db;public", []);
+    expect(browser.hasNextFor(MetaType.TABLE)).toBe(true);
+    expect(browser.hasNextFor(MetaType.VIEW)).toBe(true);
+
+    await browser.loadMore(MetaType.TABLE);
+    expect(mocks.listMetadata).toHaveBeenCalledTimes(2);
+    expect(browser.hasNextFor(MetaType.TABLE)).toBe(false);
+    expect(browser.hasNextFor(MetaType.VIEW)).toBe(true);
+    expect(browser.items.value.map((child) => child.guid)).toEqual([
+      "t1",
+      "t2",
+      "v1",
+    ]);
+
+    // A type with no page left must not start a request.
+    await browser.loadMore(MetaType.FUNCTION);
+    expect(mocks.listMetadata).toHaveBeenCalledTimes(2);
   });
 });

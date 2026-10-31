@@ -18,6 +18,8 @@ export interface MetadataChild {
   guid: string;
   name: string;
   metaType: MetaType;
+  /** The row the child was built from, for a caller that renders a type-specific list. */
+  metadata?: StoredMetadata;
 }
 
 interface Source {
@@ -57,23 +59,33 @@ export interface MetadataChildren {
   query: Ref<string>;
   /**
    * Replace the level with the first page of the direct children of
-   * `parentGuid`, restricted to `metaTypes` and in that order. Returns the
-   * loaded children so the caller can decide to fall back to another level, or
-   * `null` when a newer request superseded this one — a superseded load says
+   * `parentGuid`, restricted to `metaTypes` and in that order. An empty list
+   * keeps every group the response carried, in the response's order. Returns
+   * the loaded children so the caller can decide to fall back to another level,
+   * or `null` when a newer request superseded this one — a superseded load says
    * nothing about whether the level is empty.
    */
   load: (
     parentGuid: string,
     metaTypes: MetaType[]
   ) => Promise<MetadataChild[] | null>;
-  /** Replace the level with the children of `parentGuid` matching `term`. */
+  /**
+   * Replace the level with the children of `parentGuid` matching `term`. An
+   * empty `metaTypes` is one unscoped search request; a non-empty list searches
+   * each type separately so each keeps its own page token.
+   */
   search: (
     parentGuid: string,
     metaTypes: MetaType[],
     term: string
   ) => Promise<void>;
-  /** Append the next page of every meta-type source that has one. */
-  loadMore: () => Promise<void>;
+  /** Whether one meta type still has a page to load. */
+  hasNextFor: (metaType: MetaType) => boolean;
+  /**
+   * Append the next page of one meta type, or of every meta-type source that has
+   * one when no type is named.
+   */
+  loadMore: (metaType?: MetaType) => Promise<void>;
   /** Forget everything and invalidate requests still on the wire. */
   reset: () => void;
 }
@@ -198,25 +210,47 @@ export function useMetadataChildren(
     query.value = trimmed;
     clear();
     try {
-      const responses = await Promise.all(
-        metaTypes.map((metaType) =>
-          searchMetadata({
-            searchStr: trimmed,
-            parentGuidPrefix: parent,
-            metaType,
-            pageSize,
-            signal,
-          })
-        )
-      );
-      if (mine !== generation || signal.aborted) {
-        return;
+      if (metaTypes.length === 0) {
+        // An unscoped search is one request: the RPC already merges every type a
+        // result can be. Only a typed search fans out, because each type has its
+        // own page token.
+        const response = await searchMetadata({
+          searchStr: trimmed,
+          parentGuidPrefix: parent,
+          pageSize,
+          signal,
+        });
+        if (mine !== generation || signal.aborted) {
+          return;
+        }
+        sources.value = [
+          {
+            metaType: MetaType.UNSPECIFIED,
+            items: (response.results ?? []).flatMap(searchResultToChild),
+            nextPageToken: response.nextPageToken ?? "",
+          },
+        ];
+      } else {
+        const responses = await Promise.all(
+          metaTypes.map((metaType) =>
+            searchMetadata({
+              searchStr: trimmed,
+              parentGuidPrefix: parent,
+              metaType,
+              pageSize,
+              signal,
+            })
+          )
+        );
+        if (mine !== generation || signal.aborted) {
+          return;
+        }
+        sources.value = metaTypes.map((metaType, index) => ({
+          metaType,
+          items: (responses[index]?.results ?? []).flatMap(searchResultToChild),
+          nextPageToken: responses[index]?.nextPageToken ?? "",
+        }));
       }
-      sources.value = metaTypes.map((metaType, index) => ({
-        metaType,
-        items: (responses[index]?.results ?? []).flatMap(searchResultToChild),
-        nextPageToken: responses[index]?.nextPageToken ?? "",
-      }));
       items.value = flatten(sources.value);
     } catch (e: unknown) {
       if (mine !== generation || signal.aborted) {
@@ -230,8 +264,16 @@ export function useMetadataChildren(
     }
   }
 
-  async function loadMore(): Promise<void> {
+  async function loadMore(metaType?: MetaType): Promise<void> {
     if (loading.value || loadingMore.value || !hasNext.value) {
+      return;
+    }
+    const pending = sources.value.filter(
+      (source) =>
+        source.nextPageToken !== "" &&
+        (metaType === undefined || source.metaType === metaType)
+    );
+    if (pending.length === 0) {
       return;
     }
     const mine = generation;
@@ -240,9 +282,6 @@ export function useMetadataChildren(
     loadingMore.value = true;
     moreError.value = undefined;
     try {
-      const pending = sources.value.filter(
-        (source) => source.nextPageToken !== ""
-      );
       // One request per source; the answers come back in the same order.
       const pages = await Promise.all(
         pending.map((source) => fetchNextPage(source, signal))
@@ -290,7 +329,8 @@ export function useMetadataChildren(
     const response = await searchMetadata({
       searchStr: query.value,
       parentGuidPrefix: parentGuid,
-      metaType: source.metaType,
+      metaType:
+        source.metaType === MetaType.UNSPECIFIED ? undefined : source.metaType,
       pageSize,
       pageToken: source.nextPageToken,
       signal,
@@ -299,6 +339,12 @@ export function useMetadataChildren(
       items: response.results.flatMap(searchResultToChild),
       nextPageToken: response.nextPageToken,
     };
+  }
+
+  function hasNextFor(metaType: MetaType): boolean {
+    return sources.value.some(
+      (source) => source.metaType === metaType && source.nextPageToken !== ""
+    );
   }
 
   function reset() {
@@ -323,6 +369,7 @@ export function useMetadataChildren(
     query,
     load,
     search,
+    hasNextFor,
     loadMore,
     reset,
   };
@@ -337,6 +384,13 @@ function toSources(
   }>,
   metaTypes: MetaType[]
 ): Source[] {
+  if (metaTypes.length === 0) {
+    return groups.map((group) => ({
+      metaType: group.metaType,
+      items: toChildren(group.list, group.metaType),
+      nextPageToken: group.nextPageToken,
+    }));
+  }
   return metaTypes.flatMap((metaType) => {
     const group = groups.find((candidate) => candidate.metaType === metaType);
     if (!group) {
@@ -368,14 +422,21 @@ function searchResultToChild(result: SearchMetadataResult): MetadataChild[] {
   const metaType = result.metaType;
   const metadata = result.metadata;
   const name = metadata ? storedMetadataName(metadata) : "";
-  return name.trim() === "" ? [] : [{ guid: result.guid, name, metaType }];
+  return name.trim() === ""
+    ? []
+    : [{ guid: result.guid, name, metaType, metadata }];
 }
 
 function storedMetadataChild(
   item: StoredMetadata,
   metaType: MetaType
 ): MetadataChild {
-  return { guid: item.guid, name: storedMetadataName(item), metaType };
+  return {
+    guid: item.guid,
+    name: storedMetadataName(item),
+    metaType,
+    metadata: item,
+  };
 }
 
 /** The display name of a listed metadata row, whichever arm carries it. */
