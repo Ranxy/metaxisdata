@@ -468,6 +468,10 @@ const SchemaDefinitionDialog = defineAsyncComponent(
   () => import("@/components/metadata/SchemaDefinitionDialog.vue")
 );
 
+import {
+  settleNodeHeights as convergeNodeHeights,
+  nodeHeightFor,
+} from "@/lib/lineageLayout";
 import { openlineageRunLabel } from "@/lib/openlineageRun";
 import { statementLabel } from "@/lib/statementLabel";
 import { useInstanceStore } from "@/store/modules/instance";
@@ -1421,11 +1425,10 @@ let renderedHeights = new Map<string, number>();
 
 /** The height to place a node at: what it rendered at last, or a first guess. */
 function heightFor(guid: string): number {
-  return (
-    renderedHeights.get(guid) ??
+  return nodeHeightFor(guid, renderedHeights, (node) =>
     nodeHeight(
-      collectColumnsForGuid(guid).length,
-      fieldsVisibleGuids.value.has(guid)
+      collectColumnsForGuid(node).length,
+      fieldsVisibleGuids.value.has(node)
     )
   );
 }
@@ -1450,31 +1453,20 @@ function stack(view: Map<string, NodeLineageData>) {
 }
 
 /**
- * Re-stacks the layers with the heights the browser gave the cards, once the
- * renderer has measured them. Only ever one pass: positions do not feed back into
- * heights, so the second measurement agrees with the first.
+ * Re-stacks the layers with the heights the browser gave the cards. The
+ * convergence itself (pass budget, "measure again after layout", keeping the
+ * previous layout when the nodes are not all drawn) lives in `lib/lineageLayout`
+ * so it can be tested without a canvas.
  */
 async function settleNodeHeights() {
-  // Positions do not feed back into heights, so this converges in one or two
-  // passes; the loop is here because the first measurement can be taken before the
-  // browser has finished laying the cards out.
-  for (let pass = 0; pass < 4; pass++) {
-    const heights = await measureDrawnNodes();
-    if (!heights) {
-      return;
-    }
-
-    let changed = false;
-    for (const [guid, height] of heights) {
-      changed ||= renderedHeights.get(guid) !== height;
-    }
-    if (!changed) {
-      return;
-    }
-
-    renderedHeights = heights;
-    stack(graphView());
-  }
+  await convergeNodeHeights({
+    current: () => renderedHeights,
+    measure: measureDrawnNodes,
+    apply: (heights) => {
+      renderedHeights = heights;
+      stack(graphView());
+    },
+  });
 }
 
 /**

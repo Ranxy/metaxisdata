@@ -1,6 +1,6 @@
 # 前端评审剩余项落地记录（第一批：S 项）
 
-> 基线：`da15e45`（第二批评审修正栈顶）· 分支：`arch-review/frontend-followups` · 每项独立提交。后续 FD7 / FD2 / FD3 继续叠在同一分支上。
+> 基线：`da15e45`（第二批评审修正栈顶）· 分支：`arch-review/frontend-followups` · 每项独立提交。FD7 已在本文件追加，FD2/FD3 继续叠在同一分支上。
 
 ## 结论
 
@@ -15,6 +15,8 @@
 | 5 | 品牌名单一常量、`OPENLINEAGE` 用枚举、RPC 默认超时 | FD15 | `6bc8d29` |
 | 6 | 轮询读新增 signal 参数后的测试适配 | — | `d7bf597` |
 | 7 | 抽屉焦点边界分支测试 | — | `01f6887` |
+| 8 | **FD7**：`RuleConfigForm` 按规则族拆分 + `useSchemaDriftColumns` | FD7 | `ef870fe` |
+| 9 | **FD2（第一步）**：测高收敛下沉为 `lib/lineageLayout` | FD2 | `6ff94fc` |
 
 ## 实施说明
 
@@ -54,9 +56,20 @@
 - `test:ci`：**143 个测试文件 / 1,407 条用例**通过；per-file 覆盖率阈值通过（新增 `useStreaming` 7 条、`useDrawerFocus` 8 条、`apiTimeout`/`brand` 守卫、`AsyncMarkdown` 守卫、`usePagedFetch` 12 条）。
 - `usePagedFetch` 新增外部 signal 用例（已中止不发请求、转发中止、答案不落盘）；`QualityCheckDrawer`/`SuggestionJobsPanel` 的调用断言跟上新参数。
 
+## FD7：RuleConfigForm 按规则族拆分
+
+- 父组件 `RuleConfigForm.vue` 从 **1205 行降到 261 行**：只保留共享的 fail/warn 阈值块、`oneOfHints`、字段 id/必填/错误的薄封装，以及一个按 `ruleType` 分发的组件 switch。
+- 新增 `components/data-quality/rule-configs/` 14 个规则族组件：`RowCountConfig`（含 ROW_COUNT_CHANGE）、`NullPercentConfig`、`UniquenessConfig`（UNIQUE/UNIQUE_COMBINATION）、`AcceptedValuesConfig`、`RangeConfig`、`ScalarConfig`（REGEX/STRING_LENGTH/REFERENTIAL_INTEGRITY）、`CrossColumnConfig`、`FreshnessConfig`、`CustomSQLConfig`、`SchemaDriftConfig`、`GroupCheckConfig`、`AggregateConfig`、`CrossTableConfig`、`CelConfig`，外加共享的 `ruleConfigField.ts`（字段 id/必填/错误/CSV 列转换）。
+- schema-drift 的期望列状态机从组件内 `WeakMap` 抽成 `composables/useSchemaDriftColumns.ts`：只有"本组件自动填充"的值会在改名时刷新/清除，读者输入或切换的值永不覆盖；新增 11 条测试覆盖自动填充、清除、按行隔离、全部填充等语义（此前零测试）。
+- 新增规则类型现在只需加一个规则族组件 + 一行 switch；`RuleConfigForm.test.ts` 27 条与下游 219 条相关测试全部保持通过。
+
+## FD2：god view 拆分（进行中）
+
+- 第一步已完成：`settleNodeHeights` 的四轮收敛（含测高未就绪时保留旧布局、pass 预算、全部节点测高）与 `heightFor` 回退下沉到 `lib/lineageLayout.ts`，6 条纯函数测试覆盖（100%），页面只保留 DOM 测量与 `stack()` 回调。
+- 页面仍 2024 行；`LineageNodeDetailPanel.vue`（模板 141-361 + 派生状态约 470 行）与 `useLineageGraphData`/`useLineageSelection` 两个 composable 待下一轮完成。
+
 ## 尚未开始
 
-- **FD7**：`RuleConfigForm` 14 个规则族拆分 + `useSchemaDriftColumns`。
-- **FD2**：`LineageGraphPage` 详情面板 / `lib/lineageLayout` / 两个 composable 拆分。
+- **FD2 后续**：`LineageGraphPage` 详情面板 + `useLineageGraphData`/`useLineageSelection`。
 - **FD3**：三个 DQ god view（Executions/Target/Suggestions）的抽屉、URL、权限、轮询下沉。
 - **FD12**：随上述下沉补页面/纯函数测试。
