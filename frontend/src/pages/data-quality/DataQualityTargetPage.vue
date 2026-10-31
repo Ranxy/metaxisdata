@@ -137,6 +137,25 @@
           <Badge :variant="summary.openIssueCount > 0 ? 'danger' : 'neutral'">
             {{ t("dataQuality.workspace.summaryIssues", { count: summary.openIssueCount }) }}
           </Badge>
+          <!-- The score answers "how good is it?", not just "did it pass?";
+               the judged count says how much evidence backs the number. -->
+          <template v-if="summary.ruleCount > 0">
+            <Badge variant="outline">
+              {{
+                t("dataQuality.workspace.summaryQualityScore", {
+                  score: formatQualityScore(summary.qualityScore),
+                })
+              }}
+            </Badge>
+            <span class="text-xs tabular-nums text-muted-foreground">
+              {{
+                t("dataQuality.workspace.summaryJudged", {
+                  judged: summary.scoredRuleCount,
+                  total: summary.enabledRuleCount,
+                })
+              }}
+            </span>
+          </template>
           <span class="text-xs text-muted-foreground">
             {{ lastRunText }}
           </span>
@@ -659,6 +678,7 @@ import {
   qualityTargetMetadataRoute,
 } from "@/utils/dataQuality";
 import { type TargetColumnDetail } from "@/utils/dataQualityForm";
+import { formatQualityScore } from "@/utils/dataQualityOverview";
 import {
   isLabelSuggestion,
   isPendingDraft,

@@ -91,6 +91,10 @@ func TestBuildQualityReport(t *testing.T) {
 	require.Equal(t, int32(2), report.FailedCheckTotal, "every fail in the window is a failed check")
 	require.Equal(t, int32(2), report.RuleCount)
 	require.Equal(t, int32(1), report.EnabledRuleCount)
+	require.NotNil(t, report.QualityScore, "the enabled rule's latest result is judged")
+	require.InDelta(t, 100.0, *report.QualityScore, 1e-9, "a passing verdict-scored rule scores 100")
+	require.Equal(t, int32(1), report.ScoredRuleCount)
+	require.Equal(t, int32(0), report.UnscoredRuleCount)
 	require.Equal(t, qualityreport.StatusPass, report.WorstStatusKey, "only the passing rule has a completed result")
 	require.Len(t, report.Trend, 3)
 
@@ -188,6 +192,12 @@ func TestBuildQualityReportRenders(t *testing.T) {
 		require.NoError(t, err, language)
 		require.Contains(t, document, "instance-1/shop/orders")
 		require.Contains(t, document, "orders row count")
+		label := "Quality score"
+		if language == "zh-CN" {
+			label = "质量分"
+		}
+		require.Containsf(t, document, `<div class="value">100.0</div><div class="label">`+label+`</div>`,
+			"%s: the report renders the target's quality score card, not just any 100.0", language)
 		require.Contains(t, document, "<svg")
 	}
 }
@@ -291,6 +301,8 @@ func qualityReportWorkspaceFixture() *qualityTargetWorkspace {
 		latest: map[int64]*store.QualityExecutionMessage{
 			1: {
 				RuleID:            1,
+				TargetGUID:        "instance-1;shop;;orders",
+				TargetType:        storepb.MetaType_TABLE,
 				Status:            storepb.QualityStatus_QUALITY_STATUS_PASS,
 				ObservedValue:     qualityReportPtr(3.0),
 				ObservedKind:      storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,

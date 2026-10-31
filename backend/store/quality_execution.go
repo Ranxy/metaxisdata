@@ -770,6 +770,99 @@ func (s *Store) CountQualityExecutionsSince(ctx context.Context, since time.Time
 	return count, nil
 }
 
+// QualityTargetExecutionTally is the outcome tally of one target's most recent
+// completed executions. Only the judged verdicts are counted: ERROR, SKIPPED and
+// NOT_EVALUATED are not verdicts, so they are in neither the numerator nor the
+// denominator.
+type QualityTargetExecutionTally struct {
+	Pass int32
+	Warn int32
+	Fail int32
+}
+
+// Judged is how many of the window's executions carried a verdict.
+func (t QualityTargetExecutionTally) Judged() int32 {
+	return t.Pass + t.Warn + t.Fail
+}
+
+// qualityTargetExecutionTallyStatement counts the verdicts among each target's
+// newest completed executions. The per-key LATERAL applies the limit before the
+// aggregate, so the read stops at limitPerTarget index rows per target instead of
+// ranking all history; only the status column is read, never a sample or SQL
+// payload. The quality_rule join keeps the window to currently enabled rules and
+// pins the execution to the rule's current target, so a paused rule or a moved
+// rule's pre-move history does not occupy the target's window.
+const qualityTargetExecutionTallyStatement = `
+	SELECT k.guid, k.object_type,
+		COUNT(*) FILTER (WHERE recent.status = $3)::INT,
+		COUNT(*) FILTER (WHERE recent.status = $4)::INT,
+		COUNT(*) FILTER (WHERE recent.status = $5)::INT
+	FROM unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+	LEFT JOIN LATERAL (
+		SELECT e.status
+		FROM quality_execution e
+		JOIN quality_rule r ON r.id = e.rule_id
+			AND r.state = $6 AND r.deleted = FALSE
+			AND e.target_guid = r.target_guid AND e.target_type = r.target_type
+		WHERE e.target_guid = k.guid AND e.target_type = k.object_type
+			AND e.state = $7
+		ORDER BY e.started_at DESC, e.id DESC
+		LIMIT $8
+	) recent ON TRUE
+	GROUP BY k.guid, k.object_type
+	ORDER BY k.guid, k.object_type
+`
+
+// ListQualityTargetExecutionTallies returns the judged-verdict tally of each
+// target's newest completed executions, up to limitPerTarget each. It is the
+// target directory's recent-pass-rate read: counts instead of execution rows, one
+// statement for a whole page. A target with no judged execution is absent from
+// the map, and an empty input is a no-op.
+func (s *Store) ListQualityTargetExecutionTallies(ctx context.Context, keys []MetaGUIDKey, limitPerTarget int) (map[MetaGUIDKey]QualityTargetExecutionTally, error) {
+	tallies := make(map[MetaGUIDKey]QualityTargetExecutionTally, len(keys))
+	if len(keys) == 0 {
+		return tallies, nil
+	}
+	if limitPerTarget <= 0 {
+		return nil, common.Errorf(common.Invalid, "a positive execution limit is required")
+	}
+	guids := make([]string, 0, len(keys))
+	objectTypes := make([]int16, 0, len(keys))
+	for _, key := range keys {
+		guids = append(guids, key.GUID)
+		objectTypes = append(objectTypes, int16(key.ObjectType))
+	}
+	rows, err := s.GetDB().QueryContext(ctx, qualityTargetExecutionTallyStatement,
+		pq.Array(guids), pq.Array(objectTypes),
+		int16(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		int16(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
+		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
+		limitPerTarget)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the targets' execution tallies")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			guid       string
+			objectType int16
+			tally      QualityTargetExecutionTally
+		)
+		scanErr := rows.Scan(&guid, &objectType, &tally.Pass, &tally.Warn, &tally.Fail)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a target's execution tally")
+		}
+		tallies[MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}] = tally
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the targets' execution tallies")
+	}
+	return tallies, nil
+}
+
 // ListRecentQualityExecutionsByRuleIDs returns each rule's newest completed
 // executions, up to limitPerRule, in one statement. The workspace draws a history
 // strip per rule, so the query partitions by rule instead of running one query per

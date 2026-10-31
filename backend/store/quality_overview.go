@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -39,18 +41,204 @@ func (s *Store) QualityRuleStateCounts(ctx context.Context) (map[storepb.Quality
 	return counts, nil
 }
 
-// CountMonitoredTables counts the distinct tables at least one enabled rule
-// watches. It is the coverage numerator of the overview.
-func (s *Store) CountMonitoredTables(ctx context.Context) (int, error) {
-	var count int
-	scanErr := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT target_guid) FROM quality_rule
-		WHERE state = $1 AND deleted = FALSE
-	`, int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED)).Scan(&count)
-	if scanErr != nil {
-		return 0, errors.Wrap(scanErr, "failed to count monitored tables")
+// qualityCoverageObjectTypes is the coverage denominator's object-type set: the
+// registry objects a rule can monitor. A column is not a target, and a database or
+// schema is only a container.
+var qualityCoverageObjectTypes = []int16{
+	int16(storepb.MetaType_TABLE),
+	int16(storepb.MetaType_EXTERNAL_TABLE),
+	int16(storepb.MetaType_VIEW),
+	int16(storepb.MetaType_MATERIALIZED_VIEW),
+}
+
+// qualityCoverageQuery counts, per live instance, the registry objects of the
+// monitorable types and their columns. Views and external tables carry their
+// columns inside their own metadata (they have no COLUMN registry rows), so the
+// four metadata column arrays are summed instead of counting COLUMN objects. The
+// instance join is the live-instance filter: objects under a deleted instance are
+// no longer monitored.
+const qualityCoverageQuery = `
+	SELECT i.resource_id,
+		COALESCE(i.metadata->>'title', ''),
+		COALESCE(i.environment, ''),
+		COUNT(*)::INT,
+		COALESCE(SUM(
+			COALESCE(jsonb_array_length(r.metadata->'tableMetadata'->'columns'), 0) +
+			COALESCE(jsonb_array_length(r.metadata->'externalTableMetadata'->'columns'), 0) +
+			COALESCE(jsonb_array_length(r.metadata->'viewMetadata'->'columns'), 0) +
+			COALESCE(jsonb_array_length(r.metadata->'materializedViewMetadata'->'columns'), 0)
+		), 0)::INT
+	FROM meta_registry_resource r
+	JOIN instance i ON i.resource_id = split_part(r.guid, ';', 1)
+	WHERE i.deleted = FALSE AND r.object_type = ANY($1::int2[])
+	GROUP BY i.id
+	ORDER BY i.resource_id
+`
+
+// qualityTargetColumnQuery returns each requested target's current registry
+// columns, i.e. the column names the coverage denominator counts for it. It is
+// the numerator's guard: an enabled rule outlives a dropped or renamed column
+// just as it outlives a dropped table, and a column that is no longer in the
+// registry cannot be covered. The live-instance join and the object-type
+// predicate are the coverage denominator's own, so both sides count the same
+// objects; the LEFT JOIN LATERAL keeps a zero-column object as a row with a NULL
+// name, so its key is still known to exist.
+const qualityTargetColumnQuery = `
+	SELECT k.guid, k.object_type, c.name
+	FROM unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+	JOIN instance i ON i.resource_id = split_part(k.guid, ';', 1) AND i.deleted = FALSE
+	JOIN meta_registry_resource r ON r.guid = k.guid AND r.object_type = k.object_type
+	LEFT JOIN LATERAL (
+		SELECT cols.value->>'name' AS name
+		FROM (
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'tableMetadata'->'columns', '[]'::jsonb)) AS value
+			UNION ALL
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'externalTableMetadata'->'columns', '[]'::jsonb))
+			UNION ALL
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'viewMetadata'->'columns', '[]'::jsonb))
+			UNION ALL
+			SELECT jsonb_array_elements(COALESCE(r.metadata->'materializedViewMetadata'->'columns', '[]'::jsonb))
+		) AS cols
+	) c ON TRUE
+	WHERE r.object_type = ANY($3::int2[])
+	ORDER BY k.guid, k.object_type, c.name
+`
+
+// ListMetaRegistryTargetColumns returns each target's current registry column
+// names, keyed by target identity. A key is present exactly when the target has a
+// coverage denominator row under a live instance; a target with no columns maps
+// to an empty set. One batch statement serves a whole rule set, and an empty input
+// is a no-op.
+func (s *Store) ListMetaRegistryTargetColumns(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]map[string]struct{}, error) {
+	return listMetaRegistryTargetColumnsImpl(ctx, s.GetDB(), keys)
+}
+
+// listMetaRegistryTargetColumnsImpl is the query behind
+// ListMetaRegistryTargetColumns; the Queryer lets it run inside a snapshot.
+func listMetaRegistryTargetColumnsImpl(ctx context.Context, q Queryer, keys []MetaGUIDKey) (map[MetaGUIDKey]map[string]struct{}, error) {
+	columns := make(map[MetaGUIDKey]map[string]struct{}, len(keys))
+	if len(keys) == 0 {
+		return columns, nil
 	}
-	return count, nil
+	guids := make([]string, 0, len(keys))
+	objectTypes := make([]int16, 0, len(keys))
+	for _, key := range keys {
+		guids = append(guids, key.GUID)
+		objectTypes = append(objectTypes, int16(key.ObjectType))
+	}
+	rows, err := q.QueryContext(ctx, qualityTargetColumnQuery,
+		pq.Array(guids), pq.Array(objectTypes), pq.Array(qualityCoverageObjectTypes))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the targets' registry columns")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			guid       string
+			objectType int16
+			name       sql.NullString
+		)
+		scanErr := rows.Scan(&guid, &objectType, &name)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a target's registry column")
+		}
+		key := MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}
+		targetColumns := columns[key]
+		if targetColumns == nil {
+			targetColumns = map[string]struct{}{}
+			columns[key] = targetColumns
+		}
+		if name.Valid {
+			targetColumns[name.String] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the targets' registry columns")
+	}
+	return columns, nil
+}
+
+// qualityCoverageSnapshotTxOptions is the read-only repeatable-read snapshot that
+// makes the coverage denominator and the target/column guard one consistent view
+// of the registry. Two pooled reads would each see the latest committed state, so
+// an object dropped and re-created under its name-derived GUID between them could
+// leave the numerator counting a target the denominator never saw; a shared
+// snapshot cannot.
+var qualityCoverageSnapshotTxOptions = &sql.TxOptions{
+	Isolation: sql.LevelRepeatableRead,
+	ReadOnly:  true,
+}
+
+// QualityCoverageSnapshot returns the coverage denominator and the target/column
+// guard from one repeatable-read snapshot. The numerator's universe is then
+// exactly the denominator's, which is what keeps "coverage never exceeds 100%"
+// true even while schema sync is deleting and re-creating registry rows.
+func (s *Store) QualityCoverageSnapshot(ctx context.Context, keys []MetaGUIDKey) ([]*QualityCoverageRow, map[MetaGUIDKey]map[string]struct{}, error) {
+	tx, err := s.GetDB().BeginTx(ctx, qualityCoverageSnapshotTxOptions)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to begin the coverage snapshot")
+	}
+	// A read-only transaction that commits leaves nothing to roll back; the
+	// deferred rollback only runs on an earlier error path.
+	defer func() { _ = tx.Rollback() }()
+
+	coverage, err := listQualityCoverageImpl(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	columns, err := listMetaRegistryTargetColumnsImpl(ctx, tx, keys)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, errors.Wrap(err, "failed to commit the coverage snapshot")
+	}
+	return coverage, columns, nil
+}
+
+// QualityCoverageRow is one live instance's registry coverage, the denominator of
+// the workspace coverage. Environment is empty when the instance has none, and
+// InstanceTitle is empty when the instance never recorded one.
+type QualityCoverageRow struct {
+	InstanceResourceID string
+	InstanceTitle      string
+	Environment        string
+	TableCount         int32
+	ColumnCount        int32
+}
+
+// ListQualityCoverage counts the registry objects and their columns per live
+// instance, which is the coverage denominator. One grouped query serves the
+// whole overview: the workspace totals and the per-instance and per-environment
+// breakdowns are sums over these rows.
+func (s *Store) ListQualityCoverage(ctx context.Context) ([]*QualityCoverageRow, error) {
+	return listQualityCoverageImpl(ctx, s.GetDB())
+}
+
+// listQualityCoverageImpl is the query behind ListQualityCoverage; the Queryer
+// lets it run inside a snapshot.
+func listQualityCoverageImpl(ctx context.Context, q Queryer) ([]*QualityCoverageRow, error) {
+	rows, err := q.QueryContext(ctx, qualityCoverageQuery, pq.Array(qualityCoverageObjectTypes))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the registry coverage")
+	}
+	defer rows.Close()
+
+	var coverage []*QualityCoverageRow
+	for rows.Next() {
+		row := &QualityCoverageRow{}
+		scanErr := rows.Scan(&row.InstanceResourceID, &row.InstanceTitle, &row.Environment,
+			&row.TableCount, &row.ColumnCount)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan the registry coverage")
+		}
+		coverage = append(coverage, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the registry coverage")
+	}
+	return coverage, nil
 }
 
 // QualityOpenIssueSeverityCounts counts the unresolved issues per severity.

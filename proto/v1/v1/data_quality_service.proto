@@ -2356,9 +2356,6 @@ message GetQualityOverviewRequest {
   int32 trend_days = 2;
 }
 
-// QualityOverview is the workspace-level summary the overview page renders. It
-// aggregates the tables instead of listing rows, so the page costs a handful of
-// queries rather than paging through every result.
 message GetQualityLLMUsageRequest {
   // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
@@ -2378,13 +2375,47 @@ message QualityLLMUsage {
   google.protobuf.Timestamp resets_at = 7;
 }
 
+// QualityOverview is the workspace-level summary the overview page renders. It
+// aggregates the tables instead of listing rows, so the page costs a handful of
+// queries rather than paging through every result.
 message QualityOverview {
   // Rules by lifecycle state.
   int32 rule_count = 1;
   int32 enabled_rule_count = 2;
   int32 paused_rule_count = 3;
-  // Tables that at least one enabled rule watches.
+
+  // Coverage. The denominator is every registry object this workspace can
+  // monitor — a table, external table, view or materialized view under a live
+  // instance. The numerator is the distinct target at least one enabled rule
+  // watches and whose target still resolves; a covered column only counts when
+  // it still exists in the target's current registry column list. The formula is
+  // documented in docs/data-quality.md.
   int32 monitored_table_count = 4;
+  int32 total_table_count = 13;
+  int32 covered_column_count = 14;
+  int32 total_column_count = 15;
+
+  // Monitored targets with at least one judged result (PASS, WARN or FAIL)
+  // among their latest execution per enabled rule. A target whose checks never
+  // ran is monitored but not judged: no checks is never a 100% score.
+  int32 judged_table_count = 16;
+
+  // The workspace quality score, 0-100. Unset when no enabled rule has a judged
+  // result; see docs/data-quality.md for the formula.
+  optional double quality_score = 17;
+  // Enabled rules whose latest result is judged / not judged. They partition the
+  // enabled rules the score covers; a rule whose target no longer resolves is in
+  // neither.
+  int32 scored_rule_count = 18;
+  int32 unscored_rule_count = 19;
+
+  // Coverage and score by instance, environment, dimension and owner. Rows with
+  // no objects are absent; unassigned environment/owner is a row with an empty
+  // key.
+  repeated QualityCoverageBreakdown coverage_by_instance = 20;
+  repeated QualityCoverageBreakdown coverage_by_environment = 21;
+  repeated QualityDimensionScore score_by_dimension = 22;
+  repeated QualityOwnerScore score_by_owner = 23;
 
   // Issues currently open (status OPEN or ACKNOWLEDGED) by severity.
   int32 open_warning_count = 5;
@@ -2401,6 +2432,46 @@ message QualityOverview {
   repeated QualityTrendPoint trend = 11;
   // How many days the trend covers.
   int32 trend_days = 12;
+}
+
+// QualityCoverageBreakdown is one instance's or one environment's share of the
+// workspace coverage. The key/title pair names the row; the counts use the same
+// denominator as QualityOverview.
+message QualityCoverageBreakdown {
+  // The instance resource id, or the environment id. Empty when the environment
+  // is unassigned.
+  string key = 1;
+  // The instance or environment title. Empty when the environment is unassigned
+  // or the id no longer resolves.
+  string title = 2;
+  int32 total_table_count = 3;
+  int32 monitored_table_count = 4;
+  int32 total_column_count = 5;
+  int32 covered_column_count = 6;
+}
+
+// QualityDimensionScore is the quality score rolled up by quality dimension.
+message QualityDimensionScore {
+  QualityDimension dimension = 1;
+  // Enabled rules of this dimension that still resolve to a registry row.
+  int32 rule_count = 2;
+  // Of those, rules whose latest result is judged / FAIL.
+  int32 scored_rule_count = 3;
+  int32 failing_rule_count = 4;
+  // 0-100; unset when no rule of this dimension has a judged result.
+  optional double quality_score = 5;
+}
+
+// QualityOwnerScore is the quality score rolled up by rule owner.
+message QualityOwnerScore {
+  // Format: users/{user}. Empty for rules with no owner.
+  string owner = 1;
+  // Enabled rules of this owner that still resolve to a registry row.
+  int32 rule_count = 2;
+  int32 scored_rule_count = 3;
+  int32 failing_rule_count = 4;
+  // 0-100; unset when none of the owner's rules has a judged result.
+  optional double quality_score = 5;
 }
 
 // QualityTrendPoint is one day of result tallies.
@@ -2526,6 +2597,19 @@ message QualityTargetSummary {
   // schedule; a target whose checks are all paused has an interval but no next
   // run.
   QualityTargetSchedule schedule = 15;
+
+  // The target's quality score, 0-100, over its enabled rules' latest judged
+  // results. Unset when no enabled rule has been judged. The formula is the
+  // workspace's; see docs/data-quality.md.
+  optional double quality_score = 16;
+  int32 scored_rule_count = 17;
+
+  // The pass share of the target's most recent completed executions (at most
+  // 20): PASS / (PASS + WARN + FAIL). ERROR, SKIPPED and NOT_EVALUATED are
+  // excluded because they are not verdicts. Unset when none of them is judged;
+  // recent_execution_count is how many were.
+  optional double recent_pass_rate = 18;
+  int32 recent_execution_count = 19;
 }
 
 message UpdateQualityTargetScheduleRequest {

@@ -35,7 +35,7 @@
 | 3 | AI 草案在建议中心/资产卡（≤5 条）/Dialog 三个表面 | `SuggestionWorkbench.vue:2-6`、`MetadataQualitySection.vue:758,769` | 草案作为「尚未创建的目标行」就地渲染并高亮 |
 | 4 | 执行/问题/建议四处分居；规则详情没有问题区 | `DataQualityRuleDetailPage.vue` 全文无 issue 区；`DataQualityIssuesPage.vue:292-302` 无 rule/target 筛选 | 目标页汇总未解决问题，问题详情反向锚回目标 |
 | 5 | `RunQualityRules({target_guid})` 后端支持、前端从未调用 | `api/data-quality.ts:238-252`；全仓无 target 调用 | 工作台「运行全部规则」 |
-| 6 | 概览「受监控表数」是死指标（无出口） | `DataQualityOverviewPage.vue:79-84` | 链到目标列表 |
+| 6 | 概览「受监控表数」曾是死指标（无出口） | 现已由 P0-3 覆盖率与质量分取代：`DataQualityOverviewPage.vue`（覆盖率卡/质量分卡/拆解卡） | 统计链到目标列表；覆盖率给出 registry 分母与启用规则分子，质量分给出 0–100 加权分（见 [data-quality.md](data-quality.md) §3.10） |
 | 7 | 列表筛选不写 URL，返回即丢 | `DataQualityRulesPage.vue:637-654` | 目标列表的搜索/筛选先写 URL（P1 再统一） |
 | 8 | 18 类规则冷启动选择负担 | `utils/dataQualityForm.ts:101-190` | P1：从字段/语义候选反向给「建议槽位」，18 类降级为高级分支 |
 
@@ -44,7 +44,7 @@
 - **模型是规则中心**：`quality_rule` 存 `target_guid/target_type/target_path(JSONB 快照)/target_meta_hash`，没有目标表；目标身份 = `(guid, object_type)`（`LATEST.sql:903-942`，registry 成对唯一 `:194-207`）。
 - **按目标过滤全部具备**：rules/suggestions/issues/executions 四个 List RPC 都有 `target_guid`（proto `:1361-1362,1518-1521,1566-1569,1625-1626`）；`RunQualityRules` 支持 `target_guid`。
 - **每规则最近结果不缺**：`ListQualityRules` 批量回填 `last_result`（`backend/api/v1/data_quality_service.go:246-257,1267-1277`），不是 N+1。
-- **缺的是目标级聚合**：没有 `ListQualityTargets`/`GetQualityTarget`；`CountMonitoredTables` 只能给全工作区一个数（`store/quality_overview.go:16-54`）。「一个目标的全貌」今天靠资产页 6 个并行 RPC 拼（`MetadataQualitySection.vue:932-940`）。
+- **缺的是目标级聚合**：P1a 已补 `ListQualityTargets`/`GetQualityTarget`（§3.6）；概览在 P0-3 之前只能给工作区一个已监控表数，P0-3 已由 `GetQualityOverview` 的覆盖率与质量分取代（registry 分母 + 启用规则分子，按实例/环境/维度/owner 拆解，见 [data-quality.md](data-quality.md) §3.10），目标全貌不再靠资产页 6 个并行 RPC 拼。
 - **写路径仍以单规则为粒度**：配额（每表 100、每工作区 1000，仅 Create 校验）、owner、调度 `next_run_at`、mute、issue 唯一性（`(rule_id) WHERE status<>3`）都挂在规则上。**契约不能接管这些**，否则等于重写执行与告警模型。
 
 ### 1.4 目标身份的两个硬事实

@@ -17,6 +17,7 @@ func reportFixture() *Report {
 	observed := 12.5
 	warn := 5.0
 	fail := 10.0
+	qualityScore := 85.0
 	nextRun := time.Date(2026, time.October, 31, 12, 0, 0, 0, time.UTC)
 	return &Report{
 		Target: Target{
@@ -33,9 +34,12 @@ func reportFixture() *Report {
 		Counts: Counts{
 			Total: 10, Pass: 6, Warn: 1, Fail: 2, Error: 1,
 		},
-		RuleCount:        2,
-		EnabledRuleCount: 1,
-		WorstStatusKey:   StatusError,
+		RuleCount:         2,
+		EnabledRuleCount:  1,
+		QualityScore:      &qualityScore,
+		ScoredRuleCount:   1,
+		UnscoredRuleCount: 0,
+		WorstStatusKey:    StatusError,
 		Rules: []Rule{
 			{
 				Title:           "orders row count",
@@ -133,6 +137,9 @@ func TestRenderEnglishReport(t *testing.T) {
 	require.Contains(t, document, "60.0%", "the pass rate is the pass share of the window's checks")
 	require.Contains(t, document, "Rule pass rate")
 	require.Contains(t, document, "100.0%", "only the rule with a known result counts toward the rule pass rate")
+	require.Contains(t, document, "Quality score")
+	require.Contains(t, document, "85.0", "the quality score is the weighted target score")
+	require.Contains(t, document, "Judged checks")
 	require.Contains(t, document, "<svg")
 	require.Contains(t, document, "@media print")
 	require.Contains(t, document, `class="seg-fail"`)
@@ -141,6 +148,21 @@ func TestRenderEnglishReport(t *testing.T) {
 	require.Contains(t, document, "forwarding the file forwards those rows",
 		"the footer must warn that the report carries real sample values")
 	require.Contains(t, document, `</html>`)
+}
+
+// A target whose checks were never judged has no score: the card carries the
+// not-available mark rather than a misleading zero or one hundred.
+func TestRenderQualityScoreUnset(t *testing.T) {
+	t.Parallel()
+
+	report := reportFixture()
+	report.QualityScore = nil
+	report.ScoredRuleCount = 0
+	report.UnscoredRuleCount = 1
+	view := newReportView(LanguageEnglish, report, newRenderLimits(report))
+	require.Equal(t, englishLabels.LabelNotAvailable, view.Summary.QualityScore)
+	require.Equal(t, "0", view.Summary.ScoredRuleCount)
+	require.Equal(t, "1", view.Summary.UnscoredRuleCount)
 }
 
 // The Chinese report keeps the same structure and switches the vocabulary.
@@ -154,6 +176,8 @@ func TestRenderChineseReport(t *testing.T) {
 		require.Contains(t, document, heading)
 	}
 	require.Contains(t, document, "通过率")
+	require.Contains(t, document, "质量分")
+	require.Contains(t, document, "已判定检查")
 	require.Contains(t, document, "行数")
 	require.Contains(t, document, "转发本文件即转发这些数据",
 		"页脚必须提示报告含真实样本值")

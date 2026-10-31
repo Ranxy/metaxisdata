@@ -148,6 +148,21 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 	assertJourneyOutcomes(t, rules, ruleNames, firstRun, func(spec journeyRuleSpec) v1pb.QualityStatus { return spec.firstRun })
 	assertJourneyEvidence(t, firstRun, ruleNames)
 	assertJourneySamples(t, firstRun, ruleNames)
+	// The directory row and the target workspace expose the same score and recent
+	// pass rate. The expectations come from the specs themselves, so adding a rule
+	// or changing a seeded verdict cannot silently drift from this assertion.
+	ordersScored, ordersPassing := 0, 0
+	for _, rule := range rules {
+		if rule.targetGUID != source.orders {
+			continue
+		}
+		ordersScored++
+		if rule.firstRun == v1pb.QualityStatus_QUALITY_STATUS_PASS {
+			ordersPassing++
+		}
+	}
+	require.Positive(t, ordersScored)
+	assertJourneyTargetHealth(t, fixture, source.orders, int32(ordersScored), float64(ordersPassing)/float64(ordersScored))
 
 	// P3: each FAIL opens exactly one issue; the passing, warning and unevaluated
 	// verdicts open none; each opened issue produces one inbox message.
@@ -204,6 +219,9 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 			v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED, ruleNames[rule.label]),
 			"%s should send exactly one recovery message", rule.label)
 	}
+	// P7b: dq_orders now has more completed executions than the recent window holds
+	// (first batch + scheduled retry + repaired batch), so the pass rate is capped.
+	assertJourneyRecentWindowCap(t, fixture, source.orders)
 	assertJourneyOverview(t, fixture, len(rules), 2*len(rules), 0)
 
 	// P8a: a runtime-unusable read-only source is an ERROR, not a FAIL, and the
@@ -216,6 +234,10 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 	// P8c: a dropped target is SKIPPED(ORPHANED) at runtime and explained on the
 	// rule read path.
 	orphanRuleName := assertJourneyOrphanedTarget(t, fixture, source.orphan)
+
+	// P8d: a soft-deleted instance keeps its registry rows, but its objects are no
+	// longer coverage, so its rules' targets must leave the numerator as well.
+	assertJourneyDeletedInstanceCoverage(t, fixture, source.orders)
 
 	// P9: archiving keeps rule history readable and removes the rules from the
 	// default list.
@@ -822,6 +844,147 @@ func assertJourneyOverview(t *testing.T, fixture *qualityFixture, minRules, minE
 			"a trend point's statuses add up to its total")
 	}
 	require.GreaterOrEqual(t, int(overview.GetTrend()[len(overview.GetTrend())-1].GetFail()), 7, "today's failing executions are in the trend")
+
+	// Coverage: the denominator is the registry, so every journey table is
+	// countable and the numerator can never exceed it.
+	require.GreaterOrEqual(t, int(overview.GetTotalTableCount()), 4, "the journey's four tables are registered")
+	require.GreaterOrEqual(t, int(overview.GetTotalColumnCount()), int(overview.GetCoveredColumnCount()))
+	require.GreaterOrEqual(t, int(overview.GetCoveredColumnCount()), 1, "the column rules cover some columns")
+	require.GreaterOrEqual(t, int(overview.GetJudgedTableCount()), 2, "dq_orders and dq_heartbeat are judged; dq_empty is not evaluated")
+	require.NotNil(t, overview.QualityScore, "the journey judged rules, so the workspace has a score")
+	require.GreaterOrEqual(t, overview.GetQualityScore(), 0.0)
+	require.LessOrEqual(t, overview.GetQualityScore(), 100.0)
+	require.GreaterOrEqual(t, int(overview.GetScoredRuleCount()), 18, "every journey rule except the empty-data one is judged")
+
+	// The per-instance row must agree with the workspace totals and never claim
+	// more coverage than the registry holds.
+	var instance *v1pb.QualityCoverageBreakdown
+	for _, breakdown := range overview.GetCoverageByInstance() {
+		if breakdown.GetKey() == fixture.instanceID {
+			instance = breakdown
+			break
+		}
+	}
+	require.NotNil(t, instance, "the journey instance has a coverage row: %s", fixture.env.ServerLogs())
+	require.GreaterOrEqual(t, int(instance.GetTotalTableCount()), 4)
+	require.GreaterOrEqual(t, int(instance.GetMonitoredTableCount()), 3)
+	require.LessOrEqual(t, int(instance.GetMonitoredTableCount()), int(instance.GetTotalTableCount()))
+	require.GreaterOrEqual(t, int(instance.GetCoveredColumnCount()), 1)
+	require.LessOrEqual(t, int(instance.GetCoveredColumnCount()), int(instance.GetTotalColumnCount()))
+
+	// The breakdowns and the workspace totals come from one assembly, so the rows
+	// must add up exactly; a row that is silently dropped or double-counted fails
+	// here even when each row looks plausible.
+	var instanceTables, instanceColumns, instanceMonitored, instanceCovered int32
+	for _, breakdown := range overview.GetCoverageByInstance() {
+		instanceTables += breakdown.GetTotalTableCount()
+		instanceColumns += breakdown.GetTotalColumnCount()
+		instanceMonitored += breakdown.GetMonitoredTableCount()
+		instanceCovered += breakdown.GetCoveredColumnCount()
+	}
+	require.Equal(t, overview.GetTotalTableCount(), instanceTables, "instance rows add up to the workspace table total")
+	require.Equal(t, overview.GetTotalColumnCount(), instanceColumns, "instance rows add up to the workspace column total")
+	require.Equal(t, overview.GetMonitoredTableCount(), instanceMonitored, "instance rows add up to the workspace monitored total")
+	require.Equal(t, overview.GetCoveredColumnCount(), instanceCovered, "instance rows add up to the workspace covered-column total")
+
+	require.NotEmpty(t, overview.GetCoverageByEnvironment(), "the journey instance contributes an environment row")
+	var environmentTables, environmentColumns, environmentMonitored, environmentCovered int32
+	for _, breakdown := range overview.GetCoverageByEnvironment() {
+		require.LessOrEqual(t, int(breakdown.GetMonitoredTableCount()), int(breakdown.GetTotalTableCount()))
+		require.LessOrEqual(t, int(breakdown.GetCoveredColumnCount()), int(breakdown.GetTotalColumnCount()))
+		environmentTables += breakdown.GetTotalTableCount()
+		environmentColumns += breakdown.GetTotalColumnCount()
+		environmentMonitored += breakdown.GetMonitoredTableCount()
+		environmentCovered += breakdown.GetCoveredColumnCount()
+	}
+	require.Equal(t, overview.GetTotalTableCount(), environmentTables, "environment rows add up to the workspace table total")
+	require.Equal(t, overview.GetTotalColumnCount(), environmentColumns, "environment rows add up to the workspace column total")
+	require.Equal(t, overview.GetMonitoredTableCount(), environmentMonitored, "environment rows add up to the workspace monitored total")
+	require.Equal(t, overview.GetCoveredColumnCount(), environmentCovered, "environment rows add up to the workspace covered-column total")
+	require.NotEmpty(t, overview.GetScoreByDimension())
+	for _, dimension := range overview.GetScoreByDimension() {
+		require.LessOrEqual(t, dimension.GetScoredRuleCount(), dimension.GetRuleCount())
+		require.LessOrEqual(t, dimension.GetFailingRuleCount(), dimension.GetScoredRuleCount())
+		if dimension.QualityScore != nil {
+			require.GreaterOrEqual(t, dimension.GetQualityScore(), 0.0)
+			require.LessOrEqual(t, dimension.GetQualityScore(), 100.0)
+		}
+	}
+	require.NotEmpty(t, overview.GetScoreByOwner(), "the journey's unowned rules form the empty-owner row")
+	for _, owner := range overview.GetScoreByOwner() {
+		require.LessOrEqual(t, owner.GetScoredRuleCount(), owner.GetRuleCount())
+		require.LessOrEqual(t, owner.GetFailingRuleCount(), owner.GetScoredRuleCount())
+		if owner.QualityScore != nil {
+			require.GreaterOrEqual(t, owner.GetQualityScore(), 0.0)
+			require.LessOrEqual(t, owner.GetQualityScore(), 100.0)
+		}
+	}
+}
+
+// assertJourneyTargetHealth pins the target summary's score and recent pass rate
+// on one target after its first batch. The directory row and the workspace header
+// are two reads of the same state, so they must agree.
+func assertJourneyTargetHealth(t *testing.T, fixture *qualityFixture, targetGUID string, wantScored int32, wantPassRate float64) {
+	t.Helper()
+
+	listed, err := fixture.dataQuality.ListQualityTargets(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 1000,
+		Instance: fixture.instanceID,
+	}))
+	require.NoError(t, err)
+	var summary *v1pb.QualityTargetSummary
+	for _, candidate := range listed.Msg.GetQualityTargets() {
+		if candidate.GetTarget().GetMetaGuid() == targetGUID {
+			summary = candidate
+			break
+		}
+	}
+	require.NotNil(t, summary, "the target directory lists the journey table: %s", fixture.env.ServerLogs())
+	require.NotNil(t, summary.QualityScore, "the target's judged rules produce a score")
+	require.GreaterOrEqual(t, summary.GetQualityScore(), 0.0)
+	require.LessOrEqual(t, summary.GetQualityScore(), 100.0)
+	require.Equal(t, wantScored, summary.GetScoredRuleCount())
+	require.NotNil(t, summary.RecentPassRate, "the first batch judged every enabled rule")
+	require.InDelta(t, wantPassRate, summary.GetRecentPassRate(), 1e-9)
+	require.Equal(t, wantScored, summary.GetRecentExecutionCount(), "the first batch completed one execution per rule")
+
+	target, err := fixture.dataQuality.GetQualityTarget(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: targetGUID,
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, target.Msg.GetSummary().QualityScore)
+	require.InDelta(t, summary.GetQualityScore(), target.Msg.GetSummary().GetQualityScore(), 1e-9)
+	require.Equal(t, summary.GetScoredRuleCount(), target.Msg.GetSummary().GetScoredRuleCount())
+	require.InDelta(t, summary.GetRecentPassRate(), target.Msg.GetSummary().GetRecentPassRate(), 1e-9)
+	require.Equal(t, summary.GetRecentExecutionCount(), target.Msg.GetSummary().GetRecentExecutionCount())
+}
+
+// assertJourneyRecentWindowCap pins the recent pass-rate window on a target with
+// more than 20 completed executions: the count is the window size, not all
+// history.
+func assertJourneyRecentWindowCap(t *testing.T, fixture *qualityFixture, targetGUID string) {
+	t.Helper()
+
+	listed, err := fixture.dataQuality.ListQualityTargets(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 1000,
+		Instance: fixture.instanceID,
+	}))
+	require.NoError(t, err)
+	for _, candidate := range listed.Msg.GetQualityTargets() {
+		if candidate.GetTarget().GetMetaGuid() != targetGUID {
+			continue
+		}
+		require.NotNil(t, candidate.RecentPassRate, "the target has judged executions")
+		require.Equal(t, int32(20), candidate.GetRecentExecutionCount(),
+			"the recent pass rate window stops at 20, not at every historical execution")
+		require.GreaterOrEqual(t, candidate.GetRecentPassRate(), 0.0)
+		require.LessOrEqual(t, candidate.GetRecentPassRate(), 1.0)
+		return
+	}
+	t.Fatalf("the target directory does not list %s: %s", targetGUID, fixture.env.ServerLogs())
 }
 
 // assertJourneyProfileAndLabel profiles the journey table and writes a label by
@@ -968,6 +1131,26 @@ func assertJourneyOrphanedTarget(t *testing.T, fixture *qualityFixture, orphanTa
 		require.Equal(t, 0, journeyNotificationCount(t, fixture, kind, rule.GetName()))
 	}
 
+	// The dropped table removed its coverage denominator row. The still-enabled
+	// rule must not sit in the numerator, or coverage would exceed 100%.
+	overview, err := fixture.dataQuality.GetQualityOverview(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityOverviewRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.LessOrEqual(t, int(overview.Msg.GetMonitoredTableCount()), int(overview.Msg.GetTotalTableCount()),
+		"an enabled rule that outlived its target cannot push coverage past 100%%")
+	require.LessOrEqual(t, int(overview.Msg.GetJudgedTableCount()), int(overview.Msg.GetMonitoredTableCount()))
+	var instance *v1pb.QualityCoverageBreakdown
+	for _, breakdown := range overview.Msg.GetCoverageByInstance() {
+		if breakdown.GetKey() == fixture.instanceID {
+			instance = breakdown
+			break
+		}
+	}
+	require.NotNil(t, instance, "the journey instance still has a coverage row: %s", fixture.env.ServerLogs())
+	require.Equal(t, int32(3), instance.GetMonitoredTableCount(),
+		"dq_orders, dq_heartbeat and dq_empty remain the monitored targets; the dropped table is not counted")
+	require.LessOrEqual(t, int(instance.GetMonitoredTableCount()), int(instance.GetTotalTableCount()))
+	require.LessOrEqual(t, int(instance.GetCoveredColumnCount()), int(instance.GetTotalColumnCount()))
+
 	read, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityRuleRequest{Name: rule.GetName()}))
 	require.NoError(t, err)
 	require.NotEmpty(t, read.Msg.GetOrphanedReason(), "the rule read path explains the orphaned target")
@@ -980,6 +1163,33 @@ func assertJourneyOrphanedTarget(t *testing.T, fixture *qualityFixture, orphanTa
 	require.Len(t, listed.Msg.GetQualityRules(), 1)
 	require.NotEmpty(t, listed.Msg.GetQualityRules()[0].GetOrphanedReason())
 	return rule.GetName()
+}
+
+// assertJourneyDeletedInstanceCoverage pins the coverage numerator guard against
+// a soft-deleted instance. DeleteInstance keeps the registry rows, so a rule's
+// target still exists by GUID, while the coverage denominator excludes objects
+// under a deleted instance; the existence probe must exclude them too or coverage
+// would count a denominator-less target. The observer store is read directly
+// because the API's workspace totals are shared with the parallel scenarios.
+func assertJourneyDeletedInstanceCoverage(t *testing.T, fixture *qualityFixture, targetGUID string) {
+	t.Helper()
+
+	key := store.MetaGUIDKey{GUID: targetGUID, ObjectType: storepb.MetaType_TABLE}
+	before, err := fixture.env.Store.ListMetaRegistryTargetColumns(fixture.ctx, []store.MetaGUIDKey{key})
+	require.NoError(t, err)
+	require.Contains(t, before, key, "the live instance's target resolves")
+	require.NotEmpty(t, before[key], "the target's registry columns are readable")
+
+	_, err = fixture.env.DeleteInstance(fixture.ctx, common.FormatInstance(fixture.instanceID))
+	require.NoError(t, err, "soft-delete the journey instance")
+	after, err := fixture.env.Store.ListMetaRegistryTargetColumns(fixture.ctx, []store.MetaGUIDKey{key})
+	require.NoError(t, err)
+	require.Empty(t, after, "a soft-deleted instance's target has no coverage column set")
+	coverage, err := fixture.env.Store.ListQualityCoverage(fixture.ctx)
+	require.NoError(t, err)
+	for _, row := range coverage {
+		require.NotEqual(t, fixture.instanceID, row.InstanceResourceID, "a soft-deleted instance has no coverage row")
+	}
 }
 
 // assertJourneyArchive archives every rule and proves the history stays readable.

@@ -97,6 +97,19 @@ type QualityTargetMessage struct {
 	// the target has no enabled rule.
 	ScheduleInterval time.Duration
 	NextRunAt        *time.Time
+
+	// QualityScore is the target's 0-100 weighted score over its enabled rules'
+	// latest judged results; nil when none was judged. ScoredRuleCount is how many
+	// enabled rules contributed. Both are filled by the API from the rules and
+	// their latest executions, which the aggregate query cannot score.
+	QualityScore    *float64
+	ScoredRuleCount int32
+	// RecentPassRate is the 0-1 pass share (PASS / PASS+WARN+FAIL) of the target's
+	// newest completed executions, and RecentExecutionCount is how many of those
+	// were judged. Nil when none was judged. The API fills both from
+	// ListQualityTargetExecutionTallies.
+	RecentPassRate       *float64
+	RecentExecutionCount int32
 }
 
 // qualityTargetStatusRank maps a quality status onto the ordering used to pick a

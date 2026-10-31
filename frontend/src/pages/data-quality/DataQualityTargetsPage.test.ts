@@ -69,6 +69,10 @@ function summary(options: {
   lastRunTime?: boolean;
   schemaChanged?: boolean;
   orphaned?: boolean;
+  qualityScore?: number;
+  scoredRuleCount?: number;
+  recentPassRate?: number;
+  recentExecutionCount?: number;
 }): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
     target: create(QualityTargetSchema, {
@@ -94,6 +98,10 @@ function summary(options: {
         : timestampFromDate(new Date(Date.now() - 5 * 60_000)),
     schemaChanged: options.schemaChanged ?? false,
     orphaned: options.orphaned ?? false,
+    qualityScore: options.qualityScore,
+    scoredRuleCount: options.scoredRuleCount ?? 0,
+    recentPassRate: options.recentPassRate,
+    recentExecutionCount: options.recentExecutionCount ?? 0,
   });
 }
 
@@ -106,6 +114,10 @@ function directoryRows() {
       ruleCount: 1,
       worstStatus: QualityStatus.FAIL,
       pendingDraftCount: 1,
+      qualityScore: 40,
+      scoredRuleCount: 1,
+      recentPassRate: 0.25,
+      recentExecutionCount: 20,
     }),
     summary({
       guid: TARGET_ORDERS,
@@ -116,6 +128,10 @@ function directoryRows() {
       columnCount: 2,
       openIssueCount: 1,
       worstStatus: QualityStatus.PASS,
+      qualityScore: 92.5,
+      scoredRuleCount: 1,
+      recentPassRate: 0.9,
+      recentExecutionCount: 10,
     }),
   ];
 }
@@ -305,6 +321,68 @@ describe("DataQualityTargetsPage directory", () => {
 
     // The paused rule narrows the enabled/total hint without hiding the row.
     expect(ordersCells[1]?.text()).toContain("1 / 2");
+  });
+
+  it("shows the quality score and recent pass rate beside the latest result", async () => {
+    const { wrapper } = await mountPage();
+    const [customers, orders] = rows(wrapper);
+
+    const customersResult = customers?.findAll("td")[3];
+    expect(customersResult?.text()).toContain(
+      i18n.global.t("dataQuality.targets.scoreLine", {
+        score: "40.0",
+        passRate: "25.0%",
+      })
+    );
+    const ordersResult = orders?.findAll("td")[3];
+    expect(ordersResult?.text()).toContain(
+      i18n.global.t("dataQuality.targets.scoreLine", {
+        score: "92.5",
+        passRate: "90.0%",
+      })
+    );
+    // The tooltip names the fixed read window, not the judged subset: 10 were
+    // judged but the last 20 completed executions are the window.
+    expect(
+      ordersResult
+        ?.find(
+          `[title="${i18n.global.t("dataQuality.targets.scoreLineHint", {
+            window: 20,
+            judged: 10,
+          })}"]`
+        )
+        .exists()
+    ).toBe(true);
+  });
+
+  it("says '-' for a target whose checks were never judged", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        summary({
+          guid: TARGET_ORDERS,
+          object: "orders",
+          lastRunTime: false,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    const result = rows(wrapper)[0]?.findAll("td")[3];
+    expect(result?.text()).toContain(
+      i18n.global.t("dataQuality.targets.scoreLine", {
+        score: "-",
+        passRate: "-",
+      })
+    );
+    // No judged execution means no window to explain.
+    expect(
+      result
+        ?.find(
+          `[title="${i18n.global.t("dataQuality.targets.scoreLineHint", { window: 20, judged: 0 })}"]`
+        )
+        .exists()
+    ).toBe(false);
   });
 
   it("shows the schema-changed and orphaned badges on a row", async () => {

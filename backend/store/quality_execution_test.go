@@ -493,6 +493,60 @@ func TestQualityExecutionBaselineQueriesReadOnlyCompletedRows(t *testing.T) {
 	require.Contains(t, qualityExecutionLatestStatement, "ORDER BY rule_id, started_at DESC, id DESC")
 }
 
+// The per-target recent-execution tally is bounded and narrow: the LATERAL applies
+// the limit per target inside the statement, so the read stops at the newest
+// limitPerTarget index rows instead of ranking every historical execution, and the
+// projection is the status column alone (no sample, SQL or threshold payload). The
+// quality_rule join makes the window currently-enabled rules only and keeps a moved
+// rule's pre-move executions out of its old target's window.
+func TestQualityTargetExecutionTallyStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityTargetExecutionTallyStatement, "FROM unnest($1::text[], $2::int2[]) AS k(guid, object_type)")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "LEFT JOIN LATERAL (")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "SELECT e.status")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "JOIN quality_rule r ON r.id = e.rule_id")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "r.state = $6 AND r.deleted = FALSE")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "e.target_guid = r.target_guid AND e.target_type = r.target_type")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "e.state = $7")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "ORDER BY e.started_at DESC, e.id DESC")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "LIMIT $8")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "COUNT(*) FILTER (WHERE recent.status = $3)")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "COUNT(*) FILTER (WHERE recent.status = $4)")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "COUNT(*) FILTER (WHERE recent.status = $5)")
+	require.Contains(t, qualityTargetExecutionTallyStatement, "GROUP BY k.guid, k.object_type")
+	require.NotContains(t, qualityTargetExecutionTallyStatement, "ROW_NUMBER")
+	require.NotContains(t, qualityTargetExecutionTallyStatement, "sample")
+	require.NotContains(t, qualityTargetExecutionTallyStatement, "executed_sql")
+	require.NotContains(t, qualityTargetExecutionTallyStatement, "target_path")
+}
+
+// The tally read validates its bounds before touching the database, and an empty
+// key set is a no-op.
+func TestQualityTargetExecutionTalliesValidateArguments(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s := &Store{}
+
+	tallies, err := s.ListQualityTargetExecutionTallies(ctx, nil, 20)
+	require.NoError(t, err)
+	require.NotNil(t, tallies)
+	require.Empty(t, tallies)
+
+	_, err = s.ListQualityTargetExecutionTallies(ctx, []MetaGUIDKey{{GUID: "inst;db;;t", ObjectType: storepb.MetaType_TABLE}}, 0)
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+}
+
+// Judged is the sum of the three verdicts; the tally never carries the
+// operational states, so it cannot count them.
+func TestQualityTargetExecutionTallyJudged(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, int32(3), QualityTargetExecutionTally{Pass: 1, Warn: 1, Fail: 1}.Judged())
+	require.Zero(t, QualityTargetExecutionTally{}.Judged())
+}
+
 // Protojson has to keep the optional null marker's three states in JSONB: absent
 // (a sample recorded before the marker existed), an explicit false (the value was
 // an empty string) and an explicit true (the value was SQL NULL). Losing the

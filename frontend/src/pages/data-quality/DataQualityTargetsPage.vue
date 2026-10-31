@@ -271,6 +271,9 @@
                   <span v-if="summary.pendingDraftCount > 0">
                     {{ t("dataQuality.targets.pendingDraftsCount", { count: summary.pendingDraftCount }) }}
                   </span>
+                  <span class="tabular-nums">
+                    {{ scoreLine(summary) }}
+                  </span>
                 </div>
               </TableCell>
               <TableCell class="hidden md:table-cell">
@@ -312,6 +315,22 @@
                 >
                   {{ t("dataQuality.targets.neverRun") }}
                 </span>
+                <!-- The score and pass rate are target aggregates like the
+                     latest result above them, so they ride in that cell instead
+                     of widening the table. -->
+                <div
+                  class="mt-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+                  :title="
+                    summary.recentExecutionCount > 0
+                      ? t('dataQuality.targets.scoreLineHint', {
+                          window: RECENT_PASS_RATE_WINDOW,
+                          judged: summary.recentExecutionCount,
+                        })
+                      : undefined
+                  "
+                >
+                  {{ scoreLine(summary) }}
+                </div>
               </TableCell>
               <TableCell class="hidden text-right tabular-nums md:table-cell">
                 {{ summary.openIssueCount > 0 ? summary.openIssueCount : "-" }}
@@ -408,6 +427,10 @@ import {
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { qualityStatusKey, qualityStatusVariant } from "@/utils/dataQuality";
 import type { TargetSelection } from "@/utils/dataQualityForm";
+import {
+  formatPassRate,
+  formatQualityScore,
+} from "@/utils/dataQualityOverview";
 import {
   targetDisplayName,
   targetFullPath,
@@ -614,6 +637,26 @@ const hasActiveFilters = computed(
     toggles.issues ||
     toggles.drafts
 );
+
+/**
+ * How many of a target's most recent completed executions the server reads for
+ * its pass rate. Mirrors `qualityTargetRecentExecutionLimit` in the backend;
+ * `recentExecutionCount` is only the judged subset of this window, so the two
+ * must not be confused in the tooltip.
+ */
+const RECENT_PASS_RATE_WINDOW = 20;
+
+/**
+ * The row's aggregate health under the latest result: the quality score over
+ * the target's judged checks and the pass share of its recent executions. Both
+ * are "-" until a check has been judged; that is not a zero.
+ */
+function scoreLine(summary: QualityTargetSummary): string {
+  return t("dataQuality.targets.scoreLine", {
+    score: formatQualityScore(summary.qualityScore),
+    passRate: formatPassRate(summary.recentPassRate),
+  });
+}
 
 /** Push the current filters to the URL and let the server answer them. */
 function applyFilters() {
