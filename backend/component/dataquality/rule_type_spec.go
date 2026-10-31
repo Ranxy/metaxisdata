@@ -73,6 +73,17 @@ type ruleTypeSpec struct {
 	LabelDraft func(storepb.QualitySemanticType, string, *storepb.ColumnProfile) *storepb.QualityRuleConfig
 }
 
+// ruleTypeSpecFor returns the descriptor of one rule type. UNSPECIFIED and any
+// value this build does not know have no descriptor.
+func ruleTypeSpecFor(ruleType storepb.QualityRuleType) (ruleTypeSpec, bool) {
+	for _, spec := range ruleTypeSpecs {
+		if spec.Type == ruleType {
+			return spec, true
+		}
+	}
+	return ruleTypeSpec{}, false
+}
+
 // ruleTypeSpecs is the closed catalog of rule types this build can describe, in
 // proto enum order.
 var ruleTypeSpecs = []ruleTypeSpec{

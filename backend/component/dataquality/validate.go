@@ -274,30 +274,18 @@ func percentThresholdUnsupported(ruleType storepb.QualityRuleType) error {
 	}
 }
 
-// ruleTypeAllowsPercent lists the count-type rules whose observation carries a
-// denominator, so a percentage threshold has a real meaning. For the SQL count
-// rules that is total_rows; a CEL rule's denominator is the number of sampled rows
-// it evaluated. This is the single source of truth for both validatePercentSupport
-// (save) and validateExecutionMetric (runtime backstop). Everything else rejects
-// PERCENT: custom_sql, row_count, row_count_change and freshness report no total to
-// divide by; null_percent names its own count/percentage unit in its config; and
-// schema_drift, aggregate and cross_table bound absolute measurements.
+// ruleTypeAllowsPercent reports whether the count-type rule's observation carries
+// a denominator, so a percentage threshold has a real meaning. For the SQL count
+// rules that is total_rows; a CEL rule's denominator is the number of sampled
+// rows it evaluated. The descriptor table is the single source of truth for both
+// validatePercentSupport (save) and validateExecutionMetric (runtime backstop).
+// Everything else rejects PERCENT: custom_sql, row_count, row_count_change and
+// freshness report no total to divide by; null_percent names its own
+// count/percentage unit in its config; and schema_drift, aggregate and cross_table
+// bound absolute measurements.
 func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		return true
-	default:
-		return false
-	}
+	spec, ok := ruleTypeSpecFor(ruleType)
+	return ok && spec.Percent
 }
 
 // validateFilter parses the filter and compiles it against the target, which is
