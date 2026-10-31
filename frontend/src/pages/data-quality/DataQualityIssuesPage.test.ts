@@ -22,12 +22,23 @@ import DataQualityIssuesPage from "./DataQualityIssuesPage.vue";
 const mocks = vi.hoisted(() => ({
   listQualityIssues: vi.fn(),
   listAllQualityRules: vi.fn(),
+  exportQualityIssues: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   listQualityIssues: mocks.listQualityIssues,
   listAllQualityRules: mocks.listAllQualityRules,
+  exportQualityIssues: mocks.exportQualityIssues,
+}));
+
+// jsdom has no object-URL download path; the download itself is covered by the
+// CSV helper's own test, so this test only asserts what it was handed.
+const csvMocks = vi.hoisted(() => ({ downloadBlob: vi.fn() }));
+
+vi.mock("@/utils/csv", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/csv")>()),
+  downloadBlob: csvMocks.downloadBlob,
 }));
 
 const PERMISSIONS = [
@@ -96,6 +107,10 @@ beforeEach(() => {
     nextPageToken: "",
   });
   mocks.listAllQualityRules.mockResolvedValue([]);
+  mocks.exportQualityIssues.mockResolvedValue({
+    blob: new Blob([]),
+    rowCount: 3n,
+  });
 });
 
 describe("DataQualityIssuesPage URL filters", () => {
@@ -256,6 +271,32 @@ describe("DataQualityIssuesPage URL filters", () => {
       .find((button) => button.text().trim() === "Null rate on orders");
     expect(ruleButton).toBeDefined();
     wrapper.unmount();
+  });
+});
+
+describe("DataQualityIssuesPage export", () => {
+  it("exports every issue the applied filters select, not one page", async () => {
+    const wrapper = await mountPage(
+      `/data-quality/issues?status=${QualityIssueStatus.OPEN}&severity=${QualitySeverity.ERROR}`
+    );
+
+    const exportButton = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(i18n.global.t("dataQuality.exportCsv"))
+      );
+    await exportButton?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.exportQualityIssues).toHaveBeenCalledWith({
+      status: QualityIssueStatus.OPEN,
+      severity: QualitySeverity.ERROR,
+      signal: expect.any(AbortSignal),
+    });
+    expect(csvMocks.downloadBlob).toHaveBeenCalledTimes(1);
+    expect(csvMocks.downloadBlob.mock.calls[0]?.[1]).toMatch(
+      /^quality-issues-\d{8}-\d{6}\.csv$/
+    );
   });
 });
 

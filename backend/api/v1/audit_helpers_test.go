@@ -102,12 +102,15 @@ func TestMapSeveritySeparatesClientAndServerErrors(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, storepb.AuditLogSeverity_INFO, audit.MapSeverity(nil))
+	// CodeCanceled is a client walking away from a stream, not a server failure:
+	// a large download a user closes must not add an error row per attempt.
 	for _, code := range []connect.Code{
 		connect.CodeUnauthenticated,
 		connect.CodePermissionDenied,
 		connect.CodeInvalidArgument,
 		connect.CodeNotFound,
 		connect.CodeAlreadyExists,
+		connect.CodeCanceled,
 	} {
 		require.Equalf(t, storepb.AuditLogSeverity_WARNING, audit.MapSeverity(connect.NewError(code, errors.New("nope"))), "code %v", code)
 	}
@@ -116,7 +119,6 @@ func TestMapSeveritySeparatesClientAndServerErrors(t *testing.T) {
 		connect.CodeUnknown,
 		connect.CodeUnavailable,
 		connect.CodeDeadlineExceeded,
-		connect.CodeCanceled,
 	} {
 		require.Equalf(t, storepb.AuditLogSeverity_ERROR, audit.MapSeverity(connect.NewError(code, errors.New("boom"))), "code %v", code)
 	}

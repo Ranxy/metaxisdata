@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -166,4 +167,41 @@ func TestCountPendingQualitySuggestionsRequiresTarget(t *testing.T) {
 	store := &Store{}
 	_, _, err := store.CountPendingQualitySuggestions(context.Background(), "")
 	require.Error(t, err)
+}
+
+// WorstStatuses is the multi-status form the failing-only export uses. It must
+// bind both ranks in one ANY predicate; the single-status form must keep its
+// exact-rank predicate and argument shape unchanged.
+func TestTargetWhereWorstStatuses(t *testing.T) {
+	t.Parallel()
+
+	where, args, err := targetWhere(&FindQualityTargetMessage{
+		WorstStatuses: []storepb.QualityStatus{
+			storepb.QualityStatus_QUALITY_STATUS_FAIL,
+			storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		},
+	}, 13)
+	require.NoError(t, err)
+	require.Equal(t, []any{pq.Array([]int32{5, 6})}, args)
+	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = ANY($14::int[])")
+
+	// The slice wins over a contradictory single status instead of ANDing two
+	// predicates that cannot both hold.
+	where, args, err = targetWhere(&FindQualityTargetMessage{
+		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		WorstStatuses: []storepb.QualityStatus{
+			storepb.QualityStatus_QUALITY_STATUS_FAIL,
+			storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		},
+	}, 13)
+	require.NoError(t, err)
+	require.Equal(t, []any{pq.Array([]int32{5, 6})}, args)
+	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = ANY($14::int[])")
+
+	where, args, err = targetWhere(&FindQualityTargetMessage{
+		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_FAIL,
+	}, 13)
+	require.NoError(t, err)
+	require.Equal(t, []any{int32(5)}, args)
+	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = $14")
 }

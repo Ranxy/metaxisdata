@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -336,20 +337,34 @@ func GetNestedString(raw map[string]any, keys ...string) string {
 	return value
 }
 
+// MapSeverity maps an error onto the ledger severity. A client that walks away
+// from a large download (context canceled, closed connection, end of stream) is a
+// warning, not a server failure: it is the expected outcome of a user closing the
+// tab, while a real read or write failure stays an error.
 func MapSeverity(err error) storepb.AuditLogSeverity {
 	if err == nil {
 		return storepb.AuditLogSeverity_INFO
 	}
 	connectErr, ok := errors.AsType[*connect.Error](err)
 	if !ok {
+		if isClientCancellation(err) {
+			return storepb.AuditLogSeverity_WARNING
+		}
 		return storepb.AuditLogSeverity_ERROR
 	}
 	switch connectErr.Code() {
-	case connect.CodeUnauthenticated, connect.CodePermissionDenied, connect.CodeInvalidArgument, connect.CodeNotFound, connect.CodeAlreadyExists:
+	case connect.CodeUnauthenticated, connect.CodePermissionDenied, connect.CodeInvalidArgument,
+		connect.CodeNotFound, connect.CodeAlreadyExists, connect.CodeCanceled:
 		return storepb.AuditLogSeverity_WARNING
 	default:
 		return storepb.AuditLogSeverity_ERROR
 	}
+}
+
+// isClientCancellation reports whether err is the client going away rather than a
+// server failure. net.ErrClosed and io.EOF are how a closed stream surfaces.
+func isClientCancellation(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF)
 }
 
 func BuildAuditStatus(err error) *storepb.AuditLogStatus {

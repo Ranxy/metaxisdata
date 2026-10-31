@@ -10,6 +10,6 @@ import (
 
 // ExportQualityReport renders one target's quality report as a self-contained
 // HTML document. The implementation lives in this file.
-func (s *DataQualityService) ExportQualityReport(_ context.Context, _ *connect.Request[v1pb.ExportQualityReportRequest]) (*connect.Response[v1pb.ExportQualityReportResponse], error) {
+func (*DataQualityService) ExportQualityReport(_ context.Context, _ *connect.Request[v1pb.ExportQualityReportRequest]) (*connect.Response[v1pb.ExportQualityReportResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, nil)
 }

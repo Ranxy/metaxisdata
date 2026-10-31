@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -132,4 +133,100 @@ func TestStreamingAuditMetadataCarriesThePeerAddress(t *testing.T) {
 
 	metadata := streamingRequestMetadata(&fakeStreamingConn{procedure: "/p", peerAddr: "203.0.113.5:4040"}, nil)
 	require.Equal(t, "203.0.113.5", metadata.GetIp())
+}
+
+// receiveStreamingConn is the minimum a server-streaming call does before the
+// service method runs: it receives the one request message off the wire.
+type receiveStreamingConn struct {
+	fakeStreamingConn
+	message proto.Message
+}
+
+func (c *receiveStreamingConn) Receive(message any) error {
+	target, ok := message.(proto.Message)
+	if !ok {
+		return connect.NewError(connect.CodeInternal, nil)
+	}
+	proto.Merge(target, c.message)
+	return nil
+}
+
+// The audit interceptor wraps the handler connection, so the request message the
+// service method receives is the same one the audit row sees. This pins the
+// capture: without it a streamed export row says a download happened but not what
+// was selected.
+func TestRecordingStreamingConnCapturesTheRequest(t *testing.T) {
+	t.Parallel()
+
+	recorder := audit.NewStreamRecorder()
+	conn := &recordingStreamingHandlerConn{
+		StreamingHandlerConn: &receiveStreamingConn{
+			fakeStreamingConn: fakeStreamingConn{procedure: "/p"},
+			message:           &v1pb.ExportQualityExecutionsRequest{Parent: "workspaces/-", MaxRows: 25},
+		},
+		recorder: recorder,
+	}
+
+	var received v1pb.ExportQualityExecutionsRequest
+	require.NoError(t, conn.Receive(&received))
+	require.Equal(t, "workspaces/-", received.GetParent())
+
+	request, ok := recorder.Request().(*v1pb.ExportQualityExecutionsRequest)
+	require.True(t, ok)
+	require.Equal(t, "workspaces/-", request.GetParent())
+	require.Equal(t, int32(25), request.GetMaxRows())
+}
+
+// A handler reports its outcome through the context the interceptor installed;
+// the recorder keeps it for the audit row.
+func TestStreamingAuditKeepsTheHandlerResult(t *testing.T) {
+	t.Parallel()
+
+	recorder := audit.NewStreamRecorder()
+	ctx := audit.WithStreamRecorder(t.Context(), recorder)
+	conn := &recordingStreamingHandlerConn{
+		StreamingHandlerConn: &receiveStreamingConn{
+			fakeStreamingConn: fakeStreamingConn{procedure: "/p"},
+			message:           &v1pb.ExportQualityExecutionsRequest{Parent: "workspaces/-"},
+		},
+		recorder: recorder,
+	}
+
+	handler := func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		var request v1pb.ExportQualityExecutionsRequest
+		if err := conn.Receive(&request); err != nil {
+			return err
+		}
+		audit.RecordStreamResult(ctx, map[string]any{"exportedRows": int64(41), "maxRows": int64(100000)})
+		return nil
+	}
+
+	require.NoError(t, handler(ctx, conn))
+	require.Equal(t, int64(41), recorder.Result()["exportedRows"])
+	require.Equal(t, int64(100000), recorder.Result()["maxRows"])
+}
+
+// A connection whose receive failed has no request to record; the audit row must
+// still be written, just without a request payload.
+func TestRecordingStreamingConnDoesNotRecordAFailedReceive(t *testing.T) {
+	t.Parallel()
+
+	recorder := audit.NewStreamRecorder()
+	conn := &recordingStreamingHandlerConn{
+		StreamingHandlerConn: &failingStreamingConn{},
+		recorder:             recorder,
+	}
+
+	var received v1pb.ExportQualityExecutionsRequest
+	require.Error(t, conn.Receive(&received))
+	require.Nil(t, recorder.Request())
+}
+
+// failingStreamingConn is a handler connection whose receive always fails.
+type failingStreamingConn struct {
+	fakeStreamingConn
+}
+
+func (*failingStreamingConn) Receive(_ any) error {
+	return connect.NewError(connect.CodeCanceled, nil)
 }

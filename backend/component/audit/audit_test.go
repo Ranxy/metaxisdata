@@ -1,8 +1,11 @@
 package audit
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -468,4 +471,25 @@ func TestMarshalAuditMessageMarksAnUnencodablePayload(t *testing.T) {
 	require.NotNil(t, structured)
 	require.Nil(t, raw)
 	require.Contains(t, structured.GetFields()["truncated"].GetStringValue(), "could not be encoded")
+}
+
+// A client that walks away from a download is not a server failure: the ledger
+// records it as a warning, while a real read/write failure stays an error.
+func TestMapSeverityTreatsClientCancellationAsWarning(t *testing.T) {
+	t.Parallel()
+
+	for _, err := range []error{
+		context.Canceled,
+		fmt.Errorf("stream ended: %w", context.Canceled),
+		io.EOF,
+		net.ErrClosed,
+		connect.NewError(connect.CodeCanceled, errors.New("client canceled")),
+	} {
+		require.Equalf(t, storepb.AuditLogSeverity_WARNING, MapSeverity(err), "error %v", err)
+	}
+
+	require.Equal(t, storepb.AuditLogSeverity_INFO, MapSeverity(nil))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR, MapSeverity(errors.New("the store failed")))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR,
+		MapSeverity(connect.NewError(connect.CodeInternal, errors.New("boom"))))
 }
