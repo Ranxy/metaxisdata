@@ -254,14 +254,11 @@ func (s *DataQualityService) ListQualitySuggestionJobs(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
-	limit := int(req.Msg.GetPageSize())
-	if limit == 0 && req.Msg.GetPageToken() == "" {
-		limit = qualitySuggestionJobDefaultPageSize
-	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   limit,
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualitySuggestionJobDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err

@@ -99,6 +99,17 @@ func (s *Store) ListInstances(ctx context.Context, find *FindInstanceMessage) ([
 	return instances, nil
 }
 
+// mapCreateInstanceError turns a resource_id collision into the API's
+// AlreadyExists contract. The instance id is chosen by the caller, so a duplicate
+// is a client error ("pick another id") rather than an internal failure; without
+// this the store returned the raw driver error and the RPC answered 500.
+func mapCreateInstanceError(resourceID string, err error) error {
+	if isUniqueViolation(err) {
+		return common.Errorf(common.Conflict, "instance %q already exists", resourceID)
+	}
+	return err
+}
+
 // CreateInstance creates an instance.
 func (s *Store) CreateInstance(ctx context.Context, instanceCreate *InstanceMessage) (*InstanceMessage, error) {
 	if err := validateDataSources(instanceCreate.Metadata); err != nil {
@@ -134,7 +145,7 @@ func (s *Store) CreateInstance(ctx context.Context, instanceCreate *InstanceMess
 		environment,
 		metadataBytes,
 	); err != nil {
-		return nil, err
+		return nil, mapCreateInstanceError(instanceCreate.ResourceID, err)
 	}
 
 	if err := tx.Commit(); err != nil {

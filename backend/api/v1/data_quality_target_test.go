@@ -71,17 +71,6 @@ func TestQualityTargetWorstStatusFromV1(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-// An unset page size reads the RPC's documented default on the first page, while a
-// follow-up page keeps the size its token was issued with.
-func TestQualityTargetRequestedPageSize(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, qualityTargetDefaultPageSize, qualityTargetRequestedPageSize(0, ""))
-	require.Equal(t, 100, qualityTargetRequestedPageSize(100, ""))
-	require.Equal(t, 0, qualityTargetRequestedPageSize(0, "token"), "the token carries the size")
-	require.Equal(t, 25, qualityTargetRequestedPageSize(25, "token"))
-}
-
 // The list filters map resource names and raw ids alike; the rule-only filters
 // (owner, rule type) have no target meaning and stay unset.
 func TestApplyQualityTargetListFilters(t *testing.T) {

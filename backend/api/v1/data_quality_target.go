@@ -25,11 +25,6 @@ const qualityTargetOpenIssueLimit = 200
 // workspace's history strip shows.
 const qualityTargetRuleHistoryLimit = 20
 
-// qualityTargetDefaultPageSize is what an unset page_size means for the target
-// directory, matching the RPC's documented default. A follow-up page keeps the
-// size its token was issued with instead of re-defaulting.
-const qualityTargetDefaultPageSize = 50
-
 // ListQualityTargets lists the targets that carry quality rules, one row per
 // table or view. The aggregation happens in the store, so the directory costs one
 // query rather than paging through every rule.
@@ -43,9 +38,10 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   qualityTargetRequestedPageSize(req.Msg.GetPageSize(), req.Msg.GetPageToken()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -203,17 +199,6 @@ func (s *DataQualityService) resolveQualityTargetMetaType(ctx context.Context, t
 		return storepb.MetaType_UNSPECIFIED, connectErrorInvalid("meta_type is required when the target has no rules")
 	}
 	return rules[0].TargetType, nil
-}
-
-// qualityTargetRequestedPageSize resolves the page size for a directory request:
-// an unset first page reads the documented default, while a follow-up page keeps
-// the size its token was issued with (parseLimitAndOffset restores it from the
-// token when the request does not repeat it).
-func qualityTargetRequestedPageSize(requested int32, pageToken string) int {
-	if requested > 0 || pageToken != "" {
-		return int(requested)
-	}
-	return qualityTargetDefaultPageSize
 }
 
 // qualityTargetWorstStatusFromV1 maps the worst-status filter, rejecting a value

@@ -29,6 +29,9 @@ import (
 )
 
 const (
+	// qualityDefaultPageSize is the page size the data-quality lists document in
+	// their proto comments. Their first page must read the same number.
+	qualityDefaultPageSize = 50
 	// qualityRuleSelectionLimit caps how many rules one manual execution request
 	// may select, so a single request cannot queue an unbounded batch.
 	qualityRuleSelectionLimit = 200
@@ -221,9 +224,10 @@ func (s *DataQualityService) ListQualityRules(ctx context.Context, req *connect.
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -1192,9 +1196,10 @@ func (s *DataQualityService) ListQualityExecutions(ctx context.Context, req *con
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -1635,9 +1640,10 @@ func (s *DataQualityService) ListQualityIssues(ctx context.Context, req *connect
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -1964,9 +1970,10 @@ func (s *DataQualityService) ListQualitySuggestions(ctx context.Context, req *co
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -2116,9 +2123,10 @@ func (s *DataQualityService) ListColumnProfiles(ctx context.Context, req *connec
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err
@@ -2160,9 +2168,10 @@ func (s *DataQualityService) ListColumnLabels(ctx context.Context, req *connect.
 		return nil, err
 	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   int(req.Msg.GetPageSize()),
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err

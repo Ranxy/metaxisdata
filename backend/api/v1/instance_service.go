@@ -79,9 +79,10 @@ func (s *InstanceService) GetInstance(ctx context.Context, req *connect.Request[
 // ListInstances lists all instances.
 func (s *InstanceService) ListInstances(ctx context.Context, req *connect.Request[v1pb.ListInstancesRequest]) (*connect.Response[v1pb.ListInstancesResponse], error) {
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.PageToken,
-		limit:   int(req.Msg.PageSize),
-		maximum: 1000,
+		token:        req.Msg.PageToken,
+		limit:        int(req.Msg.PageSize),
+		maximum:      1000,
+		defaultLimit: defaultPageLimit,
 	})
 	if err != nil {
 		return nil, err

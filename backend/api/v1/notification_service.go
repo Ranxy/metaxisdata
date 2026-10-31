@@ -24,6 +24,10 @@ import (
 // this API accepts.
 const maxNotificationsPerBatch = 1000
 
+// defaultNotificationPageSize is the page size the inbox documents. A follow-up
+// page keeps the size its token was issued with instead of re-defaulting.
+const defaultNotificationPageSize = 50
+
 const (
 	// notificationHeartbeat is how often an idle subscription is poked. It has to
 	// stay under a proxy's read timeout — nginx defaults to sixty seconds — and it is
@@ -87,7 +91,8 @@ func (s *NotificationService) ListNotifications(ctx context.Context, req *connec
 		limit: int(req.Msg.GetPageSize()),
 		// One page of an inbox is small; the cap keeps a single read from
 		// materializing a year of messages.
-		maximum: 1000,
+		maximum:      1000,
+		defaultLimit: defaultNotificationPageSize,
 	})
 	if err != nil {
 		return nil, err
