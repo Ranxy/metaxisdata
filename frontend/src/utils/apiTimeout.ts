@@ -9,9 +9,13 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 const LONG_RUNNING_SERVICE = /\/(?:[^/]+\.)?(?:ExplainSQLService|LLMService)\//;
 
-/** A method that starts or performs a sync, or streams an explanation. */
+/**
+ * Methods that legitimately outlive the default ceiling: provider calls,
+ * streaming (the notification push channel), schema syncs and DQ work that runs
+ * real database queries. The prefix families are exhaustive for those.
+ */
 const LONG_RUNNING_METHOD =
-  /(?:Sync[A-Za-z]*|Run[A-Za-z]*|ExplainQualityExecution)$/;
+  /^(?:Batch)?(?:Sync|Run|Suggest|Profile|Preview|Subscribe|Explain)[A-Za-z]*$/;
 
 /** The deadline for the RPC at `path`, or undefined when it has none. */
 export function requestTimeoutMs(path: string): number | undefined {
@@ -26,17 +30,54 @@ export function requestTimeoutMs(path: string): number | undefined {
 }
 
 /**
- * `signal` plus a deadline, as one abort signal. `AbortSignal.timeout` and
- * `AbortSignal.any` are both part of the platform the SPA targets; combining
- * them keeps the caller's own cancellation working while the ceiling runs.
+ * One request's abort signal: the caller's own, plus an optional deadline.
+ *
+ * `AbortSignal.timeout`/`AbortSignal.any` are not available on every browser the
+ * SPA targets, and a timeout signal cannot say *why* it aborted, which is how a
+ * deadline used to surface as a user cancellation. This arms a timer on a local
+ * controller instead, exposes whether the timer fired, and clears both the timer
+ * and the caller's listener when the request settles.
  */
-export function withRequestTimeout(
-  signal: AbortSignal | null | undefined,
+export interface RequestDeadline {
+  signal: AbortSignal | undefined;
+  /** Whether this attempt was ended by the deadline rather than by the caller. */
+  timedOut: () => boolean;
+  cleanup: () => void;
+}
+
+export function createRequestDeadline(
+  caller: AbortSignal | null | undefined,
   timeoutMs: number | undefined
-): AbortSignal | undefined {
+): RequestDeadline {
   if (timeoutMs === undefined) {
-    return signal ?? undefined;
+    return {
+      signal: caller ?? undefined,
+      timedOut: () => false,
+      cleanup: () => {},
+    };
   }
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return signal ? AbortSignal.any([signal, deadline]) : deadline;
+
+  const controller = new AbortController();
+  let expired = false;
+  const forward = () => controller.abort();
+  if (caller) {
+    if (caller.aborted) {
+      controller.abort();
+    } else {
+      caller.addEventListener("abort", forward, { once: true });
+    }
+  }
+  const timer = setTimeout(() => {
+    expired = true;
+    controller.abort();
+  }, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    timedOut: () => expired,
+    cleanup: () => {
+      clearTimeout(timer);
+      caller?.removeEventListener("abort", forward);
+    },
+  };
 }

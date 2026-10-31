@@ -60,6 +60,36 @@ describe("useDataQualityPermissions", () => {
     expect(can.canExplain.value).toBe(false);
   });
 
+  it("maps every property to exactly one catalog identifier", () => {
+    const matrix: Array<
+      [keyof ReturnType<typeof useDataQualityPermissions>, string]
+    > = [
+      ["canViewRule", "metaxisdata.dataQuality.rules.get"],
+      ["canRun", "metaxisdata.dataQuality.rules.run"],
+      ["canCreate", "metaxisdata.dataQuality.rules.create"],
+      ["canUpdate", "metaxisdata.dataQuality.rules.update"],
+      ["canDelete", "metaxisdata.dataQuality.rules.delete"],
+      ["canSuggest", "metaxisdata.dataQuality.suggest"],
+      ["canProfile", "metaxisdata.dataQuality.profile.run"],
+      ["canListIssues", "metaxisdata.dataQuality.issues.list"],
+      ["canViewIssue", "metaxisdata.dataQuality.issues.get"],
+      ["canUpdateIssue", "metaxisdata.dataQuality.issues.update"],
+      ["canPublish", "metaxisdata.dataQuality.contracts.publish"],
+      ["canViewExecution", "metaxisdata.dataQuality.executions.get"],
+      ["canListExecutions", "metaxisdata.dataQuality.executions.list"],
+      ["canExplain", "metaxisdata.dataQuality.explain"],
+    ];
+
+    for (const [property, identifier] of matrix) {
+      const can = grant([identifier]);
+      for (const [other] of matrix) {
+        expect(can[other].value, `${other} under ${identifier}`).toBe(
+          other === property
+        );
+      }
+    }
+  });
+
   it("recomputes when the permission set changes", () => {
     const can = grant([]);
     expect(can.canRun.value).toBe(false);

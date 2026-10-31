@@ -26,7 +26,7 @@ import {
   type SemanticLabelEvidence,
   type SemanticLabelSuggestion,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatRowCount,
   type QualityBadgeVariant,
@@ -553,8 +553,6 @@ export function selectionCountsByKind(
 
 // ---- suggestion → batch rule ----
 
-/** The server's batch limit for rules and suggestions in one call. */
-
 /** The row's own text: a draft's title, a label's column, or the resource id. */
 export function suggestionRowText(suggestion: QualitySuggestion): string {
   const draft = ruleDraftOf(suggestion);
@@ -620,7 +618,7 @@ export function suggestionConfidencePercent(
 export function suggestionGroupMetaType(
   group: SuggestionTargetGroup
 ): MetaType {
-  return group.suggestions[0]?.target?.metaType ?? 0;
+  return group.suggestions[0]?.target?.metaType ?? MetaType.TABLE;
 }
 
 /** The rows in a group a batch decision may touch: every still-pending one. */
@@ -651,6 +649,7 @@ export function groupSelectionState(
   return selected === selectable.length ? true : "indeterminate";
 }
 
+/** The server's batch limit for rules and suggestions in one call. */
 export const MAX_SUGGESTION_BATCH = 200;
 
 /** The common settings a batch review applies to every selected draft. */

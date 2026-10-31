@@ -14,7 +14,7 @@
         <Button
           variant="outline"
           :disabled="isLoading"
-          @click="refreshPage"
+          @click="() => refreshPage()"
         >
           <RefreshCcw
             class="mr-2 h-4 w-4"

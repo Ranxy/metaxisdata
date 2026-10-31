@@ -1,6 +1,10 @@
 import { type Ref, ref } from "vue";
 import { getLineage, getLineageCounts, type LineageCount } from "@/api/lineage";
-import { type LineageDirection, parseExpandDepth } from "@/lib/lineageGraph";
+import {
+  type LineageDirection,
+  type NodeLineageData,
+  parseExpandDepth,
+} from "@/lib/lineageGraph";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   type ExternalDatasetInfo,
@@ -9,12 +13,7 @@ import {
 } from "@/types/proto-es/v1/lineage_service_pb";
 import { extractErrorMessage } from "@/utils/error";
 
-export interface NodeLineageData {
-  upstream: LineageRelation[];
-  downstream: LineageRelation[];
-  upstreamLoaded: boolean;
-  downstreamLoaded: boolean;
-}
+export type { NodeLineageData };
 
 export interface LineageGraphDataOptions {
   /** The metadata type a GUID should be fetched as. */
@@ -261,9 +260,9 @@ export function useLineageGraphData(options: LineageGraphDataOptions) {
    * expanded, still supply the number) rather than failing the redraw.
    */
   async function ensureLineageCounts() {
-    const missing = options
-      .drawnNodeIds()
-      .filter((guid) => !lineageCounts.value.has(guid));
+    const missing = [...new Set(options.drawnNodeIds())].filter(
+      (guid) => !lineageCounts.value.has(guid)
+    );
     if (missing.length === 0) {
       return;
     }

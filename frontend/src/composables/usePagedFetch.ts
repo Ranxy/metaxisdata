@@ -12,7 +12,8 @@ import { isAborted } from "@/utils/error";
 export interface PagedFetchOptions<T> {
   /**
    * One page of the list; `pageToken` is `""` for the first page and the signal
-   * aborts a request the pager has already superseded.
+   * aborts a request the pager has already superseded, or a polling round ended
+   * by its caller.
    */
   fetchPage: (pageToken: string, signal: AbortSignal) => Promise<ListPage<T>>;
   /** Called for every failure except a superseded (aborted) request. */
@@ -68,13 +69,7 @@ export function usePagedFetch<T>(options: PagedFetchOptions<T>): PagedFetch<T> {
     inFlight = controller;
     // A caller's signal (a polling round going away) aborts this request too.
     const forwardAbort = () => controller.abort();
-    if (signal) {
-      if (signal.aborted) {
-        controller.abort();
-      } else {
-        signal.addEventListener("abort", forwardAbort, { once: true });
-      }
-    }
+    signal?.addEventListener("abort", forwardAbort, { once: true });
 
     isLoading.value = true;
     try {

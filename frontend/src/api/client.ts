@@ -1,4 +1,4 @@
-import { createClient } from "@connectrpc/connect";
+import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { ApplicationService } from "@/types/proto-es/v1/application_service_pb";
 import { AuditLogService } from "@/types/proto-es/v1/audit_log_service_pb";
@@ -20,7 +20,7 @@ import { OpenLineageService } from "@/types/proto-es/v1/openlineage_service_pb";
 import { RoleService } from "@/types/proto-es/v1/role_service_pb";
 import { SettingService } from "@/types/proto-es/v1/setting_service_pb";
 import { UserService } from "@/types/proto-es/v1/user_service_pb";
-import { requestTimeoutMs, withRequestTimeout } from "@/utils/apiTimeout";
+import { createRequestDeadline, requestTimeoutMs } from "@/utils/apiTimeout";
 import { sessionInterceptor } from "./session";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
@@ -38,15 +38,29 @@ const transport = createConnectTransport({
   interceptors: [sessionInterceptor],
   // A hung RPC must not leave a page spinning forever; LLM, explanation and
   // sync paths opt out because they legitimately outlive the default ceiling.
-  fetch: (input, init) =>
-    fetch(input, {
-      ...init,
-      credentials: "include",
-      signal: withRequestTimeout(
-        init?.signal,
-        requestTimeoutMs(requestPath(input))
-      ),
-    }),
+  fetch: async (input, init) => {
+    const deadline = createRequestDeadline(
+      init?.signal,
+      requestTimeoutMs(requestPath(input))
+    );
+    try {
+      return await fetch(input, {
+        ...init,
+        credentials: "include",
+        signal: deadline.signal,
+      });
+    } catch (error) {
+      // A fetch aborted by our deadline arrives as a DOM abort, which Connect
+      // would flatten to Canceled — the code the UI reads as "the caller left".
+      // Report the actual failure instead.
+      if (deadline.timedOut()) {
+        throw new ConnectError("The request timed out.", Code.DeadlineExceeded);
+      }
+      throw error;
+    } finally {
+      deadline.cleanup();
+    }
+  },
 });
 
 export const applicationClient = createClient(ApplicationService, transport);

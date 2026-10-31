@@ -536,7 +536,8 @@ const canViewRule = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.get")
 );
 
-let loading = false;
+/** Identifies the newest page read; an older answer must never write state. */
+let loadTicket = 0;
 
 // One path segment per resource-name segment; joining restores the name a Get
 // needs (Get cannot resolve the list RPC's `workspaces/-` shorthand).
@@ -746,12 +747,12 @@ const showExplain = computed(
  * shows an error must not raise a toast every three seconds.
  */
 async function load(notifyErrors: boolean, signal?: AbortSignal) {
-  if (loading) {
-    return;
-  }
-  loading = true;
+  const ticket = ++loadTicket;
   try {
     const loaded = await getQualityExecution(executionName.value, { signal });
+    if (ticket !== loadTicket) {
+      return;
+    }
     execution.value = loaded;
     error.value = "";
     if (loaded.initiator) {
@@ -761,11 +762,12 @@ async function load(notifyErrors: boolean, signal?: AbortSignal) {
       void loadRuleTitle(loaded.rule);
     }
   } catch (e: unknown) {
+    if (ticket !== loadTicket) {
+      return;
+    }
     if (notifyErrors) {
       error.value = formatError(e, "dataQuality.fetchExecutionError");
     }
-  } finally {
-    loading = false;
   }
   if (inProgress.value) {
     startPolling();

@@ -1,6 +1,10 @@
 <template>
   <aside
+    id="app-sidebar"
     ref="sidebarRef"
+    :role="isDesktop ? undefined : 'dialog'"
+    :aria-modal="!isDesktop && appStore.mobileNavOpen ? 'true' : undefined"
+    :aria-label="isDesktop ? undefined : t('header.openNav')"
     :inert="!isDesktop && !appStore.mobileNavOpen ? true : undefined"
     :class="[
       'flex w-64 flex-col border-r bg-background',

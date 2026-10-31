@@ -13,7 +13,7 @@ const FOCUSABLE =
  */
 export function useDrawerFocus(
   container: Ref<HTMLElement | null>,
-  open: Ref<boolean>,
+  open: Readonly<Ref<boolean>>,
   close: () => void
 ) {
   let previousFocus: HTMLElement | null = null;
@@ -28,6 +28,11 @@ export function useDrawerFocus(
       return;
     }
     if (event.key === "Escape") {
+      // A menu or dialog the reader has open inside the drawer handles Escape
+      // itself; closing the drawer as well would dismiss two layers at once.
+      if (event.defaultPrevented) {
+        return;
+      }
       event.preventDefault();
       close();
       return;
@@ -36,9 +41,18 @@ export function useDrawerFocus(
     if (items.length === 0) {
       return;
     }
+    const active = document.activeElement;
+    // A portalled popover/menu inside the drawer owns its own Tab loop; the
+    // drawer must not yank focus back to its first link while that layer is up.
+    const layer =
+      active instanceof HTMLElement
+        ? active.closest('[data-radix-popper-content-wrapper], [role="menu"]')
+        : null;
+    if (layer && !container.value?.contains(layer)) {
+      return;
+    }
     const first = items[0];
     const last = items[items.length - 1];
-    const active = document.activeElement;
     const inside = active instanceof HTMLElement && items.includes(active);
     if (event.shiftKey && (!inside || active === first)) {
       event.preventDefault();

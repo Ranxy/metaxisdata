@@ -331,7 +331,7 @@ export function buildLineageEdges(
   return edges;
 }
 
-/** The depth control's value, clamped to the one-to-three levels it offers. */
+/** The depth control's value; anything the control cannot mean reads as one level. */
 export function parseExpandDepth(value: string): number {
   const depth = Number.parseInt(value, 10);
   return Number.isFinite(depth) && depth > 0 ? depth : 1;

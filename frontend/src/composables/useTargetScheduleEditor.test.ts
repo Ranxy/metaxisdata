@@ -136,6 +136,23 @@ describe("useTargetScheduleEditor", () => {
     expect(mocks.success).toHaveBeenCalledOnce();
   });
 
+  it("does not run two saves at once", async () => {
+    let release!: () => void;
+    const pending = new Promise<never>((resolve) => {
+      release = () => resolve(undefined as never);
+    });
+    mocks.updateQualityTargetSchedule.mockReturnValue(pending);
+    const { editor } = setup();
+    editor.openScheduleEditor();
+
+    const first = editor.saveSchedule();
+    const second = editor.saveSchedule();
+    expect(mocks.updateQualityTargetSchedule).toHaveBeenCalledOnce();
+
+    release();
+    await Promise.all([first, second]);
+  });
+
   it("keeps the dialog open with the failure's sentence", async () => {
     mocks.updateQualityTargetSchedule.mockRejectedValue(
       new ConnectError("interval too small", Code.FailedPrecondition)

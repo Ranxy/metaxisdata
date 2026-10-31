@@ -78,7 +78,7 @@ describe("settleNodeHeights", () => {
   it("measures every drawn node, not only the one that changed", async () => {
     const applied: Map<string, number>[] = [];
     await settleNodeHeights({
-      current: () => heights([["a", 100]]),
+      current: () => heights([["a", 120]]),
       measure: measurementSequence(
         heights([
           ["a", 120],

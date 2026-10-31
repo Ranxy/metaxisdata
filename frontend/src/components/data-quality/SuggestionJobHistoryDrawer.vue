@@ -42,7 +42,7 @@
               variant="outline"
               size="sm"
               :disabled="isLoading"
-              @click="refreshPage"
+              @click="() => refreshPage()"
             >
               <RefreshCcw
                 class="mr-1.5 h-4 w-4"

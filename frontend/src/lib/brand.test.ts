@@ -36,8 +36,15 @@ describe("brand name", () => {
     const owners = sourceFiles(sourceDir).filter(
       (file) =>
         file !== resolve(here, "brand.ts") &&
-        /"MetaxisData"/.test(readFileSync(file, "utf8"))
+        // Unquoted template text is the most likely drift, so match the name
+        // itself rather than only a quoted literal.
+        /MetaxisData/.test(readFileSync(file, "utf8"))
     );
     expect(owners).toEqual([]);
+  });
+
+  it("is the name the document title shows", () => {
+    const indexHtml = readFileSync(resolve(sourceDir, "index.html"), "utf8");
+    expect(indexHtml).toContain(`<title>${BRAND_NAME}</title>`);
   });
 });

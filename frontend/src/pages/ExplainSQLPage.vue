@@ -751,14 +751,7 @@ const explain = useStreaming<ExplainSQLResponse, [boolean]>({
           };
     return explainSQL(input, { signal });
   },
-  onReset: () => {
-    isExplaining.value = true;
-    resultText.value = "";
-    explainError.value = null;
-    explainMeta.value = null;
-    progressSteps.value = [];
-    showProgress.value = true;
-  },
+  onReset: resetExplanation,
   onChunk: (chunk) => {
     if (chunk.payload?.case === "content" && chunk.payload.value) {
       showProgress.value = false;
@@ -786,12 +779,23 @@ const explain = useStreaming<ExplainSQLResponse, [boolean]>({
   },
 });
 
+function resetExplanation() {
+  isExplaining.value = true;
+  resultText.value = "";
+  explainError.value = null;
+  explainMeta.value = null;
+  progressSteps.value = [];
+  showProgress.value = true;
+}
+
 async function startExplain(forceRegen = false) {
   if (isExplaining.value) return;
+  // Clear the previous answer before anything awaits, so a stale document is not
+  // rendered live while the language write settles.
+  resetExplanation();
   // The server writes the answer in the language stored on the profile, so a
   // switch that is still in flight — or one whose write failed — is settled
   // first: explaining right after switching must not answer in the old language.
-  isExplaining.value = true;
   try {
     await authStore.ensureLanguagePersisted();
   } catch {
