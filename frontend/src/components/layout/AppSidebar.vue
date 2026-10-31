@@ -211,6 +211,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import type { Permission } from "@/lib/permissions";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
 import NotificationBell from "./NotificationBell.vue";
@@ -233,9 +234,9 @@ interface MenuItem {
   path: string;
   icon: typeof Home;
   /** The permission that makes this entry reachable; the server enforces it. */
-  permission?: string;
+  permission?: Permission;
   /** Visible when the caller holds at least one of these. */
-  anyPermission?: string[];
+  anyPermission?: readonly Permission[];
   /** Active only on an exact match: a section landing page whose path prefixes
    * its siblings would otherwise stay highlighted on every child route. */
   exact?: boolean;
@@ -244,7 +245,7 @@ interface MenuItem {
 
 // Settings is one destination with its own in-page navigation, so the nine
 // administration pages no longer occupy nine permanent sidebar rows.
-const SETTINGS_PERMISSIONS = [
+const SETTINGS_PERMISSIONS: readonly Permission[] = [
   // Reading the applications that report SQL is part of the member baseline, so the
   // section entry has to appear for a member too: it is the only way to the page.
   "metaxisdata.applications.list",

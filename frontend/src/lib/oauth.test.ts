@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { create } from "@bufbuild/protobuf";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -6,6 +9,7 @@ import {
   buildAuthorizeUrl,
   consumeSSOState,
   createPKCEPair,
+  MCP_READ_SCOPE,
   SSO_STATE_TTL_MS,
   ssoCallbackUrl,
 } from "@/lib/oauth";
@@ -14,6 +18,8 @@ import {
   IdentityProviderType,
   OAuth2AuthStyle,
 } from "@/types/proto-es/v1/identity_provider_service_pb";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 function oauth2Provider(
   overrides: {
@@ -381,5 +387,17 @@ describe("browser defaults", () => {
         Object.defineProperty(window, "location", original);
       }
     }
+  });
+});
+
+describe("MCP OAuth scope mirror", () => {
+  it("matches the Go server's MCPReadScope constant", () => {
+    const source = readFileSync(
+      resolve(here, "../../../backend/api/oauth/resource.go"),
+      "utf8"
+    );
+    const match = /const MCPReadScope = "([^"]+)"/.exec(source);
+    expect(match?.[1]).toBeDefined();
+    expect(MCP_READ_SCOPE).toBe(match?.[1]);
   });
 });

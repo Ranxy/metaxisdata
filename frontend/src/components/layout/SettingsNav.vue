@@ -43,18 +43,27 @@ import {
   UserRound,
   Users,
 } from "lucide-vue-next";
-import { computed } from "vue";
+import { type Component, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
+import type { Permission } from "@/lib/permissions";
 import { useAuthStore } from "@/store/modules/auth";
 
 const { t } = useI18n();
 const route = useRoute();
 const authStore = useAuthStore();
 
+interface SettingsNavItem {
+  key: string;
+  label: string;
+  path: string;
+  icon: Component;
+  permission: Permission;
+}
+
 // Settings is a local section: its pages live behind one sidebar entry and are
 // navigated here, so they stop competing with the product navigation.
-const ALL_ITEMS = computed(() => [
+const ALL_ITEMS = computed<SettingsNavItem[]>(() => [
   {
     key: "general",
     label: t("menu.generalSettings"),

@@ -2,6 +2,7 @@ import { Code } from "@connectrpc/connect";
 import { defineStore } from "pinia";
 import * as authApi from "@/api/auth";
 import * as userApi from "@/api/user";
+import type { Permission } from "@/lib/permissions";
 import { type AppLocale, isAppLocale } from "@/locales";
 import type { User } from "@/types/proto-es/v1/user_service_pb";
 import { errorCode } from "@/utils/error";
@@ -54,7 +55,7 @@ export const useAuthStore = defineStore("auth", {
     // The effective workspace permissions, populated by GetCurrentUser. The
     // server is authoritative; this only hides UI the caller cannot use.
     permissions: (state) => state.user?.permissions ?? [],
-    hasPermission: (state) => (permission: string) =>
+    hasPermission: (state) => (permission: Permission) =>
       state.user?.permissions.includes(permission) ?? false,
   },
 

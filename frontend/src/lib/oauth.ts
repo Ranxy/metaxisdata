@@ -41,6 +41,13 @@ export interface SSOStateRecord {
 }
 
 /**
+ * The OAuth scope the MCP endpoint requires. The server owns this string as
+ * `oauth.MCPReadScope`; the consent page renders it, so the two must agree (the
+ * drift test in oauth.test.ts reads the Go constant).
+ */
+export const MCP_READ_SCOPE = "metaxisdata.mcp.read";
+
+/**
  * The redirect URI the provider sends the browser back to. It must be the value
  * the server builds for the token exchange, which is derived from the workspace
  * `external_url`; falling back to the current origin keeps an instance that
