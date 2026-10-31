@@ -62,49 +62,14 @@ func RuleSignature(ruleType storepb.QualityRuleType, config *storepb.QualityRule
 }
 
 // RuleConfigColumns lists the target columns a rule config refers to, in a stable
-// order, so the identity does not depend on the order the caller named them.
+// order, so the identity does not depend on the order the caller named them. The
+// config arm names the type and the descriptor names its columns.
 func RuleConfigColumns(config *storepb.QualityRuleConfig) []string {
-	if config == nil {
+	spec, ok := ruleTypeSpecForConfig(config)
+	if !ok || spec.IdentityColumns == nil {
 		return nil
 	}
-	switch {
-	case config.GetNullPercent() != nil:
-		return singleColumn(config.GetNullPercent().GetColumn())
-	case config.GetUnique() != nil:
-		return singleColumn(config.GetUnique().GetColumn())
-	case config.GetUniqueCombination() != nil:
-		return config.GetUniqueCombination().GetColumns()
-	case config.GetAcceptedValues() != nil:
-		return singleColumn(config.GetAcceptedValues().GetColumn())
-	case config.GetRange() != nil:
-		return singleColumn(config.GetRange().GetColumn())
-	case config.GetRegex() != nil:
-		return singleColumn(config.GetRegex().GetColumn())
-	case config.GetStringLength() != nil:
-		return singleColumn(config.GetStringLength().GetColumn())
-	case config.GetReferentialIntegrity() != nil:
-		return singleColumn(config.GetReferentialIntegrity().GetChildColumn())
-	case config.GetCrossColumn() != nil:
-		return twoColumns(config.GetCrossColumn().GetLeftColumn(), config.GetCrossColumn().GetRightColumn())
-	case config.GetFreshness() != nil:
-		return singleColumn(config.GetFreshness().GetTimestampColumn())
-	case config.GetCelExpression() != nil:
-		return config.GetCelExpression().GetColumns()
-	case config.GetGroupCheck() != nil:
-		return config.GetGroupCheck().GetColumns()
-	case config.GetAggregate() != nil:
-		return singleColumn(config.GetAggregate().GetColumn())
-	case config.GetCrossTable() != nil:
-		return twoColumns(config.GetCrossTable().GetLeftColumn(), config.GetCrossTable().GetRightColumn())
-	case config.GetRowCount() != nil,
-		config.GetRowCountChange() != nil,
-		config.GetCustomSql() != nil,
-		config.GetSchemaDrift() != nil:
-		// Table-level rules cover no individual column.
-		return nil
-	default:
-		return nil
-	}
+	return spec.IdentityColumns(config)
 }
 
 // ruleSignatureDiscriminators adds the config values that make two proposals of
@@ -113,114 +78,11 @@ func ruleSignatureDiscriminators(ruleType storepb.QualityRuleType, config *store
 	if config == nil {
 		return nil
 	}
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY:
-		referential := config.GetReferentialIntegrity()
-		if referential == nil {
-			return nil
-		}
-		return []string{
-			"parent=" + suggestionSignatureEscape(referential.GetParentTable()) + "." +
-				suggestionSignatureEscape(referential.GetParentColumn()),
-		}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		cross := config.GetCrossColumn()
-		if cross == nil {
-			return nil
-		}
-		// A cross-column comparison is directional: "a > b" and "b > a" are
-		// different rules, so the left/right roles survive the sorted column set.
-		parts := []string{
-			"left=" + suggestionSignatureEscape(cross.GetLeftColumn()),
-			"right=" + suggestionSignatureEscape(cross.GetRightColumn()),
-		}
-		if cross.GetOp() != storepb.QualityComparisonOperator_QUALITY_COMPARISON_OPERATOR_UNSPECIFIED {
-			parts = append(parts, "op="+cross.GetOp().String())
-		}
-		return parts
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
-		aggregate := config.GetAggregate()
-		if aggregate == nil {
-			return nil
-		}
-		parts := []string{"fn=" + aggregate.GetFunction().String()}
-		if aggregate.GetFunction() == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_PERCENTILE {
-			parts[0] += ":" + strconv.FormatFloat(aggregate.GetPercentile(), 'g', -1, 64)
-		}
-		return parts
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		cross := config.GetCrossTable()
-		if cross == nil {
-			return nil
-		}
-		return []string{
-			"right=" + suggestionSignatureEscape(cross.GetRightTable()),
-			"left_fn=" + cross.GetLeftFunction().String(),
-			"right_fn=" + cross.GetRightFunction().String(),
-			// The two sides of a reconciliation are not interchangeable.
-			"left_col=" + suggestionSignatureEscape(cross.GetLeftColumn()),
-			"right_col=" + suggestionSignatureEscape(cross.GetRightColumn()),
-		}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
-		unique := config.GetUnique()
-		if unique == nil || !unique.GetCountNulls() {
-			return nil
-		}
-		// Counting NULLs as a value is a different rule, not a threshold variant.
-		return []string{"count_nulls=true"}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		combination := config.GetUniqueCombination()
-		if combination == nil || !combination.GetAllColumns() {
-			return nil
-		}
-		return []string{"all_columns=true"}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		accepted := config.GetAcceptedValues()
-		if accepted == nil {
-			return nil
-		}
-		values := append([]string(nil), accepted.GetValues()...)
-		slices.Sort(values)
-		return []string{
-			"values=" + suggestionSignatureHash(strings.Join(slices.Compact(values), "\x00")),
-			"allow_null=" + strconv.FormatBool(accepted.GetAllowNull()),
-		}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		regex := config.GetRegex()
-		if regex == nil {
-			return nil
-		}
-		return []string{"pattern=" + suggestionSignatureHash(regex.GetPattern())}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
-		drift := config.GetSchemaDrift()
-		if drift == nil {
-			return nil
-		}
-		return []string{"expected=" + suggestionSignatureHash(schemaDriftIdentitySnapshot(drift))}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		custom := config.GetCustomSql()
-		if custom == nil {
-			return nil
-		}
-		return []string{"sql=" + suggestionSignatureHash(custom.GetSql())}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		cel := config.GetCelExpression()
-		if cel == nil {
-			return nil
-		}
-		return []string{"expr=" + suggestionSignatureHash(cel.GetExpression())}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		return nil
-	default:
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok || spec.Discriminators == nil {
 		return nil
 	}
+	return spec.Discriminators(config)
 }
 
 // suggestionSignatureColumns renders a column set as one canonical segment: sorted,

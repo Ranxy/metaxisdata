@@ -12,50 +12,33 @@ func invalidConfig(format string, args ...any) error {
 
 // configArm reports which rule type the config's oneof arm belongs to. It lets
 // validation and compilation catch a config that does not match the rule's type
-// instead of reading a nil arm.
+// instead of reading a nil arm. The arms live in ruleTypeSpecs, so a rule type and
+// its arm cannot drift apart.
 func configArm(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, error) {
-	switch arm := config.GetConfig().(type) {
-	case *storepb.QualityRuleConfig_RowCount:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, nil
-	case *storepb.QualityRuleConfig_RowCountChange:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, nil
-	case *storepb.QualityRuleConfig_NullPercent:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, nil
-	case *storepb.QualityRuleConfig_Unique:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, nil
-	case *storepb.QualityRuleConfig_UniqueCombination:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, nil
-	case *storepb.QualityRuleConfig_AcceptedValues:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, nil
-	case *storepb.QualityRuleConfig_Range:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, nil
-	case *storepb.QualityRuleConfig_Regex:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, nil
-	case *storepb.QualityRuleConfig_StringLength:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, nil
-	case *storepb.QualityRuleConfig_ReferentialIntegrity:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, nil
-	case *storepb.QualityRuleConfig_CrossColumn:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN, nil
-	case *storepb.QualityRuleConfig_Freshness:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, nil
-	case *storepb.QualityRuleConfig_CustomSql:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, nil
-	case *storepb.QualityRuleConfig_CelExpression:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, nil
-	case *storepb.QualityRuleConfig_SchemaDrift:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, nil
-	case *storepb.QualityRuleConfig_GroupCheck:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, nil
-	case *storepb.QualityRuleConfig_Aggregate:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE, nil
-	case *storepb.QualityRuleConfig_CrossTable:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, nil
-	case nil:
+	if config == nil {
 		return 0, invalidConfig("the rule config is empty")
-	default:
-		return 0, invalidConfig("unknown rule config arm %T", arm)
 	}
+	for _, spec := range ruleTypeSpecs {
+		if spec.Arm(config) {
+			return spec.Type, nil
+		}
+	}
+	arm := config.GetConfig()
+	if arm == nil {
+		return 0, invalidConfig("the rule config is empty")
+	}
+	return 0, invalidConfig("unknown rule config arm %T", arm)
+}
+
+// RuleTypeForConfig returns the rule type the config's oneof arm names. It reports
+// false for an empty config or an arm this build does not know. It is the exported
+// form of configArm for callers that only need the type.
+func RuleTypeForConfig(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, bool) {
+	ruleType, err := configArm(config)
+	if err != nil {
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
+	}
+	return ruleType, true
 }
 
 // emptyBehavior returns the configured behavior for a rule with nothing to judge.

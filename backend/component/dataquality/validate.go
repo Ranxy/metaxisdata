@@ -151,46 +151,11 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 		return err
 	}
 
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:
-		return validateRowCountConfig(config.GetRowCount())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
-		return validateRowCountChangeConfig(config.GetRowCountChange())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		return validateNullPercentConfig(target, config.GetNullPercent())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
-		return validateUniqueConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		return validateUniqueCombinationConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		return validateAcceptedValuesConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
-		return validateRangeConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		return validateRegexConfig(target, config.GetRegex())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
-		return validateStringLengthConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY:
-		return validateReferentialIntegrityConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		return validateCrossColumnConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		return validateFreshnessConfig(target, config.GetFreshness())
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		return validateCustomSQLConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
-		return validateSchemaDriftConfig(config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		return validateGroupCheckConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
-		return validateAggregateConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		return validateCrossTableConfig(target, config)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		return validateCELExpressionConfig(target, config)
-	default:
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok {
 		return invalidConfig("unknown rule type %s", ruleType)
 	}
+	return spec.Validator(target, config)
 }
 
 // validateOnEmpty accepts the three real behaviors and UNSPECIFIED (which the
@@ -274,30 +239,18 @@ func percentThresholdUnsupported(ruleType storepb.QualityRuleType) error {
 	}
 }
 
-// ruleTypeAllowsPercent lists the count-type rules whose observation carries a
-// denominator, so a percentage threshold has a real meaning. For the SQL count
-// rules that is total_rows; a CEL rule's denominator is the number of sampled rows
-// it evaluated. This is the single source of truth for both validatePercentSupport
-// (save) and validateExecutionMetric (runtime backstop). Everything else rejects
-// PERCENT: custom_sql, row_count, row_count_change and freshness report no total to
-// divide by; null_percent names its own count/percentage unit in its config; and
-// schema_drift, aggregate and cross_table bound absolute measurements.
+// ruleTypeAllowsPercent reports whether the count-type rule's observation carries
+// a denominator, so a percentage threshold has a real meaning. For the SQL count
+// rules that is total_rows; a CEL rule's denominator is the number of sampled
+// rows it evaluated. The descriptor table is the single source of truth for both
+// validatePercentSupport (save) and validateExecutionMetric (runtime backstop).
+// Everything else rejects PERCENT: custom_sql, row_count, row_count_change and
+// freshness report no total to divide by; null_percent names its own
+// count/percentage unit in its config; and schema_drift, aggregate and cross_table
+// bound absolute measurements.
 func ruleTypeAllowsPercent(ruleType storepb.QualityRuleType) bool {
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		return true
-	default:
-		return false
-	}
+	spec, ok := ruleTypeSpecFor(ruleType)
+	return ok && spec.Percent
 }
 
 // validateFilter parses the filter and compiles it against the target, which is

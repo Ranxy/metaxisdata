@@ -316,123 +316,113 @@ func observationFromAggregate(ruleType storepb.QualityRuleType, compiled Compile
 		return Observation{}, err
 	}
 
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:
-		total, err := aggregateInt(result, indexes, "total_rows")
-		if err != nil {
-			return Observation{}, err
-		}
-		// row_count_change compares this count with the rule's last successful
-		// observation. The baseline is the runner's to supply; the executor only
-		// measures, so a change rule's observation is the count itself.
-		return Observation{
-			Observed:     float64(total),
-			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
-			TotalRows:    total,
-		}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		return countObservation(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		// The grouped statement returns failed_rows, groups and total_rows; the
-		// total is the whole filtered table, so a percentage threshold has the
-		// same denominator as every other count rule. "duplicate_groups" is informational
-		// (how many distinct duplicated keys there are) and has no observation
-		// field, so it is validated as part of the contract and not read.
-		return countObservation(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		return countObservation(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		// The grouped statement names its columns total_groups / failed_groups; the
-		// denominator is the group count, so a percentage threshold divides by it.
-		total, err := aggregateInt(result, indexes, "total_groups")
-		if err != nil {
-			return Observation{}, err
-		}
-		failed, err := aggregateInt(result, indexes, "failed_groups")
-		if err != nil {
-			return Observation{}, err
-		}
-		if failed < 0 {
-			return Observation{}, badData("failed_groups is negative (%d)", failed)
-		}
-		return Observation{
-			Observed:     float64(failed),
-			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
-			FailedRows:   failed,
-			TotalRows:    total,
-		}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
-		total, err := aggregateInt(result, indexes, "total_rows")
-		if err != nil {
-			return Observation{}, err
-		}
-		// An aggregate over no rows (or only NULLs) is SQL NULL, which is missing
-		// data: the evaluator follows on_empty rather than judging it as zero.
-		observed, present, err := aggregateFloat(result, indexes, "observed")
-		if err != nil {
-			return Observation{}, err
-		}
-		if !present {
-			return Observation{
-				ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
-				ObservedNull: true,
-				TotalRows:    total,
-			}, nil
-		}
-		return Observation{
-			Observed:     observed,
-			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
-			TotalRows:    total,
-		}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
-		left, leftPresent, err := aggregateFloat(result, indexes, "left_value")
-		if err != nil {
-			return Observation{}, err
-		}
-		right, rightPresent, err := aggregateFloat(result, indexes, "right_value")
-		if err != nil {
-			return Observation{}, err
-		}
-		if !leftPresent || !rightPresent {
-			return Observation{
-				ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
-				ObservedNull: true,
-			}, nil
-		}
-		// The observed value is the absolute difference; the tolerance is the GT
-		// threshold the evaluator applies to it.
-		return Observation{
-			Observed:     math.Abs(left - right),
-			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
-		}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		return freshnessObservation(result, indexes)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		// The user's statement defines a failing row itself, so there is no
-		// denominator: failed_rows is the observation and total_rows stays zero.
-		failed, err := aggregateInt(result, indexes, "failed_rows")
-		if err != nil {
-			return Observation{}, err
-		}
-		return Observation{
-			Observed:     float64(failed),
-			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
-			FailedRows:   failed,
-		}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		return Observation{}, badData("rule type %s has no aggregate observation", ruleType)
-	default:
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok || spec.Observe == nil {
 		return Observation{}, badData("rule type %s has no aggregate observation", ruleType)
 	}
+	return spec.Observe(result, indexes)
+}
+
+// observeRowCount reads the row count. row_count_change compares this count with
+// the rule's last successful observation: the baseline is the runner's to supply,
+// so a change rule's observation is the count itself.
+func observeRowCount(result *db.QueryResult, indexes map[string]int) (Observation, error) {
+	total, err := aggregateInt(result, indexes, "total_rows")
+	if err != nil {
+		return Observation{}, err
+	}
+	return Observation{
+		Observed:     float64(total),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		TotalRows:    total,
+	}, nil
+}
+
+// observeGroupCheck reads the grouped statement's total_groups / failed_groups: the
+// denominator is the group count, so a percentage threshold divides by it.
+func observeGroupCheck(result *db.QueryResult, indexes map[string]int) (Observation, error) {
+	total, err := aggregateInt(result, indexes, "total_groups")
+	if err != nil {
+		return Observation{}, err
+	}
+	failed, err := aggregateInt(result, indexes, "failed_groups")
+	if err != nil {
+		return Observation{}, err
+	}
+	if failed < 0 {
+		return Observation{}, badData("failed_groups is negative (%d)", failed)
+	}
+	return Observation{
+		Observed:     float64(failed),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		FailedRows:   failed,
+		TotalRows:    total,
+	}, nil
+}
+
+// observeAggregate reads the aggregate value. An aggregate over no rows (or only
+// NULLs) is SQL NULL, which is missing data: the evaluator follows on_empty rather
+// than judging it as zero.
+func observeAggregate(result *db.QueryResult, indexes map[string]int) (Observation, error) {
+	total, err := aggregateInt(result, indexes, "total_rows")
+	if err != nil {
+		return Observation{}, err
+	}
+	observed, present, err := aggregateFloat(result, indexes, "observed")
+	if err != nil {
+		return Observation{}, err
+	}
+	if !present {
+		return Observation{
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+			ObservedNull: true,
+			TotalRows:    total,
+		}, nil
+	}
+	return Observation{
+		Observed:     observed,
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+		TotalRows:    total,
+	}, nil
+}
+
+// observeCrossTable reads the two sides of a reconciliation. The observed value is
+// the absolute difference; the tolerance is the GT threshold the evaluator applies
+// to it. Either side NULL is missing data, decided by on_empty.
+func observeCrossTable(result *db.QueryResult, indexes map[string]int) (Observation, error) {
+	left, leftPresent, err := aggregateFloat(result, indexes, "left_value")
+	if err != nil {
+		return Observation{}, err
+	}
+	right, rightPresent, err := aggregateFloat(result, indexes, "right_value")
+	if err != nil {
+		return Observation{}, err
+	}
+	if !leftPresent || !rightPresent {
+		return Observation{
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+			ObservedNull: true,
+		}, nil
+	}
+	return Observation{
+		Observed:     math.Abs(left - right),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+	}, nil
+}
+
+// observeCustomSQL reads the failing-row count of a user statement. The statement
+// defines a failing row itself, so there is no denominator: failed_rows is the
+// observation and total_rows stays zero.
+func observeCustomSQL(result *db.QueryResult, indexes map[string]int) (Observation, error) {
+	failed, err := aggregateInt(result, indexes, "failed_rows")
+	if err != nil {
+		return Observation{}, err
+	}
+	return Observation{
+		Observed:     float64(failed),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		FailedRows:   failed,
+	}, nil
 }
 
 // countObservation interprets the shared two-column count shape: the filtered row

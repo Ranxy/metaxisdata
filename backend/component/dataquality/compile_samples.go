@@ -30,50 +30,18 @@ func CompileFailureRows(input CompileInput, limit int) (CompiledQuery, error) {
 		return CompiledQuery{}, err
 	}
 	limit = normalizeSampleLimit(limit)
-	switch input.Type {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		return sampleNullPercent(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		return sampleUnique(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		return sampleAcceptedValues(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
-		return sampleRange(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		return sampleRegex(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
-		return sampleStringLength(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY:
-		return sampleReferentialIntegrity(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:
-		return sampleCrossColumn(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:
-		return sampleCustomSQL(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
-		return sampleGroupCheck(input, limit)
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:
-		// A drift sample is the comparison result itself, built by the executor: it
-		// is a list of columns and reasons, not rows of the target database.
-		return CompiledQuery{}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
-		// An aggregate or reconciliation result is a value, not a failing row, and a
-		// CEL rule's failing rows are computed in process from the sample it already
-		// evaluated: none of them needs a separate failed-row statement.
-		return CompiledQuery{}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		// No failing row exists: the observation is a property of the whole table
-		// or of its newest row, so there is nothing to show.
-		return CompiledQuery{}, nil
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		return CompiledQuery{}, invalidConfig("rule type %s has no failed-row sample", input.Type)
-	default:
+	spec, ok := ruleTypeSpecFor(input.Type)
+	if !ok {
 		return CompiledQuery{}, invalidConfig("rule type %s has no failed-row sample", input.Type)
 	}
+	// A nil builder means the rule has no failing row to show: a measurement
+	// (row_count, row_count_change, freshness), a value (aggregate, cross_table),
+	// an in-process evaluation (cel_expression), or a sample the executor builds
+	// itself (schema_drift's drift items).
+	if spec.Sample == nil {
+		return CompiledQuery{}, nil
+	}
+	return spec.Sample(input, limit)
 }
 
 // sampleArgs collects the arguments of one sample statement in the order their

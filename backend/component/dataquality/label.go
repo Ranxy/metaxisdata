@@ -73,23 +73,21 @@ var labelSemanticTypes = []storepb.QualitySemanticType{
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNKNOWN,
 }
 
-// labelRuleTypes is the closed rule-type enum, in proto order, without
-// UNSPECIFIED. A label suggestion can only name one of these.
-var labelRuleTypes = []storepb.QualityRuleType{
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+// labelRuleTypes is the closed rule-type vocabulary of a label suggestion: the
+// descriptor's label candidates, in proto order. A label suggestion can only name
+// one of these.
+var labelRuleTypes = labelCandidateRuleTypes()
+
+// labelCandidateRuleTypes filters the descriptor catalog down to the types a
+// semantic label may name.
+func labelCandidateRuleTypes() []storepb.QualityRuleType {
+	types := make([]storepb.QualityRuleType, 0, len(ruleTypeSpecs))
+	for _, spec := range ruleTypeSpecs {
+		if spec.Title != "" {
+			types = append(types, spec.Type)
+		}
+	}
+	return types
 }
 
 // labelDefaultPatterns are the conservative default regular expressions per
@@ -101,24 +99,6 @@ var labelDefaultPatterns = map[storepb.QualitySemanticType]string{
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_URL:   `^https?://[^\s]+$`,
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UUID:  `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_IP:    `^([0-9]{1,3}\.){3}[0-9]{1,3}$`,
-}
-
-// labelRuleTypeTitles are the human names used in a draft's title and rationale.
-var labelRuleTypeTitles = map[storepb.QualityRuleType]string{
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT:             "row count",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE:      "row count change",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:          "null percent",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:                "unique",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:    "unique combination",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:       "accepted values",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:                 "range",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:                 "format",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:         "string length",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: "referential integrity",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN:          "cross column",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:             "freshness",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL:            "custom SQL",
-	storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:        "expression",
 }
 
 // labelSemanticTypeShortName renders the enum name without its proto prefix:
@@ -160,59 +140,77 @@ func labelParseRuleType(name string) (storepb.QualityRuleType, bool) {
 
 // RuleTypesForSemantic is the fixed semantic-type → rule-candidate mapping from
 // the design. It is code, not model output: the LLM only names the semantic type,
-// and this function decides which rules that label could need. The order is
-// stable and is the display order.
+// and this mapping decides which rules that label could need. The order is stable
+// and is the display order.
 func RuleTypesForSemantic(label storepb.QualitySemanticType) []storepb.QualityRuleType {
-	switch label {
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ID,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_BUSINESS_KEY:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PHONE,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_URL,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UUID,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_IP:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_COUNTRY_CODE,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_CURRENCY,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ENUM:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_AMOUNT,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_QUANTITY:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PERCENTAGE:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_TIMESTAMP,
-		storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_DATE:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_FREE_TEXT:
-		return []storepb.QualityRuleType{
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-			storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		}
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNKNOWN:
-		return nil
-	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNSPECIFIED:
-		return nil
-	default:
-		return nil
-	}
+	return slices.Clone(ruleTypesForSemantic[label])
+}
+
+// ruleTypesForSemantic is the mapping RuleTypesForSemantic reads. It is keyed by
+// the label rather than by the rule type because the candidate order is per
+// label: a timestamp column drafts freshness before range, while an amount column
+// drafts range first.
+var ruleTypesForSemantic = map[storepb.QualitySemanticType][]storepb.QualityRuleType{
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ID: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_BUSINESS_KEY: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_EMAIL: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PHONE: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_URL: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UUID: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_IP: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_COUNTRY_CODE: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_CURRENCY: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ENUM: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_AMOUNT: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_QUANTITY: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_PERCENTAGE: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_TIMESTAMP: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_DATE: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_FREE_TEXT: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
 }
 
 // DefaultRuleDraft builds the deterministic rule-draft default for a column's
@@ -231,75 +229,91 @@ func DefaultRuleDraft(label storepb.QualitySemanticType, column string, profile 
 	return labelRuleDraft(ruleTypes[0], label, column, profile)
 }
 
-// labelRuleDraft builds the default draft for one rule type of a label.
+// labelRuleDraft builds the default draft for one rule type of a label. The
+// descriptor says whether a type has a deterministic default and which config it
+// carries; the title and rationale come from the descriptor's title.
 func labelRuleDraft(ruleType storepb.QualityRuleType, label storepb.QualitySemanticType, column string, profile *storepb.ColumnProfile) *storepb.QualityRuleDraftConfig {
-	config := &storepb.QualityRuleConfig{}
-	switch ruleType {
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		config.Config = &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{
-			Column:     column,
-			MaxNullPct: proto.Float64(0),
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
-		config.Config = &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{
-			Column:        column,
-			FailThreshold: proto.Float64(0),
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		config.Config = &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{
-			Columns:       []string{column},
-			FailThreshold: proto.Float64(0),
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		config.Config = &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
-			Column:        column,
-			Values:        labelAcceptedValues(profile),
-			FailThreshold: proto.Float64(0),
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
-		config.Config = &storepb.QualityRuleConfig_Range{Range: labelDefaultRange(label, column)}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		config.Config = &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{
-			Column:        column,
-			Pattern:       labelDefaultPatterns[label],
-			FailThreshold: proto.Float64(0),
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
-		config.Config = &storepb.QualityRuleConfig_StringLength{StringLength: &storepb.StringLengthConfig{
-			Column:        column,
-			MinLen:        proto.Int64(labelStringLengthMin),
-			MaxLen:        proto.Int64(labelStringLengthMax),
-			FailThreshold: proto.Float64(0),
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		config.Config = &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{
-			TimestampColumn: column,
-			MaxLagSeconds:   labelFreshnessDefaultSeconds,
-		}}
-	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
-		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
-		// No deterministic default exists for these; a label never maps to them.
+	spec, ok := ruleTypeSpecFor(ruleType)
+	if !ok || spec.LabelDraft == nil {
 		return nil
-	default:
-		return nil
-	}
-
-	title := labelRuleTypeTitles[ruleType]
-	if title == "" {
-		title = labelRuleTypeShortName(ruleType)
 	}
 	return &storepb.QualityRuleDraftConfig{
-		Config:     config,
+		Config:     spec.LabelDraft(label, column, profile),
 		Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
-		Title:      fmt.Sprintf("%s: %s", column, title),
-		Rationale:  fmt.Sprintf("The column is labeled %s, whose default check is %s. The parameters are defaults and must be reviewed.", labelSemanticTypeShortName(label), title),
+		Title:      fmt.Sprintf("%s: %s", column, spec.Title),
+		Rationale:  fmt.Sprintf("The column is labeled %s, whose default check is %s. The parameters are defaults and must be reviewed.", labelSemanticTypeShortName(label), spec.Title),
 		Confidence: labelDraftConfidence,
 	}
+}
+
+// labelDraftNullPercent is the default config of a null_percent draft: no NULLs
+// allowed, measured as a percentage.
+func labelDraftNullPercent(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{
+		Column:     column,
+		MaxNullPct: proto.Float64(0),
+	}}}
+}
+
+// labelDraftUnique is the default config of a unique draft.
+func labelDraftUnique(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{
+		Column:        column,
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftUniqueCombination is the default config of a unique_combination draft:
+// the one labeled column must be unique.
+func labelDraftUniqueCombination(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{
+		Columns:       []string{column},
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftAcceptedValues is the default config of an accepted_values draft. The
+// profile only contributes an enumeration for a low-cardinality column.
+func labelDraftAcceptedValues(_ storepb.QualitySemanticType, column string, profile *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
+		Column:        column,
+		Values:        labelAcceptedValues(profile),
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftRange is the default config of a range draft; the label decides the
+// default bounds.
+func labelDraftRange(label storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{Range: labelDefaultRange(label, column)}}
+}
+
+// labelDraftRegex is the default config of a format draft; the label selects the
+// conservative default pattern.
+func labelDraftRegex(label storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{
+		Column:        column,
+		Pattern:       labelDefaultPatterns[label],
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftStringLength is the default config of a string_length draft.
+func labelDraftStringLength(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StringLength{StringLength: &storepb.StringLengthConfig{
+		Column:        column,
+		MinLen:        proto.Int64(labelStringLengthMin),
+		MaxLen:        proto.Int64(labelStringLengthMax),
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftFreshness is the default config of a freshness draft.
+func labelDraftFreshness(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{
+		TimestampColumn: column,
+		MaxLagSeconds:   labelFreshnessDefaultSeconds,
+	}}}
 }
 
 // labelDefaultRange is the range default for one label. An amount or quantity is
