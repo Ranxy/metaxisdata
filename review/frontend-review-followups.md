@@ -18,6 +18,8 @@
 | 8 | **FD7**：`RuleConfigForm` 按规则族拆分 + `useSchemaDriftColumns` | FD7 | `ef870fe` |
 | 9 | **FD2（第一步）**：测高收敛下沉为 `lib/lineageLayout` | FD2 | `6ff94fc` |
 | 10 | **FD2（第二步）**：详情列抽成 `LineageNodeDetailPanel` + 9 条测试 | FD2 | `6d1c63b` |
+| 11 | **FD3（第一步）**：`useDataQualityPermissions` 权限矩阵 | FD3 | `8caa2d2` |
+| 12 | **FD3（第二步）**：`utils/dataQualityExecutions` 纯派生 + 9 条测试 | FD3 | `46ee4e7` |
 
 ## 实施说明
 
@@ -70,8 +72,18 @@
 - 第二步已完成（`6d1c63b`）：详情列抽成 `components/lineage/LineageNodeDetailPanel.vue`（402 行，含外部对象的 namespace/datasetType、字段 trail、来源徽标、相关 runs、空态），页面从 2016 行降到 1807 行；父页面只传 7 个派生值 + 7 个动作事件。新增 **9 条组件测试**（空态、身份/计数、外部对象、trail、runs、动作 emit、禁用态、无 trail）。
 - 仍需完成：`useLineageGraphData`（nodeDataMap/展开状态/单节点与度数取数）与 `useLineageSelection`（选中/字段揭示/跳转动作）两个 composable；页面目标降到约 300 行。
 
+## FD3：god view 下沉（进行中）
+
+- **权限矩阵**（`8caa2d2`）：`composables/useDataQualityPermissions.ts` 统一 14 个 DQ 权限名；`DataQualityTargetPage`（8 个 `canX`）与 `QualityCheckDrawer`（7 个）改为一次解构，两处重复的权限字符串消失；4 条测试覆盖授予/拒绝/权限集变化/未加载 profile。
+- **执行页纯派生**（`46ee4e7`）：`utils/dataQualityExecutions.ts` 承接 target 行读数（GUID/名称/路径、最新批次 state/outcome、verdict 计数、failed/unfinished、时间与耗时、状态提示），页面里约 120 行私有函数删除；`utils/dataQualityExecutions.test.ts` 9 条测试覆盖边界（无 target、无 batch、无 counts、未完成、运行中、无起止时间），覆盖率 100% 行。
+- 剩余：`useTargetWorkspaceDialogs`（TargetPage 查询驱动抽屉，约 320 行）、`useTargetScheduleEditor`、`useSuggestionFilters`/`useExecutionFilters`；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
+
+### 排序调整
+
+FD2 的两个 composable 与画布/路由/快照状态互相引用（`expandedDirections`、`updateGraphState`、`snapshot`、`route` 交叉），直接抽取需要把这些依赖全部注入，风险高于收益，且该页没有页面测试兜底。因此先做 FD3 中可测、边界清晰的下沉（权限矩阵、纯派生函数、抽屉状态机），FD2 的数据层留到之后单独处理，并在记录中保持可见。
+
 ## 尚未开始
 
-- **FD2 后续**：`LineageGraphPage` 的 `useLineageGraphData`/`useLineageSelection` 两个 composable（页面目标约 300 行）。
+- **FD2 后续**：`LineageGraphPage` 的 `useLineageGraphData`/`useLineageSelection` 两个 composable（页面目标约 300 行；依赖画布/路由/快照，需先补页面级测试）。
 - **FD3**：三个 DQ god view（Executions/Target/Suggestions）的抽屉、URL、权限、轮询下沉。
 - **FD12**：随上述下沉补页面/纯函数测试。
