@@ -5950,6 +5950,16 @@ export declare type ExportQualityTargetsRequest = Message<"metaxisdata.v1.Export
    * @generated from field: int32 max_rows = 11;
    */
   maxRows: number;
+
+  /**
+   * Only targets that are failing, i.e. whose worst latest result is FAIL or
+   * ERROR. The directory offers this as one switch while worst_status filters a
+   * single state, so the export has to express the pair itself. It must not be
+   * combined with worst_status.
+   *
+   * @generated from field: bool failing_only = 12;
+   */
+  failingOnly: boolean;
 };
 
 /**

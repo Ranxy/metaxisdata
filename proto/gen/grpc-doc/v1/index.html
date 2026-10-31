@@ -13742,6 +13742,16 @@ every target, including those whose rules have not run yet. </p></td>
 maximum are coerced to it. </p></td>
                 </tr>
               
+                <tr>
+                  <td>failing_only</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Only targets that are failing, i.e. whose worst latest result is FAIL or
+ERROR. The directory offers this as one switch while worst_status filters a
+single state, so the export has to express the pair itself. It must not be
+combined with worst_status. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 

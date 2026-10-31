@@ -4590,6 +4590,7 @@ the same meaning as their ListQualityTargets counterparts.
 | has_pending_draft | [bool](#bool) |  | Only targets with at least one pending AI draft. |
 | order_by | [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder) |  | The order the exported rows are written in, matching the directory&#39;s sort. |
 | max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+| failing_only | [bool](#bool) |  | Only targets that are failing, i.e. whose worst latest result is FAIL or ERROR. The directory offers this as one switch while worst_status filters a single state, so the export has to express the pair itself. It must not be combined with worst_status. |
 
 
 

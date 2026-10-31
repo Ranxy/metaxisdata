@@ -12505,7 +12505,12 @@ type ExportQualityTargetsRequest struct {
 	OrderBy QualityTargetOrder `protobuf:"varint,10,opt,name=order_by,json=orderBy,proto3,enum=metaxisdata.v1.QualityTargetOrder" json:"order_by,omitempty"`
 	// The row ceiling. Zero means the server default (100000); values above that
 	// maximum are coerced to it.
-	MaxRows       int32 `protobuf:"varint,11,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
+	MaxRows int32 `protobuf:"varint,11,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
+	// Only targets that are failing, i.e. whose worst latest result is FAIL or
+	// ERROR. The directory offers this as one switch while worst_status filters a
+	// single state, so the export has to express the pair itself. It must not be
+	// combined with worst_status.
+	FailingOnly   bool `protobuf:"varint,12,opt,name=failing_only,json=failingOnly,proto3" json:"failing_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12615,6 +12620,13 @@ func (x *ExportQualityTargetsRequest) GetMaxRows() int32 {
 		return x.MaxRows
 	}
 	return 0
+}
+
+func (x *ExportQualityTargetsRequest) GetFailingOnly() bool {
+	if x != nil {
+		return x.FailingOnly
+	}
+	return false
 }
 
 // ExportQualityReportRequest asks for one target's report.
@@ -13840,7 +13852,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\n" +
 	"start_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tstartTime\x125\n" +
 	"\bend_time\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\x12\x19\n" +
-	"\bmax_rows\x18\t \x01(\x05R\amaxRows\"\xa6\x03\n" +
+	"\bmax_rows\x18\t \x01(\x05R\amaxRows\"\xc9\x03\n" +
 	"\x1bExportQualityTargetsRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1a\n" +
 	"\binstance\x18\x02 \x01(\tR\binstance\x12\x1a\n" +
@@ -13853,7 +13865,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x11has_pending_draft\x18\t \x01(\bR\x0fhasPendingDraft\x12=\n" +
 	"\border_by\x18\n" +
 	" \x01(\x0e2\".metaxisdata.v1.QualityTargetOrderR\aorderBy\x12\x19\n" +
-	"\bmax_rows\x18\v \x01(\x05R\amaxRows\"\xd1\x01\n" +
+	"\bmax_rows\x18\v \x01(\x05R\amaxRows\x12!\n" +
+	"\ffailing_only\x18\f \x01(\bR\vfailingOnly\"\xd1\x01\n" +
 	"\x1aExportQualityReportRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12$\n" +
 	"\vtarget_guid\x18\x02 \x01(\tB\x03\xe0A\x02R\n" +
