@@ -807,7 +807,6 @@ import {
   QualityExecutionTrigger,
   QualityRuleState,
   QualityStatus,
-  type QualityStatusCounts,
   QualityTargetOrder,
   type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -826,6 +825,22 @@ import {
   qualityStatusVariant,
   targetScopeLabel,
 } from "@/utils/dataQuality";
+import {
+  countsSummary as countsSummaryText,
+  failedChecks,
+  latestRun,
+  runCounts,
+  runDurationLabel,
+  runOutcome,
+  runState,
+  runStateHint as runStateHintText,
+  scanTimeLabel as scanTimeLabelText,
+  scanTimeTitle as scanTimeTitleText,
+  targetGuid,
+  targetName,
+  targetPathLine,
+  unfinishedChecks,
+} from "@/utils/dataQualityExecutions";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { guidToRouteParams } from "@/utils/guid";
 import { metaTypeSingularLabel } from "@/utils/metaType";
@@ -1090,22 +1105,6 @@ watch(
 
 // ---- target row helpers ----
 
-function targetGuid(summary: QualityTargetSummary): string {
-  return summary.target?.metaGuid ?? "";
-}
-
-function targetName(summary: QualityTargetSummary): string {
-  return summary.target?.path?.object || summary.target?.metaGuid || "-";
-}
-
-/** The target's coarse scope and path, e.g. `prod · public.orders`. */
-function targetPathLine(summary: QualityTargetSummary): string {
-  const path = summary.target?.path;
-  const scope = targetScopeLabel(path);
-  const name = formatTargetPath(path);
-  return scope === "-" ? name : `${scope} · ${name}`;
-}
-
 function targetRoute(summary: QualityTargetSummary): RouteLocationRaw {
   return {
     name: "DataQualityTarget",
@@ -1116,141 +1115,24 @@ function targetRoute(summary: QualityTargetSummary): RouteLocationRaw {
   };
 }
 
-function latestRun(summary: QualityTargetSummary) {
-  return summary.latestRun;
-}
-
-function runCounts(
-  summary: QualityTargetSummary
-): QualityStatusCounts | undefined {
-  return summary.latestRun?.counts;
-}
-
-function runState(summary: QualityTargetSummary): QualityExecutionState {
-  return summary.latestRun?.state ?? QualityExecutionState.UNSPECIFIED;
-}
-
-function runOutcome(summary: QualityTargetSummary): QualityStatus {
-  return summary.latestRun?.outcome ?? QualityStatus.UNSPECIFIED;
-}
-
-const TARGET_VERDICT_ORDER: QualityStatus[] = [
-  QualityStatus.PASS,
-  QualityStatus.WARN,
-  QualityStatus.FAIL,
-  QualityStatus.ERROR,
-  QualityStatus.SKIPPED,
-  QualityStatus.NOT_EVALUATED,
-];
-
-function verdictCount(
-  counts: QualityStatusCounts | undefined,
-  status: QualityStatus
-): number {
-  if (!counts) {
-    return 0;
-  }
-  switch (status) {
-    case QualityStatus.PASS:
-      return counts.pass;
-    case QualityStatus.WARN:
-      return counts.warn;
-    case QualityStatus.FAIL:
-      return counts.fail;
-    case QualityStatus.ERROR:
-      return counts.error;
-    case QualityStatus.SKIPPED:
-      return counts.skipped;
-    case QualityStatus.NOT_EVALUATED:
-      return counts.notEvaluated;
-    default:
-      return 0;
-  }
-}
-
-/** The verdicts the latest batch recorded, e.g. `3 Pass · 1 Fail`. */
-function countsSummary(summary: QualityTargetSummary): string {
-  const counts = runCounts(summary);
-  if (!counts) {
-    return "";
-  }
-  return TARGET_VERDICT_ORDER.map((status) => ({
-    status,
-    count: verdictCount(counts, status),
-  }))
-    .filter((verdict) => verdict.count > 0)
-    .map((verdict) => `${verdict.count} ${t(qualityStatusKey(verdict.status))}`)
-    .join(" · ");
-}
-
-/** Checks that failed or errored in the latest batch. */
-function failedChecks(summary: QualityTargetSummary): number {
-  const counts = runCounts(summary);
-  if (!counts) {
-    return 0;
-  }
-  return counts.fail + counts.error;
-}
-
-/** Planned checks that never reached a verdict in the latest batch. */
-function unfinishedChecks(summary: QualityTargetSummary): number {
-  const counts = runCounts(summary);
-  if (!counts) {
-    return 0;
-  }
-  const finished = TARGET_VERDICT_ORDER.reduce(
-    (sum, status) => sum + verdictCount(counts, status),
-    0
-  );
-  return Math.max(0, counts.total - finished);
-}
-
-/**
- * The target's enabled rule count when a scheduled batch covered only a slice of
- * an oversize target (batches are target-complete, but a legacy oversize target
- * may be split). Only a batch at the composition cap is disclosed, so a retry
- * batch or a check added since the run never reads as partial.
- */
 function partialChecks(summary: QualityTargetSummary): number {
   return partialQualityRunChecks(summary.latestRun, summary.enabledRuleCount);
 }
 
-function scanTime(summary: QualityTargetSummary) {
-  const run = latestRun(summary);
-  return run?.finishTime ?? run?.startTime;
+function countsSummary(summary: QualityTargetSummary): string {
+  return countsSummaryText(summary, t);
 }
 
 function scanTimeLabel(summary: QualityTargetSummary): string {
-  return formatRelativeTime(scanTime(summary), locale.value);
+  return scanTimeLabelText(summary, locale.value);
 }
 
 function scanTimeTitle(summary: QualityTargetSummary): string {
-  return formatDateTime(scanTime(summary), locale.value);
+  return scanTimeTitleText(summary, locale.value);
 }
 
-function runDurationLabel(summary: QualityTargetSummary): string {
-  const run = latestRun(summary);
-  if (!run) {
-    return "-";
-  }
-  const seconds = executionDurationSeconds({
-    startTime: run.startTime,
-    finishTime: run.finishTime,
-  });
-  return seconds === undefined ? "-" : formatSeconds(seconds);
-}
-
-/** A batch can be queued, running or abandoned; only the last two need words. */
 function runStateHint(summary: QualityTargetSummary): string {
-  switch (runState(summary)) {
-    case QualityExecutionState.PENDING:
-    case QualityExecutionState.RUNNING:
-      return t("dataQuality.executions.runRunningHint");
-    case QualityExecutionState.ABANDONED:
-      return t("dataQuality.executions.runAbandonedHint");
-    default:
-      return "";
-  }
+  return runStateHintText(summary, t);
 }
 
 function isExpanded(summary: QualityTargetSummary): boolean {
