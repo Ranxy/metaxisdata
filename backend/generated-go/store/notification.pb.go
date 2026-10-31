@@ -36,6 +36,9 @@ const (
 	// A data quality rule opened, recovered, failed to execute, or failed in a
 	// storm that was merged into one summary.
 	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY NotificationType = 3
+	// The workspace's scheduled data quality digest. It has no in-app copy; only
+	// the outbound channels subscribed to this type receive it.
+	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST NotificationType = 4
 )
 
 // Enum value maps for NotificationType.
@@ -45,12 +48,14 @@ var (
 		1: "NOTIFICATION_TYPE_SCHEMA_SYNC",
 		2: "NOTIFICATION_TYPE_OPENLINEAGE",
 		3: "NOTIFICATION_TYPE_DATA_QUALITY",
+		4: "NOTIFICATION_TYPE_DATA_QUALITY_DIGEST",
 	}
 	NotificationType_value = map[string]int32{
-		"NOTIFICATION_TYPE_UNSPECIFIED":  0,
-		"NOTIFICATION_TYPE_SCHEMA_SYNC":  1,
-		"NOTIFICATION_TYPE_OPENLINEAGE":  2,
-		"NOTIFICATION_TYPE_DATA_QUALITY": 3,
+		"NOTIFICATION_TYPE_UNSPECIFIED":         0,
+		"NOTIFICATION_TYPE_SCHEMA_SYNC":         1,
+		"NOTIFICATION_TYPE_OPENLINEAGE":         2,
+		"NOTIFICATION_TYPE_DATA_QUALITY":        3,
+		"NOTIFICATION_TYPE_DATA_QUALITY_DIGEST": 4,
 	}
 )
 
@@ -1164,6 +1169,348 @@ func (x *DataQualityDetail) GetInstance() string {
 	return ""
 }
 
+// DataQualityDigestDetail reports one scheduled digest period: how the checks
+// ran, how the problem ledger moved, and how the open state splits by owner and
+// target. The counts are already aggregated, so rendering the message reads no
+// quality table.
+type DataQualityDigestDetail struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The period the digest covers: [period_start, period_end).
+	PeriodStart *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=period_start,json=periodStart,proto3" json:"period_start,omitempty"`
+	PeriodEnd   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=period_end,json=periodEnd,proto3" json:"period_end,omitempty"`
+	// The IANA time zone the period label is written in (the digest schedule's
+	// zone, for example "Asia/Shanghai"). A UTC label can name the wrong calendar
+	// days for schedules east of UTC+9, so the zone travels with the period.
+	Timezone string `protobuf:"bytes,18,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	// How many targets had at least one enabled check in the period.
+	TargetCount int32 `protobuf:"varint,3,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
+	// How many enabled checks the workspace had at the end of the period.
+	RuleCount int32 `protobuf:"varint,4,opt,name=rule_count,json=ruleCount,proto3" json:"rule_count,omitempty"`
+	// The verdict tally of the period's completed executions.
+	ExecutionCount int32 `protobuf:"varint,5,opt,name=execution_count,json=executionCount,proto3" json:"execution_count,omitempty"`
+	PassedCount    int32 `protobuf:"varint,6,opt,name=passed_count,json=passedCount,proto3" json:"passed_count,omitempty"`
+	WarnedCount    int32 `protobuf:"varint,7,opt,name=warned_count,json=warnedCount,proto3" json:"warned_count,omitempty"`
+	FailedCount    int32 `protobuf:"varint,8,opt,name=failed_count,json=failedCount,proto3" json:"failed_count,omitempty"`
+	ErroredCount   int32 `protobuf:"varint,9,opt,name=errored_count,json=erroredCount,proto3" json:"errored_count,omitempty"`
+	// The problem ledger's movement in the period.
+	NewIssueCount       int32 `protobuf:"varint,10,opt,name=new_issue_count,json=newIssueCount,proto3" json:"new_issue_count,omitempty"`
+	RecoveredIssueCount int32 `protobuf:"varint,11,opt,name=recovered_issue_count,json=recoveredIssueCount,proto3" json:"recovered_issue_count,omitempty"`
+	// The open state as of the aggregation (the runner reads it while building
+	// the digest, so it describes the moment the digest is produced, which is at
+	// or shortly after period_end).
+	OpenIssueCount    int32 `protobuf:"varint,12,opt,name=open_issue_count,json=openIssueCount,proto3" json:"open_issue_count,omitempty"`
+	OpenWarningCount  int32 `protobuf:"varint,13,opt,name=open_warning_count,json=openWarningCount,proto3" json:"open_warning_count,omitempty"`
+	OpenErrorCount    int32 `protobuf:"varint,14,opt,name=open_error_count,json=openErrorCount,proto3" json:"open_error_count,omitempty"`
+	OpenCriticalCount int32 `protobuf:"varint,15,opt,name=open_critical_count,json=openCriticalCount,proto3" json:"open_critical_count,omitempty"`
+	// The owners with the most to look at, most open issues first. Capped; the
+	// totals above carry the whole picture.
+	Owners []*DataQualityDigestOwner `protobuf:"bytes,16,rep,name=owners,proto3" json:"owners,omitempty"`
+	// The targets with the most failed checks in the period. Capped.
+	Targets       []*DataQualityDigestTarget `protobuf:"bytes,17,rep,name=targets,proto3" json:"targets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DataQualityDigestDetail) Reset() {
+	*x = DataQualityDigestDetail{}
+	mi := &file_store_notification_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualityDigestDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualityDigestDetail) ProtoMessage() {}
+
+func (x *DataQualityDigestDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualityDigestDetail.ProtoReflect.Descriptor instead.
+func (*DataQualityDigestDetail) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *DataQualityDigestDetail) GetPeriodStart() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PeriodStart
+	}
+	return nil
+}
+
+func (x *DataQualityDigestDetail) GetPeriodEnd() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PeriodEnd
+	}
+	return nil
+}
+
+func (x *DataQualityDigestDetail) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *DataQualityDigestDetail) GetTargetCount() int32 {
+	if x != nil {
+		return x.TargetCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetRuleCount() int32 {
+	if x != nil {
+		return x.RuleCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetExecutionCount() int32 {
+	if x != nil {
+		return x.ExecutionCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetPassedCount() int32 {
+	if x != nil {
+		return x.PassedCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetWarnedCount() int32 {
+	if x != nil {
+		return x.WarnedCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetFailedCount() int32 {
+	if x != nil {
+		return x.FailedCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetErroredCount() int32 {
+	if x != nil {
+		return x.ErroredCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetNewIssueCount() int32 {
+	if x != nil {
+		return x.NewIssueCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetRecoveredIssueCount() int32 {
+	if x != nil {
+		return x.RecoveredIssueCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetOpenIssueCount() int32 {
+	if x != nil {
+		return x.OpenIssueCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetOpenWarningCount() int32 {
+	if x != nil {
+		return x.OpenWarningCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetOpenErrorCount() int32 {
+	if x != nil {
+		return x.OpenErrorCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetOpenCriticalCount() int32 {
+	if x != nil {
+		return x.OpenCriticalCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestDetail) GetOwners() []*DataQualityDigestOwner {
+	if x != nil {
+		return x.Owners
+	}
+	return nil
+}
+
+func (x *DataQualityDigestDetail) GetTargets() []*DataQualityDigestTarget {
+	if x != nil {
+		return x.Targets
+	}
+	return nil
+}
+
+// DataQualityDigestOwner is one owner's share of the digest.
+type DataQualityDigestOwner struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: users/{user}. Empty is the unassigned bucket.
+	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
+	// The owner's display name at aggregation time, so the message is readable
+	// without another read. Not an address: the outbox payload carries no
+	// contact details, and a channel resolves its own recipients at send time.
+	// Empty when the account is gone.
+	OwnerName        string `protobuf:"bytes,2,opt,name=owner_name,json=ownerName,proto3" json:"owner_name,omitempty"`
+	OpenIssueCount   int32  `protobuf:"varint,3,opt,name=open_issue_count,json=openIssueCount,proto3" json:"open_issue_count,omitempty"`
+	FailingRuleCount int32  `protobuf:"varint,4,opt,name=failing_rule_count,json=failingRuleCount,proto3" json:"failing_rule_count,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DataQualityDigestOwner) Reset() {
+	*x = DataQualityDigestOwner{}
+	mi := &file_store_notification_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualityDigestOwner) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualityDigestOwner) ProtoMessage() {}
+
+func (x *DataQualityDigestOwner) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualityDigestOwner.ProtoReflect.Descriptor instead.
+func (*DataQualityDigestOwner) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DataQualityDigestOwner) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *DataQualityDigestOwner) GetOwnerName() string {
+	if x != nil {
+		return x.OwnerName
+	}
+	return ""
+}
+
+func (x *DataQualityDigestOwner) GetOpenIssueCount() int32 {
+	if x != nil {
+		return x.OpenIssueCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestOwner) GetFailingRuleCount() int32 {
+	if x != nil {
+		return x.FailingRuleCount
+	}
+	return 0
+}
+
+// DataQualityDigestTarget is one target's share of the digest.
+type DataQualityDigestTarget struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The display path: instance/database/schema/table.
+	TargetPath            string `protobuf:"bytes,1,opt,name=target_path,json=targetPath,proto3" json:"target_path,omitempty"`
+	FailedExecutionCount  int32  `protobuf:"varint,2,opt,name=failed_execution_count,json=failedExecutionCount,proto3" json:"failed_execution_count,omitempty"`
+	ErroredExecutionCount int32  `protobuf:"varint,3,opt,name=errored_execution_count,json=erroredExecutionCount,proto3" json:"errored_execution_count,omitempty"`
+	OpenIssueCount        int32  `protobuf:"varint,4,opt,name=open_issue_count,json=openIssueCount,proto3" json:"open_issue_count,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *DataQualityDigestTarget) Reset() {
+	*x = DataQualityDigestTarget{}
+	mi := &file_store_notification_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataQualityDigestTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataQualityDigestTarget) ProtoMessage() {}
+
+func (x *DataQualityDigestTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataQualityDigestTarget.ProtoReflect.Descriptor instead.
+func (*DataQualityDigestTarget) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DataQualityDigestTarget) GetTargetPath() string {
+	if x != nil {
+		return x.TargetPath
+	}
+	return ""
+}
+
+func (x *DataQualityDigestTarget) GetFailedExecutionCount() int32 {
+	if x != nil {
+		return x.FailedExecutionCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestTarget) GetErroredExecutionCount() int32 {
+	if x != nil {
+		return x.ErroredExecutionCount
+	}
+	return 0
+}
+
+func (x *DataQualityDigestTarget) GetOpenIssueCount() int32 {
+	if x != nil {
+		return x.OpenIssueCount
+	}
+	return 0
+}
+
 // NotificationChannel is the stored configuration of one outbound channel, as
 // notification_channel.payload. The endpoint URL and the signing secret are not
 // part of it: they are write-only and live encrypted in the secret column, so a
@@ -1173,7 +1520,9 @@ type NotificationChannel struct {
 	DisplayName string                  `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	Kind        NotificationChannelKind `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.store.NotificationChannelKind" json:"kind,omitempty"`
 	Enabled     bool                    `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// The notification types this channel subscribes to. Empty means every type.
+	// The notification types this channel subscribes to. Empty means every type,
+	// with one exception: the data quality digest is opt-in and is delivered only
+	// to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly.
 	EventTypes []NotificationType `protobuf:"varint,4,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.store.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this channel delivers. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,5,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
@@ -1194,7 +1543,7 @@ type NotificationChannel struct {
 
 func (x *NotificationChannel) Reset() {
 	*x = NotificationChannel{}
-	mi := &file_store_notification_proto_msgTypes[5]
+	mi := &file_store_notification_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1206,7 +1555,7 @@ func (x *NotificationChannel) String() string {
 func (*NotificationChannel) ProtoMessage() {}
 
 func (x *NotificationChannel) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[5]
+	mi := &file_store_notification_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1219,7 +1568,7 @@ func (x *NotificationChannel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationChannel.ProtoReflect.Descriptor instead.
 func (*NotificationChannel) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{5}
+	return file_store_notification_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *NotificationChannel) GetDisplayName() string {
@@ -1301,7 +1650,7 @@ type NotificationChannelConfig struct {
 
 func (x *NotificationChannelConfig) Reset() {
 	*x = NotificationChannelConfig{}
-	mi := &file_store_notification_proto_msgTypes[6]
+	mi := &file_store_notification_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1313,7 +1662,7 @@ func (x *NotificationChannelConfig) String() string {
 func (*NotificationChannelConfig) ProtoMessage() {}
 
 func (x *NotificationChannelConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[6]
+	mi := &file_store_notification_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1326,7 +1675,7 @@ func (x *NotificationChannelConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationChannelConfig.ProtoReflect.Descriptor instead.
 func (*NotificationChannelConfig) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{6}
+	return file_store_notification_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *NotificationChannelConfig) GetConfig() isNotificationChannelConfig_Config {
@@ -1425,7 +1774,7 @@ type WebhookChannelConfig struct {
 
 func (x *WebhookChannelConfig) Reset() {
 	*x = WebhookChannelConfig{}
-	mi := &file_store_notification_proto_msgTypes[7]
+	mi := &file_store_notification_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1437,7 +1786,7 @@ func (x *WebhookChannelConfig) String() string {
 func (*WebhookChannelConfig) ProtoMessage() {}
 
 func (x *WebhookChannelConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[7]
+	mi := &file_store_notification_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1450,7 +1799,7 @@ func (x *WebhookChannelConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebhookChannelConfig.ProtoReflect.Descriptor instead.
 func (*WebhookChannelConfig) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{7}
+	return file_store_notification_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *WebhookChannelConfig) GetSign() bool {
@@ -1470,7 +1819,7 @@ type DingTalkChannelConfig struct {
 
 func (x *DingTalkChannelConfig) Reset() {
 	*x = DingTalkChannelConfig{}
-	mi := &file_store_notification_proto_msgTypes[8]
+	mi := &file_store_notification_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1482,7 +1831,7 @@ func (x *DingTalkChannelConfig) String() string {
 func (*DingTalkChannelConfig) ProtoMessage() {}
 
 func (x *DingTalkChannelConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[8]
+	mi := &file_store_notification_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1495,7 +1844,7 @@ func (x *DingTalkChannelConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DingTalkChannelConfig.ProtoReflect.Descriptor instead.
 func (*DingTalkChannelConfig) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{8}
+	return file_store_notification_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DingTalkChannelConfig) GetSign() bool {
@@ -1514,7 +1863,7 @@ type WeComChannelConfig struct {
 
 func (x *WeComChannelConfig) Reset() {
 	*x = WeComChannelConfig{}
-	mi := &file_store_notification_proto_msgTypes[9]
+	mi := &file_store_notification_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1526,7 +1875,7 @@ func (x *WeComChannelConfig) String() string {
 func (*WeComChannelConfig) ProtoMessage() {}
 
 func (x *WeComChannelConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[9]
+	mi := &file_store_notification_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1539,7 +1888,7 @@ func (x *WeComChannelConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeComChannelConfig.ProtoReflect.Descriptor instead.
 func (*WeComChannelConfig) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{9}
+	return file_store_notification_proto_rawDescGZIP(), []int{12}
 }
 
 type FeishuChannelConfig struct {
@@ -1552,7 +1901,7 @@ type FeishuChannelConfig struct {
 
 func (x *FeishuChannelConfig) Reset() {
 	*x = FeishuChannelConfig{}
-	mi := &file_store_notification_proto_msgTypes[10]
+	mi := &file_store_notification_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1564,7 +1913,7 @@ func (x *FeishuChannelConfig) String() string {
 func (*FeishuChannelConfig) ProtoMessage() {}
 
 func (x *FeishuChannelConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[10]
+	mi := &file_store_notification_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1577,7 +1926,7 @@ func (x *FeishuChannelConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FeishuChannelConfig.ProtoReflect.Descriptor instead.
 func (*FeishuChannelConfig) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{10}
+	return file_store_notification_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FeishuChannelConfig) GetSign() bool {
@@ -1603,7 +1952,7 @@ type EmailChannelConfig struct {
 
 func (x *EmailChannelConfig) Reset() {
 	*x = EmailChannelConfig{}
-	mi := &file_store_notification_proto_msgTypes[11]
+	mi := &file_store_notification_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1615,7 +1964,7 @@ func (x *EmailChannelConfig) String() string {
 func (*EmailChannelConfig) ProtoMessage() {}
 
 func (x *EmailChannelConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[11]
+	mi := &file_store_notification_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1628,7 +1977,7 @@ func (x *EmailChannelConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmailChannelConfig.ProtoReflect.Descriptor instead.
 func (*EmailChannelConfig) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{11}
+	return file_store_notification_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *EmailChannelConfig) GetAddresses() []string {
@@ -1663,7 +2012,7 @@ type NotificationChannelSecret struct {
 
 func (x *NotificationChannelSecret) Reset() {
 	*x = NotificationChannelSecret{}
-	mi := &file_store_notification_proto_msgTypes[12]
+	mi := &file_store_notification_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1675,7 +2024,7 @@ func (x *NotificationChannelSecret) String() string {
 func (*NotificationChannelSecret) ProtoMessage() {}
 
 func (x *NotificationChannelSecret) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[12]
+	mi := &file_store_notification_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1688,7 +2037,7 @@ func (x *NotificationChannelSecret) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationChannelSecret.ProtoReflect.Descriptor instead.
 func (*NotificationChannelSecret) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{12}
+	return file_store_notification_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *NotificationChannelSecret) GetEndpoint() string {
@@ -1717,6 +2066,7 @@ type NotificationDeliveryEvent struct {
 	//	*NotificationDeliveryEvent_SchemaSync
 	//	*NotificationDeliveryEvent_Openlineage
 	//	*NotificationDeliveryEvent_DataQuality
+	//	*NotificationDeliveryEvent_DataQualityDigest
 	Detail isNotificationDeliveryEvent_Detail `protobuf_oneof:"detail"`
 	// The user ids the event's in-app message addressed: the rule's owner, the
 	// initiator of a sync operation, or the workspace administrators. The email
@@ -1730,7 +2080,7 @@ type NotificationDeliveryEvent struct {
 
 func (x *NotificationDeliveryEvent) Reset() {
 	*x = NotificationDeliveryEvent{}
-	mi := &file_store_notification_proto_msgTypes[13]
+	mi := &file_store_notification_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1742,7 +2092,7 @@ func (x *NotificationDeliveryEvent) String() string {
 func (*NotificationDeliveryEvent) ProtoMessage() {}
 
 func (x *NotificationDeliveryEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[13]
+	mi := &file_store_notification_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1755,7 +2105,7 @@ func (x *NotificationDeliveryEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationDeliveryEvent.ProtoReflect.Descriptor instead.
 func (*NotificationDeliveryEvent) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{13}
+	return file_store_notification_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *NotificationDeliveryEvent) GetType() NotificationType {
@@ -1806,6 +2156,15 @@ func (x *NotificationDeliveryEvent) GetDataQuality() *DataQualityDetail {
 	return nil
 }
 
+func (x *NotificationDeliveryEvent) GetDataQualityDigest() *DataQualityDigestDetail {
+	if x != nil {
+		if x, ok := x.Detail.(*NotificationDeliveryEvent_DataQualityDigest); ok {
+			return x.DataQualityDigest
+		}
+	}
+	return nil
+}
+
 func (x *NotificationDeliveryEvent) GetAudienceUserIds() []int32 {
 	if x != nil {
 		return x.AudienceUserIds
@@ -1829,11 +2188,17 @@ type NotificationDeliveryEvent_DataQuality struct {
 	DataQuality *DataQualityDetail `protobuf:"bytes,5,opt,name=data_quality,json=dataQuality,proto3,oneof"`
 }
 
+type NotificationDeliveryEvent_DataQualityDigest struct {
+	DataQualityDigest *DataQualityDigestDetail `protobuf:"bytes,7,opt,name=data_quality_digest,json=dataQualityDigest,proto3,oneof"`
+}
+
 func (*NotificationDeliveryEvent_SchemaSync) isNotificationDeliveryEvent_Detail() {}
 
 func (*NotificationDeliveryEvent_Openlineage) isNotificationDeliveryEvent_Detail() {}
 
 func (*NotificationDeliveryEvent_DataQuality) isNotificationDeliveryEvent_Detail() {}
+
+func (*NotificationDeliveryEvent_DataQualityDigest) isNotificationDeliveryEvent_Detail() {}
 
 // NotificationRoute is one owner/team routing rule, as notification_route.payload.
 // It selects extra channels for the events whose in-app audience matches the
@@ -1852,7 +2217,7 @@ type NotificationRoute struct {
 
 func (x *NotificationRoute) Reset() {
 	*x = NotificationRoute{}
-	mi := &file_store_notification_proto_msgTypes[14]
+	mi := &file_store_notification_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1864,7 +2229,7 @@ func (x *NotificationRoute) String() string {
 func (*NotificationRoute) ProtoMessage() {}
 
 func (x *NotificationRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[14]
+	mi := &file_store_notification_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1877,7 +2242,7 @@ func (x *NotificationRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationRoute.ProtoReflect.Descriptor instead.
 func (*NotificationRoute) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{14}
+	return file_store_notification_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *NotificationRoute) GetDisplayName() string {
@@ -1911,9 +2276,11 @@ func (x *NotificationRoute) GetChannels() []string {
 // NotificationRouteMatch is who and what a route selects. An empty field is a
 // wildcard, and so is a match with no filters at all: every event concerns the
 // rule's audience, so a route with no owner and no group selects every event.
+// The data quality digest has no audience and is never selected by a route.
 type NotificationRouteMatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The notification types this route selects. Empty means every type.
+	// The notification types this route selects. Empty means every type that has
+	// an in-app audience; the digest has none and is not routed.
 	EventTypes []NotificationType `protobuf:"varint,1,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.store.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this route selects. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,2,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
@@ -1927,7 +2294,7 @@ type NotificationRouteMatch struct {
 
 func (x *NotificationRouteMatch) Reset() {
 	*x = NotificationRouteMatch{}
-	mi := &file_store_notification_proto_msgTypes[15]
+	mi := &file_store_notification_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1939,7 +2306,7 @@ func (x *NotificationRouteMatch) String() string {
 func (*NotificationRouteMatch) ProtoMessage() {}
 
 func (x *NotificationRouteMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_store_notification_proto_msgTypes[15]
+	mi := &file_store_notification_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1952,7 +2319,7 @@ func (x *NotificationRouteMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotificationRouteMatch.ProtoReflect.Descriptor instead.
 func (*NotificationRouteMatch) Descriptor() ([]byte, []int) {
-	return file_store_notification_proto_rawDescGZIP(), []int{15}
+	return file_store_notification_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *NotificationRouteMatch) GetEventTypes() []NotificationType {
@@ -2054,7 +2421,41 @@ const file_store_notification_proto_rawDesc = "" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
 	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
-	"\binstance\x18\x12 \x01(\tR\binstance\"\xd5\x03\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance\"\xbf\x06\n" +
+	"\x17DataQualityDigestDetail\x12=\n" +
+	"\fperiod_start\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\vperiodStart\x129\n" +
+	"\n" +
+	"period_end\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tperiodEnd\x12\x1a\n" +
+	"\btimezone\x18\x12 \x01(\tR\btimezone\x12!\n" +
+	"\ftarget_count\x18\x03 \x01(\x05R\vtargetCount\x12\x1d\n" +
+	"\n" +
+	"rule_count\x18\x04 \x01(\x05R\truleCount\x12'\n" +
+	"\x0fexecution_count\x18\x05 \x01(\x05R\x0eexecutionCount\x12!\n" +
+	"\fpassed_count\x18\x06 \x01(\x05R\vpassedCount\x12!\n" +
+	"\fwarned_count\x18\a \x01(\x05R\vwarnedCount\x12!\n" +
+	"\ffailed_count\x18\b \x01(\x05R\vfailedCount\x12#\n" +
+	"\rerrored_count\x18\t \x01(\x05R\ferroredCount\x12&\n" +
+	"\x0fnew_issue_count\x18\n" +
+	" \x01(\x05R\rnewIssueCount\x122\n" +
+	"\x15recovered_issue_count\x18\v \x01(\x05R\x13recoveredIssueCount\x12(\n" +
+	"\x10open_issue_count\x18\f \x01(\x05R\x0eopenIssueCount\x12,\n" +
+	"\x12open_warning_count\x18\r \x01(\x05R\x10openWarningCount\x12(\n" +
+	"\x10open_error_count\x18\x0e \x01(\x05R\x0eopenErrorCount\x12.\n" +
+	"\x13open_critical_count\x18\x0f \x01(\x05R\x11openCriticalCount\x12A\n" +
+	"\x06owners\x18\x10 \x03(\v2).metaxisdata.store.DataQualityDigestOwnerR\x06owners\x12D\n" +
+	"\atargets\x18\x11 \x03(\v2*.metaxisdata.store.DataQualityDigestTargetR\atargets\"\xa5\x01\n" +
+	"\x16DataQualityDigestOwner\x12\x14\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\x12\x1d\n" +
+	"\n" +
+	"owner_name\x18\x02 \x01(\tR\townerName\x12(\n" +
+	"\x10open_issue_count\x18\x03 \x01(\x05R\x0eopenIssueCount\x12,\n" +
+	"\x12failing_rule_count\x18\x04 \x01(\x05R\x10failingRuleCount\"\xd2\x01\n" +
+	"\x17DataQualityDigestTarget\x12\x1f\n" +
+	"\vtarget_path\x18\x01 \x01(\tR\n" +
+	"targetPath\x124\n" +
+	"\x16failed_execution_count\x18\x02 \x01(\x05R\x14failedExecutionCount\x126\n" +
+	"\x17errored_execution_count\x18\x03 \x01(\x05R\x15erroredExecutionCount\x12(\n" +
+	"\x10open_issue_count\x18\x04 \x01(\x05R\x0eopenIssueCount\"\xd5\x03\n" +
 	"\x13NotificationChannel\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12>\n" +
 	"\x04kind\x18\x02 \x01(\x0e2*.metaxisdata.store.NotificationChannelKindR\x04kind\x12\x18\n" +
@@ -2086,14 +2487,15 @@ const file_store_notification_proto_rawDesc = "" +
 	"\x10include_audience\x18\x02 \x01(\bR\x0fincludeAudience\"^\n" +
 	"\x19NotificationChannelSecret\x12\x1a\n" +
 	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12%\n" +
-	"\x0esigning_secret\x18\x02 \x01(\tR\rsigningSecret\"\xac\x03\n" +
+	"\x0esigning_secret\x18\x02 \x01(\tR\rsigningSecret\"\x8a\x04\n" +
 	"\x19NotificationDeliveryEvent\x127\n" +
 	"\x04type\x18\x01 \x01(\x0e2#.metaxisdata.store.NotificationTypeR\x04type\x12C\n" +
 	"\bseverity\x18\x02 \x01(\x0e2'.metaxisdata.store.NotificationSeverityR\bseverity\x12F\n" +
 	"\vschema_sync\x18\x03 \x01(\v2#.metaxisdata.store.SchemaSyncDetailH\x00R\n" +
 	"schemaSync\x12H\n" +
 	"\vopenlineage\x18\x04 \x01(\v2$.metaxisdata.store.OpenLineageDetailH\x00R\vopenlineage\x12I\n" +
-	"\fdata_quality\x18\x05 \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQuality\x12*\n" +
+	"\fdata_quality\x18\x05 \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQuality\x12\\\n" +
+	"\x13data_quality_digest\x18\a \x01(\v2*.metaxisdata.store.DataQualityDigestDetailH\x00R\x11dataQualityDigest\x12*\n" +
 	"\x11audience_user_ids\x18\x06 \x03(\x05R\x0faudienceUserIdsB\b\n" +
 	"\x06detail\"\xad\x01\n" +
 	"\x11NotificationRoute\x12!\n" +
@@ -2106,12 +2508,13 @@ const file_store_notification_proto_rawDesc = "" +
 	"eventTypes\x12J\n" +
 	"\fmin_severity\x18\x02 \x01(\x0e2'.metaxisdata.store.NotificationSeverityR\vminSeverity\x12\x16\n" +
 	"\x06owners\x18\x03 \x03(\tR\x06owners\x12\x16\n" +
-	"\x06groups\x18\x04 \x03(\tR\x06groups*\x9f\x01\n" +
+	"\x06groups\x18\x04 \x03(\tR\x06groups*\xca\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02\x12\"\n" +
-	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03*\xa1\x01\n" +
+	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03\x12)\n" +
+	"%NOTIFICATION_TYPE_DATA_QUALITY_DIGEST\x10\x04*\xa1\x01\n" +
 	"\x14NotificationSeverity\x12%\n" +
 	"!NOTIFICATION_SEVERITY_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aNOTIFICATION_SEVERITY_INFO\x10\x01\x12!\n" +
@@ -2167,7 +2570,7 @@ func file_store_notification_proto_rawDescGZIP() []byte {
 }
 
 var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_store_notification_proto_goTypes = []any{
 	(NotificationType)(0),             // 0: metaxisdata.store.NotificationType
 	(NotificationSeverity)(0),         // 1: metaxisdata.store.NotificationSeverity
@@ -2182,26 +2585,29 @@ var file_store_notification_proto_goTypes = []any{
 	(*SyncDatabaseResult)(nil),        // 10: metaxisdata.store.SyncDatabaseResult
 	(*OpenLineageDetail)(nil),         // 11: metaxisdata.store.OpenLineageDetail
 	(*DataQualityDetail)(nil),         // 12: metaxisdata.store.DataQualityDetail
-	(*NotificationChannel)(nil),       // 13: metaxisdata.store.NotificationChannel
-	(*NotificationChannelConfig)(nil), // 14: metaxisdata.store.NotificationChannelConfig
-	(*WebhookChannelConfig)(nil),      // 15: metaxisdata.store.WebhookChannelConfig
-	(*DingTalkChannelConfig)(nil),     // 16: metaxisdata.store.DingTalkChannelConfig
-	(*WeComChannelConfig)(nil),        // 17: metaxisdata.store.WeComChannelConfig
-	(*FeishuChannelConfig)(nil),       // 18: metaxisdata.store.FeishuChannelConfig
-	(*EmailChannelConfig)(nil),        // 19: metaxisdata.store.EmailChannelConfig
-	(*NotificationChannelSecret)(nil), // 20: metaxisdata.store.NotificationChannelSecret
-	(*NotificationDeliveryEvent)(nil), // 21: metaxisdata.store.NotificationDeliveryEvent
-	(*NotificationRoute)(nil),         // 22: metaxisdata.store.NotificationRoute
-	(*NotificationRouteMatch)(nil),    // 23: metaxisdata.store.NotificationRouteMatch
-	(*timestamppb.Timestamp)(nil),     // 24: google.protobuf.Timestamp
-	(QualityStatus)(0),                // 25: metaxisdata.store.QualityStatus
-	(QualitySeverity)(0),              // 26: metaxisdata.store.QualitySeverity
+	(*DataQualityDigestDetail)(nil),   // 13: metaxisdata.store.DataQualityDigestDetail
+	(*DataQualityDigestOwner)(nil),    // 14: metaxisdata.store.DataQualityDigestOwner
+	(*DataQualityDigestTarget)(nil),   // 15: metaxisdata.store.DataQualityDigestTarget
+	(*NotificationChannel)(nil),       // 16: metaxisdata.store.NotificationChannel
+	(*NotificationChannelConfig)(nil), // 17: metaxisdata.store.NotificationChannelConfig
+	(*WebhookChannelConfig)(nil),      // 18: metaxisdata.store.WebhookChannelConfig
+	(*DingTalkChannelConfig)(nil),     // 19: metaxisdata.store.DingTalkChannelConfig
+	(*WeComChannelConfig)(nil),        // 20: metaxisdata.store.WeComChannelConfig
+	(*FeishuChannelConfig)(nil),       // 21: metaxisdata.store.FeishuChannelConfig
+	(*EmailChannelConfig)(nil),        // 22: metaxisdata.store.EmailChannelConfig
+	(*NotificationChannelSecret)(nil), // 23: metaxisdata.store.NotificationChannelSecret
+	(*NotificationDeliveryEvent)(nil), // 24: metaxisdata.store.NotificationDeliveryEvent
+	(*NotificationRoute)(nil),         // 25: metaxisdata.store.NotificationRoute
+	(*NotificationRouteMatch)(nil),    // 26: metaxisdata.store.NotificationRouteMatch
+	(*timestamppb.Timestamp)(nil),     // 27: google.protobuf.Timestamp
+	(QualityStatus)(0),                // 28: metaxisdata.store.QualityStatus
+	(QualitySeverity)(0),              // 29: metaxisdata.store.QualitySeverity
 }
 var file_store_notification_proto_depIdxs = []int32{
-	24, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
+	27, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.store.Notification.type:type_name -> metaxisdata.store.NotificationType
 	1,  // 2: metaxisdata.store.Notification.severity:type_name -> metaxisdata.store.NotificationSeverity
-	24, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
+	27, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
 	9,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
 	11, // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
 	12, // 6: metaxisdata.store.Notification.data_quality:type_name -> metaxisdata.store.DataQualityDetail
@@ -2210,31 +2616,36 @@ var file_store_notification_proto_depIdxs = []int32{
 	3,  // 9: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
 	4,  // 10: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
 	5,  // 11: metaxisdata.store.DataQualityDetail.kind:type_name -> metaxisdata.store.DataQualityNotificationKind
-	25, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
-	25, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
-	26, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
-	6,  // 15: metaxisdata.store.NotificationChannel.kind:type_name -> metaxisdata.store.NotificationChannelKind
-	0,  // 16: metaxisdata.store.NotificationChannel.event_types:type_name -> metaxisdata.store.NotificationType
-	1,  // 17: metaxisdata.store.NotificationChannel.min_severity:type_name -> metaxisdata.store.NotificationSeverity
-	14, // 18: metaxisdata.store.NotificationChannel.config:type_name -> metaxisdata.store.NotificationChannelConfig
-	15, // 19: metaxisdata.store.NotificationChannelConfig.webhook:type_name -> metaxisdata.store.WebhookChannelConfig
-	16, // 20: metaxisdata.store.NotificationChannelConfig.dingtalk:type_name -> metaxisdata.store.DingTalkChannelConfig
-	17, // 21: metaxisdata.store.NotificationChannelConfig.wecom:type_name -> metaxisdata.store.WeComChannelConfig
-	18, // 22: metaxisdata.store.NotificationChannelConfig.feishu:type_name -> metaxisdata.store.FeishuChannelConfig
-	19, // 23: metaxisdata.store.NotificationChannelConfig.email:type_name -> metaxisdata.store.EmailChannelConfig
-	0,  // 24: metaxisdata.store.NotificationDeliveryEvent.type:type_name -> metaxisdata.store.NotificationType
-	1,  // 25: metaxisdata.store.NotificationDeliveryEvent.severity:type_name -> metaxisdata.store.NotificationSeverity
-	9,  // 26: metaxisdata.store.NotificationDeliveryEvent.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
-	11, // 27: metaxisdata.store.NotificationDeliveryEvent.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
-	12, // 28: metaxisdata.store.NotificationDeliveryEvent.data_quality:type_name -> metaxisdata.store.DataQualityDetail
-	23, // 29: metaxisdata.store.NotificationRoute.match:type_name -> metaxisdata.store.NotificationRouteMatch
-	0,  // 30: metaxisdata.store.NotificationRouteMatch.event_types:type_name -> metaxisdata.store.NotificationType
-	1,  // 31: metaxisdata.store.NotificationRouteMatch.min_severity:type_name -> metaxisdata.store.NotificationSeverity
-	32, // [32:32] is the sub-list for method output_type
-	32, // [32:32] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	28, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
+	28, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
+	29, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
+	27, // 15: metaxisdata.store.DataQualityDigestDetail.period_start:type_name -> google.protobuf.Timestamp
+	27, // 16: metaxisdata.store.DataQualityDigestDetail.period_end:type_name -> google.protobuf.Timestamp
+	14, // 17: metaxisdata.store.DataQualityDigestDetail.owners:type_name -> metaxisdata.store.DataQualityDigestOwner
+	15, // 18: metaxisdata.store.DataQualityDigestDetail.targets:type_name -> metaxisdata.store.DataQualityDigestTarget
+	6,  // 19: metaxisdata.store.NotificationChannel.kind:type_name -> metaxisdata.store.NotificationChannelKind
+	0,  // 20: metaxisdata.store.NotificationChannel.event_types:type_name -> metaxisdata.store.NotificationType
+	1,  // 21: metaxisdata.store.NotificationChannel.min_severity:type_name -> metaxisdata.store.NotificationSeverity
+	17, // 22: metaxisdata.store.NotificationChannel.config:type_name -> metaxisdata.store.NotificationChannelConfig
+	18, // 23: metaxisdata.store.NotificationChannelConfig.webhook:type_name -> metaxisdata.store.WebhookChannelConfig
+	19, // 24: metaxisdata.store.NotificationChannelConfig.dingtalk:type_name -> metaxisdata.store.DingTalkChannelConfig
+	20, // 25: metaxisdata.store.NotificationChannelConfig.wecom:type_name -> metaxisdata.store.WeComChannelConfig
+	21, // 26: metaxisdata.store.NotificationChannelConfig.feishu:type_name -> metaxisdata.store.FeishuChannelConfig
+	22, // 27: metaxisdata.store.NotificationChannelConfig.email:type_name -> metaxisdata.store.EmailChannelConfig
+	0,  // 28: metaxisdata.store.NotificationDeliveryEvent.type:type_name -> metaxisdata.store.NotificationType
+	1,  // 29: metaxisdata.store.NotificationDeliveryEvent.severity:type_name -> metaxisdata.store.NotificationSeverity
+	9,  // 30: metaxisdata.store.NotificationDeliveryEvent.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
+	11, // 31: metaxisdata.store.NotificationDeliveryEvent.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
+	12, // 32: metaxisdata.store.NotificationDeliveryEvent.data_quality:type_name -> metaxisdata.store.DataQualityDetail
+	13, // 33: metaxisdata.store.NotificationDeliveryEvent.data_quality_digest:type_name -> metaxisdata.store.DataQualityDigestDetail
+	26, // 34: metaxisdata.store.NotificationRoute.match:type_name -> metaxisdata.store.NotificationRouteMatch
+	0,  // 35: metaxisdata.store.NotificationRouteMatch.event_types:type_name -> metaxisdata.store.NotificationType
+	1,  // 36: metaxisdata.store.NotificationRouteMatch.min_severity:type_name -> metaxisdata.store.NotificationSeverity
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_store_notification_proto_init() }
@@ -2248,17 +2659,18 @@ func file_store_notification_proto_init() {
 		(*Notification_Openlineage)(nil),
 		(*Notification_DataQuality)(nil),
 	}
-	file_store_notification_proto_msgTypes[6].OneofWrappers = []any{
+	file_store_notification_proto_msgTypes[9].OneofWrappers = []any{
 		(*NotificationChannelConfig_Webhook)(nil),
 		(*NotificationChannelConfig_Dingtalk)(nil),
 		(*NotificationChannelConfig_Wecom)(nil),
 		(*NotificationChannelConfig_Feishu)(nil),
 		(*NotificationChannelConfig_Email)(nil),
 	}
-	file_store_notification_proto_msgTypes[13].OneofWrappers = []any{
+	file_store_notification_proto_msgTypes[16].OneofWrappers = []any{
 		(*NotificationDeliveryEvent_SchemaSync)(nil),
 		(*NotificationDeliveryEvent_Openlineage)(nil),
 		(*NotificationDeliveryEvent_DataQuality)(nil),
+		(*NotificationDeliveryEvent_DataQualityDigest)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2266,7 +2678,7 @@ func file_store_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_notification_proto_rawDesc), len(file_store_notification_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   16,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

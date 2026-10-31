@@ -29,6 +29,10 @@
             {{ option.label }}
           </button>
         </div>
+        <ExportCsvButton
+          :exporter="exportCsv"
+          :file-name="exportFileName"
+        />
         <Button
           variant="outline"
           :disabled="activeLoading"
@@ -457,6 +461,8 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
+  exportQualityExecutions,
+  exportQualityTargets,
   listAllQualityRules,
   listQualityExecutions,
   listQualityTargets,
@@ -466,6 +472,7 @@ import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
 import ExecutionRunRow from "@/components/data-quality/ExecutionRunRow.vue";
+import ExportCsvButton from "@/components/data-quality/ExportCsvButton.vue";
 import TargetRunRow from "@/components/data-quality/TargetRunRow.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -1018,6 +1025,55 @@ watch(flatView, (flat) => {
     void resetTargets();
   }
 });
+
+// ---- export ----
+
+/** The CSV follows the open view, so the file matches the table on screen. */
+const exportFileName = computed(() =>
+  flatView.value ? "quality-executions" : "quality-targets"
+);
+
+/**
+ * The export carries the filters the list requests carry, which is the whole
+ * directory rather than the visible page. The target view's own filters (the
+ * search and the order) are server filters too, so both views export correctly.
+ */
+function exportCsv(signal: AbortSignal) {
+  if (flatView.value) {
+    return exportQualityExecutions({
+      state: enumFromFilter(appliedState.value, [
+        QualityExecutionState.UNSPECIFIED,
+        QualityExecutionState.PENDING,
+        QualityExecutionState.RUNNING,
+        QualityExecutionState.COMPLETED,
+        QualityExecutionState.ABANDONED,
+      ]),
+      outcome: enumFromFilter(appliedOutcome.value, [
+        QualityStatus.UNSPECIFIED,
+        QualityStatus.PASS,
+        QualityStatus.WARN,
+        QualityStatus.FAIL,
+        QualityStatus.ERROR,
+        QualityStatus.SKIPPED,
+        QualityStatus.NOT_EVALUATED,
+      ]),
+      trigger: enumFromFilter(appliedTrigger.value, [
+        QualityExecutionTrigger.UNSPECIFIED,
+        QualityExecutionTrigger.MANUAL,
+        QualityExecutionTrigger.SCHEDULED,
+      ]),
+      rule: ruleFilter.value,
+      targetGuid: targetFilter.value,
+      run: runFilter.value,
+      signal,
+    });
+  }
+  return exportQualityTargets({
+    search: appliedTargetSearch.value,
+    orderBy: targetOrderBy.value,
+    signal,
+  });
+}
 
 onMounted(() => {
   void loadRuleTitles();

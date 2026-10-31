@@ -1,8 +1,11 @@
 package audit
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,6 +54,7 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		"authorizationCode", "authorizationcode", "authorization_code",
 		"deviceCode", "password",
 		"requestBody", "request_body", "responseBody", "response_body",
+		"htmlContent", "html_content",
 	} {
 		raw := map[string]any{
 			"name":   "instances/i1",
@@ -66,6 +70,23 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		require.Equal(t, RedactedValue, nested[field], "expected nested %q to be redacted", field)
 		require.Equal(t, "instances/i1", raw["name"])
 	}
+}
+
+// ExportQualityReport is audited as a bulk read, but the report body is derived
+// from failed-sample data and must never enter the permanent ledger. The field
+// name is the contract the redaction list is keyed on.
+func TestMarshalAuditMessageRedactsReportHTML(t *testing.T) {
+	t.Parallel()
+
+	message := &v1pb.ExportQualityReportResponse{
+		FileName:    "quality-report-2026-10-31.html",
+		HtmlContent: "<html><body><td>ssn 123-45-6789</td></body></html>",
+	}
+	structured, raw := auditMarshal(t, message)
+	require.Equal(t, RedactedValue, structured.GetFields()["htmlContent"].GetStringValue())
+	require.Equal(t, RedactedValue, raw["htmlContent"])
+	require.NotContains(t, fmt.Sprint(structured), "123-45-6789")
+	require.Equal(t, "quality-report-2026-10-31.html", structured.GetFields()["fileName"].GetStringValue())
 }
 
 // The target-debug RPC returns raw LLM request/response bodies. The audit row must
@@ -450,4 +471,25 @@ func TestMarshalAuditMessageMarksAnUnencodablePayload(t *testing.T) {
 	require.NotNil(t, structured)
 	require.Nil(t, raw)
 	require.Contains(t, structured.GetFields()["truncated"].GetStringValue(), "could not be encoded")
+}
+
+// A client that walks away from a download is not a server failure: the ledger
+// records it as a warning, while a real read/write failure stays an error.
+func TestMapSeverityTreatsClientCancellationAsWarning(t *testing.T) {
+	t.Parallel()
+
+	for _, err := range []error{
+		context.Canceled,
+		fmt.Errorf("stream ended: %w", context.Canceled),
+		io.EOF,
+		net.ErrClosed,
+		connect.NewError(connect.CodeCanceled, errors.New("client canceled")),
+	} {
+		require.Equalf(t, storepb.AuditLogSeverity_WARNING, MapSeverity(err), "error %v", err)
+	}
+
+	require.Equal(t, storepb.AuditLogSeverity_INFO, MapSeverity(nil))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR, MapSeverity(errors.New("the store failed")))
+	require.Equal(t, storepb.AuditLogSeverity_ERROR,
+		MapSeverity(connect.NewError(connect.CodeInternal, errors.New("boom"))))
 }

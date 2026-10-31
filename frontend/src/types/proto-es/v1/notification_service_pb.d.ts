@@ -690,7 +690,11 @@ export declare type NotificationChannel = Message<"metaxisdata.v1.NotificationCh
   enabled: boolean;
 
   /**
-   * The notification types this channel subscribes to. Empty means every type.
+   * The notification types this channel subscribes to. Empty means every type,
+   * with one exception: the data quality digest is opt-in and is delivered only
+   * to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly,
+   * because it is a periodic workspace summary rather than an event and existing
+   * channels predate it.
    *
    * @generated from field: repeated metaxisdata.v1.NotificationType event_types = 5;
    */
@@ -1328,13 +1332,15 @@ export declare const NotificationRouteSchema: GenMessage<NotificationRoute>;
 /**
  * NotificationRouteMatch is who and what a route selects. An empty field is a
  * wildcard: a route with no event types, severity floor, owners and groups
- * selects every event.
+ * selects every event. Routes never select the data quality digest: it is a
+ * scheduled workspace summary with no audience to match.
  *
  * @generated from message metaxisdata.v1.NotificationRouteMatch
  */
 export declare type NotificationRouteMatch = Message<"metaxisdata.v1.NotificationRouteMatch"> & {
   /**
-   * The notification types this route selects. Empty means every type.
+   * The notification types this route selects. Empty means every type that has
+   * an in-app audience; the digest has none and is not routed.
    *
    * @generated from field: repeated metaxisdata.v1.NotificationType event_types = 1;
    */
@@ -1516,6 +1522,15 @@ export enum NotificationType {
    * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY = 3;
    */
   DATA_QUALITY = 3,
+
+  /**
+   * The workspace's scheduled data quality digest: one summary of the period's
+   * executions, problems and owners. It has no in-app copy; only the outbound
+   * channels subscribed to this type receive it.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY_DIGEST = 4;
+   */
+  DATA_QUALITY_DIGEST = 4,
 }
 
 /**

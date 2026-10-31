@@ -15,6 +15,11 @@ import {
   DeleteQualityRuleRequestSchema,
   ExplainQualityExecutionRequestSchema,
   type ExplainQualityExecutionResponse,
+  ExportQualityExecutionsRequestSchema,
+  ExportQualityIssuesRequestSchema,
+  ExportQualityReportRequestSchema,
+  type ExportQualityReportResponse,
+  ExportQualityTargetsRequestSchema,
   GetQualityContractRequestSchema,
   GetQualityContractRevisionRequestSchema,
   type GetQualityContractRevisionResponse,
@@ -88,6 +93,7 @@ import {
   UpdateQualityTargetScheduleRequestSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { type CsvDownload, collectCsvStream } from "@/utils/csv";
 import { dataQualityClient } from "./client";
 import { type ListPage, listAll } from "./list";
 
@@ -1097,6 +1103,167 @@ export function explainQualityExecution(options: {
     forceRegenerate: options.forceRegenerate ?? false,
   });
   return dataQualityClient.explainQualityExecution(request, {
+    signal: options.signal,
+  });
+}
+
+// ---- exports ----
+//
+// The CSV exports are server-streaming and select every row the directory's
+// current filters match, not one page of it. The server writes the CSV itself
+// (the first slice carries the UTF-8 BOM and the header row) and the client
+// only concatenates the slices into one file. The report export is one unary
+// call that returns a finished, self-contained HTML document.
+
+/** The filters a CSV execution export accepts: the list's, minus the paging. */
+export interface QualityExecutionExportOptions {
+  state?: QualityExecutionState;
+  outcome?: QualityStatus;
+  trigger?: QualityExecutionTrigger;
+  /** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
+  rule?: string;
+  /** The exact target GUID. */
+  targetGuid?: string;
+  /** Format: instances/{instance}. */
+  instance?: string;
+  /** Format: users/{user}. */
+  initiator?: string;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  /** Format: workspaces/{workspace}/qualityRuns/{quality_run}. */
+  run?: string;
+  /** The server's row ceiling; zero means its default (100,000). */
+  maxRows?: number;
+  signal?: AbortSignal;
+}
+
+/** Every execution the filters select, as one CSV file. */
+export async function exportQualityExecutions(
+  options: QualityExecutionExportOptions = {}
+): Promise<CsvDownload> {
+  const request = create(ExportQualityExecutionsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    state: options.state ?? QualityExecutionState.UNSPECIFIED,
+    outcome: options.outcome ?? QualityStatus.UNSPECIFIED,
+    trigger: options.trigger ?? QualityExecutionTrigger.UNSPECIFIED,
+    rule: options.rule ?? "",
+    targetGuid: options.targetGuid ?? "",
+    instance: options.instance ?? "",
+    initiator: options.initiator ?? "",
+    run: options.run ?? "",
+    maxRows: options.maxRows ?? 0,
+    ...(options.startTime ? { startTime: options.startTime } : {}),
+    ...(options.endTime ? { endTime: options.endTime } : {}),
+  });
+  return await collectCsvStream(
+    dataQualityClient.exportQualityExecutions(request, {
+      signal: options.signal,
+    })
+  );
+}
+
+/** The filters a CSV issue export accepts: the list's, minus the paging. */
+export interface QualityIssueExportOptions {
+  status?: QualityIssueStatus;
+  severity?: QualitySeverity;
+  /** Format: workspaces/{workspace}/qualityRules/{quality_rule}. */
+  rule?: string;
+  /** The exact target GUID. */
+  targetGuid?: string;
+  /** Format: users/{user}. */
+  owner?: string;
+  startTime?: Timestamp;
+  endTime?: Timestamp;
+  /** The server's row ceiling; zero means its default (100,000). */
+  maxRows?: number;
+  signal?: AbortSignal;
+}
+
+/** Every issue the filters select, as one CSV file. */
+export async function exportQualityIssues(
+  options: QualityIssueExportOptions = {}
+): Promise<CsvDownload> {
+  const request = create(ExportQualityIssuesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    status: options.status ?? QualityIssueStatus.UNSPECIFIED,
+    severity: options.severity ?? QualitySeverity.UNSPECIFIED,
+    rule: options.rule ?? "",
+    targetGuid: options.targetGuid ?? "",
+    owner: options.owner ?? "",
+    maxRows: options.maxRows ?? 0,
+    ...(options.startTime ? { startTime: options.startTime } : {}),
+    ...(options.endTime ? { endTime: options.endTime } : {}),
+  });
+  return await collectCsvStream(
+    dataQualityClient.exportQualityIssues(request, { signal: options.signal })
+  );
+}
+
+/** The filters a CSV target export accepts: the list's, minus the paging. */
+export interface QualityTargetExportOptions {
+  /** A GUID path prefix, not a name match. */
+  instance?: string;
+  database?: string;
+  schema?: string;
+  table?: string;
+  /** A case-insensitive substring over the target's path and GUID. */
+  search?: string;
+  /** Only targets whose worst latest result is this status. */
+  worstStatus?: QualityStatus;
+  /** Only failing targets (FAIL or ERROR); never combine with `worstStatus`. */
+  failingOnly?: boolean;
+  hasOpenIssue?: boolean;
+  hasPendingDraft?: boolean;
+  orderBy?: QualityTargetOrder;
+  /** The server's row ceiling; zero means its default (100,000). */
+  maxRows?: number;
+  signal?: AbortSignal;
+}
+
+/** Every target the filters select, as one CSV file. */
+export async function exportQualityTargets(
+  options: QualityTargetExportOptions = {}
+): Promise<CsvDownload> {
+  const request = create(ExportQualityTargetsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    instance: options.instance ?? "",
+    database: options.database ?? "",
+    schema: options.schema ?? "",
+    table: options.table ?? "",
+    search: options.search ?? "",
+    worstStatus: options.worstStatus ?? QualityStatus.UNSPECIFIED,
+    failingOnly: options.failingOnly ?? false,
+    hasOpenIssue: options.hasOpenIssue ?? false,
+    hasPendingDraft: options.hasPendingDraft ?? false,
+    orderBy: options.orderBy ?? QualityTargetOrder.UNSPECIFIED,
+    maxRows: options.maxRows ?? 0,
+  });
+  return await collectCsvStream(
+    dataQualityClient.exportQualityTargets(request, { signal: options.signal })
+  );
+}
+
+/**
+ * One target's report as a self-contained HTML document. `language` decides
+ * the language its text is written in; empty means "en-US".
+ */
+export async function exportQualityReport(options: {
+  targetGuid: string;
+  /** UNSPECIFIED lets the server derive it from the target's rules. */
+  metaType?: MetaType;
+  /** Days of execution history; zero means 30 (capped at the 90-day retention). */
+  trendDays?: number;
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<ExportQualityReportResponse> {
+  const request = create(ExportQualityReportRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    trendDays: options.trendDays ?? 0,
+    language: options.language ?? "",
+  });
+  return await dataQualityClient.exportQualityReport(request, {
     signal: options.signal,
   });
 }

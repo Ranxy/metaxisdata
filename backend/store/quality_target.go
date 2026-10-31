@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -41,6 +42,11 @@ type FindQualityTargetMessage struct {
 	// WorstStatus keeps only targets whose worst latest result is this status.
 	// UNSPECIFIED keeps every target.
 	WorstStatus storepb.QualityStatus
+	// WorstStatuses keeps only targets whose worst latest result is any of these
+	// statuses. It is the multi-status form of WorstStatus: when non-empty it
+	// replaces the single-status predicate, so a caller can express "failing"
+	// (FAIL or ERROR) in one query.
+	WorstStatuses []storepb.QualityStatus
 	// HasOpenIssue keeps only targets with at least one unresolved issue.
 	HasOpenIssue bool
 	// HasPendingDraft keeps only targets with at least one pending AI draft.
@@ -205,7 +211,14 @@ func targetWhere(find *FindQualityTargetMessage, base int) ([]string, []any, err
 			`(concat_ws(' ', t.target_path->>'instance', t.target_path->>'database', t.target_path->>'schema', t.target_path->>'object') ILIKE $%d ESCAPE E'\\' OR t.target_guid ILIKE $%d ESCAPE E'\\')`,
 			base+len(args), base+len(args)))
 	}
-	if find.WorstStatus != storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
+	if len(find.WorstStatuses) > 0 {
+		ranks := make([]int32, len(find.WorstStatuses))
+		for i, status := range find.WorstStatuses {
+			ranks[i] = QualityTargetStatusRank(status)
+		}
+		args = append(args, pq.Array(ranks))
+		where = append(where, fmt.Sprintf("COALESCE(r.worst_rank, 0) = ANY($%d::int[])", base+len(args)))
+	} else if find.WorstStatus != storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
 		args = append(args, QualityTargetStatusRank(find.WorstStatus))
 		where = append(where, fmt.Sprintf("COALESCE(r.worst_rank, 0) = $%d", base+len(args)))
 	}

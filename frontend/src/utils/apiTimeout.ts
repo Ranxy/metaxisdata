@@ -11,11 +11,12 @@ const LONG_RUNNING_SERVICE = /\/(?:[^/]+\.)?(?:ExplainSQLService|LLMService)\//;
 
 /**
  * Methods that legitimately outlive the default ceiling: provider calls,
- * streaming (the notification push channel), schema syncs and DQ work that runs
- * real database queries. The prefix families are exhaustive for those.
+ * streaming (the notification push channel), schema syncs, DQ work that runs
+ * real database queries, and the exports that walk or render the same rows
+ * server-side. The prefix families are exhaustive for those.
  */
 const LONG_RUNNING_METHOD =
-  /^(?:Batch)?(?:Sync|Run|Suggest|Profile|Preview|Subscribe|Explain)[A-Za-z]*$/;
+  /^(?:Batch)?(?:Sync|Run|Suggest|Profile|Preview|Subscribe|Explain|Export)[A-Za-z]*$/;
 
 /** The deadline for the RPC at `path`, or undefined when it has none. */
 export function requestTimeoutMs(path: string): number | undefined {

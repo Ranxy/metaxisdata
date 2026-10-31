@@ -64,6 +64,9 @@ const (
 	// DataQualityServiceGetQualityExecutionProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityExecution RPC.
 	DataQualityServiceGetQualityExecutionProcedure = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	// DataQualityServiceExportQualityExecutionsProcedure is the fully-qualified name of the
+	// DataQualityService's ExportQualityExecutions RPC.
+	DataQualityServiceExportQualityExecutionsProcedure = "/metaxisdata.v1.DataQualityService/ExportQualityExecutions"
 	// DataQualityServiceListQualityRunsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityRuns RPC.
 	DataQualityServiceListQualityRunsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
@@ -76,6 +79,9 @@ const (
 	// DataQualityServiceGetQualityIssueProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityIssue RPC.
 	DataQualityServiceGetQualityIssueProcedure = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	// DataQualityServiceExportQualityIssuesProcedure is the fully-qualified name of the
+	// DataQualityService's ExportQualityIssues RPC.
+	DataQualityServiceExportQualityIssuesProcedure = "/metaxisdata.v1.DataQualityService/ExportQualityIssues"
 	// DataQualityServiceUpdateQualityIssueProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityIssue RPC.
 	DataQualityServiceUpdateQualityIssueProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
@@ -133,9 +139,15 @@ const (
 	// DataQualityServiceListQualityTargetsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityTargets RPC.
 	DataQualityServiceListQualityTargetsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
+	// DataQualityServiceExportQualityTargetsProcedure is the fully-qualified name of the
+	// DataQualityService's ExportQualityTargets RPC.
+	DataQualityServiceExportQualityTargetsProcedure = "/metaxisdata.v1.DataQualityService/ExportQualityTargets"
 	// DataQualityServiceGetQualityTargetProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityTarget RPC.
 	DataQualityServiceGetQualityTargetProcedure = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	// DataQualityServiceExportQualityReportProcedure is the fully-qualified name of the
+	// DataQualityService's ExportQualityReport RPC.
+	DataQualityServiceExportQualityReportProcedure = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
 	// DataQualityServiceUpdateQualityTargetScheduleProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityTargetSchedule RPC.
 	DataQualityServiceUpdateQualityTargetScheduleProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
@@ -194,6 +206,19 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
+	// Export the executions the same filters select as ListQualityExecutions as one
+	// CSV document, streamed in slices. This is a file download, not a list: it
+	// stops at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExportQualityExecutions(context.Context, *connect.Request[v1.ExportQualityExecutionsRequest]) (*connect.ServerStreamForClient[v1.ExportQualityDataChunk], error)
 	// List runs, newest first. A run is one dispatch batch that belongs to one
 	// target: the executions one scheduler tick or one manual request planned for
 	// that target. Runs are the batch-level read model the execution directory
@@ -205,6 +230,18 @@ type DataQualityServiceClient interface {
 	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
 	// Read one quality issue.
 	GetQualityIssue(context.Context, *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
+	// Export the issues the same filters select as ListQualityIssues as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityIssues(context.Context, *connect.Request[v1.ExportQualityIssuesRequest]) (*connect.ServerStreamForClient[v1.ExportQualityDataChunk], error)
 	// Acknowledge, resolve or mute one quality issue.
 	UpdateQualityIssue(context.Context, *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
 	// List the review queue of model-proposed rule drafts and semantic labels,
@@ -265,11 +302,34 @@ type DataQualityServiceClient interface {
 	// aggregated by the database, so the directory does not page through every
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error)
+	// Export the targets the same filters select as ListQualityTargets as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityTargets(context.Context, *connect.Request[v1.ExportQualityTargetsRequest]) (*connect.ServerStreamForClient[v1.ExportQualityDataChunk], error)
 	// Read one target's workspace: its rules (with their latest results), the
 	// unresolved issues and the target's columns, in one call. AI drafts are not
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
+	// Render one target's quality report as a self-contained HTML document: the
+	// current state, the recent trend, the checks, the unresolved problems, a
+	// capped sample summary and the monitoring basis. The document carries its own
+	// styles and chart and loads nothing external, so it can be forwarded as a
+	// file. The export is audited because it is a bulk read of quality evidence.
+	//
+	// The report includes real sample values from failed checks (capped), so it is
+	// a wider disclosure than the rules.list permission usually implies; the
+	// document itself warns about forwarding it. Its HTML body never enters the
+	// audit ledger (see ExportQualityReportResponse.html_content).
+	ExportQualityReport(context.Context, *connect.Request[v1.ExportQualityReportRequest]) (*connect.Response[v1.ExportQualityReportResponse], error)
 	// Update one target's schedule: how often its enabled checks run. Scheduling
 	// is per target, so this replaces the per-check schedule; a change takes
 	// effect from the next slot and never runs the target immediately.
@@ -372,6 +432,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityExecution")),
 			connect.WithClientOptions(opts...),
 		),
+		exportQualityExecutions: connect.NewClient[v1.ExportQualityExecutionsRequest, v1.ExportQualityDataChunk](
+			httpClient,
+			baseURL+DataQualityServiceExportQualityExecutionsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityExecutions")),
+			connect.WithClientOptions(opts...),
+		),
 		listQualityRuns: connect.NewClient[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse](
 			httpClient,
 			baseURL+DataQualityServiceListQualityRunsProcedure,
@@ -394,6 +460,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceGetQualityIssueProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityIssue")),
+			connect.WithClientOptions(opts...),
+		),
+		exportQualityIssues: connect.NewClient[v1.ExportQualityIssuesRequest, v1.ExportQualityDataChunk](
+			httpClient,
+			baseURL+DataQualityServiceExportQualityIssuesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityIssues")),
 			connect.WithClientOptions(opts...),
 		),
 		updateQualityIssue: connect.NewClient[v1.UpdateQualityIssueRequest, v1.QualityIssue](
@@ -510,10 +582,22 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityTargets")),
 			connect.WithClientOptions(opts...),
 		),
+		exportQualityTargets: connect.NewClient[v1.ExportQualityTargetsRequest, v1.ExportQualityDataChunk](
+			httpClient,
+			baseURL+DataQualityServiceExportQualityTargetsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityTargets")),
+			connect.WithClientOptions(opts...),
+		),
 		getQualityTarget: connect.NewClient[v1.GetQualityTargetRequest, v1.GetQualityTargetResponse](
 			httpClient,
 			baseURL+DataQualityServiceGetQualityTargetProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
+			connect.WithClientOptions(opts...),
+		),
+		exportQualityReport: connect.NewClient[v1.ExportQualityReportRequest, v1.ExportQualityReportResponse](
+			httpClient,
+			baseURL+DataQualityServiceExportQualityReportProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityReport")),
 			connect.WithClientOptions(opts...),
 		),
 		updateQualityTargetSchedule: connect.NewClient[v1.UpdateQualityTargetScheduleRequest, v1.QualityTargetSchedule](
@@ -579,10 +663,12 @@ type dataQualityServiceClient struct {
 	runQualityRules                    *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
 	listQualityExecutions              *connect.Client[v1.ListQualityExecutionsRequest, v1.ListQualityExecutionsResponse]
 	getQualityExecution                *connect.Client[v1.GetQualityExecutionRequest, v1.QualityExecution]
+	exportQualityExecutions            *connect.Client[v1.ExportQualityExecutionsRequest, v1.ExportQualityDataChunk]
 	listQualityRuns                    *connect.Client[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse]
 	getQualityRun                      *connect.Client[v1.GetQualityRunRequest, v1.QualityRun]
 	listQualityIssues                  *connect.Client[v1.ListQualityIssuesRequest, v1.ListQualityIssuesResponse]
 	getQualityIssue                    *connect.Client[v1.GetQualityIssueRequest, v1.QualityIssue]
+	exportQualityIssues                *connect.Client[v1.ExportQualityIssuesRequest, v1.ExportQualityDataChunk]
 	updateQualityIssue                 *connect.Client[v1.UpdateQualityIssueRequest, v1.QualityIssue]
 	listQualitySuggestions             *connect.Client[v1.ListQualitySuggestionsRequest, v1.ListQualitySuggestionsResponse]
 	getQualitySuggestion               *connect.Client[v1.GetQualitySuggestionRequest, v1.QualitySuggestion]
@@ -602,7 +688,9 @@ type dataQualityServiceClient struct {
 	explainQualityExecution            *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
 	getQualityOverview                 *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
 	listQualityTargets                 *connect.Client[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse]
+	exportQualityTargets               *connect.Client[v1.ExportQualityTargetsRequest, v1.ExportQualityDataChunk]
 	getQualityTarget                   *connect.Client[v1.GetQualityTargetRequest, v1.GetQualityTargetResponse]
+	exportQualityReport                *connect.Client[v1.ExportQualityReportRequest, v1.ExportQualityReportResponse]
 	updateQualityTargetSchedule        *connect.Client[v1.UpdateQualityTargetScheduleRequest, v1.QualityTargetSchedule]
 	getQualityTargetSchedule           *connect.Client[v1.GetQualityTargetScheduleRequest, v1.QualityTargetSchedule]
 	getQualityContract                 *connect.Client[v1.GetQualityContractRequest, v1.QualityContract]
@@ -663,6 +751,11 @@ func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, req 
 	return c.getQualityExecution.CallUnary(ctx, req)
 }
 
+// ExportQualityExecutions calls metaxisdata.v1.DataQualityService.ExportQualityExecutions.
+func (c *dataQualityServiceClient) ExportQualityExecutions(ctx context.Context, req *connect.Request[v1.ExportQualityExecutionsRequest]) (*connect.ServerStreamForClient[v1.ExportQualityDataChunk], error) {
+	return c.exportQualityExecutions.CallServerStream(ctx, req)
+}
+
 // ListQualityRuns calls metaxisdata.v1.DataQualityService.ListQualityRuns.
 func (c *dataQualityServiceClient) ListQualityRuns(ctx context.Context, req *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error) {
 	return c.listQualityRuns.CallUnary(ctx, req)
@@ -681,6 +774,11 @@ func (c *dataQualityServiceClient) ListQualityIssues(ctx context.Context, req *c
 // GetQualityIssue calls metaxisdata.v1.DataQualityService.GetQualityIssue.
 func (c *dataQualityServiceClient) GetQualityIssue(ctx context.Context, req *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
 	return c.getQualityIssue.CallUnary(ctx, req)
+}
+
+// ExportQualityIssues calls metaxisdata.v1.DataQualityService.ExportQualityIssues.
+func (c *dataQualityServiceClient) ExportQualityIssues(ctx context.Context, req *connect.Request[v1.ExportQualityIssuesRequest]) (*connect.ServerStreamForClient[v1.ExportQualityDataChunk], error) {
+	return c.exportQualityIssues.CallServerStream(ctx, req)
 }
 
 // UpdateQualityIssue calls metaxisdata.v1.DataQualityService.UpdateQualityIssue.
@@ -780,9 +878,19 @@ func (c *dataQualityServiceClient) ListQualityTargets(ctx context.Context, req *
 	return c.listQualityTargets.CallUnary(ctx, req)
 }
 
+// ExportQualityTargets calls metaxisdata.v1.DataQualityService.ExportQualityTargets.
+func (c *dataQualityServiceClient) ExportQualityTargets(ctx context.Context, req *connect.Request[v1.ExportQualityTargetsRequest]) (*connect.ServerStreamForClient[v1.ExportQualityDataChunk], error) {
+	return c.exportQualityTargets.CallServerStream(ctx, req)
+}
+
 // GetQualityTarget calls metaxisdata.v1.DataQualityService.GetQualityTarget.
 func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, req *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
 	return c.getQualityTarget.CallUnary(ctx, req)
+}
+
+// ExportQualityReport calls metaxisdata.v1.DataQualityService.ExportQualityReport.
+func (c *dataQualityServiceClient) ExportQualityReport(ctx context.Context, req *connect.Request[v1.ExportQualityReportRequest]) (*connect.Response[v1.ExportQualityReportResponse], error) {
+	return c.exportQualityReport.CallUnary(ctx, req)
 }
 
 // UpdateQualityTargetSchedule calls metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule.
@@ -858,6 +966,19 @@ type DataQualityServiceHandler interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
+	// Export the executions the same filters select as ListQualityExecutions as one
+	// CSV document, streamed in slices. This is a file download, not a list: it
+	// stops at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExportQualityExecutions(context.Context, *connect.Request[v1.ExportQualityExecutionsRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error
 	// List runs, newest first. A run is one dispatch batch that belongs to one
 	// target: the executions one scheduler tick or one manual request planned for
 	// that target. Runs are the batch-level read model the execution directory
@@ -869,6 +990,18 @@ type DataQualityServiceHandler interface {
 	ListQualityIssues(context.Context, *connect.Request[v1.ListQualityIssuesRequest]) (*connect.Response[v1.ListQualityIssuesResponse], error)
 	// Read one quality issue.
 	GetQualityIssue(context.Context, *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
+	// Export the issues the same filters select as ListQualityIssues as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityIssues(context.Context, *connect.Request[v1.ExportQualityIssuesRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error
 	// Acknowledge, resolve or mute one quality issue.
 	UpdateQualityIssue(context.Context, *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error)
 	// List the review queue of model-proposed rule drafts and semantic labels,
@@ -929,11 +1062,34 @@ type DataQualityServiceHandler interface {
 	// aggregated by the database, so the directory does not page through every
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error)
+	// Export the targets the same filters select as ListQualityTargets as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityTargets(context.Context, *connect.Request[v1.ExportQualityTargetsRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error
 	// Read one target's workspace: its rules (with their latest results), the
 	// unresolved issues and the target's columns, in one call. AI drafts are not
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
+	// Render one target's quality report as a self-contained HTML document: the
+	// current state, the recent trend, the checks, the unresolved problems, a
+	// capped sample summary and the monitoring basis. The document carries its own
+	// styles and chart and loads nothing external, so it can be forwarded as a
+	// file. The export is audited because it is a bulk read of quality evidence.
+	//
+	// The report includes real sample values from failed checks (capped), so it is
+	// a wider disclosure than the rules.list permission usually implies; the
+	// document itself warns about forwarding it. Its HTML body never enters the
+	// audit ledger (see ExportQualityReportResponse.html_content).
+	ExportQualityReport(context.Context, *connect.Request[v1.ExportQualityReportRequest]) (*connect.Response[v1.ExportQualityReportResponse], error)
 	// Update one target's schedule: how often its enabled checks run. Scheduling
 	// is per target, so this replaces the per-check schedule; a change takes
 	// effect from the next slot and never runs the target immediately.
@@ -1032,6 +1188,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityExecution")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceExportQualityExecutionsHandler := connect.NewServerStreamHandler(
+		DataQualityServiceExportQualityExecutionsProcedure,
+		svc.ExportQualityExecutions,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityExecutions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceListQualityRunsHandler := connect.NewUnaryHandler(
 		DataQualityServiceListQualityRunsProcedure,
 		svc.ListQualityRuns,
@@ -1054,6 +1216,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceGetQualityIssueProcedure,
 		svc.GetQualityIssue,
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityIssue")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceExportQualityIssuesHandler := connect.NewServerStreamHandler(
+		DataQualityServiceExportQualityIssuesProcedure,
+		svc.ExportQualityIssues,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityIssues")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceUpdateQualityIssueHandler := connect.NewUnaryHandler(
@@ -1170,10 +1338,22 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityTargets")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceExportQualityTargetsHandler := connect.NewServerStreamHandler(
+		DataQualityServiceExportQualityTargetsProcedure,
+		svc.ExportQualityTargets,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityTargets")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceGetQualityTargetHandler := connect.NewUnaryHandler(
 		DataQualityServiceGetQualityTargetProcedure,
 		svc.GetQualityTarget,
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceExportQualityReportHandler := connect.NewUnaryHandler(
+		DataQualityServiceExportQualityReportProcedure,
+		svc.ExportQualityReport,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ExportQualityReport")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceUpdateQualityTargetScheduleHandler := connect.NewUnaryHandler(
@@ -1246,6 +1426,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceListQualityExecutionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityExecutionProcedure:
 			dataQualityServiceGetQualityExecutionHandler.ServeHTTP(w, r)
+		case DataQualityServiceExportQualityExecutionsProcedure:
+			dataQualityServiceExportQualityExecutionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityRunsProcedure:
 			dataQualityServiceListQualityRunsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityRunProcedure:
@@ -1254,6 +1436,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceListQualityIssuesHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityIssueProcedure:
 			dataQualityServiceGetQualityIssueHandler.ServeHTTP(w, r)
+		case DataQualityServiceExportQualityIssuesProcedure:
+			dataQualityServiceExportQualityIssuesHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityIssueProcedure:
 			dataQualityServiceUpdateQualityIssueHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualitySuggestionsProcedure:
@@ -1292,8 +1476,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityOverviewHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityTargetsProcedure:
 			dataQualityServiceListQualityTargetsHandler.ServeHTTP(w, r)
+		case DataQualityServiceExportQualityTargetsProcedure:
+			dataQualityServiceExportQualityTargetsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityTargetProcedure:
 			dataQualityServiceGetQualityTargetHandler.ServeHTTP(w, r)
+		case DataQualityServiceExportQualityReportProcedure:
+			dataQualityServiceExportQualityReportHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityTargetScheduleProcedure:
 			dataQualityServiceUpdateQualityTargetScheduleHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityTargetScheduleProcedure:
@@ -1359,6 +1547,10 @@ func (UnimplementedDataQualityServiceHandler) GetQualityExecution(context.Contex
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityExecution is not implemented"))
 }
 
+func (UnimplementedDataQualityServiceHandler) ExportQualityExecutions(context.Context, *connect.Request[v1.ExportQualityExecutionsRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ExportQualityExecutions is not implemented"))
+}
+
 func (UnimplementedDataQualityServiceHandler) ListQualityRuns(context.Context, *connect.Request[v1.ListQualityRunsRequest]) (*connect.Response[v1.ListQualityRunsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityRuns is not implemented"))
 }
@@ -1373,6 +1565,10 @@ func (UnimplementedDataQualityServiceHandler) ListQualityIssues(context.Context,
 
 func (UnimplementedDataQualityServiceHandler) GetQualityIssue(context.Context, *connect.Request[v1.GetQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityIssue is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ExportQualityIssues(context.Context, *connect.Request[v1.ExportQualityIssuesRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ExportQualityIssues is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityIssue(context.Context, *connect.Request[v1.UpdateQualityIssueRequest]) (*connect.Response[v1.QualityIssue], error) {
@@ -1451,8 +1647,16 @@ func (UnimplementedDataQualityServiceHandler) ListQualityTargets(context.Context
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityTargets is not implemented"))
 }
 
+func (UnimplementedDataQualityServiceHandler) ExportQualityTargets(context.Context, *connect.Request[v1.ExportQualityTargetsRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ExportQualityTargets is not implemented"))
+}
+
 func (UnimplementedDataQualityServiceHandler) GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityTarget is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ExportQualityReport(context.Context, *connect.Request[v1.ExportQualityReportRequest]) (*connect.Response[v1.ExportQualityReportResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ExportQualityReport is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityTargetSchedule(context.Context, *connect.Request[v1.UpdateQualityTargetScheduleRequest]) (*connect.Response[v1.QualityTargetSchedule], error) {

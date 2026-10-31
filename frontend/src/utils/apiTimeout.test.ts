@@ -54,6 +54,24 @@ describe("requestTimeoutMs", () => {
       )
     ).toBeUndefined();
   });
+
+  it("leaves the streamed CSV and report exports alone", () => {
+    // A large export walks or renders the same rows the list RPCs serve; the
+    // default 60s ceiling would cancel it mid-file.
+    for (const method of [
+      "ExportQualityExecutions",
+      "ExportQualityIssues",
+      "ExportQualityTargets",
+      "ExportQualityReport",
+    ]) {
+      expect(
+        requestTimeoutMs(`/metaxisdata.v1.DataQualityService/${method}`)
+      ).toBeUndefined();
+    }
+    expect(
+      requestTimeoutMs("/metaxisdata.v1.AuditLogService/ListAuditLogs")
+    ).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+  });
 });
 
 describe("createRequestDeadline", () => {

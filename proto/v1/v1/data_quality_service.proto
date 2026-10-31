@@ -124,6 +124,23 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.get";
   }
 
+  // Export the executions the same filters select as ListQualityExecutions as one
+  // CSV document, streamed in slices. This is a file download, not a list: it
+  // stops at max_rows and reports the running row count on every slice.
+  //
+  // Rows are read page by page, so the file is not a consistent snapshot: a row
+  // written while the export runs may fall in this file or the next. A stream
+  // error means the file is incomplete and must be discarded — only a completed
+  // stream is a document.
+  //
+  // No (google.api.http) annotation: this is a server-streaming method, and the
+  // REST gateway cannot carry one. The browser reaches the Connect endpoint
+  // directly, the way it does for ExplainSQL.
+  rpc ExportQualityExecutions(ExportQualityExecutionsRequest) returns (stream ExportQualityDataChunk) {
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.executions.list";
+  }
+
   // List runs, newest first. A run is one dispatch batch that belongs to one
   // target: the executions one scheduler tick or one manual request planned for
   // that target. Runs are the batch-level read model the execution directory
@@ -153,6 +170,22 @@ service DataQualityService {
     option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityIssues/*}"};
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.issues.get";
+  }
+
+  // Export the issues the same filters select as ListQualityIssues as one CSV
+  // document, streamed in slices. This is a file download, not a list: it stops
+  // at max_rows and reports the running row count on every slice.
+  //
+  // Rows are read page by page, so the file is not a consistent snapshot: a row
+  // written while the export runs may fall in this file or the next. A stream
+  // error means the file is incomplete and must be discarded — only a completed
+  // stream is a document.
+  //
+  // No (google.api.http) annotation, for the same reason as
+  // ExportQualityExecutions.
+  rpc ExportQualityIssues(ExportQualityIssuesRequest) returns (stream ExportQualityDataChunk) {
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.issues.list";
   }
 
   // Acknowledge, resolve or mute one quality issue.
@@ -335,12 +368,44 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Export the targets the same filters select as ListQualityTargets as one CSV
+  // document, streamed in slices. This is a file download, not a list: it stops
+  // at max_rows and reports the running row count on every slice.
+  //
+  // Rows are read page by page, so the file is not a consistent snapshot: a row
+  // written while the export runs may fall in this file or the next. A stream
+  // error means the file is incomplete and must be discarded — only a completed
+  // stream is a document.
+  //
+  // No (google.api.http) annotation, for the same reason as
+  // ExportQualityExecutions.
+  rpc ExportQualityTargets(ExportQualityTargetsRequest) returns (stream ExportQualityDataChunk) {
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Read one target's workspace: its rules (with their latest results), the
   // unresolved issues and the target's columns, in one call. AI drafts are not
   // part of the response (reading them needs the suggest permission). The target
   // is named by GUID because a target is not a resource of its own.
   rpc GetQualityTarget(GetQualityTargetRequest) returns (GetQualityTargetResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:get"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Render one target's quality report as a self-contained HTML document: the
+  // current state, the recent trend, the checks, the unresolved problems, a
+  // capped sample summary and the monitoring basis. The document carries its own
+  // styles and chart and loads nothing external, so it can be forwarded as a
+  // file. The export is audited because it is a bulk read of quality evidence.
+  //
+  // The report includes real sample values from failed checks (capped), so it is
+  // a wider disclosure than the rules.list permission usually implies; the
+  // document itself warns about forwarding it. Its HTML body never enters the
+  // audit ledger (see ExportQualityReportResponse.html_content).
+  rpc ExportQualityReport(ExportQualityReportRequest) returns (ExportQualityReportResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:exportReport"};
+    option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
@@ -2676,4 +2741,167 @@ message GetQualityContractRevisionRequest {
 message GetQualityContractRevisionResponse {
   QualityContractRevision revision = 1;
   repeated QualityContractCheck checks = 2;
+}
+
+// ExportQualityDataChunk is one slice of a streamed CSV export. A client
+// concatenates the slices into a file: the first slice starts with a UTF-8 BOM
+// and the header row, so the file opens cleanly in a spreadsheet without a
+// manual encoding choice.
+message ExportQualityDataChunk {
+  // A slice of the CSV bytes. A slice may end in the middle of a value's UTF-8
+  // sequence; the document is only meaningful once every slice is concatenated.
+  bytes data = 1;
+
+  // The total number of data rows written so far, across all slices. It is
+  // monotonic and the last value is the export's row count, which lets a client
+  // report progress without counting the document.
+  int64 row_count = 2;
+
+  // Whether max_rows cut the export short: the document is complete as a CSV
+  // file, but it does not hold the whole selection. Set on the final slice only.
+  bool truncated = 3;
+}
+
+// ExportQualityExecutionsRequest selects the executions to export. The filters
+// carry the same meaning as their ListQualityExecutions counterparts.
+message ExportQualityExecutionsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  QualityExecutionState state = 2;
+
+  QualityStatus outcome = 3;
+
+  QualityExecutionTrigger trigger = 4;
+
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 5 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+
+  // The exact target GUID.
+  string target_guid = 6;
+
+  // Format: instances/{instance}
+  string instance = 7 [(google.api.resource_reference) = {type: "metaxisdata/Instance"}];
+
+  // Format: users/{user}
+  string initiator = 8 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // Only executions started at or after this time.
+  google.protobuf.Timestamp start_time = 9;
+
+  // Only executions started before this time.
+  google.protobuf.Timestamp end_time = 10;
+
+  // Format: workspaces/{workspace}/qualityRuns/{quality_run}
+  string run = 11 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
+
+  // The row ceiling. Zero or negative means the server default (100000); values
+  // above that maximum are coerced to it.
+  int32 max_rows = 12;
+}
+
+// ExportQualityIssuesRequest selects the issues to export. The filters carry the
+// same meaning as their ListQualityIssues counterparts.
+message ExportQualityIssuesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  QualityIssueStatus status = 2;
+
+  QualitySeverity severity = 3;
+
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string rule = 4 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
+
+  // The exact target GUID.
+  string target_guid = 5;
+
+  // Format: users/{user}
+  string owner = 6 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // Only issues first seen at or after this time.
+  google.protobuf.Timestamp start_time = 7;
+
+  // Only issues first seen at or before this time.
+  google.protobuf.Timestamp end_time = 8;
+
+  // The row ceiling. Zero or negative means the server default (100000); values
+  // above that maximum are coerced to it.
+  int32 max_rows = 9;
+}
+
+// ExportQualityTargetsRequest selects the targets to export. The filters carry
+// the same meaning as their ListQualityTargets counterparts.
+message ExportQualityTargetsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The following four filters are GUID path prefixes, the same shape as
+  // ListQualityTargets.
+  string instance = 2;
+  string database = 3;
+  string schema = 4;
+  string table = 5;
+
+  // A case-insensitive substring over the target's path and GUID.
+  string search = 6;
+
+  // Only targets whose worst latest result is this status. UNSPECIFIED keeps
+  // every target, including those whose rules have not run yet.
+  QualityStatus worst_status = 7;
+
+  // Only targets with at least one unresolved issue.
+  bool has_open_issue = 8;
+
+  // Only targets with at least one pending AI draft.
+  bool has_pending_draft = 9;
+
+  // The order the exported rows are written in, matching the directory's sort.
+  QualityTargetOrder order_by = 10;
+
+  // The row ceiling. Zero or negative means the server default (100000); values
+  // above that maximum are coerced to it.
+  int32 max_rows = 11;
+
+  // Only targets that are failing, i.e. whose worst latest result is FAIL or
+  // ERROR. The directory offers this as one switch while worst_status filters a
+  // single state, so the export has to express the pair itself. It must not be
+  // combined with worst_status.
+  bool failing_only = 12;
+}
+
+// ExportQualityReportRequest asks for one target's report.
+message ExportQualityReportRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's metadata GUID. Required.
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's object type. Optional when rules already exist, because their
+  // own target carries it.
+  MetaType meta_type = 3;
+
+  // How many days of execution history the report covers. Zero means 30; the
+  // report is capped at the 90-day execution retention.
+  int32 trend_days = 4;
+
+  // The language the report text is written in: "zh-CN" or "en-US". Empty means
+  // "en-US".
+  string language = 5;
+}
+
+// ExportQualityReportResponse is the finished report file.
+message ExportQualityReportResponse {
+  // The download name, for example
+  // "quality-report-20261031T120000Z.html".
+  string file_name = 1;
+
+  // The complete self-contained HTML document.
+  //
+  // Named html_content rather than content on purpose: the audit interceptor
+  // stores a response payload, and the audit layer redacts this field by name.
+  // A report carries failed-sample-derived data, so it must never enter the
+  // permanent ledger.
+  string html_content = 2;
 }

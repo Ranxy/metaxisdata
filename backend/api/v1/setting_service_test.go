@@ -185,6 +185,43 @@ func TestApplyWorkspaceProfileUpdateDataQualityClearsWhenMessageIsAbsent(t *test
 	require.Nil(t, setting.DataQuality)
 }
 
+// A client that predates the weekly digest sends the whole data_quality message
+// without weekly_digest. Replacing the message wholesale would silently turn a
+// configured digest off, so an omitted digest keeps the stored one; sending it
+// explicitly replaces it.
+func TestApplyWorkspaceProfileUpdateKeepsOmittedWeeklyDigest(t *testing.T) {
+	t.Parallel()
+
+	stored := &storepb.QualityDigestSetting{
+		Enabled:   true,
+		DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_TUESDAY,
+		Time:      "07:30",
+		Timezone:  "Asia/Shanghai",
+	}
+	setting := &storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
+		FailureSampleLimit: 10,
+		WeeklyDigest:       stored,
+	}}
+
+	// The legacy-shaped update names data_quality but has no weekly_digest.
+	require.NoError(t, applyWorkspaceProfileUpdate(setting, &v1pb.WorkspaceProfileSetting{
+		DataQuality: &v1pb.DataQualitySetting{FailureSampleLimit: 20},
+	}, []string{"data_quality"}))
+	require.Equal(t, int32(20), setting.GetDataQuality().GetFailureSampleLimit())
+	require.Equal(t, stored, setting.GetDataQuality().GetWeeklyDigest(), "the omitted digest must survive")
+
+	// Sending it explicitly replaces it, including turning it off.
+	require.NoError(t, applyWorkspaceProfileUpdate(setting, &v1pb.WorkspaceProfileSetting{
+		DataQuality: &v1pb.DataQualitySetting{
+			FailureSampleLimit: 20,
+			WeeklyDigest:       &v1pb.QualityDigestSetting{},
+		},
+	}, []string{"data_quality"}))
+	require.True(t, setting.GetDataQuality().GetWeeklyDigest() != nil, "an explicit empty digest is stored, not dropped")
+	require.False(t, setting.GetDataQuality().GetWeeklyDigest().GetEnabled())
+	require.Empty(t, setting.GetDataQuality().GetWeeklyDigest().GetDayOfWeek())
+}
+
 func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 	t.Parallel()
 
@@ -200,6 +237,12 @@ func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 		LlmConcurrencyLimit:      dataquality.MaxLLMConcurrencyLimit,
 		MaxColumnsPerAnalysis:    0,
 		SendSampleValuesToLlm:    true,
+		WeeklyDigest: &v1pb.QualityDigestSetting{
+			Enabled:   true,
+			DayOfWeek: v1pb.DayOfWeek_DAY_OF_WEEK_FRIDAY,
+			Time:      " 18:30 ",
+			Timezone:  " Asia/Shanghai ",
+		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, int32(dataquality.MaxFailureSampleLimit), normalized.GetFailureSampleLimit())
@@ -209,6 +252,12 @@ func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 	require.Equal(t, dataquality.MinScheduleInterval, normalized.GetDefaultScheduleInterval().AsDuration())
 	require.True(t, normalized.GetEnableLlmAnalysis())
 	require.True(t, normalized.GetSendSampleValuesToLlm())
+	require.Equal(t, &storepb.QualityDigestSetting{
+		Enabled:   true,
+		DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_FRIDAY,
+		Time:      "18:30",
+		Timezone:  "Asia/Shanghai",
+	}, normalized.GetWeeklyDigest())
 
 	// A nil message is a clear operation; an unset duration stays unset.
 	cleared, err := normalizeDataQualitySetting(nil)
@@ -308,6 +357,41 @@ func TestNormalizeDataQualitySettingRejectsInvalidValues(t *testing.T) {
 			setting: &v1pb.DataQualitySetting{LlmProviderProfile: "llm-provider-profiles/"},
 			want:    "LLM provider profile",
 		},
+		{
+			name: "weekly digest enabled without a weekday",
+			setting: &v1pb.DataQualitySetting{WeeklyDigest: &v1pb.QualityDigestSetting{
+				Enabled: true, Time: "09:00", Timezone: "UTC",
+			}},
+			want: "weekly_digest.day_of_week",
+		},
+		{
+			name: "weekly digest enabled without a clock",
+			setting: &v1pb.DataQualitySetting{WeeklyDigest: &v1pb.QualityDigestSetting{
+				Enabled: true, DayOfWeek: v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY, Timezone: "UTC",
+			}},
+			want: "weekly_digest.time",
+		},
+		{
+			name: "weekly digest with a malformed clock",
+			setting: &v1pb.DataQualitySetting{WeeklyDigest: &v1pb.QualityDigestSetting{
+				DayOfWeek: v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY, Time: "9:00",
+			}},
+			want: "weekly_digest.time",
+		},
+		{
+			name: "weekly digest enabled without a zone",
+			setting: &v1pb.DataQualitySetting{WeeklyDigest: &v1pb.QualityDigestSetting{
+				Enabled: true, DayOfWeek: v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY, Time: "09:00",
+			}},
+			want: "weekly_digest.timezone",
+		},
+		{
+			name: "weekly digest with an unknown zone",
+			setting: &v1pb.DataQualitySetting{WeeklyDigest: &v1pb.QualityDigestSetting{
+				DayOfWeek: v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY, Time: "09:00", Timezone: "Mars/Olympus",
+			}},
+			want: "weekly_digest.timezone",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -369,6 +453,12 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 		LlmConcurrencyLimit:      12,
 		MaxColumnsPerAnalysis:    60,
 		SendSampleValuesToLlm:    true,
+		WeeklyDigest: &storepb.QualityDigestSetting{
+			Enabled:   true,
+			DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_WEDNESDAY,
+			Time:      "08:15",
+			Timezone:  "Europe/Paris",
+		},
 	}
 
 	apiValue := convertDataQualitySetting(stored)
@@ -384,6 +474,9 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	require.Equal(t, stored.GetLlmConcurrencyLimit(), apiValue.GetLlmConcurrencyLimit())
 	require.Equal(t, stored.GetMaxColumnsPerAnalysis(), apiValue.GetMaxColumnsPerAnalysis())
 	require.Equal(t, stored.GetSendSampleValuesToLlm(), apiValue.GetSendSampleValuesToLlm())
+	require.Equal(t, v1pb.DayOfWeek_DAY_OF_WEEK_WEDNESDAY, apiValue.GetWeeklyDigest().GetDayOfWeek())
+	require.Equal(t, "08:15", apiValue.GetWeeklyDigest().GetTime())
+	require.Equal(t, "Europe/Paris", apiValue.GetWeeklyDigest().GetTimezone())
 
 	// GetWorkspaceProfileSetting returns the field through the workspace convert.
 	converted := convertToWorkspaceProfileSetting(&storepb.WorkspaceProfileSetting{DataQuality: stored})
@@ -398,6 +491,7 @@ func TestConvertDataQualitySettingRoundTrip(t *testing.T) {
 	require.Equal(t, stored.GetDailyLlmAnalysisLimit(), back.GetDailyLlmAnalysisLimit())
 	require.Equal(t, stored.GetLlmConcurrencyLimit(), back.GetLlmConcurrencyLimit())
 	require.Equal(t, stored.GetSendSampleValuesToLlm(), back.GetSendSampleValuesToLlm())
+	require.Equal(t, stored.GetWeeklyDigest(), back.GetWeeklyDigest())
 }
 
 // The masks that predate data_quality keep their behavior after the merge moved
@@ -439,6 +533,10 @@ func TestConvertToWorkspaceProfileSettingResolvesDataQualityDefaults(t *testing.
 		require.Equal(t, int32(dataquality.DefaultDailyColumnAnalysisLimit), dataQuality.GetDailyColumnAnalysisLimit())
 		require.Equal(t, int32(dataquality.DefaultMaxColumnsPerAnalysis), dataQuality.GetMaxColumnsPerAnalysis())
 		require.False(t, dataQuality.GetSendSampleValuesToLlm())
+		require.Equal(t, v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY, dataQuality.GetWeeklyDigest().GetDayOfWeek())
+		require.Equal(t, "09:00", dataQuality.GetWeeklyDigest().GetTime())
+		require.Equal(t, "UTC", dataQuality.GetWeeklyDigest().GetTimezone())
+		require.False(t, dataQuality.GetWeeklyDigest().GetEnabled())
 	}
 
 	// A present message counts as explicitly written booleans (the settings page

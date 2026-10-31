@@ -21,11 +21,22 @@ import DataQualityTargetsPage from "./DataQualityTargetsPage.vue";
 
 const mocks = vi.hoisted(() => ({
   listQualityTargets: vi.fn(),
+  exportQualityTargets: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   listQualityTargets: mocks.listQualityTargets,
+  exportQualityTargets: mocks.exportQualityTargets,
+}));
+
+// jsdom has no object-URL download path; the download itself is covered by the
+// CSV helper's own test, so this test only asserts what it was handed.
+const csvMocks = vi.hoisted(() => ({ downloadBlob: vi.fn() }));
+
+vi.mock("@/utils/csv", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/csv")>()),
+  downloadBlob: csvMocks.downloadBlob,
 }));
 
 const TARGET_ORDERS = "instance-1;shop;public;orders";
@@ -178,6 +189,69 @@ beforeEach(() => {
   mocks.listQualityTargets.mockResolvedValue({
     items: directoryRows(),
     nextPageToken: "",
+  });
+  mocks.exportQualityTargets.mockResolvedValue({
+    blob: new Blob([]),
+    rowCount: 2n,
+  });
+});
+
+describe("DataQualityTargetsPage export", () => {
+  /** The header's CSV action, found by its label. */
+  function exportButton(wrapper: ReturnType<typeof mount>) {
+    return wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(i18n.global.t("dataQuality.exportCsv"))
+      );
+  }
+
+  it("exports every target the directory filters select", async () => {
+    const { wrapper } = await mountPage({
+      path: "/data-quality/targets?q=orders&issues=1&failing=1",
+    });
+
+    await exportButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    // The failing switch is its own flag; the export never sets worstStatus.
+    expect(mocks.exportQualityTargets).toHaveBeenCalledWith({
+      search: "orders",
+      failingOnly: true,
+      hasOpenIssue: true,
+      hasPendingDraft: false,
+      orderBy: QualityTargetOrder.ATTENTION,
+      signal: expect.any(AbortSignal),
+    });
+    expect(csvMocks.downloadBlob).toHaveBeenCalledTimes(1);
+    expect(csvMocks.downloadBlob.mock.calls[0]?.[1]).toMatch(
+      /^quality-targets-\d{8}-\d{6}\.csv$/
+    );
+  });
+
+  it("exports the applied search, not the text still being typed", async () => {
+    const { wrapper } = await mountPage();
+    await exportButton(wrapper)?.trigger("click");
+    await flushPromises();
+    expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "" })
+    );
+
+    // Typing alone does not change what the directory (or its export) selects;
+    // the debounce applies the term once the reader pauses.
+    await wrapper.find("#data-quality-target-search").setValue("orders");
+    await exportButton(wrapper)?.trigger("click");
+    await flushPromises();
+    expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "" })
+    );
+
+    await settleSearch();
+    await exportButton(wrapper)?.trigger("click");
+    await flushPromises();
+    expect(mocks.exportQualityTargets).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: "orders" })
+    );
   });
 });
 

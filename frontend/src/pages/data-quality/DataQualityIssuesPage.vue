@@ -5,6 +5,10 @@
       :description="t('dataQuality.issuesDescription')"
     >
       <template #actions>
+        <ExportCsvButton
+          :exporter="exportCsv"
+          file-name="quality-issues"
+        />
         <Button
           variant="outline"
           :disabled="isLoading"
@@ -261,6 +265,7 @@ import {
   useRouter,
 } from "vue-router";
 import {
+  exportQualityIssues,
   listAllQualityRules,
   listQualityIssues,
   qualityRuleID,
@@ -268,6 +273,7 @@ import {
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
+import ExportCsvButton from "@/components/data-quality/ExportCsvButton.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -466,6 +472,18 @@ function clearFilters() {
   status.value = "-";
   severity.value = "-";
   applyFilters();
+}
+
+/**
+ * The export carries the applied filters, so the file holds every matching
+ * issue rather than the visible page.
+ */
+function exportCsv(signal: AbortSignal) {
+  return exportQualityIssues({
+    status: enumFromFilter(appliedStatus.value, STATUS_FILTER_VALUES),
+    severity: enumFromFilter(appliedSeverity.value, SEVERITY_FILTER_VALUES),
+    signal,
+  });
 }
 
 function ruleTitle(issue: QualityIssue): string {

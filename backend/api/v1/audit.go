@@ -67,19 +67,34 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 		}
 
 		startTime := time.Now()
-		err := next(ctx, conn)
+		// The request arrives through the wrapped connection, and the handler
+		// reports its outcome through the context, so the row written below can
+		// carry what a unary row carries. The parent stays the resolved
+		// workspace: a request's own parent may be "workspaces/-", which the
+		// audit search would then fail to scope.
+		recorder := audit.NewStreamRecorder()
+		streamCtx := audit.WithStreamRecorder(ctx, recorder)
+		err := next(streamCtx, &recordingStreamingHandlerConn{StreamingHandlerConn: conn, recorder: recorder})
 		auditCtx, cancel := audit.Context(ctx)
 		defer cancel()
 		workspaceID, workspaceErr := in.store.GetWorkspaceID(auditCtx)
 		if workspaceErr == nil {
+			requestStruct, requestMap := audit.MarshalAuditMessage(recorder.Request())
+			responseStruct, responseMap := audit.MarshalAuditResult(recorder.Result())
 			auditLog := &storepb.AuditLog{
 				Parent:          common.FormatWorkspace(workspaceID),
 				Method:          conn.Spec().Procedure,
-				User:            audit.ResolveActor(ctx, nil, nil),
+				Resource:        audit.ResolveResource(requestMap, responseMap),
+				User:            audit.ResolveActor(ctx, requestMap, responseMap),
 				Severity:        audit.MapSeverity(err),
+				Request:         requestStruct,
+				Response:        responseStruct,
 				Status:          audit.BuildAuditStatus(err),
 				LatencyMs:       time.Since(startTime).Milliseconds(),
 				RequestMetadata: streamingRequestMetadata(conn, in.trustedProxies),
+			}
+			if auditLog.Resource == "" {
+				auditLog.Resource = auditLog.User
 			}
 			if _, createErr := in.store.CreateAuditLog(auditCtx, auditLog); createErr != nil {
 				slog.Error("failed to persist stream audit log", "method", conn.Spec().Procedure, clog.WithError(createErr))
@@ -87,6 +102,23 @@ func (in *AuditInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFu
 		}
 		return err
 	}
+}
+
+// recordingStreamingHandlerConn captures the request message an audited stream
+// receives. connect receives a server-streaming request through the handler
+// connection before the service method runs, so wrapping Receive is the one
+// place that sees what was asked for without changing every handler.
+type recordingStreamingHandlerConn struct {
+	connect.StreamingHandlerConn
+	recorder *audit.StreamRecorder
+}
+
+func (c *recordingStreamingHandlerConn) Receive(message any) error {
+	if err := c.StreamingHandlerConn.Receive(message); err != nil {
+		return err
+	}
+	c.recorder.RecordRequest(message)
+	return nil
 }
 
 // streamingRequestMetadata is the request metadata of a streaming call. It is a

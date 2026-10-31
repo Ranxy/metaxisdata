@@ -137,6 +137,19 @@ message DataQualitySetting {
   bool send_sample_values_to_llm = 9;
   int32 daily_llm_analysis_limit = 10;
   int32 llm_concurrency_limit = 11;
+  QualityDigestSetting weekly_digest = 12;
+}
+
+// QualityDigestSetting is the stored form of the weekly data quality digest
+// schedule. The digest itself has no in-app copy; it is delivered to the
+// outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST.
+message QualityDigestSetting {
+  bool enabled = 1;
+  DayOfWeek day_of_week = 2;
+  // "HH:MM" in timezone.
+  string time = 3;
+  // IANA time zone, for example "Asia/Shanghai".
+  string timezone = 4;
 }
 
 // EmailSetting is the stored form of metaxisdata.v1.EmailSetting: the workspace's

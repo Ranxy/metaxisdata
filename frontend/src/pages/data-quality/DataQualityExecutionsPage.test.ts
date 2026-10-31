@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   listQualityExecutions: vi.fn(),
   listQualityRuns: vi.fn(),
   listAllQualityRules: vi.fn(),
+  exportQualityTargets: vi.fn(),
+  exportQualityExecutions: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -41,6 +43,17 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   listQualityExecutions: mocks.listQualityExecutions,
   listQualityRuns: mocks.listQualityRuns,
   listAllQualityRules: mocks.listAllQualityRules,
+  exportQualityTargets: mocks.exportQualityTargets,
+  exportQualityExecutions: mocks.exportQualityExecutions,
+}));
+
+// jsdom has no object-URL download path; the download itself is covered by the
+// CSV helper's own test, so these tests only assert what it was handed.
+const csvMocks = vi.hoisted(() => ({ downloadBlob: vi.fn() }));
+
+vi.mock("@/utils/csv", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/csv")>()),
+  downloadBlob: csvMocks.downloadBlob,
 }));
 
 const TARGET_ORDERS = "inst1;shop;public;orders";
@@ -249,6 +262,15 @@ function viewButton(wrapper: ReturnType<typeof mount>, text: string) {
     .find((button) => button.text().trim() === text);
 }
 
+/** The header's CSV action, before it starts exporting. */
+function exportButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper
+    .findAll("button")
+    .find((button) =>
+      button.text().includes(labels()("dataQuality.exportCsv"))
+    );
+}
+
 /** Let the 300ms search debounce fire. */
 async function settleSearch() {
   await new Promise((resolve) => setTimeout(resolve, 350));
@@ -266,6 +288,14 @@ beforeEach(() => {
   mocks.listAllQualityRules.mockResolvedValue([
     create(QualityRuleSchema, { name: RULE, title: "Null rate on orders.id" }),
   ]);
+  mocks.exportQualityTargets.mockResolvedValue({
+    blob: new Blob([]),
+    rowCount: 2n,
+  });
+  mocks.exportQualityExecutions.mockResolvedValue({
+    blob: new Blob([]),
+    rowCount: 1n,
+  });
 });
 
 describe("DataQualityExecutionsPage by target", () => {
@@ -404,6 +434,48 @@ describe("DataQualityExecutionsPage by target", () => {
     await flushPromises();
 
     expect(rows(wrapper)).toHaveLength(2);
+  });
+});
+
+describe("DataQualityExecutionsPage export", () => {
+  it("exports the whole target directory with the filters in force", async () => {
+    const { wrapper } = await mountPage();
+
+    await exportButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.exportQualityTargets).toHaveBeenCalledWith({
+      search: "",
+      orderBy: QualityTargetOrder.LAST_RUN,
+      signal: expect.any(AbortSignal),
+    });
+    expect(mocks.exportQualityExecutions).not.toHaveBeenCalled();
+    expect(csvMocks.downloadBlob).toHaveBeenCalledTimes(1);
+    expect(csvMocks.downloadBlob.mock.calls[0]?.[1]).toMatch(
+      /^quality-targets-\d{8}-\d{6}\.csv$/
+    );
+  });
+
+  it("exports the flat executions under the URL's filters, not one page", async () => {
+    const { wrapper } = await mountPage(
+      `/data-quality/executions?view=executions&rule=${encodeURIComponent(RULE)}`
+    );
+
+    await exportButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.exportQualityExecutions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rule: RULE,
+        targetGuid: "",
+        state: QualityExecutionState.UNSPECIFIED,
+        outcome: QualityStatus.UNSPECIFIED,
+      })
+    );
+    expect(mocks.exportQualityTargets).not.toHaveBeenCalled();
+    expect(csvMocks.downloadBlob.mock.calls[0]?.[1]).toMatch(
+      /^quality-executions-\d{8}-\d{6}\.csv$/
+    );
   });
 });
 

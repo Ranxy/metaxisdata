@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { csvCell, csvEscape, downloadCsv, fileTimestamp, toCsv } from "./csv";
+import {
+  collectCsvStream,
+  csvCell,
+  csvEscape,
+  downloadBlob,
+  downloadCsv,
+  fileTimestamp,
+  toCsv,
+} from "./csv";
 
 let downloaded: Blob | undefined;
+
+/** The chunks of a streamed export, as the server's slices arrive. */
+async function* slices(...parts: Array<[string, bigint]>) {
+  for (const [text, rowCount] of parts) {
+    yield { data: new TextEncoder().encode(text), rowCount };
+  }
+}
 
 describe("csv", () => {
   afterEach(() => {
@@ -71,6 +86,79 @@ describe("csv", () => {
     expect(clicked[0]?.href).toContain("blob:csv");
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:csv");
     // The anchor is only a vehicle for the click; it must not stay in the DOM.
+    expect(document.body.querySelector("a")).toBeNull();
+  });
+
+  it("concatenates the slices of a streamed export verbatim", async () => {
+    // The server writes the BOM and the header into the first slice; splitting
+    // the document again must not change a byte of it.
+    const file = await collectCsvStream(
+      slices(['\uFEFF"a","b"\n"1"', 1n], [',"x"\n"2","y"', 2n])
+    );
+
+    expect(file.rowCount).toBe(2n);
+    expect(file.blob.type).toBe("text/csv;charset=utf-8;");
+    const bytes = new Uint8Array(await file.blob.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    // `Blob.text()` strips the BOM while decoding; the bytes above keep it.
+    expect(await file.blob.text()).toBe('"a","b"\n"1","x"\n"2","y"');
+  });
+
+  it("rejects a stream that delivered no bytes at all", async () => {
+    // Even a zero-row export carries the BOM and the header row, so an empty
+    // stream is a broken export rather than an empty selection.
+    await expect(collectCsvStream(slices())).rejects.toThrow(
+      "The export returned no data."
+    );
+    await expect(
+      collectCsvStream(
+        (async function* () {
+          yield { data: new Uint8Array(0), rowCount: 0n };
+        })()
+      )
+    ).rejects.toThrow("The export returned no data.");
+  });
+
+  it("rejects a stream whose row count goes backwards", async () => {
+    async function* backwards() {
+      yield { data: new Uint8Array([1]), rowCount: 5n };
+      yield { data: new Uint8Array([2]), rowCount: 2n };
+    }
+
+    await expect(collectCsvStream(backwards())).rejects.toThrow(
+      "The export stream's row count went backwards."
+    );
+  });
+
+  it("reports a file the server's row ceiling cut short", async () => {
+    async function* capped() {
+      yield { data: new Uint8Array([1]), rowCount: 1n, truncated: false };
+      yield { data: new Uint8Array([2]), rowCount: 100_000n, truncated: true };
+    }
+
+    const file = await collectCsvStream(capped());
+
+    expect(file.rowCount).toBe(100_000n);
+    expect(file.truncated).toBe(true);
+  });
+
+  it("downloads an assembled blob under its name", () => {
+    const createObjectURL = vi.fn(() => "blob:report");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const clicked: HTMLAnchorElement[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      clicked.push(this);
+    });
+    const blob = new Blob(["<html></html>"], { type: "text/html" });
+
+    downloadBlob(blob, "quality-report.html");
+
+    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(clicked[0]?.download).toBe("quality-report.html");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:report");
     expect(document.body.querySelector("a")).toBeNull();
   });
 });

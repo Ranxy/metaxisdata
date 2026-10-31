@@ -203,6 +203,30 @@ message DataQualitySetting {
   // How many data quality LLM analyses may run at once in this process. Zero
   // means the server default (8); accepted range 1-64.
   int32 llm_concurrency_limit = 11;
+
+  // The weekly data quality digest. The digest is one workspace-level summary
+  // delivered through the outbound channels that name
+  // NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient
+  // inbox copy. A data_quality update that omits this nested message keeps the
+  // stored schedule (so a client that predates the digest cannot clear it);
+  // sending the message explicitly replaces it, including with enabled=false.
+  QualityDigestSetting weekly_digest = 12;
+}
+
+// QualityDigestSetting is the schedule of the weekly data quality digest.
+message QualityDigestSetting {
+  // Whether the weekly digest is sent.
+  bool enabled = 1;
+
+  // The weekday the digest is sent on. UNSPECIFIED while enabled is rejected.
+  DayOfWeek day_of_week = 2;
+
+  // The time of day the digest is sent at, "HH:MM", in timezone.
+  string time = 3;
+
+  // The IANA time zone the schedule is evaluated in, for example
+  // "Asia/Shanghai". Required while enabled.
+  string timezone = 4;
 }
 
 message GetWorkspaceProfileSettingRequest {}

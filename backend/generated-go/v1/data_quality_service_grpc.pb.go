@@ -30,10 +30,12 @@ const (
 	DataQualityService_RunQualityRules_FullMethodName                    = "/metaxisdata.v1.DataQualityService/RunQualityRules"
 	DataQualityService_ListQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
 	DataQualityService_GetQualityExecution_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	DataQualityService_ExportQualityExecutions_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExportQualityExecutions"
 	DataQualityService_ListQualityRuns_FullMethodName                    = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
 	DataQualityService_GetQualityRun_FullMethodName                      = "/metaxisdata.v1.DataQualityService/GetQualityRun"
 	DataQualityService_ListQualityIssues_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
 	DataQualityService_GetQualityIssue_FullMethodName                    = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	DataQualityService_ExportQualityIssues_FullMethodName                = "/metaxisdata.v1.DataQualityService/ExportQualityIssues"
 	DataQualityService_UpdateQualityIssue_FullMethodName                 = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
 	DataQualityService_ListQualitySuggestions_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
 	DataQualityService_GetQualitySuggestion_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
@@ -53,7 +55,9 @@ const (
 	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
+	DataQualityService_ExportQualityTargets_FullMethodName               = "/metaxisdata.v1.DataQualityService/ExportQualityTargets"
 	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	DataQualityService_ExportQualityReport_FullMethodName                = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
 	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
 	DataQualityService_GetQualityTargetSchedule_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityTargetSchedule"
 	DataQualityService_GetQualityContract_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityContract"
@@ -109,6 +113,19 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(ctx context.Context, in *ListQualityExecutionsRequest, opts ...grpc.CallOption) (*ListQualityExecutionsResponse, error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(ctx context.Context, in *GetQualityExecutionRequest, opts ...grpc.CallOption) (*QualityExecution, error)
+	// Export the executions the same filters select as ListQualityExecutions as one
+	// CSV document, streamed in slices. This is a file download, not a list: it
+	// stops at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExportQualityExecutions(ctx context.Context, in *ExportQualityExecutionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportQualityDataChunk], error)
 	// List runs, newest first. A run is one dispatch batch that belongs to one
 	// target: the executions one scheduler tick or one manual request planned for
 	// that target. Runs are the batch-level read model the execution directory
@@ -120,6 +137,18 @@ type DataQualityServiceClient interface {
 	ListQualityIssues(ctx context.Context, in *ListQualityIssuesRequest, opts ...grpc.CallOption) (*ListQualityIssuesResponse, error)
 	// Read one quality issue.
 	GetQualityIssue(ctx context.Context, in *GetQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error)
+	// Export the issues the same filters select as ListQualityIssues as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityIssues(ctx context.Context, in *ExportQualityIssuesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportQualityDataChunk], error)
 	// Acknowledge, resolve or mute one quality issue.
 	UpdateQualityIssue(ctx context.Context, in *UpdateQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error)
 	// List the review queue of model-proposed rule drafts and semantic labels,
@@ -180,11 +209,34 @@ type DataQualityServiceClient interface {
 	// aggregated by the database, so the directory does not page through every
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(ctx context.Context, in *ListQualityTargetsRequest, opts ...grpc.CallOption) (*ListQualityTargetsResponse, error)
+	// Export the targets the same filters select as ListQualityTargets as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityTargets(ctx context.Context, in *ExportQualityTargetsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportQualityDataChunk], error)
 	// Read one target's workspace: its rules (with their latest results), the
 	// unresolved issues and the target's columns, in one call. AI drafts are not
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
+	// Render one target's quality report as a self-contained HTML document: the
+	// current state, the recent trend, the checks, the unresolved problems, a
+	// capped sample summary and the monitoring basis. The document carries its own
+	// styles and chart and loads nothing external, so it can be forwarded as a
+	// file. The export is audited because it is a bulk read of quality evidence.
+	//
+	// The report includes real sample values from failed checks (capped), so it is
+	// a wider disclosure than the rules.list permission usually implies; the
+	// document itself warns about forwarding it. Its HTML body never enters the
+	// audit ledger (see ExportQualityReportResponse.html_content).
+	ExportQualityReport(ctx context.Context, in *ExportQualityReportRequest, opts ...grpc.CallOption) (*ExportQualityReportResponse, error)
 	// Update one target's schedule: how often its enabled checks run. Scheduling
 	// is per target, so this replaces the per-check schedule; a change takes
 	// effect from the next slot and never runs the target immediately.
@@ -324,6 +376,25 @@ func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ExportQualityExecutions(ctx context.Context, in *ExportQualityExecutionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportQualityDataChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[0], DataQualityService_ExportQualityExecutions_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ExportQualityExecutionsRequest, ExportQualityDataChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExportQualityExecutionsClient = grpc.ServerStreamingClient[ExportQualityDataChunk]
+
 func (c *dataQualityServiceClient) ListQualityRuns(ctx context.Context, in *ListQualityRunsRequest, opts ...grpc.CallOption) (*ListQualityRunsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityRunsResponse)
@@ -363,6 +434,25 @@ func (c *dataQualityServiceClient) GetQualityIssue(ctx context.Context, in *GetQ
 	}
 	return out, nil
 }
+
+func (c *dataQualityServiceClient) ExportQualityIssues(ctx context.Context, in *ExportQualityIssuesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportQualityDataChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[1], DataQualityService_ExportQualityIssues_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ExportQualityIssuesRequest, ExportQualityDataChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExportQualityIssuesClient = grpc.ServerStreamingClient[ExportQualityDataChunk]
 
 func (c *dataQualityServiceClient) UpdateQualityIssue(ctx context.Context, in *UpdateQualityIssueRequest, opts ...grpc.CallOption) (*QualityIssue, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -526,7 +616,7 @@ func (c *dataQualityServiceClient) SuggestColumnLabels(ctx context.Context, in *
 
 func (c *dataQualityServiceClient) ExplainQualityExecution(ctx context.Context, in *ExplainQualityExecutionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityExecutionResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[0], DataQualityService_ExplainQualityExecution_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[2], DataQualityService_ExplainQualityExecution_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -563,10 +653,39 @@ func (c *dataQualityServiceClient) ListQualityTargets(ctx context.Context, in *L
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ExportQualityTargets(ctx context.Context, in *ExportQualityTargetsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportQualityDataChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[3], DataQualityService_ExportQualityTargets_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ExportQualityTargetsRequest, ExportQualityDataChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExportQualityTargetsClient = grpc.ServerStreamingClient[ExportQualityDataChunk]
+
 func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetQualityTargetResponse)
 	err := c.cc.Invoke(ctx, DataQualityService_GetQualityTarget_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ExportQualityReport(ctx context.Context, in *ExportQualityReportRequest, opts ...grpc.CallOption) (*ExportQualityReportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportQualityReportResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ExportQualityReport_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -698,6 +817,19 @@ type DataQualityServiceServer interface {
 	ListQualityExecutions(context.Context, *ListQualityExecutionsRequest) (*ListQualityExecutionsResponse, error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error)
+	// Export the executions the same filters select as ListQualityExecutions as one
+	// CSV document, streamed in slices. This is a file download, not a list: it
+	// stops at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation: this is a server-streaming method, and the
+	// REST gateway cannot carry one. The browser reaches the Connect endpoint
+	// directly, the way it does for ExplainSQL.
+	ExportQualityExecutions(*ExportQualityExecutionsRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error
 	// List runs, newest first. A run is one dispatch batch that belongs to one
 	// target: the executions one scheduler tick or one manual request planned for
 	// that target. Runs are the batch-level read model the execution directory
@@ -709,6 +841,18 @@ type DataQualityServiceServer interface {
 	ListQualityIssues(context.Context, *ListQualityIssuesRequest) (*ListQualityIssuesResponse, error)
 	// Read one quality issue.
 	GetQualityIssue(context.Context, *GetQualityIssueRequest) (*QualityIssue, error)
+	// Export the issues the same filters select as ListQualityIssues as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityIssues(*ExportQualityIssuesRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error
 	// Acknowledge, resolve or mute one quality issue.
 	UpdateQualityIssue(context.Context, *UpdateQualityIssueRequest) (*QualityIssue, error)
 	// List the review queue of model-proposed rule drafts and semantic labels,
@@ -769,11 +913,34 @@ type DataQualityServiceServer interface {
 	// aggregated by the database, so the directory does not page through every
 	// rule to answer "which table needs attention?".
 	ListQualityTargets(context.Context, *ListQualityTargetsRequest) (*ListQualityTargetsResponse, error)
+	// Export the targets the same filters select as ListQualityTargets as one CSV
+	// document, streamed in slices. This is a file download, not a list: it stops
+	// at max_rows and reports the running row count on every slice.
+	//
+	// Rows are read page by page, so the file is not a consistent snapshot: a row
+	// written while the export runs may fall in this file or the next. A stream
+	// error means the file is incomplete and must be discarded — only a completed
+	// stream is a document.
+	//
+	// No (google.api.http) annotation, for the same reason as
+	// ExportQualityExecutions.
+	ExportQualityTargets(*ExportQualityTargetsRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error
 	// Read one target's workspace: its rules (with their latest results), the
 	// unresolved issues and the target's columns, in one call. AI drafts are not
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
+	// Render one target's quality report as a self-contained HTML document: the
+	// current state, the recent trend, the checks, the unresolved problems, a
+	// capped sample summary and the monitoring basis. The document carries its own
+	// styles and chart and loads nothing external, so it can be forwarded as a
+	// file. The export is audited because it is a bulk read of quality evidence.
+	//
+	// The report includes real sample values from failed checks (capped), so it is
+	// a wider disclosure than the rules.list permission usually implies; the
+	// document itself warns about forwarding it. Its HTML body never enters the
+	// audit ledger (see ExportQualityReportResponse.html_content).
+	ExportQualityReport(context.Context, *ExportQualityReportRequest) (*ExportQualityReportResponse, error)
 	// Update one target's schedule: how often its enabled checks run. Scheduling
 	// is per target, so this replaces the per-check schedule; a change takes
 	// effect from the next slot and never runs the target immediately.
@@ -843,6 +1010,9 @@ func (UnimplementedDataQualityServiceServer) ListQualityExecutions(context.Conte
 func (UnimplementedDataQualityServiceServer) GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityExecution not implemented")
 }
+func (UnimplementedDataQualityServiceServer) ExportQualityExecutions(*ExportQualityExecutionsRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error {
+	return status.Error(codes.Unimplemented, "method ExportQualityExecutions not implemented")
+}
 func (UnimplementedDataQualityServiceServer) ListQualityRuns(context.Context, *ListQualityRunsRequest) (*ListQualityRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityRuns not implemented")
 }
@@ -854,6 +1024,9 @@ func (UnimplementedDataQualityServiceServer) ListQualityIssues(context.Context, 
 }
 func (UnimplementedDataQualityServiceServer) GetQualityIssue(context.Context, *GetQualityIssueRequest) (*QualityIssue, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityIssue not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ExportQualityIssues(*ExportQualityIssuesRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error {
+	return status.Error(codes.Unimplemented, "method ExportQualityIssues not implemented")
 }
 func (UnimplementedDataQualityServiceServer) UpdateQualityIssue(context.Context, *UpdateQualityIssueRequest) (*QualityIssue, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityIssue not implemented")
@@ -912,8 +1085,14 @@ func (UnimplementedDataQualityServiceServer) GetQualityOverview(context.Context,
 func (UnimplementedDataQualityServiceServer) ListQualityTargets(context.Context, *ListQualityTargetsRequest) (*ListQualityTargetsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityTargets not implemented")
 }
+func (UnimplementedDataQualityServiceServer) ExportQualityTargets(*ExportQualityTargetsRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error {
+	return status.Error(codes.Unimplemented, "method ExportQualityTargets not implemented")
+}
 func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityTarget not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ExportQualityReport(context.Context, *ExportQualityReportRequest) (*ExportQualityReportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExportQualityReport not implemented")
 }
 func (UnimplementedDataQualityServiceServer) UpdateQualityTargetSchedule(context.Context, *UpdateQualityTargetScheduleRequest) (*QualityTargetSchedule, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityTargetSchedule not implemented")
@@ -1140,6 +1319,17 @@ func _DataQualityService_GetQualityExecution_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ExportQualityExecutions_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExportQualityExecutionsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataQualityServiceServer).ExportQualityExecutions(m, &grpc.GenericServerStream[ExportQualityExecutionsRequest, ExportQualityDataChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExportQualityExecutionsServer = grpc.ServerStreamingServer[ExportQualityDataChunk]
+
 func _DataQualityService_ListQualityRuns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQualityRunsRequest)
 	if err := dec(in); err != nil {
@@ -1211,6 +1401,17 @@ func _DataQualityService_GetQualityIssue_Handler(srv interface{}, ctx context.Co
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _DataQualityService_ExportQualityIssues_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExportQualityIssuesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataQualityServiceServer).ExportQualityIssues(m, &grpc.GenericServerStream[ExportQualityIssuesRequest, ExportQualityDataChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExportQualityIssuesServer = grpc.ServerStreamingServer[ExportQualityDataChunk]
 
 func _DataQualityService_UpdateQualityIssue_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateQualityIssueRequest)
@@ -1547,6 +1748,17 @@ func _DataQualityService_ListQualityTargets_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ExportQualityTargets_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExportQualityTargetsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DataQualityServiceServer).ExportQualityTargets(m, &grpc.GenericServerStream[ExportQualityTargetsRequest, ExportQualityDataChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type DataQualityService_ExportQualityTargetsServer = grpc.ServerStreamingServer[ExportQualityDataChunk]
+
 func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityTargetRequest)
 	if err := dec(in); err != nil {
@@ -1561,6 +1773,24 @@ func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).GetQualityTarget(ctx, req.(*GetQualityTargetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ExportQualityReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportQualityReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ExportQualityReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ExportQualityReport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ExportQualityReport(ctx, req.(*ExportQualityReportRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1849,6 +2079,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_GetQualityTarget_Handler,
 		},
 		{
+			MethodName: "ExportQualityReport",
+			Handler:    _DataQualityService_ExportQualityReport_Handler,
+		},
+		{
 			MethodName: "UpdateQualityTargetSchedule",
 			Handler:    _DataQualityService_UpdateQualityTargetSchedule_Handler,
 		},
@@ -1883,8 +2117,23 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
+			StreamName:    "ExportQualityExecutions",
+			Handler:       _DataQualityService_ExportQualityExecutions_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ExportQualityIssues",
+			Handler:       _DataQualityService_ExportQualityIssues_Handler,
+			ServerStreams: true,
+		},
+		{
 			StreamName:    "ExplainQualityExecution",
 			Handler:       _DataQualityService_ExplainQualityExecution_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ExportQualityTargets",
+			Handler:       _DataQualityService_ExportQualityTargets_Handler,
 			ServerStreams: true,
 		},
 	},

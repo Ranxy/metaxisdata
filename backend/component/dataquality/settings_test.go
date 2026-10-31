@@ -52,6 +52,12 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			LlmConcurrencyLimit:      16,
 			MaxColumnsPerAnalysis:    120,
 			SendSampleValuesToLlm:    true,
+			WeeklyDigest: &storepb.QualityDigestSetting{
+				Enabled:   true,
+				DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_SATURDAY,
+				Time:      "07:45",
+				Timezone:  "Asia/Shanghai",
+			},
 		},
 	}
 
@@ -67,6 +73,13 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 		LLMConcurrencyLimit:      16,
 		MaxColumnsPerAnalysis:    120,
 		SendSampleValuesToLLM:    true,
+		Digest: DigestSchedule{
+			Enabled:  true,
+			Day:      time.Saturday,
+			Hour:     7,
+			Minute:   45,
+			Timezone: "Asia/Shanghai",
+		},
 	}, SettingsFromProfile(profile))
 }
 
@@ -259,4 +272,65 @@ func TestLoadSettingsRejectsNilStore(t *testing.T) {
 	_, err := LoadSettings(context.Background(), nil)
 	require.Error(t, err)
 	require.Equal(t, common.Internal, common.ErrorCode(err))
+}
+
+func TestDigestScheduleFromStore(t *testing.T) {
+	t.Parallel()
+
+	// Absent and empty settings resolve to the disabled default, not a zero
+	// schedule, so the settings page always has a slot to show.
+	require.Equal(t, defaultDigestSchedule(), DigestScheduleFromStore(nil))
+	require.Equal(t, defaultDigestSchedule(), DigestScheduleFromStore(&storepb.QualityDigestSetting{}))
+
+	// A stored schedule with an unknown clock or zone must not make the runner
+	// fail: the bad value falls back while the rest of the schedule is kept.
+	require.Equal(t, DigestSchedule{
+		Enabled:  true,
+		Day:      time.Thursday,
+		Hour:     DefaultDigestHour,
+		Minute:   DefaultDigestMinute,
+		Timezone: DefaultDigestTimezone,
+	}, DigestScheduleFromStore(&storepb.QualityDigestSetting{
+		Enabled:   true,
+		DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_THURSDAY,
+		Time:      "25:00",
+		Timezone:  "Mars/Olympus",
+	}))
+
+	require.Equal(t, DigestSchedule{
+		Enabled:  true,
+		Day:      time.Sunday,
+		Hour:     18,
+		Minute:   30,
+		Timezone: "Asia/Shanghai",
+	}, DigestScheduleFromStore(&storepb.QualityDigestSetting{
+		Enabled:   true,
+		DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_SUNDAY,
+		Time:      "18:30",
+		Timezone:  " Asia/Shanghai ",
+	}))
+}
+
+func TestValidateDigestSetting(t *testing.T) {
+	t.Parallel()
+
+	valid := &storepb.QualityDigestSetting{
+		Enabled:   true,
+		DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_MONDAY,
+		Time:      "09:00",
+		Timezone:  "Asia/Shanghai",
+	}
+	require.NoError(t, ValidateDigestSetting(nil))
+	require.NoError(t, ValidateDigestSetting(valid))
+	require.NoError(t, ValidateDigestSetting(&storepb.QualityDigestSetting{}))
+
+	for name, setting := range map[string]*storepb.QualityDigestSetting{
+		"enabled without a weekday": {Enabled: true, Time: "09:00", Timezone: "UTC"},
+		"enabled without a clock":   {Enabled: true, DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_MONDAY, Timezone: "UTC"},
+		"enabled without a zone":    {Enabled: true, DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_MONDAY, Time: "09:00"},
+		"bad clock":                 {Time: "9:00"},
+		"bad zone":                  {Timezone: "Mars/Olympus"},
+	} {
+		require.Errorf(t, ValidateDigestSetting(setting), "case %q must be rejected", name)
+	}
 }

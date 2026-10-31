@@ -6844,6 +6844,89 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:exportReport:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Render one target's quality report as a self-contained HTML document: the
+                 current state, the recent trend, the checks, the unresolved problems, a
+                 capped sample summary and the monitoring basis. The document carries its own
+                 styles and chart and loads nothing external, so it can be forwarded as a
+                 file. The export is audited because it is a bulk read of quality evidence.
+
+                 The report includes real sample values from failed checks (capped), so it is
+                 a wider disclosure than the rules.list permission usually implies; the
+                 document itself warns about forwarding it. Its HTML body never enters the
+                 audit ledger (see ExportQualityReportResponse.html_content).
+            operationId: DataQualityService_ExportQualityReport
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  description: The target's metadata GUID. Required.
+                  schema:
+                    type: string
+                - name: metaType
+                  in: query
+                  description: |-
+                    The target's object type. Optional when rules already exist, because their
+                     own target carries it.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: trendDays
+                  in: query
+                  description: |-
+                    How many days of execution history the report covers. Zero means 30; the
+                     report is capped at the 90-day execution retention.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: language
+                  in: query
+                  description: |-
+                    The language the report text is written in: "zh-CN" or "en-US". Empty means
+                     "en-US".
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExportQualityReportResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityTargets:get:
         get:
             tags:
@@ -8500,6 +8583,8 @@ components:
                 llmConcurrencyLimit:
                     type: integer
                     format: int32
+                weeklyDigest:
+                    $ref: '#/components/schemas/QualityDigestSetting'
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -9068,6 +9153,24 @@ components:
                     $ref: '#/components/schemas/ExplainSQLMetadata'
                 progress:
                     $ref: '#/components/schemas/ExplainSQLProgress'
+        ExportQualityReportResponse:
+            type: object
+            properties:
+                fileName:
+                    type: string
+                    description: |-
+                        The download name, for example
+                         "quality-report-20261031T120000Z.html".
+                htmlContent:
+                    type: string
+                    description: |-
+                        The complete self-contained HTML document.
+
+                         Named html_content rather than content on purpose: the audit interceptor
+                         stores a response payload, and the audit layer redacts this field by name.
+                         A report carries failed-sample-derived data, so it must never enter the
+                         permanent ledger.
+            description: ExportQualityReportResponse is the finished report file.
         Expr:
             type: object
             properties:
@@ -10932,6 +11035,7 @@ components:
                         - NOTIFICATION_TYPE_SCHEMA_SYNC
                         - NOTIFICATION_TYPE_OPENLINEAGE
                         - NOTIFICATION_TYPE_DATA_QUALITY
+                        - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
                     type: string
                     format: enum
                 severity:
@@ -10995,9 +11099,13 @@ components:
                             - NOTIFICATION_TYPE_SCHEMA_SYNC
                             - NOTIFICATION_TYPE_OPENLINEAGE
                             - NOTIFICATION_TYPE_DATA_QUALITY
+                            - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
                         type: string
                         format: enum
-                    description: The notification types this channel subscribes to. Empty means every type.
+                    description: |-
+                        The notification types this channel subscribes to. Empty means every type,
+                         with one exception: the data quality digest is opt-in and is delivered only
+                         to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly.
                 minSeverity:
                     enum:
                         - NOTIFICATION_SEVERITY_UNSPECIFIED
@@ -11066,6 +11174,7 @@ components:
                         - NOTIFICATION_TYPE_SCHEMA_SYNC
                         - NOTIFICATION_TYPE_OPENLINEAGE
                         - NOTIFICATION_TYPE_DATA_QUALITY
+                        - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
                     type: string
                     format: enum
                 severity:
@@ -11146,9 +11255,12 @@ components:
                             - NOTIFICATION_TYPE_SCHEMA_SYNC
                             - NOTIFICATION_TYPE_OPENLINEAGE
                             - NOTIFICATION_TYPE_DATA_QUALITY
+                            - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
                         type: string
                         format: enum
-                    description: The notification types this route selects. Empty means every type.
+                    description: |-
+                        The notification types this route selects. Empty means every type that has
+                         an in-app audience; the digest has none and is not routed.
                 minSeverity:
                     enum:
                         - NOTIFICATION_SEVERITY_UNSPECIFIED
@@ -11172,6 +11284,7 @@ components:
                 NotificationRouteMatch is who and what a route selects. An empty field is a
                  wildcard, and so is a match with no filters at all: every event concerns the
                  rule's audience, so a route with no owner and no group selects every event.
+                 The data quality digest has no audience and is never selected by a route.
         NullPercentConfig:
             type: object
             properties:
@@ -11931,6 +12044,33 @@ components:
                     description: The severity a newly authored rule starts with; UNSPECIFIED means no default.
                     format: enum
             description: QualityContractSettings is the target-level layer's mutable configuration.
+        QualityDigestSetting:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                dayOfWeek:
+                    enum:
+                        - DAY_OF_WEEK_UNSPECIFIED
+                        - DAY_OF_WEEK_MONDAY
+                        - DAY_OF_WEEK_TUESDAY
+                        - DAY_OF_WEEK_WEDNESDAY
+                        - DAY_OF_WEEK_THURSDAY
+                        - DAY_OF_WEEK_FRIDAY
+                        - DAY_OF_WEEK_SATURDAY
+                        - DAY_OF_WEEK_SUNDAY
+                    type: string
+                    format: enum
+                time:
+                    type: string
+                    description: '"HH:MM" in timezone.'
+                timezone:
+                    type: string
+                    description: IANA time zone, for example "Asia/Shanghai".
+            description: |-
+                QualityDigestSetting is the stored form of the weekly data quality digest
+                 schedule. The digest itself has no in-app copy; it is delivered to the
+                 outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST.
         QualityExecution:
             type: object
             properties:

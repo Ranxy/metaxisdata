@@ -19,6 +19,9 @@ enum NotificationType {
   // A data quality rule opened, recovered, failed to execute, or failed in a
   // storm that was merged into one summary.
   NOTIFICATION_TYPE_DATA_QUALITY = 3;
+  // The workspace's scheduled data quality digest. It has no in-app copy; only
+  // the outbound channels subscribed to this type receive it.
+  NOTIFICATION_TYPE_DATA_QUALITY_DIGEST = 4;
 }
 
 // NotificationSeverity ranks a notification for the recipient.
@@ -201,6 +204,73 @@ message DataQualityDetail {
   string instance = 18;
 }
 
+// DataQualityDigestDetail reports one scheduled digest period: how the checks
+// ran, how the problem ledger moved, and how the open state splits by owner and
+// target. The counts are already aggregated, so rendering the message reads no
+// quality table.
+message DataQualityDigestDetail {
+  // The period the digest covers: [period_start, period_end).
+  google.protobuf.Timestamp period_start = 1;
+  google.protobuf.Timestamp period_end = 2;
+
+  // The IANA time zone the period label is written in (the digest schedule's
+  // zone, for example "Asia/Shanghai"). A UTC label can name the wrong calendar
+  // days for schedules east of UTC+9, so the zone travels with the period.
+  string timezone = 18;
+
+  // How many targets had at least one enabled check in the period.
+  int32 target_count = 3;
+  // How many enabled checks the workspace had at the end of the period.
+  int32 rule_count = 4;
+
+  // The verdict tally of the period's completed executions.
+  int32 execution_count = 5;
+  int32 passed_count = 6;
+  int32 warned_count = 7;
+  int32 failed_count = 8;
+  int32 errored_count = 9;
+
+  // The problem ledger's movement in the period.
+  int32 new_issue_count = 10;
+  int32 recovered_issue_count = 11;
+
+  // The open state as of the aggregation (the runner reads it while building
+  // the digest, so it describes the moment the digest is produced, which is at
+  // or shortly after period_end).
+  int32 open_issue_count = 12;
+  int32 open_warning_count = 13;
+  int32 open_error_count = 14;
+  int32 open_critical_count = 15;
+
+  // The owners with the most to look at, most open issues first. Capped; the
+  // totals above carry the whole picture.
+  repeated DataQualityDigestOwner owners = 16;
+  // The targets with the most failed checks in the period. Capped.
+  repeated DataQualityDigestTarget targets = 17;
+}
+
+// DataQualityDigestOwner is one owner's share of the digest.
+message DataQualityDigestOwner {
+  // Format: users/{user}. Empty is the unassigned bucket.
+  string owner = 1;
+  // The owner's display name at aggregation time, so the message is readable
+  // without another read. Not an address: the outbox payload carries no
+  // contact details, and a channel resolves its own recipients at send time.
+  // Empty when the account is gone.
+  string owner_name = 2;
+  int32 open_issue_count = 3;
+  int32 failing_rule_count = 4;
+}
+
+// DataQualityDigestTarget is one target's share of the digest.
+message DataQualityDigestTarget {
+  // The display path: instance/database/schema/table.
+  string target_path = 1;
+  int32 failed_execution_count = 2;
+  int32 errored_execution_count = 3;
+  int32 open_issue_count = 4;
+}
+
 // NotificationChannelKind is the protocol one outbound channel speaks. The kind
 // decides the payload shape and which credential fields are required.
 enum NotificationChannelKind {
@@ -228,7 +298,9 @@ message NotificationChannel {
   string display_name = 1;
   NotificationChannelKind kind = 2;
   bool enabled = 3;
-  // The notification types this channel subscribes to. Empty means every type.
+  // The notification types this channel subscribes to. Empty means every type,
+  // with one exception: the data quality digest is opt-in and is delivered only
+  // to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly.
   repeated NotificationType event_types = 4;
   // The lowest severity this channel delivers. UNSPECIFIED means every severity.
   NotificationSeverity min_severity = 5;
@@ -321,6 +393,7 @@ message NotificationDeliveryEvent {
     SchemaSyncDetail schema_sync = 3;
     OpenLineageDetail openlineage = 4;
     DataQualityDetail data_quality = 5;
+    DataQualityDigestDetail data_quality_digest = 7;
   }
   // The user ids the event's in-app message addressed: the rule's owner, the
   // initiator of a sync operation, or the workspace administrators. The email
@@ -345,8 +418,10 @@ message NotificationRoute {
 // NotificationRouteMatch is who and what a route selects. An empty field is a
 // wildcard, and so is a match with no filters at all: every event concerns the
 // rule's audience, so a route with no owner and no group selects every event.
+// The data quality digest has no audience and is never selected by a route.
 message NotificationRouteMatch {
-  // The notification types this route selects. Empty means every type.
+  // The notification types this route selects. Empty means every type that has
+  // an in-app audience; the digest has none and is not routed.
   repeated NotificationType event_types = 1;
   // The lowest severity this route selects. UNSPECIFIED means every severity.
   NotificationSeverity min_severity = 2;

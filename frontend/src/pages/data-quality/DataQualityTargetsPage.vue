@@ -17,6 +17,10 @@
           <Plus class="mr-2 h-4 w-4" />
           {{ t("dataQuality.targets.startMonitoring") }}
         </Button>
+        <ExportCsvButton
+          :exporter="exportCsv"
+          file-name="quality-targets"
+        />
         <Button
           variant="outline"
           :disabled="isLoading"
@@ -365,9 +369,10 @@ import {
   useRoute,
   useRouter,
 } from "vue-router";
-import { listQualityTargets } from "@/api/data-quality";
+import { exportQualityTargets, listQualityTargets } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import ExportCsvButton from "@/components/data-quality/ExportCsvButton.vue";
 import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -458,6 +463,8 @@ const FILTER_QUERY_KEYS = ["q", "issues", "drafts", "failing", "sort"] as const;
 const pickerOpen = ref(false);
 const error = ref("");
 const search = ref("");
+/** The search term the last request and the export used, not the live input. */
+const appliedSearch = ref("");
 const toggles = reactive<Record<TargetToggle, boolean>>({
   failing: false,
   issues: false,
@@ -555,6 +562,7 @@ const urlFilters = useUrlFilters<TargetFilters>({
 // filters, so a reloaded or shared link never flashes the unfiltered directory.
 const initialFilters = urlFilters.read();
 search.value = initialFilters.search;
+appliedSearch.value = initialFilters.search;
 toggles.failing = initialFilters.failing;
 toggles.issues = initialFilters.issues;
 toggles.drafts = initialFilters.drafts;
@@ -572,7 +580,7 @@ const {
   async () => {
     const page = await listQualityTargets({
       pageSize: 1000,
-      search: search.value.trim(),
+      search: appliedSearch.value,
       hasOpenIssue: toggles.issues,
       hasPendingDraft: toggles.drafts,
       orderBy: selectedOrder.value,
@@ -609,6 +617,7 @@ const hasActiveFilters = computed(
 
 /** Push the current filters to the URL and let the server answer them. */
 function applyFilters() {
+  appliedSearch.value = search.value.trim();
   urlFilters.write(currentFilters());
   void load();
 }
@@ -640,6 +649,23 @@ function clearFilters() {
   applyFilters();
 }
 
+/**
+ * The export carries the directory's server filters, so the file holds every
+ * matching target rather than the visible page. "Failing" travels as its own
+ * flag because the API's status filter names one state while the directory's
+ * switch means FAIL or ERROR.
+ */
+function exportCsv(signal: AbortSignal) {
+  return exportQualityTargets({
+    search: appliedSearch.value,
+    failingOnly: toggles.failing,
+    hasOpenIssue: toggles.issues,
+    hasPendingDraft: toggles.drafts,
+    orderBy: selectedOrder.value,
+    signal,
+  });
+}
+
 /** One request when the reader pauses, not one per keystroke. */
 const debouncedSearch = useDebounced(() => {
   // An external navigation already adopted this query; do not answer it with
@@ -660,6 +686,7 @@ urlFilters.watchExternal((next) => {
     return;
   }
   search.value = next.search;
+  appliedSearch.value = next.search;
   toggles.failing = next.failing;
   toggles.issues = next.issues;
   toggles.drafts = next.drafts;

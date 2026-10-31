@@ -105,6 +105,12 @@ type DataQualityService struct {
 	// metrics records execution, query and LLM outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
+	// exportSlots bounds how many bulk exports one process streams at once. An
+	// export holds a metadata-database connection per page and can stream for
+	// minutes, so an unbounded fan-out from one member would starve the rest of
+	// the API; a slot refuses with ResourceExhausted instead of queueing. Nil
+	// disables the bound (tests that build the service directly).
+	exportSlots chan struct{}
 }
 
 // NewDataQualityService creates the service. executionScheduler may be nil.
@@ -119,6 +125,27 @@ func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, execu
 		quota:              quota,
 		stateCfg:           stateCfg,
 		metrics:            m,
+		exportSlots:        make(chan struct{}, qualityExportConcurrency),
+	}
+}
+
+// qualityExportConcurrency is how many exports may stream at once per process.
+const qualityExportConcurrency = 4
+
+// acquireExportSlot takes one of the process's export slots. The returned release
+// must be called when the stream ends; a missing slot is a ResourceExhausted
+// refusal, never a wait, because an export is a bulk read the caller can retry.
+func (s *DataQualityService) acquireExportSlot(ctx context.Context) (func(), error) {
+	if s.exportSlots == nil {
+		return func() {}, nil
+	}
+	select {
+	case s.exportSlots <- struct{}{}:
+		return func() { <-s.exportSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("too many concurrent exports; retry shortly"))
 	}
 }
 

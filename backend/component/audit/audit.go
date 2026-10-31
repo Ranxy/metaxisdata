@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -247,7 +248,12 @@ func IsSensitiveAuditField(key string) bool {
 		// diagnostic aid; an audited method returns the bodies, and the ledger is
 		// kept forever, so copying them here would outlive the retention window
 		// and the docs' promise that audit rows carry no LLM content.
-		"requestbody", "request_body", "responsebody", "response_body":
+		//
+		// The report HTML is the same shape of problem: ExportQualityReport is
+		// audited because it is a bulk read, but its body carries
+		// failed-sample-derived data. The field name is the contract; see
+		// ExportQualityReportResponse.
+		"requestbody", "request_body", "responsebody", "response_body", "htmlcontent", "html_content":
 		return true
 	}
 	// A numeric output budget is not a credential. The generic "token" marker
@@ -331,20 +337,34 @@ func GetNestedString(raw map[string]any, keys ...string) string {
 	return value
 }
 
+// MapSeverity maps an error onto the ledger severity. A client that walks away
+// from a large download (context canceled, closed connection, end of stream) is a
+// warning, not a server failure: it is the expected outcome of a user closing the
+// tab, while a real read or write failure stays an error.
 func MapSeverity(err error) storepb.AuditLogSeverity {
 	if err == nil {
 		return storepb.AuditLogSeverity_INFO
 	}
 	connectErr, ok := errors.AsType[*connect.Error](err)
 	if !ok {
+		if isClientCancellation(err) {
+			return storepb.AuditLogSeverity_WARNING
+		}
 		return storepb.AuditLogSeverity_ERROR
 	}
 	switch connectErr.Code() {
-	case connect.CodeUnauthenticated, connect.CodePermissionDenied, connect.CodeInvalidArgument, connect.CodeNotFound, connect.CodeAlreadyExists:
+	case connect.CodeUnauthenticated, connect.CodePermissionDenied, connect.CodeInvalidArgument,
+		connect.CodeNotFound, connect.CodeAlreadyExists, connect.CodeCanceled:
 		return storepb.AuditLogSeverity_WARNING
 	default:
 		return storepb.AuditLogSeverity_ERROR
 	}
+}
+
+// isClientCancellation reports whether err is the client going away rather than a
+// server failure. net.ErrClosed and io.EOF are how a closed stream surfaces.
+func isClientCancellation(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF)
 }
 
 func BuildAuditStatus(err error) *storepb.AuditLogStatus {

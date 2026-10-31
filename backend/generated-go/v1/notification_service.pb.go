@@ -39,6 +39,10 @@ const (
 	// A data quality rule opened, recovered, failed to execute, or failed in a
 	// storm that was merged into one summary.
 	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY NotificationType = 3
+	// The workspace's scheduled data quality digest: one summary of the period's
+	// executions, problems and owners. It has no in-app copy; only the outbound
+	// channels subscribed to this type receive it.
+	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST NotificationType = 4
 )
 
 // Enum value maps for NotificationType.
@@ -48,12 +52,14 @@ var (
 		1: "NOTIFICATION_TYPE_SCHEMA_SYNC",
 		2: "NOTIFICATION_TYPE_OPENLINEAGE",
 		3: "NOTIFICATION_TYPE_DATA_QUALITY",
+		4: "NOTIFICATION_TYPE_DATA_QUALITY_DIGEST",
 	}
 	NotificationType_value = map[string]int32{
-		"NOTIFICATION_TYPE_UNSPECIFIED":  0,
-		"NOTIFICATION_TYPE_SCHEMA_SYNC":  1,
-		"NOTIFICATION_TYPE_OPENLINEAGE":  2,
-		"NOTIFICATION_TYPE_DATA_QUALITY": 3,
+		"NOTIFICATION_TYPE_UNSPECIFIED":         0,
+		"NOTIFICATION_TYPE_SCHEMA_SYNC":         1,
+		"NOTIFICATION_TYPE_OPENLINEAGE":         2,
+		"NOTIFICATION_TYPE_DATA_QUALITY":        3,
+		"NOTIFICATION_TYPE_DATA_QUALITY_DIGEST": 4,
 	}
 )
 
@@ -1788,7 +1794,11 @@ type NotificationChannel struct {
 	Kind        NotificationChannelKind `protobuf:"varint,3,opt,name=kind,proto3,enum=metaxisdata.v1.NotificationChannelKind" json:"kind,omitempty"`
 	// A disabled channel is kept but receives no new deliveries.
 	Enabled bool `protobuf:"varint,4,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// The notification types this channel subscribes to. Empty means every type.
+	// The notification types this channel subscribes to. Empty means every type,
+	// with one exception: the data quality digest is opt-in and is delivered only
+	// to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly,
+	// because it is a periodic workspace summary rather than an event and existing
+	// channels predate it.
 	EventTypes []NotificationType `protobuf:"varint,5,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.v1.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this channel delivers. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,6,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"min_severity,omitempty"`
@@ -3160,10 +3170,12 @@ func (x *NotificationRoute) GetUpdateTime() *timestamppb.Timestamp {
 
 // NotificationRouteMatch is who and what a route selects. An empty field is a
 // wildcard: a route with no event types, severity floor, owners and groups
-// selects every event.
+// selects every event. Routes never select the data quality digest: it is a
+// scheduled workspace summary with no audience to match.
 type NotificationRouteMatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The notification types this route selects. Empty means every type.
+	// The notification types this route selects. Empty means every type that has
+	// an in-app audience; the digest has none and is not routed.
 	EventTypes []NotificationType `protobuf:"varint,1,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.v1.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this route selects. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,2,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"min_severity,omitempty"`
@@ -3749,12 +3761,13 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\"9\n" +
 	"\x1eDeleteNotificationRouteRequest\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name*\x9f\x01\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name*\xca\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02\x12\"\n" +
-	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03*\xa1\x01\n" +
+	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03\x12)\n" +
+	"%NOTIFICATION_TYPE_DATA_QUALITY_DIGEST\x10\x04*\xa1\x01\n" +
 	"\x14NotificationSeverity\x12%\n" +
 	"!NOTIFICATION_SEVERITY_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aNOTIFICATION_SEVERITY_INFO\x10\x01\x12!\n" +
