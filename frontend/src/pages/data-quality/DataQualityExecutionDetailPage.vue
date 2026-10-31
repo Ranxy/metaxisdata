@@ -745,13 +745,13 @@ const showExplain = computed(
  * Loads the execution. `notifyErrors` is false for a poll: a page that already
  * shows an error must not raise a toast every three seconds.
  */
-async function load(notifyErrors: boolean) {
+async function load(notifyErrors: boolean, signal?: AbortSignal) {
   if (loading) {
     return;
   }
   loading = true;
   try {
-    const loaded = await getQualityExecution(executionName.value);
+    const loaded = await getQualityExecution(executionName.value, { signal });
     execution.value = loaded;
     error.value = "";
     if (loaded.initiator) {
@@ -797,10 +797,10 @@ async function reload() {
  * per attempt; the next manual refresh or route visit starts it again.
  */
 const polling = usePolling(
-  async () => {
+  async (signal) => {
     isPolling.value = true;
     try {
-      await load(false);
+      await load(false, signal);
     } finally {
       isPolling.value = false;
     }

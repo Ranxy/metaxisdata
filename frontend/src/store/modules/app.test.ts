@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { defineComponent, h, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { i18n } from "@/locales";
-import { useAppStore } from "./app";
+import { initLocale, useAppStore } from "./app";
 
 const STORAGE_KEY = "metaxisdata-app-state";
 
@@ -105,12 +105,24 @@ describe("app store locale", () => {
     expect(i18n.global.locale.value).toBe("en-US");
   });
 
+  it("stamps the stored locale on the document at bootstrap", () => {
+    const store = freshStore();
+    store.setLocale("zh-CN");
+    document.documentElement.lang = "";
+
+    initLocale();
+
+    expect(document.documentElement.lang).toBe("zh-CN");
+  });
+
   it("switches the store, the persistence and vue-i18n together", () => {
     const store = freshStore();
     store.setLocale("zh-CN");
 
     expect(store.locale).toBe("zh-CN");
     expect(i18n.global.locale.value).toBe("zh-CN");
+    // A screen reader pronounces the page in the language <html lang> names.
+    expect(document.documentElement.lang).toBe("zh-CN");
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}").locale).toBe(
       "zh-CN"
     );

@@ -1568,13 +1568,13 @@ function hasInProgress(): boolean {
 // The poll keeps the table honest while the runner works; a manual refresh is
 // not needed to see PENDING become COMPLETED.
 const executionsPolling = usePolling(
-  async () => {
+  async (signal) => {
     // A manual refresh may have cleared the in-progress rows since this round
     // was scheduled; do not spend a request on a settled page.
     if (!hasInProgress()) {
       return;
     }
-    await refreshExecutions();
+    await refreshExecutions({ signal });
   },
   { intervalMs: POLL_INTERVAL_MS, shouldContinue: hasInProgress }
 );

@@ -20,14 +20,33 @@ import { OpenLineageService } from "@/types/proto-es/v1/openlineage_service_pb";
 import { RoleService } from "@/types/proto-es/v1/role_service_pb";
 import { SettingService } from "@/types/proto-es/v1/setting_service_pb";
 import { UserService } from "@/types/proto-es/v1/user_service_pb";
+import { requestTimeoutMs, withRequestTimeout } from "@/utils/apiTimeout";
 import { sessionInterceptor } from "./session";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
 
+/** The RPC path a fetch is for, e.g. "/metaxisdata.v1.DatabaseService/ListDatabases". */
+function requestPath(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  return input instanceof URL ? input.toString() : input.url;
+}
+
 const transport = createConnectTransport({
   baseUrl,
   interceptors: [sessionInterceptor],
-  fetch: (input, init) => fetch(input, { ...init, credentials: "include" }),
+  // A hung RPC must not leave a page spinning forever; LLM, explanation and
+  // sync paths opt out because they legitimately outlive the default ceiling.
+  fetch: (input, init) =>
+    fetch(input, {
+      ...init,
+      credentials: "include",
+      signal: withRequestTimeout(
+        init?.signal,
+        requestTimeoutMs(requestPath(input))
+      ),
+    }),
 });
 
 export const applicationClient = createClient(ApplicationService, transport);

@@ -499,8 +499,6 @@ const fitAfterRebuild = useOneShot(() => fitView({ duration: 300 }), 50);
 const fitAfterInitial = useOneShot(() => fitView({ duration: 300 }), 100);
 const instanceStore = useInstanceStore();
 
-const OPENLINEAGE_META_TYPE = 100;
-
 interface NodeLineageData {
   upstream: LineageRelation[];
   downstream: LineageRelation[];
@@ -803,7 +801,7 @@ const selectedNodeRelatedRuns = computed<NodeRunSummary[]>(() => {
   const runs = new Map<string, NodeRunSummary>();
   const addRelation = (relation: LineageRelation) => {
     if (
-      Number(relation.metaType) !== OPENLINEAGE_META_TYPE ||
+      Number(relation.metaType) !== MetaType.OPENLINEAGE ||
       !relation.metaGuid
     ) {
       return;

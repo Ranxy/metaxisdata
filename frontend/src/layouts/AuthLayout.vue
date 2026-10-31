@@ -29,7 +29,7 @@
           >
             M
           </span>
-          <span class="text-xl font-semibold tracking-tight">{{ brandName }}</span>
+          <span class="text-xl font-semibold tracking-tight">{{ BRAND_NAME }}</span>
         </div>
 
         <div class="flex flex-1 flex-col justify-center py-12">
@@ -83,7 +83,7 @@
           >
             M
           </span>
-          <span class="text-base font-bold tracking-tight">{{ brandName }}</span>
+          <span class="text-base font-bold tracking-tight">{{ BRAND_NAME }}</span>
         </div>
         <div
           class="ml-auto inline-flex items-center gap-0.5 rounded-full border border-border/70 bg-card p-0.5 shadow-e1"
@@ -110,7 +110,7 @@
       <main class="flex flex-1 items-center justify-center px-4 pb-6 sm:px-8">
         <div class="w-full max-w-[420px]">
           <h1 class="sr-only">
-            {{ brandName }}
+            {{ BRAND_NAME }}
           </h1>
           <slot />
         </div>
@@ -130,15 +130,12 @@ import { Database, GitBranch, ShieldCheck } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
+import { BRAND_NAME } from "@/lib/brand";
 import type { AppLocale } from "@/locales";
 import { useAppStore } from "@/store/modules/app";
 
 const { t } = useI18n();
 const appStore = useAppStore();
-
-// The brand is the product name, not translatable copy: the same string is
-// hardcoded in the sidebar and the mobile header.
-const brandName = "MetaxisData";
 
 const locales: Array<{ value: AppLocale; label: string }> = [
   { value: "zh-CN", label: "简体中文" },

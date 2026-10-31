@@ -233,7 +233,7 @@ function hasActiveWork(): boolean {
 }
 
 /** The poll waits for a round to settle before scheduling the next one. */
-const polling = usePolling(() => loadJobs(true), {
+const polling = usePolling((signal) => loadJobs(true, signal), {
   intervalMs: POLL_INTERVAL_MS,
   shouldContinue: hasActiveWork,
 });
@@ -344,12 +344,15 @@ function scheduleNextPoll() {
  * page's order first. The recent page alone cannot prove nothing is active:
  * active jobs are the oldest PENDING ones and may sit below the page.
  */
-async function fetchSnapshot(): Promise<QualitySuggestionJob[]> {
+async function fetchSnapshot(
+  signal?: AbortSignal
+): Promise<QualitySuggestionJob[]> {
   const [recent, running] = await Promise.all([
-    listQualitySuggestionJobs({ pageSize: JOBS_PAGE_SIZE }),
+    listQualitySuggestionJobs({ pageSize: JOBS_PAGE_SIZE, signal }),
     listQualitySuggestionJobs({
       status: QualitySuggestionJobStatus.RUNNING,
       pageSize: ACTIVE_JOBS_PAGE_SIZE,
+      signal,
     }),
   ]);
   const merged = [...recent.items];
@@ -369,7 +372,8 @@ async function fetchSnapshot(): Promise<QualitySuggestionJob[]> {
  * the previously-active set (normally zero or one) and skipped once handled.
  */
 async function rereadMissingActiveJobs(
-  next: QualitySuggestionJob[]
+  next: QualitySuggestionJob[],
+  signal?: AbortSignal
 ): Promise<string[]> {
   const present = new Set(next.map((job) => job.name));
   // Include last round's failed re-reads: applyJobs replaced activeNames with the
@@ -381,7 +385,7 @@ async function rereadMissingActiveJobs(
   const retry: string[] = [];
   for (const name of missing) {
     try {
-      const job = await getQualitySuggestionJob(name);
+      const job = await getQualitySuggestionJob(name, signal);
       if (!present.has(job.name)) {
         present.add(job.name);
         next.push(job);
@@ -394,7 +398,7 @@ async function rereadMissingActiveJobs(
   return retry;
 }
 
-async function loadJobs(fromPoll = false) {
+async function loadJobs(fromPoll = false, signal?: AbortSignal) {
   if (inFlight) {
     // A user reload (e.g. after a submission) must rerun instead of dropping;
     // a poll that merely collided with it waits for the next round.
@@ -406,8 +410,8 @@ async function loadJobs(fromPoll = false) {
   inFlight = true;
   loading.value = true;
   try {
-    const next = await fetchSnapshot();
-    retryNames = await rereadMissingActiveJobs(next);
+    const next = await fetchSnapshot(signal);
+    retryNames = await rereadMissingActiveJobs(next, signal);
     error.value = "";
     applyJobs(next);
     // A failed re-read has to stay "previously active" so the next successful

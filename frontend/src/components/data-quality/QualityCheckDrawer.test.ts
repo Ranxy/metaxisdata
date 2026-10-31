@@ -477,7 +477,10 @@ describe("QualityCheckDrawer", () => {
 
     // The first poll only sees RUNNING, so the sheet does not refresh yet.
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(mocks.getQualityExecution).toHaveBeenCalledWith(planned.name);
+    expect(mocks.getQualityExecution).toHaveBeenCalledWith(
+      planned.name,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(mocks.getQualityRule).toHaveBeenCalledTimes(1);
 
     // The second poll sees the verdict; the re-read now runs once and hands the

@@ -542,10 +542,13 @@ export async function listQualityExecutions(options: {
 
 /** Read one execution with its state, verdict and evidence. */
 export async function getQualityExecution(
-  name: string
+  name: string,
+  options: { signal?: AbortSignal } = {}
 ): Promise<QualityExecution> {
   const request = create(GetQualityExecutionRequestSchema, { name });
-  return await dataQualityClient.getQualityExecution(request);
+  return await dataQualityClient.getQualityExecution(request, {
+    signal: options.signal,
+  });
 }
 
 /**

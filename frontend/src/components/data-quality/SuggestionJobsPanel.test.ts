@@ -454,7 +454,10 @@ describe("SuggestionJobsPanel", () => {
     await vi.advanceTimersByTimeAsync(2500);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(mocks.getQualitySuggestionJob).toHaveBeenCalledWith(OLD_JOB);
+    expect(mocks.getQualitySuggestionJob).toHaveBeenCalledWith(
+      OLD_JOB,
+      expect.any(AbortSignal)
+    );
     expect(wrapper.emitted("settled")).toContainEqual([NEW_SUGGESTIONS]);
     // The terminal job is now in the panel and polling stops.
     await vi.advanceTimersByTimeAsync(10_000);
