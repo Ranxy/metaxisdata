@@ -302,8 +302,8 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 
 最关键的实现约束：`SyncInstance`（`instance_sync.go`）和 `SyncDatabaseSchema`（`database_sync.go`）
 的 per-resource gate 会让**非 owner 等待并复用 owner 的结果**。所以 outcome/耗时只能在 `owner == true`
-的分支记录；API 触发和后台触发走的是同一个函数（`instance_service.go:183,378,462`、
-`operation.go:378`），**只在共享函数里埋一次**，不要在 API handler 再埋。
+的分支记录；API 触发和后台触发走的是同一个函数（`instance_service.go` 的 `SyncInstance`/`BatchSyncInstances`、
+`operation.go` 的 `SyncDatabaseForUser`），**只在共享函数里埋一次**，不要在 API handler 再埋。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
@@ -321,7 +321,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | `metaxisdata_schemasync_meta_resources_deleted_total` | counter | `object_type` | `logSchemaSyncDeletion`（`metadata_batch.go`，已有按类型计数） | 破坏性同步的告警面；保持「只记日志」的既有决策不变 | P0 |
 | `metaxisdata_schemasync_ddl_refresh_total` | counter | `mode=full\|rotating\|changed` | commit 后（`database_sync.go` 的 `SyncDatabaseSchema`） | DDL 刷新节奏 | P1 |
 | `metaxisdata_schemasync_ddl_objects_total` | counter | `result=upserted\|deleted\|unchanged` | commit 后（`database_sync.go` 的 `SyncDatabaseSchema`） | DDL 行写入；事务内不要埋 | P1 |
-| `metaxisdata_schemasync_ddl_fetch_failures_total` | counter | — | `prepareObjectDefinitions`（`object_definition.go:167-176`） | 抓取失败在事务之前发生，即使回滚也应计数 | P1 |
+| `metaxisdata_schemasync_ddl_fetch_failures_total` | counter | — | `prepareObjectDefinitions`（`object_definition.go`） | 抓取失败在事务之前发生，即使回滚也应计数 | P1 |
 | `metaxisdata_schemasync_statistics_refresh_total` | counter | `outcome=refreshed\|read_failed\|write_failed` | 统计刷新分支（`database_sync.go` 的 `SyncDatabaseSchema`） | best-effort 通道，失败不等于同步失败 | P1 |
 | `metaxisdata_schemasync_retries_total` | counter | `attempt=1\|2\|3` | `scheduleRetry`（`queue.go`） | 退避重排 | P0 |
 | `metaxisdata_schemasync_retries_exhausted_total` | counter | `engine` | `scheduleRetry` 返回 true 的调用方（`syncer.go` 的 checker） | 「持续失败的库」告警信号 | P0 |
@@ -329,45 +329,45 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | `metaxisdata_schemasync_database_skips_total` | counter | `reason=hidden\|instance_gone` | checker 的丢弃分支（`syncer.go`：实例消失、`ErrDatabaseHidden`）、`instance_sync.go` 的 `forgetQueuedDatabase` 调用点 | 排队库被无同步地丢弃 | P1 |
 | `metaxisdata_schemasync_database_hides_total` | counter | `reason=driver_not_found\|snapshot_missing` | `markDatabaseDeleted`（`database_sync.go`）、`SyncInstance`（`instance_sync.go`） | 清单收缩信号 | P1 |
 | `metaxisdata_schemasync_panics_total` | counter | `kind=database_sync\|instance_scan` | 终端 recover（`queue.go` 的 `trySyncAll`、`syncer.go` 的 checker；`SyncInstance`/`SyncDatabaseSchema` 的 recover 只释放 gate 后 re-panic，不重复计数） | 被吞掉的 panic | P1 |
-| `metaxisdata_schemasync_operations_total` | counter | `outcome=succeeded\|partial\|failed` | `deliverOperation`（`operation.go:335-354`，每次 operation 恰好一次） | **用户可见的同步请求**，不是同步工作量；`abandoned` 暂不提供（`instanceErr` 只有字符串，无类型原因） | P1 |
-| `metaxisdata_schemasync_operation_databases_total` | counter | `state=succeeded\|failed\|unfinished` | 同上，`detail` 里已有三个计数 | 一次库结果会扇出给所有等待它的 operation（`operation.go:219-239`），计数单位是「报告」不是「同步」 | P2 |
-| `metaxisdata_schemasync_operation_expired_total` | counter | — | `expireOperations`（`:257-298`） | 2h 超时的兜底信号 | P2 |
+| `metaxisdata_schemasync_operations_total` | counter | `outcome=succeeded\|partial\|failed` | `deliverOperation`（`operation.go`，每次 operation 恰好一次） | **用户可见的同步请求**，不是同步工作量；`abandoned` 暂不提供（`instanceErr` 只有字符串，无类型原因） | P1 |
+| `metaxisdata_schemasync_operation_databases_total` | counter | `state=succeeded\|failed\|unfinished` | 同上，`detail` 里已有三个计数 | 一次库结果会扇出给所有等待它的 operation（`operation.go` 的 `completeDatabase`），计数单位是「报告」不是「同步」 | P2 |
+| `metaxisdata_schemasync_operation_expired_total` | counter | — | `expireOperations`（`operation.go`） | 2h 超时的兜底信号 | P2 |
 
 **实例连接预算（`backend/component/state/connection.go`）**
 
-今天 governor 没有任何可观测访问器（只有 `Acquire/TryAcquire`，`:86-96`；holders/waiters 未导出）。
+`State` 已暴露 scrape 用的 `ConnectionInUse`/`ConnectionWaiters`（`connection.go`），`server.go` 用 GaugeFunc 接线；governor 在内部维护 holders/waiters。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_instance_connection_in_use` | gauge | — | 新增 `State.ConnectionStats()`，scrape 时快照 | 全实例租约总数（聚合，不加实例标签） | P0 |
-| `metaxisdata_instance_connection_waiters` | gauge | `priority=background\|manual\|interactive` | 同上 | 「预算是不是瓶颈」的直接信号 | P0 |
-| `metaxisdata_instance_connection_try_acquire_rejected_total` | counter | — | `tryAcquire` 的 `return nil, false`（`:141-143`） | 零基数、纯加法；目前是静默分支 | P0 |
-| `metaxisdata_instance_connection_wait_seconds` | histogram | `priority,outcome=granted\|timeout\|canceled` | `acquire`（`:98-136`），只观测真正排队的请求 | **热路径**（每次开 driver 都会走）。已确认 v1 不做，放 P1；v1 先用下面三条零成本指标看饱和度 | P1 |
+| `metaxisdata_instance_connection_in_use` | gauge | — | `State.ConnectionInUse`（scrape 时 GaugeFunc，`server.go` 接线） | 全实例租约总数（聚合，不加实例标签） | P0 |
+| `metaxisdata_instance_connection_waiters` | gauge | `priority=background\|manual\|interactive` | `State.ConnectionWaiters`（scrape 时 GaugeFunc，按 priority 拆分） | 「预算是不是瓶颈」的直接信号 | P0 |
+| `metaxisdata_instance_connection_try_acquire_rejected_total` | counter | — | `connectionGovernor.tryAcquire` 的拒绝分支（`connection.go`） | 零基数、纯加法；目前是静默分支 | P0 |
+| `metaxisdata_instance_connection_wait_seconds` | histogram | `priority,outcome=granted\|timeout\|canceled` | `acquire`（`connection.go`），只观测真正排队的请求 | **热路径**（每次开 driver 都会走）。已确认 v1 不做，放 P1；v1 先用下面三条零成本指标看饱和度 | P1 |
 
 **maintenance（`backend/runner/maintenance/maintenance.go`）**
 
-`passSummary`（`:150-160`）已经把所有计数、失败项、`retentionSkipped` 聚在一起，日志在 `:296-301`。
+`passSummary`（`maintenance.go`）已经把所有计数、失败项、`retentionSkipped` 聚在一起，日志在 `Run` 的 pass 汇总处（`maintenance.go`）。
 建议**只在 pass 级埋点**（不要同时埋 per-item，否则双计）。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_maintenance_passes_total` | counter | `outcome=ok\|partial` | `:296-301` | 每轮 6h 维护 | P0 |
-| `metaxisdata_maintenance_pass_duration_seconds` | histogram | — | `:296-297`（`started` 已有） | 1h pass 预算 | P0 |
+| `metaxisdata_maintenance_passes_total` | counter | `outcome=ok\|partial` | `Run` 的 pass 汇总日志（`maintenance.go`） | 每轮 6h 维护 | P0 |
+| `metaxisdata_maintenance_pass_duration_seconds` | histogram | — | `Run` 的 pass 汇总日志（`maintenance.go`，`started` 已有） | 1h pass 预算 | P0 |
 | `metaxisdata_maintenance_deleted_rows_total` | counter | `item`（12 个清理项） | 同上，`summary.counts` | 每轮清理量；注意两条 lineage 计数是「边」不是行 | P0 |
 | `metaxisdata_maintenance_item_failures_total` | counter | `item` | 同上，`summary.failed` | 单项失败但 pass 继续 | P0 |
-| `metaxisdata_maintenance_revalidation_edges_total` | counter | `kind,result` | `:340`、`:359`；`truncated` 在 `:335/:354` | 维护侧 revalidation 的吞吐 | P1 |
+| `metaxisdata_maintenance_revalidation_edges_total` | counter | `kind,result` | `revalidateIngestedLineage`（`maintenance.go`） | 维护侧 revalidation 的吞吐 | P1 |
 | `metaxisdata_maintenance_revalidation_backlog_total` | counter | `kind` | 同上（`truncated`） | 一轮没排干 backlog | P1 |
-| `metaxisdata_maintenance_openlineage_retention_skipped_total` | counter | `reason=no_window\|setting_unavailable` | `:392-404` | 保留策略未配置时今天只打日志 | P2 |
+| `metaxisdata_maintenance_openlineage_retention_skipped_total` | counter | `reason=no_window\|setting_unavailable` | `pruneOpenLineageRuns`（`maintenance.go`） | 保留策略未配置时今天只打日志 | P2 |
 
 **lineagevalidation（`backend/runner/lineagevalidation/validation.go`）**
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_lineagevalidation_triggers_total` | counter | `result=queued\|coalesced` | `Trigger`（`:82-90`） | `queued`=信号进入 channel（可能在 settle 窗口被 `discardPendingTrigger` 折叠，**不保证多跑一次 pass**）；`coalesced`=channel 已满被丢弃 | P0 |
-| `metaxisdata_lineagevalidation_passes_total` | counter | `outcome=ok\|error\|backlog_remaining` | `runOnce`（`:145-180`） | `backlogRemaining` 是函数内局部值，需在函数内埋点 | P0 |
+| `metaxisdata_lineagevalidation_triggers_total` | counter | `result=queued\|coalesced` | `Trigger`（`validation.go`） | `queued`=信号进入 channel（可能在 settle 窗口被 `discardPendingTrigger` 折叠，**不保证多跑一次 pass**）；`coalesced`=channel 已满被丢弃 | P0 |
+| `metaxisdata_lineagevalidation_passes_total` | counter | `outcome=ok\|error\|backlog_remaining` | `runOnce`（`validation.go`） | `backlogRemaining` 是函数内局部值，需在函数内埋点 | P0 |
 | `metaxisdata_lineagevalidation_pass_duration_seconds` | histogram | `outcome` | 同上 | | P0 |
 | `metaxisdata_lineagevalidation_edges_total` | counter | `result=revalidated\|still_unknown` | 同上，复用返回值 | | P0 |
-| `metaxisdata_lineagevalidation_trigger_pending` | gauge | — | `GaugeFunc` 读 buffered channel 长度（`:66-67`） | 「欠了一次 pass」 | P2 |
+| `metaxisdata_lineagevalidation_trigger_pending` | gauge | — | `GaugeFunc` 读 `Trigger` 的 buffered channel 长度（`validation.go`） | 「欠了一次 pass」 | P2 |
 
 ### 4.3 血缘：analyzer / OpenLineage 摄取 / revalidation
 
@@ -393,7 +393,7 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | `metaxisdata_lineage_scan_errors_total` | counter | `meta_type,stage` | `analyzer.go` 的 `queueAll` | 全量扫描的列表读取失败 | P1 |
 | `metaxisdata_lineage_analysis_gaps_total` | counter | `category,meta_type` | `analyze.go` 的 `analyzeObject`（`*UnsupportedStatementError` 在手） | 部分分析（有边但有未建模 gap），与「完全没血缘」区分 | P1 |
 
-> 不要 hook 在 `lineage.Analyze`（`backend/plugin/lineage/lineage.go:198`）：它有三个调用方
+> 不要 hook 在 `lineage.Analyze`（`backend/plugin/lineage/lineage.go`）：它有三个调用方
 > （runner、OpenLineage SQL facet、`AnalyzeSQL` RPC），混在一起会污染后台分析的数字。
 
 **OpenLineage 摄取（同步、请求 goroutine 内完成，60s 超时）**
@@ -402,16 +402,16 @@ SPA catch-all `/*` 折叠为 `spa`。这修掉了今天的原始路径基数问�
 | --- | --- | --- | --- | --- | --- |
 | `metaxisdata_openlineage_ingest_failures_total` | counter | `failure_kind,route=event\|batch` | `reportIngestionFailure` + 两个 401 分支（`auth`）+ 限流 deny（`rate_limited`） | 被拒绝的请求按原因分类；`failure_kind` 是 9 个有界值：storepb 枚举的小写形式（`invalid_event`/`limit_exceeded`/`scope_mismatch`/`persist_failed`/`process_failed`/`namespace_unmapped`/`unspecified`）加 `auth`、`rate_limited` | P0 |
 | `metaxisdata_openlineage_ingest_events_total` | counter | `route,result=accepted\|rejected,reason=parse\|limits\|scope\|persist\|process\|none` | 单事件与批次各自的终态分支 | 事件级（一次 1000 条的批次半成功会按事件计数）；accepted 事件的 `reason=none`（不接受空标签值） | P0 |
-| `metaxisdata_openlineage_ingest_process_duration_seconds` | histogram | `route` | 单事件 `:278` / 批内每事件 `:406` | 血缘推导（校验 + 可选 SQL 分析 + 写边），整个请求的延迟由 HTTP 指标覆盖 | P0 |
-| `metaxisdata_openlineage_edges_total` | counter | `kind=column\|table` | `processor.go:103` 写成功后 | 「Airflow 有没有给我们列级血缘」 | P0 |
-| `metaxisdata_openlineage_runs_persisted_total` | counter | `event_type`（归一化） | 单事件 `:269`、批次 `:389-402` | run 行写入量（重投会更新同一 run，计写入不重复） | P1 |
-| `metaxisdata_openlineage_edges_degraded_total` | counter | — | `processor.go:92-103`（来自 `report.degradedEdges`） | 生产者列声明与 registry 冲突被清空，保留表级依赖 | P1 |
+| `metaxisdata_openlineage_ingest_process_duration_seconds` | histogram | `route` | `handleIngestion`（单事件）/ `processBatchEvents`（批内每事件），`openlineage_handler.go` | 血缘推导（校验 + 可选 SQL 分析 + 写边），整个请求的延迟由 HTTP 指标覆盖 | P0 |
+| `metaxisdata_openlineage_edges_total` | counter | `kind=column\|table` | `recordLineageEdges`（`processor.go`）写成功后 | 「Airflow 有没有给我们列级血缘」 | P0 |
+| `metaxisdata_openlineage_runs_persisted_total` | counter | `event_type`（归一化） | `handleIngestion` 的 `UpsertOpenLineageRun`、`processBatchEvents` 的 `UpsertOpenLineageRuns` | run 行写入量（重投会更新同一 run，计写入不重复） | P1 |
+| `metaxisdata_openlineage_edges_degraded_total` | counter | — | `ProcessRunEvent`（`processor.go`，来自 `report.degradedEdges`） | 生产者列声明与 registry 冲突被清空，保留表级依赖 | P1 |
 | `metaxisdata_openlineage_edges_unknown_relation_total` | counter | — | 同上 | registry 还不认识的端点，交给 revalidation | P1 |
-| `metaxisdata_openlineage_events_no_lineage_total` | counter | `reason=non_complete\|sql_facet_without_datasets\|no_edges` | `processor.go:55-58`、`:77-80` | COMPLETE 但没产出；`sql_facet_without_datasets` 是文档里的 Airflow 配置错误 | P2 |
-| `metaxisdata_openlineage_table_level_fallback_total` | counter | — | `processor.go:119-129` | SQL facet 无法分析、退化为表级边 | P1 |
-| `metaxisdata_openlineage_dataset_resolutions_total` | counter | `caller=ingest\|preview,outcome=manual_mapping\|auto_match\|external` | `resolver.go:192-213` | 同一个 resolver 也服务读页面，**必须带 caller** 否则摄取数字被页面访问放大 | P1 |
-| `metaxisdata_openlineage_external_dataset_resolutions_total` | counter | `dataset_type` | `resolver.go:132-138` | 落到外部数据集的比例 | P2 |
-| `metaxisdata_openlineage_ingest_batch_size` | histogram | — | `:310-311` / `processBatchEvents` | 批次行为 vs 1000 上限 | P2 |
+| `metaxisdata_openlineage_events_no_lineage_total` | counter | `reason=non_complete\|sql_facet_without_datasets\|no_edges` | `ProcessRunEvent`（`processor.go`） | COMPLETE 但没产出；`sql_facet_without_datasets` 是文档里的 Airflow 配置错误 | P2 |
+| `metaxisdata_openlineage_table_level_fallback_total` | counter | — | `sqlFacetLineage`（`processor.go`）的 SQL 无法分析分支 | SQL facet 无法分析、退化为表级边 | P1 |
+| `metaxisdata_openlineage_dataset_resolutions_total` | counter | `caller=ingest\|preview,outcome=manual_mapping\|auto_match\|external` | `ResolveDataset`/`ResolveDatasetPreview`（`resolver.go`） | 同一个 resolver 也服务读页面，**必须带 caller** 否则摄取数字被页面访问放大 | P1 |
+| `metaxisdata_openlineage_external_dataset_resolutions_total` | counter | `dataset_type` | `ResolveDataset`（`resolver.go`） | 落到外部数据集的比例 | P2 |
+| `metaxisdata_openlineage_ingest_batch_size` | histogram | — | `processBatchEvents`（`openlineage_handler.go`） | 批次行为 vs 1000 上限 | P2 |
 
 **revalidation（两个 runner 调用同一对 Processor 方法）**
 
@@ -421,11 +421,11 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_openlineage_revalidation_batches_total` | counter | `sweep=unresolved_endpoint\|contradicted_column_claim` | `lineage_revalidation.go:68,121` | 每次一批（500 条上限） | P1 |
+| `metaxisdata_openlineage_revalidation_batches_total` | counter | `sweep=unresolved_endpoint\|contradicted_column_claim` | `RevalidateUnresolvedLineage`/`RevalidateContradictedColumnClaims`（`lineage_revalidation.go`） | 每次一批（500 条上限） | P1 |
 | `metaxisdata_openlineage_revalidation_duration_seconds` | histogram | `sweep` | 同上 | 读+校验+重写一批的成本 | P1 |
 | `metaxisdata_openlineage_revalidation_edges_total` | counter | `sweep,result=read\|revalidated\|degraded` | 同上 | 每轮工作量，**不是去重后的边数** | P1 |
-| `metaxisdata_openlineage_revalidation_still_unknown_total` | counter | `sweep` | `:96`、`:147` | 端点仍然未知的 run 数（backlog 增长信号） | P1 |
-| `metaxisdata_openlineage_revalidation_truncated_total` | counter | `sweep` | `:101`、`:149` | 一批没排干 | P1 |
+| `metaxisdata_openlineage_revalidation_still_unknown_total` | counter | `sweep` | 同样的两个 `Revalidate*` 方法（`lineage_revalidation.go`） | 端点仍然未知的 run 数（backlog 增长信号） | P1 |
+| `metaxisdata_openlineage_revalidation_truncated_total` | counter | `sweep` | 同样的两个 `Revalidate*` 方法（`lineage_revalidation.go`） | 一批没排干 | P1 |
 
 ### 4.4 数据质量：调度 / 规则执行 / 问题台账 / 目标库查询 / 画像
 
@@ -469,8 +469,8 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 | `metaxisdata_query_readonly_duration_seconds` | histogram | `purpose` | 同上（从 begin 到 commit） | 「目标库慢」还是「调度慢」的分界线 | P0 |
 | `metaxisdata_query_readonly_rows` | histogram | `purpose` | 扫描结束后 | 聚合类恒为 1；采样/画像是关注点 | P1 |
 | `metaxisdata_query_readonly_truncated_total` | counter | `purpose` | `result.Truncated` | 行/字节上限截断 | P2 |
-| `metaxisdata_quality_profile_total` / `_duration_seconds` | counter/histogram | `outcome` / — | **（未实现）**画像请求（两次目标库查询） | P1 |
-| `metaxisdata_quality_profile_columns` | histogram | `engine` | **（未实现）**单次画像列数（上限 200） | P2 |
+| `metaxisdata_quality_profile_total` / `_duration_seconds` | counter/histogram | `outcome` / — | **（未实现）**画像请求（两次目标库查询） | 画像请求量与耗时 | P1 |
+| `metaxisdata_quality_profile_columns` | histogram | `engine` | **（未实现）**单次画像列数（上限 200） | 列数分布 | P2 |
 
 > 不要用 `acquireQualityConnection` 的 `action string`（人类文案 `"the dry run"`）当标签；
 > 用 typed purpose 或在两个调用点映射。
@@ -478,8 +478,8 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 ### 4.5 LLM
 
 **推荐在 agent loop 内部统一埋点**，而不是在每个调用点各埋一遍：给 `llm.AgentConfig`
-（`backend/component/llm/event.go:49-93`）加 `Feature string` 和 `Metrics *metrics.Metrics`，
-`RunAgentLoop`（`agent.go:89`）在唯一出口处记录**调用数、耗时、token 与提供商/传输层错误**
+（`backend/component/llm/event.go` 的 `AgentConfig`）加 `Feature string` 和 `Metrics *metrics.Metrics`，
+`RunAgentLoop`（`backend/component/llm/agent.go`）在唯一出口处记录**调用数、耗时、token 与提供商/传输层错误**
 （空响应、stream 错误、达到最大轮数）。调用方（DQ 的三个分析 + ExplainSQL）只需填 `Feature`。
 注意：**JSON 结构解析失败发生在调用方**（DQ 的严格解析，模型答了但格式不合格），不在 agent loop 里，
 所以 `llm_parse_failures_total` 仍埋在 DQ 的解析点。
@@ -495,13 +495,13 @@ ExplainSQL 的 `AgentConfig` **暂不打开** `IncludeUsage`（部分 OpenAI 兼
 | `metaxisdata_llm_call_duration_seconds` | histogram | `feature,provider` | 同上 | 提供商往返；无总超时（header 30s / idle 60s / 最多 6 轮），桶要覆盖到 300s | P0 |
 | `metaxisdata_llm_tokens_total` | counter | `feature,provider,kind=prompt\|completion` | 消费 `AgentEventUsage`/`AgentEventAgentEnd.Usage` | 提供商上报才有；**不是账单**。v1 只保证 DQ 路径（已开 `IncludeUsage`）；ExplainSQL 的 `IncludeUsage` 待验证网关后再开（已确认） | P0 |
 | `metaxisdata_llm_usage_missing_total` | counter | `feature` | 无 usage 事件时 | 提供商没报 usage → token 面板会低估；也是网关不支持 `stream_options` 的信号。ExplainSQL 的 token 在 v1 不保证，**这条是它的补偿信号**，因此列为 P0 | P0 |
-| `metaxisdata_llm_parse_failures_total` | counter | `feature` | DQ 三个严格 JSON 解析失败点（`data_quality_llm_analysis.go:110-117,535-542`、`data_quality_label_analysis.go:132-139`） | 模型答了但结构不合格，不缓存不落库 | P0 |
-| `metaxisdata_llm_cache_events_total` | counter | `feature=explain_sql\|dq_explain_result,event=hit\|miss\|write_error` | ExplainSQL 缓存命中/未命中/写失败（`explain_sql_service.go:96-112,117,238-240`）；DQ L2（`data_quality_llm_analysis.go:484-492,592-633,676-678`） | 缓存规避了多少模型调用 | P1 |
-| `metaxisdata_llm_quota_rejections_total` | counter | `kind=analysis\|column_analysis` | `data_quality_llm_quota.go` | **仅日配额拒绝**（ResourceExhausted）；共享并发信号量是排队等待，不是拒绝，因此没有对应计数 | P0 |
-| `metaxisdata_llm_quota_used` | gauge | `kind` | 配额增加后（`:93`、`:104`），UTC 日切重置 | 进程本地当日用量 | P1 |
+| `metaxisdata_llm_parse_failures_total` | counter | `feature` | DQ 三个严格 JSON 解析失败点（`data_quality_llm_analysis.go`、`data_quality_label_analysis.go`） | 模型答了但结构不合格，不缓存不落库 | P0 |
+| `metaxisdata_llm_cache_events_total` | counter | `feature=explain_sql\|dq_explain_result,event=hit\|miss\|write_error` | ExplainSQL 缓存命中/未命中/写失败（`explain_sql_service.go`）；DQ L2（`data_quality_llm_analysis.go`） | 缓存规避了多少模型调用 | P1 |
+| `metaxisdata_llm_quota_rejections_total` | counter | `kind=analysis\|column_analysis` | `LLMQuota.quotaExhaustedLocked`（`backend/component/dataquality/quota.go`） | **仅日配额拒绝**（ResourceExhausted）；共享并发信号量是排队等待，不是拒绝，因此没有对应计数 | P0 |
+| `metaxisdata_llm_quota_used` | gauge | `kind` | `LLMQuota.Begin` 成功后（`backend/component/dataquality/quota.go`），UTC 日切重置 | 进程本地当日用量 | P1 |
 | `metaxisdata_llm_analyses_in_flight` | gauge | — | `GaugeFunc` 读 semaphore 长度 | 并发上限 2，共享，**不要加 kind 标签** | P1 |
-| `metaxisdata_llm_concurrency_wait_seconds` | histogram | `kind` | 配额通过到拿到 semaphore（`:110-131`） | 「提供商慢」还是「我们自己的并发闸门」 | P2 |
-| `metaxisdata_llm_debug_log_dropped_total` | counter | `reason=queue_full\|shutdown` | `backend/component/llm/debug.go:70-84` | 调试日志是 best-effort，丢弃要可见 | P2 |
+| `metaxisdata_llm_concurrency_wait_seconds` | histogram | `kind` | 配额通过到拿到 semaphore（`LLMQuota.Begin`，`backend/component/dataquality/quota.go`） | 「提供商慢」还是「我们自己的并发闸门」 | P2 |
+| `metaxisdata_llm_debug_log_dropped_total` | counter | `reason=queue_full\|shutdown` | `debugLogWriter.enqueue`（`backend/component/llm/debug.go`） | 调试日志是 best-effort，丢弃要可见 | P2 |
 
 ---
 
