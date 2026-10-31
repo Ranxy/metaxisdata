@@ -93,7 +93,7 @@
             </Badge>
             <div class="min-w-0 flex-1">
               <div class="font-medium truncate">
-                {{ getSearchResultName(result) }}
+                {{ result.name }}
               </div>
               <div class="text-xs text-muted-foreground truncate">
                 {{ formatGuidLabel(result.guid) }}
@@ -273,7 +273,7 @@
             <MetadataList
               v-if="activeGroup"
               :meta-type="activeGroup.metaType"
-              :items="activeGroup.list"
+              :items="activeGroup.items"
               @select="handleSelectMetadata"
               @refresh="reload"
             />
@@ -285,13 +285,13 @@
           </CardContent>
 
           <div
-            v-if="selectedMetaType && selectedNextPageToken"
+            v-if="activeMetaType && hasMoreForActive"
             class="p-4 border-t"
           >
             <MetadataPagination
-              :has-next="!!selectedNextPageToken"
+              :has-next="hasMoreForActive"
               :is-loading="isLoadingMore"
-              @load-more="loadMoreMetadata"
+              @load-more="handleLoadMore"
             />
           </div>
         </template>
@@ -315,13 +315,12 @@ import {
   computed,
   defineAsyncComponent,
   onBeforeUnmount,
-  reactive,
   ref,
   watch,
 } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
-import { getMetadata, listMetadata, searchMetadata } from "@/api/database";
+import { getMetadata, listMetadata } from "@/api/database";
 import { getInstance } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -373,6 +372,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import {
+  type MetadataChild,
+  useMetadataChildren,
+} from "@/composables/useMetadataChildren";
 import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
@@ -381,10 +384,8 @@ import {
   type FunctionMetadata,
   type ManualSQLMetadata,
   type MaterializedViewMetadata,
-  type MetadataResponse_Metadata,
   MetaType,
   type ProcedureMetadata,
-  type SearchMetadataResult,
   type SequenceMetadata,
   type StoredMetadata,
   type TableMetadata,
@@ -406,13 +407,28 @@ const route = useRoute();
 const router = useRouter();
 const instanceStore = useInstanceStore();
 
-const isLoading = ref(false);
+// The list and the search are separate levels: a search replaces its own rows,
+// never the list the reader returns to when the dropdown closes.
+const level = useMetadataChildren({ pageSize: 20 });
+const search = useMetadataChildren({ pageSize: 20 });
+
 const isLoadingInstances = computed(() => instanceStore.loading);
-const isLoadingMore = ref(false);
-const error = ref<string | null>(null);
+const leafLoading = ref(false);
+const instancesError = ref<unknown>(undefined);
+const leafError = ref<unknown>(undefined);
+const isLoading = computed(() => leafLoading.value || level.loading.value);
+const isLoadingMore = computed(() => level.loadingMore.value);
+const activeError = computed(
+  () => leafError.value ?? level.error.value ?? instancesError.value
+);
+const error = computed(() =>
+  activeError.value
+    ? formatError(activeError.value, "metadataBrowser.fetchError")
+    : null
+);
 // A NotFound is the one error that means "this object is gone"; anything else
 // (network, permission, server) is a load failure the reader should retry.
-const notFound = ref(false);
+const notFound = computed(() => errorCode(activeError.value) === Code.NotFound);
 
 // Search state
 const searchQuery = ref("");
@@ -420,9 +436,11 @@ const searchBarRef = ref<HTMLElement | null>(null);
 const advancedSearchRef = ref<InstanceType<typeof AdvancedSearchBar> | null>(
   null
 );
-const isSearching = ref(false);
-const searchError = ref<string | null>(null);
-const searchResults = ref<SearchMetadataResult[]>([]);
+const searchResults = computed(() => search.items.value);
+const isSearching = computed(() => search.loading.value);
+const searchError = computed(() =>
+  search.error.value ? t("metadataBrowser.searchError") : null
+);
 const showSearchResults = ref(false);
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -540,19 +558,30 @@ const searchableMetaTypes = [
 ];
 
 const instances = computed(() => instanceStore.active);
-const metadataGroups = ref<MetadataResponse_Metadata[]>([]);
+
+/** One tab's rows, rebuilt from the level's children. */
+interface MetadataGroup {
+  metaType: MetaType;
+  items: StoredMetadata[];
+}
+
+// Children arrive in the order the backend returned the groups; the first
+// appearance of a type fixes its position in the tab strip.
+const metadataGroups = computed<MetadataGroup[]>(() => {
+  const byType = new Map<MetaType, StoredMetadata[]>();
+  for (const child of level.items.value) {
+    if (!child.metadata) continue;
+    const items = byType.get(child.metaType) ?? [];
+    items.push(child.metadata);
+    byType.set(child.metaType, items);
+  }
+  return [...byType].map(([metaType, items]) => ({ metaType, items }));
+});
 
 const activeMetaType = ref<MetaType | null>(null);
-const selectedMetaType = ref<MetaType | null>(null);
-
-// The backend returns a nextPageToken per metaType (on each MetadataList).
-// Track them separately to avoid token mix-ups when switching tabs.
-const nextPageTokenByMetaType = reactive(new Map<MetaType, string>());
-
-const selectedNextPageToken = computed(() => {
-  if (!selectedMetaType.value) return "";
-  return nextPageTokenByMetaType.get(selectedMetaType.value) ?? "";
-});
+const hasMoreForActive = computed(
+  () => activeMetaType.value != null && level.hasNextFor(activeMetaType.value)
+);
 
 const currentInstanceEngine = ref<Engine | null>(null);
 
@@ -884,8 +913,9 @@ const isMySQLInstance = computed(() => {
 const activeGroup = computed(() => {
   if (!activeMetaType.value) return null;
   return (
-    metadataGroups.value.find((g) => g.metaType === activeMetaType.value) ??
-    null
+    metadataGroups.value.find(
+      (group) => group.metaType === activeMetaType.value
+    ) ?? null
   );
 });
 
@@ -908,21 +938,12 @@ function getQueryString(key: string): string {
   return Array.isArray(value) ? value[0] || "" : value;
 }
 
-/** Localizes a load failure and remembers whether the object itself was gone:
- *  only a NotFound becomes the "object not found" copy, while network and
- *  permission failures stay a generic, retryable load error. */
-function recordError(e: unknown) {
-  notFound.value = errorCode(e) === Code.NotFound;
-  error.value = formatError(e, "metadataBrowser.fetchError");
-}
-
 async function fetchInstances() {
-  error.value = null;
-  notFound.value = false;
+  instancesError.value = undefined;
   try {
     await instanceStore.fetch(true);
   } catch (e) {
-    recordError(e);
+    instancesError.value = e;
   }
 }
 
@@ -941,12 +962,10 @@ async function fetchCurrentInstanceEngineIfNeeded() {
 /** Clears every trace of the previously shown view before a new fetch. */
 function resetViewState() {
   leaf.value = null;
-  error.value = null;
-  notFound.value = false;
-  metadataGroups.value = [];
-  nextPageTokenByMetaType.clear();
+  leafError.value = undefined;
+  instancesError.value = undefined;
+  level.reset();
   activeMetaType.value = null;
-  selectedMetaType.value = null;
 }
 
 /**
@@ -957,14 +976,14 @@ function resetViewState() {
  */
 async function fetchLeafDetail(metaType: LeafType) {
   resetViewState();
-  isLoading.value = true;
+  leafLoading.value = true;
   try {
     await fetchCurrentInstanceEngineIfNeeded();
     leaf.value = await LEAF_LOADERS[metaType](currentGuid.value);
   } catch (e) {
-    recordError(e);
+    leafError.value = e;
   } finally {
-    isLoading.value = false;
+    leafLoading.value = false;
   }
 }
 
@@ -976,102 +995,16 @@ async function fetchMetadataGroups() {
   }
 
   resetViewState();
-  isLoading.value = true;
-
-  try {
-    await fetchCurrentInstanceEngineIfNeeded();
-
-    const response = await listMetadata({
-      parentGuid: getEffectiveParentGuidForListing(),
-      pageSize: 20,
-    });
-
-    metadataGroups.value = response.typesStoredMetadata;
-
-    for (const group of response.typesStoredMetadata) {
-      nextPageTokenByMetaType.set(group.metaType, group.nextPageToken);
-    }
-
-    if (!activeMetaType.value && response.typesStoredMetadata.length > 0) {
-      activeMetaType.value = response.typesStoredMetadata[0].metaType;
-    }
-
-    // Enable pagination for the currently active tab immediately: the backend
-    // returns a nextPageToken per metaType in the initial response.
-    if (activeMetaType.value && !selectedMetaType.value) {
-      selectedMetaType.value = activeMetaType.value;
-    }
-  } catch (e) {
-    recordError(e);
-  } finally {
-    isLoading.value = false;
+  await fetchCurrentInstanceEngineIfNeeded();
+  const children = await level.load(getEffectiveParentGuidForListing(), []);
+  if (children && children.length > 0) {
+    activeMetaType.value = children[0].metaType;
   }
 }
 
-async function fetchMetaTypeFirstPage(metaType: MetaType) {
-  isLoading.value = true;
-  error.value = null;
-
-  try {
-    const response = await listMetadata({
-      parentGuid: getEffectiveParentGuidForListing(),
-      pageSize: 20,
-      pageToken: "",
-      metaType,
-    });
-
-    const returned = response.typesStoredMetadata[0];
-    if (returned) {
-      const group = metadataGroups.value.find((g) => g.metaType === metaType);
-      if (group) {
-        group.list = [...returned.list];
-      } else {
-        // Fall back to response payload (has correct protobuf message shape).
-        metadataGroups.value = response.typesStoredMetadata;
-      }
-    }
-
-    nextPageTokenByMetaType.set(metaType, returned?.nextPageToken ?? "");
-    selectedMetaType.value = metaType;
-  } catch (e) {
-    recordError(e);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-async function loadMoreMetadata() {
-  if (!selectedMetaType.value) return;
-  const pageToken = selectedNextPageToken.value;
-  if (!pageToken) return;
-
-  isLoadingMore.value = true;
-
-  try {
-    const response = await listMetadata({
-      parentGuid: getEffectiveParentGuidForListing(),
-      pageSize: 20,
-      pageToken,
-      metaType: selectedMetaType.value,
-    });
-
-    const returned = response.typesStoredMetadata[0];
-    if (returned) {
-      const group = metadataGroups.value.find(
-        (g) => g.metaType === selectedMetaType.value
-      );
-      if (group) {
-        group.list.push(...returned.list);
-      }
-    }
-
-    nextPageTokenByMetaType.set(
-      selectedMetaType.value,
-      returned?.nextPageToken ?? ""
-    );
-  } finally {
-    isLoadingMore.value = false;
-  }
+async function handleLoadMore() {
+  if (!activeMetaType.value) return;
+  await level.loadMore(activeMetaType.value);
 }
 
 function handleNavigate(guidIndex: number) {
@@ -1213,12 +1146,8 @@ function handleSelectMetadata(item: StoredMetadata, metaType: MetaType) {
   });
 }
 
-async function handleSelectTab(metaType: MetaType) {
+function handleSelectTab(metaType: MetaType) {
   activeMetaType.value = metaType;
-
-  // Selecting a tab enables pagination for that metaType.
-  // Always fetch the first page with metaType to obtain a valid nextPageToken.
-  await fetchMetaTypeFirstPage(metaType);
 }
 
 /** Loads whatever the current route names: instance list, group lists or a leaf. */
@@ -1231,9 +1160,7 @@ async function loadRouteState() {
   if (isRootPath.value) {
     await fetchInstances();
   } else if (isExternalDatasetDetailView.value) {
-    error.value = null;
-    isLoading.value = false;
-    metadataGroups.value = [];
+    resetViewState();
   } else {
     await fetchMetadataGroups();
   }
@@ -1268,37 +1195,19 @@ watch(
   { immediate: true }
 );
 
-// Search logic
-function getSearchResultName(result: SearchMetadataResult): string {
-  if (result.metadata) {
-    return getMetadataName(result.metadata);
-  }
-  const segments = result.guid.split(";");
-  return segments[segments.length - 1] || result.guid;
-}
-
+// Search logic. The dropdown is a level of its own, so the composable owns the
+// cancellation: a slow answer for a term or scope the reader has left can never
+// overwrite the current one.
 async function performSearch(query: string) {
   if (!query.trim()) {
-    searchResults.value = [];
+    search.reset();
     return;
   }
-
-  isSearching.value = true;
-  searchError.value = null;
-
-  try {
-    const response = await searchMetadata({
-      searchStr: query.trim(),
-      parentGuidPrefix: scopeFilterGuidPrefix.value,
-      metaType: typeFilter.value ?? undefined,
-    });
-    searchResults.value = response.results;
-  } catch {
-    searchError.value = t("metadataBrowser.searchError");
-    searchResults.value = [];
-  } finally {
-    isSearching.value = false;
-  }
+  await search.search(
+    scopeFilterGuidPrefix.value ?? "",
+    typeFilter.value == null ? [] : [typeFilter.value],
+    query
+  );
 }
 
 const leafMetaTypes = new Set<MetaType>([
@@ -1313,17 +1222,17 @@ const leafMetaTypes = new Set<MetaType>([
   MetaType.APPLICATION_SQL,
 ]);
 
-function handleSelectSearchResult(result: SearchMetadataResult) {
+function handleSelectSearchResult(result: MetadataChild) {
   showSearchResults.value = false;
   searchQuery.value = "";
-  searchResults.value = [];
+  search.reset();
 
   if (result.metaType === MetaType.COLUMN) {
     const segments = result.guid.split(";");
     const columnName =
       result.metadata?.type.case === "columnMetadata"
         ? result.metadata.type.value.name
-        : segments[segments.length - 1] || "";
+        : result.name || segments[segments.length - 1] || "";
 
     router.push({
       name: "MetadataDetail",
@@ -1355,8 +1264,7 @@ function clearSearch() {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
   advancedSearchRef.value?.clear();
   searchQuery.value = "";
-  searchResults.value = [];
-  searchError.value = null;
+  search.reset();
   showSearchResults.value = false;
 }
 
@@ -1374,8 +1282,7 @@ watch(searchQuery, (val) => {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
   showSearchResults.value = Boolean(val.trim());
   if (!val.trim()) {
-    searchResults.value = [];
-    searchError.value = null;
+    search.reset();
     return;
   }
   searchDebounceTimer = setTimeout(() => performSearch(val), 300);

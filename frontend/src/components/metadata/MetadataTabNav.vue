@@ -48,16 +48,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  type MetadataResponse_Metadata,
-  MetaType,
-} from "@/types/proto-es/v1/database_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { metaTypeLabel } from "@/utils/metaType";
 
 const { t } = useI18n();
 
 const props = defineProps<{
-  groups: MetadataResponse_Metadata[];
+  // Only the tab identity is needed: the page owns the rows, and a group with no
+  // rows is already filtered out before it reaches this strip.
+  groups: Array<{ metaType: MetaType }>;
   active: MetaType | null;
 }>();
 
