@@ -1,6 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
+import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
-import { effectScope } from "vue";
+import { defineComponent, effectScope } from "vue";
 import { useStreaming } from "./useStreaming";
 
 /** A stream whose frames are pushed by the test. */
@@ -190,6 +191,38 @@ describe("useStreaming", () => {
     await firstRun;
 
     expect(onDone).toHaveBeenCalledOnce();
+  });
+
+  it("aborts the run in flight when the component is unmounted", async () => {
+    const source = controlled<string>();
+    let signal: AbortSignal | undefined;
+    const Harness = defineComponent({
+      setup() {
+        const stream = useStreaming<string>({
+          open: (runSignal) => {
+            signal = runSignal;
+            return source.iterable;
+          },
+          onChunk: vi.fn(),
+          onError: vi.fn(),
+        });
+        (Harness as unknown as { stream?: unknown }).stream = stream;
+        return () => null;
+      },
+    });
+    const wrapper = mount(Harness);
+    const stream = (
+      Harness as unknown as {
+        stream: ReturnType<typeof useStreaming<string>>;
+      }
+    ).stream;
+    void stream.run();
+    expect(signal?.aborted).toBe(false);
+
+    wrapper.unmount();
+
+    expect(signal?.aborted).toBe(true);
+    source.finish();
   });
 
   it("aborts the run in flight when the owning scope is disposed", async () => {

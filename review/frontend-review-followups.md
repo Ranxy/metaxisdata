@@ -17,6 +17,12 @@
 | 7 | 抽屉焦点边界分支测试 | — | `01f6887` |
 | 8 | **FD7**：`RuleConfigForm` 按规则族拆分 + `useSchemaDriftColumns` | FD7 | `ef870fe` |
 | 9 | **FD2（第一步）**：测高收敛下沉为 `lib/lineageLayout` | FD2 | `6ff94fc` |
+| 10 | **FD2（第二步）**：详情列抽成 `LineageNodeDetailPanel` + 9 条测试 | FD2 | `6d1c63b` |
+| 11 | **FD3（第一步）**：`useDataQualityPermissions` 权限矩阵 | FD3 | `8caa2d2` |
+| 12 | **FD3（第二步）**：`utils/dataQualityExecutions` 纯派生 + 9 条测试 | FD3 | `46ee4e7` |
+| 13 | **FD3（第三步）**：`useTargetWorkspaceDialogs` + 14 条测试 | FD3 | `45a9741` |
+| 14 | **FD3（第四步）**：`useTargetScheduleEditor` + 7 条测试 | FD3 | `21c3b40` |
+| 15 | ExplainSQLPage 页面测试（补齐轮询/流式遗留） | ① | `e0bbba8` |
 
 ## 实施说明
 
@@ -25,7 +31,7 @@
 - `usePagedFetch.reset/refresh` 接受 `{ signal }`：外部 signal（轮询轮次）被中止时转发到本次请求的 controller；被中止请求的答案不再落盘；signal 已中止时不发请求。`getQualityExecution` 增加 `options.signal`。
 - 5 个轮询任务全部把轮次 signal 传进实际读（`refreshExecutions({signal})`、`load(false, signal)`、`getQualityExecution(name,{signal})`、`refreshPage({signal})`、建议作业两个 list + get），关闭页面/抽屉会真正断掉在途 RPC。
 - 新增 `composables/useStreaming.ts`：reset/帧处理/代际/abort/scope 清理集中在一处，`QualityExplainDrawer` 与 `ExplainSQLPage` 都改用它。此前 ExplainSQLPage 的代际逻辑没有任何测试；现在该逻辑由 7 条 composable 测试覆盖（替换流丢帧、cancel、错误与 abort 区分、scope 释放、参数透传、done 语义），抽屉原有三条行为测试保留。
-- 遗留：`ExplainSQLPage` 仍无页面级测试；代际逻辑已由 `useStreaming` 覆盖，页面只剩装配。
+- 遗留已补齐：`ExplainSQLPage` 现有 3 条页面级测试（流式渲染、卸载中止、错误映射、按钮禁用）。
 
 ### 2. markdown 按需加载
 
@@ -66,10 +72,24 @@
 ## FD2：god view 拆分（进行中）
 
 - 第一步已完成：`settleNodeHeights` 的四轮收敛（含测高未就绪时保留旧布局、pass 预算、全部节点测高）与 `heightFor` 回退下沉到 `lib/lineageLayout.ts`，6 条纯函数测试覆盖（100%），页面只保留 DOM 测量与 `stack()` 回调。
-- 页面仍 2024 行；`LineageNodeDetailPanel.vue`（模板 141-361 + 派生状态约 470 行）与 `useLineageGraphData`/`useLineageSelection` 两个 composable 待下一轮完成。
+- 第二步已完成（`6d1c63b`）：详情列抽成 `components/lineage/LineageNodeDetailPanel.vue`（402 行，含外部对象的 namespace/datasetType、字段 trail、来源徽标、相关 runs、空态），页面从 2016 行降到 1807 行；父页面只传 7 个派生值 + 7 个动作事件。新增 **9 条组件测试**（空态、身份/计数、外部对象、trail、runs、动作 emit、禁用态、无 trail）。
+- 仍需完成：`useLineageGraphData`（nodeDataMap/展开状态/单节点与度数取数）与 `useLineageSelection`（选中/字段揭示/跳转动作）两个 composable；页面目标降到约 300 行。
+
+## FD3：god view 下沉（进行中）
+
+- **权限矩阵**（`8caa2d2`）：`composables/useDataQualityPermissions.ts` 统一 14 个 DQ 权限名；`DataQualityTargetPage`（8 个 `canX`）与 `QualityCheckDrawer`（7 个）改为一次解构，两处重复的权限字符串消失；4 条测试覆盖授予/拒绝/权限集变化/未加载 profile。
+- **执行页纯派生**（`46ee4e7`）：`utils/dataQualityExecutions.ts` 承接 target 行读数（GUID/名称/路径、最新批次 state/outcome、verdict 计数、failed/unfinished、时间与耗时、状态提示），页面里约 120 行私有函数删除；`utils/dataQualityExecutions.test.ts` 9 条测试覆盖边界（无 target、无 batch、无 counts、未完成、运行中、无起止时间），覆盖率 100% 行。
+- **抽屉状态机**（`45a9741`）：`composables/useTargetWorkspaceDialogs.ts` 承接 inline composer（新建/编辑/从 AI 草案打开）、check 侧栏、以及 `?check=`/`?add=1`/`?edit=1` 三条深链的解析与 URL 清理；TargetPage **1502 → 1355 行**，页面只剩提交/关闭时的业务处理。新增 **14 条测试**：三种打开方式、scope/列种子、侧栏开关与 query 清理、深链（有效/过期/与 add 冲突/edit 无对应规则）、`add=1` 无权限提示、无 query 时不写 URL。
+- **排期编辑器**（`21c3b40`）：`composables/useTargetScheduleEditor.ts` 承接打开时从 Duration 回填、客户端校验、保存并回写 summary；TargetPage **1355 → 1308 行**。7 条测试覆盖整点回填、空排期默认、非法/合法校验、非法不保存、成功保存与回写、失败保留对话框、开关绑定；覆盖率 100%。
+- **ExplainSQLPage 页面测试**（`e0bbba8`）：补齐上一轮遗留的页面级测试——切到自定义 SQL、输入、点击 Explain，断言 `explainSQL` 收到 `{ signal }`、流式内容渲染、卸载中止在途流、失败显示映射文案而非原始错误、无 SQL 时按钮禁用。3 条测试。
+- 剩余：`useSuggestionFilters`/`useExecutionFilters`；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
+
+### 排序调整
+
+FD2 的两个 composable 与画布/路由/快照状态互相引用（`expandedDirections`、`updateGraphState`、`snapshot`、`route` 交叉），直接抽取需要把这些依赖全部注入，风险高于收益，且该页没有页面测试兜底。因此先做 FD3 中可测、边界清晰的下沉（权限矩阵、纯派生函数、抽屉状态机），FD2 的数据层留到之后单独处理，并在记录中保持可见。
 
 ## 尚未开始
 
-- **FD2 后续**：`LineageGraphPage` 详情面板 + `useLineageGraphData`/`useLineageSelection`。
+- **FD2 后续**：`LineageGraphPage` 的 `useLineageGraphData`/`useLineageSelection` 两个 composable（页面目标约 300 行；依赖画布/路由/快照，需先补页面级测试）。
 - **FD3**：三个 DQ god view（Executions/Target/Suggestions）的抽屉、URL、权限、轮询下沉。
 - **FD12**：随上述下沉补页面/纯函数测试。

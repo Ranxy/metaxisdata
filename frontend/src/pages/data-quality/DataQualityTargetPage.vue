@@ -568,14 +568,13 @@ import {
 } from "lucide-vue-next";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import {
   getQualityContract,
   getQualityTarget,
   getQualityTargetSchedule,
   listQualitySuggestions,
   runQualityRules,
-  updateQualityTargetSchedule,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -614,9 +613,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useTargetScheduleEditor } from "@/composables/useTargetScheduleEditor";
+import { useTargetWorkspaceDialogs } from "@/composables/useTargetWorkspaceDialogs";
 import { notify } from "@/lib/notify";
-import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityContract,
   type QualityExecutionSummary,
@@ -638,13 +639,7 @@ import {
   qualityIssueStatusVariant,
   qualityTargetMetadataRoute,
 } from "@/utils/dataQuality";
-import {
-  durationToSchedule,
-  type ScheduleUnit,
-  scheduleToDuration,
-  type TargetColumnDetail,
-  validateScheduleInterval,
-} from "@/utils/dataQualityForm";
+import { type TargetColumnDetail } from "@/utils/dataQualityForm";
 import {
   isLabelSuggestion,
   isPendingDraft,
@@ -678,37 +673,20 @@ const RULE_PAGE_SIZE = 1000;
 
 const { t, locale } = useI18n();
 const route = useRoute();
-const router = useRouter();
-const authStore = useAuthStore();
 const { formatError } = useErrorMessage();
 
 const targetGuid = computed(() => routeParamToGuid(route.params.targetGuid));
 
-const canRun = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.run")
-);
-const canCreate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.create")
-);
-const canUpdate = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
-);
-const canSuggest = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.suggest")
-);
-/** The one-click label pass profiles stale columns before asking the model. */
-const canProfile = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.profile.run")
-);
-const canListIssues = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.issues.list")
-);
-const canViewIssue = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.issues.get")
-);
-const canPublish = computed(() =>
-  authStore.hasPermission("metaxisdata.dataQuality.contracts.publish")
-);
+const {
+  canRun,
+  canCreate,
+  canUpdate,
+  canSuggest,
+  canProfile,
+  canListIssues,
+  canViewIssue,
+  canPublish,
+} = useDataQualityPermissions();
 
 const rules = ref<QualityRule[]>([]);
 /** Per-rule recent completed executions, newest first (server order). */
@@ -726,12 +704,6 @@ const summary = ref<QualityTargetSummary>(
  */
 const targetColumns = ref<TargetColumnDetail[]>([]);
 const orphaned = ref(false);
-/** The target's one schedule editor; every enabled check runs on it. */
-const scheduleOpen = ref(false);
-const scheduleValue = ref("1");
-const scheduleUnit = ref<ScheduleUnit>("hours");
-const scheduleSaving = ref(false);
-const scheduleError = ref("");
 /** The target's contract: defaults, published version and drift. */
 const contract = ref<QualityContract>();
 const contractLoading = ref(true);
@@ -742,18 +714,20 @@ const draftsFailed = ref(false);
 const runningAll = ref(false);
 const runningRule = ref("");
 const newNames = ref<Set<string>>(new Set());
-/** The inline composer, open on the target this page names. */
-const composerOpen = ref(false);
-/** The rule the composer edits; undefined makes it create instead. */
-const editingRule = ref<QualityRule>();
-/** The section a new check was opened from, which seeds its type. */
-const composerScope = ref<"dataset" | "column">();
-/** The column a column section named, written into the new check's config. */
-const composerInitialColumn = ref("");
-/** The AI draft the composer was opened from; undefined means a blank create. */
-const composerSuggestion = ref<QualitySuggestion>();
-/** The check whose side sheet is open, by full resource name; empty closes it. */
-const selectedCheck = ref("");
+const {
+  composerOpen,
+  editingRule,
+  composerScope,
+  composerInitialColumn,
+  composerSuggestion,
+  selectedCheck,
+  openAddCheck,
+  openComposer,
+  openEditor,
+  openCheck,
+  closeCheck,
+  onCheckOpenChange,
+} = useTargetWorkspaceDialogs({ rules, loading, canCreate });
 const copilot = ref<InstanceType<typeof TargetCopilotPanel>>();
 
 /**
@@ -773,6 +747,24 @@ const effectiveMetaType = computed<MetaType>(() => {
   return fromRule !== undefined && fromRule !== MetaType.UNSPECIFIED
     ? fromRule
     : MetaType.TABLE;
+});
+
+const {
+  targetSchedule,
+  scheduleOpen,
+  scheduleValue,
+  scheduleUnit,
+  scheduleSaving,
+  scheduleError,
+  scheduleIssueKey,
+  openScheduleEditor,
+  setScheduleUnit,
+  onScheduleOpenChange,
+  saveSchedule,
+} = useTargetScheduleEditor({
+  summary,
+  targetGuid,
+  effectiveMetaType,
 });
 
 const displayName = computed(() => targetDisplayName(summary.value));
@@ -889,9 +881,6 @@ const lastRunText = computed(() =>
     : t("dataQuality.workspace.summaryNeverRun")
 );
 
-/** The target's schedule and next run, as the aggregate read resolved them. */
-const targetSchedule = computed(() => summary.value.schedule);
-
 const scheduleIntervalLabel = computed(() =>
   formatScheduleInterval(targetSchedule.value?.scheduleInterval)
 );
@@ -910,63 +899,6 @@ const nextRunTitle = computed(() => {
   const next = targetSchedule.value?.nextRunTime;
   return next ? formatDateTime(next, locale.value) : undefined;
 });
-
-/** Live client-side validation for the schedule dialog. */
-const scheduleIssueKey = computed(() => {
-  const [issue] = validateScheduleInterval({
-    value: scheduleValue.value,
-    unit: scheduleUnit.value,
-  });
-  return issue?.key ?? "";
-});
-
-function openScheduleEditor() {
-  const parsed = durationToSchedule(targetSchedule.value?.scheduleInterval);
-  const empty = parsed.value === "";
-  scheduleValue.value = empty ? "1" : parsed.value;
-  scheduleUnit.value = empty ? "hours" : parsed.unit;
-  scheduleError.value = "";
-  scheduleOpen.value = true;
-}
-
-function setScheduleUnit(value: unknown) {
-  scheduleUnit.value = String(value) as ScheduleUnit;
-}
-
-function onScheduleOpenChange(open: boolean) {
-  if (!open) {
-    scheduleOpen.value = false;
-  }
-}
-
-/** Save the target's schedule; the returned schedule patches the summary. */
-async function saveSchedule() {
-  if (scheduleSaving.value || scheduleIssueKey.value !== "") {
-    return;
-  }
-  scheduleSaving.value = true;
-  scheduleError.value = "";
-  try {
-    const updated = await updateQualityTargetSchedule({
-      targetGuid: targetGuid.value,
-      metaType: effectiveMetaType.value,
-      scheduleInterval: scheduleToDuration({
-        value: scheduleValue.value,
-        unit: scheduleUnit.value,
-      }),
-    });
-    summary.value.schedule = updated;
-    scheduleOpen.value = false;
-    notify.success(t("dataQuality.workspace.scheduleUpdated"));
-  } catch (cause: unknown) {
-    scheduleError.value = formatError(
-      cause,
-      "dataQuality.workspace.scheduleUpdateFailed"
-    );
-  } finally {
-    scheduleSaving.value = false;
-  }
-}
 
 const contractDefaultSeverity = computed(
   () => contract.value?.settings?.defaultSeverity ?? QualitySeverity.UNSPECIFIED
@@ -1245,98 +1177,6 @@ function onRuleSaved(rule: QualityRule) {
   onRuleCreated(rule);
 }
 
-/**
- * Opens the composer for a new check. A section can narrow it: the dataset header
- * starts on a table-level check, a column header on a check for that column.
- */
-function openAddCheck(
-  options: { scope?: "dataset" | "column"; column?: string } = {}
-) {
-  editingRule.value = undefined;
-  composerSuggestion.value = undefined;
-  composerScope.value = options.scope;
-  composerInitialColumn.value = options.column ?? "";
-  composerOpen.value = true;
-}
-
-/** The header's New rule starts a blank create; a row can pass a draft instead. */
-function openComposer(suggestion?: QualitySuggestion) {
-  if (suggestion) {
-    openComposerFromDraft(suggestion);
-    return;
-  }
-  openAddCheck();
-}
-
-/**
- * A draft's "adjust" opens the same composer prefilled from it, so its typed
- * config is reviewed beside every other check rather than in a separate editor.
- */
-function openComposerFromDraft(suggestion: QualitySuggestion) {
-  editingRule.value = undefined;
-  composerSuggestion.value = suggestion;
-  composerScope.value = undefined;
-  composerInitialColumn.value = "";
-  composerOpen.value = true;
-}
-
-/** The row's edit opens the same composer, fixed to that rule. */
-function openEditor(rule: QualityRule) {
-  editingRule.value = rule;
-  composerSuggestion.value = undefined;
-  composerScope.value = undefined;
-  composerInitialColumn.value = "";
-  composerOpen.value = true;
-}
-
-/** A row click opens the check's side sheet without leaving the workspace. */
-function openCheck(rule: QualityRule) {
-  selectedCheck.value = rule.name;
-}
-
-/**
- * Removes `check` from the URL while preserving the other query keys. The edit
- * flag is dropped with it: it only names an intent to open the composer on that
- * check, which closing the sheet has already fulfilled or abandoned.
- */
-function removeCheckQuery() {
-  if (route.query.check === undefined && route.query.edit === undefined) {
-    return;
-  }
-  const query = { ...route.query };
-  delete query.check;
-  delete query.edit;
-  void router.replace({ query });
-}
-
-function closeCheck() {
-  selectedCheck.value = "";
-  removeCheckQuery();
-}
-
-function onCheckOpenChange(open: boolean) {
-  if (!open) {
-    closeCheck();
-  }
-}
-
-/**
- * A check named in the URL opens once the rules have loaded; a name this target
- * does not have (a stale link) is dropped silently rather than shown as an error.
- */
-function syncCheckFromQuery() {
-  const name = typeof route.query.check === "string" ? route.query.check : "";
-  if (name === "" || loading.value) {
-    return;
-  }
-  if (rules.value.some((rule) => rule.name === name)) {
-    selectedCheck.value = name;
-    return;
-  }
-  selectedCheck.value = "";
-  removeCheckQuery();
-}
-
 /** Replaces a rule in place, or appends it when it is new to this page. */
 function replaceRule(rule: QualityRule) {
   const index = rules.value.findIndex((item) => item.name === rule.name);
@@ -1457,62 +1297,5 @@ onMounted(load);
 // the whole workspace reloads with the GUID.
 watch(targetGuid, () => {
   void load();
-});
-
-// A query-opened check waits for the rules it names; watching the loading flag
-// re-runs the resolution when the workspace arrives.
-watch([() => route.query.check, rules, loading], syncCheckFromQuery, {
-  immediate: true,
-});
-
-/**
- * The DQ directory's start-monitoring picker lands here with `add=1`: open the
- * check dialog as soon as the (possibly empty) workspace is ready, then consume
- * the flag so a refresh does not reopen it.
- */
-function syncAddFromQuery() {
-  if (loading.value || route.query.add !== "1") {
-    return;
-  }
-  // The flag is consumed first, whatever happens next, so a reload never
-  // re-triggers it and a `check` in the same URL keeps its own path.
-  const query = { ...route.query };
-  delete query.add;
-  void router.replace({ query });
-  if (!canCreate.value) {
-    notify.info(t("dataQuality.workspace.createPermissionRequired"));
-    return;
-  }
-  if (route.query.check !== undefined) {
-    return;
-  }
-  openComposer();
-}
-
-watch([() => route.query.add, loading], syncAddFromQuery, { immediate: true });
-
-/**
- * The old edit URL arrives as `check=<name>&edit=1`: consume the flag, then open
- * the workspace composer on that check instead of the read-only sheet. A name
- * this target does not have is ignored, exactly like a stale `check`.
- */
-function syncEditFromQuery() {
-  if (loading.value || route.query.edit !== "1") {
-    return;
-  }
-  const query = { ...route.query };
-  delete query.edit;
-  void router.replace({ query });
-  const check = typeof route.query.check === "string" ? route.query.check : "";
-  const rule = rules.value.find((item) => item.name === check);
-  if (!rule) {
-    return;
-  }
-  openEditor(rule);
-  closeCheck();
-}
-
-watch([() => route.query.edit, rules, loading], syncEditFromQuery, {
-  immediate: true,
 });
 </script>

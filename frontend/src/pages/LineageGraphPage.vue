@@ -142,226 +142,22 @@
            to be selected left a blank strip beside the graph on arrival and
            shifted the canvas the moment anything was clicked. -->
       <Card class="overflow-hidden xl:h-full xl:min-h-0">
-        <CardContent v-if="selectedNodeSummary" class="flex h-full flex-col p-0">
-          <div class="flex items-start justify-between gap-3 border-b px-5 py-4">
-            <div class="min-w-0 space-y-1">
-              <div class="text-xs uppercase tracking-wide text-muted-foreground">
-                {{ t("common.details") }}
-              </div>
-              <h2 class="flex items-center gap-2 text-lg font-semibold leading-tight">
-                <span
-                  class="size-2.5 shrink-0 rounded-full"
-                  :style="{ backgroundColor: selectedNodeSummary.scopeColor }"
-                />
-                <span class="truncate">{{ selectedNodeSummary.label }}</span>
-              </h2>
-              <p class="truncate text-xs text-muted-foreground" :title="selectedNodeSummary.guid">
-                {{ selectedNodeSummary.fullLabel }}
-              </p>
-            </div>
-            <Button variant="ghost" size="sm" @click="closeSelectedNode">
-              {{ t("lineageGraph.closeDetail") }}
-            </Button>
-          </div>
-
-          <div class="flex-1 space-y-6 overflow-y-auto px-5 py-4">
-            <section class="space-y-3">
-              <div class="flex flex-wrap gap-2">
-                <Badge :variant="selectedNodeSummary.isExternal ? 'outline' : 'default'">
-                  {{ selectedNodeSummary.isExternal ? t("openlineage.external") : t("openlineage.internal") }}
-                </Badge>
-                <Badge variant="outline">
-                  {{ selectedNodeSummary.metaTypeLabel }}
-                </Badge>
-              </div>
-
-              <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <div class="rounded-md border p-3">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.scope") }}</div>
-                  <div class="mt-1 flex items-center gap-2 text-sm font-medium">
-                    <span
-                      class="size-2.5 shrink-0 rounded-full"
-                      :style="{ backgroundColor: selectedNodeSummary.scopeColor }"
-                    />
-                    <span class="truncate">{{ selectedNodeSummary.scopeLabel || "-" }}</span>
-                  </div>
-                </div>
-                <div class="rounded-md border p-3">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.qualifiedName") }}</div>
-                  <div class="mt-1 break-all text-sm font-medium">{{ selectedNodeSummary.fullLabel }}</div>
-                </div>
-                <div class="rounded-md border p-3">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.fieldCount") }}</div>
-                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.columns.length }}</div>
-                </div>
-                <div class="rounded-md border p-3">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.upstreamObjects") }}</div>
-                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.upstreamCount }}</div>
-                </div>
-                <div class="rounded-md border p-3">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.downstreamObjects") }}</div>
-                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.downstreamCount }}</div>
-                </div>
-                <div v-if="selectedNodeSummary.isExternal" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
-                  <div class="text-xs text-muted-foreground">{{ t("openlineageSettings.namespace") }}</div>
-                  <div class="mt-1 break-all text-sm font-medium">{{ selectedNodeSummary.externalNamespace || "-" }}</div>
-                </div>
-                <div v-if="selectedNodeSummary.isExternal" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
-                  <div class="text-xs text-muted-foreground">{{ t("openlineage.datasetType") }}</div>
-                  <div class="mt-1 text-sm font-medium">{{ selectedNodeSummary.externalDatasetType || "-" }}</div>
-                </div>
-                <div v-if="selectedColumnContext" class="rounded-md border p-3 sm:col-span-2 xl:col-span-1">
-                  <div class="text-xs text-muted-foreground">{{ t("lineageGraph.selectedField") }}</div>
-                  <div class="mt-1 text-sm font-medium">{{ selectedColumnContext }}</div>
-                </div>
-              </div>
-
-              <!-- How far the field runs across the canvas. The trail is walked
-                   over the drawn graph, so these counts are about what is here,
-                   not about the whole stored graph. -->
-              <div v-if="fieldTrailSummary" class="space-y-2">
-                <div class="text-xs uppercase tracking-wide text-muted-foreground">
-                  {{ t("lineageGraph.fieldTrail") }}
-                </div>
-                <p class="text-xs text-muted-foreground">
-                  {{ t("lineageGraph.fieldTrailHint") }}
-                </p>
-                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                  <div
-                    v-for="side in [
-                      { key: 'up', label: t('metadataBrowser.upstream'), data: fieldTrailSummary.upstream },
-                      { key: 'down', label: t('metadataBrowser.downstream'), data: fieldTrailSummary.downstream },
-                    ]"
-                    :key="side.key"
-                    class="rounded-md border p-3"
-                  >
-                    <div class="text-xs text-muted-foreground">{{ side.label }}</div>
-                    <div class="mt-1 text-sm font-medium">
-                      {{ t("lineageGraph.legendObjectCount", { count: side.data.nodeIds.size }) }}
-                      ·
-                      {{
-                        t("lineageGraph.fieldTrailRelationCount", {
-                          count: side.data.relationCount,
-                        })
-                      }}
-                    </div>
-                  </div>
-                </div>
-                <p
-                  v-if="fieldTrailSummary.truncated"
-                  class="text-xs text-muted-foreground"
-                >
-                  {{ t("lineageGraph.fieldTrailTruncated") }}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="!dimsOffTrail"
-                  @click="handleFitTrail"
-                >
-                  {{ t("lineageGraph.fieldTrailFit") }}
-                </Button>
-              </div>
-
-              <!-- Which writers reached this object, before the graph's own
-                   origin filter: the number is about the stored graph, not
-                   about what happens to be drawn. -->
-              <div v-if="selectedNodeOrigins.length > 0" class="space-y-2">
-                <div class="text-xs uppercase tracking-wide text-muted-foreground">
-                  {{ t("lineageGraph.originLabel") }}
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <span
-                    v-for="item in selectedNodeOrigins"
-                    :key="item.origin"
-                    class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs"
-                  >
-                    <OriginSwatch :origin="item.origin" :width="18" />
-                    {{ t(originLabelKey(item.origin)) }}
-                    <span class="tabular-nums text-muted-foreground">
-                      {{ item.count }}
-                      {{ t("metadataBrowser.lineageRelationsCount") }}
-                    </span>
-                  </span>
-                </div>
-              </div>
-
-              <div class="flex flex-wrap gap-2">
-                <!-- The same overlay the metadata pages show, so a reader never has
-                     to leave the graph to read an object's definition. A dataset
-                     outside every instance has no definition to read. -->
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="selectedNodeSummary.isExternal"
-                  @click="openSchemaFor(selectedNodeSummary.guid)"
-                >
-                  <Code class="mr-1 size-3.5" />
-                  {{ t("metadataBrowser.viewSchema") }}
-                </Button>
-                <Button variant="outline" size="sm" @click="refocusOnSelectedNode">
-                  {{ t("lineageGraph.refocusGraph") }}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="!canOpenSelectedNodeColumnLineage"
-                  @click="openSelectedNodeColumnLineage"
-                >
-                  {{ t("lineageGraph.openColumnLineage") }}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :disabled="selectedNodeSummary.isExternal"
-                  @click="openSelectedNodeMetadata"
-                >
-                  {{ t("openlineage.openMetadata") }}
-                </Button>
-              </div>
-            </section>
-
-            <section class="space-y-3">
-              <div>
-                <h3 class="text-sm font-semibold">{{ t("lineageGraph.relatedRuns") }}</h3>
-                <p class="text-sm text-muted-foreground">
-                  {{
-                    selectedColumnContext
-                      ? t("lineageGraph.relatedRunsFiltered")
-                      : t("lineageGraph.relatedRunsDescription")
-                  }}
-                </p>
-              </div>
-
-              <div v-if="selectedNodeRelatedRuns.length === 0" class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                {{ t("lineageGraph.noRelatedRuns") }}
-              </div>
-
-              <div v-else class="space-y-2">
-                <Button
-                  v-for="run in selectedNodeRelatedRuns"
-                  :key="run.guid"
-                  variant="outline"
-                  class="h-auto w-full justify-start px-3 py-3 text-left"
-                  @click="openOpenLineageRun(run.guid)"
-                >
-                  <div class="space-y-1">
-                    <div class="font-medium">{{ run.label }}</div>
-                    <div class="text-xs text-muted-foreground">
-                      {{ run.updatedAtLabel }}
-                    </div>
-                  </div>
-                </Button>
-              </div>
-            </section>
-          </div>
-        </CardContent>
-        <CardContent v-else class="flex h-full items-center justify-center">
-          <EmptyState
-            :icon="MousePointerClick"
-            :title="t('lineageGraph.selectNodeHint')"
-          />
-        </CardContent>
+        <LineageNodeDetailPanel
+          :summary="selectedNodeSummary"
+          :origins="selectedNodeOrigins"
+          :field-trail="fieldTrailSummary"
+          :column-context="selectedColumnContext"
+          :related-runs="selectedNodeRelatedRuns"
+          :dims-off-trail="dimsOffTrail"
+          :can-open-column-lineage="canOpenSelectedNodeColumnLineage"
+          @close="closeSelectedNode"
+          @refocus="refocusOnSelectedNode"
+          @fit-trail="handleFitTrail"
+          @open-schema="openSchemaFor"
+          @open-column-lineage="openSelectedNodeColumnLineage"
+          @open-metadata="openSelectedNodeMetadata"
+          @open-run="openOpenLineageRun"
+        />
       </Card>
     </div>
 
@@ -405,11 +201,9 @@ import "@vue-flow/controls/dist/style.css";
 import "@vue-flow/minimap/dist/style.css";
 import {
   ArrowLeft,
-  Code,
   Lock,
   Maximize2,
   Minus,
-  MousePointerClick,
   Plus,
   RotateCcw,
   Unlock,
@@ -417,7 +211,6 @@ import {
 import { getApplicationSQL } from "@/api/application";
 import { getLineage, getLineageCounts, type LineageCount } from "@/api/lineage";
 import AppLoading from "@/components/common/AppLoading.vue";
-import EmptyState from "@/components/common/EmptyState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import LineageLegend, {
   type LegendOrigin,
@@ -428,10 +221,10 @@ import type {
   LineageNodeKind,
 } from "@/components/lineage/LineageNode.vue";
 import LineageNode from "@/components/lineage/LineageNode.vue";
-import OriginSwatch from "@/components/lineage/OriginSwatch.vue";
+import LineageNodeDetailPanel from "@/components/lineage/LineageNodeDetailPanel.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -453,7 +246,6 @@ import {
   countRelationsByOrigin,
   LINEAGE_ORIGINS,
   type LineageOrigin,
-  originLabelKey,
   type RelationOrigin,
 } from "@/lib/lineageOrigin";
 import {
