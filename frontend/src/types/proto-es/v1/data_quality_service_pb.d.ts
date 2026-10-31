@@ -5671,6 +5671,373 @@ export declare type GetQualityContractRevisionResponse = Message<"metaxisdata.v1
 export declare const GetQualityContractRevisionResponseSchema: GenMessage<GetQualityContractRevisionResponse>;
 
 /**
+ * ExportQualityDataChunk is one slice of a streamed CSV export. A client
+ * concatenates the slices into a file: the first slice starts with a UTF-8 BOM
+ * and the header row, so the file opens cleanly in a spreadsheet without a
+ * manual encoding choice.
+ *
+ * @generated from message metaxisdata.v1.ExportQualityDataChunk
+ */
+export declare type ExportQualityDataChunk = Message<"metaxisdata.v1.ExportQualityDataChunk"> & {
+  /**
+   * A slice of the CSV bytes. A slice may end in the middle of a value's UTF-8
+   * sequence; the document is only meaningful once every slice is concatenated.
+   *
+   * @generated from field: bytes data = 1;
+   */
+  data: Uint8Array;
+
+  /**
+   * The total number of data rows written so far, across all slices. It is
+   * monotonic and the last value is the export's row count, which lets a client
+   * report progress without counting the document.
+   *
+   * @generated from field: int64 row_count = 2;
+   */
+  rowCount: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExportQualityDataChunk.
+ * Use `create(ExportQualityDataChunkSchema)` to create a new message.
+ */
+export declare const ExportQualityDataChunkSchema: GenMessage<ExportQualityDataChunk>;
+
+/**
+ * ExportQualityExecutionsRequest selects the executions to export. The filters
+ * carry the same meaning as their ListQualityExecutions counterparts.
+ *
+ * @generated from message metaxisdata.v1.ExportQualityExecutionsRequest
+ */
+export declare type ExportQualityExecutionsRequest = Message<"metaxisdata.v1.ExportQualityExecutionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionState state = 2;
+   */
+  state: QualityExecutionState;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityStatus outcome = 3;
+   */
+  outcome: QualityStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityExecutionTrigger trigger = 4;
+   */
+  trigger: QualityExecutionTrigger;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 5;
+   */
+  rule: string;
+
+  /**
+   * The exact target GUID.
+   *
+   * @generated from field: string target_guid = 6;
+   */
+  targetGuid: string;
+
+  /**
+   * Format: instances/{instance}
+   *
+   * @generated from field: string instance = 7;
+   */
+  instance: string;
+
+  /**
+   * Format: users/{user}
+   *
+   * @generated from field: string initiator = 8;
+   */
+  initiator: string;
+
+  /**
+   * Only executions started at or after this time.
+   *
+   * @generated from field: google.protobuf.Timestamp start_time = 9;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * Only executions started before this time.
+   *
+   * @generated from field: google.protobuf.Timestamp end_time = 10;
+   */
+  endTime?: Timestamp;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRuns/{quality_run}
+   *
+   * @generated from field: string run = 11;
+   */
+  run: string;
+
+  /**
+   * The row ceiling. Zero means the server default (100000); values above that
+   * maximum are coerced to it.
+   *
+   * @generated from field: int32 max_rows = 12;
+   */
+  maxRows: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExportQualityExecutionsRequest.
+ * Use `create(ExportQualityExecutionsRequestSchema)` to create a new message.
+ */
+export declare const ExportQualityExecutionsRequestSchema: GenMessage<ExportQualityExecutionsRequest>;
+
+/**
+ * ExportQualityIssuesRequest selects the issues to export. The filters carry the
+ * same meaning as their ListQualityIssues counterparts.
+ *
+ * @generated from message metaxisdata.v1.ExportQualityIssuesRequest
+ */
+export declare type ExportQualityIssuesRequest = Message<"metaxisdata.v1.ExportQualityIssuesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityIssueStatus status = 2;
+   */
+  status: QualityIssueStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 3;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 4;
+   */
+  rule: string;
+
+  /**
+   * The exact target GUID.
+   *
+   * @generated from field: string target_guid = 5;
+   */
+  targetGuid: string;
+
+  /**
+   * Format: users/{user}
+   *
+   * @generated from field: string owner = 6;
+   */
+  owner: string;
+
+  /**
+   * Only issues first seen at or after this time.
+   *
+   * @generated from field: google.protobuf.Timestamp start_time = 7;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * Only issues first seen at or before this time.
+   *
+   * @generated from field: google.protobuf.Timestamp end_time = 8;
+   */
+  endTime?: Timestamp;
+
+  /**
+   * The row ceiling. Zero means the server default (100000); values above that
+   * maximum are coerced to it.
+   *
+   * @generated from field: int32 max_rows = 9;
+   */
+  maxRows: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExportQualityIssuesRequest.
+ * Use `create(ExportQualityIssuesRequestSchema)` to create a new message.
+ */
+export declare const ExportQualityIssuesRequestSchema: GenMessage<ExportQualityIssuesRequest>;
+
+/**
+ * ExportQualityTargetsRequest selects the targets to export. The filters carry
+ * the same meaning as their ListQualityTargets counterparts.
+ *
+ * @generated from message metaxisdata.v1.ExportQualityTargetsRequest
+ */
+export declare type ExportQualityTargetsRequest = Message<"metaxisdata.v1.ExportQualityTargetsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The following four filters are GUID path prefixes, the same shape as
+   * ListQualityTargets.
+   *
+   * @generated from field: string instance = 2;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: string database = 3;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string schema = 4;
+   */
+  schema: string;
+
+  /**
+   * @generated from field: string table = 5;
+   */
+  table: string;
+
+  /**
+   * A case-insensitive substring over the target's path and GUID.
+   *
+   * @generated from field: string search = 6;
+   */
+  search: string;
+
+  /**
+   * Only targets whose worst latest result is this status. UNSPECIFIED keeps
+   * every target, including those whose rules have not run yet.
+   *
+   * @generated from field: metaxisdata.v1.QualityStatus worst_status = 7;
+   */
+  worstStatus: QualityStatus;
+
+  /**
+   * Only targets with at least one unresolved issue.
+   *
+   * @generated from field: bool has_open_issue = 8;
+   */
+  hasOpenIssue: boolean;
+
+  /**
+   * Only targets with at least one pending AI draft.
+   *
+   * @generated from field: bool has_pending_draft = 9;
+   */
+  hasPendingDraft: boolean;
+
+  /**
+   * The order the exported rows are written in, matching the directory's sort.
+   *
+   * @generated from field: metaxisdata.v1.QualityTargetOrder order_by = 10;
+   */
+  orderBy: QualityTargetOrder;
+
+  /**
+   * The row ceiling. Zero means the server default (100000); values above that
+   * maximum are coerced to it.
+   *
+   * @generated from field: int32 max_rows = 11;
+   */
+  maxRows: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExportQualityTargetsRequest.
+ * Use `create(ExportQualityTargetsRequestSchema)` to create a new message.
+ */
+export declare const ExportQualityTargetsRequestSchema: GenMessage<ExportQualityTargetsRequest>;
+
+/**
+ * ExportQualityReportRequest asks for one target's report.
+ *
+ * @generated from message metaxisdata.v1.ExportQualityReportRequest
+ */
+export declare type ExportQualityReportRequest = Message<"metaxisdata.v1.ExportQualityReportRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The target's metadata GUID. Required.
+   *
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Optional when rules already exist, because their
+   * own target carries it.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * How many days of execution history the report covers. Zero means 30; the
+   * report is capped at the 90-day execution retention.
+   *
+   * @generated from field: int32 trend_days = 4;
+   */
+  trendDays: number;
+
+  /**
+   * The language the report text is written in: "zh-CN" or "en-US". Empty means
+   * "en-US".
+   *
+   * @generated from field: string language = 5;
+   */
+  language: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExportQualityReportRequest.
+ * Use `create(ExportQualityReportRequestSchema)` to create a new message.
+ */
+export declare const ExportQualityReportRequestSchema: GenMessage<ExportQualityReportRequest>;
+
+/**
+ * ExportQualityReportResponse is the finished report file.
+ *
+ * @generated from message metaxisdata.v1.ExportQualityReportResponse
+ */
+export declare type ExportQualityReportResponse = Message<"metaxisdata.v1.ExportQualityReportResponse"> & {
+  /**
+   * The download name, for example
+   * "quality-report-2026-10-31T120000Z.html".
+   *
+   * @generated from field: string file_name = 1;
+   */
+  fileName: string;
+
+  /**
+   * The complete self-contained HTML document.
+   *
+   * @generated from field: string content = 2;
+   */
+  content: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExportQualityReportResponse.
+ * Use `create(ExportQualityReportResponseSchema)` to create a new message.
+ */
+export declare const ExportQualityReportResponseSchema: GenMessage<ExportQualityReportResponse>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -6970,6 +7337,22 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityExecutionSchema;
   },
   /**
+   * Export the executions the same filters select as ListQualityExecutions as one
+   * CSV document, streamed in slices. This is a file download, not a list: it
+   * stops at max_rows and reports the running row count on every slice.
+   *
+   * No (google.api.http) annotation: this is a server-streaming method, and the
+   * REST gateway cannot carry one. The browser reaches the Connect endpoint
+   * directly, the way it does for ExplainSQL.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ExportQualityExecutions
+   */
+  exportQualityExecutions: {
+    methodKind: "server_streaming";
+    input: typeof ExportQualityExecutionsRequestSchema;
+    output: typeof ExportQualityDataChunkSchema;
+  },
+  /**
    * List runs, newest first. A run is one dispatch batch that belongs to one
    * target: the executions one scheduler tick or one manual request planned for
    * that target. Runs are the batch-level read model the execution directory
@@ -7011,6 +7394,21 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityIssueRequestSchema;
     output: typeof QualityIssueSchema;
+  },
+  /**
+   * Export the issues the same filters select as ListQualityIssues as one CSV
+   * document, streamed in slices. This is a file download, not a list: it stops
+   * at max_rows and reports the running row count on every slice.
+   *
+   * No (google.api.http) annotation, for the same reason as
+   * ExportQualityExecutions.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ExportQualityIssues
+   */
+  exportQualityIssues: {
+    methodKind: "server_streaming";
+    input: typeof ExportQualityIssuesRequestSchema;
+    output: typeof ExportQualityDataChunkSchema;
   },
   /**
    * Acknowledge, resolve or mute one quality issue.
@@ -7225,6 +7623,21 @@ export declare const DataQualityService: GenService<{
     output: typeof ListQualityTargetsResponseSchema;
   },
   /**
+   * Export the targets the same filters select as ListQualityTargets as one CSV
+   * document, streamed in slices. This is a file download, not a list: it stops
+   * at max_rows and reports the running row count on every slice.
+   *
+   * No (google.api.http) annotation, for the same reason as
+   * ExportQualityExecutions.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ExportQualityTargets
+   */
+  exportQualityTargets: {
+    methodKind: "server_streaming";
+    input: typeof ExportQualityTargetsRequestSchema;
+    output: typeof ExportQualityDataChunkSchema;
+  },
+  /**
    * Read one target's workspace: its rules (with their latest results), the
    * unresolved issues and the target's columns, in one call. AI drafts are not
    * part of the response (reading them needs the suggest permission). The target
@@ -7236,6 +7649,20 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityTargetRequestSchema;
     output: typeof GetQualityTargetResponseSchema;
+  },
+  /**
+   * Render one target's quality report as a self-contained HTML document: the
+   * current state, the recent trend, the checks, the unresolved problems, a
+   * capped sample summary and the monitoring basis. The document carries its own
+   * styles and chart and loads nothing external, so it can be forwarded as a
+   * file. The export is audited because it is a bulk read of quality evidence.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ExportQualityReport
+   */
+  exportQualityReport: {
+    methodKind: "unary";
+    input: typeof ExportQualityReportRequestSchema;
+    output: typeof ExportQualityReportResponseSchema;
   },
   /**
    * Update one target's schedule: how often its enabled checks run. Scheduling

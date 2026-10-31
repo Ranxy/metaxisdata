@@ -382,8 +382,12 @@ type DataQualitySetting struct {
 	// How many data quality LLM analyses may run at once in this process. Zero
 	// means the server default (8); accepted range 1-64.
 	LlmConcurrencyLimit int32 `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// The weekly data quality digest. The digest is one workspace-level summary
+	// delivered through the outbound channels subscribed to
+	// NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy.
+	WeeklyDigest  *QualityDigestSetting `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -493,6 +497,87 @@ func (x *DataQualitySetting) GetLlmConcurrencyLimit() int32 {
 	return 0
 }
 
+func (x *DataQualitySetting) GetWeeklyDigest() *QualityDigestSetting {
+	if x != nil {
+		return x.WeeklyDigest
+	}
+	return nil
+}
+
+// QualityDigestSetting is the schedule of the weekly data quality digest.
+type QualityDigestSetting struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the weekly digest is sent.
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// The weekday the digest is sent on. UNSPECIFIED while enabled is rejected.
+	DayOfWeek DayOfWeek `protobuf:"varint,2,opt,name=day_of_week,json=dayOfWeek,proto3,enum=metaxisdata.v1.DayOfWeek" json:"day_of_week,omitempty"`
+	// The time of day the digest is sent at, "HH:MM", in timezone.
+	Time string `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
+	// The IANA time zone the schedule is evaluated in, for example
+	// "Asia/Shanghai". Required while enabled.
+	Timezone      string `protobuf:"bytes,4,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityDigestSetting) Reset() {
+	*x = QualityDigestSetting{}
+	mi := &file_v1_setting_service_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityDigestSetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityDigestSetting) ProtoMessage() {}
+
+func (x *QualityDigestSetting) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityDigestSetting.ProtoReflect.Descriptor instead.
+func (*QualityDigestSetting) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *QualityDigestSetting) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *QualityDigestSetting) GetDayOfWeek() DayOfWeek {
+	if x != nil {
+		return x.DayOfWeek
+	}
+	return DayOfWeek_DAY_OF_WEEK_UNSPECIFIED
+}
+
+func (x *QualityDigestSetting) GetTime() string {
+	if x != nil {
+		return x.Time
+	}
+	return ""
+}
+
+func (x *QualityDigestSetting) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
 type GetWorkspaceProfileSettingRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -501,7 +586,7 @@ type GetWorkspaceProfileSettingRequest struct {
 
 func (x *GetWorkspaceProfileSettingRequest) Reset() {
 	*x = GetWorkspaceProfileSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[2]
+	mi := &file_v1_setting_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -513,7 +598,7 @@ func (x *GetWorkspaceProfileSettingRequest) String() string {
 func (*GetWorkspaceProfileSettingRequest) ProtoMessage() {}
 
 func (x *GetWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[2]
+	mi := &file_v1_setting_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -526,7 +611,7 @@ func (x *GetWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetWorkspaceProfileSettingRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkspaceProfileSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{2}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{3}
 }
 
 type UpdateWorkspaceProfileSettingRequest struct {
@@ -541,7 +626,7 @@ type UpdateWorkspaceProfileSettingRequest struct {
 
 func (x *UpdateWorkspaceProfileSettingRequest) Reset() {
 	*x = UpdateWorkspaceProfileSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[3]
+	mi := &file_v1_setting_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -553,7 +638,7 @@ func (x *UpdateWorkspaceProfileSettingRequest) String() string {
 func (*UpdateWorkspaceProfileSettingRequest) ProtoMessage() {}
 
 func (x *UpdateWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[3]
+	mi := &file_v1_setting_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -566,7 +651,7 @@ func (x *UpdateWorkspaceProfileSettingRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use UpdateWorkspaceProfileSettingRequest.ProtoReflect.Descriptor instead.
 func (*UpdateWorkspaceProfileSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{3}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *UpdateWorkspaceProfileSettingRequest) GetSetting() *WorkspaceProfileSetting {
@@ -591,7 +676,7 @@ type GetDebugConfigRequest struct {
 
 func (x *GetDebugConfigRequest) Reset() {
 	*x = GetDebugConfigRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[4]
+	mi := &file_v1_setting_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -603,7 +688,7 @@ func (x *GetDebugConfigRequest) String() string {
 func (*GetDebugConfigRequest) ProtoMessage() {}
 
 func (x *GetDebugConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[4]
+	mi := &file_v1_setting_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -616,7 +701,7 @@ func (x *GetDebugConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDebugConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetDebugConfigRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{4}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{5}
 }
 
 type GetDebugConfigResponse struct {
@@ -629,7 +714,7 @@ type GetDebugConfigResponse struct {
 
 func (x *GetDebugConfigResponse) Reset() {
 	*x = GetDebugConfigResponse{}
-	mi := &file_v1_setting_service_proto_msgTypes[5]
+	mi := &file_v1_setting_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -641,7 +726,7 @@ func (x *GetDebugConfigResponse) String() string {
 func (*GetDebugConfigResponse) ProtoMessage() {}
 
 func (x *GetDebugConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[5]
+	mi := &file_v1_setting_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -654,7 +739,7 @@ func (x *GetDebugConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDebugConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetDebugConfigResponse) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{5}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetDebugConfigResponse) GetEnabled() bool {
@@ -674,7 +759,7 @@ type UpdateDebugConfigRequest struct {
 
 func (x *UpdateDebugConfigRequest) Reset() {
 	*x = UpdateDebugConfigRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[6]
+	mi := &file_v1_setting_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -686,7 +771,7 @@ func (x *UpdateDebugConfigRequest) String() string {
 func (*UpdateDebugConfigRequest) ProtoMessage() {}
 
 func (x *UpdateDebugConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[6]
+	mi := &file_v1_setting_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -699,7 +784,7 @@ func (x *UpdateDebugConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDebugConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDebugConfigRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{6}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpdateDebugConfigRequest) GetEnabled() bool {
@@ -719,7 +804,7 @@ type UpdateDebugConfigResponse struct {
 
 func (x *UpdateDebugConfigResponse) Reset() {
 	*x = UpdateDebugConfigResponse{}
-	mi := &file_v1_setting_service_proto_msgTypes[7]
+	mi := &file_v1_setting_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -731,7 +816,7 @@ func (x *UpdateDebugConfigResponse) String() string {
 func (*UpdateDebugConfigResponse) ProtoMessage() {}
 
 func (x *UpdateDebugConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[7]
+	mi := &file_v1_setting_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -744,7 +829,7 @@ func (x *UpdateDebugConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDebugConfigResponse.ProtoReflect.Descriptor instead.
 func (*UpdateDebugConfigResponse) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{7}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateDebugConfigResponse) GetEnabled() bool {
@@ -774,7 +859,7 @@ type EmailSetting struct {
 
 func (x *EmailSetting) Reset() {
 	*x = EmailSetting{}
-	mi := &file_v1_setting_service_proto_msgTypes[8]
+	mi := &file_v1_setting_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -786,7 +871,7 @@ func (x *EmailSetting) String() string {
 func (*EmailSetting) ProtoMessage() {}
 
 func (x *EmailSetting) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[8]
+	mi := &file_v1_setting_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -799,7 +884,7 @@ func (x *EmailSetting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmailSetting.ProtoReflect.Descriptor instead.
 func (*EmailSetting) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{8}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *EmailSetting) GetFrom() string {
@@ -851,7 +936,7 @@ type SMTPConfig struct {
 
 func (x *SMTPConfig) Reset() {
 	*x = SMTPConfig{}
-	mi := &file_v1_setting_service_proto_msgTypes[9]
+	mi := &file_v1_setting_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -863,7 +948,7 @@ func (x *SMTPConfig) String() string {
 func (*SMTPConfig) ProtoMessage() {}
 
 func (x *SMTPConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[9]
+	mi := &file_v1_setting_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -876,7 +961,7 @@ func (x *SMTPConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SMTPConfig.ProtoReflect.Descriptor instead.
 func (*SMTPConfig) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{9}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SMTPConfig) GetHost() string {
@@ -929,7 +1014,7 @@ type GetEmailSettingRequest struct {
 
 func (x *GetEmailSettingRequest) Reset() {
 	*x = GetEmailSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[10]
+	mi := &file_v1_setting_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -941,7 +1026,7 @@ func (x *GetEmailSettingRequest) String() string {
 func (*GetEmailSettingRequest) ProtoMessage() {}
 
 func (x *GetEmailSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[10]
+	mi := &file_v1_setting_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -954,7 +1039,7 @@ func (x *GetEmailSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmailSettingRequest.ProtoReflect.Descriptor instead.
 func (*GetEmailSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{10}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{11}
 }
 
 type UpdateEmailSettingRequest struct {
@@ -971,7 +1056,7 @@ type UpdateEmailSettingRequest struct {
 
 func (x *UpdateEmailSettingRequest) Reset() {
 	*x = UpdateEmailSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[11]
+	mi := &file_v1_setting_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -983,7 +1068,7 @@ func (x *UpdateEmailSettingRequest) String() string {
 func (*UpdateEmailSettingRequest) ProtoMessage() {}
 
 func (x *UpdateEmailSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[11]
+	mi := &file_v1_setting_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -996,7 +1081,7 @@ func (x *UpdateEmailSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateEmailSettingRequest.ProtoReflect.Descriptor instead.
 func (*UpdateEmailSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{11}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *UpdateEmailSettingRequest) GetSetting() *EmailSetting {
@@ -1021,7 +1106,7 @@ type SendTestEmailRequest struct {
 
 func (x *SendTestEmailRequest) Reset() {
 	*x = SendTestEmailRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[12]
+	mi := &file_v1_setting_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1033,7 +1118,7 @@ func (x *SendTestEmailRequest) String() string {
 func (*SendTestEmailRequest) ProtoMessage() {}
 
 func (x *SendTestEmailRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[12]
+	mi := &file_v1_setting_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1046,7 +1131,7 @@ func (x *SendTestEmailRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendTestEmailRequest.ProtoReflect.Descriptor instead.
 func (*SendTestEmailRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{12}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{13}
 }
 
 type SendTestEmailResponse struct {
@@ -1057,7 +1142,7 @@ type SendTestEmailResponse struct {
 
 func (x *SendTestEmailResponse) Reset() {
 	*x = SendTestEmailResponse{}
-	mi := &file_v1_setting_service_proto_msgTypes[13]
+	mi := &file_v1_setting_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1154,7 @@ func (x *SendTestEmailResponse) String() string {
 func (*SendTestEmailResponse) ProtoMessage() {}
 
 func (x *SendTestEmailResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[13]
+	mi := &file_v1_setting_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1167,7 @@ func (x *SendTestEmailResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendTestEmailResponse.ProtoReflect.Descriptor instead.
 func (*SendTestEmailResponse) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{13}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{14}
 }
 
 // QuietHoursSetting is the workspace schedule during which outbound
@@ -1108,7 +1193,7 @@ type QuietHoursSetting struct {
 
 func (x *QuietHoursSetting) Reset() {
 	*x = QuietHoursSetting{}
-	mi := &file_v1_setting_service_proto_msgTypes[14]
+	mi := &file_v1_setting_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1120,7 +1205,7 @@ func (x *QuietHoursSetting) String() string {
 func (*QuietHoursSetting) ProtoMessage() {}
 
 func (x *QuietHoursSetting) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[14]
+	mi := &file_v1_setting_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1133,7 +1218,7 @@ func (x *QuietHoursSetting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuietHoursSetting.ProtoReflect.Descriptor instead.
 func (*QuietHoursSetting) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{14}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *QuietHoursSetting) GetEnabled() bool {
@@ -1180,7 +1265,7 @@ type QuietWindow struct {
 
 func (x *QuietWindow) Reset() {
 	*x = QuietWindow{}
-	mi := &file_v1_setting_service_proto_msgTypes[15]
+	mi := &file_v1_setting_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1192,7 +1277,7 @@ func (x *QuietWindow) String() string {
 func (*QuietWindow) ProtoMessage() {}
 
 func (x *QuietWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[15]
+	mi := &file_v1_setting_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1205,7 +1290,7 @@ func (x *QuietWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuietWindow.ProtoReflect.Descriptor instead.
 func (*QuietWindow) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{15}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *QuietWindow) GetDays() []DayOfWeek {
@@ -1240,7 +1325,7 @@ type MaintenanceWindow struct {
 
 func (x *MaintenanceWindow) Reset() {
 	*x = MaintenanceWindow{}
-	mi := &file_v1_setting_service_proto_msgTypes[16]
+	mi := &file_v1_setting_service_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1252,7 +1337,7 @@ func (x *MaintenanceWindow) String() string {
 func (*MaintenanceWindow) ProtoMessage() {}
 
 func (x *MaintenanceWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[16]
+	mi := &file_v1_setting_service_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1265,7 +1350,7 @@ func (x *MaintenanceWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaintenanceWindow.ProtoReflect.Descriptor instead.
 func (*MaintenanceWindow) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{16}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *MaintenanceWindow) GetStart() *timestamppb.Timestamp {
@@ -1290,7 +1375,7 @@ type GetQuietHoursSettingRequest struct {
 
 func (x *GetQuietHoursSettingRequest) Reset() {
 	*x = GetQuietHoursSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[17]
+	mi := &file_v1_setting_service_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1302,7 +1387,7 @@ func (x *GetQuietHoursSettingRequest) String() string {
 func (*GetQuietHoursSettingRequest) ProtoMessage() {}
 
 func (x *GetQuietHoursSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[17]
+	mi := &file_v1_setting_service_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1315,7 +1400,7 @@ func (x *GetQuietHoursSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQuietHoursSettingRequest.ProtoReflect.Descriptor instead.
 func (*GetQuietHoursSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{17}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{18}
 }
 
 type UpdateQuietHoursSettingRequest struct {
@@ -1331,7 +1416,7 @@ type UpdateQuietHoursSettingRequest struct {
 
 func (x *UpdateQuietHoursSettingRequest) Reset() {
 	*x = UpdateQuietHoursSettingRequest{}
-	mi := &file_v1_setting_service_proto_msgTypes[18]
+	mi := &file_v1_setting_service_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1343,7 +1428,7 @@ func (x *UpdateQuietHoursSettingRequest) String() string {
 func (*UpdateQuietHoursSettingRequest) ProtoMessage() {}
 
 func (x *UpdateQuietHoursSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_setting_service_proto_msgTypes[18]
+	mi := &file_v1_setting_service_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1356,7 +1441,7 @@ func (x *UpdateQuietHoursSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateQuietHoursSettingRequest.ProtoReflect.Descriptor instead.
 func (*UpdateQuietHoursSettingRequest) Descriptor() ([]byte, []int) {
-	return file_v1_setting_service_proto_rawDescGZIP(), []int{18}
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UpdateQuietHoursSettingRequest) GetSetting() *QuietHoursSetting {
@@ -1391,7 +1476,7 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x17sso_email_identity_idps\x18\n" +
 	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
 	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"\x86\x05\n" +
+	"R\x18allow_sso_email_identity\"\xd1\x05\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1404,7 +1489,13 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\x127\n" +
 	"\x18daily_llm_analysis_limit\x18\n" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
-	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\"#\n" +
+	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12I\n" +
+	"\rweekly_digest\x18\f \x01(\v2$.metaxisdata.v1.QualityDigestSettingR\fweeklyDigest\"\x9b\x01\n" +
+	"\x14QualityDigestSetting\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x129\n" +
+	"\vday_of_week\x18\x02 \x01(\x0e2\x19.metaxisdata.v1.DayOfWeekR\tdayOfWeek\x12\x12\n" +
+	"\x04time\x18\x03 \x01(\tR\x04time\x12\x1a\n" +
+	"\btimezone\x18\x04 \x01(\tR\btimezone\"#\n" +
 	"!GetWorkspaceProfileSettingRequest\"\xab\x01\n" +
 	"$UpdateWorkspaceProfileSettingRequest\x12F\n" +
 	"\asetting\x18\x01 \x01(\v2'.metaxisdata.v1.WorkspaceProfileSettingB\x03\xe0A\x02R\asetting\x12;\n" +
@@ -1500,74 +1591,77 @@ func file_v1_setting_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_setting_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_v1_setting_service_proto_goTypes = []any{
 	(SMTPEncryption)(0),                          // 0: metaxisdata.v1.SMTPEncryption
 	(SMTPAuthentication)(0),                      // 1: metaxisdata.v1.SMTPAuthentication
 	(DayOfWeek)(0),                               // 2: metaxisdata.v1.DayOfWeek
 	(*WorkspaceProfileSetting)(nil),              // 3: metaxisdata.v1.WorkspaceProfileSetting
 	(*DataQualitySetting)(nil),                   // 4: metaxisdata.v1.DataQualitySetting
-	(*GetWorkspaceProfileSettingRequest)(nil),    // 5: metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	(*UpdateWorkspaceProfileSettingRequest)(nil), // 6: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	(*GetDebugConfigRequest)(nil),                // 7: metaxisdata.v1.GetDebugConfigRequest
-	(*GetDebugConfigResponse)(nil),               // 8: metaxisdata.v1.GetDebugConfigResponse
-	(*UpdateDebugConfigRequest)(nil),             // 9: metaxisdata.v1.UpdateDebugConfigRequest
-	(*UpdateDebugConfigResponse)(nil),            // 10: metaxisdata.v1.UpdateDebugConfigResponse
-	(*EmailSetting)(nil),                         // 11: metaxisdata.v1.EmailSetting
-	(*SMTPConfig)(nil),                           // 12: metaxisdata.v1.SMTPConfig
-	(*GetEmailSettingRequest)(nil),               // 13: metaxisdata.v1.GetEmailSettingRequest
-	(*UpdateEmailSettingRequest)(nil),            // 14: metaxisdata.v1.UpdateEmailSettingRequest
-	(*SendTestEmailRequest)(nil),                 // 15: metaxisdata.v1.SendTestEmailRequest
-	(*SendTestEmailResponse)(nil),                // 16: metaxisdata.v1.SendTestEmailResponse
-	(*QuietHoursSetting)(nil),                    // 17: metaxisdata.v1.QuietHoursSetting
-	(*QuietWindow)(nil),                          // 18: metaxisdata.v1.QuietWindow
-	(*MaintenanceWindow)(nil),                    // 19: metaxisdata.v1.MaintenanceWindow
-	(*GetQuietHoursSettingRequest)(nil),          // 20: metaxisdata.v1.GetQuietHoursSettingRequest
-	(*UpdateQuietHoursSettingRequest)(nil),       // 21: metaxisdata.v1.UpdateQuietHoursSettingRequest
-	(*durationpb.Duration)(nil),                  // 22: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),                // 23: google.protobuf.FieldMask
-	(*timestamppb.Timestamp)(nil),                // 24: google.protobuf.Timestamp
+	(*QualityDigestSetting)(nil),                 // 5: metaxisdata.v1.QualityDigestSetting
+	(*GetWorkspaceProfileSettingRequest)(nil),    // 6: metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	(*UpdateWorkspaceProfileSettingRequest)(nil), // 7: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	(*GetDebugConfigRequest)(nil),                // 8: metaxisdata.v1.GetDebugConfigRequest
+	(*GetDebugConfigResponse)(nil),               // 9: metaxisdata.v1.GetDebugConfigResponse
+	(*UpdateDebugConfigRequest)(nil),             // 10: metaxisdata.v1.UpdateDebugConfigRequest
+	(*UpdateDebugConfigResponse)(nil),            // 11: metaxisdata.v1.UpdateDebugConfigResponse
+	(*EmailSetting)(nil),                         // 12: metaxisdata.v1.EmailSetting
+	(*SMTPConfig)(nil),                           // 13: metaxisdata.v1.SMTPConfig
+	(*GetEmailSettingRequest)(nil),               // 14: metaxisdata.v1.GetEmailSettingRequest
+	(*UpdateEmailSettingRequest)(nil),            // 15: metaxisdata.v1.UpdateEmailSettingRequest
+	(*SendTestEmailRequest)(nil),                 // 16: metaxisdata.v1.SendTestEmailRequest
+	(*SendTestEmailResponse)(nil),                // 17: metaxisdata.v1.SendTestEmailResponse
+	(*QuietHoursSetting)(nil),                    // 18: metaxisdata.v1.QuietHoursSetting
+	(*QuietWindow)(nil),                          // 19: metaxisdata.v1.QuietWindow
+	(*MaintenanceWindow)(nil),                    // 20: metaxisdata.v1.MaintenanceWindow
+	(*GetQuietHoursSettingRequest)(nil),          // 21: metaxisdata.v1.GetQuietHoursSettingRequest
+	(*UpdateQuietHoursSettingRequest)(nil),       // 22: metaxisdata.v1.UpdateQuietHoursSettingRequest
+	(*durationpb.Duration)(nil),                  // 23: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                // 24: google.protobuf.FieldMask
+	(*timestamppb.Timestamp)(nil),                // 25: google.protobuf.Timestamp
 }
 var file_v1_setting_service_proto_depIdxs = []int32{
 	4,  // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
-	22, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	3,  // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
-	23, // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	12, // 4: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
-	0,  // 5: metaxisdata.v1.SMTPConfig.encryption:type_name -> metaxisdata.v1.SMTPEncryption
-	1,  // 6: metaxisdata.v1.SMTPConfig.authentication:type_name -> metaxisdata.v1.SMTPAuthentication
-	11, // 7: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
-	23, // 8: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	18, // 9: metaxisdata.v1.QuietHoursSetting.windows:type_name -> metaxisdata.v1.QuietWindow
-	19, // 10: metaxisdata.v1.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.v1.MaintenanceWindow
-	2,  // 11: metaxisdata.v1.QuietWindow.days:type_name -> metaxisdata.v1.DayOfWeek
-	24, // 12: metaxisdata.v1.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
-	24, // 13: metaxisdata.v1.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
-	17, // 14: metaxisdata.v1.UpdateQuietHoursSettingRequest.setting:type_name -> metaxisdata.v1.QuietHoursSetting
-	23, // 15: metaxisdata.v1.UpdateQuietHoursSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	5,  // 16: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	6,  // 17: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	7,  // 18: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
-	9,  // 19: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
-	13, // 20: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
-	14, // 21: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
-	15, // 22: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
-	20, // 23: metaxisdata.v1.SettingService.GetQuietHoursSetting:input_type -> metaxisdata.v1.GetQuietHoursSettingRequest
-	21, // 24: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:input_type -> metaxisdata.v1.UpdateQuietHoursSettingRequest
-	3,  // 25: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	3,  // 26: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	8,  // 27: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
-	10, // 28: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
-	11, // 29: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
-	11, // 30: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
-	16, // 31: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
-	17, // 32: metaxisdata.v1.SettingService.GetQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
-	17, // 33: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
-	25, // [25:34] is the sub-list for method output_type
-	16, // [16:25] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	23, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	5,  // 2: metaxisdata.v1.DataQualitySetting.weekly_digest:type_name -> metaxisdata.v1.QualityDigestSetting
+	2,  // 3: metaxisdata.v1.QualityDigestSetting.day_of_week:type_name -> metaxisdata.v1.DayOfWeek
+	3,  // 4: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
+	24, // 5: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	13, // 6: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
+	0,  // 7: metaxisdata.v1.SMTPConfig.encryption:type_name -> metaxisdata.v1.SMTPEncryption
+	1,  // 8: metaxisdata.v1.SMTPConfig.authentication:type_name -> metaxisdata.v1.SMTPAuthentication
+	12, // 9: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
+	24, // 10: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	19, // 11: metaxisdata.v1.QuietHoursSetting.windows:type_name -> metaxisdata.v1.QuietWindow
+	20, // 12: metaxisdata.v1.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.v1.MaintenanceWindow
+	2,  // 13: metaxisdata.v1.QuietWindow.days:type_name -> metaxisdata.v1.DayOfWeek
+	25, // 14: metaxisdata.v1.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
+	25, // 15: metaxisdata.v1.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
+	18, // 16: metaxisdata.v1.UpdateQuietHoursSettingRequest.setting:type_name -> metaxisdata.v1.QuietHoursSetting
+	24, // 17: metaxisdata.v1.UpdateQuietHoursSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	6,  // 18: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	7,  // 19: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	8,  // 20: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
+	10, // 21: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
+	14, // 22: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
+	15, // 23: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
+	16, // 24: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
+	21, // 25: metaxisdata.v1.SettingService.GetQuietHoursSetting:input_type -> metaxisdata.v1.GetQuietHoursSettingRequest
+	22, // 26: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:input_type -> metaxisdata.v1.UpdateQuietHoursSettingRequest
+	3,  // 27: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	3,  // 28: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	9,  // 29: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
+	11, // 30: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
+	12, // 31: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	12, // 32: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	17, // 33: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
+	18, // 34: metaxisdata.v1.SettingService.GetQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
+	18, // 35: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
+	27, // [27:36] is the sub-list for method output_type
+	18, // [18:27] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_v1_setting_service_proto_init() }
@@ -1582,7 +1676,7 @@ func file_v1_setting_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_setting_service_proto_rawDesc), len(file_v1_setting_service_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

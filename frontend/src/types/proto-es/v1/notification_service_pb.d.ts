@@ -1516,6 +1516,15 @@ export enum NotificationType {
    * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY = 3;
    */
   DATA_QUALITY = 3,
+
+  /**
+   * The workspace's scheduled data quality digest: one summary of the period's
+   * executions, problems and owners. It has no in-app copy; only the outbound
+   * channels subscribed to this type receive it.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY_DIGEST = 4;
+   */
+  DATA_QUALITY_DIGEST = 4,
 }
 
 /**

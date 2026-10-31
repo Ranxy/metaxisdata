@@ -167,6 +167,9 @@
   
 - [store/notification.proto](#store_notification-proto)
     - [DataQualityDetail](#metaxisdata-store-DataQualityDetail)
+    - [DataQualityDigestDetail](#metaxisdata-store-DataQualityDigestDetail)
+    - [DataQualityDigestOwner](#metaxisdata-store-DataQualityDigestOwner)
+    - [DataQualityDigestTarget](#metaxisdata-store-DataQualityDigestTarget)
     - [DingTalkChannelConfig](#metaxisdata-store-DingTalkChannelConfig)
     - [EmailChannelConfig](#metaxisdata-store-EmailChannelConfig)
     - [FeishuChannelConfig](#metaxisdata-store-FeishuChannelConfig)
@@ -212,6 +215,7 @@
     - [EnvironmentSetting.Environment.TagsEntry](#metaxisdata-store-EnvironmentSetting-Environment-TagsEntry)
     - [MaintenanceWindow](#metaxisdata-store-MaintenanceWindow)
     - [PasswordRestrictionSetting](#metaxisdata-store-PasswordRestrictionSetting)
+    - [QualityDigestSetting](#metaxisdata-store-QualityDigestSetting)
     - [QuietHoursSetting](#metaxisdata-store-QuietHoursSetting)
     - [QuietWindow](#metaxisdata-store-QuietWindow)
     - [WorkspaceProfileSetting](#metaxisdata-store-WorkspaceProfileSetting)
@@ -3119,6 +3123,76 @@ only; the client renders the localized sentence from the kind and these fields.
 
 
 
+<a name="metaxisdata-store-DataQualityDigestDetail"></a>
+
+### DataQualityDigestDetail
+DataQualityDigestDetail reports one scheduled digest period: how the checks
+ran, how the problem ledger moved, and how the open state splits by owner and
+target. The counts are already aggregated, so rendering the message reads no
+quality table.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| period_start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The period the digest covers: [period_start, period_end). |
+| period_end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| target_count | [int32](#int32) |  | How many targets had at least one enabled check in the period. |
+| rule_count | [int32](#int32) |  | How many enabled checks the workspace had at the end of the period. |
+| execution_count | [int32](#int32) |  | The verdict tally of the period&#39;s completed executions. |
+| passed_count | [int32](#int32) |  |  |
+| warned_count | [int32](#int32) |  |  |
+| failed_count | [int32](#int32) |  |  |
+| errored_count | [int32](#int32) |  |  |
+| new_issue_count | [int32](#int32) |  | The problem ledger&#39;s movement in the period. |
+| recovered_issue_count | [int32](#int32) |  |  |
+| open_issue_count | [int32](#int32) |  | The open state at the end of the period. |
+| open_warning_count | [int32](#int32) |  |  |
+| open_error_count | [int32](#int32) |  |  |
+| open_critical_count | [int32](#int32) |  |  |
+| owners | [DataQualityDigestOwner](#metaxisdata-store-DataQualityDigestOwner) | repeated | The owners with the most to look at, most open issues first. Capped; the totals above carry the whole picture. |
+| targets | [DataQualityDigestTarget](#metaxisdata-store-DataQualityDigestTarget) | repeated | The targets with the most failed checks in the period. Capped. |
+
+
+
+
+
+
+<a name="metaxisdata-store-DataQualityDigestOwner"></a>
+
+### DataQualityDigestOwner
+DataQualityDigestOwner is one owner&#39;s share of the digest.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| owner | [string](#string) |  | Format: users/{user}. Empty is the unassigned bucket. |
+| owner_email | [string](#string) |  | The owner&#39;s address, so the message is readable without another read. Empty when the account is gone. |
+| open_issue_count | [int32](#int32) |  |  |
+| failing_rule_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-DataQualityDigestTarget"></a>
+
+### DataQualityDigestTarget
+DataQualityDigestTarget is one target&#39;s share of the digest.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target_path | [string](#string) |  | The display path: instance/database/schema/table. |
+| failed_execution_count | [int32](#int32) |  |  |
+| errored_execution_count | [int32](#int32) |  |  |
+| open_issue_count | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-DingTalkChannelConfig"></a>
 
 ### DingTalkChannelConfig
@@ -3276,6 +3350,7 @@ and is what the dispatcher renders and posts.
 | schema_sync | [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail) |  |  |
 | openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
 | data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
+| data_quality_digest | [DataQualityDigestDetail](#metaxisdata-store-DataQualityDigestDetail) |  |  |
 | audience_user_ids | [int32](#int32) | repeated | The user ids the event&#39;s in-app message addressed: the rule&#39;s owner, the initiator of a sync operation, or the workspace administrators. The email channel resolves them to addresses at send time; no other kind reads this field. Storing ids rather than addresses keeps a changed or deleted account resolving at delivery time. |
 
 
@@ -3487,6 +3562,7 @@ message the notification carries.
 | NOTIFICATION_TYPE_SCHEMA_SYNC | 1 | The outcome of one schema sync operation. |
 | NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
 | NOTIFICATION_TYPE_DATA_QUALITY | 3 | A data quality rule opened, recovered, failed to execute, or failed in a storm that was merged into one summary. |
+| NOTIFICATION_TYPE_DATA_QUALITY_DIGEST | 4 | The workspace&#39;s scheduled data quality digest. It has no in-app copy; only the outbound channels subscribed to this type receive it. |
 
 
 
@@ -3691,6 +3767,7 @@ metaxisdata.v1.DataQualitySetting.
 | send_sample_values_to_llm | [bool](#bool) |  |  |
 | daily_llm_analysis_limit | [int32](#int32) |  |  |
 | llm_concurrency_limit | [int32](#int32) |  |  |
+| weekly_digest | [QualityDigestSetting](#metaxisdata-store-QualityDigestSetting) |  |  |
 
 
 
@@ -3817,6 +3894,26 @@ MaintenanceWindow is one absolute quiet window, for planned maintenance.
 | require_special_character | [bool](#bool) |  | require_uppercase_letter requires the password must contains at least one special character. |
 | require_reset_password_for_first_login | [bool](#bool) |  | require_reset_password_for_first_login requires users to reset their password after the 1st login. |
 | password_rotation | [google.protobuf.Duration](#google-protobuf-Duration) |  | password_rotation requires users to reset their password after the duration. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityDigestSetting"></a>
+
+### QualityDigestSetting
+QualityDigestSetting is the stored form of the weekly data quality digest
+schedule. The digest itself has no in-app copy; it is delivered to the
+outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  |  |
+| day_of_week | [DayOfWeek](#metaxisdata-store-DayOfWeek) |  |  |
+| time | [string](#string) |  | &#34;HH:MM&#34; in timezone. |
+| timezone | [string](#string) |  | IANA time zone, for example &#34;Asia/Shanghai&#34;. |
 
 
 

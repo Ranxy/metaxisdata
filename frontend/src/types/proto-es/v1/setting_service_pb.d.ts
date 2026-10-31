@@ -202,6 +202,15 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
    * @generated from field: int32 llm_concurrency_limit = 11;
    */
   llmConcurrencyLimit: number;
+
+  /**
+   * The weekly data quality digest. The digest is one workspace-level summary
+   * delivered through the outbound channels subscribed to
+   * NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy.
+   *
+   * @generated from field: metaxisdata.v1.QualityDigestSetting weekly_digest = 12;
+   */
+  weeklyDigest?: QualityDigestSetting;
 };
 
 /**
@@ -209,6 +218,48 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
  * Use `create(DataQualitySettingSchema)` to create a new message.
  */
 export declare const DataQualitySettingSchema: GenMessage<DataQualitySetting>;
+
+/**
+ * QualityDigestSetting is the schedule of the weekly data quality digest.
+ *
+ * @generated from message metaxisdata.v1.QualityDigestSetting
+ */
+export declare type QualityDigestSetting = Message<"metaxisdata.v1.QualityDigestSetting"> & {
+  /**
+   * Whether the weekly digest is sent.
+   *
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * The weekday the digest is sent on. UNSPECIFIED while enabled is rejected.
+   *
+   * @generated from field: metaxisdata.v1.DayOfWeek day_of_week = 2;
+   */
+  dayOfWeek: DayOfWeek;
+
+  /**
+   * The time of day the digest is sent at, "HH:MM", in timezone.
+   *
+   * @generated from field: string time = 3;
+   */
+  time: string;
+
+  /**
+   * The IANA time zone the schedule is evaluated in, for example
+   * "Asia/Shanghai". Required while enabled.
+   *
+   * @generated from field: string timezone = 4;
+   */
+  timezone: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityDigestSetting.
+ * Use `create(QualityDigestSettingSchema)` to create a new message.
+ */
+export declare const QualityDigestSettingSchema: GenMessage<QualityDigestSetting>;
 
 /**
  * @generated from message metaxisdata.v1.GetWorkspaceProfileSettingRequest

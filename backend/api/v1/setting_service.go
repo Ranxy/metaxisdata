@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/mail"
 	"slices"
@@ -200,6 +201,19 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", dataQuality.GetLlmProviderProfile()))
 	}
 
+	var digest *storepb.QualityDigestSetting
+	if weeklyDigest := dataQuality.GetWeeklyDigest(); weeklyDigest != nil {
+		digest = &storepb.QualityDigestSetting{
+			Enabled:   weeklyDigest.GetEnabled(),
+			DayOfWeek: storepb.DayOfWeek(weeklyDigest.GetDayOfWeek()),
+			Time:      strings.TrimSpace(weeklyDigest.GetTime()),
+			Timezone:  strings.TrimSpace(weeklyDigest.GetTimezone()),
+		}
+		if err := dataquality.ValidateDigestSetting(digest); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+	}
+
 	result := &storepb.DataQualitySetting{
 		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
 		LlmProviderProfile:       provider,
@@ -211,6 +225,7 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
 		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
+		WeeklyDigest:             digest,
 	}
 	if interval != nil {
 		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
@@ -248,6 +263,15 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 	if dataQuality == nil {
 		return nil
 	}
+	var digest *v1pb.QualityDigestSetting
+	if weeklyDigest := dataQuality.GetWeeklyDigest(); weeklyDigest != nil {
+		digest = &v1pb.QualityDigestSetting{
+			Enabled:   weeklyDigest.GetEnabled(),
+			DayOfWeek: v1pb.DayOfWeek(weeklyDigest.GetDayOfWeek()),
+			Time:      weeklyDigest.GetTime(),
+			Timezone:  weeklyDigest.GetTimezone(),
+		}
+	}
 	return &v1pb.DataQualitySetting{
 		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
 		LlmProviderProfile:       dataQuality.GetLlmProviderProfile(),
@@ -260,6 +284,7 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
 		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
+		WeeklyDigest:             digest,
 	}
 }
 
@@ -283,6 +308,12 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 		LlmConcurrencyLimit:      int32(resolved.LLMConcurrencyLimit),
 		MaxColumnsPerAnalysis:    int32(resolved.MaxColumnsPerAnalysis),
 		SendSampleValuesToLlm:    resolved.SendSampleValuesToLLM,
+		WeeklyDigest: &storepb.QualityDigestSetting{
+			Enabled:   resolved.Digest.Enabled,
+			DayOfWeek: dataquality.DigestDayOfWeek(resolved.Digest.Day),
+			Time:      fmt.Sprintf("%02d:%02d", resolved.Digest.Hour, resolved.Digest.Minute),
+			Timezone:  resolved.Digest.Timezone,
+		},
 	}
 }
 

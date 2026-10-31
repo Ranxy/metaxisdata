@@ -1660,6 +1660,59 @@ func local_request_DataQualityService_GetQualityTarget_0(ctx context.Context, ma
 	return msg, metadata, err
 }
 
+var filter_DataQualityService_ExportQualityReport_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+
+func request_DataQualityService_ExportQualityReport_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ExportQualityReportRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ExportQualityReport_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := client.ExportQualityReport(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_ExportQualityReport_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ExportQualityReportRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ExportQualityReport_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := server.ExportQualityReport(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 func request_DataQualityService_UpdateQualityTargetSchedule_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq UpdateQualityTargetScheduleRequest
@@ -2712,6 +2765,26 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityTarget_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ExportQualityReport_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ExportQualityReport", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualityTargets:exportReport"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_ExportQualityReport_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ExportQualityReport_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodPost, pattern_DataQualityService_UpdateQualityTargetSchedule_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -3473,6 +3546,23 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityTarget_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ExportQualityReport_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ExportQualityReport", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualityTargets:exportReport"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_ExportQualityReport_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ExportQualityReport_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodPost, pattern_DataQualityService_UpdateQualityTargetSchedule_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -3646,6 +3736,7 @@ var (
 	pattern_DataQualityService_GetQualityOverview_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityOverview"}, ""))
 	pattern_DataQualityService_ListQualityTargets_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, ""))
 	pattern_DataQualityService_GetQualityTarget_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "get"))
+	pattern_DataQualityService_ExportQualityReport_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "exportReport"))
 	pattern_DataQualityService_UpdateQualityTargetSchedule_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "updateSchedule"))
 	pattern_DataQualityService_GetQualityTargetSchedule_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "getSchedule"))
 	pattern_DataQualityService_GetQualityContract_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "get"))
@@ -3690,6 +3781,7 @@ var (
 	forward_DataQualityService_GetQualityOverview_0                 = runtime.ForwardResponseMessage
 	forward_DataQualityService_ListQualityTargets_0                 = runtime.ForwardResponseMessage
 	forward_DataQualityService_GetQualityTarget_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_ExportQualityReport_0                = runtime.ForwardResponseMessage
 	forward_DataQualityService_UpdateQualityTargetSchedule_0        = runtime.ForwardResponseMessage
 	forward_DataQualityService_GetQualityTargetSchedule_0           = runtime.ForwardResponseMessage
 	forward_DataQualityService_GetQualityContract_0                 = runtime.ForwardResponseMessage

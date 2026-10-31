@@ -829,6 +829,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.DataQualityDigestDetail"><span class="badge">M</span>DataQualityDigestDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.DataQualityDigestOwner"><span class="badge">M</span>DataQualityDigestOwner</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.DataQualityDigestTarget"><span class="badge">M</span>DataQualityDigestTarget</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.DingTalkChannelConfig"><span class="badge">M</span>DingTalkChannelConfig</a>
                 </li>
               
@@ -1007,6 +1019,10 @@
               
                 <li>
                   <a href="#metaxisdata.store.PasswordRestrictionSetting"><span class="badge">M</span>PasswordRestrictionSetting</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityDigestSetting"><span class="badge">M</span>QualityDigestSetting</a>
                 </li>
               
                 <li>
@@ -9199,6 +9215,234 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.DataQualityDigestDetail">DataQualityDigestDetail</h3>
+        <p>DataQualityDigestDetail reports one scheduled digest period: how the checks</p><p>ran, how the problem ledger moved, and how the open state splits by owner and</p><p>target. The counts are already aggregated, so rendering the message reads no</p><p>quality table.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>period_start</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The period the digest covers: [period_start, period_end). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>period_end</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many targets had at least one enabled check in the period. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many enabled checks the workspace had at the end of the period. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>execution_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The verdict tally of the period&#39;s completed executions. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>passed_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warned_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>errored_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>new_issue_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The problem ledger&#39;s movement in the period. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>recovered_issue_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_issue_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The open state at the end of the period. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_warning_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_error_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_critical_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owners</td>
+                  <td><a href="#metaxisdata.store.DataQualityDigestOwner">DataQualityDigestOwner</a></td>
+                  <td>repeated</td>
+                  <td><p>The owners with the most to look at, most open issues first. Capped; the
+totals above carry the whole picture. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#metaxisdata.store.DataQualityDigestTarget">DataQualityDigestTarget</a></td>
+                  <td>repeated</td>
+                  <td><p>The targets with the most failed checks in the period. Capped. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.DataQualityDigestOwner">DataQualityDigestOwner</h3>
+        <p>DataQualityDigestOwner is one owner's share of the digest.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>owner</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty is the unassigned bucket. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>owner_email</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The owner&#39;s address, so the message is readable without another read. Empty
+when the account is gone. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_issue_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failing_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.DataQualityDigestTarget">DataQualityDigestTarget</h3>
+        <p>DataQualityDigestTarget is one target's share of the digest.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target_path</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display path: instance/database/schema/table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_execution_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>errored_execution_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>open_issue_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.DingTalkChannelConfig">DingTalkChannelConfig</h3>
         <p></p>
 
@@ -9589,6 +9833,13 @@ signing secret for DingTalk and Feishu. Empty when the kind is unsigned. </p></t
                 <tr>
                   <td>data_quality</td>
                   <td><a href="#metaxisdata.store.DataQualityDetail">DataQualityDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_quality_digest</td>
+                  <td><a href="#metaxisdata.store.DataQualityDigestDetail">DataQualityDigestDetail</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -10132,6 +10383,13 @@ to a registered instance.</p></td>
 storm that was merged into one summary.</p></td>
               </tr>
             
+              <tr>
+                <td>NOTIFICATION_TYPE_DATA_QUALITY_DIGEST</td>
+                <td>4</td>
+                <td><p>The workspace&#39;s scheduled data quality digest. It has no in-app copy; only
+the outbound channels subscribed to this type receive it.</p></td>
+              </tr>
+            
           </tbody>
         </table>
       
@@ -10547,6 +10805,13 @@ A binding binds one or more members or groups to a single role. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>weekly_digest</td>
+                  <td><a href="#metaxisdata.store.QualityDigestSetting">QualityDigestSetting</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -10841,6 +11106,51 @@ are /[a-z0-9-]/. </p></td>
                   <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
                   <td></td>
                   <td><p>password_rotation requires users to reset their password after the duration. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityDigestSetting">QualityDigestSetting</h3>
+        <p>QualityDigestSetting is the stored form of the weekly data quality digest</p><p>schedule. The digest itself has no in-app copy; it is delivered to the</p><p>outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>day_of_week</td>
+                  <td><a href="#metaxisdata.store.DayOfWeek">DayOfWeek</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>time</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>&#34;HH:MM&#34; in timezone. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>IANA time zone, for example &#34;Asia/Shanghai&#34;. </p></td>
                 </tr>
               
             </tbody>

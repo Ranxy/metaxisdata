@@ -239,6 +239,12 @@
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest)
     - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
+    - [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk)
+    - [ExportQualityExecutionsRequest](#metaxisdata-v1-ExportQualityExecutionsRequest)
+    - [ExportQualityIssuesRequest](#metaxisdata-v1-ExportQualityIssuesRequest)
+    - [ExportQualityReportRequest](#metaxisdata-v1-ExportQualityReportRequest)
+    - [ExportQualityReportResponse](#metaxisdata-v1-ExportQualityReportResponse)
+    - [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest)
@@ -596,6 +602,7 @@
     - [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest)
     - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
     - [MaintenanceWindow](#metaxisdata-v1-MaintenanceWindow)
+    - [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting)
     - [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting)
     - [QuietWindow](#metaxisdata-v1-QuietWindow)
     - [SMTPConfig](#metaxisdata-v1-SMTPConfig)
@@ -4458,6 +4465,137 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
+<a name="metaxisdata-v1-ExportQualityDataChunk"></a>
+
+### ExportQualityDataChunk
+ExportQualityDataChunk is one slice of a streamed CSV export. A client
+concatenates the slices into a file: the first slice starts with a UTF-8 BOM
+and the header row, so the file opens cleanly in a spreadsheet without a
+manual encoding choice.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| data | [bytes](#bytes) |  | A slice of the CSV bytes. A slice may end in the middle of a value&#39;s UTF-8 sequence; the document is only meaningful once every slice is concatenated. |
+| row_count | [int64](#int64) |  | The total number of data rows written so far, across all slices. It is monotonic and the last value is the export&#39;s row count, which lets a client report progress without counting the document. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExportQualityExecutionsRequest"></a>
+
+### ExportQualityExecutionsRequest
+ExportQualityExecutionsRequest selects the executions to export. The filters
+carry the same meaning as their ListQualityExecutions counterparts.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| state | [QualityExecutionState](#metaxisdata-v1-QualityExecutionState) |  |  |
+| outcome | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
+| trigger | [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger) |  |  |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| target_guid | [string](#string) |  | The exact target GUID. |
+| instance | [string](#string) |  | Format: instances/{instance} |
+| initiator | [string](#string) |  | Format: users/{user} |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only executions started at or after this time. |
+| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only executions started before this time. |
+| run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
+| max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExportQualityIssuesRequest"></a>
+
+### ExportQualityIssuesRequest
+ExportQualityIssuesRequest selects the issues to export. The filters carry the
+same meaning as their ListQualityIssues counterparts.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| status | [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus) |  |  |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| target_guid | [string](#string) |  | The exact target GUID. |
+| owner | [string](#string) |  | Format: users/{user} |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only issues first seen at or after this time. |
+| end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only issues first seen at or before this time. |
+| max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExportQualityReportRequest"></a>
+
+### ExportQualityReportRequest
+ExportQualityReportRequest asks for one target&#39;s report.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when rules already exist, because their own target carries it. |
+| trend_days | [int32](#int32) |  | How many days of execution history the report covers. Zero means 30; the report is capped at the 90-day execution retention. |
+| language | [string](#string) |  | The language the report text is written in: &#34;zh-CN&#34; or &#34;en-US&#34;. Empty means &#34;en-US&#34;. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExportQualityReportResponse"></a>
+
+### ExportQualityReportResponse
+ExportQualityReportResponse is the finished report file.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| file_name | [string](#string) |  | The download name, for example &#34;quality-report-2026-10-31T120000Z.html&#34;. |
+| content | [string](#string) |  | The complete self-contained HTML document. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExportQualityTargetsRequest"></a>
+
+### ExportQualityTargetsRequest
+ExportQualityTargetsRequest selects the targets to export. The filters carry
+the same meaning as their ListQualityTargets counterparts.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| instance | [string](#string) |  | The following four filters are GUID path prefixes, the same shape as ListQualityTargets. |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| table | [string](#string) |  |  |
+| search | [string](#string) |  | A case-insensitive substring over the target&#39;s path and GUID. |
+| worst_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | Only targets whose worst latest result is this status. UNSPECIFIED keeps every target, including those whose rules have not run yet. |
+| has_open_issue | [bool](#bool) |  | Only targets with at least one unresolved issue. |
+| has_pending_draft | [bool](#bool) |  | Only targets with at least one pending AI draft. |
+| order_by | [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder) |  | The order the exported rows are written in, matching the directory&#39;s sort. |
+| max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-FailureSample"></a>
 
 ### FailureSample
@@ -6987,10 +7125,16 @@ scheduling is an internal concern and is not exposed as a resource.
 | RunQualityRules | [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest) | [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse) | Execute rules now. One execution is planned per selected rule; the call returns them all as PENDING after queueing them. Clients poll GetQualityExecution for each execution&#39;s state and outcome. |
 | ListQualityExecutions | [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest) | [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse) | List executions, newest first. |
 | GetQualityExecution | [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest) | [QualityExecution](#metaxisdata-v1-QualityExecution) | Read one execution: its state, verdict, and the evidence behind it. |
+| ExportQualityExecutions | [ExportQualityExecutionsRequest](#metaxisdata-v1-ExportQualityExecutionsRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the executions the same filters select as ListQualityExecutions as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
+
+No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | ListQualityRuns | [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest) | [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse) | List runs, newest first. A run is one dispatch batch that belongs to one target: the executions one scheduler tick or one manual request planned for that target. Runs are the batch-level read model the execution directory groups by target; the run itself carries the target and its counts. |
 | GetQualityRun | [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest) | [QualityRun](#metaxisdata-v1-QualityRun) | Read one run: its target, state, verdict and counts. |
 | ListQualityIssues | [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest) | [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse) | List quality issues, newest first. |
 | GetQualityIssue | [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Read one quality issue. |
+| ExportQualityIssues | [ExportQualityIssuesRequest](#metaxisdata-v1-ExportQualityIssuesRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the issues the same filters select as ListQualityIssues as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
+
+No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | UpdateQualityIssue | [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Acknowledge, resolve or mute one quality issue. |
 | ListQualitySuggestions | [ListQualitySuggestionsRequest](#metaxisdata-v1-ListQualitySuggestionsRequest) | [ListQualitySuggestionsResponse](#metaxisdata-v1-ListQualitySuggestionsResponse) | List the review queue of model-proposed rule drafts and semantic labels, newest first. |
 | GetQualitySuggestion | [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest) | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | Read one queued suggestion. The queue is paged with ListQualitySuggestions; this exists so a deep link can open one draft without reading the pages. |
@@ -7012,7 +7156,11 @@ scheduling is an internal concern and is not exposed as a resource.
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
+| ExportQualityTargets | [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the targets the same filters select as ListQualityTargets as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
+
+No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
+| ExportQualityReport | [ExportQualityReportRequest](#metaxisdata-v1-ExportQualityReportRequest) | [ExportQualityReportResponse](#metaxisdata-v1-ExportQualityReportResponse) | Render one target&#39;s quality report as a self-contained HTML document: the current state, the recent trend, the checks, the unresolved problems, a capped sample summary and the monitoring basis. The document carries its own styles and chart and loads nothing external, so it can be forwarded as a file. The export is audited because it is a bulk read of quality evidence. |
 | UpdateQualityTargetSchedule | [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Update one target&#39;s schedule: how often its enabled checks run. Scheduling is per target, so this replaces the per-check schedule; a change takes effect from the next slot and never runs the target immediately. |
 | GetQualityTargetSchedule | [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Read one target&#39;s schedule without the target&#39;s rules, results and issues. A rule lifecycle change can move the target&#39;s next run; the workspace re-reads just this instead of the whole target after every check edit. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
@@ -9371,6 +9519,7 @@ message the notification carries.
 | NOTIFICATION_TYPE_SCHEMA_SYNC | 1 | The outcome of one schema sync operation. |
 | NOTIFICATION_TYPE_OPENLINEAGE | 2 | An OpenLineage ingestion failure, or a dataset that could not be matched to a registered instance. |
 | NOTIFICATION_TYPE_DATA_QUALITY | 3 | A data quality rule opened, recovered, failed to execute, or failed in a storm that was merged into one summary. |
+| NOTIFICATION_TYPE_DATA_QUALITY_DIGEST | 4 | The workspace&#39;s scheduled data quality digest: one summary of the period&#39;s executions, problems and owners. It has no in-app copy; only the outbound channels subscribed to this type receive it. |
 
 
 
@@ -10378,6 +10527,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | send_sample_values_to_llm | [bool](#bool) |  | Whether raw sample values may be sent to the LLM. Off by default: only aggregate profiles leave the deployment. |
 | daily_llm_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure explanations). Zero means the server default (10000); capped at 1000000. |
 | llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
+| weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST; it has no per-recipient inbox copy. |
 
 
 
@@ -10469,6 +10619,24 @@ MaintenanceWindow is one absolute quiet window, for planned maintenance.
 | ----- | ---- | ----- | ----------- |
 | start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityDigestSetting"></a>
+
+### QualityDigestSetting
+QualityDigestSetting is the schedule of the weekly data quality digest.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  | Whether the weekly digest is sent. |
+| day_of_week | [DayOfWeek](#metaxisdata-v1-DayOfWeek) |  | The weekday the digest is sent on. UNSPECIFIED while enabled is rejected. |
+| time | [string](#string) |  | The time of day the digest is sent at, &#34;HH:MM&#34;, in timezone. |
+| timezone | [string](#string) |  | The IANA time zone the schedule is evaluated in, for example &#34;Asia/Shanghai&#34;. Required while enabled. |
 
 
 

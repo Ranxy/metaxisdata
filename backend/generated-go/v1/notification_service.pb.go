@@ -39,6 +39,10 @@ const (
 	// A data quality rule opened, recovered, failed to execute, or failed in a
 	// storm that was merged into one summary.
 	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY NotificationType = 3
+	// The workspace's scheduled data quality digest: one summary of the period's
+	// executions, problems and owners. It has no in-app copy; only the outbound
+	// channels subscribed to this type receive it.
+	NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST NotificationType = 4
 )
 
 // Enum value maps for NotificationType.
@@ -48,12 +52,14 @@ var (
 		1: "NOTIFICATION_TYPE_SCHEMA_SYNC",
 		2: "NOTIFICATION_TYPE_OPENLINEAGE",
 		3: "NOTIFICATION_TYPE_DATA_QUALITY",
+		4: "NOTIFICATION_TYPE_DATA_QUALITY_DIGEST",
 	}
 	NotificationType_value = map[string]int32{
-		"NOTIFICATION_TYPE_UNSPECIFIED":  0,
-		"NOTIFICATION_TYPE_SCHEMA_SYNC":  1,
-		"NOTIFICATION_TYPE_OPENLINEAGE":  2,
-		"NOTIFICATION_TYPE_DATA_QUALITY": 3,
+		"NOTIFICATION_TYPE_UNSPECIFIED":         0,
+		"NOTIFICATION_TYPE_SCHEMA_SYNC":         1,
+		"NOTIFICATION_TYPE_OPENLINEAGE":         2,
+		"NOTIFICATION_TYPE_DATA_QUALITY":        3,
+		"NOTIFICATION_TYPE_DATA_QUALITY_DIGEST": 4,
 	}
 )
 
@@ -3749,12 +3755,13 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\"9\n" +
 	"\x1eDeleteNotificationRouteRequest\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name*\x9f\x01\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name*\xca\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_OPENLINEAGE\x10\x02\x12\"\n" +
-	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03*\xa1\x01\n" +
+	"\x1eNOTIFICATION_TYPE_DATA_QUALITY\x10\x03\x12)\n" +
+	"%NOTIFICATION_TYPE_DATA_QUALITY_DIGEST\x10\x04*\xa1\x01\n" +
 	"\x14NotificationSeverity\x12%\n" +
 	"!NOTIFICATION_SEVERITY_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aNOTIFICATION_SEVERITY_INFO\x10\x01\x12!\n" +

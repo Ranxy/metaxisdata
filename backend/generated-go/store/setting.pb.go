@@ -587,6 +587,7 @@ type DataQualitySetting struct {
 	SendSampleValuesToLlm    bool                   `protobuf:"varint,9,opt,name=send_sample_values_to_llm,json=sendSampleValuesToLlm,proto3" json:"send_sample_values_to_llm,omitempty"`
 	DailyLlmAnalysisLimit    int32                  `protobuf:"varint,10,opt,name=daily_llm_analysis_limit,json=dailyLlmAnalysisLimit,proto3" json:"daily_llm_analysis_limit,omitempty"`
 	LlmConcurrencyLimit      int32                  `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
+	WeeklyDigest             *QualityDigestSetting  `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -698,6 +699,86 @@ func (x *DataQualitySetting) GetLlmConcurrencyLimit() int32 {
 	return 0
 }
 
+func (x *DataQualitySetting) GetWeeklyDigest() *QualityDigestSetting {
+	if x != nil {
+		return x.WeeklyDigest
+	}
+	return nil
+}
+
+// QualityDigestSetting is the stored form of the weekly data quality digest
+// schedule. The digest itself has no in-app copy; it is delivered to the
+// outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST.
+type QualityDigestSetting struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Enabled   bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	DayOfWeek DayOfWeek              `protobuf:"varint,2,opt,name=day_of_week,json=dayOfWeek,proto3,enum=metaxisdata.store.DayOfWeek" json:"day_of_week,omitempty"`
+	// "HH:MM" in timezone.
+	Time string `protobuf:"bytes,3,opt,name=time,proto3" json:"time,omitempty"`
+	// IANA time zone, for example "Asia/Shanghai".
+	Timezone      string `protobuf:"bytes,4,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityDigestSetting) Reset() {
+	*x = QualityDigestSetting{}
+	mi := &file_store_setting_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityDigestSetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityDigestSetting) ProtoMessage() {}
+
+func (x *QualityDigestSetting) ProtoReflect() protoreflect.Message {
+	mi := &file_store_setting_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityDigestSetting.ProtoReflect.Descriptor instead.
+func (*QualityDigestSetting) Descriptor() ([]byte, []int) {
+	return file_store_setting_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *QualityDigestSetting) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *QualityDigestSetting) GetDayOfWeek() DayOfWeek {
+	if x != nil {
+		return x.DayOfWeek
+	}
+	return DayOfWeek_DAY_OF_WEEK_UNSPECIFIED
+}
+
+func (x *QualityDigestSetting) GetTime() string {
+	if x != nil {
+		return x.Time
+	}
+	return ""
+}
+
+func (x *QualityDigestSetting) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
 // EmailSetting is the stored form of metaxisdata.v1.EmailSetting: the workspace's
 // SMTP server, as the SETTING_NAME_EMAIL row. The smtp.password field holds a v1:
 // AES-256-GCM ciphertext; only the store writes and reads it, and no other
@@ -713,7 +794,7 @@ type EmailSetting struct {
 
 func (x *EmailSetting) Reset() {
 	*x = EmailSetting{}
-	mi := &file_store_setting_proto_msgTypes[4]
+	mi := &file_store_setting_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +806,7 @@ func (x *EmailSetting) String() string {
 func (*EmailSetting) ProtoMessage() {}
 
 func (x *EmailSetting) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[4]
+	mi := &file_store_setting_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +819,7 @@ func (x *EmailSetting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmailSetting.ProtoReflect.Descriptor instead.
 func (*EmailSetting) Descriptor() ([]byte, []int) {
-	return file_store_setting_proto_rawDescGZIP(), []int{4}
+	return file_store_setting_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *EmailSetting) GetFrom() string {
@@ -777,7 +858,7 @@ type EmailSMTPConfig struct {
 
 func (x *EmailSMTPConfig) Reset() {
 	*x = EmailSMTPConfig{}
-	mi := &file_store_setting_proto_msgTypes[5]
+	mi := &file_store_setting_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -789,7 +870,7 @@ func (x *EmailSMTPConfig) String() string {
 func (*EmailSMTPConfig) ProtoMessage() {}
 
 func (x *EmailSMTPConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[5]
+	mi := &file_store_setting_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -802,7 +883,7 @@ func (x *EmailSMTPConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmailSMTPConfig.ProtoReflect.Descriptor instead.
 func (*EmailSMTPConfig) Descriptor() ([]byte, []int) {
-	return file_store_setting_proto_rawDescGZIP(), []int{5}
+	return file_store_setting_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EmailSMTPConfig) GetHost() string {
@@ -866,7 +947,7 @@ type QuietHoursSetting struct {
 
 func (x *QuietHoursSetting) Reset() {
 	*x = QuietHoursSetting{}
-	mi := &file_store_setting_proto_msgTypes[6]
+	mi := &file_store_setting_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -878,7 +959,7 @@ func (x *QuietHoursSetting) String() string {
 func (*QuietHoursSetting) ProtoMessage() {}
 
 func (x *QuietHoursSetting) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[6]
+	mi := &file_store_setting_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -891,7 +972,7 @@ func (x *QuietHoursSetting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuietHoursSetting.ProtoReflect.Descriptor instead.
 func (*QuietHoursSetting) Descriptor() ([]byte, []int) {
-	return file_store_setting_proto_rawDescGZIP(), []int{6}
+	return file_store_setting_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *QuietHoursSetting) GetEnabled() bool {
@@ -938,7 +1019,7 @@ type QuietWindow struct {
 
 func (x *QuietWindow) Reset() {
 	*x = QuietWindow{}
-	mi := &file_store_setting_proto_msgTypes[7]
+	mi := &file_store_setting_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +1031,7 @@ func (x *QuietWindow) String() string {
 func (*QuietWindow) ProtoMessage() {}
 
 func (x *QuietWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[7]
+	mi := &file_store_setting_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1044,7 @@ func (x *QuietWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuietWindow.ProtoReflect.Descriptor instead.
 func (*QuietWindow) Descriptor() ([]byte, []int) {
-	return file_store_setting_proto_rawDescGZIP(), []int{7}
+	return file_store_setting_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *QuietWindow) GetDays() []DayOfWeek {
@@ -998,7 +1079,7 @@ type MaintenanceWindow struct {
 
 func (x *MaintenanceWindow) Reset() {
 	*x = MaintenanceWindow{}
-	mi := &file_store_setting_proto_msgTypes[8]
+	mi := &file_store_setting_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1010,7 +1091,7 @@ func (x *MaintenanceWindow) String() string {
 func (*MaintenanceWindow) ProtoMessage() {}
 
 func (x *MaintenanceWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[8]
+	mi := &file_store_setting_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1023,7 +1104,7 @@ func (x *MaintenanceWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaintenanceWindow.ProtoReflect.Descriptor instead.
 func (*MaintenanceWindow) Descriptor() ([]byte, []int) {
-	return file_store_setting_proto_rawDescGZIP(), []int{8}
+	return file_store_setting_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *MaintenanceWindow) GetStart() *timestamppb.Timestamp {
@@ -1056,7 +1137,7 @@ type EnvironmentSetting_Environment struct {
 
 func (x *EnvironmentSetting_Environment) Reset() {
 	*x = EnvironmentSetting_Environment{}
-	mi := &file_store_setting_proto_msgTypes[9]
+	mi := &file_store_setting_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1068,7 +1149,7 @@ func (x *EnvironmentSetting_Environment) String() string {
 func (*EnvironmentSetting_Environment) ProtoMessage() {}
 
 func (x *EnvironmentSetting_Environment) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[9]
+	mi := &file_store_setting_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1148,7 +1229,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x86\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd4\x05\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1161,7 +1242,13 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\x127\n" +
 	"\x18daily_llm_analysis_limit\x18\n" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
-	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\"w\n" +
+	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12L\n" +
+	"\rweekly_digest\x18\f \x01(\v2'.metaxisdata.store.QualityDigestSettingR\fweeklyDigest\"\x9e\x01\n" +
+	"\x14QualityDigestSetting\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12<\n" +
+	"\vday_of_week\x18\x02 \x01(\x0e2\x1c.metaxisdata.store.DayOfWeekR\tdayOfWeek\x12\x12\n" +
+	"\x04time\x18\x03 \x01(\tR\x04time\x12\x1a\n" +
+	"\btimezone\x18\x04 \x01(\tR\btimezone\"w\n" +
 	"\fEmailSetting\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x1b\n" +
 	"\tfrom_name\x18\x02 \x01(\tR\bfromName\x126\n" +
@@ -1232,7 +1319,7 @@ func file_store_setting_proto_rawDescGZIP() []byte {
 }
 
 var file_store_setting_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_store_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_store_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_store_setting_proto_goTypes = []any{
 	(SettingName)(0),                       // 0: metaxisdata.store.SettingName
 	(EmailSMTPEncryption)(0),               // 1: metaxisdata.store.EmailSMTPEncryption
@@ -1242,35 +1329,38 @@ var file_store_setting_proto_goTypes = []any{
 	(*PasswordRestrictionSetting)(nil),     // 5: metaxisdata.store.PasswordRestrictionSetting
 	(*EnvironmentSetting)(nil),             // 6: metaxisdata.store.EnvironmentSetting
 	(*DataQualitySetting)(nil),             // 7: metaxisdata.store.DataQualitySetting
-	(*EmailSetting)(nil),                   // 8: metaxisdata.store.EmailSetting
-	(*EmailSMTPConfig)(nil),                // 9: metaxisdata.store.EmailSMTPConfig
-	(*QuietHoursSetting)(nil),              // 10: metaxisdata.store.QuietHoursSetting
-	(*QuietWindow)(nil),                    // 11: metaxisdata.store.QuietWindow
-	(*MaintenanceWindow)(nil),              // 12: metaxisdata.store.MaintenanceWindow
-	(*EnvironmentSetting_Environment)(nil), // 13: metaxisdata.store.EnvironmentSetting.Environment
-	nil,                                    // 14: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	(*durationpb.Duration)(nil),            // 15: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 16: google.protobuf.Timestamp
+	(*QualityDigestSetting)(nil),           // 8: metaxisdata.store.QualityDigestSetting
+	(*EmailSetting)(nil),                   // 9: metaxisdata.store.EmailSetting
+	(*EmailSMTPConfig)(nil),                // 10: metaxisdata.store.EmailSMTPConfig
+	(*QuietHoursSetting)(nil),              // 11: metaxisdata.store.QuietHoursSetting
+	(*QuietWindow)(nil),                    // 12: metaxisdata.store.QuietWindow
+	(*MaintenanceWindow)(nil),              // 13: metaxisdata.store.MaintenanceWindow
+	(*EnvironmentSetting_Environment)(nil), // 14: metaxisdata.store.EnvironmentSetting.Environment
+	nil,                                    // 15: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	(*durationpb.Duration)(nil),            // 16: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 17: google.protobuf.Timestamp
 }
 var file_store_setting_proto_depIdxs = []int32{
 	7,  // 0: metaxisdata.store.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.store.DataQualitySetting
-	15, // 1: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
-	13, // 2: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
-	15, // 3: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	9,  // 4: metaxisdata.store.EmailSetting.smtp:type_name -> metaxisdata.store.EmailSMTPConfig
-	1,  // 5: metaxisdata.store.EmailSMTPConfig.encryption:type_name -> metaxisdata.store.EmailSMTPEncryption
-	2,  // 6: metaxisdata.store.EmailSMTPConfig.authentication:type_name -> metaxisdata.store.EmailSMTPAuthentication
-	11, // 7: metaxisdata.store.QuietHoursSetting.windows:type_name -> metaxisdata.store.QuietWindow
-	12, // 8: metaxisdata.store.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.store.MaintenanceWindow
-	3,  // 9: metaxisdata.store.QuietWindow.days:type_name -> metaxisdata.store.DayOfWeek
-	16, // 10: metaxisdata.store.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
-	16, // 11: metaxisdata.store.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
-	14, // 12: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	16, // 1: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
+	14, // 2: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
+	16, // 3: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	8,  // 4: metaxisdata.store.DataQualitySetting.weekly_digest:type_name -> metaxisdata.store.QualityDigestSetting
+	3,  // 5: metaxisdata.store.QualityDigestSetting.day_of_week:type_name -> metaxisdata.store.DayOfWeek
+	10, // 6: metaxisdata.store.EmailSetting.smtp:type_name -> metaxisdata.store.EmailSMTPConfig
+	1,  // 7: metaxisdata.store.EmailSMTPConfig.encryption:type_name -> metaxisdata.store.EmailSMTPEncryption
+	2,  // 8: metaxisdata.store.EmailSMTPConfig.authentication:type_name -> metaxisdata.store.EmailSMTPAuthentication
+	12, // 9: metaxisdata.store.QuietHoursSetting.windows:type_name -> metaxisdata.store.QuietWindow
+	13, // 10: metaxisdata.store.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.store.MaintenanceWindow
+	3,  // 11: metaxisdata.store.QuietWindow.days:type_name -> metaxisdata.store.DayOfWeek
+	17, // 12: metaxisdata.store.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
+	17, // 13: metaxisdata.store.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
+	15, // 14: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_store_setting_proto_init() }
@@ -1284,7 +1374,7 @@ func file_store_setting_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_setting_proto_rawDesc), len(file_store_setting_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   11,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
