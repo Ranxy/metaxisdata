@@ -1,12 +1,13 @@
 import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
-import { environmentId, environmentName } from "@/api/environment";
 import { EnvironmentSchema } from "@/types/proto-es/v1/environment_service_pb";
 import {
   ENVIRONMENT_COLOR_KEYS,
   environmentColorHex,
   environmentColorHexByKey,
   environmentColorKey,
+  environmentId,
+  environmentName,
 } from "./environment";
 
 function makeEnvironment(fields: { name: string; color?: string }) {

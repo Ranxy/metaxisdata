@@ -8,23 +8,13 @@ import {
   ListEnvironmentsRequestSchema,
   UpdateEnvironmentRequestSchema,
 } from "@/types/proto-es/v1/environment_service_pb";
+import { environmentId, environmentName } from "@/utils/environment";
 import { environmentClient } from "./client";
 import { listAll } from "./list";
 
-const ENVIRONMENT_PREFIX = "environments/";
-
-/** The resource name of an environment from its id. */
-export function environmentName(id: string): string {
-  return `${ENVIRONMENT_PREFIX}${id}`;
-}
-
-/** The id of an environment, the last segment of its resource name. */
-export function environmentId(name: string): string {
-  if (!name) return "";
-  return name.startsWith(ENVIRONMENT_PREFIX)
-    ? name.slice(ENVIRONMENT_PREFIX.length)
-    : name;
-}
+// The pure resource-name helpers live in `utils/` (the bottom layer); this
+// module re-exports them so request-building callers keep one import.
+export { environmentId, environmentName };
 
 export async function listEnvironments(options?: {
   pageSize?: number;

@@ -1,5 +1,21 @@
-import { environmentId } from "@/api/environment";
 import type { Environment } from "@/types/proto-es/v1/environment_service_pb";
+
+const ENVIRONMENT_PREFIX = "environments/";
+
+/** The resource name of an environment from its id. */
+export function environmentName(id: string): string {
+  return `${ENVIRONMENT_PREFIX}${id}`;
+}
+
+/** The id of an environment, the last segment of its resource name. */
+export function environmentId(name: string): string {
+  if (!name) {
+    return "";
+  }
+  return name.startsWith(ENVIRONMENT_PREFIX)
+    ? name.slice(ENVIRONMENT_PREFIX.length)
+    : name;
+}
 
 /**
  * The preset palette the server assigns from. Keys must stay in sync with
