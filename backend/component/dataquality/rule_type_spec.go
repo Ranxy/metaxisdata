@@ -84,6 +84,18 @@ func ruleTypeSpecFor(ruleType storepb.QualityRuleType) (ruleTypeSpec, bool) {
 	return ruleTypeSpec{}, false
 }
 
+// ruleTypeSpecForConfig returns the descriptor named by the config's oneof arm.
+func ruleTypeSpecForConfig(config *storepb.QualityRuleConfig) (ruleTypeSpec, bool) {
+	if config == nil {
+		return ruleTypeSpec{}, false
+	}
+	ruleType, err := configArm(config)
+	if err != nil {
+		return ruleTypeSpec{}, false
+	}
+	return ruleTypeSpecFor(ruleType)
+}
+
 // ruleTypeSpecs is the closed catalog of rule types this build can describe, in
 // proto enum order.
 var ruleTypeSpecs = []ruleTypeSpec{
