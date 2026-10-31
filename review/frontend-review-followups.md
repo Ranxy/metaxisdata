@@ -24,6 +24,7 @@
 | 14 | **FD3（第四步）**：`useTargetScheduleEditor` + 7 条测试 | FD3 | `21c3b40` |
 | 15 | ExplainSQLPage 页面测试（补齐轮询/流式遗留） | ① | `e0bbba8` |
 | 16 | **FD3（第五步）**：Suggestions 行读数进 utils + 权限 composable | FD3 | `e475c03` |
+| 17 | **FD3（第六步）**：Extractions target row 组件 + 3 条测试 | FD3 | `0886bbc` |
 
 ## 实施说明
 
@@ -84,7 +85,8 @@
 - **排期编辑器**（`21c3b40`）：`composables/useTargetScheduleEditor.ts` 承接打开时从 Duration 回填、客户端校验、保存并回写 summary；TargetPage **1355 → 1308 行**。7 条测试覆盖整点回填、空排期默认、非法/合法校验、非法不保存、成功保存与回写、失败保留对话框、开关绑定；覆盖率 100%。
 - **ExplainSQLPage 页面测试**（`e0bbba8`）：补齐上一轮遗留的页面级测试——切到自定义 SQL、输入、点击 Explain，断言 `explainSQL` 收到 `{ signal }`、流式内容渲染、卸载中止在途流、失败显示映射文案而非原始错误、无 SQL 时按钮禁用。3 条测试。
 - **Suggestions 行读数与权限**（`e475c03`）：`suggestionRowText`/`suggestionLabelTypeKey`/`suggestionRuleDraftTypeKey`/`suggestionSeverity`/`suggestionConfidence*`/`suggestionGroupMetaType`/`selectableSuggestions`/`groupSelectionState` 收进 `utils/dataQualitySuggestion.ts`（9 个纯函数），页面删除约 60 行；三个权限改走 `useDataQualityPermissions`。新增 9 条测试，util 覆盖率 98.2% 行 / 90.6% 分支。
-- 剩余：Executions 页剩余行级派生/行组件的进一步拆分；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
+- **Executions 行组件**（`0886bbc`）：`components/data-quality/TargetRunRow.vue`（262 行）承接 target 行的全部展示（名称/类型/时间/状态/计数/失败数/展开按钮）与展开后的 `TargetScanHistory`；页面 **1493 → 1279 行**，只保留行点击/展开动作。新增 3 条组件测试（行读数、toggle emit、展开时渲染历史并转发 run 展开事件），Executions 页面 15 条测试保持通过。
+- 剩余：Executions 平铺执行表的行组件可继续拆；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
 
 ### 排序调整
 
