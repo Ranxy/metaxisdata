@@ -233,49 +233,24 @@ func DefaultRuleDraft(label storepb.QualitySemanticType, column string, profile 
 
 // labelRuleDraft builds the default draft for one rule type of a label.
 func labelRuleDraft(ruleType storepb.QualityRuleType, label storepb.QualitySemanticType, column string, profile *storepb.ColumnProfile) *storepb.QualityRuleDraftConfig {
-	config := &storepb.QualityRuleConfig{}
+	var config *storepb.QualityRuleConfig
 	switch ruleType {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:
-		config.Config = &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{
-			Column:     column,
-			MaxNullPct: proto.Float64(0),
-		}}
+		config = labelDraftNullPercent(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:
-		config.Config = &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{
-			Column:        column,
-			FailThreshold: proto.Float64(0),
-		}}
+		config = labelDraftUnique(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION:
-		config.Config = &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{
-			Columns:       []string{column},
-			FailThreshold: proto.Float64(0),
-		}}
+		config = labelDraftUniqueCombination(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
-		config.Config = &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
-			Column:        column,
-			Values:        labelAcceptedValues(profile),
-			FailThreshold: proto.Float64(0),
-		}}
+		config = labelDraftAcceptedValues(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
-		config.Config = &storepb.QualityRuleConfig_Range{Range: labelDefaultRange(label, column)}
+		config = labelDraftRange(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX:
-		config.Config = &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{
-			Column:        column,
-			Pattern:       labelDefaultPatterns[label],
-			FailThreshold: proto.Float64(0),
-		}}
+		config = labelDraftRegex(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:
-		config.Config = &storepb.QualityRuleConfig_StringLength{StringLength: &storepb.StringLengthConfig{
-			Column:        column,
-			MinLen:        proto.Int64(labelStringLengthMin),
-			MaxLen:        proto.Int64(labelStringLengthMax),
-			FailThreshold: proto.Float64(0),
-		}}
+		config = labelDraftStringLength(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:
-		config.Config = &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{
-			TimestampColumn: column,
-			MaxLagSeconds:   labelFreshnessDefaultSeconds,
-		}}
+		config = labelDraftFreshness(label, column, profile)
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
@@ -300,6 +275,76 @@ func labelRuleDraft(ruleType storepb.QualityRuleType, label storepb.QualitySeman
 		Rationale:  fmt.Sprintf("The column is labeled %s, whose default check is %s. The parameters are defaults and must be reviewed.", labelSemanticTypeShortName(label), title),
 		Confidence: labelDraftConfidence,
 	}
+}
+
+// labelDraftNullPercent is the default config of a null_percent draft: no NULLs
+// allowed, measured as a percentage.
+func labelDraftNullPercent(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{
+		Column:     column,
+		MaxNullPct: proto.Float64(0),
+	}}}
+}
+
+// labelDraftUnique is the default config of a unique draft.
+func labelDraftUnique(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{
+		Column:        column,
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftUniqueCombination is the default config of a unique_combination draft:
+// the one labeled column must be unique.
+func labelDraftUniqueCombination(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{
+		Columns:       []string{column},
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftAcceptedValues is the default config of an accepted_values draft. The
+// profile only contributes an enumeration for a low-cardinality column.
+func labelDraftAcceptedValues(_ storepb.QualitySemanticType, column string, profile *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
+		Column:        column,
+		Values:        labelAcceptedValues(profile),
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftRange is the default config of a range draft; the label decides the
+// default bounds.
+func labelDraftRange(label storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{Range: labelDefaultRange(label, column)}}
+}
+
+// labelDraftRegex is the default config of a format draft; the label selects the
+// conservative default pattern.
+func labelDraftRegex(label storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{
+		Column:        column,
+		Pattern:       labelDefaultPatterns[label],
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftStringLength is the default config of a string_length draft.
+func labelDraftStringLength(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StringLength{StringLength: &storepb.StringLengthConfig{
+		Column:        column,
+		MinLen:        proto.Int64(labelStringLengthMin),
+		MaxLen:        proto.Int64(labelStringLengthMax),
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// labelDraftFreshness is the default config of a freshness draft.
+func labelDraftFreshness(_ storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{
+		TimestampColumn: column,
+		MaxLagSeconds:   labelFreshnessDefaultSeconds,
+	}}}
 }
 
 // labelDefaultRange is the range default for one label. An amount or quantity is
