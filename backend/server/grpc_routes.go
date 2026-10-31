@@ -158,6 +158,10 @@ func configureGrpcRouters(
 			// again before audit so a refusal is not itself recorded.
 			apiv1.NewPrincipalThrottleInterceptor(stateCfg),
 			apiv1.NewAuditInterceptor(stores, profile.TrustedProxies),
+			// Bounds the handler and everything it drives. It sits inside audit so
+			// the ledger records the DeadlineExceeded the caller actually received,
+			// and outside ACL so a rejected call still runs under the bound.
+			apiv1.NewDeadlineInterceptor(connectUnaryTimeout, connectLongUnaryMethods),
 			apiv1.NewACLInterceptor(iamManager),
 			// Innermost, so the audit interceptor records the status the client
 			// actually received.
