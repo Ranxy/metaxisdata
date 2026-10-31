@@ -247,7 +247,12 @@ func IsSensitiveAuditField(key string) bool {
 		// diagnostic aid; an audited method returns the bodies, and the ledger is
 		// kept forever, so copying them here would outlive the retention window
 		// and the docs' promise that audit rows carry no LLM content.
-		"requestbody", "request_body", "responsebody", "response_body":
+		//
+		// The report HTML is the same shape of problem: ExportQualityReport is
+		// audited because it is a bulk read, but its body carries
+		// failed-sample-derived data. The field name is the contract; see
+		// ExportQualityReportResponse.
+		"requestbody", "request_body", "responsebody", "response_body", "htmlcontent", "html_content":
 		return true
 	}
 	// A numeric output budget is not a credential. The generic "token" marker

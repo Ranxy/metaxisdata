@@ -141,6 +141,14 @@ func applyWorkspaceProfileUpdate(setting *storepb.WorkspaceProfileSetting, updat
 			if err != nil {
 				return err
 			}
+			// A client that predates the weekly digest round-trips the whole
+			// data_quality message and omits weekly_digest. Replacing the message
+			// wholesale would silently clear a configured digest, so an omitted
+			// nested digest keeps the stored one. Turning the digest off is done by
+			// sending it explicitly with enabled=false.
+			if normalized != nil && update.GetDataQuality().GetWeeklyDigest() == nil && setting.GetDataQuality().GetWeeklyDigest() != nil {
+				normalized.WeeklyDigest = setting.GetDataQuality().GetWeeklyDigest()
+			}
 			dataQuality = normalized
 			dataQualityUpdated = true
 		default:
@@ -203,6 +211,8 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 
 	var digest *storepb.QualityDigestSetting
 	if weeklyDigest := dataQuality.GetWeeklyDigest(); weeklyDigest != nil {
+		// The v1 and store DayOfWeek enums are defined with identical values
+		// (Monday 1 .. Sunday 7), so the numeric cast is the conversion.
 		digest = &storepb.QualityDigestSetting{
 			Enabled:   weeklyDigest.GetEnabled(),
 			DayOfWeek: storepb.DayOfWeek(weeklyDigest.GetDayOfWeek()),

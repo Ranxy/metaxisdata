@@ -12169,7 +12169,12 @@ type ExportQualityDataChunk struct {
 	// The total number of data rows written so far, across all slices. It is
 	// monotonic and the last value is the export's row count, which lets a client
 	// report progress without counting the document.
-	RowCount      int64 `protobuf:"varint,2,opt,name=row_count,json=rowCount,proto3" json:"row_count,omitempty"`
+	RowCount int64 `protobuf:"varint,2,opt,name=row_count,json=rowCount,proto3" json:"row_count,omitempty"`
+	// Whether max_rows cut the export short. A truncated file is still complete as
+	// a CSV document, but it is not the whole selection; set on the slice that
+	// reaches the ceiling (and therefore on every later slice is meaningless —
+	// nothing follows it).
+	Truncated     bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12218,6 +12223,13 @@ func (x *ExportQualityDataChunk) GetRowCount() int64 {
 	return 0
 }
 
+func (x *ExportQualityDataChunk) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
 // ExportQualityExecutionsRequest selects the executions to export. The filters
 // carry the same meaning as their ListQualityExecutions counterparts.
 type ExportQualityExecutionsRequest struct {
@@ -12241,8 +12253,8 @@ type ExportQualityExecutionsRequest struct {
 	EndTime *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
 	// Format: workspaces/{workspace}/qualityRuns/{quality_run}
 	Run string `protobuf:"bytes,11,opt,name=run,proto3" json:"run,omitempty"`
-	// The row ceiling. Zero means the server default (100000); values above that
-	// maximum are coerced to it.
+	// The row ceiling. Zero or negative means the server default (100000); values
+	// above that maximum are coerced to it.
 	MaxRows       int32 `protobuf:"varint,12,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12380,8 +12392,8 @@ type ExportQualityIssuesRequest struct {
 	StartTime *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
 	// Only issues first seen at or before this time.
 	EndTime *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
-	// The row ceiling. Zero means the server default (100000); values above that
-	// maximum are coerced to it.
+	// The row ceiling. Zero or negative means the server default (100000); values
+	// above that maximum are coerced to it.
 	MaxRows       int32 `protobuf:"varint,9,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12503,8 +12515,8 @@ type ExportQualityTargetsRequest struct {
 	HasPendingDraft bool `protobuf:"varint,9,opt,name=has_pending_draft,json=hasPendingDraft,proto3" json:"has_pending_draft,omitempty"`
 	// The order the exported rows are written in, matching the directory's sort.
 	OrderBy QualityTargetOrder `protobuf:"varint,10,opt,name=order_by,json=orderBy,proto3,enum=metaxisdata.v1.QualityTargetOrder" json:"order_by,omitempty"`
-	// The row ceiling. Zero means the server default (100000); values above that
-	// maximum are coerced to it.
+	// The row ceiling. Zero or negative means the server default (100000); values
+	// above that maximum are coerced to it.
 	MaxRows int32 `protobuf:"varint,11,opt,name=max_rows,json=maxRows,proto3" json:"max_rows,omitempty"`
 	// Only targets that are failing, i.e. whose worst latest result is FAIL or
 	// ERROR. The directory offers this as one switch while worst_status filters a
@@ -12721,7 +12733,12 @@ type ExportQualityReportResponse struct {
 	// "quality-report-2026-10-31T120000Z.html".
 	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
 	// The complete self-contained HTML document.
-	Content       string `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	//
+	// Named html_content rather than content on purpose: the audit interceptor
+	// stores a response payload, and the audit layer redacts this field by name.
+	// A report carries failed-sample-derived data, so it must never enter the
+	// permanent ledger.
+	HtmlContent   string `protobuf:"bytes,2,opt,name=html_content,json=htmlContent,proto3" json:"html_content,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12763,9 +12780,9 @@ func (x *ExportQualityReportResponse) GetFileName() string {
 	return ""
 }
 
-func (x *ExportQualityReportResponse) GetContent() string {
+func (x *ExportQualityReportResponse) GetHtmlContent() string {
 	if x != nil {
-		return x.Content
+		return x.HtmlContent
 	}
 	return ""
 }
@@ -13815,10 +13832,11 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\aversion\x18\x04 \x01(\x05R\aversion\"\xa7\x01\n" +
 	"\"GetQualityContractRevisionResponse\x12C\n" +
 	"\brevision\x18\x01 \x01(\v2'.metaxisdata.v1.QualityContractRevisionR\brevision\x12<\n" +
-	"\x06checks\x18\x02 \x03(\v2$.metaxisdata.v1.QualityContractCheckR\x06checks\"I\n" +
+	"\x06checks\x18\x02 \x03(\v2$.metaxisdata.v1.QualityContractCheckR\x06checks\"g\n" +
 	"\x16ExportQualityDataChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1b\n" +
-	"\trow_count\x18\x02 \x01(\x03R\browCount\"\xf1\x04\n" +
+	"\trow_count\x18\x02 \x01(\x03R\browCount\x12\x1c\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"\xf1\x04\n" +
 	"\x1eExportQualityExecutionsRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12;\n" +
 	"\x05state\x18\x02 \x01(\x0e2%.metaxisdata.v1.QualityExecutionStateR\x05state\x127\n" +
@@ -13874,10 +13892,10 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\tmeta_type\x18\x03 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x1d\n" +
 	"\n" +
 	"trend_days\x18\x04 \x01(\x05R\ttrendDays\x12\x1a\n" +
-	"\blanguage\x18\x05 \x01(\tR\blanguage\"T\n" +
+	"\blanguage\x18\x05 \x01(\tR\blanguage\"]\n" +
 	"\x1bExportQualityReportResponse\x12\x1b\n" +
-	"\tfile_name\x18\x01 \x01(\tR\bfileName\x12\x18\n" +
-	"\acontent\x18\x02 \x01(\tR\acontent*\xb4\x05\n" +
+	"\tfile_name\x18\x01 \x01(\tR\bfileName\x12!\n" +
+	"\fhtml_content\x18\x02 \x01(\tR\vhtmlContent*\xb4\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_RULE_TYPE_ROW_COUNT\x10\x01\x12&\n" +

@@ -51,6 +51,7 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		"authorizationCode", "authorizationcode", "authorization_code",
 		"deviceCode", "password",
 		"requestBody", "request_body", "responseBody", "response_body",
+		"htmlContent", "html_content",
 	} {
 		raw := map[string]any{
 			"name":   "instances/i1",
@@ -66,6 +67,23 @@ func TestSensitiveAuditFieldsAreRedacted(t *testing.T) {
 		require.Equal(t, RedactedValue, nested[field], "expected nested %q to be redacted", field)
 		require.Equal(t, "instances/i1", raw["name"])
 	}
+}
+
+// ExportQualityReport is audited as a bulk read, but the report body is derived
+// from failed-sample data and must never enter the permanent ledger. The field
+// name is the contract the redaction list is keyed on.
+func TestMarshalAuditMessageRedactsReportHTML(t *testing.T) {
+	t.Parallel()
+
+	message := &v1pb.ExportQualityReportResponse{
+		FileName:    "quality-report-2026-10-31.html",
+		HtmlContent: "<html><body><td>ssn 123-45-6789</td></body></html>",
+	}
+	structured, raw := auditMarshal(t, message)
+	require.Equal(t, RedactedValue, structured.GetFields()["htmlContent"].GetStringValue())
+	require.Equal(t, RedactedValue, raw["htmlContent"])
+	require.NotContains(t, fmt.Sprint(structured), "123-45-6789")
+	require.Equal(t, "quality-report-2026-10-31.html", structured.GetFields()["fileName"].GetStringValue())
 }
 
 // The target-debug RPC returns raw LLM request/response bodies. The audit row must

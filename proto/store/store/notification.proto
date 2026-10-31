@@ -246,9 +246,11 @@ message DataQualityDigestDetail {
 message DataQualityDigestOwner {
   // Format: users/{user}. Empty is the unassigned bucket.
   string owner = 1;
-  // The owner's address, so the message is readable without another read. Empty
-  // when the account is gone.
-  string owner_email = 2;
+  // The owner's display name at aggregation time, so the message is readable
+  // without another read. Not an address: the outbox payload carries no
+  // contact details, and a channel resolves its own recipients at send time.
+  // Empty when the account is gone.
+  string owner_name = 2;
   int32 open_issue_count = 3;
   int32 failing_rule_count = 4;
 }
@@ -289,7 +291,9 @@ message NotificationChannel {
   string display_name = 1;
   NotificationChannelKind kind = 2;
   bool enabled = 3;
-  // The notification types this channel subscribes to. Empty means every type.
+  // The notification types this channel subscribes to. Empty means every type,
+  // with one exception: the data quality digest is opt-in and is delivered only
+  // to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly.
   repeated NotificationType event_types = 4;
   // The lowest severity this channel delivers. UNSPECIFIED means every severity.
   NotificationSeverity min_severity = 5;
@@ -407,8 +411,10 @@ message NotificationRoute {
 // NotificationRouteMatch is who and what a route selects. An empty field is a
 // wildcard, and so is a match with no filters at all: every event concerns the
 // rule's audience, so a route with no owner and no group selects every event.
+// The data quality digest has no audience and is never selected by a route.
 message NotificationRouteMatch {
-  // The notification types this route selects. Empty means every type.
+  // The notification types this route selects. Empty means every type that has
+  // an in-app audience; the digest has none and is not routed.
   repeated NotificationType event_types = 1;
   // The lowest severity this route selects. UNSPECIFIED means every severity.
   NotificationSeverity min_severity = 2;

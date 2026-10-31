@@ -3166,7 +3166,7 @@ DataQualityDigestOwner is one owner&#39;s share of the digest.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | owner | [string](#string) |  | Format: users/{user}. Empty is the unassigned bucket. |
-| owner_email | [string](#string) |  | The owner&#39;s address, so the message is readable without another read. Empty when the account is gone. |
+| owner_name | [string](#string) |  | The owner&#39;s display name at aggregation time, so the message is readable without another read. Not an address: the outbox payload carries no contact details, and a channel resolves its own recipients at send time. Empty when the account is gone. |
 | open_issue_count | [int32](#int32) |  |  |
 | failing_rule_count | [int32](#int32) |  |  |
 
@@ -3286,7 +3286,7 @@ read of the channel returns everything except the credential.
 | display_name | [string](#string) |  |  |
 | kind | [NotificationChannelKind](#metaxisdata-store-NotificationChannelKind) |  |  |
 | enabled | [bool](#bool) |  |  |
-| event_types | [NotificationType](#metaxisdata-store-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type. |
+| event_types | [NotificationType](#metaxisdata-store-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type, with one exception: the data quality digest is opt-in and is delivered only to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly. |
 | min_severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  | The lowest severity this channel delivers. UNSPECIFIED means every severity. |
 | language | [string](#string) |  | BCP-47 tag the outbound text is written in, for example &#34;zh-CN&#34;. Empty means the server default. |
 | config | [NotificationChannelConfig](#metaxisdata-store-NotificationChannelConfig) |  |  |
@@ -3384,11 +3384,12 @@ rule, so a team can watch its own rules without receiving the whole workspace.
 NotificationRouteMatch is who and what a route selects. An empty field is a
 wildcard, and so is a match with no filters at all: every event concerns the
 rule&#39;s audience, so a route with no owner and no group selects every event.
+The data quality digest has no audience and is never selected by a route.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| event_types | [NotificationType](#metaxisdata-store-NotificationType) | repeated | The notification types this route selects. Empty means every type. |
+| event_types | [NotificationType](#metaxisdata-store-NotificationType) | repeated | The notification types this route selects. Empty means every type that has an in-app audience; the digest has none and is not routed. |
 | min_severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  | The lowest severity this route selects. UNSPECIFIED means every severity. |
 | owners | [string](#string) | repeated | Audience filters, as users/{user} resource names. Empty means any audience. |
 | groups | [string](#string) | repeated | Audience filters, as group emails of IAM groups. Empty means any audience. |

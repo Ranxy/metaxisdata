@@ -1794,7 +1794,11 @@ type NotificationChannel struct {
 	Kind        NotificationChannelKind `protobuf:"varint,3,opt,name=kind,proto3,enum=metaxisdata.v1.NotificationChannelKind" json:"kind,omitempty"`
 	// A disabled channel is kept but receives no new deliveries.
 	Enabled bool `protobuf:"varint,4,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// The notification types this channel subscribes to. Empty means every type.
+	// The notification types this channel subscribes to. Empty means every type,
+	// with one exception: the data quality digest is opt-in and is delivered only
+	// to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly,
+	// because it is a periodic workspace summary rather than an event and existing
+	// channels predate it.
 	EventTypes []NotificationType `protobuf:"varint,5,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.v1.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this channel delivers. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,6,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"min_severity,omitempty"`
@@ -3166,10 +3170,12 @@ func (x *NotificationRoute) GetUpdateTime() *timestamppb.Timestamp {
 
 // NotificationRouteMatch is who and what a route selects. An empty field is a
 // wildcard: a route with no event types, severity floor, owners and groups
-// selects every event.
+// selects every event. Routes never select the data quality digest: it is a
+// scheduled workspace summary with no audience to match.
 type NotificationRouteMatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The notification types this route selects. Empty means every type.
+	// The notification types this route selects. Empty means every type that has
+	// an in-app audience; the digest has none and is not routed.
 	EventTypes []NotificationType `protobuf:"varint,1,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.v1.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this route selects. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,2,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"min_severity,omitempty"`

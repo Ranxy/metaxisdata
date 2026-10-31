@@ -185,6 +185,43 @@ func TestApplyWorkspaceProfileUpdateDataQualityClearsWhenMessageIsAbsent(t *test
 	require.Nil(t, setting.DataQuality)
 }
 
+// A client that predates the weekly digest sends the whole data_quality message
+// without weekly_digest. Replacing the message wholesale would silently turn a
+// configured digest off, so an omitted digest keeps the stored one; sending it
+// explicitly replaces it.
+func TestApplyWorkspaceProfileUpdateKeepsOmittedWeeklyDigest(t *testing.T) {
+	t.Parallel()
+
+	stored := &storepb.QualityDigestSetting{
+		Enabled:   true,
+		DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_TUESDAY,
+		Time:      "07:30",
+		Timezone:  "Asia/Shanghai",
+	}
+	setting := &storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
+		FailureSampleLimit: 10,
+		WeeklyDigest:       stored,
+	}}
+
+	// The legacy-shaped update names data_quality but has no weekly_digest.
+	require.NoError(t, applyWorkspaceProfileUpdate(setting, &v1pb.WorkspaceProfileSetting{
+		DataQuality: &v1pb.DataQualitySetting{FailureSampleLimit: 20},
+	}, []string{"data_quality"}))
+	require.Equal(t, int32(20), setting.GetDataQuality().GetFailureSampleLimit())
+	require.Equal(t, stored, setting.GetDataQuality().GetWeeklyDigest(), "the omitted digest must survive")
+
+	// Sending it explicitly replaces it, including turning it off.
+	require.NoError(t, applyWorkspaceProfileUpdate(setting, &v1pb.WorkspaceProfileSetting{
+		DataQuality: &v1pb.DataQualitySetting{
+			FailureSampleLimit: 20,
+			WeeklyDigest:       &v1pb.QualityDigestSetting{},
+		},
+	}, []string{"data_quality"}))
+	require.True(t, setting.GetDataQuality().GetWeeklyDigest() != nil, "an explicit empty digest is stored, not dropped")
+	require.False(t, setting.GetDataQuality().GetWeeklyDigest().GetEnabled())
+	require.Empty(t, setting.GetDataQuality().GetWeeklyDigest().GetDayOfWeek())
+}
+
 func TestNormalizeDataQualitySettingAcceptsValidValues(t *testing.T) {
 	t.Parallel()
 

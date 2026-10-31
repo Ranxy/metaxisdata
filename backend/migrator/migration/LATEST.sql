@@ -1373,10 +1373,14 @@ CREATE TABLE IF NOT EXISTS notification_route (
 COMMENT ON TABLE notification_route IS 'Owner/team routing rules for outbound notifications';
 COMMENT ON COLUMN notification_route.payload IS 'Stored as NotificationRoute (proto/store/store/notification.proto)';
 
--- One row per weekly data quality digest the runner has queued. The period key
--- is the ISO week in the digest schedule's time zone, so a tick that runs twice,
--- a restart in the middle of the schedule hour, or a catch-up pass after a short
--- outage cannot queue the same week's digest to the outbound channels twice.
+-- One row per weekly data quality digest period the runner has finished. The
+-- unique period key is what makes a second tick in the schedule window skip a
+-- period it already handled; it does not make enqueue atomic with this insert.
+-- The runner enqueues first and records the period second, so a crash between
+-- the two re-enqueues the same period with the same deterministic event id,
+-- which the delivery unique index absorbs (a repeated enqueue is harmless), or
+-- leaves the period unrecorded so the next tick retries it. A period row therefore
+-- means "handled", not "delivered exactly once".
 CREATE TABLE IF NOT EXISTS quality_digest_send (
     id BIGSERIAL PRIMARY KEY,
     period_key TEXT COLLATE "C" NOT NULL,
@@ -1387,6 +1391,6 @@ CREATE TABLE IF NOT EXISTS quality_digest_send (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_digest_send_period ON quality_digest_send(period_key);
 
-COMMENT ON TABLE quality_digest_send IS 'Weekly data quality digest periods already queued';
+COMMENT ON TABLE quality_digest_send IS 'Weekly data quality digest periods the runner has handled';
 COMMENT ON COLUMN quality_digest_send.period_key IS 'ISO week key in the digest schedule time zone, for example 2026-W44';
 COMMENT ON COLUMN quality_digest_send.channel_count IS 'Outbound channels the digest was queued for; 0 means none subscribed';

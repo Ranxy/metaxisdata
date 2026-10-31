@@ -5695,6 +5695,16 @@ export declare type ExportQualityDataChunk = Message<"metaxisdata.v1.ExportQuali
    * @generated from field: int64 row_count = 2;
    */
   rowCount: bigint;
+
+  /**
+   * Whether max_rows cut the export short. A truncated file is still complete as
+   * a CSV document, but it is not the whole selection; set on the slice that
+   * reaches the ceiling (and therefore on every later slice is meaningless —
+   * nothing follows it).
+   *
+   * @generated from field: bool truncated = 3;
+   */
+  truncated: boolean;
 };
 
 /**
@@ -5782,8 +5792,8 @@ export declare type ExportQualityExecutionsRequest = Message<"metaxisdata.v1.Exp
   run: string;
 
   /**
-   * The row ceiling. Zero means the server default (100000); values above that
-   * maximum are coerced to it.
+   * The row ceiling. Zero or negative means the server default (100000); values
+   * above that maximum are coerced to it.
    *
    * @generated from field: int32 max_rows = 12;
    */
@@ -5856,8 +5866,8 @@ export declare type ExportQualityIssuesRequest = Message<"metaxisdata.v1.ExportQ
   endTime?: Timestamp;
 
   /**
-   * The row ceiling. Zero means the server default (100000); values above that
-   * maximum are coerced to it.
+   * The row ceiling. Zero or negative means the server default (100000); values
+   * above that maximum are coerced to it.
    *
    * @generated from field: int32 max_rows = 9;
    */
@@ -5944,8 +5954,8 @@ export declare type ExportQualityTargetsRequest = Message<"metaxisdata.v1.Export
   orderBy: QualityTargetOrder;
 
   /**
-   * The row ceiling. Zero means the server default (100000); values above that
-   * maximum are coerced to it.
+   * The row ceiling. Zero or negative means the server default (100000); values
+   * above that maximum are coerced to it.
    *
    * @generated from field: int32 max_rows = 11;
    */
@@ -6036,9 +6046,14 @@ export declare type ExportQualityReportResponse = Message<"metaxisdata.v1.Export
   /**
    * The complete self-contained HTML document.
    *
-   * @generated from field: string content = 2;
+   * Named html_content rather than content on purpose: the audit interceptor
+   * stores a response payload, and the audit layer redacts this field by name.
+   * A report carries failed-sample-derived data, so it must never enter the
+   * permanent ledger.
+   *
+   * @generated from field: string html_content = 2;
    */
-  content: string;
+  htmlContent: string;
 };
 
 /**

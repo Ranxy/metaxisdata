@@ -2736,6 +2736,12 @@ message ExportQualityDataChunk {
   // monotonic and the last value is the export's row count, which lets a client
   // report progress without counting the document.
   int64 row_count = 2;
+
+  // Whether max_rows cut the export short. A truncated file is still complete as
+  // a CSV document, but it is not the whole selection; set on the slice that
+  // reaches the ceiling (and therefore on every later slice is meaningless —
+  // nothing follows it).
+  bool truncated = 3;
 }
 
 // ExportQualityExecutionsRequest selects the executions to export. The filters
@@ -2771,8 +2777,8 @@ message ExportQualityExecutionsRequest {
   // Format: workspaces/{workspace}/qualityRuns/{quality_run}
   string run = 11 [(google.api.resource_reference) = {type: "metaxisdata/QualityRun"}];
 
-  // The row ceiling. Zero means the server default (100000); values above that
-  // maximum are coerced to it.
+  // The row ceiling. Zero or negative means the server default (100000); values
+  // above that maximum are coerced to it.
   int32 max_rows = 12;
 }
 
@@ -2801,8 +2807,8 @@ message ExportQualityIssuesRequest {
   // Only issues first seen at or before this time.
   google.protobuf.Timestamp end_time = 8;
 
-  // The row ceiling. Zero means the server default (100000); values above that
-  // maximum are coerced to it.
+  // The row ceiling. Zero or negative means the server default (100000); values
+  // above that maximum are coerced to it.
   int32 max_rows = 9;
 }
 
@@ -2835,8 +2841,8 @@ message ExportQualityTargetsRequest {
   // The order the exported rows are written in, matching the directory's sort.
   QualityTargetOrder order_by = 10;
 
-  // The row ceiling. Zero means the server default (100000); values above that
-  // maximum are coerced to it.
+  // The row ceiling. Zero or negative means the server default (100000); values
+  // above that maximum are coerced to it.
   int32 max_rows = 11;
 
   // Only targets that are failing, i.e. whose worst latest result is FAIL or
@@ -2874,5 +2880,10 @@ message ExportQualityReportResponse {
   string file_name = 1;
 
   // The complete self-contained HTML document.
-  string content = 2;
+  //
+  // Named html_content rather than content on purpose: the audit interceptor
+  // stores a response payload, and the audit layer redacts this field by name.
+  // A report carries failed-sample-derived data, so it must never enter the
+  // permanent ledger.
+  string html_content = 2;
 }

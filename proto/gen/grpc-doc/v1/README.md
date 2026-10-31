@@ -4478,6 +4478,7 @@ manual encoding choice.
 | ----- | ---- | ----- | ----------- |
 | data | [bytes](#bytes) |  | A slice of the CSV bytes. A slice may end in the middle of a value&#39;s UTF-8 sequence; the document is only meaningful once every slice is concatenated. |
 | row_count | [int64](#int64) |  | The total number of data rows written so far, across all slices. It is monotonic and the last value is the export&#39;s row count, which lets a client report progress without counting the document. |
+| truncated | [bool](#bool) |  | Whether max_rows cut the export short. A truncated file is still complete as a CSV document, but it is not the whole selection; set on the slice that reaches the ceiling (and therefore on every later slice is meaningless — nothing follows it). |
 
 
 
@@ -4504,7 +4505,7 @@ carry the same meaning as their ListQualityExecutions counterparts.
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only executions started at or after this time. |
 | end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only executions started before this time. |
 | run | [string](#string) |  | Format: workspaces/{workspace}/qualityRuns/{quality_run} |
-| max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+| max_rows | [int32](#int32) |  | The row ceiling. Zero or negative means the server default (100000); values above that maximum are coerced to it. |
 
 
 
@@ -4528,7 +4529,7 @@ same meaning as their ListQualityIssues counterparts.
 | owner | [string](#string) |  | Format: users/{user} |
 | start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only issues first seen at or after this time. |
 | end_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Only issues first seen at or before this time. |
-| max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+| max_rows | [int32](#int32) |  | The row ceiling. Zero or negative means the server default (100000); values above that maximum are coerced to it. |
 
 
 
@@ -4563,7 +4564,9 @@ ExportQualityReportResponse is the finished report file.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | file_name | [string](#string) |  | The download name, for example &#34;quality-report-2026-10-31T120000Z.html&#34;. |
-| content | [string](#string) |  | The complete self-contained HTML document. |
+| html_content | [string](#string) |  | The complete self-contained HTML document.
+
+Named html_content rather than content on purpose: the audit interceptor stores a response payload, and the audit layer redacts this field by name. A report carries failed-sample-derived data, so it must never enter the permanent ledger. |
 
 
 
@@ -4589,7 +4592,7 @@ the same meaning as their ListQualityTargets counterparts.
 | has_open_issue | [bool](#bool) |  | Only targets with at least one unresolved issue. |
 | has_pending_draft | [bool](#bool) |  | Only targets with at least one pending AI draft. |
 | order_by | [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder) |  | The order the exported rows are written in, matching the directory&#39;s sort. |
-| max_rows | [int32](#int32) |  | The row ceiling. Zero means the server default (100000); values above that maximum are coerced to it. |
+| max_rows | [int32](#int32) |  | The row ceiling. Zero or negative means the server default (100000); values above that maximum are coerced to it. |
 | failing_only | [bool](#bool) |  | Only targets that are failing, i.e. whose worst latest result is FAIL or ERROR. The directory offers this as one switch while worst_status filters a single state, so the export has to express the pair itself. It must not be combined with worst_status. |
 
 
@@ -9110,7 +9113,7 @@ write-only: reads report only whether one is stored.
 | display_name | [string](#string) |  | The administrator-facing name, for example &#34;Data quality on-call&#34;. |
 | kind | [NotificationChannelKind](#metaxisdata-v1-NotificationChannelKind) |  |  |
 | enabled | [bool](#bool) |  | A disabled channel is kept but receives no new deliveries. |
-| event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type. |
+| event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type, with one exception: the data quality digest is opt-in and is delivered only to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly, because it is a periodic workspace summary rather than an event and existing channels predate it. |
 | min_severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  | The lowest severity this channel delivers. UNSPECIFIED means every severity. |
 | language | [string](#string) |  | BCP-47 tag the outbound text is written in. Empty means the server default. |
 | config | [NotificationChannelConfig](#metaxisdata-v1-NotificationChannelConfig) |  | The kind&#39;s configuration. The oneof case must match kind and cannot change: the kind is immutable, and a config of another case has no delivery path. |
@@ -9232,12 +9235,13 @@ its own subscription as before.
 ### NotificationRouteMatch
 NotificationRouteMatch is who and what a route selects. An empty field is a
 wildcard: a route with no event types, severity floor, owners and groups
-selects every event.
+selects every event. Routes never select the data quality digest: it is a
+scheduled workspace summary with no audience to match.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this route selects. Empty means every type. |
+| event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this route selects. Empty means every type that has an in-app audience; the digest has none and is not routed. |
 | min_severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  | The lowest severity this route selects. UNSPECIFIED means every severity. |
 | owners | [string](#string) | repeated | Audience filters, as users/{user} resource names. Empty means any audience. |
 | groups | [string](#string) | repeated | Audience filters, as group emails of IAM groups. Empty means any audience. |

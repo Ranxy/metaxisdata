@@ -1359,9 +1359,11 @@ type DataQualityDigestOwner struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: users/{user}. Empty is the unassigned bucket.
 	Owner string `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
-	// The owner's address, so the message is readable without another read. Empty
-	// when the account is gone.
-	OwnerEmail       string `protobuf:"bytes,2,opt,name=owner_email,json=ownerEmail,proto3" json:"owner_email,omitempty"`
+	// The owner's display name at aggregation time, so the message is readable
+	// without another read. Not an address: the outbox payload carries no
+	// contact details, and a channel resolves its own recipients at send time.
+	// Empty when the account is gone.
+	OwnerName        string `protobuf:"bytes,2,opt,name=owner_name,json=ownerName,proto3" json:"owner_name,omitempty"`
 	OpenIssueCount   int32  `protobuf:"varint,3,opt,name=open_issue_count,json=openIssueCount,proto3" json:"open_issue_count,omitempty"`
 	FailingRuleCount int32  `protobuf:"varint,4,opt,name=failing_rule_count,json=failingRuleCount,proto3" json:"failing_rule_count,omitempty"`
 	unknownFields    protoimpl.UnknownFields
@@ -1405,9 +1407,9 @@ func (x *DataQualityDigestOwner) GetOwner() string {
 	return ""
 }
 
-func (x *DataQualityDigestOwner) GetOwnerEmail() string {
+func (x *DataQualityDigestOwner) GetOwnerName() string {
 	if x != nil {
-		return x.OwnerEmail
+		return x.OwnerName
 	}
 	return ""
 }
@@ -1505,7 +1507,9 @@ type NotificationChannel struct {
 	DisplayName string                  `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	Kind        NotificationChannelKind `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.store.NotificationChannelKind" json:"kind,omitempty"`
 	Enabled     bool                    `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// The notification types this channel subscribes to. Empty means every type.
+	// The notification types this channel subscribes to. Empty means every type,
+	// with one exception: the data quality digest is opt-in and is delivered only
+	// to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly.
 	EventTypes []NotificationType `protobuf:"varint,4,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.store.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this channel delivers. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,5,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
@@ -2259,9 +2263,11 @@ func (x *NotificationRoute) GetChannels() []string {
 // NotificationRouteMatch is who and what a route selects. An empty field is a
 // wildcard, and so is a match with no filters at all: every event concerns the
 // rule's audience, so a route with no owner and no group selects every event.
+// The data quality digest has no audience and is never selected by a route.
 type NotificationRouteMatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The notification types this route selects. Empty means every type.
+	// The notification types this route selects. Empty means every type that has
+	// an in-app audience; the digest has none and is not routed.
 	EventTypes []NotificationType `protobuf:"varint,1,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.store.NotificationType" json:"event_types,omitempty"`
 	// The lowest severity this route selects. UNSPECIFIED means every severity.
 	MinSeverity NotificationSeverity `protobuf:"varint,2,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
@@ -2423,11 +2429,11 @@ const file_store_notification_proto_rawDesc = "" +
 	"\x10open_error_count\x18\x0e \x01(\x05R\x0eopenErrorCount\x12.\n" +
 	"\x13open_critical_count\x18\x0f \x01(\x05R\x11openCriticalCount\x12A\n" +
 	"\x06owners\x18\x10 \x03(\v2).metaxisdata.store.DataQualityDigestOwnerR\x06owners\x12D\n" +
-	"\atargets\x18\x11 \x03(\v2*.metaxisdata.store.DataQualityDigestTargetR\atargets\"\xa7\x01\n" +
+	"\atargets\x18\x11 \x03(\v2*.metaxisdata.store.DataQualityDigestTargetR\atargets\"\xa5\x01\n" +
 	"\x16DataQualityDigestOwner\x12\x14\n" +
-	"\x05owner\x18\x01 \x01(\tR\x05owner\x12\x1f\n" +
-	"\vowner_email\x18\x02 \x01(\tR\n" +
-	"ownerEmail\x12(\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\x12\x1d\n" +
+	"\n" +
+	"owner_name\x18\x02 \x01(\tR\townerName\x12(\n" +
 	"\x10open_issue_count\x18\x03 \x01(\x05R\x0eopenIssueCount\x12,\n" +
 	"\x12failing_rule_count\x18\x04 \x01(\x05R\x10failingRuleCount\"\xd2\x01\n" +
 	"\x17DataQualityDigestTarget\x12\x1f\n" +

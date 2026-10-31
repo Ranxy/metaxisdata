@@ -52,6 +52,12 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			LlmConcurrencyLimit:      16,
 			MaxColumnsPerAnalysis:    120,
 			SendSampleValuesToLlm:    true,
+			WeeklyDigest: &storepb.QualityDigestSetting{
+				Enabled:   true,
+				DayOfWeek: storepb.DayOfWeek_DAY_OF_WEEK_SATURDAY,
+				Time:      "07:45",
+				Timezone:  "Asia/Shanghai",
+			},
 		},
 	}
 
@@ -67,7 +73,13 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 		LLMConcurrencyLimit:      16,
 		MaxColumnsPerAnalysis:    120,
 		SendSampleValuesToLLM:    true,
-		Digest:                   defaultDigestSchedule(),
+		Digest: DigestSchedule{
+			Enabled:  true,
+			Day:      time.Saturday,
+			Hour:     7,
+			Minute:   45,
+			Timezone: "Asia/Shanghai",
+		},
 	}, SettingsFromProfile(profile))
 }
 

@@ -9370,11 +9370,13 @@ totals above carry the whole picture. </p></td>
                 </tr>
               
                 <tr>
-                  <td>owner_email</td>
+                  <td>owner_name</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The owner&#39;s address, so the message is readable without another read. Empty
-when the account is gone. </p></td>
+                  <td><p>The owner&#39;s display name at aggregation time, so the message is readable
+without another read. Not an address: the outbox payload carries no
+contact details, and a channel resolves its own recipients at send time.
+Empty when the account is gone. </p></td>
                 </tr>
               
                 <tr>
@@ -9657,7 +9659,9 @@ to the event&#39;s suppression window. </p></td>
                   <td>event_types</td>
                   <td><a href="#metaxisdata.store.NotificationType">NotificationType</a></td>
                   <td>repeated</td>
-                  <td><p>The notification types this channel subscribes to. Empty means every type. </p></td>
+                  <td><p>The notification types this channel subscribes to. Empty means every type,
+with one exception: the data quality digest is opt-in and is delivered only
+to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly. </p></td>
                 </tr>
               
                 <tr>
@@ -9909,7 +9913,7 @@ the route was written is ignored at enqueue time rather than dropping the rule. 
         
       
         <h3 id="metaxisdata.store.NotificationRouteMatch">NotificationRouteMatch</h3>
-        <p>NotificationRouteMatch is who and what a route selects. An empty field is a</p><p>wildcard, and so is a match with no filters at all: every event concerns the</p><p>rule's audience, so a route with no owner and no group selects every event.</p>
+        <p>NotificationRouteMatch is who and what a route selects. An empty field is a</p><p>wildcard, and so is a match with no filters at all: every event concerns the</p><p>rule's audience, so a route with no owner and no group selects every event.</p><p>The data quality digest has no audience and is never selected by a route.</p>
 
         
           <table class="field-table">
@@ -9922,7 +9926,8 @@ the route was written is ignored at enqueue time rather than dropping the rule. 
                   <td>event_types</td>
                   <td><a href="#metaxisdata.store.NotificationType">NotificationType</a></td>
                   <td>repeated</td>
-                  <td><p>The notification types this route selects. Empty means every type. </p></td>
+                  <td><p>The notification types this route selects. Empty means every type that has
+an in-app audience; the digest has none and is not routed. </p></td>
                 </tr>
               
                 <tr>

@@ -9156,9 +9156,15 @@ components:
                     description: |-
                         The download name, for example
                          "quality-report-2026-10-31T120000Z.html".
-                content:
+                htmlContent:
                     type: string
-                    description: The complete self-contained HTML document.
+                    description: |-
+                        The complete self-contained HTML document.
+
+                         Named html_content rather than content on purpose: the audit interceptor
+                         stores a response payload, and the audit layer redacts this field by name.
+                         A report carries failed-sample-derived data, so it must never enter the
+                         permanent ledger.
             description: ExportQualityReportResponse is the finished report file.
         Expr:
             type: object
@@ -11091,7 +11097,10 @@ components:
                             - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
                         type: string
                         format: enum
-                    description: The notification types this channel subscribes to. Empty means every type.
+                    description: |-
+                        The notification types this channel subscribes to. Empty means every type,
+                         with one exception: the data quality digest is opt-in and is delivered only
+                         to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly.
                 minSeverity:
                     enum:
                         - NOTIFICATION_SEVERITY_UNSPECIFIED
@@ -11244,7 +11253,9 @@ components:
                             - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
                         type: string
                         format: enum
-                    description: The notification types this route selects. Empty means every type.
+                    description: |-
+                        The notification types this route selects. Empty means every type that has
+                         an in-app audience; the digest has none and is not routed.
                 minSeverity:
                     enum:
                         - NOTIFICATION_SEVERITY_UNSPECIFIED
@@ -11268,6 +11279,7 @@ components:
                 NotificationRouteMatch is who and what a route selects. An empty field is a
                  wildcard, and so is a match with no filters at all: every event concerns the
                  rule's audience, so a route with no owner and no group selects every event.
+                 The data quality digest has no audience and is never selected by a route.
         NullPercentConfig:
             type: object
             properties:

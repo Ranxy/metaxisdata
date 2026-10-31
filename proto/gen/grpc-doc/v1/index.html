@@ -13375,6 +13375,16 @@ monotonic and the last value is the export&#39;s row count, which lets a client
 report progress without counting the document. </p></td>
                 </tr>
               
+                <tr>
+                  <td>truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether max_rows cut the export short. A truncated file is still complete as
+a CSV document, but it is not the whole selection; set on the slice that
+reaches the ceiling (and therefore on every later slice is meaningless —
+nothing follows it). </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -13473,8 +13483,8 @@ report progress without counting the document. </p></td>
                   <td>max_rows</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The row ceiling. Zero means the server default (100000); values above that
-maximum are coerced to it. </p></td>
+                  <td><p>The row ceiling. Zero or negative means the server default (100000); values
+above that maximum are coerced to it. </p></td>
                 </tr>
               
             </tbody>
@@ -13554,8 +13564,8 @@ maximum are coerced to it. </p></td>
                   <td>max_rows</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The row ceiling. Zero means the server default (100000); values above that
-maximum are coerced to it. </p></td>
+                  <td><p>The row ceiling. Zero or negative means the server default (100000); values
+above that maximum are coerced to it. </p></td>
                 </tr>
               
             </tbody>
@@ -13639,10 +13649,15 @@ report is capped at the 90-day execution retention. </p></td>
                 </tr>
               
                 <tr>
-                  <td>content</td>
+                  <td>html_content</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The complete self-contained HTML document. </p></td>
+                  <td><p>The complete self-contained HTML document.
+
+Named html_content rather than content on purpose: the audit interceptor
+stores a response payload, and the audit layer redacts this field by name.
+A report carries failed-sample-derived data, so it must never enter the
+permanent ledger. </p></td>
                 </tr>
               
             </tbody>
@@ -13738,8 +13753,8 @@ every target, including those whose rules have not run yet. </p></td>
                   <td>max_rows</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The row ceiling. Zero means the server default (100000); values above that
-maximum are coerced to it. </p></td>
+                  <td><p>The row ceiling. Zero or negative means the server default (100000); values
+above that maximum are coerced to it. </p></td>
                 </tr>
               
                 <tr>
@@ -26348,7 +26363,11 @@ to retrieve the subsequent page. </p></td>
                   <td>event_types</td>
                   <td><a href="#metaxisdata.v1.NotificationType">NotificationType</a></td>
                   <td>repeated</td>
-                  <td><p>The notification types this channel subscribes to. Empty means every type. </p></td>
+                  <td><p>The notification types this channel subscribes to. Empty means every type,
+with one exception: the data quality digest is opt-in and is delivered only
+to a channel that names NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly,
+because it is a periodic workspace summary rather than an event and existing
+channels predate it. </p></td>
                 </tr>
               
                 <tr>
@@ -26711,7 +26730,7 @@ channel is ignored; the rule&#39;s other channels still receive the event. </p><
         
       
         <h3 id="metaxisdata.v1.NotificationRouteMatch">NotificationRouteMatch</h3>
-        <p>NotificationRouteMatch is who and what a route selects. An empty field is a</p><p>wildcard: a route with no event types, severity floor, owners and groups</p><p>selects every event.</p>
+        <p>NotificationRouteMatch is who and what a route selects. An empty field is a</p><p>wildcard: a route with no event types, severity floor, owners and groups</p><p>selects every event. Routes never select the data quality digest: it is a</p><p>scheduled workspace summary with no audience to match.</p>
 
         
           <table class="field-table">
@@ -26724,7 +26743,8 @@ channel is ignored; the rule&#39;s other channels still receive the event. </p><
                   <td>event_types</td>
                   <td><a href="#metaxisdata.v1.NotificationType">NotificationType</a></td>
                   <td>repeated</td>
-                  <td><p>The notification types this route selects. Empty means every type. </p></td>
+                  <td><p>The notification types this route selects. Empty means every type that has
+an in-app audience; the digest has none and is not routed. </p></td>
                 </tr>
               
                 <tr>
