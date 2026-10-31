@@ -4,8 +4,16 @@ import {
   type NavigationGuard,
   type RouteRecordRaw,
 } from "vue-router";
+import type { Permission } from "@/lib/permissions";
 import { isKnownSpaRouteName, resolveSignInTarget } from "@/lib/signInRedirect";
 import { useAuthStore } from "@/store/modules/auth";
+
+declare module "vue-router" {
+  interface RouteMeta {
+    /** The permission that makes this page reachable; the server enforces it. */
+    permission?: Permission;
+  }
+}
 
 const routes: RouteRecordRaw[] = [
   {

@@ -5,6 +5,7 @@ import {
   errorMessageKey,
   errorText,
   extractErrorMessage,
+  isAborted,
   prefersServerMessage,
 } from "./error";
 
@@ -56,6 +57,22 @@ describe("errorCode", () => {
   it("is undefined for anything else", () => {
     expect(errorCode(new Error("boom"))).toBeUndefined();
     expect(errorCode("boom")).toBeUndefined();
+  });
+});
+
+describe("isAborted", () => {
+  it("recognizes a canceled Connect request", () => {
+    expect(isAborted(new ConnectError("canceled", Code.Canceled))).toBe(true);
+  });
+
+  it("recognizes a DOM abort", () => {
+    expect(isAborted(new DOMException("aborted", "AbortError"))).toBe(true);
+  });
+
+  it("leaves real failures alone", () => {
+    expect(isAborted(new ConnectError("boom", Code.Internal))).toBe(false);
+    expect(isAborted(new DOMException("timeout", "TimeoutError"))).toBe(false);
+    expect(isAborted(new Error("boom"))).toBe(false);
   });
 });
 

@@ -1086,11 +1086,14 @@ export function explainQualityExecution(options: {
   name: string;
   language?: string;
   forceRegenerate?: boolean;
+  signal?: AbortSignal;
 }): AsyncIterable<ExplainQualityExecutionResponse> {
   const request = create(ExplainQualityExecutionRequestSchema, {
     name: options.name,
     language: options.language ?? "",
     forceRegenerate: options.forceRegenerate ?? false,
   });
-  return dataQualityClient.explainQualityExecution(request);
+  return dataQualityClient.explainQualityExecution(request, {
+    signal: options.signal,
+  });
 }

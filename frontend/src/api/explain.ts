@@ -10,7 +10,10 @@ export interface ExplainSQLInput {
   scopePrefix?: string;
 }
 
-export function explainSQL(input: ExplainSQLInput) {
+export function explainSQL(
+  input: ExplainSQLInput,
+  options: { signal?: AbortSignal } = {}
+) {
   const request = create(ExplainSQLRequestSchema, {
     sqlText: input.sqlText ?? "",
     metaGuid: input.metaGuid ?? "",
@@ -18,5 +21,5 @@ export function explainSQL(input: ExplainSQLInput) {
     providerName: input.providerName ?? "",
     scopePrefix: input.scopePrefix ?? "",
   });
-  return explainSQLClient.explainSQL(request);
+  return explainSQLClient.explainSQL(request, { signal: options.signal });
 }

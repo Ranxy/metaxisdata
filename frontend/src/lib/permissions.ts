@@ -12,10 +12,10 @@
 export interface PermissionGroup {
   /** The resource segment shown as the group heading, e.g. "instances". */
   resource: string;
-  permissions: string[];
+  permissions: readonly string[];
 }
 
-export const PERMISSION_GROUPS: PermissionGroup[] = [
+export const PERMISSION_GROUPS = [
   {
     resource: "instances",
     permissions: [
@@ -191,9 +191,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     resource: "auditLogs",
     permissions: ["metaxisdata.auditLogs.search"],
   },
-];
+] as const satisfies readonly PermissionGroup[];
 
-export const ALL_PERMISSIONS: string[] = PERMISSION_GROUPS.flatMap(
+/**
+ * One catalog entry. Deriving the union from the catalog means a typo in a
+ * `hasPermission` call or in a route/sidebar entry fails to compile, instead of
+ * silently hiding the UI it guards.
+ */
+export type Permission =
+  (typeof PERMISSION_GROUPS)[number]["permissions"][number];
+
+export const ALL_PERMISSIONS: readonly Permission[] = PERMISSION_GROUPS.flatMap(
   (group) => group.permissions
 );
 

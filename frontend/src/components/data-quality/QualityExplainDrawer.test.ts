@@ -53,6 +53,16 @@ function streamed(chunks: ReturnType<typeof content>[]) {
   })();
 }
 
+/** A stream that delivers its chunks and then never finishes on its own. */
+function hanging(chunks: ReturnType<typeof content>[]) {
+  return (async function* () {
+    for (const chunk of chunks) {
+      yield chunk;
+    }
+    await new Promise(() => {});
+  })();
+}
+
 async function settle() {
   await flushPromises();
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -155,6 +165,59 @@ describe("QualityExplainDrawer", () => {
     expect(document.body.textContent).toContain(
       i18n.global.t("dataQuality.llm.errors.notConfigured")
     );
+    wrapper.unmount();
+  });
+
+  it("aborts the previous stream when the drawer switches execution", async () => {
+    const first = create(QualityExecutionSchema, {
+      name: "workspaces/ws/qualityExecutions/r1",
+      outcome: QualityStatus.FAIL,
+    });
+    const second = create(QualityExecutionSchema, {
+      name: "workspaces/ws/qualityExecutions/r2",
+      outcome: QualityStatus.FAIL,
+    });
+    mocks.explainQualityExecution
+      .mockReturnValueOnce(hanging([content("Old answer")]))
+      .mockReturnValueOnce(streamed([content("New answer"), metadata()]));
+
+    const wrapper = mount(QualityExplainDrawer, {
+      attachTo: document.body,
+      props: { open: true, execution: first },
+      global: { plugins: [i18n] },
+    });
+    await settle();
+    const firstSignal = mocks.explainQualityExecution.mock.calls[0]?.[0]
+      .signal as AbortSignal;
+    expect(firstSignal.aborted).toBe(false);
+
+    await wrapper.setProps({ execution: second });
+    await settle();
+
+    // The superseded stream is aborted, and its buffered frame never lands in
+    // the document the new execution owns.
+    expect(firstSignal.aborted).toBe(true);
+    expect(document.body.textContent).toContain("New answer");
+    expect(document.body.textContent).not.toContain("Old answer");
+    wrapper.unmount();
+  });
+
+  it("aborts the stream when the drawer closes", async () => {
+    mocks.explainQualityExecution.mockReturnValue(
+      hanging([content("Still generating")])
+    );
+    const wrapper = mount(QualityExplainDrawer, {
+      attachTo: document.body,
+      props: { open: true, execution: execution() },
+      global: { plugins: [i18n] },
+    });
+    await settle();
+    const signal = mocks.explainQualityExecution.mock.calls[0]?.[0]
+      .signal as AbortSignal;
+
+    await wrapper.setProps({ open: false });
+
+    expect(signal.aborted).toBe(true);
     wrapper.unmount();
   });
 });

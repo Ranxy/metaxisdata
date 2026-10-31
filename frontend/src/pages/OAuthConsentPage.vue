@@ -147,6 +147,7 @@ import AppLoading from "@/components/common/AppLoading.vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { MCP_READ_SCOPE } from "@/lib/oauth";
 import type { OAuthAuthorizationRequest } from "@/types/proto-es/v1/oauth_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import { errorCode } from "@/utils/error";
@@ -204,7 +205,7 @@ function formatTime(value?: Timestamp): string {
 // description.
 function scopeDescription(scope: string): string {
   switch (scope) {
-    case "metaxisdata.mcp.read":
+    case MCP_READ_SCOPE:
       return t("oauthConsent.scopeMcpRead");
     default:
       return scope;
