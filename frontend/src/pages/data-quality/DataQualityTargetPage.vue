@@ -575,7 +575,6 @@ import {
   getQualityTargetSchedule,
   listQualitySuggestions,
   runQualityRules,
-  updateQualityTargetSchedule,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
@@ -616,6 +615,7 @@ import {
 } from "@/components/ui/select";
 import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useTargetScheduleEditor } from "@/composables/useTargetScheduleEditor";
 import { useTargetWorkspaceDialogs } from "@/composables/useTargetWorkspaceDialogs";
 import { notify } from "@/lib/notify";
 import {
@@ -639,13 +639,7 @@ import {
   qualityIssueStatusVariant,
   qualityTargetMetadataRoute,
 } from "@/utils/dataQuality";
-import {
-  durationToSchedule,
-  type ScheduleUnit,
-  scheduleToDuration,
-  type TargetColumnDetail,
-  validateScheduleInterval,
-} from "@/utils/dataQualityForm";
+import { type TargetColumnDetail } from "@/utils/dataQualityForm";
 import {
   isLabelSuggestion,
   isPendingDraft,
@@ -710,12 +704,6 @@ const summary = ref<QualityTargetSummary>(
  */
 const targetColumns = ref<TargetColumnDetail[]>([]);
 const orphaned = ref(false);
-/** The target's one schedule editor; every enabled check runs on it. */
-const scheduleOpen = ref(false);
-const scheduleValue = ref("1");
-const scheduleUnit = ref<ScheduleUnit>("hours");
-const scheduleSaving = ref(false);
-const scheduleError = ref("");
 /** The target's contract: defaults, published version and drift. */
 const contract = ref<QualityContract>();
 const contractLoading = ref(true);
@@ -759,6 +747,24 @@ const effectiveMetaType = computed<MetaType>(() => {
   return fromRule !== undefined && fromRule !== MetaType.UNSPECIFIED
     ? fromRule
     : MetaType.TABLE;
+});
+
+const {
+  targetSchedule,
+  scheduleOpen,
+  scheduleValue,
+  scheduleUnit,
+  scheduleSaving,
+  scheduleError,
+  scheduleIssueKey,
+  openScheduleEditor,
+  setScheduleUnit,
+  onScheduleOpenChange,
+  saveSchedule,
+} = useTargetScheduleEditor({
+  summary,
+  targetGuid,
+  effectiveMetaType,
 });
 
 const displayName = computed(() => targetDisplayName(summary.value));
@@ -875,9 +881,6 @@ const lastRunText = computed(() =>
     : t("dataQuality.workspace.summaryNeverRun")
 );
 
-/** The target's schedule and next run, as the aggregate read resolved them. */
-const targetSchedule = computed(() => summary.value.schedule);
-
 const scheduleIntervalLabel = computed(() =>
   formatScheduleInterval(targetSchedule.value?.scheduleInterval)
 );
@@ -896,63 +899,6 @@ const nextRunTitle = computed(() => {
   const next = targetSchedule.value?.nextRunTime;
   return next ? formatDateTime(next, locale.value) : undefined;
 });
-
-/** Live client-side validation for the schedule dialog. */
-const scheduleIssueKey = computed(() => {
-  const [issue] = validateScheduleInterval({
-    value: scheduleValue.value,
-    unit: scheduleUnit.value,
-  });
-  return issue?.key ?? "";
-});
-
-function openScheduleEditor() {
-  const parsed = durationToSchedule(targetSchedule.value?.scheduleInterval);
-  const empty = parsed.value === "";
-  scheduleValue.value = empty ? "1" : parsed.value;
-  scheduleUnit.value = empty ? "hours" : parsed.unit;
-  scheduleError.value = "";
-  scheduleOpen.value = true;
-}
-
-function setScheduleUnit(value: unknown) {
-  scheduleUnit.value = String(value) as ScheduleUnit;
-}
-
-function onScheduleOpenChange(open: boolean) {
-  if (!open) {
-    scheduleOpen.value = false;
-  }
-}
-
-/** Save the target's schedule; the returned schedule patches the summary. */
-async function saveSchedule() {
-  if (scheduleSaving.value || scheduleIssueKey.value !== "") {
-    return;
-  }
-  scheduleSaving.value = true;
-  scheduleError.value = "";
-  try {
-    const updated = await updateQualityTargetSchedule({
-      targetGuid: targetGuid.value,
-      metaType: effectiveMetaType.value,
-      scheduleInterval: scheduleToDuration({
-        value: scheduleValue.value,
-        unit: scheduleUnit.value,
-      }),
-    });
-    summary.value.schedule = updated;
-    scheduleOpen.value = false;
-    notify.success(t("dataQuality.workspace.scheduleUpdated"));
-  } catch (cause: unknown) {
-    scheduleError.value = formatError(
-      cause,
-      "dataQuality.workspace.scheduleUpdateFailed"
-    );
-  } finally {
-    scheduleSaving.value = false;
-  }
-}
 
 const contractDefaultSeverity = computed(
   () => contract.value?.settings?.defaultSeverity ?? QualitySeverity.UNSPECIFIED
