@@ -52,15 +52,6 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	// Read the coverage denominator before the numerator guard. Both reads are
-	// separate statements, so a schema sync can delete a registry row between
-	// them; reading the denominator first means such a row still counts as
-	// denominator but drops out of the numerator (its column set is gone), so the
-	// race can only under-count coverage, never push it past 100%.
-	coverage, err := s.store.ListQualityCoverage(ctx)
-	if err != nil {
-		return nil, err
-	}
 	// Environment titles are presentation only: a breakdown row falls back to its
 	// key, so a settings read blip must not blank the whole overview.
 	environments, err := s.store.ListEnvironments(ctx)
@@ -81,7 +72,10 @@ func (s *DataQualityService) GetQualityOverview(ctx context.Context, req *connec
 		seenTarget[key] = struct{}{}
 		targetKeys = append(targetKeys, key)
 	}
-	targetColumns, err := s.store.ListMetaRegistryTargetColumns(ctx, targetKeys)
+	// One repeatable-read snapshot for the denominator and the column guard: two
+	// pooled reads could disagree when schema sync drops and re-creates an object,
+	// letting the numerator claim a target the denominator never counted.
+	coverage, targetColumns, err := s.store.QualityCoverageSnapshot(ctx, targetKeys)
 	if err != nil {
 		return nil, err
 	}

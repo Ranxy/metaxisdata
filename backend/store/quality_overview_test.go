@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,4 +66,15 @@ func TestQualityCoverageObjectTypes(t *testing.T) {
 		int16(storepb.MetaType_VIEW),
 		int16(storepb.MetaType_MATERIALIZED_VIEW),
 	}, qualityCoverageObjectTypes)
+}
+
+// The denominator and the column guard must come from one repeatable-read
+// snapshot: two pooled reads could see different registry states when an object
+// is dropped and re-created, letting the numerator claim a target the denominator
+// never counted.
+func TestQualityCoverageSnapshotOptions(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, sql.LevelRepeatableRead, qualityCoverageSnapshotTxOptions.Isolation)
+	require.True(t, qualityCoverageSnapshotTxOptions.ReadOnly)
 }

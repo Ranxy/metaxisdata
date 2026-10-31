@@ -110,6 +110,12 @@ const qualityTargetColumnQuery = `
 // to an empty set. One batch statement serves a whole rule set, and an empty input
 // is a no-op.
 func (s *Store) ListMetaRegistryTargetColumns(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]map[string]struct{}, error) {
+	return listMetaRegistryTargetColumnsImpl(ctx, s.GetDB(), keys)
+}
+
+// listMetaRegistryTargetColumnsImpl is the query behind
+// ListMetaRegistryTargetColumns; the Queryer lets it run inside a snapshot.
+func listMetaRegistryTargetColumnsImpl(ctx context.Context, q Queryer, keys []MetaGUIDKey) (map[MetaGUIDKey]map[string]struct{}, error) {
 	columns := make(map[MetaGUIDKey]map[string]struct{}, len(keys))
 	if len(keys) == 0 {
 		return columns, nil
@@ -120,7 +126,7 @@ func (s *Store) ListMetaRegistryTargetColumns(ctx context.Context, keys []MetaGU
 		guids = append(guids, key.GUID)
 		objectTypes = append(objectTypes, int16(key.ObjectType))
 	}
-	rows, err := s.GetDB().QueryContext(ctx, qualityTargetColumnQuery,
+	rows, err := q.QueryContext(ctx, qualityTargetColumnQuery,
 		pq.Array(guids), pq.Array(objectTypes), pq.Array(qualityCoverageObjectTypes))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the targets' registry columns")
@@ -153,6 +159,44 @@ func (s *Store) ListMetaRegistryTargetColumns(ctx context.Context, keys []MetaGU
 	return columns, nil
 }
 
+// qualityCoverageSnapshotTxOptions is the read-only repeatable-read snapshot that
+// makes the coverage denominator and the target/column guard one consistent view
+// of the registry. Two pooled reads would each see the latest committed state, so
+// an object dropped and re-created under its name-derived GUID between them could
+// leave the numerator counting a target the denominator never saw; a shared
+// snapshot cannot.
+var qualityCoverageSnapshotTxOptions = &sql.TxOptions{
+	Isolation: sql.LevelRepeatableRead,
+	ReadOnly:  true,
+}
+
+// QualityCoverageSnapshot returns the coverage denominator and the target/column
+// guard from one repeatable-read snapshot. The numerator's universe is then
+// exactly the denominator's, which is what keeps "coverage never exceeds 100%"
+// true even while schema sync is deleting and re-creating registry rows.
+func (s *Store) QualityCoverageSnapshot(ctx context.Context, keys []MetaGUIDKey) ([]*QualityCoverageRow, map[MetaGUIDKey]map[string]struct{}, error) {
+	tx, err := s.GetDB().BeginTx(ctx, qualityCoverageSnapshotTxOptions)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to begin the coverage snapshot")
+	}
+	// A read-only transaction that commits leaves nothing to roll back; the
+	// deferred rollback only runs on an earlier error path.
+	defer func() { _ = tx.Rollback() }()
+
+	coverage, err := listQualityCoverageImpl(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	columns, err := listMetaRegistryTargetColumnsImpl(ctx, tx, keys)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, errors.Wrap(err, "failed to commit the coverage snapshot")
+	}
+	return coverage, columns, nil
+}
+
 // QualityCoverageRow is one live instance's registry coverage, the denominator of
 // the workspace coverage. Environment is empty when the instance has none, and
 // InstanceTitle is empty when the instance never recorded one.
@@ -169,7 +213,13 @@ type QualityCoverageRow struct {
 // whole overview: the workspace totals and the per-instance and per-environment
 // breakdowns are sums over these rows.
 func (s *Store) ListQualityCoverage(ctx context.Context) ([]*QualityCoverageRow, error) {
-	rows, err := s.GetDB().QueryContext(ctx, qualityCoverageQuery, pq.Array(qualityCoverageObjectTypes))
+	return listQualityCoverageImpl(ctx, s.GetDB())
+}
+
+// listQualityCoverageImpl is the query behind ListQualityCoverage; the Queryer
+// lets it run inside a snapshot.
+func listQualityCoverageImpl(ctx context.Context, q Queryer) ([]*QualityCoverageRow, error) {
+	rows, err := q.QueryContext(ctx, qualityCoverageQuery, pq.Array(qualityCoverageObjectTypes))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the registry coverage")
 	}
