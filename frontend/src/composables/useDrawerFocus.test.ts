@@ -1,5 +1,5 @@
-import { effectScope, nextTick, ref } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { effectScope, nextTick, ref } from "vue";
 import { useDrawerFocus } from "./useDrawerFocus";
 
 function drawer() {

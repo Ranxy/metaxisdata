@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -25,7 +25,8 @@ interface LayerRule {
 const RULES: LayerRule[] = [
   {
     layer: "utils",
-    forbidden: /^(?:vue|vue-router|pinia)$|^@\/(?:api|store|components|pages)\//,
+    forbidden:
+      /^(?:vue|vue-router|pinia)$|^@\/(?:api|store|components|pages)\//,
   },
   {
     layer: "lib",

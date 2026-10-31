@@ -24,7 +24,7 @@ export function useDrawerFocus(
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (!open.value || event.key !== "Escape" && event.key !== "Tab") {
+    if (!open.value || (event.key !== "Escape" && event.key !== "Tab")) {
       return;
     }
     if (event.key === "Escape") {
