@@ -319,13 +319,9 @@ func (s *Store) GetOpenQualityIssueForRule(ctx context.Context, ruleID int64) (*
 		return nil, common.Errorf(common.Invalid, "quality rule id is required")
 	}
 
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin the quality issue read transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	msg, err := scanQualityIssue(tx.QueryRowContext(ctx, `
+	msg, err := scanQualityIssue(db.QueryRowContext(ctx, `
 		SELECT `+qualityIssueColumns+`
 		FROM quality_issue
 		WHERE rule_id = $1 AND status <> $2
@@ -335,9 +331,6 @@ func (s *Store) GetOpenQualityIssueForRule(ctx context.Context, ruleID int64) (*
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to read the open quality issue of rule %d", ruleID)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit the quality issue read transaction")
 	}
 	return msg, nil
 }
@@ -743,13 +736,9 @@ func (s *Store) UpdateQualityIssue(ctx context.Context, resourceID string, patch
 func (s *Store) ListQualityIssues(ctx context.Context, find *FindQualityIssueMessage) ([]*QualityIssueMessage, error) {
 	query, args := buildListQualityIssuesQuery(find)
 
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin the quality issue list transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query quality issues")
 	}
@@ -765,9 +754,6 @@ func (s *Store) ListQualityIssues(ctx context.Context, find *FindQualityIssueMes
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "rows iteration error for quality issues")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit the quality issue list transaction")
 	}
 	return result, nil
 }

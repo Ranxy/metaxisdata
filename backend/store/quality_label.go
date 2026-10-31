@@ -284,14 +284,10 @@ func (s *Store) GetColumnSemanticLabel(ctx context.Context, tableGUID string, ta
 // ListColumnSemanticLabels lists labels matching the filter, ordered by table and
 // column so a table's labels render in schema order.
 func (s *Store) ListColumnSemanticLabels(ctx context.Context, find *FindColumnSemanticLabelMessage) ([]*ColumnSemanticLabelMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin a column semantic label transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
 	query, args := columnSemanticLabelQuery(find)
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query column semantic labels")
 	}
@@ -307,9 +303,6 @@ func (s *Store) ListColumnSemanticLabels(ctx context.Context, find *FindColumnSe
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "failed to iterate column semantic labels")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit a column semantic label transaction")
 	}
 	return labels, nil
 }

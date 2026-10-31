@@ -285,7 +285,11 @@ func (s *Store) GetManualSQL(ctx context.Context, find *FindManualSQLMessage) (*
 
 // ListManualSQL lists manual SQL entries matching the filter.
 func (s *Store) ListManualSQL(ctx context.Context, find *FindManualSQLMessage) ([]*ManualSQLMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	// One manual SQL row is read as three statements: the row, its tags and its
+	// attributes. READ COMMITTED would give each its own snapshot, so the
+	// transaction only pays off with an isolation level that holds one snapshot
+	// across all three; the single-statement reads elsewhere run on the pool.
+	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
 		return nil, err
 	}
@@ -560,7 +564,7 @@ func updateManualSQLRow(ctx context.Context, tx *sql.Tx, currentGUID string, msg
 	return row, nil
 }
 
-func listManualSQLImpl(ctx context.Context, tx *sql.Tx, find *FindManualSQLMessage) ([]*ManualSQLMessage, error) {
+func listManualSQLImpl(ctx context.Context, q Queryer, find *FindManualSQLMessage) ([]*ManualSQLMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if find == nil {
 		find = &FindManualSQLMessage{}
@@ -613,7 +617,7 @@ func listManualSQLImpl(ctx context.Context, tx *sql.Tx, find *FindManualSQLMessa
 		query += fmt.Sprintf(" OFFSET $%d", len(args))
 	}
 
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query manual SQL")
 	}
@@ -650,11 +654,11 @@ func listManualSQLImpl(ctx context.Context, tx *sql.Tx, find *FindManualSQLMessa
 		return nil, errors.Wrap(err, "rows iteration error for manual SQL")
 	}
 
-	tagMap, err := listManualSQLTags(ctx, tx, ids)
+	tagMap, err := listManualSQLTags(ctx, q, ids)
 	if err != nil {
 		return nil, err
 	}
-	attributeMap, err := listManualSQLAttributes(ctx, tx, ids)
+	attributeMap, err := listManualSQLAttributes(ctx, q, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -666,13 +670,13 @@ func listManualSQLImpl(ctx context.Context, tx *sql.Tx, find *FindManualSQLMessa
 	return result, nil
 }
 
-func listManualSQLTags(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64][]string, error) {
+func listManualSQLTags(ctx context.Context, q Queryer, ids []int64) (map[int64][]string, error) {
 	result := make(map[int64][]string)
 	if len(ids) == 0 {
 		return result, nil
 	}
 
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT manual_sql_id, tag
 		FROM manual_sql_tag
 		WHERE manual_sql_id = ANY($1)
@@ -697,13 +701,13 @@ func listManualSQLTags(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]
 	return result, nil
 }
 
-func listManualSQLAttributes(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]map[string]string, error) {
+func listManualSQLAttributes(ctx context.Context, q Queryer, ids []int64) (map[int64]map[string]string, error) {
 	result := make(map[int64]map[string]string)
 	if len(ids) == 0 {
 		return result, nil
 	}
 
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT manual_sql_id, attr_key, attr_value
 		FROM manual_sql_attribute
 		WHERE manual_sql_id = ANY($1)

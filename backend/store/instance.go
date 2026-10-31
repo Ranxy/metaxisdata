@@ -78,18 +78,10 @@ func (s *Store) GetInstance(ctx context.Context, find *FindInstanceMessage) (*In
 
 // ListInstances lists all instance.
 func (s *Store) ListInstances(ctx context.Context, find *FindInstanceMessage) ([]*InstanceMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	instances, err := s.listInstanceImpl(ctx, tx, find)
+	instances, err := s.listInstanceImpl(ctx, db, find)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -267,7 +259,7 @@ func applyInstanceMetadataUpdates(raw []byte, cipher *crypto.Cipher, updates []f
 	return metadataBytes, nil
 }
 
-func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindInstanceMessage) ([]*InstanceMessage, error) {
+func (s *Store) listInstanceImpl(ctx context.Context, q Queryer, find *FindInstanceMessage) ([]*InstanceMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	joinDSQuery := ""
 	if filter := find.Filter; filter != nil {
@@ -312,7 +304,7 @@ func (s *Store) listInstanceImpl(ctx context.Context, txn *sql.Tx, find *FindIns
 	}
 
 	var instanceMessages []*InstanceMessage
-	rows, err := txn.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

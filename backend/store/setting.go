@@ -98,13 +98,9 @@ func (s *Store) GetSetting(ctx context.Context, name storepb.SettingName) (*Sett
 		return v, nil
 	}
 
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	settings, err := listSettingImpl(ctx, tx, &FindSettingMessage{
+	settings, err := listSettingImpl(ctx, db, &FindSettingMessage{
 		Name: &name,
 	})
 	if err != nil {
@@ -117,27 +113,16 @@ func (s *Store) GetSetting(ctx context.Context, name storepb.SettingName) (*Sett
 		return nil, errors.Errorf("found multiple settings: %v", name)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit transaction")
-	}
-
 	s.settingCache.Add(settings[0].Name, settings[0])
 	return settings[0], nil
 }
 
 // ListSetting returns a list of settings.
 func (s *Store) ListSetting(ctx context.Context, find *FindSettingMessage) ([]*SettingMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin transaction")
-	}
-	defer tx.Rollback()
-	settings, err := listSettingImpl(ctx, tx, find)
+	db := s.GetDB()
+	settings, err := listSettingImpl(ctx, db, find)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list setting")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit transaction")
 	}
 
 	for _, setting := range settings {
@@ -257,12 +242,12 @@ func (s *Store) DeleteSetting(ctx context.Context, name storepb.SettingName) err
 	return nil
 }
 
-func listSettingImpl(ctx context.Context, txn *sql.Tx, find *FindSettingMessage) ([]*SettingMessage, error) {
+func listSettingImpl(ctx context.Context, q Queryer, find *FindSettingMessage) ([]*SettingMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.Name; v != nil {
 		where, args = append(where, fmt.Sprintf("name = $%d", len(args)+1)), append(args, v.String())
 	}
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT
 			name,
 			value

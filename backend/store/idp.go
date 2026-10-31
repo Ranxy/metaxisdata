@@ -147,29 +147,22 @@ func (s *Store) ListIdentityProviders(ctx context.Context, find *FindIdentityPro
 // one from before this table had a write path, say — must not remove every other
 // provider's sign-in button from every visitor.
 func (s *Store) readIdentityProviders(ctx context.Context, find *FindIdentityProviderMessage, skipUnreadable bool) ([]*IdentityProviderMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	identityProviders, err := s.listIdentityProvidersImpl(ctx, tx, find, skipUnreadable)
+	identityProviders, err := s.listIdentityProvidersImpl(ctx, db, find, skipUnreadable)
 	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return identityProviders, nil
 }
 
-func (s *Store) listIdentityProvidersImpl(ctx context.Context, txn *sql.Tx, find *FindIdentityProviderMessage, skipUnreadable bool) ([]*IdentityProviderMessage, error) {
+func (s *Store) listIdentityProvidersImpl(ctx context.Context, q Queryer, find *FindIdentityProviderMessage, skipUnreadable bool) ([]*IdentityProviderMessage, error) {
 	where, args := []string{"TRUE"}, []any{}
 	if v := find.ResourceID; v != nil {
 		where, args = append(where, fmt.Sprintf("resource_id = $%d", len(args)+1)), append(args, *v)
 	}
 
-	rows, err := txn.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT
 			resource_id,
 			name,

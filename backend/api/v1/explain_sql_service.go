@@ -411,19 +411,24 @@ func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []str
 	// shifted every following GUID onto the wrong metadata. A store failure is
 	// propagated rather than skipped, so a DB outage is not reported as absent
 	// metadata.
+	resolved, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{GUIDs: &guids})
+	if err != nil {
+		return nil, err
+	}
+	byGUID := make(map[string]*storepb.StoredMetadata, len(resolved))
+	for _, resource := range resolved {
+		if resource.Metadata != nil {
+			byGUID[resource.GUID] = resource.Metadata
+		}
+	}
 	var metas []*storepb.StoredMetadata
 	matchedGUIDs := make([]string, 0, len(guids))
 	for _, guid := range guids {
-		list, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
-			GUID: &guid,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if len(list) == 0 || list[0].Metadata == nil {
+		metadata, ok := byGUID[guid]
+		if !ok {
 			continue
 		}
-		metas = append(metas, list[0].Metadata)
+		metas = append(metas, metadata)
 		matchedGUIDs = append(matchedGUIDs, guid)
 	}
 

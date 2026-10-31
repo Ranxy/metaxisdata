@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -227,17 +226,14 @@ func (s *Store) GetColumnProfile(ctx context.Context, tableGUID string, tableTyp
 }
 
 // ListColumnProfiles lists profiles matching the filter, newest profiling first.
-// The read runs in a read-only transaction like the other list paths, so a
-// caller never sees a half-written batch.
+// It is one statement, so it runs on the pool; a reader can still observe the
+// rows of a batch that is mid-write, exactly as a READ COMMITTED transaction
+// would allow.
 func (s *Store) ListColumnProfiles(ctx context.Context, find *FindColumnProfileMessage) ([]*ColumnProfileMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin a column profile transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
 	query, args := columnProfileQuery(find)
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query column profiles")
 	}
@@ -253,9 +249,6 @@ func (s *Store) ListColumnProfiles(ctx context.Context, find *FindColumnProfileM
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "failed to iterate column profiles")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit a column profile transaction")
 	}
 	return profiles, nil
 }

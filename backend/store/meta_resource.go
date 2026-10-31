@@ -56,9 +56,13 @@ type FindMetaRegistryResourceMessage struct {
 	// know this name" rather than as "the name is not registered".
 	GUIDFolded *string
 	ObjectType *storepb.MetaType
-	Limit      *int
-	Offset     *int
-	ExtraArgs  []ExtraArgs
+	// ObjectTypes is the batch form of ObjectType: it matches any of the given
+	// types. An empty but non-nil slice matches nothing, so a caller that built
+	// an empty type list cannot accidentally read every kind of object.
+	ObjectTypes *[]storepb.MetaType
+	Limit       *int
+	Offset      *int
+	ExtraArgs   []ExtraArgs
 }
 
 type FindSubLevelMetaRegistryResourceMessage struct {
@@ -146,16 +150,9 @@ func (s *Store) GetMetaRegistry(ctx context.Context, find *FindMetaRegistryResou
 }
 
 func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	db := s.GetDB()
+	list, err := s.listMetaRegistryResourceImpl(ctx, db, find, true)
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	list, err := s.listMetaRegistryResourceImpl(ctx, tx, find, true)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	for _, metaRegistry := range list {
@@ -167,16 +164,9 @@ func (s *Store) ListMetaRegistry(ctx context.Context, find *FindMetaRegistryReso
 }
 
 func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	db := s.GetDB()
+	list, err := s.listMetaRegistryResourceImpl(ctx, db, find, true)
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	list, err := s.listMetaRegistryResourceImpl(ctx, tx, find, true)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	for _, metaRegistry := range list {
@@ -202,16 +192,9 @@ func (s *Store) ListMetaRegistryResource(ctx context.Context, find *FindMetaRegi
 // It deliberately does not touch the metadata caches — a cached entry with a
 // nil Metadata would corrupt later reads.
 func (s *Store) ListMetaRegistryResourceDigest(ctx context.Context, find *FindMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	db := s.GetDB()
+	list, err := s.listMetaRegistryResourceImpl(ctx, db, find, false)
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	list, err := s.listMetaRegistryResourceImpl(ctx, tx, find, false)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -232,33 +215,19 @@ func (s *Store) GetMetaRegistryAsOf(ctx context.Context, find *FindMetaRegistryR
 }
 
 func (s *Store) ListMetaRegistryResourceAsOf(ctx context.Context, find *FindMetaRegistryResourceMessage, asOf time.Time) ([]*MetaRegistryResource, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	db := s.GetDB()
+	list, err := s.listMetaRegistryResourceHistoryImpl(ctx, db, find, asOf)
 	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	list, err := s.listMetaRegistryResourceHistoryImpl(ctx, tx, find, asOf)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return list, nil
 }
 
 func (s *Store) ListMetaRegistryHistory(ctx context.Context, find *FindMetaRegistryHistoryMessage) ([]*MetaRegistryHistory, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
-	list, err := s.listMetaRegistryHistoryImpl(ctx, tx, find)
+	list, err := s.listMetaRegistryHistoryImpl(ctx, db, find)
 	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -289,11 +258,7 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 		return nil, common.Errorf(common.Invalid, "search string is required")
 	}
 
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
 	where, args := []string{}, []any{}
 
@@ -326,7 +291,7 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 		query += fmt.Sprintf(" OFFSET %d", find.Offset)
 	}
 
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -349,9 +314,6 @@ func (s *Store) SearchMetaRegistryResource(ctx context.Context, find *SearchMeta
 		list = append(list, &msg)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -382,6 +344,13 @@ func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResour
 	if v := find.ObjectType; v != nil {
 		where, args = append(where, fmt.Sprintf("%s.object_type = $%d", tableName, len(args)+1)), append(args, *v)
 	}
+	if v := find.ObjectTypes; v != nil {
+		if len(*v) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			where, args = append(where, fmt.Sprintf("%s.object_type = ANY($%d)", tableName, len(args)+1)), append(args, pq.Array(*v))
+		}
+	}
 	if v := find.ExtraArgs; len(v) > 0 {
 		for _, extraArg := range v {
 			where, args = append(where, fmt.Sprintf("%s %s $%d", extraArg.Left, extraArg.Op, len(args)+1)), append(args, extraArg.Right)
@@ -391,21 +360,14 @@ func buildMetaRegistryWhereClause(tableName string, find *FindMetaRegistryResour
 }
 
 func (s *Store) ListSublevelMetaRegistryResource(ctx context.Context, find *FindSubLevelMetaRegistryResourceMessage) ([]*MetaRegistryResource, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
 	if find.LimitPreObjectType == 0 {
 		find.LimitPreObjectType = common.DefaultMetaSubLevelLimit
 	}
 
-	list, err := s.listSublevelMetaRegistryResourceImpl(ctx, tx, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, find.OffsetPreObjectType)
+	list, err := s.listSublevelMetaRegistryResourceImpl(ctx, db, find.ParentGUID, find.ObjectType, find.LimitPreObjectType, find.OffsetPreObjectType)
 	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	for _, metaRegistry := range list {

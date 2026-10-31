@@ -387,17 +387,13 @@ func (s *Store) GetQualitySuggestion(ctx context.Context, find *FindQualitySugge
 
 // ListQualitySuggestions lists suggestions matching the filter, newest first.
 func (s *Store) ListQualitySuggestions(ctx context.Context, find *FindQualitySuggestionMessage) ([]*QualitySuggestionMessage, error) {
-	tx, err := s.GetDB().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin a quality suggestion transaction")
-	}
-	defer tx.Rollback()
+	db := s.GetDB()
 
 	query, args, err := qualitySuggestionQuery(find)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query quality suggestions")
 	}
@@ -413,9 +409,6 @@ func (s *Store) ListQualitySuggestions(ctx context.Context, find *FindQualitySug
 	}
 	if err := rows.Err(); err != nil {
 		return nil, errors.Wrap(err, "failed to iterate quality suggestions")
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, errors.Wrap(err, "failed to commit a quality suggestion transaction")
 	}
 	return suggestions, nil
 }
