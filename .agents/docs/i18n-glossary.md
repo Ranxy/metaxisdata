@@ -154,6 +154,9 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | create | 创建 | Conventions | A button that opens a blank form is 新建; the imperative and the past tense are 创建 (创建时间). | all keys | — |
 | refresh | 刷新 | Conventions | Refresh is 刷新. Reloading a stored definition is 重新加载; Regenerate is 重新生成. | all keys | — |
 | data quality | 数据质量 | Data Quality | The correctness and completeness of the data itself, as opposed to the registry's record of it. | dataQuality., menu. | — |
+| coverage | 覆盖率 | Data Quality | The share of the monitorable tables and columns that enabled checks watch. | dataQuality. | zh-CN: `覆盖度` |
+| quality score | 质量分 | Data Quality | The 0-100 weighted health of a target or the workspace over its judged checks; unset, not 100, while nothing has been judged. | dataQuality. | zh-CN: `质量评分`, `质量得分` |
+| pass rate | 通过率 | Data Quality | The share of a target's recent completed executions that passed. | dataQuality. | zh-CN: `合格率` |
 | superseded | 已失效 | Data Quality | The server closed a proposal because its fact now exists; it was never a person's decision, and the same proposal may be queued again later. | dataQuality. | zh-CN: `已取代`, `已作废` |
 | check | 检查 | Data Quality | One typed check over one target table or column, run on a schedule or on demand, authored inside its target contract. | dataQuality., menu. | — |
 | check type | 检查类型 | Data Quality | The category a check belongs to; it decides which configuration the check carries and how its verdict is read. | dataQuality. | en-US: `/\brule types?/i`; zh-CN: `规则类型`, `规则种类` |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -39,18 +40,128 @@ func (s *Store) QualityRuleStateCounts(ctx context.Context) (map[storepb.Quality
 	return counts, nil
 }
 
-// CountMonitoredTables counts the distinct tables at least one enabled rule
-// watches. It is the coverage numerator of the overview.
-func (s *Store) CountMonitoredTables(ctx context.Context) (int, error) {
-	var count int
-	scanErr := s.GetDB().QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT target_guid) FROM quality_rule
-		WHERE state = $1 AND deleted = FALSE
-	`, int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED)).Scan(&count)
-	if scanErr != nil {
-		return 0, errors.Wrap(scanErr, "failed to count monitored tables")
+// qualityCoverageObjectTypes is the coverage denominator's object-type set: the
+// registry objects a rule can monitor. A column is not a target, and a database or
+// schema is only a container.
+var qualityCoverageObjectTypes = []int16{
+	int16(storepb.MetaType_TABLE),
+	int16(storepb.MetaType_EXTERNAL_TABLE),
+	int16(storepb.MetaType_VIEW),
+	int16(storepb.MetaType_MATERIALIZED_VIEW),
+}
+
+// qualityCoverageQuery counts, per live instance, the registry objects of the
+// monitorable types and their columns. Views and external tables carry their
+// columns inside their own metadata (they have no COLUMN registry rows), so the
+// four metadata column arrays are summed instead of counting COLUMN objects. The
+// instance join is the live-instance filter: objects under a deleted instance are
+// no longer monitored.
+const qualityCoverageQuery = `
+	SELECT i.resource_id,
+		COALESCE(i.metadata->>'title', ''),
+		COALESCE(i.environment, ''),
+		COUNT(*)::INT,
+		COALESCE(SUM(
+			COALESCE(jsonb_array_length(r.metadata->'tableMetadata'->'columns'), 0) +
+			COALESCE(jsonb_array_length(r.metadata->'externalTableMetadata'->'columns'), 0) +
+			COALESCE(jsonb_array_length(r.metadata->'viewMetadata'->'columns'), 0) +
+			COALESCE(jsonb_array_length(r.metadata->'materializedViewMetadata'->'columns'), 0)
+		), 0)::INT
+	FROM meta_registry_resource r
+	JOIN instance i ON i.resource_id = split_part(r.guid, ';', 1)
+	WHERE i.deleted = FALSE AND r.object_type = ANY($1::int2[])
+	GROUP BY i.id
+	ORDER BY i.resource_id
+`
+
+// qualityTargetExistenceQuery reports which of the given (guid, object type)
+// keys still have a coverage denominator row. It is the guard that keeps the
+// coverage numerator inside its denominator: an enabled rule can outlive the
+// object it watches, and its target then has no coverage row to count against.
+// The live-instance join is part of that guard, exactly as in
+// qualityCoverageQuery: DeleteInstance soft-deletes the instance without deleting
+// its registry rows, and those objects are not coverage either.
+const qualityTargetExistenceQuery = `
+	SELECT r.guid, r.object_type
+	FROM meta_registry_resource r
+	JOIN instance i ON i.resource_id = split_part(r.guid, ';', 1) AND i.deleted = FALSE
+	JOIN unnest($1::text[], $2::int2[]) AS k(guid, object_type)
+		ON r.guid = k.guid AND r.object_type = k.object_type
+`
+
+// ListExistingMetaRegistryTargets returns the subset of keys that still resolve to
+// a registry row under a live instance, i.e. the keys the coverage query can count
+// a denominator for. One batch statement serves a whole rule set, and an empty
+// input is a no-op.
+func (s *Store) ListExistingMetaRegistryTargets(ctx context.Context, keys []MetaGUIDKey) (map[MetaGUIDKey]struct{}, error) {
+	existing := make(map[MetaGUIDKey]struct{}, len(keys))
+	if len(keys) == 0 {
+		return existing, nil
 	}
-	return count, nil
+	guids := make([]string, 0, len(keys))
+	objectTypes := make([]int16, 0, len(keys))
+	for _, key := range keys {
+		guids = append(guids, key.GUID)
+		objectTypes = append(objectTypes, int16(key.ObjectType))
+	}
+	rows, err := s.GetDB().QueryContext(ctx, qualityTargetExistenceQuery, pq.Array(guids), pq.Array(objectTypes))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the targets' registry rows")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			guid       string
+			objectType int16
+		)
+		if err := rows.Scan(&guid, &objectType); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a target's registry row")
+		}
+		existing[MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the targets' registry rows")
+	}
+	return existing, nil
+}
+
+// QualityCoverageRow is one live instance's registry coverage, the denominator of
+// the workspace coverage. Environment is empty when the instance has none, and
+// InstanceTitle is empty when the instance never recorded one.
+type QualityCoverageRow struct {
+	InstanceResourceID string
+	InstanceTitle      string
+	Environment        string
+	TableCount         int32
+	ColumnCount        int32
+}
+
+// ListQualityCoverage counts the registry objects and their columns per live
+// instance, which is the coverage denominator. One grouped query serves the
+// whole overview: the workspace totals and the per-instance and per-environment
+// breakdowns are sums over these rows.
+func (s *Store) ListQualityCoverage(ctx context.Context) ([]*QualityCoverageRow, error) {
+	rows, err := s.GetDB().QueryContext(ctx, qualityCoverageQuery, pq.Array(qualityCoverageObjectTypes))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the registry coverage")
+	}
+	defer rows.Close()
+
+	var coverage []*QualityCoverageRow
+	for rows.Next() {
+		row := &QualityCoverageRow{}
+		scanErr := rows.Scan(&row.InstanceResourceID, &row.InstanceTitle, &row.Environment,
+			&row.TableCount, &row.ColumnCount)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan the registry coverage")
+		}
+		coverage = append(coverage, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the registry coverage")
+	}
+	return coverage, nil
 }
 
 // QualityOpenIssueSeverityCounts counts the unresolved issues per severity.

@@ -109,6 +109,13 @@ type Report struct {
 	// RuleCount and EnabledRuleCount describe the target's current rules.
 	RuleCount        int32
 	EnabledRuleCount int32
+	// QualityScore is the target's 0-100 weighted score over its enabled rules'
+	// latest judged results; nil when none was judged. ScoredRuleCount and
+	// UnscoredRuleCount partition EnabledRuleCount by whether the rule has a judged
+	// latest result.
+	QualityScore      *float64
+	ScoredRuleCount   int32
+	UnscoredRuleCount int32
 	// WorstStatusKey is the worst latest result across the rules; empty when no
 	// rule has run.
 	WorstStatusKey string
@@ -357,16 +364,19 @@ type scopeView struct {
 }
 
 type summaryView struct {
-	TotalChecks      string
-	PassRate         string
-	RulePassRate     string
-	RuleCount        string
-	EnabledRuleCount string
-	OpenIssueCount   string
-	WorstResult      string
-	WorstClass       string
-	Counts           []countView
-	SeverityCounts   []countView
+	TotalChecks       string
+	PassRate          string
+	RulePassRate      string
+	QualityScore      string
+	ScoredRuleCount   string
+	UnscoredRuleCount string
+	RuleCount         string
+	EnabledRuleCount  string
+	OpenIssueCount    string
+	WorstResult       string
+	WorstClass        string
+	Counts            []countView
+	SeverityCounts    []countView
 }
 
 type countView struct {
@@ -536,13 +546,16 @@ func newReportView(language string, report *Report, limits *renderLimits) *repor
 // and the rule/issue headlines.
 func newSummaryView(language string, text labels, report *Report) summaryView {
 	view := summaryView{
-		TotalChecks:      strconv.FormatInt(int64(report.Counts.Total), 10),
-		PassRate:         passRateText(text, report.Counts),
-		RulePassRate:     rulePassRateText(text, report.Rules),
-		RuleCount:        strconv.Itoa(int(report.RuleCount)),
-		EnabledRuleCount: strconv.Itoa(int(report.EnabledRuleCount)),
-		OpenIssueCount:   strconv.Itoa(len(report.OpenIssues)),
-		WorstResult:      text.LabelNeverRun,
+		TotalChecks:       strconv.FormatInt(int64(report.Counts.Total), 10),
+		PassRate:          passRateText(text, report.Counts),
+		RulePassRate:      rulePassRateText(text, report.Rules),
+		QualityScore:      qualityScoreText(text, report.QualityScore),
+		ScoredRuleCount:   strconv.Itoa(int(report.ScoredRuleCount)),
+		UnscoredRuleCount: strconv.Itoa(int(report.UnscoredRuleCount)),
+		RuleCount:         strconv.Itoa(int(report.RuleCount)),
+		EnabledRuleCount:  strconv.Itoa(int(report.EnabledRuleCount)),
+		OpenIssueCount:    strconv.Itoa(len(report.OpenIssues)),
+		WorstResult:       text.LabelNeverRun,
 	}
 	if report.WorstStatusKey != "" {
 		view.WorstResult = statusLabel(language, report.WorstStatusKey)
@@ -849,6 +862,15 @@ func rulePassRateText(text labels, rules []Rule) string {
 		return text.LabelNotAvailable
 	}
 	return strconv.FormatFloat(float64(passing)/float64(total)*100, 'f', 1, 64) + "%"
+}
+
+// qualityScoreText renders the target's 0-100 weighted quality score with one
+// decimal; a target with no judged result has no score at all.
+func qualityScoreText(text labels, score *float64) string {
+	if score == nil {
+		return text.LabelNotAvailable
+	}
+	return strconv.FormatFloat(*score, 'f', 1, 64)
 }
 
 // passRateText renders the pass share of the completed checks in the window.

@@ -162,6 +162,13 @@ func buildQualityReport(workspace *qualityTargetWorkspace, points []*v1pb.Qualit
 			report.EnabledRuleCount++
 		}
 	}
+	// The report carries the same quality score as the target summary, computed by
+	// the same helper so the file and the workspace header can never disagree.
+	scores := qualityTargetScores(workspace.rules, workspace.latest)
+	runKey := store.MetaGUIDKey{GUID: workspace.targetGUID, ObjectType: workspace.metaType}
+	report.QualityScore = scores[runKey].score
+	report.ScoredRuleCount = scores[runKey].scored
+	report.UnscoredRuleCount = report.EnabledRuleCount - report.ScoredRuleCount
 	worstRank := int32(0)
 	for _, rule := range workspace.rules {
 		entry := qualityreport.Rule{

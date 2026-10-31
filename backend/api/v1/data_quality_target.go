@@ -25,6 +25,10 @@ const qualityTargetOpenIssueLimit = 200
 // workspace's history strip shows.
 const qualityTargetRuleHistoryLimit = 20
 
+// qualityTargetRecentExecutionLimit is how many of the target's newest completed
+// executions the recent pass rate covers.
+const qualityTargetRecentExecutionLimit = 20
+
 // ListQualityTargets lists the targets that carry quality rules, one row per
 // table or view. The aggregation happens in the store, so the directory costs one
 // query rather than paging through every rule.
@@ -106,6 +110,23 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to read the targets' latest runs")
 		}
+		// Only enabled rules contribute to the score; a paused rule is not part of
+		// what the target currently promises.
+		enabledRules := make([]*store.QualityRuleMessage, 0, len(pageRules))
+		for _, rule := range pageRules {
+			if rule.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+				enabledRules = append(enabledRules, rule)
+			}
+		}
+		latest, err := s.latestQualityExecutions(ctx, enabledRules)
+		if err != nil {
+			return nil, err
+		}
+		scores := qualityTargetScores(pageRules, latest)
+		recent, err := s.store.ListRecentQualityExecutionsByTargets(ctx, keys, qualityTargetRecentExecutionLimit)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read the targets' recent executions")
+		}
 		for _, target := range targets {
 			key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}
 			target.ColumnCount = int32(len(columns[key]))
@@ -114,6 +135,10 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 				target.LatestRun = summary
 				target.RunCount = summary.RunCount
 			}
+			score := scores[key]
+			target.QualityScore = score.score
+			target.ScoredRuleCount = score.scored
+			target.RecentPassRate, target.RecentExecutionCount = qualityRecentPassRate(recent[key])
 		}
 	}
 
@@ -411,6 +436,14 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		summary.LatestRun = convertQualityRun(workspaceID, entry.Run)
 		summary.RunCount = entry.RunCount
 	}
+	scores := qualityTargetScores(workspace.rules, workspace.latest)
+	summary.QualityScore = scores[runKey].score
+	summary.ScoredRuleCount = scores[runKey].scored
+	recent, err := s.store.ListRecentQualityExecutionsByTargets(ctx, []store.MetaGUIDKey{runKey}, qualityTargetRecentExecutionLimit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's recent executions")
+	}
+	summary.RecentPassRate, summary.RecentExecutionCount = qualityRecentPassRate(recent[runKey])
 
 	response := &v1pb.GetQualityTargetResponse{
 		Summary:        summary,
@@ -491,6 +524,73 @@ func qualityTargetOrderFromV1(order v1pb.QualityTargetOrder) store.QualityTarget
 	}
 }
 
+// qualityTargetScore is one target's optional score and its scored-rule count.
+type qualityTargetScore struct {
+	score  *float64
+	scored int32
+}
+
+// qualityTargetScores folds the enabled rules' latest judged results per target.
+// A rule whose latest execution is ERROR, SKIPPED or NOT_EVALUATED is unscored
+// rather than a zero, and a target with nothing judged has no score.
+func qualityTargetScores(rules []*store.QualityRuleMessage, latest map[int64]*store.QualityExecutionMessage) map[store.MetaGUIDKey]qualityTargetScore {
+	aggregates := make(map[store.MetaGUIDKey]*dataquality.ScoreAggregate)
+	for _, rule := range rules {
+		if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+			continue
+		}
+		execution := latest[rule.ID]
+		if execution == nil {
+			continue
+		}
+		score, judged := dataquality.CheckScore(rule.RuleType, execution.Status, execution.FailedRows, execution.TotalRows)
+		if !judged {
+			continue
+		}
+		key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
+		aggregate := aggregates[key]
+		if aggregate == nil {
+			aggregate = &dataquality.ScoreAggregate{}
+			aggregates[key] = aggregate
+		}
+		aggregate.Add(score, rule.Severity, execution.Status == storepb.QualityStatus_QUALITY_STATUS_FAIL)
+	}
+	scores := make(map[store.MetaGUIDKey]qualityTargetScore, len(aggregates))
+	for key, aggregate := range aggregates {
+		score, judged := aggregate.Score()
+		scores[key] = qualityTargetScore{score: scorePointer(score, judged), scored: aggregate.Scored()}
+	}
+	return scores
+}
+
+// qualityRecentPassRate is the pass share of a target's most recent completed
+// executions: PASS / (PASS + WARN + FAIL), a ratio in [0, 1]. The second result
+// is how many executions were judged; ERROR, SKIPPED and NOT_EVALUATED are not
+// verdicts and are excluded.
+func qualityRecentPassRate(executions []*store.QualityExecutionMessage) (*float64, int32) {
+	pass, judged := 0, int32(0)
+	for _, execution := range executions {
+		switch execution.Status {
+		case storepb.QualityStatus_QUALITY_STATUS_PASS:
+			pass++
+			judged++
+		case storepb.QualityStatus_QUALITY_STATUS_WARN,
+			storepb.QualityStatus_QUALITY_STATUS_FAIL:
+			judged++
+		case storepb.QualityStatus_QUALITY_STATUS_ERROR,
+			storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+			storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+			storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
+		default:
+		}
+	}
+	if judged == 0 {
+		return nil, 0
+	}
+	rate := float64(pass) / float64(judged)
+	return &rate, judged
+}
+
 // convertQualityTargetSummary turns one aggregate row into the API message. The
 // run fields are filled from the same enrichment the directory performs, so a
 // target row and its workspace always agree about the latest batch.
@@ -501,18 +601,22 @@ func convertQualityTargetSummary(workspaceID string, target *store.QualityTarget
 			MetaType: v1pb.MetaType(target.Type),
 			Path:     convertQualityTargetPathToV1(target.Path),
 		},
-		RuleCount:         target.RuleCount,
-		EnabledRuleCount:  target.EnabledCount,
-		PausedRuleCount:   target.PausedCount,
-		ColumnCount:       target.ColumnCount,
-		OpenIssueCount:    target.OpenIssueCount,
-		PendingDraftCount: target.PendingDraftCount,
-		PendingLabelCount: target.PendingLabelCount,
-		WorstStatus:       v1pb.QualityStatus(target.WorstStatus),
-		LastRunTime:       timeToProtoTimestampPtr(target.LastRunTime),
-		SchemaChanged:     target.SchemaChanged,
-		Orphaned:          target.Orphaned,
-		RunCount:          target.RunCount,
+		RuleCount:            target.RuleCount,
+		EnabledRuleCount:     target.EnabledCount,
+		PausedRuleCount:      target.PausedCount,
+		ColumnCount:          target.ColumnCount,
+		OpenIssueCount:       target.OpenIssueCount,
+		PendingDraftCount:    target.PendingDraftCount,
+		PendingLabelCount:    target.PendingLabelCount,
+		WorstStatus:          v1pb.QualityStatus(target.WorstStatus),
+		LastRunTime:          timeToProtoTimestampPtr(target.LastRunTime),
+		SchemaChanged:        target.SchemaChanged,
+		Orphaned:             target.Orphaned,
+		RunCount:             target.RunCount,
+		QualityScore:         target.QualityScore,
+		ScoredRuleCount:      target.ScoredRuleCount,
+		RecentPassRate:       target.RecentPassRate,
+		RecentExecutionCount: target.RecentExecutionCount,
 	}
 	if target.ScheduleInterval > 0 {
 		summary.Schedule = &v1pb.QualityTargetSchedule{

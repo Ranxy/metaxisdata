@@ -126,6 +126,8 @@ footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--border
   <div class="card"><div class="value">{{.Summary.TotalChecks}}</div><div class="label">{{.Labels.LabelCompleted}}</div></div>
   <div class="card"><div class="value">{{.Summary.PassRate}}</div><div class="label">{{.Labels.LabelPassRate}}</div></div>
   <div class="card"><div class="value">{{.Summary.RulePassRate}}</div><div class="label">{{.Labels.LabelRulePassRate}}</div></div>
+  <div class="card"><div class="value">{{.Summary.QualityScore}}</div><div class="label">{{.Labels.LabelQualityScore}}</div></div>
+  <div class="card"><div class="value">{{.Summary.ScoredRuleCount}} / {{.Summary.UnscoredRuleCount}}</div><div class="label">{{.Labels.LabelScoredRules}} / {{.Labels.LabelUnscoredRules}}</div></div>
   <div class="card"><div class="value">{{.Summary.RuleCount}} / {{.Summary.EnabledRuleCount}}</div><div class="label">{{.Labels.LabelRuleCount}} / {{.Labels.LabelEnabledRules}}</div></div>
   <div class="card"><div class="value">{{.Summary.OpenIssueCount}}</div><div class="label">{{.Labels.LabelOpenIssues}}</div></div>
   <div class="card"><div class="value">{{if .Summary.WorstClass}}<span class="badge {{.Summary.WorstClass}}">{{.Summary.WorstResult}}</span>{{else}}{{.Summary.WorstResult}}{{end}}</div><div class="label">{{.Labels.LabelWorstResult}}</div></div>

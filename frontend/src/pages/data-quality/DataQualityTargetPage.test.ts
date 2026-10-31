@@ -267,6 +267,8 @@ function summaryFixture(
     latestRun?: QualityRun;
     runCount?: number;
     schedule?: QualityTargetSchedule;
+    qualityScore?: number;
+    scoredRuleCount?: number;
   } = {}
 ): QualityTargetSummary {
   return create(QualityTargetSummarySchema, {
@@ -296,6 +298,8 @@ function summaryFixture(
     latestRun: options.latestRun,
     runCount: options.runCount ?? 0,
     schedule: options.schedule,
+    qualityScore: options.qualityScore,
+    scoredRuleCount: options.scoredRuleCount ?? 0,
   });
 }
 
@@ -889,6 +893,41 @@ describe("DataQualityTargetPage", () => {
     expect(mocks.runQualityRules).toHaveBeenLastCalledWith({
       rules: [RULE_DATASET],
     });
+    wrapper.unmount();
+  });
+
+  it("shows the target's quality score and judged count in the health line", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          qualityScore: 82.5,
+          scoredRuleCount: 2,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryQualityScore", { score: "82.5" })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryJudged", { judged: 2, total: 3 })
+    );
+    wrapper.unmount();
+  });
+
+  it("says '-' for the score while no check on the target has been judged", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ scoredRuleCount: 0 }) })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryQualityScore", { score: "-" })
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.summaryJudged", { judged: 0, total: 3 })
+    );
     wrapper.unmount();
   });
 

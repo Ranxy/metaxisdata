@@ -99,23 +99,29 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 
 	finishedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
 	nextRun := time.Date(2026, time.October, 7, 10, 0, 0, 0, time.UTC)
+	qualityScore := 83.5
+	passRate := 0.75
 	summary := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
-		GUID:              "instance-1;shop;public;orders",
-		Type:              storepb.MetaType_TABLE,
-		Path:              &storepb.QualityTargetPath{Instance: "instance-1", Database: "shop", Schema: "public", Object: "orders"},
-		RuleCount:         3,
-		EnabledCount:      2,
-		PausedCount:       1,
-		ColumnCount:       2,
-		OpenIssueCount:    1,
-		PendingDraftCount: 4,
-		PendingLabelCount: 5,
-		WorstStatus:       storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		SchemaChanged:     true,
-		Orphaned:          true,
-		RunCount:          2,
-		ScheduleInterval:  2 * time.Hour,
-		NextRunAt:         &nextRun,
+		GUID:                 "instance-1;shop;public;orders",
+		Type:                 storepb.MetaType_TABLE,
+		Path:                 &storepb.QualityTargetPath{Instance: "instance-1", Database: "shop", Schema: "public", Object: "orders"},
+		RuleCount:            3,
+		EnabledCount:         2,
+		PausedCount:          1,
+		ColumnCount:          2,
+		OpenIssueCount:       1,
+		PendingDraftCount:    4,
+		PendingLabelCount:    5,
+		WorstStatus:          storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		SchemaChanged:        true,
+		Orphaned:             true,
+		RunCount:             2,
+		ScheduleInterval:     2 * time.Hour,
+		NextRunAt:            &nextRun,
+		QualityScore:         &qualityScore,
+		ScoredRuleCount:      2,
+		RecentPassRate:       &passRate,
+		RecentExecutionCount: 3,
 		LatestRun: &store.QualityTargetRunSummaryMessage{
 			TargetGUID: "instance-1;shop;public;orders",
 			TargetType: storepb.MetaType_TABLE,
@@ -157,6 +163,10 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, int32(2), summary.GetLatestRun().GetRuleRevisionMax())
 	require.Equal(t, 2*time.Hour, summary.GetSchedule().GetScheduleInterval().AsDuration())
 	require.Equal(t, nextRun, summary.GetSchedule().GetNextRunTime().AsTime())
+	require.InDelta(t, 83.5, summary.GetQualityScore(), 1e-9)
+	require.Equal(t, int32(2), summary.GetScoredRuleCount())
+	require.InDelta(t, 0.75, summary.GetRecentPassRate(), 1e-9, "the pass rate is a 0-1 ratio")
+	require.Equal(t, int32(3), summary.GetRecentExecutionCount())
 
 	// A target that has never run carries zero values rather than an empty slice.
 	never := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
@@ -165,4 +175,85 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, int32(0), never.GetRunCount())
 	require.Nil(t, never.GetLatestRun())
 	require.Nil(t, never.GetSchedule(), "a target without a schedule row has no schedule")
+}
+
+// qualityTargetTestRule builds one rule in the given lifecycle state with the
+// type and severity the score reads.
+func qualityTargetTestRule(id int64, state storepb.QualityRuleState, ruleType storepb.QualityRuleType,
+	severity storepb.QualitySeverity) *store.QualityRuleMessage {
+	return &store.QualityRuleMessage{
+		ID:         id,
+		TargetGUID: "instance-1;shop;;orders",
+		TargetType: storepb.MetaType_TABLE,
+		State:      state,
+		RuleType:   ruleType,
+		Severity:   severity,
+	}
+}
+
+// A target's score is the weighted mean of its enabled rules' latest judged
+// results: a paused rule, a never-run rule and an operational error are not
+// scored, and a row-level check scores by its passed rows.
+func TestQualityTargetScores(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{
+		qualityTargetTestRule(1, storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualitySeverity_QUALITY_SEVERITY_WARNING),
+		qualityTargetTestRule(2, storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, storepb.QualitySeverity_QUALITY_SEVERITY_ERROR),
+		qualityTargetTestRule(3, storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL),
+		qualityTargetTestRule(4, storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, storepb.QualitySeverity_QUALITY_SEVERITY_ERROR),
+		qualityTargetTestRule(5, storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualitySeverity_QUALITY_SEVERITY_WARNING),
+		qualityTargetTestRule(6, storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+			storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, storepb.QualitySeverity_QUALITY_SEVERITY_WARNING),
+	}
+	latest := map[int64]*store.QualityExecutionMessage{
+		1: {RuleID: 1, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		2: {RuleID: 2, Status: storepb.QualityStatus_QUALITY_STATUS_FAIL, FailedRows: 1, TotalRows: 10},
+		3: {RuleID: 3, Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		4: {RuleID: 4, Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
+	}
+
+	scores := qualityTargetScores(rules, latest)
+	key := store.MetaGUIDKey{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE}
+	require.Contains(t, scores, key)
+	require.Equal(t, int32(3), scores[key].scored, "the paused, error and never-run rules are unscored")
+	require.NotNil(t, scores[key].score)
+	// (1*1 + 2*0.9 + 3*1) / 6 = 0.9667.
+	require.InDelta(t, 100*5.8/6, *scores[key].score, 1e-9)
+
+	none := qualityTargetScores(rules, map[int64]*store.QualityExecutionMessage{})
+	require.Empty(t, none, "a target with no judged result has no score at all")
+}
+
+// The recent pass rate is PASS over the judged executions in the window: WARN and
+// FAIL count in the denominator, ERROR, SKIPPED and NOT_EVALUATED do not.
+func TestQualityRecentPassRate(t *testing.T) {
+	t.Parallel()
+
+	rate, judgedCount := qualityRecentPassRate([]*store.QualityExecutionMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_WARN},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_FAIL},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_SKIPPED},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED},
+	})
+	require.NotNil(t, rate)
+	require.InDelta(t, 1.0/3.0, *rate, 1e-9)
+	require.Equal(t, int32(3), judgedCount)
+
+	rate, judgedCount = qualityRecentPassRate([]*store.QualityExecutionMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
+	})
+	require.Nil(t, rate, "no judged execution means no pass rate")
+	require.Zero(t, judgedCount)
+
+	rate, judgedCount = qualityRecentPassRate(nil)
+	require.Nil(t, rate)
+	require.Zero(t, judgedCount)
 }

@@ -493,6 +493,26 @@ func TestQualityExecutionBaselineQueriesReadOnlyCompletedRows(t *testing.T) {
 	require.Contains(t, qualityExecutionLatestStatement, "ORDER BY rule_id, started_at DESC, id DESC")
 }
 
+// The per-target recent-executions read is the batch form of the history strip:
+// it partitions by the target identity, not by rule, so a directory page costs one
+// statement, and it only reads completed rows because a planned execution is not a
+// verdict.
+func TestQualityExecutionRecentByTargetsStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "FROM quality_execution")
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "ROW_NUMBER() OVER")
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "PARTITION BY e.target_guid, e.target_type")
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "ORDER BY e.started_at DESC, e.id DESC")
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "unnest($1::text[], $2::int2[])")
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "e.state = $3")
+	// The window only holds verdicts of currently enabled rules: pausing a rule
+	// must not leave its history in the target's recent pass rate.
+	require.Contains(t, qualityExecutionRecentByTargetsStatement,
+		"JOIN quality_rule r ON r.id = e.rule_id AND r.state = $4 AND r.deleted = FALSE")
+	require.Contains(t, qualityExecutionRecentByTargetsStatement, "WHERE rn <= $5")
+}
+
 // Protojson has to keep the optional null marker's three states in JSONB: absent
 // (a sample recorded before the marker existed), an explicit false (the value was
 // an empty string) and an explicit true (the value was SQL NULL). Losing the

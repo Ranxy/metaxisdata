@@ -1321,6 +1321,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityCoverageBreakdown"><span class="badge">M</span>QualityCoverageBreakdown</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityDimensionScore"><span class="badge">M</span>QualityDimensionScore</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityExecution"><span class="badge">M</span>QualityExecution</a>
                 </li>
               
@@ -1350,6 +1358,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityOverview"><span class="badge">M</span>QualityOverview</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityOwnerScore"><span class="badge">M</span>QualityOwnerScore</a>
                 </li>
               
                 <li>
@@ -13997,7 +14009,7 @@ combined with worst_status. </p></td>
         
       
         <h3 id="metaxisdata.v1.GetQualityLLMUsageRequest">GetQualityLLMUsageRequest</h3>
-        <p>QualityOverview is the workspace-level summary the overview page renders. It</p><p>aggregates the tables instead of listing rows, so the page costs a handful of</p><p>queries rather than paging through every result.</p>
+        <p></p>
 
         
           <table class="field-table">
@@ -16173,6 +16185,119 @@ nothing has been published yet and the target has content). </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityCoverageBreakdown">QualityCoverageBreakdown</h3>
+        <p>QualityCoverageBreakdown is one instance's or one environment's share of the</p><p>workspace coverage. The key/title pair names the row; the counts use the same</p><p>denominator as QualityOverview.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance resource id, or the environment id. Empty when the environment
+is unassigned. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The instance or environment title. Empty when the environment is unassigned
+or the id no longer resolves. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_table_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>monitored_table_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_column_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>covered_column_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityDimensionScore">QualityDimensionScore</h3>
+        <p>QualityDimensionScore is the quality score rolled up by quality dimension.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>dimension</td>
+                  <td><a href="#metaxisdata.v1.QualityDimension">QualityDimension</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Enabled rules of this dimension. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scored_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Of those, rules whose latest result is judged / FAIL. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failing_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_score</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>0-100; unset when no rule of this dimension has a judged result. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityExecution">QualityExecution</h3>
         <p>QualityExecution is one rule checked once: the durable unit of the data</p><p>quality engine. A scheduled tick or a manual request plans one execution per</p><p>rule; the runner then executes it and records the verdict and its evidence on</p><p>the same row.</p>
 
@@ -16825,7 +16950,7 @@ TIMEOUT, PARSE, UNKNOWN. </p></td>
         
       
         <h3 id="metaxisdata.v1.QualityOverview">QualityOverview</h3>
-        <p></p>
+        <p>QualityOverview is the workspace-level summary the overview page renders. It</p><p>aggregates the tables instead of listing rows, so the page costs a handful of</p><p>queries rather than paging through every result.</p>
 
         
           <table class="field-table">
@@ -16859,7 +16984,95 @@ TIMEOUT, PARSE, UNKNOWN. </p></td>
                   <td>monitored_table_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>Tables that at least one enabled rule watches. </p></td>
+                  <td><p>Coverage. The denominator is every registry object this workspace can
+monitor — a table, external table, view or materialized view under a live
+instance. The numerator is the distinct target at least one enabled rule
+watches. Column counts follow the same split: total columns from the
+registry&#39;s own column lists, covered columns from the rules&#39; checked
+columns. The formula is documented in docs/data-quality.md. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_table_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>covered_column_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_column_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>judged_table_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Monitored targets with at least one judged result (PASS, WARN or FAIL)
+among their latest execution per enabled rule. A target whose checks never
+ran is monitored but not judged: no checks is never a 100% score. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_score</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>The workspace quality score, 0-100. Unset when no enabled rule has a judged
+result. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scored_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Enabled rules whose latest result is judged / not judged. They partition the
+enabled rules the score covers. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unscored_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>coverage_by_instance</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageBreakdown">QualityCoverageBreakdown</a></td>
+                  <td>repeated</td>
+                  <td><p>Coverage and score by instance, environment, dimension and owner. Rows with
+no objects are absent; unassigned environment/owner is a row with an empty
+key. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>coverage_by_environment</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageBreakdown">QualityCoverageBreakdown</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>score_by_dimension</td>
+                  <td><a href="#metaxisdata.v1.QualityDimensionScore">QualityDimensionScore</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>score_by_owner</td>
+                  <td><a href="#metaxisdata.v1.QualityOwnerScore">QualityOwnerScore</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
                 </tr>
               
                 <tr>
@@ -16917,6 +17130,58 @@ were planned (any lifecycle state), and how the completed ones tallied. </p></td
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p>How many days the trend covers. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityOwnerScore">QualityOwnerScore</h3>
+        <p>QualityOwnerScore is the quality score rolled up by rule owner.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>owner</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty for rules with no owner. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scored_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failing_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_score</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>0-100; unset when none of the owner&#39;s rules has a judged result. </p></td>
                 </tr>
               
             </tbody>
@@ -18231,6 +18496,39 @@ target has never run. </p></td>
                   <td><p>The target&#39;s schedule and next run. A target with rules always has a
 schedule; a target whose checks are all paused has an interval but no next
 run. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_score</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>The target&#39;s quality score, 0-100, over its enabled rules&#39; latest judged
+results. Unset when no enabled rule has been judged. The formula is the
+workspace&#39;s; see docs/data-quality.md. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>scored_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>recent_pass_rate</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>The pass share of the target&#39;s most recent completed executions (at most
+20): PASS / (PASS &#43; WARN &#43; FAIL). ERROR, SKIPPED and NOT_EVALUATED are
+excluded because they are not verdicts. Unset when none of them is judged;
+recent_execution_count is how many were. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>recent_execution_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>

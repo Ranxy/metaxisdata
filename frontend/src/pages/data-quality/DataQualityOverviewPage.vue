@@ -59,7 +59,7 @@
         v-else
         class="space-y-4"
       >
-        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard
             :label="t('dataQuality.overview.statEnabledRules')"
             :value="overview.enabledRuleCount"
@@ -73,11 +73,18 @@
             :to="{ name: 'DataQualityChecks' }"
           />
           <StatCard
-            :label="t('dataQuality.overview.statMonitoredTables')"
-            :value="overview.monitoredTableCount"
-            :hint="t('dataQuality.overview.statMonitoredTablesHint')"
+            :label="t('dataQuality.overview.statCoverage')"
+            :value="coverageValue"
+            :hint="coverageHint"
             :icon="Table2"
             :to="{ name: 'DataQualityTargets' }"
+          />
+          <StatCard
+            :label="t('dataQuality.overview.statQualityScore')"
+            :value="qualityScoreValue"
+            :hint="qualityScoreHint"
+            :icon="Gauge"
+            :to="{ name: 'DataQualityChecks' }"
           />
           <StatCard
             :label="t('dataQuality.overview.statOpenIssues')"
@@ -103,6 +110,142 @@
             :to="{ name: 'DataQualityExecutions' }"
           />
         </div>
+
+        <!-- Coverage and score cut four ways: the workspace totals above say how
+             much is watched and how it is doing, this table says where. All four
+             lenses arrive in one overview response, so switching is local. -->
+        <Card>
+          <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 border-b">
+            <div class="min-w-0 space-y-1">
+              <CardTitle class="text-base">
+                {{ t("dataQuality.overview.breakdownTitle") }}
+              </CardTitle>
+              <CardDescription>
+                {{ t("dataQuality.overview.breakdownDescription") }}
+              </CardDescription>
+            </div>
+            <div
+              class="flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5"
+              role="group"
+              :aria-label="t('dataQuality.overview.breakdownTitle')"
+            >
+              <button
+                v-for="option in BREAKDOWN_MODES"
+                :key="option"
+                type="button"
+                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none"
+                :class="
+                  breakdownMode === option
+                    ? 'bg-card text-foreground shadow-e1'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                :aria-pressed="breakdownMode === option"
+                @click="breakdownMode = option"
+              >
+                {{ breakdownModeLabels[option] }}
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent class="pt-4">
+            <EmptyState
+              v-if="breakdownEmpty"
+              compact
+              :icon="ChartNoAxesColumn"
+              :title="t('dataQuality.overview.breakdownEmptyTitle')"
+              :description="t('dataQuality.overview.breakdownEmptyDescription')"
+            />
+            <Table
+              v-else-if="isCoverageMode"
+              class="[&_th]:whitespace-nowrap"
+            >
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ breakdownLensLabel }}</TableHead>
+                  <TableHead class="text-right">
+                    {{ t("dataQuality.overview.breakdownTables") }}
+                  </TableHead>
+                  <TableHead class="hidden text-right sm:table-cell">
+                    {{ t("dataQuality.overview.breakdownColumns") }}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="row in coverageRows"
+                  :key="row.key || 'unassigned'"
+                >
+                  <TableCell class="font-medium">
+                    {{ coverageLabel(row) }}
+                  </TableCell>
+                  <TableCell class="text-right tabular-nums">
+                    <div>{{ formatPercentValue(row.tableCoveragePercent) }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ row.monitoredTableCount }} / {{ row.totalTableCount }}
+                    </div>
+                  </TableCell>
+                  <TableCell class="hidden text-right tabular-nums sm:table-cell">
+                    <div>{{ formatPercentValue(row.columnCoveragePercent) }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ row.coveredColumnCount }} / {{ row.totalColumnCount }}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+            <Table
+              v-else
+              class="[&_th]:whitespace-nowrap"
+            >
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ breakdownLensLabel }}</TableHead>
+                  <TableHead class="text-right">
+                    {{ t("dataQuality.overview.breakdownScore") }}
+                  </TableHead>
+                  <TableHead class="hidden text-right sm:table-cell">
+                    {{ t("dataQuality.overview.breakdownChecks") }}
+                  </TableHead>
+                  <TableHead class="hidden text-right sm:table-cell">
+                    {{ t("dataQuality.overview.breakdownJudged") }}
+                  </TableHead>
+                  <TableHead class="hidden text-right md:table-cell">
+                    {{ t("dataQuality.overview.breakdownFailing") }}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="row in scoreRows"
+                  :key="row.key || 'unassigned'"
+                >
+                  <TableCell class="font-medium">
+                    {{ scoreLabel(row) }}
+                  </TableCell>
+                  <TableCell class="text-right tabular-nums">
+                    <template v-if="row.qualityScore !== undefined">
+                      {{ formatQualityScore(row.qualityScore) }}
+                    </template>
+                    <template v-else>
+                      <div class="text-muted-foreground">-</div>
+                      <div class="text-xs text-muted-foreground">
+                        {{ t("dataQuality.overview.breakdownUnscored") }}
+                      </div>
+                    </template>
+                  </TableCell>
+                  <TableCell class="hidden text-right tabular-nums sm:table-cell">
+                    {{ row.ruleCount }}
+                  </TableCell>
+                  <TableCell class="hidden text-right tabular-nums sm:table-cell">
+                    {{ row.scoredRuleCount }}
+                  </TableCell>
+                  <TableCell class="hidden text-right tabular-nums md:table-cell">
+                    {{ row.failingRuleCount > 0 ? row.failingRuleCount : "-" }}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 border-b">
@@ -325,6 +468,7 @@ import {
   ChartNoAxesColumn,
   CircleAlert,
   CircleCheck,
+  Gauge,
   ListChecks,
   Plus,
   RefreshCcw,
@@ -332,7 +476,7 @@ import {
   Table2,
   TriangleAlert,
 } from "lucide-vue-next";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import {
@@ -356,7 +500,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useUserDirectory } from "@/composables/useUserDirectory";
 import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityIssue,
@@ -370,6 +523,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
+  qualityDimensionKey,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualitySeverityKey,
@@ -378,11 +532,19 @@ import {
   qualityStatusVariant,
 } from "@/utils/dataQuality";
 import {
+  type CoverageBreakdownRow,
+  coveragePercent,
   failurePercent,
+  formatPercentValue,
+  formatQualityScore,
   hasTrendData,
   issueSeverityParts,
+  normalizeCoverageBreakdown,
+  normalizeDimensionScores,
+  normalizeOwnerScores,
   normalizeTrend,
   openIssueCount,
+  type ScoreBreakdownRow,
   TREND_WINDOWS,
   type TrendWindow,
   trendFailurePercent,
@@ -399,6 +561,7 @@ import { guidToRouteParams } from "@/utils/guid";
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
+const { emailOf, load: loadUserDirectory } = useUserDirectory();
 const authStore = useAuthStore();
 
 const canViewRule = computed(() =>
@@ -467,6 +630,133 @@ const executionsHint = computed(() => {
     fail: counts?.fail ?? 0,
   });
 });
+
+const coverageValue = computed(() =>
+  formatPercentValue(
+    coveragePercent(
+      overview.value.monitoredTableCount,
+      overview.value.totalTableCount
+    )
+  )
+);
+
+const coverageHint = computed(() =>
+  t("dataQuality.overview.statCoverageHint", {
+    monitoredTables: overview.value.monitoredTableCount,
+    totalTables: overview.value.totalTableCount,
+    tablePercent: coverageValue.value,
+    coveredColumns: overview.value.coveredColumnCount,
+    totalColumns: overview.value.totalColumnCount,
+    columnPercent: formatPercentValue(
+      coveragePercent(
+        overview.value.coveredColumnCount,
+        overview.value.totalColumnCount
+      )
+    ),
+  })
+);
+
+const qualityScoreValue = computed(() =>
+  formatQualityScore(overview.value.qualityScore)
+);
+
+// "N judged / M not judged" is the score's evidence line: a score with no
+// judged checks is "-", not 100.
+const qualityScoreHint = computed(() =>
+  t("dataQuality.overview.statQualityScoreHint", {
+    judged: overview.value.scoredRuleCount,
+    notJudged: overview.value.unscoredRuleCount,
+  })
+);
+
+// ---- the four-way breakdown ----
+
+const BREAKDOWN_MODES = [
+  "instance",
+  "environment",
+  "dimension",
+  "owner",
+] as const;
+type BreakdownMode = (typeof BREAKDOWN_MODES)[number];
+
+const breakdownMode = ref<BreakdownMode>("instance");
+
+// Only the owner lens needs the member directory, so it stays off the page's
+// critical path: the request starts when the reader first opens that lens, and
+// the labels switch from resource names to emails when it lands.
+watch(breakdownMode, (mode) => {
+  if (mode === "owner") {
+    void loadUserDirectory();
+  }
+});
+
+const breakdownModeLabels = computed<Record<BreakdownMode, string>>(() => ({
+  instance: t("dataQuality.overview.breakdownInstance"),
+  environment: t("dataQuality.overview.breakdownEnvironment"),
+  dimension: t("dataQuality.overview.breakdownDimension"),
+  owner: t("dataQuality.overview.breakdownOwner"),
+}));
+
+const breakdownLensLabel = computed(() => {
+  switch (breakdownMode.value) {
+    case "instance":
+      return t("dataQuality.overview.breakdownInstance");
+    case "environment":
+      return t("dataQuality.overview.breakdownEnvironment");
+    case "dimension":
+      return t("dataQuality.overview.breakdownDimension");
+    default:
+      return t("dataQuality.overview.breakdownOwner");
+  }
+});
+
+const isCoverageMode = computed(
+  () =>
+    breakdownMode.value === "instance" || breakdownMode.value === "environment"
+);
+
+const coverageRows = computed<CoverageBreakdownRow[]>(() => {
+  switch (breakdownMode.value) {
+    case "instance":
+      return normalizeCoverageBreakdown(overview.value.coverageByInstance);
+    case "environment":
+      return normalizeCoverageBreakdown(overview.value.coverageByEnvironment);
+    default:
+      return [];
+  }
+});
+
+const scoreRows = computed<ScoreBreakdownRow[]>(() => {
+  switch (breakdownMode.value) {
+    case "dimension":
+      return normalizeDimensionScores(overview.value.scoreByDimension);
+    case "owner":
+      return normalizeOwnerScores(overview.value.scoreByOwner);
+    default:
+      return [];
+  }
+});
+
+const breakdownEmpty = computed(() =>
+  isCoverageMode.value
+    ? coverageRows.value.length === 0
+    : scoreRows.value.length === 0
+);
+
+/** An instance/environment row: its title, the key, or the unassigned bucket. */
+function coverageLabel(row: CoverageBreakdownRow): string {
+  return row.title || row.key || t("dataQuality.overview.breakdownUnassigned");
+}
+
+/** A dimension row is named by the enum catalog; an owner by the directory. */
+function scoreLabel(row: ScoreBreakdownRow): string {
+  if (row.dimension !== undefined) {
+    return t(qualityDimensionKey(row.dimension));
+  }
+  return row.key
+    ? emailOf(row.key)
+    : t("dataQuality.overview.breakdownUnassigned");
+}
 
 function severityOf(
   severity: "warning" | "error" | "critical"

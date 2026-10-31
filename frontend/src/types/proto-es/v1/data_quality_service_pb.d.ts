@@ -4514,10 +4514,6 @@ export declare type GetQualityOverviewRequest = Message<"metaxisdata.v1.GetQuali
 export declare const GetQualityOverviewRequestSchema: GenMessage<GetQualityOverviewRequest>;
 
 /**
- * QualityOverview is the workspace-level summary the overview page renders. It
- * aggregates the tables instead of listing rows, so the page costs a handful of
- * queries rather than paging through every result.
- *
  * @generated from message metaxisdata.v1.GetQualityLLMUsageRequest
  */
 export declare type GetQualityLLMUsageRequest = Message<"metaxisdata.v1.GetQualityLLMUsageRequest"> & {
@@ -4588,6 +4584,10 @@ export declare type QualityLLMUsage = Message<"metaxisdata.v1.QualityLLMUsage"> 
 export declare const QualityLLMUsageSchema: GenMessage<QualityLLMUsage>;
 
 /**
+ * QualityOverview is the workspace-level summary the overview page renders. It
+ * aggregates the tables instead of listing rows, so the page costs a handful of
+ * queries rather than paging through every result.
+ *
  * @generated from message metaxisdata.v1.QualityOverview
  */
 export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> & {
@@ -4609,11 +4609,85 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
   pausedRuleCount: number;
 
   /**
-   * Tables that at least one enabled rule watches.
+   * Coverage. The denominator is every registry object this workspace can
+   * monitor — a table, external table, view or materialized view under a live
+   * instance. The numerator is the distinct target at least one enabled rule
+   * watches. Column counts follow the same split: total columns from the
+   * registry's own column lists, covered columns from the rules' checked
+   * columns. The formula is documented in docs/data-quality.md.
    *
    * @generated from field: int32 monitored_table_count = 4;
    */
   monitoredTableCount: number;
+
+  /**
+   * @generated from field: int32 total_table_count = 13;
+   */
+  totalTableCount: number;
+
+  /**
+   * @generated from field: int32 covered_column_count = 14;
+   */
+  coveredColumnCount: number;
+
+  /**
+   * @generated from field: int32 total_column_count = 15;
+   */
+  totalColumnCount: number;
+
+  /**
+   * Monitored targets with at least one judged result (PASS, WARN or FAIL)
+   * among their latest execution per enabled rule. A target whose checks never
+   * ran is monitored but not judged: no checks is never a 100% score.
+   *
+   * @generated from field: int32 judged_table_count = 16;
+   */
+  judgedTableCount: number;
+
+  /**
+   * The workspace quality score, 0-100. Unset when no enabled rule has a judged
+   * result.
+   *
+   * @generated from field: optional double quality_score = 17;
+   */
+  qualityScore?: number;
+
+  /**
+   * Enabled rules whose latest result is judged / not judged. They partition the
+   * enabled rules the score covers.
+   *
+   * @generated from field: int32 scored_rule_count = 18;
+   */
+  scoredRuleCount: number;
+
+  /**
+   * @generated from field: int32 unscored_rule_count = 19;
+   */
+  unscoredRuleCount: number;
+
+  /**
+   * Coverage and score by instance, environment, dimension and owner. Rows with
+   * no objects are absent; unassigned environment/owner is a row with an empty
+   * key.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityCoverageBreakdown coverage_by_instance = 20;
+   */
+  coverageByInstance: QualityCoverageBreakdown[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityCoverageBreakdown coverage_by_environment = 21;
+   */
+  coverageByEnvironment: QualityCoverageBreakdown[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityDimensionScore score_by_dimension = 22;
+   */
+  scoreByDimension: QualityDimensionScore[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityOwnerScore score_by_owner = 23;
+   */
+  scoreByOwner: QualityOwnerScore[];
 
   /**
    * Issues currently open (status OPEN or ACKNOWLEDGED) by severity.
@@ -4670,6 +4744,143 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
  * Use `create(QualityOverviewSchema)` to create a new message.
  */
 export declare const QualityOverviewSchema: GenMessage<QualityOverview>;
+
+/**
+ * QualityCoverageBreakdown is one instance's or one environment's share of the
+ * workspace coverage. The key/title pair names the row; the counts use the same
+ * denominator as QualityOverview.
+ *
+ * @generated from message metaxisdata.v1.QualityCoverageBreakdown
+ */
+export declare type QualityCoverageBreakdown = Message<"metaxisdata.v1.QualityCoverageBreakdown"> & {
+  /**
+   * The instance resource id, or the environment id. Empty when the environment
+   * is unassigned.
+   *
+   * @generated from field: string key = 1;
+   */
+  key: string;
+
+  /**
+   * The instance or environment title. Empty when the environment is unassigned
+   * or the id no longer resolves.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: int32 total_table_count = 3;
+   */
+  totalTableCount: number;
+
+  /**
+   * @generated from field: int32 monitored_table_count = 4;
+   */
+  monitoredTableCount: number;
+
+  /**
+   * @generated from field: int32 total_column_count = 5;
+   */
+  totalColumnCount: number;
+
+  /**
+   * @generated from field: int32 covered_column_count = 6;
+   */
+  coveredColumnCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityCoverageBreakdown.
+ * Use `create(QualityCoverageBreakdownSchema)` to create a new message.
+ */
+export declare const QualityCoverageBreakdownSchema: GenMessage<QualityCoverageBreakdown>;
+
+/**
+ * QualityDimensionScore is the quality score rolled up by quality dimension.
+ *
+ * @generated from message metaxisdata.v1.QualityDimensionScore
+ */
+export declare type QualityDimensionScore = Message<"metaxisdata.v1.QualityDimensionScore"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityDimension dimension = 1;
+   */
+  dimension: QualityDimension;
+
+  /**
+   * Enabled rules of this dimension.
+   *
+   * @generated from field: int32 rule_count = 2;
+   */
+  ruleCount: number;
+
+  /**
+   * Of those, rules whose latest result is judged / FAIL.
+   *
+   * @generated from field: int32 scored_rule_count = 3;
+   */
+  scoredRuleCount: number;
+
+  /**
+   * @generated from field: int32 failing_rule_count = 4;
+   */
+  failingRuleCount: number;
+
+  /**
+   * 0-100; unset when no rule of this dimension has a judged result.
+   *
+   * @generated from field: optional double quality_score = 5;
+   */
+  qualityScore?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityDimensionScore.
+ * Use `create(QualityDimensionScoreSchema)` to create a new message.
+ */
+export declare const QualityDimensionScoreSchema: GenMessage<QualityDimensionScore>;
+
+/**
+ * QualityOwnerScore is the quality score rolled up by rule owner.
+ *
+ * @generated from message metaxisdata.v1.QualityOwnerScore
+ */
+export declare type QualityOwnerScore = Message<"metaxisdata.v1.QualityOwnerScore"> & {
+  /**
+   * Format: users/{user}. Empty for rules with no owner.
+   *
+   * @generated from field: string owner = 1;
+   */
+  owner: string;
+
+  /**
+   * @generated from field: int32 rule_count = 2;
+   */
+  ruleCount: number;
+
+  /**
+   * @generated from field: int32 scored_rule_count = 3;
+   */
+  scoredRuleCount: number;
+
+  /**
+   * @generated from field: int32 failing_rule_count = 4;
+   */
+  failingRuleCount: number;
+
+  /**
+   * 0-100; unset when none of the owner's rules has a judged result.
+   *
+   * @generated from field: optional double quality_score = 5;
+   */
+  qualityScore?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityOwnerScore.
+ * Use `create(QualityOwnerScoreSchema)` to create a new message.
+ */
+export declare const QualityOwnerScoreSchema: GenMessage<QualityOwnerScore>;
 
 /**
  * QualityTrendPoint is one day of result tallies.
@@ -4976,6 +5187,35 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
    * @generated from field: metaxisdata.v1.QualityTargetSchedule schedule = 15;
    */
   schedule?: QualityTargetSchedule;
+
+  /**
+   * The target's quality score, 0-100, over its enabled rules' latest judged
+   * results. Unset when no enabled rule has been judged. The formula is the
+   * workspace's; see docs/data-quality.md.
+   *
+   * @generated from field: optional double quality_score = 16;
+   */
+  qualityScore?: number;
+
+  /**
+   * @generated from field: int32 scored_rule_count = 17;
+   */
+  scoredRuleCount: number;
+
+  /**
+   * The pass share of the target's most recent completed executions (at most
+   * 20): PASS / (PASS + WARN + FAIL). ERROR, SKIPPED and NOT_EVALUATED are
+   * excluded because they are not verdicts. Unset when none of them is judged;
+   * recent_execution_count is how many were.
+   *
+   * @generated from field: optional double recent_pass_rate = 18;
+   */
+  recentPassRate?: number;
+
+  /**
+   * @generated from field: int32 recent_execution_count = 19;
+   */
+  recentExecutionCount: number;
 };
 
 /**

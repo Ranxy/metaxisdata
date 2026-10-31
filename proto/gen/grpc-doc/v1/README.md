@@ -297,6 +297,8 @@
     - [QualityContractCheck](#metaxisdata-v1-QualityContractCheck)
     - [QualityContractRevision](#metaxisdata-v1-QualityContractRevision)
     - [QualityContractSettings](#metaxisdata-v1-QualityContractSettings)
+    - [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown)
+    - [QualityDimensionScore](#metaxisdata-v1-QualityDimensionScore)
     - [QualityExecution](#metaxisdata-v1-QualityExecution)
     - [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary)
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
@@ -305,6 +307,7 @@
     - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
+    - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
@@ -4717,9 +4720,7 @@ timestamp follows on_empty.
 <a name="metaxisdata-v1-GetQualityLLMUsageRequest"></a>
 
 ### GetQualityLLMUsageRequest
-QualityOverview is the workspace-level summary the overview page renders. It
-aggregates the tables instead of listing rows, so the page costs a handful of
-queries rather than paging through every result.
+
 
 
 | Field | Type | Label | Description |
@@ -5549,6 +5550,47 @@ QualityContractSettings is the target-level layer&#39;s mutable configuration.
 
 
 
+<a name="metaxisdata-v1-QualityCoverageBreakdown"></a>
+
+### QualityCoverageBreakdown
+QualityCoverageBreakdown is one instance&#39;s or one environment&#39;s share of the
+workspace coverage. The key/title pair names the row; the counts use the same
+denominator as QualityOverview.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| key | [string](#string) |  | The instance resource id, or the environment id. Empty when the environment is unassigned. |
+| title | [string](#string) |  | The instance or environment title. Empty when the environment is unassigned or the id no longer resolves. |
+| total_table_count | [int32](#int32) |  |  |
+| monitored_table_count | [int32](#int32) |  |  |
+| total_column_count | [int32](#int32) |  |  |
+| covered_column_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityDimensionScore"></a>
+
+### QualityDimensionScore
+QualityDimensionScore is the quality score rolled up by quality dimension.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| dimension | [QualityDimension](#metaxisdata-v1-QualityDimension) |  |  |
+| rule_count | [int32](#int32) |  | Enabled rules of this dimension. |
+| scored_rule_count | [int32](#int32) |  | Of those, rules whose latest result is judged / FAIL. |
+| failing_rule_count | [int32](#int32) |  |  |
+| quality_score | [double](#double) | optional | 0-100; unset when no rule of this dimension has a judged result. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityExecution"></a>
 
 ### QualityExecution
@@ -5737,7 +5779,9 @@ analyses. A restart resets the counters.
 <a name="metaxisdata-v1-QualityOverview"></a>
 
 ### QualityOverview
-
+QualityOverview is the workspace-level summary the overview page renders. It
+aggregates the tables instead of listing rows, so the page costs a handful of
+queries rather than paging through every result.
 
 
 | Field | Type | Label | Description |
@@ -5745,7 +5789,18 @@ analyses. A restart resets the counters.
 | rule_count | [int32](#int32) |  | Rules by lifecycle state. |
 | enabled_rule_count | [int32](#int32) |  |  |
 | paused_rule_count | [int32](#int32) |  |  |
-| monitored_table_count | [int32](#int32) |  | Tables that at least one enabled rule watches. |
+| monitored_table_count | [int32](#int32) |  | Coverage. The denominator is every registry object this workspace can monitor — a table, external table, view or materialized view under a live instance. The numerator is the distinct target at least one enabled rule watches. Column counts follow the same split: total columns from the registry&#39;s own column lists, covered columns from the rules&#39; checked columns. The formula is documented in docs/data-quality.md. |
+| total_table_count | [int32](#int32) |  |  |
+| covered_column_count | [int32](#int32) |  |  |
+| total_column_count | [int32](#int32) |  |  |
+| judged_table_count | [int32](#int32) |  | Monitored targets with at least one judged result (PASS, WARN or FAIL) among their latest execution per enabled rule. A target whose checks never ran is monitored but not judged: no checks is never a 100% score. |
+| quality_score | [double](#double) | optional | The workspace quality score, 0-100. Unset when no enabled rule has a judged result. |
+| scored_rule_count | [int32](#int32) |  | Enabled rules whose latest result is judged / not judged. They partition the enabled rules the score covers. |
+| unscored_rule_count | [int32](#int32) |  |  |
+| coverage_by_instance | [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown) | repeated | Coverage and score by instance, environment, dimension and owner. Rows with no objects are absent; unassigned environment/owner is a row with an empty key. |
+| coverage_by_environment | [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown) | repeated |  |
+| score_by_dimension | [QualityDimensionScore](#metaxisdata-v1-QualityDimensionScore) | repeated |  |
+| score_by_owner | [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore) | repeated |  |
 | open_warning_count | [int32](#int32) |  | Issues currently open (status OPEN or ACKNOWLEDGED) by severity. |
 | open_error_count | [int32](#int32) |  |  |
 | open_critical_count | [int32](#int32) |  |  |
@@ -5754,6 +5809,25 @@ analyses. A restart resets the counters.
 | last_day_counts | [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts) |  |  |
 | trend | [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint) | repeated | The per-day tallies of the trend window, oldest first. |
 | trend_days | [int32](#int32) |  | How many days the trend covers. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityOwnerScore"></a>
+
+### QualityOwnerScore
+QualityOwnerScore is the quality score rolled up by rule owner.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| owner | [string](#string) |  | Format: users/{user}. Empty for rules with no owner. |
+| rule_count | [int32](#int32) |  |  |
+| scored_rule_count | [int32](#int32) |  |  |
+| failing_rule_count | [int32](#int32) |  |  |
+| quality_score | [double](#double) | optional | 0-100; unset when none of the owner&#39;s rules has a judged result. |
 
 
 
@@ -6141,6 +6215,10 @@ plus the counts and health the row and the workspace header render.
 | latest_run | [QualityRun](#metaxisdata-v1-QualityRun) |  | The target&#39;s most recent run. A run belongs to one target, so it is the per-target batch summary the directory and the workspace show; unset when the target has never run. |
 | run_count | [int32](#int32) |  | How many dispatch batches belong to this target. |
 | schedule | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) |  | The target&#39;s schedule and next run. A target with rules always has a schedule; a target whose checks are all paused has an interval but no next run. |
+| quality_score | [double](#double) | optional | The target&#39;s quality score, 0-100, over its enabled rules&#39; latest judged results. Unset when no enabled rule has been judged. The formula is the workspace&#39;s; see docs/data-quality.md. |
+| scored_rule_count | [int32](#int32) |  |  |
+| recent_pass_rate | [double](#double) | optional | The pass share of the target&#39;s most recent completed executions (at most 20): PASS / (PASS &#43; WARN &#43; FAIL). ERROR, SKIPPED and NOT_EVALUATED are excluded because they are not verdicts. Unset when none of them is judged; recent_execution_count is how many were. |
+| recent_execution_count | [int32](#int32) |  |  |
 
 
 

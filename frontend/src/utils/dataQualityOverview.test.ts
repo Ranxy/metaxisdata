@@ -1,21 +1,32 @@
 import { create } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import {
+  QualityCoverageBreakdownSchema,
+  QualityDimension,
+  QualityDimensionScoreSchema,
+  QualityOwnerScoreSchema,
   QualityStatusCountsSchema,
   QualityTrendPointSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   buildTrendGeometry,
   clampTrendDays,
+  coveragePercent,
   DEFAULT_TREND_WINDOW,
   failurePercent,
   formatAxisCount,
+  formatPassRate,
   formatPercent,
+  formatPercentValue,
+  formatQualityScore,
   formatTrendAxisDate,
   hasTrendData,
   issueSeverityParts,
   MAX_TREND_DAYS,
   niceScale,
+  normalizeCoverageBreakdown,
+  normalizeDimensionScores,
+  normalizeOwnerScores,
   normalizeTrend,
   openIssueCount,
   TREND_WINDOWS,
@@ -304,5 +315,152 @@ describe("summary numbers", () => {
         day({ total: 2, error: 1, pass: 1 }),
       ])
     ).toBe("30.0%");
+  });
+});
+
+describe("coverage and score", () => {
+  it("turns a covered share into a percentage, and keeps an empty denominator null", () => {
+    expect(coveragePercent(4, 8)).toBe(50);
+    expect(coveragePercent(1, 3)).toBe(33.3);
+    expect(coveragePercent(0, 5)).toBe(0);
+    expect(coveragePercent(2, 0)).toBeNull();
+    expect(coveragePercent(2, -1)).toBeNull();
+    expect(coveragePercent(Number.NaN, 3)).toBeNull();
+    expect(coveragePercent(1, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(formatPercentValue(coveragePercent(2, 3))).toBe("66.7%");
+    expect(formatPercentValue(null)).toBe("-");
+  });
+
+  it("formats a quality score and a pass rate, and says '-' while nothing was judged", () => {
+    expect(formatQualityScore(82.54)).toBe("82.5");
+    expect(formatQualityScore(100)).toBe("100.0");
+    expect(formatQualityScore(undefined)).toBe("-");
+    expect(formatQualityScore(Number.NaN)).toBe("-");
+    expect(formatPassRate(0.875)).toBe("87.5%");
+    expect(formatPassRate(0)).toBe("0.0%");
+    expect(formatPassRate(undefined)).toBe("-");
+    expect(formatPassRate(Number.NaN)).toBe("-");
+  });
+});
+
+describe("breakdown normalization", () => {
+  it("orders coverage rows by title, falls back to the key and keeps an empty denominator null", () => {
+    const rows = normalizeCoverageBreakdown([
+      create(QualityCoverageBreakdownSchema, {
+        key: "inst-2",
+        title: "Beta",
+        totalTableCount: 4,
+        monitoredTableCount: 1,
+        totalColumnCount: 8,
+        coveredColumnCount: 2,
+      }),
+      create(QualityCoverageBreakdownSchema, {
+        key: "inst-1",
+        title: "Alpha",
+        totalTableCount: 0,
+        monitoredTableCount: 0,
+        totalColumnCount: 0,
+        coveredColumnCount: 0,
+      }),
+      create(QualityCoverageBreakdownSchema, {
+        key: "inst-3",
+        title: "",
+        totalTableCount: 1,
+        monitoredTableCount: 1,
+        totalColumnCount: 3,
+        coveredColumnCount: 0,
+      }),
+      // Two rows with the same title compare as equal and keep their order.
+      create(QualityCoverageBreakdownSchema, {
+        key: "inst-4",
+        title: "Beta",
+        totalTableCount: 2,
+        monitoredTableCount: 0,
+        totalColumnCount: 4,
+        coveredColumnCount: 0,
+      }),
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "inst-1",
+      "inst-2",
+      "inst-4",
+      "inst-3",
+    ]);
+    expect(rows[0]?.tableCoveragePercent).toBeNull();
+    expect(rows[0]?.columnCoveragePercent).toBeNull();
+    expect(rows[1]?.tableCoveragePercent).toBe(25);
+    expect(rows[1]?.columnCoveragePercent).toBe(25);
+    expect(rows[2]?.title).toBe("Beta");
+    expect(rows[2]?.tableCoveragePercent).toBe(0);
+    expect(rows[3]?.title).toBe("");
+    expect(rows[3]?.tableCoveragePercent).toBe(100);
+    expect(rows[3]?.columnCoveragePercent).toBe(0);
+  });
+
+  it("orders dimensions by their enum value and keeps an unset score unset", () => {
+    const rows = normalizeDimensionScores([
+      create(QualityDimensionScoreSchema, {
+        dimension: QualityDimension.ACCURACY,
+        ruleCount: 3,
+        scoredRuleCount: 2,
+        failingRuleCount: 1,
+        qualityScore: 70,
+      }),
+      create(QualityDimensionScoreSchema, {
+        dimension: QualityDimension.COMPLETENESS,
+        ruleCount: 1,
+      }),
+      create(QualityDimensionScoreSchema, {
+        dimension: QualityDimension.UNSPECIFIED,
+        ruleCount: 5,
+      }),
+    ]);
+
+    expect(rows.map((row) => row.dimension)).toEqual([
+      QualityDimension.UNSPECIFIED,
+      QualityDimension.COMPLETENESS,
+      QualityDimension.ACCURACY,
+    ]);
+    expect(rows[0]?.key).toBe(String(QualityDimension.UNSPECIFIED));
+    expect(rows[1]?.qualityScore).toBeUndefined();
+    expect(rows[2]?.qualityScore).toBe(70);
+  });
+
+  it("orders owners alphabetically with the unassigned bucket last", () => {
+    const rows = normalizeOwnerScores([
+      create(QualityOwnerScoreSchema, {
+        owner: "",
+        ruleCount: 2,
+        scoredRuleCount: 1,
+      }),
+      create(QualityOwnerScoreSchema, {
+        owner: "users/zoe",
+        ruleCount: 1,
+        scoredRuleCount: 1,
+        qualityScore: 90,
+      }),
+      create(QualityOwnerScoreSchema, {
+        owner: "users/alice",
+        ruleCount: 1,
+        scoredRuleCount: 0,
+      }),
+      create(QualityOwnerScoreSchema, {
+        owner: "users/alice",
+        ruleCount: 1,
+        scoredRuleCount: 1,
+        qualityScore: 80,
+      }),
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual([
+      "users/alice",
+      "users/alice",
+      "users/zoe",
+      "",
+    ]);
+    expect(rows[0]?.qualityScore).toBeUndefined();
+    expect(rows[3]?.qualityScore).toBeUndefined();
+    expect(rows[3]?.failingRuleCount).toBe(0);
   });
 });

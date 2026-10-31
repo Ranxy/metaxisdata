@@ -1,4 +1,8 @@
 import type {
+  QualityCoverageBreakdown,
+  QualityDimension,
+  QualityDimensionScore,
+  QualityOwnerScore,
   QualityStatusCounts,
   QualityTrendPoint,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -387,4 +391,150 @@ export function trendFailurePercent(days: readonly TrendDay[]): string {
     bad += day.fail + day.error;
   }
   return total <= 0 ? "-" : formatPercent(bad / total);
+}
+
+// ---- coverage, score and pass rate ----
+
+/**
+ * Covered / total as a 0-100 percentage with one decimal. `null` when the
+ * denominator is empty: "no column to watch" and "none of the columns are
+ * watched" are different facts, and the card must not print 0% for the first.
+ */
+export function coveragePercent(covered: number, total: number): number | null {
+  if (!Number.isFinite(covered) || !Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+  return Math.round((covered / total) * 1000) / 10;
+}
+
+/**
+ * A 0-100 percentage for display: `66.7%`. Unlike `formatPercent` the value is
+ * already a percentage, not a fraction; `null` stays "-" for the same reason.
+ */
+export function formatPercentValue(percent: number | null): string {
+  return percent === null ? "-" : `${percent.toFixed(1)}%`;
+}
+
+/** A 0-100 quality score with one decimal; "-" while nothing was judged. */
+export function formatQualityScore(score: number | undefined): string {
+  if (score === undefined || !Number.isFinite(score)) {
+    return "-";
+  }
+  return score.toFixed(1);
+}
+
+/** A 0-1 pass rate as a percentage; "-" when no execution was judged. */
+export function formatPassRate(rate: number | undefined): string {
+  if (rate === undefined || !Number.isFinite(rate)) {
+    return "-";
+  }
+  return formatPercent(rate);
+}
+
+/** One coverage lens row: an instance or an environment. */
+export interface CoverageBreakdownRow {
+  key: string;
+  /** The server's title, or the key when it resolved none; empty if unassigned. */
+  title: string;
+  totalTableCount: number;
+  monitoredTableCount: number;
+  totalColumnCount: number;
+  coveredColumnCount: number;
+  /** 0-100, or null when the row has no table in the denominator. */
+  tableCoveragePercent: number | null;
+  /** 0-100, or null when the row has no column in the denominator. */
+  columnCoveragePercent: number | null;
+}
+
+/**
+ * The instance/environment lenses as table rows, alphabetical by title (the key
+ * is the fallback for a row whose title did not resolve). The server's order is
+ * not meaningful; a reader compares the rows with each other.
+ */
+export function normalizeCoverageBreakdown(
+  rows: readonly QualityCoverageBreakdown[]
+): CoverageBreakdownRow[] {
+  return rows
+    .map((row) => ({
+      key: row.key,
+      title: row.title,
+      totalTableCount: row.totalTableCount,
+      monitoredTableCount: row.monitoredTableCount,
+      totalColumnCount: row.totalColumnCount,
+      coveredColumnCount: row.coveredColumnCount,
+      tableCoveragePercent: coveragePercent(
+        row.monitoredTableCount,
+        row.totalTableCount
+      ),
+      columnCoveragePercent: coveragePercent(
+        row.coveredColumnCount,
+        row.totalColumnCount
+      ),
+    }))
+    .sort((left, right) => {
+      const a = left.title || left.key;
+      const b = right.title || right.key;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+}
+
+/** One score lens row: a dimension or an owner. */
+export interface ScoreBreakdownRow {
+  /** The dimension as a string, or the owner resource name ("" if unassigned). */
+  key: string;
+  /** Set on the dimension lens; undefined on the owner lens. */
+  dimension?: QualityDimension;
+  ruleCount: number;
+  scoredRuleCount: number;
+  failingRuleCount: number;
+  qualityScore?: number;
+}
+
+/**
+ * The dimension lens in enum order: the dimensions are a fixed catalog, so a
+ * stable order is what lets a reader compare the same rows between visits.
+ */
+export function normalizeDimensionScores(
+  rows: readonly QualityDimensionScore[]
+): ScoreBreakdownRow[] {
+  return rows
+    .map((row) => ({
+      key: String(row.dimension),
+      dimension: row.dimension,
+      ruleCount: row.ruleCount,
+      scoredRuleCount: row.scoredRuleCount,
+      failingRuleCount: row.failingRuleCount,
+      qualityScore: row.qualityScore,
+    }))
+    .sort((left, right) => (left.dimension ?? 0) - (right.dimension ?? 0));
+}
+
+/**
+ * The owner lens alphabetically by resource name, with the unassigned bucket
+ * last: a missing owner is not a member's name, so it does not belong in the
+ * middle of the alphabet.
+ */
+export function normalizeOwnerScores(
+  rows: readonly QualityOwnerScore[]
+): ScoreBreakdownRow[] {
+  return rows
+    .map((row) => ({
+      key: row.owner,
+      ruleCount: row.ruleCount,
+      scoredRuleCount: row.scoredRuleCount,
+      failingRuleCount: row.failingRuleCount,
+      qualityScore: row.qualityScore,
+    }))
+    .sort((left, right) => {
+      if (left.key === right.key) {
+        return 0;
+      }
+      if (left.key === "") {
+        return 1;
+      }
+      if (right.key === "") {
+        return -1;
+      }
+      return left.key < right.key ? -1 : 1;
+    });
 }

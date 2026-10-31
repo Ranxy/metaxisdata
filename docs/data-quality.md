@@ -87,12 +87,16 @@ page open.
 ## Browsing targets and checks
 
 Data Quality → **Targets** is the directory: one row per table or view that has
-checks, with its check count, covered columns, latest result, open issues,
+checks, with its check count, covered columns, latest result, **quality score**
+(a dash until a check has been judged — see
+[Coverage and quality score](#coverage-and-quality-score)), open issues,
 pending AI drafts and last run. **Start monitoring** opens the metadata picker
 and lands on the chosen target's workspace ready to add its first check. Open a target to get its **workspace**: every check
 on that table, grouped into dataset-level checks, cross-column checks and one
 section per column, with the latest result and a strip of each check's recent
-executions beside it. The workspace can run all of the target's checks at once,
+executions beside it. Its header sums the target up, including the **quality
+score** and the **recent pass rate** (see
+[Coverage and quality score](#coverage-and-quality-score)). The workspace can run all of the target's checks at once,
 add or edit a check without walking the target picker again, show which columns
 have no check yet, and draft checks with the AI copilot on the right — drafts
 appear inside the section they belong to until you create them as checks.
@@ -188,6 +192,102 @@ revision, tags, filter, empty behavior). *Run now*, *Edit*,
 *pause/resume* and *Delete* appear there for callers who hold the matching
 permission.
 
+## Coverage and quality score
+
+Two read-only numbers answer different questions: coverage says how much of the
+metadata is watched, and the quality score says how healthy the watched checks
+are. Neither is stored or computed by a background job — each is assembled when
+the overview, a target row or a report is read, from the registry and from the
+checks' completed executions. Viewing them writes nothing, changes no check,
+issue or notification, and they are not audit-logged (they are reads).
+
+### Coverage
+
+Coverage compares the objects this deployment can monitor with the objects that
+have at least one enabled check.
+
+- **The denominator** is every table, external table, view and materialized
+  view in the metadata registry under a live instance (a deleted instance
+  contributes nothing). The column total comes from the registry's own column
+  lists; the registry stores per-column rows only for tables, so the columns of
+  views, materialized views and external tables are read from the object
+  definition in the registry.
+- **The numerator** is the distinct target with at least one enabled check, and
+  the distinct columns those checks inspect — the column named in a check's
+  configuration, not the display snapshot stored on the check. Table-level and
+  multi-column checks cover their target but no single column.
+- The overview breaks coverage down by instance and by environment; the row for
+  instances with no environment has a blank key.
+- An enabled check whose target has no registry row any more (the object was
+  deleted, or a rename changed its GUID so the old check no longer resolves) or
+  whose instance was deleted is left out of the workspace coverage and quality
+  score: there is no denominator row to count it against. Such checks still
+  appear in the Targets directory with the *Target unavailable* badge and still
+  count in the enabled-check total, so coverage can never exceed 100% and the
+  instance/environment rows add up to the workspace totals.
+
+A target whose checks have never produced a verdict is **monitored but not
+judged**. Coverage is not a health measure: no check on a table means it counts
+in the denominator and not in the numerator, so a workspace without checks is at
+0% coverage, never 100%.
+
+### Quality score
+
+The quality score is 0–100, built from the **latest completed execution of each
+enabled check**. Paused and archived checks do not enter it.
+
+| Check kind | Score of one check |
+| --- | --- |
+| Row/unit checks — nulls, uniqueness (single and combination), accepted values, ranges, regex, string length, referential integrity, cross-column, CEL expression, schema drift, group check | `1 - failed rows / total rows`, clamped to 0–1; an execution with no total rows falls back to the status scale |
+| The other six — row count, row count change, freshness, custom SQL, aggregate, cross-table | `PASS` = 1, `WARN` = 0.5, `FAIL` = 0 |
+| `ERROR`, `SKIPPED`, `NOT_EVALUATED` | Not judged: left out of both the numerator and the denominator |
+
+Each judged check is weighted by its severity — warning 1, error 2, critical 3 —
+and the score is `100 × Σ(weight × check score) / Σweight`. The same formula
+gives a target's score, the workspace score and the per-dimension and per-owner
+breakdowns. The workspace score is weighted over checks, not an average of
+target scores, so a table with many checks carries more weight than a table with
+one.
+
+A dash (`-`) means **nothing was judged** — never "0" and never "100". The score
+is unset when no enabled check has a judged result: there is no enabled check,
+none has run yet, or all of them ended in `ERROR`, `SKIPPED` or
+`NOT_EVALUATED`; the overview also shows how many enabled checks are judged and
+how many are not, so a dash can be told apart from a low score.
+
+### Recent pass rate
+
+A target's row shows a second number: the pass share of its **most recent 20
+completed executions** (across the checks that are currently enabled):
+`PASS / (PASS + WARN + FAIL)`. The window is taken after filtering to enabled
+checks, so a paused or archived check's executions never occupy one of the 20
+slots. `ERROR`, `SKIPPED` and `NOT_EVALUATED` are excluded because they are not
+verdicts, and a warning is not a pass. This is a different measure from the
+quality score — the score weights each check once by severity and always looks
+at the latest execution, while the pass rate counts executions — so do not
+compare the two as if they were one number. A dash means none of the recent
+executions was judged. (The pass rate in a check's drawer is still a per-check
+figure over that check's own recent executions.)
+
+### Reading and trusting the numbers
+
+- A freshly configured workspace with synced metadata shows 0% coverage and a
+  dash for the score: no check exists yet. Adding the first check moves coverage;
+  the score appears after the first execution completes.
+- Both numbers are derived, not stored: they are recomputed on every read, so
+  they always match the executions you can open. Nothing is written by viewing
+  them, and they do not trigger notifications. The target HTML report that shows
+  a score is audited like the other exports (request and file name, never the
+  HTML body).
+- A hidden or soft-deleted database keeps its last metadata snapshot until the
+  instance sync rewrites it, so its tables can still count toward the coverage
+  denominator for a while; their checks usually become *orphaned* and stop
+  running.
+- The score and the recent pass rate both cover enabled checks only. Pausing a
+  check drops it from the score and out of the pass-rate window immediately: its
+  completed executions remain in the Executions directory, but they no longer
+  occupy one of the target's 20 slots.
+
 ## Problems and notifications
 
 A check that starts failing opens an **issue**; it is the same issue until it
@@ -235,10 +335,14 @@ directly in a spreadsheet.
 self-contained HTML file (styles and chart are embedded; nothing is loaded from
 the network) that you can open anywhere or forward as an attachment. It covers
 the last 30 days by default (up to 90) and contains the report scope, the current
-result summary and pass rate, the daily trend, the check list, the unresolved
-problems, a capped sample summary of failed checks, and the monitoring basis
-(target, instance, schedule, rule revisions, engine versions). It is generated in
-the interface language you are using.
+result summary and pass rate, the target's **quality score** (with how many
+checks were judged and how many were not), the daily trend, the check list, the
+unresolved problems, a capped sample summary of failed checks, and the monitoring
+basis (target, instance, schedule, rule revisions, engine versions). It is
+generated in the interface language you are using. The score card uses the same
+formula as the workspace (see
+[Coverage and quality score](#coverage-and-quality-score)); the score and the
+six-status pass rate are different measures.
 
 The report is the one export that contains **real values from your data** — up to
 5 sample rows per failed check (at most 20 checks), capped at 2 MiB in total, with

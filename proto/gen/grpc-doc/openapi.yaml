@@ -12044,6 +12044,35 @@ components:
                     description: The severity a newly authored rule starts with; UNSPECIFIED means no default.
                     format: enum
             description: QualityContractSettings is the target-level layer's mutable configuration.
+        QualityCoverageBreakdown:
+            type: object
+            properties:
+                key:
+                    type: string
+                    description: |-
+                        The instance resource id, or the environment id. Empty when the environment
+                         is unassigned.
+                title:
+                    type: string
+                    description: |-
+                        The instance or environment title. Empty when the environment is unassigned
+                         or the id no longer resolves.
+                totalTableCount:
+                    type: integer
+                    format: int32
+                monitoredTableCount:
+                    type: integer
+                    format: int32
+                totalColumnCount:
+                    type: integer
+                    format: int32
+                coveredColumnCount:
+                    type: integer
+                    format: int32
+            description: |-
+                QualityCoverageBreakdown is one instance's or one environment's share of the
+                 workspace coverage. The key/title pair names the row; the counts use the same
+                 denominator as QualityOverview.
         QualityDigestSetting:
             type: object
             properties:
@@ -12071,6 +12100,36 @@ components:
                 QualityDigestSetting is the stored form of the weekly data quality digest
                  schedule. The digest itself has no in-app copy; it is delivered to the
                  outbound channels subscribed to NOTIFICATION_TYPE_DATA_QUALITY_DIGEST.
+        QualityDimensionScore:
+            type: object
+            properties:
+                dimension:
+                    enum:
+                        - QUALITY_DIMENSION_UNSPECIFIED
+                        - QUALITY_DIMENSION_COMPLETENESS
+                        - QUALITY_DIMENSION_VALIDITY
+                        - QUALITY_DIMENSION_UNIQUENESS
+                        - QUALITY_DIMENSION_CONSISTENCY
+                        - QUALITY_DIMENSION_TIMELINESS
+                        - QUALITY_DIMENSION_ACCURACY
+                    type: string
+                    format: enum
+                ruleCount:
+                    type: integer
+                    description: Enabled rules of this dimension.
+                    format: int32
+                scoredRuleCount:
+                    type: integer
+                    description: Of those, rules whose latest result is judged / FAIL.
+                    format: int32
+                failingRuleCount:
+                    type: integer
+                    format: int32
+                qualityScore:
+                    type: number
+                    description: 0-100; unset when no rule of this dimension has a judged result.
+                    format: double
+            description: QualityDimensionScore is the quality score rolled up by quality dimension.
         QualityExecution:
             type: object
             properties:
@@ -12453,8 +12512,65 @@ components:
                     format: int32
                 monitoredTableCount:
                     type: integer
-                    description: Tables that at least one enabled rule watches.
+                    description: |-
+                        Coverage. The denominator is every registry object this workspace can
+                         monitor — a table, external table, view or materialized view under a live
+                         instance. The numerator is the distinct target at least one enabled rule
+                         watches. Column counts follow the same split: total columns from the
+                         registry's own column lists, covered columns from the rules' checked
+                         columns. The formula is documented in docs/data-quality.md.
                     format: int32
+                totalTableCount:
+                    type: integer
+                    format: int32
+                coveredColumnCount:
+                    type: integer
+                    format: int32
+                totalColumnCount:
+                    type: integer
+                    format: int32
+                judgedTableCount:
+                    type: integer
+                    description: |-
+                        Monitored targets with at least one judged result (PASS, WARN or FAIL)
+                         among their latest execution per enabled rule. A target whose checks never
+                         ran is monitored but not judged: no checks is never a 100% score.
+                    format: int32
+                qualityScore:
+                    type: number
+                    description: |-
+                        The workspace quality score, 0-100. Unset when no enabled rule has a judged
+                         result.
+                    format: double
+                scoredRuleCount:
+                    type: integer
+                    description: |-
+                        Enabled rules whose latest result is judged / not judged. They partition the
+                         enabled rules the score covers.
+                    format: int32
+                unscoredRuleCount:
+                    type: integer
+                    format: int32
+                coverageByInstance:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityCoverageBreakdown'
+                    description: |-
+                        Coverage and score by instance, environment, dimension and owner. Rows with
+                         no objects are absent; unassigned environment/owner is a row with an empty
+                         key.
+                coverageByEnvironment:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityCoverageBreakdown'
+                scoreByDimension:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityDimensionScore'
+                scoreByOwner:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityOwnerScore'
                 openWarningCount:
                     type: integer
                     description: Issues currently open (status OPEN or ACKNOWLEDGED) by severity.
@@ -12485,6 +12601,30 @@ components:
                     type: integer
                     description: How many days the trend covers.
                     format: int32
+            description: |-
+                QualityOverview is the workspace-level summary the overview page renders. It
+                 aggregates the tables instead of listing rows, so the page costs a handful of
+                 queries rather than paging through every result.
+        QualityOwnerScore:
+            type: object
+            properties:
+                owner:
+                    type: string
+                    description: 'Format: users/{user}. Empty for rules with no owner.'
+                ruleCount:
+                    type: integer
+                    format: int32
+                scoredRuleCount:
+                    type: integer
+                    format: int32
+                failingRuleCount:
+                    type: integer
+                    format: int32
+                qualityScore:
+                    type: number
+                    description: 0-100; unset when none of the owner's rules has a judged result.
+                    format: double
+            description: QualityOwnerScore is the quality score rolled up by rule owner.
         QualityRule:
             type: object
             properties:
@@ -13219,6 +13359,27 @@ components:
                         The target's schedule and next run. A target with rules always has a
                          schedule; a target whose checks are all paused has an interval but no next
                          run.
+                qualityScore:
+                    type: number
+                    description: |-
+                        The target's quality score, 0-100, over its enabled rules' latest judged
+                         results. Unset when no enabled rule has been judged. The formula is the
+                         workspace's; see docs/data-quality.md.
+                    format: double
+                scoredRuleCount:
+                    type: integer
+                    format: int32
+                recentPassRate:
+                    type: number
+                    description: |-
+                        The pass share of the target's most recent completed executions (at most
+                         20): PASS / (PASS + WARN + FAIL). ERROR, SKIPPED and NOT_EVALUATED are
+                         excluded because they are not verdicts. Unset when none of them is judged;
+                         recent_execution_count is how many were.
+                    format: double
+                recentExecutionCount:
+                    type: integer
+                    format: int32
             description: |-
                 QualityTargetSummary is one row of the target directory: the target identity
                  plus the counts and health the row and the workspace header render.

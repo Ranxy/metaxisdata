@@ -872,6 +872,58 @@
       ]
     },
     {
+      "id": "coverage",
+      "category": "Data Quality",
+      "definition": "The share of the monitorable tables and columns that enabled checks watch.",
+      "translations": {
+        "en-US": "coverage",
+        "zh-CN": "覆盖率"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "覆盖度"
+        ]
+      }
+    },
+    {
+      "id": "quality-score",
+      "category": "Data Quality",
+      "definition": "The 0-100 weighted health of a target or the workspace over its judged checks; unset, not 100, while nothing has been judged.",
+      "translations": {
+        "en-US": "quality score",
+        "zh-CN": "质量分"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "质量评分",
+          "质量得分"
+        ]
+      }
+    },
+    {
+      "id": "pass-rate",
+      "category": "Data Quality",
+      "definition": "The share of a target's recent completed executions that passed.",
+      "translations": {
+        "en-US": "pass rate",
+        "zh-CN": "通过率"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "合格率"
+        ]
+      }
+    },
+    {
       "id": "superseded",
       "category": "Data Quality",
       "definition": "The server closed a proposal because its fact now exists; it was never a person's decision, and the same proposal may be queued again later.",

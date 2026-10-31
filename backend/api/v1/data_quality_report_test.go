@@ -91,6 +91,10 @@ func TestBuildQualityReport(t *testing.T) {
 	require.Equal(t, int32(2), report.FailedCheckTotal, "every fail in the window is a failed check")
 	require.Equal(t, int32(2), report.RuleCount)
 	require.Equal(t, int32(1), report.EnabledRuleCount)
+	require.NotNil(t, report.QualityScore, "the enabled rule's latest result is judged")
+	require.InDelta(t, 100.0, *report.QualityScore, 1e-9, "a passing verdict-scored rule scores 100")
+	require.Equal(t, int32(1), report.ScoredRuleCount)
+	require.Equal(t, int32(0), report.UnscoredRuleCount)
 	require.Equal(t, qualityreport.StatusPass, report.WorstStatusKey, "only the passing rule has a completed result")
 	require.Len(t, report.Trend, 3)
 
@@ -188,6 +192,7 @@ func TestBuildQualityReportRenders(t *testing.T) {
 		require.NoError(t, err, language)
 		require.Contains(t, document, "instance-1/shop/orders")
 		require.Contains(t, document, "orders row count")
+		require.Contains(t, document, "100.0", "the report carries the target's quality score")
 		require.Contains(t, document, "<svg")
 	}
 }
