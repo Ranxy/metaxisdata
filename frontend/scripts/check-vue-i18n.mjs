@@ -201,6 +201,27 @@ function isDynamic(key) {
   return DYNAMIC_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
+/**
+ * The locale keys ESLint's `@intlify/vue-i18n/no-unused-keys` must not report.
+ *
+ * This rule is deliberately weaker than this checker: it cannot follow a key a
+ * helper returns (`handleError`/`formatError`/`showSuccess`), and it has no
+ * prefix or glob support for DYNAMIC_PREFIXES. So the exemptions are computed
+ * here, next to the one dynamic-key list, instead of being copied into
+ * eslint.config.mjs by hand: every key this checker can trace is ignored, which
+ * leaves the rule reporting exactly the keys this checker reports as unused.
+ */
+export function eslintUnusedKeyIgnores(
+  localeFile,
+  sourceDir = SOURCE_DIR
+) {
+  const localeKeys = loadLocaleKeys(localeFile);
+  const used = collectSourceKeys(sourceDir);
+  return [...localeKeys]
+    .filter((key) => used.has(key) || isDynamic(key))
+    .sort();
+}
+
 // vue-i18n interpolates {name}; {{name}} triggers "Not allowed nest
 // placeholder" and is emitted literally.
 const DOUBLE_BRACE_RE = /\{\{/g;

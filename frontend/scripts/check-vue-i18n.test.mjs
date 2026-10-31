@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   collectKeysFromSource,
+  eslintUnusedKeyIgnores,
   extractPlaceholders,
   flatten,
   runChecks,
@@ -167,5 +168,39 @@ describe("runChecks", () => {
     expect(errorCount).toBe(1);
     expect(report.join("\n")).toContain("placeholders differ from en-US");
     expect(report.join("\n")).toContain("count");
+  });
+});
+
+describe("eslintUnusedKeyIgnores", () => {
+  it("returns the keys the script can trace and the dynamic prefixes", () => {
+    const options = makeFixture({
+      en: {
+        a: { one: "One", unused: "Unused" },
+        dataQuality: {
+          profile: { topValues: "Top" },
+          ruleType: { rowCount: "Row count" },
+        },
+        userManagement: { createError: "Create failed" },
+      },
+      zh: {
+        a: { one: "一", unused: "未使用" },
+        dataQuality: {
+          profile: { topValues: "Top" },
+          ruleType: { rowCount: "Row count" },
+        },
+        userManagement: { createError: "创建失败" },
+      },
+      source: {
+        "App.vue": `<template>{{ t("a.one") }}</template>`,
+        "handler.ts": `handleError(err, "userManagement.createError");`,
+      },
+    });
+    const localeFile = join(options.localesDir, "en-US.json");
+    expect(eslintUnusedKeyIgnores(localeFile, options.sourceDir)).toEqual([
+      "a.one",
+      "dataQuality.profile.topValues",
+      "dataQuality.ruleType.rowCount",
+      "userManagement.createError",
+    ]);
   });
 });
