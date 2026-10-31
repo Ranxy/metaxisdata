@@ -521,46 +521,13 @@ func labelSuggestionToLabelMessage(suggestion *store.QualitySuggestionMessage, a
 
 // qualityLabelDraftRuleType resolves the rule type a label-generated draft belongs
 // to. A draft carries only its config, and the config's oneof arm names exactly
-// one rule type, so the arm is the type: mapping it here lets the handler run the
-// same validation as a hand-written or model-written rule draft.
+// one rule type: the data quality package owns that mapping so this path cannot
+// drift from the rest of the rule pipeline.
 func qualityLabelDraftRuleType(draft *storepb.QualityRuleDraftConfig) (storepb.QualityRuleType, bool) {
-	if draft == nil || draft.GetConfig() == nil {
+	if draft == nil {
 		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
 	}
-	switch draft.GetConfig().GetConfig().(type) {
-	case *storepb.QualityRuleConfig_RowCount:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, true
-	case *storepb.QualityRuleConfig_RowCountChange:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, true
-	case *storepb.QualityRuleConfig_NullPercent:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, true
-	case *storepb.QualityRuleConfig_Unique:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, true
-	case *storepb.QualityRuleConfig_UniqueCombination:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION, true
-	case *storepb.QualityRuleConfig_AcceptedValues:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, true
-	case *storepb.QualityRuleConfig_Range:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, true
-	case *storepb.QualityRuleConfig_Regex:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, true
-	case *storepb.QualityRuleConfig_StringLength:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, true
-	case *storepb.QualityRuleConfig_ReferentialIntegrity:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, true
-	case *storepb.QualityRuleConfig_CrossColumn:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN, true
-	case *storepb.QualityRuleConfig_Freshness:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, true
-	case *storepb.QualityRuleConfig_CustomSql:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL, true
-	case *storepb.QualityRuleConfig_CelExpression:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, true
-	case nil:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
-	default:
-		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
-	}
+	return dataquality.RuleTypeForConfig(draft.GetConfig())
 }
 
 // addLabelUsage accumulates one batch's token usage across a multi-batch label

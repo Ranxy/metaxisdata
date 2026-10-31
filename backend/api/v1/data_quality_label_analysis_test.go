@@ -76,8 +76,10 @@ func TestQualityLabelLabelMap(t *testing.T) {
 
 // TestQualityLabelDraftRuleType pins the first filter stage a label-generated rule
 // draft passes: its config's oneof arm is the rule type the handler validates
-// against the target. A draft with no recognized arm is dropped before validation,
-// which keeps an unsupported config out of the review queue.
+// against the target. The resolver knows every arm this build carries, so a stored
+// draft is classified by its config even if a future producer names a v1.1 type. A
+// draft with no recognized arm is dropped before validation, which keeps an
+// unsupported config out of the review queue.
 func TestQualityLabelDraftRuleType(t *testing.T) {
 	t.Parallel()
 
@@ -130,6 +132,51 @@ func TestQualityLabelDraftRuleType(t *testing.T) {
 			name:   "custom SQL",
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{CustomSql: &storepb.CustomSQLConfig{}}},
 			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		},
+		{
+			name:   "row count change",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCountChange{RowCountChange: &storepb.RowCountChangeConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
+		},
+		{
+			name:   "unique combination",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		},
+		{
+			name:   "referential integrity",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &storepb.ReferentialIntegrityConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		},
+		{
+			name:   "cross column",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossColumn{CrossColumn: &storepb.CrossColumnConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		},
+		{
+			name:   "CEL expression",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CelExpression{CelExpression: &storepb.CelExpressionConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		},
+		{
+			name:   "schema drift",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		},
+		{
+			name:   "group check",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_GroupCheck{GroupCheck: &storepb.GroupCheckConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		},
+		{
+			name:   "aggregate",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Aggregate{Aggregate: &storepb.AggregateConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		},
+		{
+			name:   "cross table",
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{}}},
+			want:   storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 		},
 	}
 	for _, test := range tests {

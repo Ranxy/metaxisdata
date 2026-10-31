@@ -183,6 +183,56 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.IdentityColumns != nil }),
+		"14 types feed the suggestion identity with columns")
+
+	require.Equal(t, []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Discriminators != nil }),
+		"11 types fold config values into the suggestion identity")
+
+	// CountsTotal is meaningful only for a count-shaped rule; custom_sql is the
+	// one count-shaped rule whose observation has no denominator.
+	countsTotal := 0
+	for _, spec := range ruleTypeSpecs {
+		if spec.Thresholds == nil {
+			require.False(t, spec.CountsTotal, "%s judges directly and must not claim a total", spec.Type)
+			continue
+		}
+		if spec.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL {
+			require.False(t, spec.CountsTotal, "custom_sql returns failing rows directly")
+			continue
+		}
+		require.True(t, spec.CountsTotal, "%s carries a filtered total for a PERCENT threshold", spec.Type)
+		countsTotal++
+	}
+	require.Equal(t, 11, countsTotal)
+
+	require.Equal(t, []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.LabelDraft != nil }),
 		"8 types have a deterministic label draft")
@@ -273,4 +323,92 @@ func TestRuleTypeForTargetEdges(t *testing.T) {
 	require.False(t, RuleTypeForTarget(storepb.MetaType_MATERIALIZED_VIEW, storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK))
 	require.False(t, RuleTypeForTarget(storepb.MetaType_DATABASE, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT))
 	require.False(t, IsMetadataRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED))
+
+	// Every type watches a table and an external table; the view verdict is the
+	// descriptor's (the exact view set is pinned in TestRuleTypeSpecContract).
+	for _, spec := range ruleTypeSpecs {
+		require.True(t, RuleTypeForTarget(storepb.MetaType_TABLE, spec.Type), "%s must watch a table", spec.Type)
+		require.True(t, RuleTypeForTarget(storepb.MetaType_EXTERNAL_TABLE, spec.Type), "%s must watch an external table", spec.Type)
+		require.Equal(t, spec.Views, RuleTypeForTarget(storepb.MetaType_VIEW, spec.Type), "%s on a view", spec.Type)
+		require.Equal(t, spec.Views, RuleTypeForTarget(storepb.MetaType_MATERIALIZED_VIEW, spec.Type), "%s on a materialized view", spec.Type)
+	}
+}
+
+// TestRuleTypeForConfigRoundTrip pins the config arm of every descriptor row: the
+// table's arm matcher and type must agree, so a copy-paste error in a row cannot
+// silently route validation, compilation or identity to the wrong type.
+func TestRuleTypeForConfigRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	configs := map[storepb.QualityRuleType]*storepb.QualityRuleConfig{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT: {
+			Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE: {
+			Config: &storepb.QualityRuleConfig_RowCountChange{RowCountChange: &storepb.RowCountChangeConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT: {
+			Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE: {
+			Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION: {
+			Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES: {
+			Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE: {
+			Config: &storepb.QualityRuleConfig_Range{Range: &storepb.RangeConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX: {
+			Config: &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH: {
+			Config: &storepb.QualityRuleConfig_StringLength{StringLength: &storepb.StringLengthConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: {
+			Config: &storepb.QualityRuleConfig_ReferentialIntegrity{ReferentialIntegrity: &storepb.ReferentialIntegrityConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN: {
+			Config: &storepb.QualityRuleConfig_CrossColumn{CrossColumn: &storepb.CrossColumnConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS: {
+			Config: &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL: {
+			Config: &storepb.QualityRuleConfig_CustomSql{CustomSql: &storepb.CustomSQLConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION: {
+			Config: &storepb.QualityRuleConfig_CelExpression{CelExpression: &storepb.CelExpressionConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT: {
+			Config: &storepb.QualityRuleConfig_SchemaDrift{SchemaDrift: &storepb.SchemaDriftConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK: {
+			Config: &storepb.QualityRuleConfig_GroupCheck{GroupCheck: &storepb.GroupCheckConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE: {
+			Config: &storepb.QualityRuleConfig_Aggregate{Aggregate: &storepb.AggregateConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE: {
+			Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{}},
+		},
+	}
+	require.Len(t, configs, len(ruleTypeSpecs))
+	for _, spec := range ruleTypeSpecs {
+		config, ok := configs[spec.Type]
+		require.True(t, ok, "%s has no fixture config", spec.Type)
+		ruleType, ok := RuleTypeForConfig(config)
+		require.True(t, ok, "%s", spec.Type)
+		require.Equal(t, spec.Type, ruleType)
+	}
+
+	// An empty config has no arm; RuleTypeForConfig reports that as unknown.
+	for _, config := range []*storepb.QualityRuleConfig{nil, {}} {
+		ruleType, ok := RuleTypeForConfig(config)
+		require.False(t, ok)
+		require.Equal(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, ruleType)
+	}
 }

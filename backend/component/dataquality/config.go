@@ -30,6 +30,17 @@ func configArm(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, erro
 	return 0, invalidConfig("unknown rule config arm %T", arm)
 }
 
+// RuleTypeForConfig returns the rule type the config's oneof arm names. It reports
+// false for an empty config or an arm this build does not know. It is the exported
+// form of configArm for callers that only need the type.
+func RuleTypeForConfig(config *storepb.QualityRuleConfig) (storepb.QualityRuleType, bool) {
+	ruleType, err := configArm(config)
+	if err != nil {
+		return storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED, false
+	}
+	return ruleType, true
+}
+
 // emptyBehavior returns the configured behavior for a rule with nothing to judge.
 // UNSPECIFIED means NOT_EVALUATED: an empty table never reads as a pass by default.
 func emptyBehavior(config *storepb.QualityRuleConfig) storepb.QualityEmptyBehavior {
