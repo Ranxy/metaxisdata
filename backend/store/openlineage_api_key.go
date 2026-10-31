@@ -109,13 +109,14 @@ func (s *Store) ValidateOpenLineageAPIKey(ctx context.Context, plainKey string) 
 }
 
 // ListOpenLineageAPIKey returns all API keys without exposing the hash.
-func (s *Store) ListOpenLineageAPIKey(ctx context.Context) ([]*OpenLineageAPIKeyMessage, error) {
+func (s *Store) ListOpenLineageAPIKey(ctx context.Context, limit, offset int) ([]*OpenLineageAPIKeyMessage, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT id, masked_key, description, created_by, created_at, last_used_at, revoked_at, scope_namespace
 		FROM openlineage_api_key
 		WHERE revoked_at IS NULL
 		ORDER BY id ASC
-	`)
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query API keys")
 	}

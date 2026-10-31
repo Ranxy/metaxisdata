@@ -146,12 +146,26 @@ func (s *ApplicationService) ListApplicationAPIKeys(ctx context.Context, req *co
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	keys, err := s.store.ListApplicationSQLAPIKeys(ctx, applicationID)
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: defaultSettingsPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+	keys, err := s.store.ListApplicationSQLAPIKeys(ctx, applicationID, limitPlusOne, offset.offset)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the API keys")
 	}
-	response := &v1pb.ListApplicationAPIKeysResponse{}
-	for _, key := range keys {
+	page, nextPageToken, err := paginate(keys, offset)
+	if err != nil {
+		return nil, err
+	}
+	response := &v1pb.ListApplicationAPIKeysResponse{NextPageToken: nextPageToken}
+	for _, key := range page {
 		response.Keys = append(response.Keys, convertApplicationAPIKey(applicationID, key))
 	}
 	return connect.NewResponse(response), nil

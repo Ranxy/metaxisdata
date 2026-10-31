@@ -28,6 +28,8 @@ type IdentityProviderMessage struct {
 // FindIdentityProviderMessage is the message for finding identity providers.
 type FindIdentityProviderMessage struct {
 	ResourceID *string
+	Limit      *int
+	Offset     *int
 }
 
 // UpdateIdentityProviderMessage is the message for updating an identity
@@ -162,7 +164,7 @@ func (s *Store) listIdentityProvidersImpl(ctx context.Context, q Queryer, find *
 		where, args = append(where, fmt.Sprintf("resource_id = $%d", len(args)+1)), append(args, *v)
 	}
 
-	rows, err := q.QueryContext(ctx, `
+	query := `
 		SELECT
 			resource_id,
 			name,
@@ -170,9 +172,14 @@ func (s *Store) listIdentityProvidersImpl(ctx context.Context, q Queryer, find *
 			type,
 			config
 		FROM idp
-		WHERE `+strings.Join(where, " AND ")+` ORDER BY id ASC`,
-		args...,
-	)
+		WHERE ` + strings.Join(where, " AND ") + ` ORDER BY id ASC`
+	if find.Limit != nil {
+		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
+	}
+	if find.Offset != nil {
+		query += fmt.Sprintf(" OFFSET %d", *find.Offset)
+	}
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

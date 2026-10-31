@@ -1009,6 +1009,21 @@ export declare const CreateNamespaceMappingRequestSchema: GenMessage<CreateNames
  * @generated from message metaxisdata.v1.ListNamespaceMappingsRequest
  */
 export declare type ListNamespaceMappingsRequest = Message<"metaxisdata.v1.ListNamespaceMappingsRequest"> & {
+  /**
+   * The maximum number of namespace mappings to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListNamespaceMappings call. Provide this to retrieve
+   * the subsequent page.
+   *
+   * @generated from field: string page_token = 2;
+   */
+  pageToken: string;
 };
 
 /**
@@ -1025,6 +1040,14 @@ export declare type ListNamespaceMappingsResponse = Message<"metaxisdata.v1.List
    * @generated from field: repeated metaxisdata.v1.NamespaceMapping mappings = 1;
    */
   mappings: NamespaceMapping[];
+
+  /**
+   * A token, which can be sent as page_token to retrieve the next page. If this
+   * field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -1189,6 +1212,21 @@ export declare const CreateAPIKeyResponseSchema: GenMessage<CreateAPIKeyResponse
  * @generated from message metaxisdata.v1.ListAPIKeysRequest
  */
 export declare type ListAPIKeysRequest = Message<"metaxisdata.v1.ListAPIKeysRequest"> & {
+  /**
+   * The maximum number of API keys to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListAPIKeys call. Provide this to retrieve
+   * the subsequent page.
+   *
+   * @generated from field: string page_token = 2;
+   */
+  pageToken: string;
 };
 
 /**
@@ -1205,6 +1243,14 @@ export declare type ListAPIKeysResponse = Message<"metaxisdata.v1.ListAPIKeysRes
    * @generated from field: repeated metaxisdata.v1.APIKey api_keys = 1;
    */
   apiKeys: APIKey[];
+
+  /**
+   * A token, which can be sent as page_token to retrieve the next page. If this
+   * field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**

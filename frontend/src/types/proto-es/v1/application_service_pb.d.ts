@@ -471,6 +471,22 @@ export declare type ListApplicationAPIKeysRequest = Message<"metaxisdata.v1.List
    * @generated from field: string parent = 1;
    */
   parent: string;
+
+  /**
+   * The maximum number of API keys to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListApplicationAPIKeys call. Provide this to retrieve
+   * the subsequent page.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
 };
 
 /**
@@ -487,6 +503,14 @@ export declare type ListApplicationAPIKeysResponse = Message<"metaxisdata.v1.Lis
    * @generated from field: repeated metaxisdata.v1.ApplicationAPIKey keys = 1;
    */
   keys: ApplicationAPIKey[];
+
+  /**
+   * A token, which can be sent as page_token to retrieve the next page. If this
+   * field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**

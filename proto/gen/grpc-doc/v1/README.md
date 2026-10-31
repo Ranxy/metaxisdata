@@ -870,6 +870,8 @@ ApplicationSQLObservation is one application&#39;s own history with one statemen
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: applications/{application_id} |
+| page_size | [int32](#int32) |  | The maximum number of API keys to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListApplicationAPIKeys call. Provide this to retrieve the subsequent page. |
 
 
 
@@ -885,6 +887,7 @@ ApplicationSQLObservation is one application&#39;s own history with one statemen
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | keys | [ApplicationAPIKey](#metaxisdata-v1-ApplicationAPIKey) | repeated |  |
+| next_page_token | [string](#string) |  | A token, which can be sent as page_token to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
@@ -7584,6 +7587,8 @@ IdentityProviderUserInfo is the identity a login resolved from the claims.
 | ----- | ---- | ----- | ----------- |
 | idp | [string](#string) |  | Optional. Restrict the answer to one identity provider. Format: idps/{idp} |
 | user | [string](#string) |  | Optional. Restrict the answer to one account. Format: users/{user} |
+| page_size | [int32](#int32) |  | The maximum number of bindings to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListIdentityProviderBindings call. Provide this to retrieve the subsequent page. |
 
 
 
@@ -7599,6 +7604,7 @@ IdentityProviderUserInfo is the identity a login resolved from the claims.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | identity_provider_bindings | [IdentityProviderBinding](#metaxisdata-v1-IdentityProviderBinding) | repeated |  |
+| next_page_token | [string](#string) |  | A token, which can be sent as page_token to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
@@ -7609,6 +7615,12 @@ IdentityProviderUserInfo is the identity a login resolved from the claims.
 
 ### ListIdentityProvidersRequest
 
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of identity providers to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListIdentityProviders call. Provide this to retrieve the subsequent page. |
 
 
 
@@ -7624,6 +7636,7 @@ IdentityProviderUserInfo is the identity a login resolved from the claims.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | identity_providers | [IdentityProvider](#metaxisdata-v1-IdentityProvider) | repeated |  |
+| next_page_token | [string](#string) |  | A token, which can be sent as page_token to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
@@ -9121,6 +9134,12 @@ the SPA consent page needs.
 
 
 
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of API keys to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListAPIKeys call. Provide this to retrieve the subsequent page. |
+
+
 
 
 
@@ -9134,6 +9153,7 @@ the SPA consent page needs.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | api_keys | [APIKey](#metaxisdata-v1-APIKey) | repeated |  |
+| next_page_token | [string](#string) |  | A token, which can be sent as page_token to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 
@@ -9144,6 +9164,12 @@ the SPA consent page needs.
 
 ### ListNamespaceMappingsRequest
 
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| page_size | [int32](#int32) |  | The maximum number of namespace mappings to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  | A page token, received from a previous ListNamespaceMappings call. Provide this to retrieve the subsequent page. |
 
 
 
@@ -9159,6 +9185,7 @@ the SPA consent page needs.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | mappings | [NamespaceMapping](#metaxisdata-v1-NamespaceMapping) | repeated |  |
+| next_page_token | [string](#string) |  | A token, which can be sent as page_token to retrieve the next page. If this field is omitted, there are no subsequent pages. |
 
 
 

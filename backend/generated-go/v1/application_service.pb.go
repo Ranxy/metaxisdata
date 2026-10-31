@@ -964,7 +964,13 @@ func (x *CreateApplicationAPIKeyResponse) GetKey() *ApplicationAPIKey {
 type ListApplicationAPIKeysRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: applications/{application_id}
-	Parent        string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// The maximum number of API keys to return. If unspecified, at most 50 are
+	// returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous ListApplicationAPIKeys call. Provide this to retrieve
+	// the subsequent page.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1006,9 +1012,26 @@ func (x *ListApplicationAPIKeysRequest) GetParent() string {
 	return ""
 }
 
+func (x *ListApplicationAPIKeysRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListApplicationAPIKeysRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListApplicationAPIKeysResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Keys          []*ApplicationAPIKey   `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Keys  []*ApplicationAPIKey   `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	// A token, which can be sent as page_token to retrieve the next page. If this
+	// field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1048,6 +1071,13 @@ func (x *ListApplicationAPIKeysResponse) GetKeys() []*ApplicationAPIKey {
 		return x.Keys
 	}
 	return nil
+}
+
+func (x *ListApplicationAPIKeysResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 type RevokeApplicationAPIKeyRequest struct {
@@ -1413,11 +1443,15 @@ const file_v1_application_service_proto_rawDesc = "" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\"o\n" +
 	"\x1fCreateApplicationAPIKeyResponse\x12\x17\n" +
 	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\x123\n" +
-	"\x03key\x18\x02 \x01(\v2!.metaxisdata.v1.ApplicationAPIKeyR\x03key\"<\n" +
+	"\x03key\x18\x02 \x01(\v2!.metaxisdata.v1.ApplicationAPIKeyR\x03key\"x\n" +
 	"\x1dListApplicationAPIKeysRequest\x12\x1b\n" +
-	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"W\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x7f\n" +
 	"\x1eListApplicationAPIKeysResponse\x125\n" +
-	"\x04keys\x18\x01 \x03(\v2!.metaxisdata.v1.ApplicationAPIKeyR\x04keys\"9\n" +
+	"\x04keys\x18\x01 \x03(\v2!.metaxisdata.v1.ApplicationAPIKeyR\x04keys\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"9\n" +
 	"\x1eRevokeApplicationAPIKeyRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\x86\x02\n" +
 	"\x1aListApplicationSQLsRequest\x12\x1b\n" +

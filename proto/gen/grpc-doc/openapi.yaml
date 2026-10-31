@@ -222,6 +222,21 @@ paths:
                   required: true
                   schema:
                     type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of API keys to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListApplicationAPIKeys call. Provide this to retrieve
+                     the subsequent page.
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -1058,6 +1073,21 @@ paths:
                      Format: users/{user}
                   schema:
                     type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of bindings to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListIdentityProviderBindings call. Provide this to retrieve
+                     the subsequent page.
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -1116,6 +1146,22 @@ paths:
                  interceptor, and the annotation is what records the permission this read
                  belongs to in the catalog.
             operationId: IdentityProviderService_ListIdentityProviders
+            parameters:
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of identity providers to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListIdentityProviders call. Provide this to retrieve
+                     the subsequent page.
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -3019,6 +3065,22 @@ paths:
             tags:
                 - OpenLineageService
             operationId: OpenLineageService_ListAPIKeys
+            parameters:
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of API keys to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListAPIKeys call. Provide this to retrieve
+                     the subsequent page.
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -3164,6 +3226,22 @@ paths:
             tags:
                 - OpenLineageService
             operationId: OpenLineageService_ListNamespaceMappings
+            parameters:
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of namespace mappings to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: |-
+                    A page token, received from a previous ListNamespaceMappings call. Provide this to retrieve
+                     the subsequent page.
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -9245,6 +9323,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/APIKey'
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as page_token to retrieve the next page. If this
+                         field is omitted, there are no subsequent pages.
         ListApplicationAPIKeysResponse:
             type: object
             properties:
@@ -9252,6 +9335,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ApplicationAPIKey'
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as page_token to retrieve the next page. If this
+                         field is omitted, there are no subsequent pages.
         ListApplicationSQLsResponse:
             type: object
             properties:
@@ -9348,6 +9436,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/IdentityProviderBinding'
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as page_token to retrieve the next page. If this
+                         field is omitted, there are no subsequent pages.
         ListIdentityProvidersResponse:
             type: object
             properties:
@@ -9355,6 +9448,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/IdentityProvider'
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as page_token to retrieve the next page. If this
+                         field is omitted, there are no subsequent pages.
         ListInstancesResponse:
             type: object
             properties:
@@ -9406,6 +9504,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/NamespaceMapping'
+                nextPageToken:
+                    type: string
+                    description: |-
+                        A token, which can be sent as page_token to retrieve the next page. If this
+                         field is omitted, there are no subsequent pages.
         ListNotificationsResponse:
             type: object
             properties:

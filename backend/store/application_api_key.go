@@ -97,7 +97,7 @@ func (s *Store) CreateApplicationSQLAPIKey(ctx context.Context, application stri
 }
 
 // ListApplicationSQLAPIKeys lists one application's live keys without exposing hashes.
-func (s *Store) ListApplicationSQLAPIKeys(ctx context.Context, application string) ([]*ApplicationSQLAPIKeyMessage, error) {
+func (s *Store) ListApplicationSQLAPIKeys(ctx context.Context, application string, limit, offset int) ([]*ApplicationSQLAPIKeyMessage, error) {
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT id, application_id, masked_key, description, created_by, created_at,
 		       last_used_at, revoked_at, last_report_id,
@@ -105,7 +105,8 @@ func (s *Store) ListApplicationSQLAPIKeys(ctx context.Context, application strin
 		FROM application_sql_api_key
 		WHERE application_id = $1 AND revoked_at IS NULL
 		ORDER BY id ASC
-	`, application)
+		LIMIT $2 OFFSET $3
+	`, application, limit, offset)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query the API keys")
 	}

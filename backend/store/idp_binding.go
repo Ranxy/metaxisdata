@@ -167,6 +167,8 @@ type IdentityProviderBindingMessage struct {
 type FindIdentityProviderBindingMessage struct {
 	IdpResourceID *string
 	PrincipalID   *int
+	Limit         *int
+	Offset        *int
 }
 
 // ListIdentityProviderBindings lists the bindings an administrator can see: which
@@ -189,7 +191,7 @@ func (s *Store) ListIdentityProviderBindings(ctx context.Context, find *FindIden
 		where = append(where, fmt.Sprintf("binding.principal_id = $%d", len(args)))
 	}
 
-	rows, err := s.GetDB().QueryContext(ctx, `
+	query := `
 		SELECT
 			binding.principal_id,
 			principal.email,
@@ -199,10 +201,15 @@ func (s *Store) ListIdentityProviderBindings(ctx context.Context, find *FindIden
 			binding.created_at
 		FROM principal_idp_binding AS binding
 		JOIN principal ON principal.id = binding.principal_id
-		WHERE `+strings.Join(where, " AND ")+`
-		ORDER BY binding.idp_resource_id ASC, binding.created_at ASC`,
-		args...,
-	)
+		WHERE ` + strings.Join(where, " AND ") + `
+		ORDER BY binding.idp_resource_id ASC, binding.created_at ASC`
+	if find.Limit != nil {
+		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
+	}
+	if find.Offset != nil {
+		query += fmt.Sprintf(" OFFSET %d", *find.Offset)
+	}
+	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

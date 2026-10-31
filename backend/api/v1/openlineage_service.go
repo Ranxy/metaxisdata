@@ -194,14 +194,31 @@ func (s *OpenLineageService) CreateNamespaceMapping(ctx context.Context, req *co
 	return connect.NewResponse(convertNamespaceMapping(result)), nil
 }
 
-func (s *OpenLineageService) ListNamespaceMappings(ctx context.Context, _ *connect.Request[v1pb.ListNamespaceMappingsRequest]) (*connect.Response[v1pb.ListNamespaceMappingsResponse], error) {
-	list, err := s.store.ListNamespaceMapping(ctx, &store.FindNamespaceMappingMessage{})
+func (s *OpenLineageService) ListNamespaceMappings(ctx context.Context, req *connect.Request[v1pb.ListNamespaceMappingsRequest]) (*connect.Response[v1pb.ListNamespaceMappingsResponse], error) {
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: defaultSettingsPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+	list, err := s.store.ListNamespaceMapping(ctx, &store.FindNamespaceMappingMessage{
+		Limit:  &limitPlusOne,
+		Offset: &offset.offset,
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list namespace mappings"))
 	}
+	page, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
+	}
 
-	resp := &v1pb.ListNamespaceMappingsResponse{}
-	for _, m := range list {
+	resp := &v1pb.ListNamespaceMappingsResponse{NextPageToken: nextPageToken}
+	for _, m := range page {
 		resp.Mappings = append(resp.Mappings, convertNamespaceMapping(m))
 	}
 	return connect.NewResponse(resp), nil
@@ -270,14 +287,28 @@ func (s *OpenLineageService) CreateAPIKey(ctx context.Context, req *connect.Requ
 	}), nil
 }
 
-func (s *OpenLineageService) ListAPIKeys(ctx context.Context, _ *connect.Request[v1pb.ListAPIKeysRequest]) (*connect.Response[v1pb.ListAPIKeysResponse], error) {
-	list, err := s.store.ListOpenLineageAPIKey(ctx)
+func (s *OpenLineageService) ListAPIKeys(ctx context.Context, req *connect.Request[v1pb.ListAPIKeysRequest]) (*connect.Response[v1pb.ListAPIKeysResponse], error) {
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: defaultSettingsPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+	list, err := s.store.ListOpenLineageAPIKey(ctx, limitPlusOne, offset.offset)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list API keys"))
 	}
+	page, nextPageToken, err := paginate(list, offset)
+	if err != nil {
+		return nil, err
+	}
 
-	resp := &v1pb.ListAPIKeysResponse{}
-	for _, k := range list {
+	resp := &v1pb.ListAPIKeysResponse{NextPageToken: nextPageToken}
+	for _, k := range page {
 		resp.ApiKeys = append(resp.ApiKeys, convertAPIKey(k))
 	}
 	return connect.NewResponse(resp), nil

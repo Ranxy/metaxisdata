@@ -301,6 +301,8 @@ func local_request_OpenLineageService_CreateNamespaceMapping_0(ctx context.Conte
 	return msg, metadata, err
 }
 
+var filter_OpenLineageService_ListNamespaceMappings_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+
 func request_OpenLineageService_ListNamespaceMappings_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListNamespaceMappingsRequest
@@ -308,6 +310,12 @@ func request_OpenLineageService_ListNamespaceMappings_0(ctx context.Context, mar
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_OpenLineageService_ListNamespaceMappings_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.ListNamespaceMappings(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -318,6 +326,12 @@ func local_request_OpenLineageService_ListNamespaceMappings_0(ctx context.Contex
 		protoReq ListNamespaceMappingsRequest
 		metadata runtime.ServerMetadata
 	)
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_OpenLineageService_ListNamespaceMappings_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
 	msg, err := server.ListNamespaceMappings(ctx, &protoReq)
 	return msg, metadata, err
 }
@@ -469,6 +483,8 @@ func local_request_OpenLineageService_CreateAPIKey_0(ctx context.Context, marsha
 	return msg, metadata, err
 }
 
+var filter_OpenLineageService_ListAPIKeys_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
+
 func request_OpenLineageService_ListAPIKeys_0(ctx context.Context, marshaler runtime.Marshaler, client OpenLineageServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListAPIKeysRequest
@@ -476,6 +492,12 @@ func request_OpenLineageService_ListAPIKeys_0(ctx context.Context, marshaler run
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_OpenLineageService_ListAPIKeys_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.ListAPIKeys(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -486,6 +508,12 @@ func local_request_OpenLineageService_ListAPIKeys_0(ctx context.Context, marshal
 		protoReq ListAPIKeysRequest
 		metadata runtime.ServerMetadata
 	)
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_OpenLineageService_ListAPIKeys_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
 	msg, err := server.ListAPIKeys(ctx, &protoReq)
 	return msg, metadata, err
 }

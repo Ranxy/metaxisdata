@@ -1999,7 +1999,13 @@ func (x *CreateNamespaceMappingRequest) GetMapping() *NamespaceMapping {
 }
 
 type ListNamespaceMappingsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The maximum number of namespace mappings to return. If unspecified, at most 50 are
+	// returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous ListNamespaceMappings call. Provide this to retrieve
+	// the subsequent page.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2034,9 +2040,26 @@ func (*ListNamespaceMappingsRequest) Descriptor() ([]byte, []int) {
 	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{21}
 }
 
+func (x *ListNamespaceMappingsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListNamespaceMappingsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListNamespaceMappingsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mappings      []*NamespaceMapping    `protobuf:"bytes,1,rep,name=mappings,proto3" json:"mappings,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Mappings []*NamespaceMapping    `protobuf:"bytes,1,rep,name=mappings,proto3" json:"mappings,omitempty"`
+	// A token, which can be sent as page_token to retrieve the next page. If this
+	// field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2076,6 +2099,13 @@ func (x *ListNamespaceMappingsResponse) GetMappings() []*NamespaceMapping {
 		return x.Mappings
 	}
 	return nil
+}
+
+func (x *ListNamespaceMappingsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 type UpdateNamespaceMappingRequest struct {
@@ -2393,7 +2423,13 @@ func (x *CreateAPIKeyResponse) GetApiKey() *APIKey {
 }
 
 type ListAPIKeysRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The maximum number of API keys to return. If unspecified, at most 50 are
+	// returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous ListAPIKeys call. Provide this to retrieve
+	// the subsequent page.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2428,9 +2464,26 @@ func (*ListAPIKeysRequest) Descriptor() ([]byte, []int) {
 	return file_v1_openlineage_service_proto_rawDescGZIP(), []int{28}
 }
 
+func (x *ListAPIKeysRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListAPIKeysRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListAPIKeysResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ApiKeys       []*APIKey              `protobuf:"bytes,1,rep,name=api_keys,json=apiKeys,proto3" json:"api_keys,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	ApiKeys []*APIKey              `protobuf:"bytes,1,rep,name=api_keys,json=apiKeys,proto3" json:"api_keys,omitempty"`
+	// A token, which can be sent as page_token to retrieve the next page. If this
+	// field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2470,6 +2523,13 @@ func (x *ListAPIKeysResponse) GetApiKeys() []*APIKey {
 		return x.ApiKeys
 	}
 	return nil
+}
+
+func (x *ListAPIKeysResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 type RevokeAPIKeyRequest struct {
@@ -2716,10 +2776,14 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"total_jobs\x18\b \x01(\x03R\ttotalJobs\x120\n" +
 	"\x14total_job_namespaces\x18\t \x01(\x03R\x12totalJobNamespaces\"`\n" +
 	"\x1dCreateNamespaceMappingRequest\x12?\n" +
-	"\amapping\x18\x01 \x01(\v2 .metaxisdata.v1.NamespaceMappingB\x03\xe0A\x02R\amapping\"\x1e\n" +
-	"\x1cListNamespaceMappingsRequest\"]\n" +
+	"\amapping\x18\x01 \x01(\v2 .metaxisdata.v1.NamespaceMappingB\x03\xe0A\x02R\amapping\"Z\n" +
+	"\x1cListNamespaceMappingsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x85\x01\n" +
 	"\x1dListNamespaceMappingsResponse\x12<\n" +
-	"\bmappings\x18\x01 \x03(\v2 .metaxisdata.v1.NamespaceMappingR\bmappings\"\x9d\x01\n" +
+	"\bmappings\x18\x01 \x03(\v2 .metaxisdata.v1.NamespaceMappingR\bmappings\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9d\x01\n" +
 	"\x1dUpdateNamespaceMappingRequest\x12?\n" +
 	"\amapping\x18\x01 \x01(\v2 .metaxisdata.v1.NamespaceMappingB\x03\xe0A\x02R\amapping\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -2747,10 +2811,14 @@ const file_v1_openlineage_service_proto_rawDesc = "" +
 	"\x0fscope_namespace\x18\x02 \x01(\tR\x0escopeNamespace\"Y\n" +
 	"\x14CreateAPIKeyResponse\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\aapi_key\x18\x02 \x01(\v2\x16.metaxisdata.v1.APIKeyR\x06apiKey\"\x14\n" +
-	"\x12ListAPIKeysRequest\"H\n" +
+	"\aapi_key\x18\x02 \x01(\v2\x16.metaxisdata.v1.APIKeyR\x06apiKey\"P\n" +
+	"\x12ListAPIKeysRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"p\n" +
 	"\x13ListAPIKeysResponse\x121\n" +
-	"\bapi_keys\x18\x01 \x03(\v2\x16.metaxisdata.v1.APIKeyR\aapiKeys\"E\n" +
+	"\bapi_keys\x18\x01 \x03(\v2\x16.metaxisdata.v1.APIKeyR\aapiKeys\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"E\n" +
 	"\x13RevokeAPIKeyRequest\x12.\n" +
 	"\x04name\x18\x01 \x01(\tB\x1a\xe0A\x02\xfaA\x14\n" +
 	"\x12metaxisdata/APIKeyR\x04name*\xb7\x01\n" +
