@@ -461,9 +461,31 @@ func (r *Runner) runScheduledWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case group := <-r.scheduled:
-			r.runScheduledGroup(ctx, group)
+			r.guardScheduledGroup(group.instanceResourceID, func() {
+				r.runScheduledGroup(ctx, group)
+			})
 		}
 	}
+}
+
+// guardScheduledGroup keeps a panic in one instance's scheduled batch from
+// escaping the worker goroutine. The workers are started outside runner.Go, so
+// they sit outside the panic boundary that protects the process; an uncaught
+// panic here would take down the API and every other runner with it. The
+// group's own deferred release still runs while the panic unwinds, and the
+// remaining targets stay due for a later tick, so the worker can continue with
+// the next group.
+func (r *Runner) guardScheduledGroup(instanceResourceID string, run func()) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			r.metrics.RunnerPanicked(r.Name())
+			slog.Error("scheduled quality batch panicked",
+				slog.String("instance", instanceResourceID),
+				slog.Any("panic", recovered),
+				log.Stack("panic-stack"))
+		}
+	}()
+	run()
 }
 
 // runScheduledGroup executes one instance's plans in order and then releases the
