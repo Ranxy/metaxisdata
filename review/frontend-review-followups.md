@@ -1,10 +1,10 @@
 # 前端评审剩余项落地记录
 
-> 基线：`da15e45`（第二批评审修正栈顶）· 分支：`arch-review/frontend-followups`（在当前 worktree 分支栈上叠加）· 每项独立提交、逐层跑前端门禁。未 push、未创建 PR。
+> 基线：`ef8ceeb`（第二批评审修正栈顶）· 分支：`arch-review/frontend-followups`（在当前 worktree 分支栈上叠加）· 每项独立提交、逐层跑前端门禁。未 push、未创建 PR。
 
 ## 结论
 
-评审报告 [03-frontend](.agents/worktrees/review-architecture-2026-10/review/03-frontend.md) 的剩余项已**按本次范围**落地：目标 ①–⑧（⑦含 FD2/FD3 两行）全部有提交与测试，**81 个文件、+7,3xx/−2,882 行**（最终数字以下方"验证"为准）。可执行验证：完整套件从 `da15e45` 的 **137 文件 / 1,374 用例**增长到 **155 文件 / 1,525 用例（+151）**，`biome:ci`、`lint:ci`、`i18n`、`type-check`、`test:ci`（per-file 95/85）、`build` 全绿。
+评审报告 [03-frontend](.agents/worktrees/review-architecture-2026-10/review/03-frontend.md) 的剩余项已**按本次范围**落地：目标 ①–⑧（⑦含 FD2/FD3 两行）全部有提交与测试，**81 个文件、+7,3xx/−2,882 行**（最终数字以下方"验证"为准）。可执行验证：完整套件从 `ef8ceeb` 的 **137 文件 / 1,374 用例**增长到 **155 文件 / 1,525 用例（+151）**，`biome:ci`、`lint:ci`、`i18n`、`type-check`、`test:ci`（per-file 95/85）、`build` 全绿。
 
 保留项：FD2 的 `LineageGraphPage` 仍有 1,492 行（评审的 god view 目标是"显著缩小 + 可测下沉"，未到其 ~300 行理想值；展开走查/fitView/快照仍在页面）；FD12 的页面级测试缺口只从 26/47 降到 25/47（本次只补了 ExplainSQLPage，LineageGraphPage 仍无页面测试）。
 
@@ -12,19 +12,19 @@
 
 | 项 | 内容 | 证据（提交 / 产物 / 测试） | 状态 |
 | --- | --- | --- | --- |
-| ① | 轮询 AbortSignal 链路 + ExplainSQLPage 测试 | `875cd55`（`usePagedFetch` 外部 signal、5 个轮询任务贯穿、`useStreaming` 生命周期）；`e0bbba8`（页面级 3 条测试：流式渲染、卸载中止、错误映射、按钮禁用） | 完成 |
-| ② | FD11 markdown 懒加载 | `132aacf`：`AsyncMarkdown` + 守卫测试；构建验证入口不再静态引用渲染器（679 kB 异步 chunk），CSS 随 chunk | 完成 |
-| ③ | FD13 utils→api 反向依赖 | `68b1979`：环境名助手下沉 utils、api 反向 re-export；新增 `src/test/layering.test.ts` 四层依赖守卫 | 完成 |
-| ④ | FD14 a11y | `9224508`：`applyLocale`/`initLocale` 同步 `<html lang>`；移动抽屉 ESC/Tab 循环/焦点归还（`useDrawerFocus` + 8 条测试）；`01f6887` 补边界分支 | 完成 |
-| ⑤ | FD15 洁净度/超时 | `6bc8d29`：`BRAND_NAME` 单一常量（含评审漏掉的 AuthLayout）、`MetaType.OPENLINEAGE` 替换魔数、`apiTimeout` 默认 60s + 长任务豁免（100% 覆盖） | 完成 |
-| ⑥ | FD7 RuleConfigForm 按规则族拆分 | `ef870fe`：父组件 1205 → 261 行、14 个规则族组件 + `useSchemaDriftColumns`（11 条测试）；下游 27+219 条测试保持通过 | 完成 |
-| ⑦ | FD2 god view 拆分 | `6ff94fc`（测高收敛 → `lib/lineageLayout`，7 条测试）、`6d1c63b`（详情列组件，9 条）、`cf04e7a`（`useLineageGraphData`，13 条）、`edec083`（`useLineageSelection`，8 条）；LineageGraphPage **2026 → 1492 行** | 完成 |
-| ⑦ | FD3 god view 拆分 | `8caa2d2`（权限矩阵）、`46ee4e7`（执行页纯派生 + 9 条测试）、`45a9741`（Target 抽屉状态机 + 14 条）、`21c3b40`（排期编辑器 + 7 条）、`e475c03`（Suggestions 行读数 + 9 条）、`0886bbc`/`30a8b2a`（Executions 两套行组件 + 8 条）；三个页面 1611/1518/1420 → **1030/1301/1346 行** | 完成 |
+| ① | 轮询 AbortSignal 链路 + ExplainSQLPage 测试 | `14ed4e4`（`usePagedFetch` 外部 signal、5 个轮询任务贯穿、`useStreaming` 生命周期）；`4c72db0`（页面级 3 条测试：流式渲染、卸载中止、错误映射、按钮禁用） | 完成 |
+| ② | FD11 markdown 懒加载 | `1c99458`：`AsyncMarkdown` + 守卫测试；构建验证入口不再静态引用渲染器（679 kB 异步 chunk），CSS 随 chunk | 完成 |
+| ③ | FD13 utils→api 反向依赖 | `a78782d`：环境名助手下沉 utils、api 反向 re-export；新增 `src/test/layering.test.ts` 四层依赖守卫 | 完成 |
+| ④ | FD14 a11y | `51e436e`：`applyLocale`/`initLocale` 同步 `<html lang>`；移动抽屉 ESC/Tab 循环/焦点归还（`useDrawerFocus` + 8 条测试）；`15e573e` 补边界分支 | 完成 |
+| ⑤ | FD15 洁净度/超时 | `75565ab`：`BRAND_NAME` 单一常量（含评审漏掉的 AuthLayout）、`MetaType.OPENLINEAGE` 替换魔数、`apiTimeout` 默认 60s + 长任务豁免（100% 覆盖） | 完成 |
+| ⑥ | FD7 RuleConfigForm 按规则族拆分 | `31c75e0`：父组件 1205 → 261 行、14 个规则族组件 + `useSchemaDriftColumns`（11 条测试）；下游 27+219 条测试保持通过 | 完成 |
+| ⑦ | FD2 god view 拆分 | `5ce1c81`（测高收敛 → `lib/lineageLayout`，7 条测试）、`e06e016`（详情列组件，9 条）、`5401609`（`useLineageGraphData`，13 条）、`510ebbb`（`useLineageSelection`，8 条）；LineageGraphPage **2026 → 1492 行** | 完成 |
+| ⑦ | FD3 god view 拆分 | `62de92d`（权限矩阵）、`fa77338`（执行页纯派生 + 9 条测试）、`c93b27a`（Target 抽屉状态机 + 14 条）、`455aec6`（排期编辑器 + 7 条）、`965dbc2`（Suggestions 行读数 + 9 条）、`5c31bf9`/`d713e73`（Executions 两套行组件 + 8 条）；三个页面 1611/1518/1420 → **1030/1301/1346 行** | 完成 |
 | ⑧ | FD12 随下沉补测试 | 上述每项均带测试；本分支新增 +151 条（含组件与纯函数），共享层 per-file 门禁全部通过 | 完成 |
 
 ## 第二轮评审与修正
 
-6 名独立 reviewer（按层 + 跨层）对本分支做了只读评审，跨层 reviewer 独立重跑了六道门禁。结论：无 P0，重构方向与测试总体可信；发现 **3 个 P1、若干 P2/P3**，已全部修正（见 `46b92cb`、`20e5cbf`）：
+6 名独立 reviewer（按层 + 跨层）对本分支做了只读评审，跨层 reviewer 独立重跑了六道门禁。结论：无 P0，重构方向与测试总体可信；发现 **3 个 P1、若干 P2/P3**，已全部修正（见 `5b4b14e`、`78b60a1`）：
 
 | 级别 | 发现 | 修正 |
 | --- | --- | --- |
@@ -41,32 +41,32 @@
 | P3 | 测试弱点：外部数据集插入分支未覆盖、度数断言锁定重复 id、layout 用例未真正测"缺席节点"、抽屉 Escape 未测 `defaultPrevented`、行断言过于宽松、排期并发保存未测 | 逐一补强；度数读取改为去重 |
 | P3 | `test:ci` 在并发跑门禁时偶发 `loginRedirect` 超时（5s） | 该用例超时放宽到 10s，门禁串行执行 |
 
-第二轮跨层 reviewer 同时纠正了本记录的基线数字（此前误用评审报告快照）：实现前 `da15e45` 为 **137 文件 / 1,374 用例**，页面基线为 **2026/1611/1420**（LineageGraph/Executions/Suggestions，Target 1518），`lineageLayout` 为 **7** 条测试。
+第二轮跨层 reviewer 同时纠正了本记录的基线数字（此前误用评审报告快照）：实现前 `ef8ceeb` 为 **137 文件 / 1,374 用例**，页面基线为 **2026/1611/1420**（LineageGraph/Executions/Suggestions，Target 1518），`lineageLayout` 为 **7** 条测试。
 
 ## 提交索引
 
 | # | 事项 | 对应条目 | 提交 |
 | --- | --- | --- | --- |
-| 1 | 轮询轮次可取消在途读；流式生命周期抽成 `useStreaming` | FD4/FD5/FD10 续 | `875cd55` |
-| 2 | markdown 渲染器改为按需加载 | FD11 | `132aacf` |
-| 3 | utils 不再反向依赖 api + 分层守卫测试 | FD13 | `68b1979` |
-| 4 | `<html lang>` 跟随语言；移动抽屉 ESC/焦点陷阱/焦点归还 | FD14 | `9224508` |
-| 5 | 品牌名单一常量、`OPENLINEAGE` 用枚举、RPC 默认超时 | FD15 | `6bc8d29` |
-| 6 | 轮询读新增 signal 参数后的测试适配 | — | `d7bf597` |
-| 7 | 抽屉焦点边界分支测试 | — | `01f6887` |
-| 8 | FD7：RuleConfigForm 按规则族拆分 + `useSchemaDriftColumns` | FD7 | `ef870fe` |
-| 9 | FD2（一）：测高收敛下沉为 `lib/lineageLayout` | FD2 | `6ff94fc` |
-| 10 | FD2（二）：详情列抽成 `LineageNodeDetailPanel` + 9 条测试 | FD2 | `6d1c63b` |
-| 11 | FD3（一）：`useDataQualityPermissions` 权限矩阵 | FD3 | `8caa2d2` |
-| 12 | FD3（二）：`utils/dataQualityExecutions` 纯派生 + 9 条测试 | FD3 | `46ee4e7` |
-| 13 | FD3（三）：`useTargetWorkspaceDialogs` + 14 条测试 | FD3 | `45a9741` |
-| 14 | FD3（四）：`useTargetScheduleEditor` + 7 条测试 | FD3 | `21c3b40` |
-| 15 | ExplainSQLPage 页面测试 | ① | `e0bbba8` |
-| 16 | FD3（五）：Suggestions 行读数进 utils + 权限 composable | FD3 | `e475c03` |
-| 17 | FD3（六）：Executions target row 组件 + 3 条测试 | FD3 | `0886bbc` |
-| 18 | FD3（七）：Executions flat row 组件 + 5 条测试 | FD3 | `30a8b2a` |
-| 19 | FD2（三）：`useLineageGraphData` 数据层 + 13 条测试 | FD2 | `cf04e7a` |
-| 20 | FD2（四）：`useLineageSelection` 选中层 + 8 条测试 | FD2 | `edec083` |
+| 1 | 轮询轮次可取消在途读；流式生命周期抽成 `useStreaming` | FD4/FD5/FD10 续 | `14ed4e4` |
+| 2 | markdown 渲染器改为按需加载 | FD11 | `1c99458` |
+| 3 | utils 不再反向依赖 api + 分层守卫测试 | FD13 | `a78782d` |
+| 4 | `<html lang>` 跟随语言；移动抽屉 ESC/焦点陷阱/焦点归还 | FD14 | `51e436e` |
+| 5 | 品牌名单一常量、`OPENLINEAGE` 用枚举、RPC 默认超时 | FD15 | `75565ab` |
+| 6 | 轮询读新增 signal 参数后的测试适配 | — | `54170f8` |
+| 7 | 抽屉焦点边界分支测试 | — | `15e573e` |
+| 8 | FD7：RuleConfigForm 按规则族拆分 + `useSchemaDriftColumns` | FD7 | `31c75e0` |
+| 9 | FD2（一）：测高收敛下沉为 `lib/lineageLayout` | FD2 | `5ce1c81` |
+| 10 | FD2（二）：详情列抽成 `LineageNodeDetailPanel` + 9 条测试 | FD2 | `e06e016` |
+| 11 | FD3（一）：`useDataQualityPermissions` 权限矩阵 | FD3 | `62de92d` |
+| 12 | FD3（二）：`utils/dataQualityExecutions` 纯派生 + 9 条测试 | FD3 | `fa77338` |
+| 13 | FD3（三）：`useTargetWorkspaceDialogs` + 14 条测试 | FD3 | `c93b27a` |
+| 14 | FD3（四）：`useTargetScheduleEditor` + 7 条测试 | FD3 | `455aec6` |
+| 15 | ExplainSQLPage 页面测试 | ① | `4c72db0` |
+| 16 | FD3（五）：Suggestions 行读数进 utils + 权限 composable | FD3 | `965dbc2` |
+| 17 | FD3（六）：Executions target row 组件 + 3 条测试 | FD3 | `5c31bf9` |
+| 18 | FD3（七）：Executions flat row 组件 + 5 条测试 | FD3 | `d713e73` |
+| 19 | FD2（三）：`useLineageGraphData` 数据层 + 13 条测试 | FD2 | `5401609` |
+| 20 | FD2（四）：`useLineageSelection` 选中层 + 8 条测试 | FD2 | `510ebbb` |
 
 （另有 8 个 docs 提交更新本记录；分支栈顶部为 `arch-review/frontend-followups`。）
 
@@ -104,4 +104,4 @@
 - `type-check`：`vue-tsc --build --force` 通过。
 - `test:ci`：**155 个测试文件 / 1,525 条用例**通过；共享层 per-file 95/85 通过（新增模块 `useStreaming`/`useTimers`/`useUrlFilters`/`useSchemaDriftColumns`/`useTargetWorkspaceDialogs`/`useTargetScheduleEditor`/`useDataQualityPermissions`/`useLineageGraphData`/`useLineageSelection`/`useDrawerFocus`/`apiTimeout` 等均达标或 100%）。
 - `build`：生产构建成功；入口无 markstream 静态引用，Monaco 仍为独立异步 chunk。
-- 与基线 `da15e45` 对比：85 文件、+7,625/−2,908 行；提交数 35（22 实现/测试 + 13 记录）。
+- 与基线 `ef8ceeb` 对比：85 文件、+7,625/−2,908 行；提交数 35（22 实现/测试 + 13 记录）。

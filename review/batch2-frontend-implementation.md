@@ -8,26 +8,26 @@
 
 | # | 事项 | 条目 | 状态 | 提交 |
 | --- | --- | --- | --- | --- |
-| 1 | `Permission` 类型 + 调用点扫描测试 + OAuth scope 单一来源 | FD8 | 完成 | `c8c9421` |
-| 2 | i18n 动态 key 豁免单一来源（脚本 → ESLint） | FD9 | 完成 | `954c771` |
-| 3 | 流式 explain 加 `AbortSignal` + 代际 | FD10 | 完成 | `de25a2b` |
-| 4 | `useAsync` / `usePolling` 原语 | FD4/5（原语） | 完成 | `6170216` |
-| 5 | debounce/一次性定时器 + 轮询迁移 | FD4/5（迁移） | 完成 | `4703294` |
-| 6 | `utils/queryFilters` + `useUrlFilters` | FD6（原语） | 完成 | `7bffed1` |
-| 7 | 5 个数据质量页收敛到 `useUrlFilters` | FD6（迁移） | 完成 | `dc89611` |
-| 8 | 本记录 | — | 完成 | `73a78a3` |
-| 9 | 评审修正：定时器作用域（P1/P2） | FD4 后续 | 完成 | `1910b82` |
-| 10 | 评审修正：composable 加固（P2/P3） | FD4/5/6 后续 | 完成 | `c755e11` |
+| 1 | `Permission` 类型 + 调用点扫描测试 + OAuth scope 单一来源 | FD8 | 完成 | `bb358a4` |
+| 2 | i18n 动态 key 豁免单一来源（脚本 → ESLint） | FD9 | 完成 | `3ca3b82` |
+| 3 | 流式 explain 加 `AbortSignal` + 代际 | FD10 | 完成 | `d1f7478` |
+| 4 | `useAsync` / `usePolling` 原语 | FD4/5（原语） | 完成 | `cbfd90a` |
+| 5 | debounce/一次性定时器 + 轮询迁移 | FD4/5（迁移） | 完成 | `2ca0a4a` |
+| 6 | `utils/queryFilters` + `useUrlFilters` | FD6（原语） | 完成 | `3b9e683` |
+| 7 | 5 个数据质量页收敛到 `useUrlFilters` | FD6（迁移） | 完成 | `9f8bfda` |
+| 8 | 本记录 | — | 完成 | `1d45319` |
+| 9 | 评审修正：定时器作用域（P1/P2） | FD4 后续 | 完成 | `249db02` |
+| 10 | 评审修正：composable 加固（P2/P3） | FD4/5/6 后续 | 完成 | `63c77ac` |
 
 ## PR 栈（自底向上）
 
 | 层 | 分支 | 内容 | 提交 |
 | --- | --- | --- | --- |
-| 1 | `arch-review/batch2-frontend-guards` | FD8 权限类型/扫描/scope、FD9 i18n 单一来源、FD10 流式取消 | `c8c9421`…`de25a2b` |
-| 2 | `arch-review/batch2-async-timers` | `useAsync`/`usePolling` 原语、定时器与轮询迁移、2 个 `useAsync` 落地 | `6170216`、`4703294` |
-| 3 | `arch-review/batch2-url-filters` | `utils/queryFilters` + `useUrlFilters`、5 个数据质量页迁移 | `7bffed1`、`dc89611` |
-| 4 | `arch-review/batch2-tracking` | 本记录 | `73a78a3` |
-| 5 | `arch-review/batch2-frontend-review-fixes` | 评审后的 P1/P2/P3 修正 | `1910b82`、`c755e11` |
+| 1 | `arch-review/batch2-frontend-guards` | FD8 权限类型/扫描/scope、FD9 i18n 单一来源、FD10 流式取消 | `bb358a4`…`d1f7478` |
+| 2 | `arch-review/batch2-async-timers` | `useAsync`/`usePolling` 原语、定时器与轮询迁移、2 个 `useAsync` 落地 | `cbfd90a`、`2ca0a4a` |
+| 3 | `arch-review/batch2-url-filters` | `utils/queryFilters` + `useUrlFilters`、5 个数据质量页迁移 | `3b9e683`、`9f8bfda` |
+| 4 | `arch-review/batch2-tracking` | 本记录 | `1d45319` |
+| 5 | `arch-review/batch2-frontend-review-fixes` | 评审后的 P1/P2/P3 修正 | `249db02`、`63c77ac` |
 
 ## 评审后修正
 
@@ -94,7 +94,7 @@
 - `utils/queryFilters.ts`：`queryString`、`readFlag`、`enumFilterValue`、`enumFromFilter`、`sameQuery`，纯函数、100% 覆盖。
 - `composables/useUrlFilters.ts`：`{ keys, parse, serialize }` → `{ read, isCurrent, write, watchExternal }`。`write` 只增删本页 keys、保留外键、等值不写；`watchExternal` 只在外部变化时 adopt，自身 `replace` 通过记录比对跳过，无回环。
 - 数据质量 scope 的解析/写回从 Checks/Suggestions 两页抽到 `utils/dataQualityTarget.ts`（`scopeFromQuery`、`writeScopeToQuery`）。
-- 迁移：Checks、Issues、Suggestions、Targets 四页删除各自四件套并统一走 composable（`dc89611` 四页净删除 507 行）。
+- 迁移：Checks、Issues、Suggestions、Targets 四页删除各自四件套并统一走 composable（`9f8bfda` 四页净删除 507 行）。
 - **Executions 是混合形态**：它的 URL 不是过滤器集合，而是视图状态（`view/rule/target/run` + 局部 patch）。只把 URL 操作收敛到 `useUrlFilters` 并复用纯函数，`flatView`、跨页链接 chip、枚举 Select 的既有行为不变。
 
 ## 验证
