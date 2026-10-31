@@ -11,6 +11,7 @@ import {
   layoutNodes,
   type NodeLineageData,
   nodeHeight,
+  parseExpandDepth,
 } from "./lineageGraph";
 
 function rel(overrides: Partial<LineageRelation>): LineageRelation {
@@ -433,5 +434,24 @@ describe("edge origins", () => {
     expect((edge.style as { stroke?: string }).stroke).toBe(
       "hsl(var(--muted-foreground) / 0.2)"
     );
+  });
+});
+
+describe("parseExpandDepth", () => {
+  it("reads each offered depth", () => {
+    expect(parseExpandDepth("1")).toBe(1);
+    expect(parseExpandDepth("2")).toBe(2);
+    expect(parseExpandDepth("3")).toBe(3);
+  });
+
+  it("falls back to one level for a value the control cannot mean", () => {
+    expect(parseExpandDepth("0")).toBe(1);
+    expect(parseExpandDepth("-2")).toBe(1);
+    expect(parseExpandDepth("two")).toBe(1);
+    expect(parseExpandDepth("")).toBe(1);
+  });
+
+  it("keeps a deeper hand-edited value rather than clamping it", () => {
+    expect(parseExpandDepth("4")).toBe(4);
   });
 });
