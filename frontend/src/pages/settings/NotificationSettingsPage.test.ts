@@ -636,6 +636,38 @@ describe("NotificationSettingsPage", () => {
     expect(created.routedOnly).toBe(true);
   });
 
+  it("lets a channel opt into the data quality digest", async () => {
+    mountPage();
+    await flushPromises();
+
+    buttonsByText("New channel")[0]?.click();
+    await flushPromises();
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    // The digest is opt-in: it is a checkbox, not part of "all events".
+    expect(dialog.textContent).toContain("Data quality digest");
+    await setInput(inputByLabel("Name"), "weekly-digest");
+    await setInput(inputByLabel("Endpoint URL"), "https://example.com/digest");
+    await clickCheckbox(checkboxByText("Data quality digest", dialog));
+
+    dialogButtonsByText("Save")[0]?.click();
+    await flushPromises();
+
+    expect(mocks.createNotificationChannel).toHaveBeenCalledTimes(1);
+    const [created] = mocks.createNotificationChannel.mock.calls[0];
+    expect(created.eventTypes).toContain(NotificationType.DATA_QUALITY_DIGEST);
+  });
+
+  it("does not offer the digest on a routing rule", async () => {
+    mountPage();
+    await flushPromises();
+
+    buttonsByText("New rule")[0]?.click();
+    await flushPromises();
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    // Routes select in-app events; the digest has no audience to match.
+    expect(dialog.textContent).not.toContain("Data quality digest");
+  });
+
   it("writes the two switches in the channel update mask", async () => {
     mountPage();
     await flushPromises();

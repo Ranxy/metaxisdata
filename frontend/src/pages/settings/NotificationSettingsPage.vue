@@ -1034,7 +1034,7 @@
             <Label>{{ t("notificationSettings.eventTypes") }}</Label>
             <div class="space-y-2">
               <label
-                v-for="option in eventTypeOptions"
+                v-for="option in routeEventTypeOptions"
                 :key="option.value"
                 class="flex items-center gap-2 text-sm"
               >
@@ -1382,10 +1382,19 @@ const signingSecretHint = computed(() => {
   return t("notificationSettings.robotSigningSecretHint");
 });
 
+/**
+ * The event types a channel may subscribe to. The weekly digest is opt-in: an
+ * empty list means every event type except it, so a channel receives it only
+ * when the box is ticked.
+ */
 const eventTypeOptions = computed(() => [
   {
     value: NotificationType.DATA_QUALITY,
     label: t("notificationSettings.eventDataQuality"),
+  },
+  {
+    value: NotificationType.DATA_QUALITY_DIGEST,
+    label: t("notificationSettings.eventDataQualityDigest"),
   },
   {
     value: NotificationType.SCHEMA_SYNC,
@@ -1396,6 +1405,16 @@ const eventTypeOptions = computed(() => [
     label: t("notificationSettings.eventOpenLineage"),
   },
 ]);
+
+/**
+ * Routing rules select events by audience, and the digest has none: it is one
+ * workspace summary delivered to the channels that opt in, never per person.
+ */
+const routeEventTypeOptions = computed(() =>
+  eventTypeOptions.value.filter(
+    (option) => option.value !== NotificationType.DATA_QUALITY_DIGEST
+  )
+);
 
 async function loadChannels() {
   loading.value = true;
@@ -2371,6 +2390,8 @@ function eventTypeLabel(value: NotificationType): string {
   switch (value) {
     case NotificationType.DATA_QUALITY:
       return t("notificationSettings.eventDataQuality");
+    case NotificationType.DATA_QUALITY_DIGEST:
+      return t("notificationSettings.eventDataQualityDigest");
     case NotificationType.SCHEMA_SYNC:
       return t("notificationSettings.eventSchemaSync");
     case NotificationType.OPENLINEAGE:

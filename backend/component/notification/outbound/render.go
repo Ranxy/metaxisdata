@@ -24,6 +24,8 @@ func Render(language string, event *storepb.NotificationDeliveryEvent, externalU
 	switch detail := event.GetDetail().(type) {
 	case *storepb.NotificationDeliveryEvent_DataQuality:
 		renderDataQuality(zh, detail.DataQuality, &message)
+	case *storepb.NotificationDeliveryEvent_DataQualityDigest:
+		renderDataQualityDigest(zh, detail.DataQualityDigest, &message)
 	case *storepb.NotificationDeliveryEvent_SchemaSync:
 		renderSchemaSync(zh, detail.SchemaSync, &message)
 	case *storepb.NotificationDeliveryEvent_Openlineage:
@@ -102,6 +104,207 @@ func renderDataQuality(zh bool, detail *storepb.DataQualityDetail, message *Mess
 			message.Title = fmt.Sprintf("Data quality: %s", target)
 		}
 	}
+}
+
+// renderDataQualityDigest renders the weekly digest: the covered period in the
+// title, then the period's verdict tally, the problem ledger's movement, the
+// coverage and the owners and targets worth looking at. It is deliberately a
+// summary — the totals carry the whole picture and the link opens the page that
+// lists every row behind them.
+func renderDataQualityDigest(zh bool, detail *storepb.DataQualityDigestDetail, message *Message) {
+	title := "Data quality weekly digest"
+	if zh {
+		title = "数据质量周报"
+	}
+	if period := digestPeriodLabel(detail); period != "" {
+		if zh {
+			title = fmt.Sprintf("%s（%s）", title, period)
+		} else {
+			title = fmt.Sprintf("%s (%s)", title, period)
+		}
+	}
+	message.Title = title
+	message.Text = digestLines(
+		digestPeriodLine(zh, detail),
+		digestExecutionLine(zh, detail),
+		digestIssueLine(zh, detail),
+		digestCoverageLine(zh, detail),
+		digestOwnerLine(zh, detail.GetOwners()),
+		digestTargetLine(zh, detail.GetTargets()),
+	)
+}
+
+// digestPeriodLocation resolves the zone the period is labelled in: the digest
+// schedule's IANA zone, carried on the detail, with an empty or unreadable value
+// falling back to UTC rather than dropping the label.
+func digestPeriodLocation(detail *storepb.DataQualityDigestDetail) *time.Location {
+	timezone := strings.TrimSpace(detail.GetTimezone())
+	if timezone == "" {
+		return time.UTC
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return time.UTC
+	}
+	return location
+}
+
+// digestPeriodBounds returns the covered half-open window [start, end) in the
+// schedule's zone.
+func digestPeriodBounds(detail *storepb.DataQualityDigestDetail) (start, end time.Time, ok bool) {
+	if detail.GetPeriodStart() == nil || detail.GetPeriodEnd() == nil {
+		return time.Time{}, time.Time{}, false
+	}
+	location := digestPeriodLocation(detail)
+	return detail.GetPeriodStart().AsTime().In(location), detail.GetPeriodEnd().AsTime().In(location), true
+}
+
+// digestPeriodLabel renders the covered period as its local calendar days. It is
+// the schedule's zone, not UTC: a UTC label names the wrong days for schedules
+// east of UTC+9.
+func digestPeriodLabel(detail *storepb.DataQualityDigestDetail) string {
+	start, end, ok := digestPeriodBounds(detail)
+	if !ok {
+		return ""
+	}
+	return start.Format("2006-01-02") + " ~ " + end.Format("2006-01-02")
+}
+
+// digestPeriodWindow renders the half-open window with its zone: two bare dates
+// read as an inclusive range, and the zone is what makes them mean anything.
+func digestPeriodWindow(zh bool, detail *storepb.DataQualityDigestDetail) string {
+	start, end, ok := digestPeriodBounds(detail)
+	if !ok {
+		return ""
+	}
+	window := start.Format("2006-01-02 15:04") + " → " + end.Format("2006-01-02 15:04")
+	if zh {
+		return window + "（" + digestPeriodLocation(detail).String() + "）"
+	}
+	return window + " (" + digestPeriodLocation(detail).String() + ")"
+}
+
+func digestPeriodLine(zh bool, detail *storepb.DataQualityDigestDetail) string {
+	window := digestPeriodWindow(zh, detail)
+	if window == "" {
+		return ""
+	}
+	if zh {
+		return "周期：" + window
+	}
+	return "Period: " + window
+}
+
+func digestExecutionLine(zh bool, detail *storepb.DataQualityDigestDetail) string {
+	if zh {
+		return fmt.Sprintf("执行：完成 %d 项 · 通过 %d · 警告 %d · 失败 %d · 错误 %d",
+			detail.GetExecutionCount(), detail.GetPassedCount(), detail.GetWarnedCount(),
+			detail.GetFailedCount(), detail.GetErroredCount())
+	}
+	return fmt.Sprintf("Executions: %d completed · %d passed · %d warned · %d failed · %d errored",
+		detail.GetExecutionCount(), detail.GetPassedCount(), detail.GetWarnedCount(),
+		detail.GetFailedCount(), detail.GetErroredCount())
+}
+
+func digestIssueLine(zh bool, detail *storepb.DataQualityDigestDetail) string {
+	if zh {
+		return fmt.Sprintf("问题：新增 %d · 恢复 %d · 未解决 %d（警告 %d · 错误 %d · 严重 %d）",
+			detail.GetNewIssueCount(), detail.GetRecoveredIssueCount(), detail.GetOpenIssueCount(),
+			detail.GetOpenWarningCount(), detail.GetOpenErrorCount(), detail.GetOpenCriticalCount())
+	}
+	return fmt.Sprintf("Problems: %d new · %d recovered · %d open (%d warning · %d error · %d critical)",
+		detail.GetNewIssueCount(), detail.GetRecoveredIssueCount(), detail.GetOpenIssueCount(),
+		detail.GetOpenWarningCount(), detail.GetOpenErrorCount(), detail.GetOpenCriticalCount())
+}
+
+func digestCoverageLine(zh bool, detail *storepb.DataQualityDigestDetail) string {
+	if zh {
+		return fmt.Sprintf("覆盖：%d 个目标 · %d 条规则", detail.GetTargetCount(), detail.GetRuleCount())
+	}
+	return fmt.Sprintf("Coverage: %d targets · %d checks", detail.GetTargetCount(), detail.GetRuleCount())
+}
+
+// digestOwnerLine names the owners with the most open problems. An unassigned
+// bucket is part of the summary: nobody is watching those rules.
+func digestOwnerLine(zh bool, owners []*storepb.DataQualityDigestOwner) string {
+	if len(owners) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		name := owner.GetOwnerName()
+		if name == "" {
+			name = lastSegment(owner.GetOwner())
+		}
+		if name == "" {
+			name = "unassigned"
+			if zh {
+				name = "未指派"
+			}
+		}
+		if zh {
+			parts = append(parts, fmt.Sprintf("%s（未解决 %d · 失败规则 %d）",
+				name, owner.GetOpenIssueCount(), owner.GetFailingRuleCount()))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s (%d open · %d failing)",
+				name, owner.GetOpenIssueCount(), owner.GetFailingRuleCount()))
+		}
+	}
+	if zh {
+		return "主要负责人：" + strings.Join(parts, "、")
+	}
+	return "Top owners: " + strings.Join(parts, ", ")
+}
+
+// digestTargetLine names the targets with the most failed checks in the period,
+// with the error and open-issue counts that explain how bad it was.
+func digestTargetLine(zh bool, targets []*storepb.DataQualityDigestTarget) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(targets))
+	for _, target := range targets {
+		path := strings.TrimSpace(target.GetTargetPath())
+		if path == "" {
+			path = "-"
+		}
+		facts := make([]string, 0, 3)
+		if zh {
+			facts = append(facts, fmt.Sprintf("失败 %d", target.GetFailedExecutionCount()))
+			if target.GetErroredExecutionCount() > 0 {
+				facts = append(facts, fmt.Sprintf("错误 %d", target.GetErroredExecutionCount()))
+			}
+			if target.GetOpenIssueCount() > 0 {
+				facts = append(facts, fmt.Sprintf("未解决 %d", target.GetOpenIssueCount()))
+			}
+			parts = append(parts, fmt.Sprintf("%s（%s）", path, strings.Join(facts, " · ")))
+			continue
+		}
+		facts = append(facts, fmt.Sprintf("%d failed", target.GetFailedExecutionCount()))
+		if target.GetErroredExecutionCount() > 0 {
+			facts = append(facts, fmt.Sprintf("%d errored", target.GetErroredExecutionCount()))
+		}
+		if target.GetOpenIssueCount() > 0 {
+			facts = append(facts, fmt.Sprintf("%d open", target.GetOpenIssueCount()))
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", path, strings.Join(facts, " · ")))
+	}
+	if zh {
+		return "失败最多的目标：" + strings.Join(parts, "、")
+	}
+	return "Top failing targets: " + strings.Join(parts, ", ")
+}
+
+// digestLines joins the non-empty lines of a digest body. Unlike joinFacts it
+// keeps one fact group per line: a digest has more to say than fits one line.
+func digestLines(lines ...string) string {
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
 }
 
 func renderSchemaSync(zh bool, detail *storepb.SchemaSyncDetail, message *Message) {
@@ -193,6 +396,10 @@ func link(externalURL string, event *storepb.NotificationDeliveryEvent) string {
 			return base + "/data-quality/issues/" + detail.DataQuality.GetIssue()
 		}
 		return base + "/data-quality/executions"
+	case *storepb.NotificationDeliveryEvent_DataQualityDigest:
+		// A digest is workspace-level, so it links the overview rather than one
+		// resource; that page is what the numbers in the message describe.
+		return base + "/data-quality"
 	case *storepb.NotificationDeliveryEvent_SchemaSync:
 		if detail.SchemaSync.GetInstance() != "" {
 			return base + "/instances/" + lastSegment(detail.SchemaSync.GetInstance())

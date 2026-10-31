@@ -1,12 +1,18 @@
 import { create } from "@bufbuild/protobuf";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
-import { DataQualitySettingSchema } from "@/types/proto-es/v1/setting_service_pb";
+import {
+  DataQualitySettingSchema,
+  DayOfWeek,
+  QualityDigestSettingSchema,
+} from "@/types/proto-es/v1/setting_service_pb";
 import {
   DAILY_LLM_ANALYSIS_LIMIT_MAX,
   type DataQualitySettingsForm,
+  DIGEST_TIME_PATTERN,
   FAILURE_SAMPLE_LIMIT_MAX,
   formToSetting,
+  isValidTimeZone,
   LLM_CONCURRENCY_LIMIT_MAX,
   llmDisabled,
   MAX_COLUMNS_PER_ANALYSIS_MAX,
@@ -31,6 +37,12 @@ function baseForm(
     llmConcurrencyLimit: "",
     maxColumnsPerAnalysis: "",
     sendSampleValuesToLlm: false,
+    weeklyDigest: {
+      enabled: false,
+      dayOfWeek: DayOfWeek.MONDAY,
+      time: "09:00",
+      timezone: "UTC",
+    },
     ...overrides,
   };
 }
@@ -71,7 +83,47 @@ describe("settingsToForm", () => {
       llmConcurrencyLimit: "12",
       maxColumnsPerAnalysis: "50",
       sendSampleValuesToLlm: true,
+      // No digest stored yet: show the schedule the server resolves instead.
+      weeklyDigest: {
+        enabled: false,
+        dayOfWeek: DayOfWeek.MONDAY,
+        time: "09:00",
+        timezone: "UTC",
+      },
     });
+  });
+
+  it("maps a configured weekly digest", () => {
+    const form = settingsToForm(
+      create(DataQualitySettingSchema, {
+        weeklyDigest: create(QualityDigestSettingSchema, {
+          enabled: true,
+          dayOfWeek: DayOfWeek.FRIDAY,
+          time: "18:30",
+          timezone: "Asia/Shanghai",
+        }),
+      })
+    );
+
+    expect(form.weeklyDigest).toEqual({
+      enabled: true,
+      dayOfWeek: DayOfWeek.FRIDAY,
+      time: "18:30",
+      timezone: "Asia/Shanghai",
+    });
+  });
+
+  it("treats an unset weekday as the default one", () => {
+    const form = settingsToForm(
+      create(DataQualitySettingSchema, {
+        weeklyDigest: create(QualityDigestSettingSchema, {
+          enabled: false,
+          dayOfWeek: DayOfWeek.UNSPECIFIED,
+        }),
+      })
+    );
+
+    expect(form.weeklyDigest.dayOfWeek).toBe(DayOfWeek.MONDAY);
   });
 });
 
@@ -92,8 +144,45 @@ describe("formToSetting", () => {
       llmConcurrencyLimit: 12,
       maxColumnsPerAnalysis: 50,
       sendSampleValuesToLlm: true,
+      weeklyDigest: create(QualityDigestSettingSchema, {
+        enabled: true,
+        dayOfWeek: DayOfWeek.FRIDAY,
+        time: "18:30",
+        timezone: "Asia/Shanghai",
+      }),
     });
     expect(formToSetting(settingsToForm(setting))).toEqual(setting);
+  });
+
+  it("always writes the digest, even when this page did not touch it", () => {
+    // The whole data_quality field is replaced on save, so a missing digest
+    // would clear a schedule configured elsewhere.
+    const setting = formToSetting(baseForm());
+
+    expect(setting.weeklyDigest).toEqual(
+      create(QualityDigestSettingSchema, {
+        enabled: false,
+        dayOfWeek: DayOfWeek.MONDAY,
+        time: "09:00",
+        timezone: "UTC",
+      })
+    );
+  });
+
+  it("trims the digest time and zone", () => {
+    const setting = formToSetting(
+      baseForm({
+        weeklyDigest: {
+          enabled: true,
+          dayOfWeek: DayOfWeek.SUNDAY,
+          time: " 07:05 ",
+          timezone: "  Europe/Berlin ",
+        },
+      })
+    );
+
+    expect(setting.weeklyDigest?.time).toBe("07:05");
+    expect(setting.weeklyDigest?.timezone).toBe("Europe/Berlin");
   });
 
   it("treats blank numbers as the server default and trims the profile", () => {
@@ -252,5 +341,109 @@ describe("validateSettingsForm", () => {
         `${SETTINGS_VALIDATION_PREFIX}failureSampleLimitInvalid`
     );
     expect(issue?.params).toEqual({ max: FAILURE_SAMPLE_LIMIT_MAX });
+  });
+
+  it("requires a time and an IANA zone once the digest is on", () => {
+    const issues = validateSettingsForm(
+      baseForm({
+        weeklyDigest: {
+          enabled: true,
+          dayOfWeek: DayOfWeek.MONDAY,
+          time: "",
+          timezone: "",
+        },
+      })
+    ).map((issue) => issue.key.slice(SETTINGS_VALIDATION_PREFIX.length));
+
+    expect(issues).toContain("digestTimeRequired");
+    expect(issues).toContain("digestTimezoneRequired");
+  });
+
+  it("accepts blank digest fields while the digest is off", () => {
+    expect(
+      validateSettingsForm(
+        baseForm({
+          weeklyDigest: {
+            enabled: false,
+            dayOfWeek: DayOfWeek.MONDAY,
+            time: "",
+            timezone: "",
+          },
+        })
+      )
+    ).toEqual([]);
+  });
+
+  it("rejects a malformed digest time and an unknown zone", () => {
+    const issues = validateSettingsForm(
+      baseForm({
+        weeklyDigest: {
+          enabled: false,
+          dayOfWeek: DayOfWeek.MONDAY,
+          time: "9:00",
+          timezone: "Mars/Olympus",
+        },
+      })
+    ).map((issue) => issue.key.slice(SETTINGS_VALIDATION_PREFIX.length));
+
+    expect(issues).toContain("digestTimeInvalid");
+    expect(issues).toContain("digestTimezoneInvalid");
+  });
+
+  it("rejects a digest with no weekday while it is on", () => {
+    const issues = validateSettingsForm(
+      baseForm({
+        weeklyDigest: {
+          enabled: true,
+          dayOfWeek: DayOfWeek.UNSPECIFIED,
+          time: "09:00",
+          timezone: "UTC",
+        },
+      })
+    ).map((issue) => issue.key.slice(SETTINGS_VALIDATION_PREFIX.length));
+
+    expect(issues).toContain("digestDayInvalid");
+  });
+
+  it("accepts a configured digest", () => {
+    expect(
+      validateSettingsForm(
+        baseForm({
+          weeklyDigest: {
+            enabled: true,
+            dayOfWeek: DayOfWeek.SUNDAY,
+            time: "07:05",
+            timezone: "America/Los_Angeles",
+          },
+        })
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("digest vocabulary", () => {
+  it("accepts 24-hour HH:MM only", () => {
+    for (const value of ["00:00", "09:05", "23:59"]) {
+      expect(DIGEST_TIME_PATTERN.test(value)).toBe(true);
+    }
+    for (const value of ["", "24:00", "9:00", "09:60", "09:05:00"]) {
+      expect(DIGEST_TIME_PATTERN.test(value)).toBe(false);
+    }
+  });
+
+  it("recognizes IANA zone names and rejects anything else", () => {
+    for (const zone of [
+      "UTC",
+      "Asia/Shanghai",
+      "Europe/Berlin",
+      "Asia/Tokyo",
+    ]) {
+      expect(isValidTimeZone(zone)).toBe(true);
+    }
+    // The browser is more lenient than the server about case (`asia/shanghai`
+    // resolves), so the server's own validation stays the authority.
+    for (const zone of ["", "Mars/Olympus", "GMT+8"]) {
+      expect(isValidTimeZone(zone)).toBe(false);
+    }
   });
 });

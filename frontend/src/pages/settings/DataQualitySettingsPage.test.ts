@@ -1,14 +1,18 @@
 import { create } from "@bufbuild/protobuf";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import FormField from "@/components/ui/form-field/FormField.vue";
+import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import { QualityLLMUsageSchema } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   DataQualitySettingSchema,
+  DayOfWeek,
+  QualityDigestSettingSchema,
   WorkspaceProfileSettingSchema,
 } from "@/types/proto-es/v1/setting_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -59,6 +63,20 @@ function fieldInput(
     .findAllComponents(FormField)
     .find((candidate) => candidate.props("label") === label);
   return field?.find("input");
+}
+
+/** The header's save button. */
+function saveButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper
+    .findAll("button")
+    .find((button) => button.text().includes(i18n.global.t("common.save")));
+}
+
+/** The digest's weekday select, found by the id its trigger carries. */
+function digestDaySelect(wrapper: ReturnType<typeof mount>) {
+  return wrapper
+    .findAllComponents(Select)
+    .find((candidate) => candidate.find("#dq-setting-digest-day").exists());
 }
 
 describe("DataQualitySettingsPage", () => {
@@ -368,5 +386,124 @@ describe("DataQualitySettingsPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQualitySettings.llmDisabledHint")
     );
+  });
+
+  it("shows the stored weekly digest schedule", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          weeklyDigest: create(QualityDigestSettingSchema, {
+            enabled: true,
+            dayOfWeek: DayOfWeek.FRIDAY,
+            time: "18:30",
+            timezone: "Asia/Shanghai",
+          }),
+        }),
+      })
+    );
+    const wrapper = await mountPage();
+
+    expect(
+      wrapper.find("#dq-setting-digest-enabled").attributes("data-state")
+    ).toBe("checked");
+    expect(
+      (
+        fieldInput(wrapper, i18n.global.t("dataQualitySettings.digestTime"))
+          ?.element as HTMLInputElement
+      ).value
+    ).toBe("18:30");
+    expect(
+      (
+        fieldInput(wrapper, i18n.global.t("dataQualitySettings.digestTimezone"))
+          ?.element as HTMLInputElement
+      ).value
+    ).toBe("Asia/Shanghai");
+    expect(wrapper.html()).toContain(
+      i18n.global.t("dataQualitySettings.weekdayFriday")
+    );
+  });
+
+  it("saves the weekly digest with the rest of the settings", async () => {
+    const wrapper = await mountPage();
+
+    await wrapper.find("#dq-setting-digest-enabled").trigger("click");
+    await flushPromises();
+    await digestDaySelect(wrapper)?.vm.$emit(
+      "update:modelValue",
+      String(DayOfWeek.SUNDAY)
+    );
+    await flushPromises();
+    await fieldInput(
+      wrapper,
+      i18n.global.t("dataQualitySettings.digestTime")
+    )?.setValue("07:05");
+    await fieldInput(
+      wrapper,
+      i18n.global.t("dataQualitySettings.digestTimezone")
+    )?.setValue("Europe/Berlin");
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateDataQualitySetting).toHaveBeenCalledTimes(1);
+    const setting = mocks.updateDataQualitySetting.mock.calls[0]?.[0];
+    expect(setting.weeklyDigest).toMatchObject({
+      enabled: true,
+      dayOfWeek: DayOfWeek.SUNDAY,
+      time: "07:05",
+      timezone: "Europe/Berlin",
+    });
+  });
+
+  it("carries the untouched digest so saving cannot clear it", async () => {
+    const wrapper = await mountPage();
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    const setting = mocks.updateDataQualitySetting.mock.calls[0]?.[0];
+    // The whole data_quality field is replaced, so even an untouched digest has
+    // to travel with the request.
+    expect(setting.weeklyDigest).toMatchObject({
+      enabled: false,
+      dayOfWeek: DayOfWeek.MONDAY,
+      time: "09:00",
+      timezone: "UTC",
+    });
+  });
+
+  it("surfaces the server's digest validation error", async () => {
+    const message =
+      'weekly_digest.timezone "asia/shanghai" is not a valid IANA time zone';
+    mocks.updateDataQualitySetting.mockRejectedValueOnce(
+      new ConnectError(message, Code.InvalidArgument)
+    );
+    const wrapper = await mountPage();
+
+    await wrapper.find("#dq-setting-digest-enabled").trigger("click");
+    await flushPromises();
+    // The browser accepts the lower-case name, so only the server can reject it.
+    await fieldInput(
+      wrapper,
+      i18n.global.t("dataQualitySettings.digestTimezone")
+    )?.setValue("asia/shanghai");
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(message);
+  });
+
+  it("keeps the digest controls read-only without settings.update", async () => {
+    const wrapper = await mountPage(["metaxisdata.settings.get"]);
+
+    expect(
+      wrapper.find("#dq-setting-digest-enabled").attributes("disabled")
+    ).toBeDefined();
+    expect(
+      (
+        fieldInput(wrapper, i18n.global.t("dataQualitySettings.digestTimezone"))
+          ?.element as HTMLInputElement
+      ).disabled
+    ).toBe(true);
   });
 });

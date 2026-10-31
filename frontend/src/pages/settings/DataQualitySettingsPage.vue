@@ -273,6 +273,82 @@
 
         <Card>
           <CardHeader>
+            <CardTitle>{{ t("dataQualitySettings.digestSection") }}</CardTitle>
+            <CardDescription>
+              {{ t("dataQualitySettings.digestSectionDescription") }}
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-5">
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="dq-setting-digest-enabled"
+                :checked="form.weeklyDigest.enabled"
+                :disabled="!canUpdate"
+                @update:checked="form.weeklyDigest.enabled = $event === true"
+              />
+              <div class="grid gap-1">
+                <Label for="dq-setting-digest-enabled">
+                  {{ t("dataQualitySettings.digestEnabled") }}
+                </Label>
+                <p class="text-sm text-muted-foreground">
+                  {{ t("dataQualitySettings.digestEnabledHint") }}
+                </p>
+              </div>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div class="space-y-2.5">
+                <Label for="dq-setting-digest-day">
+                  {{ t("dataQualitySettings.digestDay") }}
+                </Label>
+                <Select
+                  :model-value="String(form.weeklyDigest.dayOfWeek)"
+                  :disabled="digestDisabled"
+                  @update:model-value="setDigestDay"
+                >
+                  <SelectTrigger
+                    id="dq-setting-digest-day"
+                    class="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="option in digestDayOptions"
+                      :key="option.value"
+                      :value="String(option.value)"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <FormField
+                id="dq-setting-digest-time"
+                v-model="form.weeklyDigest.time"
+                type="time"
+                :disabled="digestDisabled"
+                :label="t('dataQualitySettings.digestTime')"
+                :hint="t('dataQualitySettings.digestTimeHint')"
+              />
+              <FormField
+                id="dq-setting-digest-timezone"
+                v-model="form.weeklyDigest.timezone"
+                :disabled="digestDisabled"
+                :label="t('dataQualitySettings.digestTimezone')"
+                :hint="t('dataQualitySettings.digestTimezoneHint')"
+                placeholder="Asia/Shanghai"
+              />
+            </div>
+
+            <p class="text-sm text-muted-foreground">
+              {{ t("dataQualitySettings.digestDeliveryHint") }}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>{{ t("dataQualitySettings.usageSection") }}</CardTitle>
             <CardDescription>
               {{ t("dataQualitySettings.usageSectionDescription") }}
@@ -397,10 +473,12 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import type { QualityLLMUsage } from "@/types/proto-es/v1/data_quality_service_pb";
+import { DayOfWeek } from "@/types/proto-es/v1/setting_service_pb";
 import { formatRowCount } from "@/utils/dataQuality";
 import type { ScheduleUnit } from "@/utils/dataQualityForm";
 import {
   type DataQualitySettingsForm,
+  DIGEST_WEEKDAYS,
   formToSetting,
   llmDisabled,
   settingsToForm,
@@ -454,6 +532,37 @@ function setLlmProfile(value: unknown) {
 
 function setScheduleUnit(value: unknown) {
   form.value.defaultSchedule.unit = String(value) as ScheduleUnit;
+}
+
+/** The digest's own fields mean nothing while the digest is off. */
+const digestDisabled = computed(
+  () => !canUpdate.value || !form.value.weeklyDigest.enabled
+);
+
+const digestDayOptions = computed(() => [
+  { value: DayOfWeek.MONDAY, label: t("dataQualitySettings.weekdayMonday") },
+  { value: DayOfWeek.TUESDAY, label: t("dataQualitySettings.weekdayTuesday") },
+  {
+    value: DayOfWeek.WEDNESDAY,
+    label: t("dataQualitySettings.weekdayWednesday"),
+  },
+  {
+    value: DayOfWeek.THURSDAY,
+    label: t("dataQualitySettings.weekdayThursday"),
+  },
+  { value: DayOfWeek.FRIDAY, label: t("dataQualitySettings.weekdayFriday") },
+  {
+    value: DayOfWeek.SATURDAY,
+    label: t("dataQualitySettings.weekdaySaturday"),
+  },
+  { value: DayOfWeek.SUNDAY, label: t("dataQualitySettings.weekdaySunday") },
+]);
+
+function setDigestDay(value: unknown) {
+  const day = Number(value);
+  if (DIGEST_WEEKDAYS.includes(day as DayOfWeek)) {
+    form.value.weeklyDigest.dayOfWeek = day as DayOfWeek;
+  }
 }
 
 async function load() {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -216,4 +217,153 @@ func TestNormalizeLanguageIsCaseInsensitive(t *testing.T) {
 
 	require.Equal(t, "zh-CN", NormalizeLanguage("zH-CN"))
 	require.Equal(t, "zh-CN", NormalizeLanguage("zh-Hant"))
+}
+
+func dataQualityDigestEvent(detail *storepb.DataQualityDigestDetail) *storepb.NotificationDeliveryEvent {
+	return &storepb.NotificationDeliveryEvent{
+		Type:     storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_DIGEST,
+		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING,
+		Detail:   &storepb.NotificationDeliveryEvent_DataQualityDigest{DataQualityDigest: detail},
+	}
+}
+
+func dataQualityDigestDetail() *storepb.DataQualityDigestDetail {
+	start := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
+	end := start.Add(7 * 24 * time.Hour)
+	return &storepb.DataQualityDigestDetail{
+		PeriodStart:         timestamppb.New(start),
+		PeriodEnd:           timestamppb.New(end),
+		Timezone:            "UTC",
+		TargetCount:         8,
+		RuleCount:           25,
+		ExecutionCount:      42,
+		PassedCount:         30,
+		WarnedCount:         4,
+		FailedCount:         6,
+		ErroredCount:        2,
+		NewIssueCount:       5,
+		RecoveredIssueCount: 3,
+		OpenIssueCount:      12,
+		OpenWarningCount:    7,
+		OpenErrorCount:      4,
+		OpenCriticalCount:   1,
+		Owners: []*storepb.DataQualityDigestOwner{
+			{Owner: "users/7", OwnerName: "Alice", OpenIssueCount: 6, FailingRuleCount: 4},
+			{Owner: "", OpenIssueCount: 3, FailingRuleCount: 2},
+		},
+		Targets: []*storepb.DataQualityDigestTarget{
+			{TargetPath: "prod/shop/public/orders", FailedExecutionCount: 4, ErroredExecutionCount: 1, OpenIssueCount: 3},
+		},
+	}
+}
+
+// The digest is a weekly summary: the period in the title, then the verdict
+// tally, the ledger's movement and the owners and targets worth looking at, and
+// a link to the overview whose numbers it repeats.
+func TestRenderDataQualityDigest(t *testing.T) {
+	t.Parallel()
+
+	en := Render("en-US", dataQualityDigestEvent(dataQualityDigestDetail()), "https://app.example.com/", time.Now())
+	require.Contains(t, en.Title, "Data quality weekly digest")
+	require.Contains(t, en.Title, "2026-10-20 ~ 2026-10-27")
+	require.Contains(t, en.Text, "Period: 2026-10-20 01:00 → 2026-10-27 01:00 (UTC)")
+	require.Contains(t, en.Text, "Executions: 42 completed · 30 passed · 4 warned · 6 failed · 2 errored")
+	require.Contains(t, en.Text, "Problems: 5 new · 3 recovered · 12 open (7 warning · 4 error · 1 critical)")
+	require.Contains(t, en.Text, "Coverage: 8 targets · 25 checks")
+	require.Contains(t, en.Text, "Top owners: Alice (6 open · 4 failing), unassigned (3 open · 2 failing)")
+	require.Contains(t, en.Text, "Top failing targets: prod/shop/public/orders (4 failed · 1 errored · 3 open)")
+	require.Equal(t, "https://app.example.com/data-quality", en.Link)
+
+	zh := Render("zh-CN", dataQualityDigestEvent(dataQualityDigestDetail()), "", time.Now())
+	require.Contains(t, zh.Title, "数据质量周报")
+	require.Contains(t, zh.Title, "2026-10-20 ~ 2026-10-27")
+	require.Contains(t, zh.Text, "周期：2026-10-20 01:00 → 2026-10-27 01:00（UTC）")
+	require.Contains(t, zh.Text, "执行：完成 42 项 · 通过 30 · 警告 4 · 失败 6 · 错误 2")
+	require.Contains(t, zh.Text, "问题：新增 5 · 恢复 3 · 未解决 12（警告 7 · 错误 4 · 严重 1）")
+	require.Contains(t, zh.Text, "覆盖：8 个目标 · 25 条规则")
+	require.Contains(t, zh.Text, "主要负责人：Alice（未解决 6 · 失败规则 4）、未指派（未解决 3 · 失败规则 2）")
+	require.Contains(t, zh.Text, "失败最多的目标：prod/shop/public/orders（失败 4 · 错误 1 · 未解决 3）")
+	require.Empty(t, zh.Link, "no external URL means no link")
+}
+
+// A digest with no period and no owners is still renderable: the totals carry the
+// summary, and the empty sections are left out rather than rendered as blanks.
+func TestRenderDataQualityDigestWithoutPeriodOrBreakdown(t *testing.T) {
+	t.Parallel()
+
+	rendered := Render("en-US", dataQualityDigestEvent(&storepb.DataQualityDigestDetail{
+		ExecutionCount: 3,
+		PassedCount:    3,
+	}), "", time.Now())
+	require.Equal(t, "Data quality weekly digest", rendered.Title)
+	require.Contains(t, rendered.Text, "Executions: 3 completed · 3 passed · 0 warned · 0 failed · 0 errored")
+	require.NotContains(t, rendered.Text, "Top owners")
+	require.NotContains(t, rendered.Text, "Top failing targets")
+}
+
+// The period label is written in the schedule's zone, not UTC: a UTC+13 morning
+// slot falls on the previous UTC day, so a UTC label would name the wrong dates.
+// The text window spells the half-open range out, with the zone it is in.
+func TestRenderDataQualityDigestUsesTheScheduleZone(t *testing.T) {
+	t.Parallel()
+
+	// Monday 2026-10-19 09:00 Pacific/Auckland (+13, DST) is Sunday 2026-10-18
+	// 20:00 UTC; the digest covers Monday to Monday local.
+	start := time.Date(2026, 10, 19, 9, 0, 0, 0, mustLoadLocation(t, "Pacific/Auckland"))
+	end := start.Add(7 * 24 * time.Hour)
+	detail := &storepb.DataQualityDigestDetail{
+		PeriodStart: timestamppb.New(start),
+		PeriodEnd:   timestamppb.New(end),
+		Timezone:    "Pacific/Auckland",
+	}
+
+	en := Render("en-US", dataQualityDigestEvent(detail), "", time.Now())
+	require.Contains(t, en.Title, "2026-10-19 ~ 2026-10-26", "the label names local days, not UTC days")
+	require.Contains(t, en.Text, "Period: 2026-10-19 09:00 → 2026-10-26 09:00 (Pacific/Auckland)")
+
+	zh := Render("zh-CN", dataQualityDigestEvent(detail), "", time.Now())
+	require.Contains(t, zh.Title, "2026-10-19 ~ 2026-10-26")
+	require.Contains(t, zh.Text, "周期：2026-10-19 09:00 → 2026-10-26 09:00（Pacific/Auckland）")
+}
+
+// An empty or unreadable zone falls back to UTC instead of dropping the period.
+func TestRenderDataQualityDigestFallsBackToUTC(t *testing.T) {
+	t.Parallel()
+
+	detail := dataQualityDigestDetail()
+	detail.Timezone = "Not/AZone"
+	rendered := Render("en-US", dataQualityDigestEvent(detail), "", time.Now())
+	require.Contains(t, rendered.Text, "Period: 2026-10-20 01:00 → 2026-10-27 01:00 (UTC)")
+
+	detail.Timezone = ""
+	rendered = Render("en-US", dataQualityDigestEvent(detail), "", time.Now())
+	require.Contains(t, rendered.Title, "2026-10-20 ~ 2026-10-27")
+	require.Contains(t, rendered.Text, "(UTC)")
+}
+
+func mustLoadLocation(t *testing.T, name string) *time.Location {
+	t.Helper()
+	location, err := time.LoadLocation(name)
+	require.NoError(t, err)
+	return location
+}
+
+// An owner whose display name is gone (a deleted account, or a row written before
+// names were stored) falls back to the id in the resource name, and the
+// unassigned bucket keeps its neutral label rather than printing an empty name.
+func TestRenderDataQualityDigestOwnerWithoutDisplayName(t *testing.T) {
+	t.Parallel()
+
+	rendered := Render("en-US", dataQualityDigestEvent(&storepb.DataQualityDigestDetail{
+		Owners: []*storepb.DataQualityDigestOwner{
+			{Owner: "users/9", OpenIssueCount: 2},
+			{OpenIssueCount: 1},
+		},
+	}), "", time.Now())
+	require.Contains(t, rendered.Text, "Top owners: 9 (2 open · 0 failing), unassigned (1 open · 0 failing)")
+
+	zh := Render("zh-CN", dataQualityDigestEvent(&storepb.DataQualityDigestDetail{
+		Owners: []*storepb.DataQualityDigestOwner{{Owner: "users/9", OpenIssueCount: 2}},
+	}), "", time.Now())
+	require.Contains(t, zh.Text, "主要负责人：9（未解决 2 · 失败规则 0）")
 }
