@@ -63,6 +63,47 @@ const metricsShutdownTimeout = 5 * time.Second
 // be long enough that it cannot be brute-forced offline.
 const minJWTSecretLength = 32
 
+// The API listener serves the SPA and ConnectRPC, and it accepts anonymous
+// requests (login, device login, SSO). These bounds are what keeps a client
+// that opens a connection and then trickles its request from holding a
+// goroutine and a file descriptor forever: the body limit only caps the size of
+// a request, not how long the client may take to send it.
+//
+// WriteTimeout is deliberately zero. The notification subscription and the
+// streaming Explain SQL RPC are responses that legitimately stay open for
+// minutes, and a write deadline would cut them; a dead peer is bounded by the
+// read side and by IdleTimeout instead. The dedicated metrics listener has its
+// own complete set of timeouts in startMetricsServer, since it serves one
+// bounded scrape request.
+const (
+	httpReadHeaderTimeout = 5 * time.Second
+	httpReadTimeout       = 30 * time.Second
+	httpIdleTimeout       = 120 * time.Second
+	// MaxHeaderBytes stays at Go's 1 MiB default: a caller may legitimately send
+	// a long User-Agent, which the audit layer bounds and truncates rather than
+	// refusing the request. The read deadlines above, not the header ceiling, are
+	// what bound a slow client.
+	httpMaxHeaderBytes = 1 << 20
+)
+
+// configureHTTPServerTimeouts applies the API listener's connection bounds.
+func configureHTTPServerTimeouts(e *echo.Echo) {
+	e.Server.ReadHeaderTimeout = httpReadHeaderTimeout
+	e.Server.ReadTimeout = httpReadTimeout
+	e.Server.IdleTimeout = httpIdleTimeout
+	e.Server.MaxHeaderBytes = httpMaxHeaderBytes
+	// No WriteTimeout: see the comment on the constants above.
+	e.Server.WriteTimeout = 0
+}
+
+// newEchoServer builds the API listener with its connection bounds applied, so
+// a server assembled here cannot inadvertently serve without them.
+func newEchoServer() *echo.Echo {
+	e := echo.New()
+	configureHTTPServerTimeouts(e)
+	return e
+}
+
 type Server struct {
 	runnerWG        sync.WaitGroup
 	runnerCtx       context.Context
@@ -204,7 +245,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	}
 
 	// Configure echo server.
-	s.echoServer = echo.New()
+	s.echoServer = newEchoServer()
 
 	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.metrics); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")

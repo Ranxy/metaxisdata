@@ -461,9 +461,31 @@ func (r *Runner) runScheduledWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case group := <-r.scheduled:
-			r.runScheduledGroup(ctx, group)
+			r.guardScheduledGroup(group.instanceResourceID, func() {
+				r.runScheduledGroup(ctx, group)
+			})
 		}
 	}
+}
+
+// guardScheduledGroup keeps a panic in one instance's scheduled batch from
+// escaping the worker goroutine. The workers are started outside runner.Go, so
+// they sit outside the panic boundary that protects the process; an uncaught
+// panic here would take down the API and every other runner with it. The
+// group's own deferred release still runs while the panic unwinds, and the
+// remaining targets stay due for a later tick, so the worker can continue with
+// the next group.
+func (r *Runner) guardScheduledGroup(instanceResourceID string, run func()) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			r.metrics.RunnerPanicked(r.Name())
+			slog.Error("scheduled quality batch panicked",
+				slog.String("instance", instanceResourceID),
+				slog.Any("panic", recovered),
+				log.Stack("panic-stack"))
+		}
+	}()
+	run()
 }
 
 // runScheduledGroup executes one instance's plans in order and then releases the
@@ -1246,7 +1268,7 @@ func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecu
 				slog.Any("panic", recovered),
 				log.Stack("panic-stack"))
 			execution = &ruleExecution{
-				result: failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
+				result: failureExecutionMessage(planned, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_ERROR,
 					dataquality.ErrCodeExecution, fmt.Sprintf("quality rule execution panicked: %v", recovered)),
 			}
 		}
@@ -1261,7 +1283,7 @@ func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecu
 func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters) *ruleExecution {
 	if !r.acquireInflight(planned.RuleID) {
 		return &ruleExecution{
-			result: failureExecutionMessage(planned, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
+			result: failureExecutionMessage(planned, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
 				"", "another batch is already executing this rule"),
 		}
 	}
@@ -1276,7 +1298,7 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 			code = ""
 		}
 		return &ruleExecution{
-			result: failureExecutionMessage(planned, startedAt, status, code, err.Error()),
+			result: failureExecutionMessage(planned, nil, startedAt, status, code, err.Error()),
 			head:   head,
 		}
 	}
@@ -1285,7 +1307,7 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	// carried so the row still names the definition and target it was about.
 	fail := func(status storepb.QualityStatus, code, message string) *ruleExecution {
 		return &ruleExecution{
-			result:   failureExecutionMessage(planned, startedAt, status, code, message),
+			result:   failureExecutionMessage(planned, snapshot, startedAt, status, code, message),
 			head:     head,
 			snapshot: snapshot,
 		}
@@ -1596,10 +1618,13 @@ func buildExecutionMessage(planned *store.QualityExecutionMessage, outcome *rule
 }
 
 // failureExecutionMessage records an execution that could not be judged. ERROR and
-// SKIPPED verdicts carry no observation, and the thresholds snapshot is nil
-// because no verdict was reached.
-func failureExecutionMessage(planned *store.QualityExecutionMessage, startedAt time.Time, status storepb.QualityStatus, code, message string) *store.QualityExecutionMessage {
+// SKIPPED verdicts carry no observation, and their thresholds snapshot is nil
+// because no verdict was reached. The snapshot is the definition the execution
+// actually read, when one was read: a failure after loading it must name that
+// revision and target, not the revision the due scan planned minutes earlier.
+func failureExecutionMessage(planned *store.QualityExecutionMessage, snapshot *dataquality.RuleSnapshot, startedAt time.Time, status storepb.QualityStatus, code, message string) *store.QualityExecutionMessage {
 	return buildExecutionMessage(planned, &ruleExecutionOutcome{
+		snapshot:     snapshot,
 		startedAt:    startedAt,
 		finishedAt:   time.Now().UTC(),
 		state:        dataquality.ResultState{Status: status},

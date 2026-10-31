@@ -95,7 +95,12 @@ test-integration-mysql:
 test-integration-data-quality:
 	go test -v -count=1 -tags=integration -run '^TestDataQualityJourneyMySQLRealServerIntegration$' ./backend/test/integration/runner
 
-# The integration gate: all real-server scenarios plus the migrator paths.
+# The integration gate: every real-server scenario in this package plus the
+# migrator paths. Selection is by package, not by test-name substring: a test
+# whose name does not match the old 'RealServerIntegration' filter used to be
+# skipped silently, and renaming one is not a contract. -race matters here more
+# than in the hermetic suite: the refresh-token rotation, grant revocation and
+# limiter paths only run against a real server.
 test-integration:
-	go test -v -count=1 -tags=integration -run 'RealServerIntegration' ./backend/test/integration/runner
+	go test -v -count=1 -tags=integration -race ./backend/test/integration/runner
 	go test -count=1 -tags=integration ./backend/migrator/...

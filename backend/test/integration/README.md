@@ -26,7 +26,7 @@ make test-integration-mysql
 or:
 
 ```bash
-go test -count=1 -tags=integration -run 'RealServerIntegration' ./backend/test/integration/runner
+go test -count=1 -tags=integration ./backend/test/integration/runner
 ```
 
 ### External service mode
