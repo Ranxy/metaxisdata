@@ -20,6 +20,15 @@ import (
 const notificationDeliveryColumns = `id, event_id, channel_id, state,
 	attempts, next_attempt_at, last_error, payload, created_at, sent_at, quiet_deferred`
 
+// notificationDeliveryColumnsForClaim is notificationDeliveryColumns qualified
+// with the claim statement's UPDATE target alias. The qualification is
+// load-bearing: the claim's FROM also holds the `due` CTE, which has its own
+// `id` column, so an unqualified `id` in RETURNING is ambiguous to PostgreSQL
+// (SQLSTATE 42702) and the whole claim fails. Keep the column order identical to
+// notificationDeliveryColumns; scanNotificationDelivery depends on it.
+const notificationDeliveryColumnsForClaim = `d.id, d.event_id, d.channel_id, d.state,
+	d.attempts, d.next_attempt_at, d.last_error, d.payload, d.created_at, d.sent_at, d.quiet_deferred`
+
 // NotificationDeliveryMessage is one queued outbound delivery.
 type NotificationDeliveryMessage struct {
 	ID          int64
@@ -180,6 +189,21 @@ func (s *Store) ClaimNotificationDeliveries(ctx context.Context, limit int, leas
 	return messages, nil
 }
 
+// finishNotificationDeliveryQuery writes the terminal state of one attempt. The
+// state is compared in a CASE to stamp sent_at; the ::int4 casts give that
+// comparison a known operand type. Without them the assignment context and the
+// equality operator settle $2's type independently and PostgreSQL rejects the
+// statement with SQLSTATE 42P08, which used to leave every delivered row SENDING
+// so the dispatcher re-posted it after its lease.
+const finishNotificationDeliveryQuery = `
+	UPDATE notification_delivery
+	SET state = $2,
+	    last_error = $3,
+	    next_attempt_at = $4,
+	    sent_at = CASE WHEN $2::int4 = $5::int4 THEN NOW() ELSE NULL END,
+	    quiet_deferred = FALSE
+	WHERE id = $1`
+
 // FinishNotificationDelivery records the outcome of one attempt. SENT is
 // terminal; a failed attempt goes back to PENDING with its next attempt time or
 // becomes DEAD when the caller has exhausted the budget.
@@ -187,17 +211,9 @@ func (s *Store) FinishNotificationDelivery(ctx context.Context, id int64, state 
 	if id <= 0 {
 		return common.Errorf(common.Invalid, "a notification delivery id is required")
 	}
-	const query = `
-		UPDATE notification_delivery
-		SET state = $2,
-		    last_error = $3,
-		    next_attempt_at = $4,
-		    sent_at = CASE WHEN $2 = $5 THEN NOW() ELSE NULL END,
-		    quiet_deferred = FALSE
-		WHERE id = $1`
-	_, err := s.GetDB().ExecContext(ctx, query,
-		id, int16(state), lastError, nextAttempt,
-		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT),
+	_, err := s.GetDB().ExecContext(ctx, finishNotificationDeliveryQuery,
+		id, int32(state), lastError, nextAttempt,
+		int32(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT),
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to finish the notification delivery")
@@ -384,7 +400,7 @@ func buildClaimNotificationDeliveriesQuery() string {
 		    next_attempt_at = NOW() + ($4::int4 * INTERVAL '1 second')
 		FROM due
 		WHERE d.id = due.id
-		RETURNING ` + notificationDeliveryColumns
+		RETURNING ` + notificationDeliveryColumnsForClaim
 }
 
 // buildListNotificationDeliveriesQuery returns the listing statement for the
