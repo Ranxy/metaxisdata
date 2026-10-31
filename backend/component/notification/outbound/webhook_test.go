@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,4 +145,43 @@ func TestValidateChannel(t *testing.T) {
 	}
 	require.Error(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com/hook"}))
 	require.NoError(t, ValidateChannel(signed, &storepb.NotificationChannelSecret{WebhookUrl: "https://example.com/hook", WebhookSigningSecret: "s3cret"}))
+}
+
+// Redirects are not followed: a 307 would re-POST the signed body to the
+// endpoint's chosen host, and a 301/302 would silently downgrade the POST to a
+// GET with the body dropped.
+func TestWebhookDoesNotFollowRedirects(t *testing.T) {
+	t.Parallel()
+
+	var targetHits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	for _, status := range []int{http.StatusMovedPermanently, http.StatusTemporaryRedirect} {
+		redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, target.URL+"/stolen", status)
+		}))
+		_, err := NewWebhook(redirect.URL, "secret", true).Post(context.Background(), testMessage())
+		redirect.Close()
+		require.Error(t, err)
+	}
+	require.Zero(t, targetHits, "no redirect target may be contacted")
+}
+
+// The transport quotes the parsed URL, so an uppercase scheme must still be
+// sanitized even though it does not match the stored string byte for byte.
+func TestWebhookSanitizesNormalizedEndpoint(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	endpoint := strings.ToUpper("http://") + strings.TrimPrefix(server.URL, "http://") + "/robot?access_token=verysecret"
+	server.Close()
+
+	_, err := NewWebhook(endpoint, "", false).Post(context.Background(), testMessage())
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "verysecret")
+	require.NotContains(t, err.Error(), "access_token")
 }

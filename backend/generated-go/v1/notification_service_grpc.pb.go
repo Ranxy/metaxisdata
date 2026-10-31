@@ -41,16 +41,18 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// NotificationService serves the caller's own in-app messages: the outcome of a
-// sync operation they asked for, and the ingestion failures a workspace
-// administrator needs to see.
+// NotificationService serves the caller's own in-app messages — the outcome of
+// a sync operation they asked for, and the ingestion failures a workspace
+// administrator needs to see — and the workspace's outbound delivery channels,
+// which administrators configure.
 //
-// No method here carries a (metaxisdata.v1.permission) annotation, and none is
-// reachable without credentials. An inbox belongs to one principal, which the
-// workspace-scoped IAM catalog cannot express: every handler therefore scopes
-// its query by the authenticated caller's id, the same way UserService's
-// self-service paths do. Gating these methods on a permission instead would
-// lock a custom role out of its own messages.
+// The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+// reachable without credentials: an inbox belongs to one principal, which the
+// workspace-scoped IAM catalog cannot express, so every handler scopes its query
+// by the authenticated caller's id, the same way UserService's self-service
+// paths do. The outbound methods are workspace configuration and carry the
+// settings permissions: reads use settings.get, writes, the test send and the
+// delivery retry use settings.update.
 type NotificationServiceClient interface {
 	// List the caller's notifications, newest first.
 	ListNotifications(ctx context.Context, in *ListNotificationsRequest, opts ...grpc.CallOption) (*ListNotificationsResponse, error)
@@ -77,7 +79,9 @@ type NotificationServiceClient interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(ctx context.Context, in *SubscribeNotificationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeNotificationsResponse], error)
-	// List the outbound channels administrators have configured.
+	// List the outbound channels administrators have configured. The list is not
+	// paginated: a workspace configures a handful of destinations, and the delivery
+	// path reads the whole set anyway.
 	ListNotificationChannels(ctx context.Context, in *ListNotificationChannelsRequest, opts ...grpc.CallOption) (*ListNotificationChannelsResponse, error)
 	// Read one outbound channel. The credential is never returned.
 	GetNotificationChannel(ctx context.Context, in *GetNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error)
@@ -90,7 +94,9 @@ type NotificationServiceClient interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(ctx context.Context, in *DeleteNotificationChannelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. Nothing is written to the ledger or queued.
+	// answered. It queues no delivery and is not audited: it is a diagnostic probe
+	// that changes nothing, and the endpoint's answer is third-party text that does
+	// not belong in the permanent ledger.
 	TestNotificationChannel(ctx context.Context, in *TestNotificationChannelRequest, opts ...grpc.CallOption) (*TestNotificationChannelResponse, error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.
@@ -271,16 +277,18 @@ func (c *notificationServiceClient) RetryNotificationDelivery(ctx context.Contex
 // All implementations must embed UnimplementedNotificationServiceServer
 // for forward compatibility.
 //
-// NotificationService serves the caller's own in-app messages: the outcome of a
-// sync operation they asked for, and the ingestion failures a workspace
-// administrator needs to see.
+// NotificationService serves the caller's own in-app messages — the outcome of
+// a sync operation they asked for, and the ingestion failures a workspace
+// administrator needs to see — and the workspace's outbound delivery channels,
+// which administrators configure.
 //
-// No method here carries a (metaxisdata.v1.permission) annotation, and none is
-// reachable without credentials. An inbox belongs to one principal, which the
-// workspace-scoped IAM catalog cannot express: every handler therefore scopes
-// its query by the authenticated caller's id, the same way UserService's
-// self-service paths do. Gating these methods on a permission instead would
-// lock a custom role out of its own messages.
+// The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+// reachable without credentials: an inbox belongs to one principal, which the
+// workspace-scoped IAM catalog cannot express, so every handler scopes its query
+// by the authenticated caller's id, the same way UserService's self-service
+// paths do. The outbound methods are workspace configuration and carry the
+// settings permissions: reads use settings.get, writes, the test send and the
+// delivery retry use settings.update.
 type NotificationServiceServer interface {
 	// List the caller's notifications, newest first.
 	ListNotifications(context.Context, *ListNotificationsRequest) (*ListNotificationsResponse, error)
@@ -307,7 +315,9 @@ type NotificationServiceServer interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(*SubscribeNotificationsRequest, grpc.ServerStreamingServer[SubscribeNotificationsResponse]) error
-	// List the outbound channels administrators have configured.
+	// List the outbound channels administrators have configured. The list is not
+	// paginated: a workspace configures a handful of destinations, and the delivery
+	// path reads the whole set anyway.
 	ListNotificationChannels(context.Context, *ListNotificationChannelsRequest) (*ListNotificationChannelsResponse, error)
 	// Read one outbound channel. The credential is never returned.
 	GetNotificationChannel(context.Context, *GetNotificationChannelRequest) (*NotificationChannel, error)
@@ -320,7 +330,9 @@ type NotificationServiceServer interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(context.Context, *DeleteNotificationChannelRequest) (*emptypb.Empty, error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. Nothing is written to the ledger or queued.
+	// answered. It queues no delivery and is not audited: it is a diagnostic probe
+	// that changes nothing, and the endpoint's answer is third-party text that does
+	// not belong in the permanent ledger.
 	TestNotificationChannel(context.Context, *TestNotificationChannelRequest) (*TestNotificationChannelResponse, error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.

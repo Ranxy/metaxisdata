@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -65,7 +66,7 @@ func NewReceiver(channel *storepb.NotificationChannel, secret *storepb.Notificat
 // NormalizeLanguage reduces a BCP-47 tag to the catalog the renderer has: the
 // Chinese catalog for anything whose primary tag is zh, English otherwise.
 func NormalizeLanguage(language string) string {
-	if len(language) >= 2 && (language[:2] == "zh" || language[:2] == "ZH") {
+	if len(language) >= 2 && strings.EqualFold(language[:2], "zh") {
 		return "zh-CN"
 	}
 	return "en-US"

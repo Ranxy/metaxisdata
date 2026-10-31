@@ -8689,8 +8689,8 @@ KeepAlive is the notification stream&#39;s heartbeat. It carries no data.
 | parent | [string](#string) |  | Format: workspaces/{workspace} |
 | channel | [string](#string) |  | Optional channel filter. Format: workspaces/{workspace}/notificationChannels/{notification_channel} |
 | state | [NotificationDeliveryState](#metaxisdata-v1-NotificationDeliveryState) |  |  |
-| page_size | [int32](#int32) |  |  |
-| page_token | [string](#string) |  |  |
+| page_size | [int32](#int32) |  | Default 50, maximum 1000. |
+| page_token | [string](#string) |  | The token from the previous response; a follow-up keeps the page size the token was issued with when page_size is unset. |
 
 
 
@@ -8874,7 +8874,7 @@ channel. A failing event fans out to as many deliveries as channels it matched.
 | attempts | [int32](#int32) |  | How many automatic attempts were made. |
 | last_error | [string](#string) |  | Why the last attempt failed. Empty unless it did. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| next_attempt_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the next automatic attempt is due. Unset when the delivery is terminal. |
+| next_attempt_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the next automatic attempt is due. Set while the delivery is PENDING or SENDING (where it is the lease deadline); unset for SENT and DEAD. |
 | sent_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When it was delivered. Unset unless it was. |
 
 
@@ -9195,16 +9195,18 @@ SyncTrigger is what started the sync operation a notification reports.
 <a name="metaxisdata-v1-NotificationService"></a>
 
 ### NotificationService
-NotificationService serves the caller&#39;s own in-app messages: the outcome of a
-sync operation they asked for, and the ingestion failures a workspace
-administrator needs to see.
+NotificationService serves the caller&#39;s own in-app messages — the outcome of
+a sync operation they asked for, and the ingestion failures a workspace
+administrator needs to see — and the workspace&#39;s outbound delivery channels,
+which administrators configure.
 
-No method here carries a (metaxisdata.v1.permission) annotation, and none is
-reachable without credentials. An inbox belongs to one principal, which the
-workspace-scoped IAM catalog cannot express: every handler therefore scopes
-its query by the authenticated caller&#39;s id, the same way UserService&#39;s
-self-service paths do. Gating these methods on a permission instead would
-lock a custom role out of its own messages.
+The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+reachable without credentials: an inbox belongs to one principal, which the
+workspace-scoped IAM catalog cannot express, so every handler scopes its query
+by the authenticated caller&#39;s id, the same way UserService&#39;s self-service
+paths do. The outbound methods are workspace configuration and carry the
+settings permissions: reads use settings.get, writes, the test send and the
+delivery retry use settings.update.
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
@@ -9217,12 +9219,12 @@ lock a custom role out of its own messages.
 | SubscribeNotifications | [SubscribeNotificationsRequest](#metaxisdata-v1-SubscribeNotificationsRequest) | [SubscribeNotificationsResponse](#metaxisdata-v1-SubscribeNotificationsResponse) stream | Stream the caller&#39;s notifications as they are written, until the connection ends or the server ends it.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one — it answers &#34;streaming calls are not yet supported in the in-process transport&#34;, as the generated ExplainSQL gateway route does. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
-| ListNotificationChannels | [ListNotificationChannelsRequest](#metaxisdata-v1-ListNotificationChannelsRequest) | [ListNotificationChannelsResponse](#metaxisdata-v1-ListNotificationChannelsResponse) | List the outbound channels administrators have configured. |
+| ListNotificationChannels | [ListNotificationChannelsRequest](#metaxisdata-v1-ListNotificationChannelsRequest) | [ListNotificationChannelsResponse](#metaxisdata-v1-ListNotificationChannelsResponse) | List the outbound channels administrators have configured. The list is not paginated: a workspace configures a handful of destinations, and the delivery path reads the whole set anyway. |
 | GetNotificationChannel | [GetNotificationChannelRequest](#metaxisdata-v1-GetNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Read one outbound channel. The credential is never returned. |
 | CreateNotificationChannel | [CreateNotificationChannelRequest](#metaxisdata-v1-CreateNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Create one outbound channel. The secret is write-only: it is encrypted before it is stored and is never returned. |
 | UpdateNotificationChannel | [UpdateNotificationChannelRequest](#metaxisdata-v1-UpdateNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Update one outbound channel. An omitted secret keeps the stored one; a present secret replaces it. |
 | DeleteNotificationChannel | [DeleteNotificationChannelRequest](#metaxisdata-v1-DeleteNotificationChannelRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one outbound channel and the deliveries still queued for it. |
-| TestNotificationChannel | [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest) | [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse) | Post a test message through one stored channel and report what the endpoint answered. Nothing is written to the ledger or queued. |
+| TestNotificationChannel | [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest) | [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse) | Post a test message through one stored channel and report what the endpoint answered. It queues no delivery and is not audited: it is a diagnostic probe that changes nothing, and the endpoint&#39;s answer is third-party text that does not belong in the permanent ledger. |
 | ListNotificationDeliveries | [ListNotificationDeliveriesRequest](#metaxisdata-v1-ListNotificationDeliveriesRequest) | [ListNotificationDeliveriesResponse](#metaxisdata-v1-ListNotificationDeliveriesResponse) | List outbound deliveries, newest first, for administrators to diagnose a channel. |
 | RetryNotificationDelivery | [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest) | [NotificationDelivery](#metaxisdata-v1-NotificationDelivery) | Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered or waiting one is left as it is. |
 

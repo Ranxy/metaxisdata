@@ -85,7 +85,7 @@
                     <Button
                       variant="ghost"
                       size="sm"
-                      :disabled="testing === channel.name"
+                      :disabled="!canUpdate || testing === channel.name"
                       @click="testChannel(channel)"
                     >
                       <Loader2
@@ -150,6 +150,9 @@
               <SelectItem value="pending">
                 {{ t("notificationSettings.statePending") }}
               </SelectItem>
+              <SelectItem value="sending">
+                {{ t("notificationSettings.stateSending") }}
+              </SelectItem>
               <SelectItem value="sent">
                 {{ t("notificationSettings.stateSent") }}
               </SelectItem>
@@ -190,6 +193,7 @@
                 <TableHead>{{ t("notificationSettings.event") }}</TableHead>
                 <TableHead>{{ t("notificationSettings.status") }}</TableHead>
                 <TableHead>{{ t("notificationSettings.attempts") }}</TableHead>
+                <TableHead>{{ t("notificationSettings.nextAttempt") }}</TableHead>
                 <TableHead>{{ t("notificationSettings.lastError") }}</TableHead>
                 <TableHead class="text-right">
                   {{ t("common.actions") }}
@@ -220,6 +224,13 @@
                 </TableCell>
                 <TableCell class="text-xs">
                   {{ delivery.attempts }}
+                </TableCell>
+                <TableCell class="whitespace-nowrap text-xs text-muted-foreground">
+                  {{
+                    delivery.nextAttemptTime
+                      ? formatDateTime(delivery.nextAttemptTime, locale)
+                      : "—"
+                  }}
                 </TableCell>
                 <TableCell
                   class="max-w-[22rem] truncate text-xs text-muted-foreground"
@@ -280,31 +291,23 @@
 
         <div class="space-y-4">
           <FormField
+            v-model="form.displayName"
             :label="t('notificationSettings.name')"
+            :placeholder="t('notificationSettings.namePlaceholder')"
             required
-          >
-            <Input
-              v-model="form.displayName"
-              :placeholder="t('notificationSettings.namePlaceholder')"
-              maxlength="100"
-            />
-          </FormField>
+          />
 
           <FormField
+            v-model="form.endpoint"
             :label="t('notificationSettings.endpoint')"
-            :description="
+            placeholder="https://..."
+            :hint="
               editingChannel
                 ? t('notificationSettings.endpointKeepHint')
                 : t('notificationSettings.endpointHint')
             "
-            required
-          >
-            <Input
-              v-model="form.endpoint"
-              placeholder="https://..."
-              autocomplete="off"
-            />
-          </FormField>
+            :required="!editingChannel"
+          />
 
           <div class="flex items-center gap-2">
             <Checkbox
@@ -317,19 +320,15 @@
           </div>
           <FormField
             v-if="form.sign"
+            v-model="form.signingSecret"
+            type="password"
             :label="t('notificationSettings.signingSecret')"
-            :description="
+            :hint="
               editingChannel
                 ? t('notificationSettings.secretKeepHint')
                 : t('notificationSettings.signingSecretHint')
             "
-          >
-            <Input
-              v-model="form.signingSecret"
-              type="password"
-              autocomplete="new-password"
-            />
-          </FormField>
+          />
 
           <div class="grid gap-4 sm:grid-cols-2">
             <FormField :label="t('notificationSettings.minSeverity')">
@@ -467,7 +466,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import FormField from "@/components/ui/form-field/FormField.vue";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -522,7 +520,9 @@ const testing = ref("");
 const deliveriesLoading = ref(false);
 const deliveries = ref<NotificationDelivery[]>([]);
 const nextDeliveryToken = ref("");
-const deliveryFilter = ref<"all" | "pending" | "dead" | "sent">("all");
+const deliveryFilter = ref<"all" | "pending" | "sending" | "dead" | "sent">(
+  "all"
+);
 
 const dialogOpen = ref(false);
 const saving = ref(false);
@@ -584,6 +584,8 @@ function deliveryStateForFilter(): NotificationDeliveryState {
       return NotificationDeliveryState.PENDING;
     case "dead":
       return NotificationDeliveryState.DEAD;
+    case "sending":
+      return NotificationDeliveryState.SENDING;
     case "sent":
       return NotificationDeliveryState.SENT;
     default:
@@ -813,11 +815,15 @@ function channelKindLabel(kind: NotificationChannelKind): string {
   }
 }
 
+const listSeparator = computed(() => t("common.listSeparator"));
+
 function subscriptionLabel(channel: NotificationChannel): string {
   const types =
     channel.eventTypes.length === 0
       ? t("notificationSettings.allEvents")
-      : channel.eventTypes.map((value) => eventTypeLabel(value)).join("、");
+      : channel.eventTypes
+          .map((value) => eventTypeLabel(value))
+          .join(listSeparator.value);
   return `${types} · ${severityLabel(channel.minSeverity)}`;
 }
 

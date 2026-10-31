@@ -4232,7 +4232,10 @@ paths:
         get:
             tags:
                 - NotificationService
-            description: List the outbound channels administrators have configured.
+            description: |-
+                List the outbound channels administrators have configured. The list is not
+                 paginated: a workspace configures a handful of destinations, and the delivery
+                 path reads the whole set anyway.
             operationId: NotificationService_ListNotificationChannels
             parameters:
                 - name: workspace
@@ -4421,7 +4424,9 @@ paths:
                 - NotificationService
             description: |-
                 Post a test message through one stored channel and report what the endpoint
-                 answered. Nothing is written to the ledger or queued.
+                 answered. It queues no delivery and is not audited: it is a diagnostic probe
+                 that changes nothing, and the endpoint's answer is third-party text that does
+                 not belong in the permanent ledger.
             operationId: NotificationService_TestNotificationChannel
             parameters:
                 - name: workspace
@@ -4490,11 +4495,15 @@ paths:
                     format: enum
                 - name: pageSize
                   in: query
+                  description: Default 50, maximum 1000.
                   schema:
                     type: integer
                     format: int32
                 - name: pageToken
                   in: query
+                  description: |-
+                    The token from the previous response; a follow-up keeps the page size the
+                     token was issued with when page_size is unset.
                   schema:
                     type: string
             responses:
@@ -10669,7 +10678,9 @@ components:
                 nextAttemptTime:
                     readOnly: true
                     type: string
-                    description: When the next automatic attempt is due. Unset when the delivery is terminal.
+                    description: |-
+                        When the next automatic attempt is due. Set while the delivery is PENDING or
+                         SENDING (where it is the lease deadline); unset for SENT and DEAD.
                     format: date-time
                 sentTime:
                     readOnly: true
@@ -14351,16 +14362,18 @@ tags:
     - name: LineageService
     - name: NotificationService
       description: |-
-        NotificationService serves the caller's own in-app messages: the outcome of a
-         sync operation they asked for, and the ingestion failures a workspace
-         administrator needs to see.
+        NotificationService serves the caller's own in-app messages — the outcome of
+         a sync operation they asked for, and the ingestion failures a workspace
+         administrator needs to see — and the workspace's outbound delivery channels,
+         which administrators configure.
 
-         No method here carries a (metaxisdata.v1.permission) annotation, and none is
-         reachable without credentials. An inbox belongs to one principal, which the
-         workspace-scoped IAM catalog cannot express: every handler therefore scopes
-         its query by the authenticated caller's id, the same way UserService's
-         self-service paths do. Gating these methods on a permission instead would
-         lock a custom role out of its own messages.
+         The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+         reachable without credentials: an inbox belongs to one principal, which the
+         workspace-scoped IAM catalog cannot express, so every handler scopes its query
+         by the authenticated caller's id, the same way UserService's self-service
+         paths do. The outbound methods are workspace configuration and carry the
+         settings permissions: reads use settings.get, writes, the test send and the
+         delivery retry use settings.update.
     - name: OAuthService
       description: |-
         OAuthService serves the browser-facing half of the OAuth 2.1 authorization

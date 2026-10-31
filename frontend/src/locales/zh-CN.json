@@ -213,6 +213,7 @@
       "none": "未找到筛选条件",
       "search": "搜索筛选条件..."
     },
+    "listSeparator": "、",
     "loading": "加载中...",
     "moreActions": "更多操作",
     "next": "下一页",
@@ -2475,6 +2476,7 @@
     "namePlaceholder": "数据质量值班群",
     "nameRequired": "请填写渠道名称",
     "newChannel": "新建渠道",
+    "nextAttempt": "下次尝试",
     "noDeliveriesDescription": "渠道订阅事件之后，投递记录会出现在这里。",
     "noDeliveriesTitle": "暂无投递记录",
     "pageDescription": "把工作区通知发送到外部目的地：当前支持 Webhook，后续支持邮件与即时消息。",

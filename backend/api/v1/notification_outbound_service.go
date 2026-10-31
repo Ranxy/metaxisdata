@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -105,12 +106,10 @@ func (s *NotificationService) UpdateNotificationChannel(ctx context.Context, req
 		return nil, connect.NewError(connect.CodeNotFound, errors.Errorf("notification channel %q not found", req.Msg.GetChannel().GetName()))
 	}
 
-	payload, err := storeNotificationChannelPayload(req.Msg.GetChannel())
+	payload, err := mergeNotificationChannelUpdate(req.Msg.GetChannel(), req.Msg.GetUpdateMask().GetPaths(), existing.Payload)
 	if err != nil {
 		return nil, err
 	}
-	payload.Kind = existing.Payload.GetKind()
-	payload = applyNotificationChannelUpdateMask(payload, req.Msg.GetUpdateMask().GetPaths(), existing.Payload)
 
 	// The write-only secret follows the same rule as the payload: a part the
 	// request leaves empty keeps what is stored, so rotating only the signing
@@ -318,46 +317,112 @@ func (s *NotificationService) notificationChannelsByID(ctx context.Context) map[
 	return byID
 }
 
-// storeNotificationChannelPayload converts the write shape into the stored one.
+// storeNotificationChannelPayload converts a create request into the stored
+// shape. It validates the fields it is authoritative for: the credential is
+// checked separately because it is write-only and its validation needs the
+// stored value on update.
 func storeNotificationChannelPayload(channel *v1pb.NotificationChannel) (*storepb.NotificationChannel, error) {
 	if channel == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a notification channel is required"))
 	}
-	displayName := strings.TrimSpace(channel.GetDisplayName())
-	if displayName == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a channel display name is required"))
-	}
-	if len(displayName) > 100 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the channel display name is longer than 100 characters"))
-	}
-	language := strings.TrimSpace(channel.GetLanguage())
-	if len(language) > 35 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the channel language is not a BCP-47 tag"))
-	}
-
 	payload := &storepb.NotificationChannel{
-		DisplayName: displayName,
+		DisplayName: strings.TrimSpace(channel.GetDisplayName()),
 		Kind:        storepb.NotificationChannelKind(channel.GetKind()),
 		Enabled:     channel.GetEnabled(),
 		MinSeverity: storepb.NotificationSeverity(channel.GetMinSeverity()),
-		Language:    language,
+		Language:    strings.TrimSpace(channel.GetLanguage()),
 		Config:      &storepb.NotificationChannelConfig{},
 	}
+	payload.EventTypes = notificationEventTypes(channel.GetEventTypes())
 	if webhook := channel.GetConfig().GetWebhook(); webhook != nil {
-		payload.Config.Config = &storepb.NotificationChannelConfig_Webhook{
-			Webhook: &storepb.WebhookChannelConfig{Sign: webhook.GetSign()},
-		}
+		payload.Config.Config = &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: webhook.GetSign()}}
 	} else {
 		payload.Config.Config = &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{}}
 	}
-	for _, eventType := range channel.GetEventTypes() {
+	if err := validateNotificationChannelPayload(payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+// mergeNotificationChannelUpdate applies the update mask to the stored payload.
+// An empty mask is a full update; otherwise only the named fields are taken from
+// the request, so a masked update does not have to repeat the whole channel.
+func mergeNotificationChannelUpdate(update *v1pb.NotificationChannel, paths []string, existing *storepb.NotificationChannel) (*storepb.NotificationChannel, error) {
+	if update == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a notification channel is required"))
+	}
+	if len(paths) == 0 {
+		return storeNotificationChannelPayload(update)
+	}
+	if existing == nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the notification channel no longer exists"))
+	}
+	merged, ok := proto.Clone(existing).(*storepb.NotificationChannel)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to clone the notification channel"))
+	}
+	for _, path := range paths {
+		switch path {
+		case "display_name", "displayName":
+			merged.DisplayName = strings.TrimSpace(update.GetDisplayName())
+		case "enabled":
+			merged.Enabled = update.GetEnabled()
+		case "event_types", "eventTypes":
+			merged.EventTypes = notificationEventTypes(update.GetEventTypes())
+		case "min_severity", "minSeverity":
+			merged.MinSeverity = storepb.NotificationSeverity(update.GetMinSeverity())
+		case "language":
+			merged.Language = strings.TrimSpace(update.GetLanguage())
+		case "config":
+			if webhook := update.GetConfig().GetWebhook(); webhook != nil {
+				merged.Config = &storepb.NotificationChannelConfig{
+					Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: webhook.GetSign()}},
+				}
+			}
+		case "kind":
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the notification channel kind is immutable"))
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update path %q", path))
+		}
+	}
+	if err := validateNotificationChannelPayload(merged); err != nil {
+		return nil, err
+	}
+	return merged, nil
+}
+
+// validateNotificationChannelPayload checks the fields a channel must carry
+// regardless of how it was written.
+func validateNotificationChannelPayload(payload *storepb.NotificationChannel) error {
+	if payload == nil {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("a notification channel is required"))
+	}
+	if payload.GetDisplayName() == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("a channel display name is required"))
+	}
+	if len(payload.GetDisplayName()) > 100 {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("the channel display name is longer than 100 characters"))
+	}
+	if len(payload.GetLanguage()) > 35 {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("the channel language is not a BCP-47 tag"))
+	}
+	return nil
+}
+
+// notificationEventTypes converts the request's notification types, dropping the
+// unspecified zero value: a filter list holding it would mean "only events of no
+// type" instead of "no filter".
+func notificationEventTypes(types []v1pb.NotificationType) []storepb.NotificationType {
+	var converted []storepb.NotificationType
+	for _, eventType := range types {
 		kind := storepb.NotificationType(eventType)
 		if kind == storepb.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED {
 			continue
 		}
-		payload.EventTypes = append(payload.EventTypes, kind)
+		converted = append(converted, kind)
 	}
-	return payload, nil
+	return converted
 }
 
 // storeNotificationChannelSecret converts the write-only credential. Nil means
@@ -370,46 +435,6 @@ func storeNotificationChannelSecret(secret *v1pb.NotificationChannelSecret) *sto
 		WebhookUrl:           strings.TrimSpace(secret.GetWebhookUrl()),
 		WebhookSigningSecret: secret.GetWebhookSigningSecret(),
 	}
-}
-
-// applyNotificationChannelUpdateMask merges a masked update onto the stored
-// payload. An empty mask is a full update of the mutable fields.
-func applyNotificationChannelUpdateMask(update *storepb.NotificationChannel, paths []string, existing *storepb.NotificationChannel) *storepb.NotificationChannel {
-	if existing == nil {
-		return update
-	}
-	if len(paths) == 0 {
-		return update
-	}
-	merged := &storepb.NotificationChannel{
-		DisplayName: existing.GetDisplayName(),
-		Kind:        existing.GetKind(),
-		Enabled:     existing.GetEnabled(),
-		EventTypes:  existing.GetEventTypes(),
-		MinSeverity: existing.GetMinSeverity(),
-		Language:    existing.GetLanguage(),
-		Config:      existing.GetConfig(),
-	}
-	for _, path := range paths {
-		switch path {
-		case "display_name", "displayName":
-			merged.DisplayName = update.GetDisplayName()
-		case "enabled":
-			merged.Enabled = update.GetEnabled()
-		case "event_types", "eventTypes":
-			merged.EventTypes = update.GetEventTypes()
-		case "min_severity", "minSeverity":
-			merged.MinSeverity = update.GetMinSeverity()
-		case "language":
-			merged.Language = update.GetLanguage()
-		case "config":
-			merged.Config = update.GetConfig()
-		default:
-			// Unknown paths are ignored: the mask is advisory here, and the stored
-			// payload stays valid for every field the request did not name.
-		}
-	}
-	return merged
 }
 
 // workspaceFromName returns the workspaces/{workspace} prefix of a resource name.
@@ -457,14 +482,17 @@ func convertToV1NotificationDelivery(delivery *store.NotificationDeliveryMessage
 		return nil
 	}
 	converted := &v1pb.NotificationDelivery{
-		Name:            common.FormatWorkspace(workspaceID) + "/notificationDeliveries/" + strconv.FormatInt(delivery.ID, 10),
-		EventType:       v1pb.NotificationType(delivery.Payload.GetType()),
-		Severity:        v1pb.NotificationSeverity(delivery.Payload.GetSeverity()),
-		State:           v1pb.NotificationDeliveryState(delivery.State),
-		Attempts:        delivery.Attempts,
-		LastError:       delivery.LastError,
-		CreateTime:      timestamppb.New(delivery.CreatedAt),
-		NextAttemptTime: timestamppb.New(delivery.NextAttempt),
+		Name:       common.FormatWorkspace(workspaceID) + "/notificationDeliveries/" + strconv.FormatInt(delivery.ID, 10),
+		EventType:  v1pb.NotificationType(delivery.Payload.GetType()),
+		Severity:   v1pb.NotificationSeverity(delivery.Payload.GetSeverity()),
+		State:      v1pb.NotificationDeliveryState(delivery.State),
+		Attempts:   delivery.Attempts,
+		LastError:  delivery.LastError,
+		CreateTime: timestamppb.New(delivery.CreatedAt),
+	}
+	if delivery.State == storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING ||
+		delivery.State == storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING {
+		converted.NextAttemptTime = timestamppb.New(delivery.NextAttempt)
 	}
 	if delivery.SentAt != nil {
 		converted.SentTime = timestamppb.New(*delivery.SentAt)

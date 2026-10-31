@@ -871,7 +871,8 @@ export declare type NotificationDelivery = Message<"metaxisdata.v1.NotificationD
   createTime?: Timestamp;
 
   /**
-   * When the next automatic attempt is due. Unset when the delivery is terminal.
+   * When the next automatic attempt is due. Set while the delivery is PENDING or
+   * SENDING (where it is the lease deadline); unset for SENT and DEAD.
    *
    * @generated from field: google.protobuf.Timestamp next_attempt_time = 10;
    */
@@ -1076,11 +1077,16 @@ export declare type ListNotificationDeliveriesRequest = Message<"metaxisdata.v1.
   state: NotificationDeliveryState;
 
   /**
+   * Default 50, maximum 1000.
+   *
    * @generated from field: int32 page_size = 4;
    */
   pageSize: number;
 
   /**
+   * The token from the previous response; a follow-up keeps the page size the
+   * token was issued with when page_size is unset.
+   *
    * @generated from field: string page_token = 5;
    */
   pageToken: string;
@@ -1448,16 +1454,18 @@ export enum NotificationDeliveryState {
 export declare const NotificationDeliveryStateSchema: GenEnum<NotificationDeliveryState>;
 
 /**
- * NotificationService serves the caller's own in-app messages: the outcome of a
- * sync operation they asked for, and the ingestion failures a workspace
- * administrator needs to see.
+ * NotificationService serves the caller's own in-app messages — the outcome of
+ * a sync operation they asked for, and the ingestion failures a workspace
+ * administrator needs to see — and the workspace's outbound delivery channels,
+ * which administrators configure.
  *
- * No method here carries a (metaxisdata.v1.permission) annotation, and none is
- * reachable without credentials. An inbox belongs to one principal, which the
- * workspace-scoped IAM catalog cannot express: every handler therefore scopes
- * its query by the authenticated caller's id, the same way UserService's
- * self-service paths do. Gating these methods on a permission instead would
- * lock a custom role out of its own messages.
+ * The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+ * reachable without credentials: an inbox belongs to one principal, which the
+ * workspace-scoped IAM catalog cannot express, so every handler scopes its query
+ * by the authenticated caller's id, the same way UserService's self-service
+ * paths do. The outbound methods are workspace configuration and carry the
+ * settings permissions: reads use settings.get, writes, the test send and the
+ * delivery retry use settings.update.
  *
  * @generated from service metaxisdata.v1.NotificationService
  */
@@ -1544,7 +1552,9 @@ export declare const NotificationService: GenService<{
     output: typeof SubscribeNotificationsResponseSchema;
   },
   /**
-   * List the outbound channels administrators have configured.
+   * List the outbound channels administrators have configured. The list is not
+   * paginated: a workspace configures a handful of destinations, and the delivery
+   * path reads the whole set anyway.
    *
    * @generated from rpc metaxisdata.v1.NotificationService.ListNotificationChannels
    */
@@ -1597,7 +1607,9 @@ export declare const NotificationService: GenService<{
   },
   /**
    * Post a test message through one stored channel and report what the endpoint
-   * answered. Nothing is written to the ledger or queued.
+   * answered. It queues no delivery and is not audited: it is a diagnostic probe
+   * that changes nothing, and the endpoint's answer is third-party text that does
+   * not belong in the permanent ledger.
    *
    * @generated from rpc metaxisdata.v1.NotificationService.TestNotificationChannel
    */

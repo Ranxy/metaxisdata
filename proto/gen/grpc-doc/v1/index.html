@@ -25246,14 +25246,15 @@ Format: workspaces/{workspace}/notificationChannels/{notification_channel} </p><
                   <td>page_size</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>Default 50, maximum 1000. </p></td>
                 </tr>
               
                 <tr>
                   <td>page_token</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The token from the previous response; a follow-up keeps the page size the
+token was issued with when page_size is unset. </p></td>
                 </tr>
               
             </tbody>
@@ -25722,7 +25723,8 @@ The last segment is the row id. </p></td>
                   <td>next_attempt_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
-                  <td><p>When the next automatic attempt is due. Unset when the delivery is terminal. </p></td>
+                  <td><p>When the next automatic attempt is due. Set while the delivery is PENDING or
+SENDING (where it is the lease deadline); unset for SENT and DEAD. </p></td>
                 </tr>
               
                 <tr>
@@ -26473,7 +26475,7 @@ administrators are the recipients.</p></td>
 
       
         <h3 id="metaxisdata.v1.NotificationService">NotificationService</h3>
-        <p>NotificationService serves the caller's own in-app messages: the outcome of a</p><p>sync operation they asked for, and the ingestion failures a workspace</p><p>administrator needs to see.</p><p>No method here carries a (metaxisdata.v1.permission) annotation, and none is</p><p>reachable without credentials. An inbox belongs to one principal, which the</p><p>workspace-scoped IAM catalog cannot express: every handler therefore scopes</p><p>its query by the authenticated caller's id, the same way UserService's</p><p>self-service paths do. Gating these methods on a permission instead would</p><p>lock a custom role out of its own messages.</p>
+        <p>NotificationService serves the caller's own in-app messages — the outcome of</p><p>a sync operation they asked for, and the ingestion failures a workspace</p><p>administrator needs to see — and the workspace's outbound delivery channels,</p><p>which administrators configure.</p><p>The inbox methods carry no (metaxisdata.v1.permission) annotation and none is</p><p>reachable without credentials: an inbox belongs to one principal, which the</p><p>workspace-scoped IAM catalog cannot express, so every handler scopes its query</p><p>by the authenticated caller's id, the same way UserService's self-service</p><p>paths do. The outbound methods are workspace configuration and carry the</p><p>settings permissions: reads use settings.get, writes, the test send and the</p><p>delivery retry use settings.update.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
@@ -26544,7 +26546,9 @@ for ExplainSQL.</p></td>
                 <td>ListNotificationChannels</td>
                 <td><a href="#metaxisdata.v1.ListNotificationChannelsRequest">ListNotificationChannelsRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListNotificationChannelsResponse">ListNotificationChannelsResponse</a></td>
-                <td><p>List the outbound channels administrators have configured.</p></td>
+                <td><p>List the outbound channels administrators have configured. The list is not
+paginated: a workspace configures a handful of destinations, and the delivery
+path reads the whole set anyway.</p></td>
               </tr>
             
               <tr>
@@ -26582,7 +26586,9 @@ present secret replaces it.</p></td>
                 <td><a href="#metaxisdata.v1.TestNotificationChannelRequest">TestNotificationChannelRequest</a></td>
                 <td><a href="#metaxisdata.v1.TestNotificationChannelResponse">TestNotificationChannelResponse</a></td>
                 <td><p>Post a test message through one stored channel and report what the endpoint
-answered. Nothing is written to the ledger or queued.</p></td>
+answered. It queues no delivery and is not audited: it is a diagnostic probe
+that changes nothing, and the endpoint&#39;s answer is third-party text that does
+not belong in the permanent ledger.</p></td>
               </tr>
             
               <tr>

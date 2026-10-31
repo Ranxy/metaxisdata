@@ -1329,11 +1329,9 @@ CREATE TABLE IF NOT EXISTS notification_delivery (
     -- One Send call is one event; every inbox row it wrote shares this id, so a
     -- channel cannot receive the same event twice.
     event_id TEXT NOT NULL,
-    -- The notification dedupe key of the event, kept for diagnosis only.
-    event_key TEXT NOT NULL DEFAULT '',
     channel_id INT4 NOT NULL REFERENCES notification_channel(id) ON DELETE CASCADE,
     -- 1 PENDING, 2 SENDING, 3 SENT, 4 DEAD (NotificationDeliveryState).
-    state INT4 NOT NULL,
+    state INT4 NOT NULL CHECK (state IN (1, 2, 3, 4)),
     attempts INT4 NOT NULL DEFAULT 0,
     -- Also the lease deadline while SENDING: an expired lease is reclaimed.
     next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1348,6 +1346,8 @@ CREATE INDEX IF NOT EXISTS idx_notification_delivery_due
     ON notification_delivery(next_attempt_at) WHERE state IN (1, 2);
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_channel_created
     ON notification_delivery(channel_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_delivery_created
+    ON notification_delivery(created_at DESC, id DESC);
 
 COMMENT ON TABLE notification_channel IS 'Administrator-configured outbound notification destinations';
 COMMENT ON COLUMN notification_channel.payload IS 'Stored as NotificationChannel (proto/store/store/notification.proto)';

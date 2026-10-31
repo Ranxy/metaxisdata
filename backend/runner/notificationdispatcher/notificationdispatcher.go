@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -61,6 +62,7 @@ var retryBackoff = []time.Duration{
 type Store interface {
 	ClaimNotificationDeliveries(ctx context.Context, limit int, lease time.Duration) ([]*store.NotificationDeliveryMessage, error)
 	FinishNotificationDelivery(ctx context.Context, id int64, state storepb.NotificationDeliveryState, lastError string, nextAttempt time.Time) error
+	ReleaseNotificationDelivery(ctx context.Context, id int64) error
 	ListNotificationChannels(ctx context.Context) ([]*store.NotificationChannelMessage, error)
 	GetNotificationChannelSecret(ctx context.Context, channelID int64) (*storepb.NotificationChannelSecret, error)
 	GetWorkspaceGeneralSetting(ctx context.Context) (*storepb.WorkspaceProfileSetting, error)
@@ -111,7 +113,17 @@ func (r *Runner) dispatch(ctx context.Context) {
 
 	channels, err := r.store.ListNotificationChannels(ctx)
 	if err != nil {
-		slog.Warn("Failed to read the notification channels for a delivery", log.WithError(err))
+		// The batch cannot be resolved: release every claimed delivery without
+		// charging it an attempt. Treating an unreadable channel list as "every
+		// channel is gone" would kill up to a whole tick's deliveries as DEAD.
+		slog.Warn("Failed to read the notification channels for a delivery, releasing the batch", log.WithError(err))
+		for _, delivery := range deliveries {
+			if releaseErr := r.store.ReleaseNotificationDelivery(ctx, delivery.ID); releaseErr != nil {
+				slog.Warn("Failed to release an outbound notification delivery",
+					slog.Int64("delivery", delivery.ID), log.WithError(releaseErr))
+			}
+		}
+		return
 	}
 	byID := make(map[int64]*store.NotificationChannelMessage, len(channels))
 	for _, channel := range channels {
@@ -142,6 +154,7 @@ func (r *Runner) dispatch(ctx context.Context) {
 // configuration error that no retry can fix becomes DEAD at once.
 func (r *Runner) attempt(ctx context.Context, delivery *store.NotificationDeliveryMessage, channel *store.NotificationChannelMessage, externalURL string) {
 	if channel == nil {
+		r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryDead)
 		r.finish(ctx, delivery, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD, "the notification channel no longer exists", time.Now())
 		return
 	}
@@ -152,6 +165,7 @@ func (r *Runner) attempt(ctx context.Context, delivery *store.NotificationDelive
 	}
 	receiver, err := outbound.NewReceiver(channel.Payload, secret)
 	if err != nil {
+		r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryDead)
 		r.finish(ctx, delivery, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD, truncateError(err.Error()), time.Now())
 		return
 	}
@@ -188,7 +202,7 @@ func (r *Runner) finishFailure(ctx context.Context, delivery *store.Notification
 		return
 	}
 	r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryFailed)
-	next := now.Add(retryBackoff[min(int(delivery.Attempts)-1, len(retryBackoff)-1)])
+	next := now.Add(retryBackoff[min(max(int(delivery.Attempts), 1)-1, len(retryBackoff)-1)])
 	r.finish(ctx, delivery, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING, truncateError(lastError), next)
 }
 
@@ -203,9 +217,12 @@ func (r *Runner) finish(ctx context.Context, delivery *store.NotificationDeliver
 	}
 }
 
+// truncateError bounds the stored error without splitting a rune: PostgreSQL
+// rejects invalid UTF-8, and a rejected finish would leave the delivery SENDING
+// forever, re-posting every lease period.
 func truncateError(value string) string {
 	if len(value) <= maxErrorBytes {
 		return value
 	}
-	return value[:maxErrorBytes]
+	return common.TruncateUTF8Bytes(value, maxErrorBytes) + "…"
 }

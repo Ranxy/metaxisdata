@@ -14,16 +14,18 @@ import "v1/data_quality_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
-// NotificationService serves the caller's own in-app messages: the outcome of a
-// sync operation they asked for, and the ingestion failures a workspace
-// administrator needs to see.
+// NotificationService serves the caller's own in-app messages — the outcome of
+// a sync operation they asked for, and the ingestion failures a workspace
+// administrator needs to see — and the workspace's outbound delivery channels,
+// which administrators configure.
 //
-// No method here carries a (metaxisdata.v1.permission) annotation, and none is
-// reachable without credentials. An inbox belongs to one principal, which the
-// workspace-scoped IAM catalog cannot express: every handler therefore scopes
-// its query by the authenticated caller's id, the same way UserService's
-// self-service paths do. Gating these methods on a permission instead would
-// lock a custom role out of its own messages.
+// The inbox methods carry no (metaxisdata.v1.permission) annotation and none is
+// reachable without credentials: an inbox belongs to one principal, which the
+// workspace-scoped IAM catalog cannot express, so every handler scopes its query
+// by the authenticated caller's id, the same way UserService's self-service
+// paths do. The outbound methods are workspace configuration and carry the
+// settings permissions: reads use settings.get, writes, the test send and the
+// delivery retry use settings.update.
 service NotificationService {
   // List the caller's notifications, newest first.
   rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {
@@ -80,7 +82,9 @@ service NotificationService {
   // for ExplainSQL.
   rpc SubscribeNotifications(SubscribeNotificationsRequest) returns (stream SubscribeNotificationsResponse) {}
 
-  // List the outbound channels administrators have configured.
+  // List the outbound channels administrators have configured. The list is not
+  // paginated: a workspace configures a handful of destinations, and the delivery
+  // path reads the whole set anyway.
   rpc ListNotificationChannels(ListNotificationChannelsRequest) returns (ListNotificationChannelsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/notificationChannels"};
     option (google.api.method_signature) = "parent";
@@ -127,7 +131,9 @@ service NotificationService {
   }
 
   // Post a test message through one stored channel and report what the endpoint
-  // answered. Nothing is written to the ledger or queued.
+  // answered. It queues no delivery and is not audited: it is a diagnostic probe
+  // that changes nothing, and the endpoint's answer is third-party text that does
+  // not belong in the permanent ledger.
   rpc TestNotificationChannel(TestNotificationChannelRequest) returns (TestNotificationChannelResponse) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/notificationChannels/*}:test"
@@ -135,7 +141,6 @@ service NotificationService {
     };
     option (google.api.method_signature) = "name";
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
-    option (metaxisdata.v1.audit) = true;
   }
 
   // List outbound deliveries, newest first, for administrators to diagnose a
@@ -542,7 +547,8 @@ message NotificationDelivery {
 
   google.protobuf.Timestamp create_time = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // When the next automatic attempt is due. Unset when the delivery is terminal.
+  // When the next automatic attempt is due. Set while the delivery is PENDING or
+  // SENDING (where it is the lease deadline); unset for SENT and DEAD.
   google.protobuf.Timestamp next_attempt_time = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // When it was delivered. Unset unless it was.
@@ -601,11 +607,14 @@ message ListNotificationDeliveriesRequest {
 
   // Optional channel filter.
   // Format: workspaces/{workspace}/notificationChannels/{notification_channel}
-  string channel = 2;
+  string channel = 2 [(google.api.resource_reference) = {type: "metaxisdata/NotificationChannel"}];
 
   NotificationDeliveryState state = 3;
 
+  // Default 50, maximum 1000.
   int32 page_size = 4;
+  // The token from the previous response; a follow-up keeps the page size the
+  // token was issued with when page_size is unset.
   string page_token = 5;
 }
 

@@ -213,6 +213,7 @@
       "none": "No filters found",
       "search": "Search filters..."
     },
+    "listSeparator": ", ",
     "loading": "Loading...",
     "moreActions": "More actions",
     "next": "Next",
@@ -2475,6 +2476,7 @@
     "namePlaceholder": "Data quality on-call",
     "nameRequired": "A channel name is required",
     "newChannel": "New channel",
+    "nextAttempt": "Next attempt",
     "noDeliveriesDescription": "Deliveries appear here once a channel subscribes to an event.",
     "noDeliveriesTitle": "No deliveries yet",
     "pageDescription": "Send workspace notifications to an external destination: a webhook now, email and chat apps next.",

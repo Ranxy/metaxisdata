@@ -35,12 +35,6 @@ func (s *Service) enqueueOutbound(ctx context.Context, n *storepb.Notification) 
 		return
 	}
 
-	eventID, err := common.RandomString(outboundEventIDLength)
-	if err != nil {
-		slog.Warn("Failed to generate a notification event id", clog.WithError(err))
-		return
-	}
-
 	now := time.Now()
 	var creates []*store.CreateNotificationDeliveryMessage
 	for _, channel := range channels {
@@ -48,8 +42,6 @@ func (s *Service) enqueueOutbound(ctx context.Context, n *storepb.Notification) 
 			continue
 		}
 		creates = append(creates, &store.CreateNotificationDeliveryMessage{
-			EventID:     eventID,
-			EventKey:    n.GetDedupeKey(),
 			ChannelID:   channel.ID,
 			Payload:     event,
 			NextAttempt: now,
@@ -57,6 +49,14 @@ func (s *Service) enqueueOutbound(ctx context.Context, n *storepb.Notification) 
 	}
 	if len(creates) == 0 {
 		return
+	}
+	eventID, err := common.RandomResourceID(outboundEventIDLength)
+	if err != nil {
+		slog.Warn("Failed to generate a notification event id", clog.WithError(err))
+		return
+	}
+	for _, create := range creates {
+		create.EventID = eventID
 	}
 	if err := s.store.CreateNotificationDeliveries(ctx, creates); err != nil {
 		slog.Warn("Failed to queue the outbound notification deliveries",

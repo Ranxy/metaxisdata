@@ -64,3 +64,38 @@ func TestGetNameParentTokensRejectsEmptyTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"i", "x"}, tokens)
 }
+
+// RandomResourceID must produce ids that the name parsers accept, and the
+// notification-channel parser is the one that shipped broken once: it rejected
+// 99.8% of the ids the old generator produced.
+func TestRandomResourceIDIsAValidNotificationChannelName(t *testing.T) {
+	t.Parallel()
+
+	for i := 0; i < 500; i++ {
+		id, err := RandomResourceID(12)
+		require.NoError(t, err)
+		require.Truef(t, IsValidResourceID(id), "%q should match the resource id pattern", id)
+		require.Falsef(t, id[0] >= '0' && id[0] <= '9', "%q must start with a letter", id)
+
+		name := "workspaces/ws-1/notificationChannels/" + id
+		parsed, err := GetNotificationChannelID(name)
+		require.NoErrorf(t, err, "%q should parse", name)
+		require.Equal(t, id, parsed)
+	}
+}
+
+func TestGetNotificationChannelIDRejectsMalformedNames(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"",
+		"notificationChannels/abc",
+		"workspaces/ws-1/notificationChannels/",
+		"workspaces/ws-1/notificationChannels/ABC",
+		"workspaces/ws-1/notificationChannels/1abc",
+		"workspaces/ws-1/qualityIssues/abc",
+	} {
+		_, err := GetNotificationChannelID(name)
+		require.Errorf(t, err, "%q should be rejected", name)
+	}
+}

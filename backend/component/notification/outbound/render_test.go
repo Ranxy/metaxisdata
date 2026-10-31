@@ -169,3 +169,51 @@ func TestNormalizeLanguage(t *testing.T) {
 	require.Equal(t, "en-US", NormalizeLanguage("en-US"))
 	require.Equal(t, "en-US", NormalizeLanguage(""))
 }
+
+// The data-quality detail routes carry the whole resource name (the pages join
+// the path segments back to call the RPC), so the deep link must append the name,
+// not its last segment.
+func TestRenderDataQualityLinkUsesWholeResourceName(t *testing.T) {
+	t.Parallel()
+
+	issued := dataQualityEvent(&storepb.DataQualityDetail{
+		Kind:       storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+		RuleTitle:  "no nulls",
+		TargetPath: "prod/db/public/orders",
+		Issue:      "workspaces/ws-1/qualityIssues/abc123",
+	})
+	require.Equal(t,
+		"https://app.example.com/data-quality/issues/workspaces/ws-1/qualityIssues/abc123",
+		Render("en-US", issued, "https://app.example.com", time.Now()).Link)
+
+	executed := dataQualityEvent(&storepb.DataQualityDetail{
+		Kind:       storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
+		RuleTitle:  "no nulls",
+		TargetPath: "prod/db/public/orders",
+		Execution:  "workspaces/ws-1/qualityExecutions/981",
+	})
+	require.Equal(t,
+		"https://app.example.com/data-quality/executions/workspaces/ws-1/qualityExecutions/981",
+		Render("en-US", executed, "https://app.example.com", time.Now()).Link)
+}
+
+// A trailing slash on the instance resource must not leak into the id.
+func TestRenderSchemaSyncLinkTrimsTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	event := &storepb.NotificationDeliveryEvent{
+		Type:     storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
+		Severity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		Detail: &storepb.NotificationDeliveryEvent_SchemaSync{SchemaSync: &storepb.SchemaSyncDetail{
+			Instance: "instances/i1/",
+		}},
+	}
+	require.Equal(t, "https://app.example.com/instances/i1", Render("en-US", event, "https://app.example.com", time.Now()).Link)
+}
+
+func TestNormalizeLanguageIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "zh-CN", NormalizeLanguage("zH-CN"))
+	require.Equal(t, "zh-CN", NormalizeLanguage("zh-Hant"))
+}

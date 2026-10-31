@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -15,7 +17,7 @@ import (
 
 // notificationDeliveryColumns is the column list every notification_delivery
 // read returns, in the order scanNotificationDelivery consumes it.
-const notificationDeliveryColumns = `id, event_id, event_key, channel_id, state,
+const notificationDeliveryColumns = `id, event_id, channel_id, state,
 	attempts, next_attempt_at, last_error, payload, created_at, sent_at`
 
 // NotificationDeliveryMessage is one queued outbound delivery.
@@ -51,7 +53,6 @@ func (s *Store) CreateNotificationDeliveries(ctx context.Context, creates []*Cre
 	}
 	var (
 		eventIDs   []string
-		eventKeys  []string
 		channelIDs []int32
 		payloads   []string
 		attempts   []int32
@@ -68,7 +69,6 @@ func (s *Store) CreateNotificationDeliveries(ctx context.Context, creates []*Cre
 			return errors.Wrap(err, "failed to marshal a notification delivery event")
 		}
 		eventIDs = append(eventIDs, create.EventID)
-		eventKeys = append(eventKeys, create.EventKey)
 		channelIDs = append(channelIDs, int32(create.ChannelID))
 		payloads = append(payloads, string(raw))
 		attempts = append(attempts, 0)
@@ -79,15 +79,20 @@ func (s *Store) CreateNotificationDeliveries(ctx context.Context, creates []*Cre
 		return nil
 	}
 
+	// The join to notification_channel drops a row whose channel was deleted after
+	// the fan-out read it, instead of failing the whole batch on the foreign key and
+	// losing the healthy channels' deliveries with it.
 	_, err := s.GetDB().ExecContext(ctx, `
 		INSERT INTO notification_delivery (
-			event_id, event_key, channel_id, state, attempts, next_attempt_at, payload
+			event_id, channel_id, state, attempts, next_attempt_at, payload
 		)
-		SELECT * FROM UNNEST(
-			$1::text[], $2::text[], $3::int4[], $4::int2[], $5::int4[], $6::timestamptz[], $7::jsonb[]
-		)
+		SELECT u.event_id, u.channel_id, u.state, u.attempts, u.next_attempt_at, u.payload
+		FROM UNNEST(
+			$1::text[], $2::int4[], $3::int2[], $4::int4[], $5::timestamptz[], $6::jsonb[]
+		) AS u(event_id, channel_id, state, attempts, next_attempt_at, payload)
+		JOIN notification_channel c ON c.id = u.channel_id
 		ON CONFLICT (event_id, channel_id) DO NOTHING`,
-		pq.Array(eventIDs), pq.Array(eventKeys), pq.Array(channelIDs), pq.Array(states),
+		pq.Array(eventIDs), pq.Array(channelIDs), pq.Array(states),
 		pq.Array(attempts), pq.Array(nextAt), pq.Array(payloads))
 	if err != nil {
 		return errors.Wrap(err, "failed to queue the notification deliveries")
@@ -110,7 +115,6 @@ func scanNotificationDelivery(row deliveryScanner) (*NotificationDeliveryMessage
 	if err := row.Scan(
 		&message.ID,
 		&message.EventID,
-		&message.EventKey,
 		&message.ChannelID,
 		&state,
 		&message.Attempts,
@@ -143,22 +147,7 @@ func (s *Store) ClaimNotificationDeliveries(ctx context.Context, limit int, leas
 	if limit <= 0 {
 		return nil, nil
 	}
-	rows, err := s.GetDB().QueryContext(ctx, `
-		WITH due AS (
-			SELECT id
-			FROM notification_delivery
-			WHERE state = ANY($1::int2[]) AND next_attempt_at <= NOW()
-			ORDER BY next_attempt_at, id
-			LIMIT $2
-			FOR UPDATE SKIP LOCKED
-		)
-		UPDATE notification_delivery d
-		SET state = $3,
-		    attempts = d.attempts + 1,
-		    next_attempt_at = NOW() + ($4::int4 * INTERVAL '1 second')
-		FROM due
-		WHERE d.id = due.id
-		RETURNING `+notificationDeliveryColumns,
+	rows, err := s.GetDB().QueryContext(ctx, buildClaimNotificationDeliveriesQuery(),
 		pq.Array([]int16{
 			int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING),
 			int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING),
@@ -247,14 +236,8 @@ func (s *Store) ListNotificationDeliveries(ctx context.Context, filter Notificat
 		offset = 0
 	}
 
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+notificationDeliveryColumns+`
-		FROM notification_delivery
-		WHERE ($1::int8 = 0 OR channel_id = $1)
-		  AND ($2::int2 = 0 OR state = $2)
-		ORDER BY created_at DESC, id DESC
-		LIMIT $3 OFFSET $4`,
-		filter.ChannelID, int16(filter.State), limit, offset)
+	query, args := buildListNotificationDeliveriesQuery(filter, limit, offset)
+	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the notification deliveries")
 	}
@@ -284,6 +267,7 @@ func (s *Store) RequeueNotificationDelivery(ctx context.Context, id int64) (*Not
 	message, err := scanNotificationDelivery(s.GetDB().QueryRowContext(ctx, `
 		UPDATE notification_delivery
 		SET state = $2,
+		    attempts = 0,
 		    next_attempt_at = NOW(),
 		    last_error = ''
 		WHERE id = $1 AND state = $3
@@ -319,4 +303,74 @@ func (s *Store) PruneNotificationDeliveries(ctx context.Context, before time.Tim
 		return 0, errors.Wrap(err, "failed to count the pruned notification deliveries")
 	}
 	return pruned, nil
+}
+
+// buildClaimNotificationDeliveriesQuery returns the claim statement. It is a
+// function because its shape is the invariant: the partial index it reads, the
+// SKIP LOCKED claim, the attempts increment and the lease all live here.
+func buildClaimNotificationDeliveriesQuery() string {
+	return `
+		WITH due AS (
+			SELECT id
+			FROM notification_delivery
+			WHERE state = ANY($1::int2[]) AND next_attempt_at <= NOW()
+			ORDER BY next_attempt_at, id
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE notification_delivery d
+		SET state = $3,
+		    attempts = d.attempts + 1,
+		    next_attempt_at = NOW() + ($4::int4 * INTERVAL '1 second')
+		FROM due
+		WHERE d.id = due.id
+		RETURNING ` + notificationDeliveryColumns
+}
+
+// buildListNotificationDeliveriesQuery returns the listing statement for the
+// filters that were actually set. A placeholder that is compared against zero
+// would defeat the index and force a sequential scan of the whole outbox.
+func buildListNotificationDeliveriesQuery(filter NotificationDeliveryFilter, limit, offset int) (string, []any) {
+	var (
+		conditions []string
+		args       []any
+	)
+	query := `SELECT ` + notificationDeliveryColumns + ` FROM notification_delivery`
+	if filter.ChannelID > 0 {
+		args = append(args, filter.ChannelID)
+		conditions = append(conditions, "channel_id = $"+strconv.Itoa(len(args)))
+	}
+	if filter.State != storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_UNSPECIFIED {
+		args = append(args, int16(filter.State))
+		conditions = append(conditions, "state = $"+strconv.Itoa(len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	args = append(args, limit, offset)
+	query += " ORDER BY created_at DESC, id DESC LIMIT $" + strconv.Itoa(len(args)-1) + " OFFSET $" + strconv.Itoa(len(args))
+	return query, args
+}
+
+// ReleaseNotificationDelivery returns one leased delivery to the queue without
+// consuming an attempt. The dispatcher uses it when a batch cannot be resolved
+// for a reason outside the delivery itself (the channel read failed): the
+// delivery is not at fault and must not be charged an attempt or killed.
+func (s *Store) ReleaseNotificationDelivery(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return common.Errorf(common.Invalid, "a notification delivery id is required")
+	}
+	if _, err := s.GetDB().ExecContext(ctx, `
+		UPDATE notification_delivery
+		SET state = $2,
+		    attempts = GREATEST(attempts - 1, 0),
+		    next_attempt_at = NOW()
+		WHERE id = $1 AND state = $3`,
+		id,
+		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING),
+		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING),
+	); err != nil {
+		return errors.Wrap(err, "failed to release the notification delivery")
+	}
+	return nil
 }

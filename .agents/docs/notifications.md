@@ -304,27 +304,32 @@
 | --- | --- | --- |
 | O-1 | 渠道是**工作区级**资源，凭据 write-only、`v1:` AES-256-GCM 加密（复用 `common/crypto` 与部署数据密钥） | 渠道配置属于出站能力，不属于某个收件人；读接口只返回 `secret_set` |
 | O-2 | 订阅过滤在**渠道级**：`event_types`（空=全部）+ `min_severity`；不做按 owner/团队路由的规则引擎 | 覆盖"哪类事件发到哪个群/端点"的常见需求；更细路由等有真实需求再加 |
-| O-3 | 投递异步 outbox + 独立 runner（tick 2s、单批 ≤20、并发 ≤4、租约 5m），失败退避 1m/5m/15m/1h/6h，**6 次后 DEAD** | 生产者不因渠道故障失败；租约过期可被重新认领，崩溃不丢投递 |
+| O-3 | 投递异步 outbox + 独立 runner（tick 2s、单批 ≤20、并发 ≤4、租约 5m），失败退避 1m/5m/15m/1h/6h，**6 次后 DEAD**；管理员手动的"重试"把 attempts 归零，等于重新给 6 次 | 生产者不因渠道故障失败；租约过期可被重新认领，崩溃不丢投递 |
 | O-4 | 渲染在**发送时**做（渠道 `language`，空=服务端默认 en-US），`payload` 只存结构化事件 | 模板修复能作用于已排队的投递；outbox 不含收件人、已读态、样本值 |
-| O-5 | Webhook body 是稳定 JSON（eventId/deliveryId/eventType/severity/title/text/link/occurredAt）；`sign=true` 时附 `X-Metaxisdata-Signature: sha256=<hex>`（HMAC-SHA256） | 端点可脚本化；签名密钥与 URL 一样不落日志/审计/错误 |
+| O-5 | Webhook body 是稳定 JSON（eventId/deliveryId/eventType/severity/title/text/link/occurredAt）；`X-Metaxisdata-Event`/`X-Metaxisdata-Delivery` **总是**发送，`sign=true` 时另附 `X-Metaxisdata-Signature: sha256=<hex>`（HMAC-SHA256） | 端点可脚本化；签名密钥与 URL 一样不落日志/审计/错误 |
 | O-6 | 深链来自 `WorkspaceProfileSetting.external_url`；未配置时不生成 link | 消息里的链接必须能在浏览器打开；未配置时宁可不给链接 |
 | O-7 | 渠道管理复用 `settings.get` / `settings.update` 权限，变更与测试发送审计 | member 基线本来没有 settings 权限；不扩权限目录 |
 | O-8 | 投递记录保留 30 天（maintenance 清理终态行），队列行永不清理 | 诊断窗口足够，outbox 不无限增长 |
 | O-9 | 出站 SSRF 风险由"仅管理员可配置 + 审计 + 文档化"承担；IM 类渠道的域名白名单在接入对应 kind 时再加 | 与实例凭据可连任意数据库同一类接受决策；见 `docs/security-posture.md` |
+| O-10 | **不跟随重定向**（`CheckRedirect` 返回 `ErrUseLastResponse`），3xx 按失败重试 | 默认 client 会把 301/302/303 降级成无 body 的 GET（端点回 200，投递被记成 SENT 而正文根本没送到），307/308 会把 body 与签名重发到端点选择的另一个 host（超出管理员配置的目的地）；错误里 URL 归一化后也要脱敏 |
 
 ### 失败模式
 
 | 场景 | 行为 |
 | --- | --- |
-| 渠道被删除 | 已排队的投递标 `DEAD`（"渠道已不存在"），不重试 |
-| 渠道凭据缺失/无法解密 | 该次尝试按普通失败重试；凭据缺失导致的配置错误在 6 次后 `DEAD` |
+| 渠道被删除 | `notification_delivery.channel_id` 是 `ON DELETE CASCADE`：该渠道的排队投递随渠道一起删除（`docs/notifications.md` 与 proto `Delete` 注释的语义） |
+| 渠道凭据缺失 | 适配器构造失败是配置错误，**立即 `DEAD`**（重试不会修好），错误进 `last_error` |
+| 渠道凭据无法解密 | 读取失败按普通失败重试；管理员修复密钥后 `DEAD` 的可手动重试 |
+| 渠道列表读取失败 | 本批已认领的投递**释放回 PENDING 且不消耗 attempt**，下个 tick 重试；绝不当作"渠道都不存在"标 DEAD |
 | 端点 5xx/超时/网络错误 | 退避重试；错误写入 `last_error`（Webhook 错误中的 URL 被替换为 `<endpoint>`，避免凭据进错误/审计） |
-| 端点 4xx | 同样按失败重试直至预算耗尽；管理员修正后可在投递记录里"重试"（仅 DEAD → PENDING，幂等） |
+| 端点 4xx | 同样按失败重试直至预算耗尽；管理员修正后可在投递记录里"重试"（仅 DEAD → PENDING，attempts 归零，幂等） |
+| 端点返回 3xx | 不跟随，按失败重试（见 O-10） |
 | 同一事件重复入队 | 唯一索引吞掉；不会重复投递 |
 | 站内信因去重未写入 | 不产生投递（事件不存在） |
 | 站内信写入成功但 outbox 写入失败 | 只记日志；站内信仍在，事件不投递（best effort，与包契约一致） |
 | dispatcher 崩溃在 POST 中途 | 租约过期，下一次 tick 重新认领并记一次 attempt |
 | 渲染缺 detail | 不产生投递 |
+| 管理员"测试发送" | 直接走适配器，不排队、不建投递、**不审计**（只读诊断，端点响应正文不落永久账本） |
 
 ### Where things live（出站部分）
 
@@ -335,7 +340,7 @@
 - API：`backend/api/v1/notification_outbound_service.go`（8 个 RPC，权限复用 settings.*）。
 - 前端：`frontend/src/pages/settings/NotificationSettingsPage.vue`、`frontend/src/api/notification.ts` 的出站部分、`components/layout/SettingsNav.vue`、`router/index.ts`、`locales/*.json` 的 `notificationSettings.*`、`glossary.json`（Notifications 类目）。
 - 文档：`docs/notifications.md`（运维侧）。
-- 测试：`go test ./backend/component/notification/... ./backend/runner/notificationdispatcher/... ./backend/runner/maintenance/...`；前端 `pnpm --dir frontend test run`。
+- 测试：`go test ./backend/component/notification/... ./backend/runner/notificationdispatcher/... ./backend/runner/maintenance/... ./backend/api/v1/ ./backend/store/ ./backend/common/`；`backend/common/resource_name_test.go` 钉住"生成的 id 必须能被自己的 name parser 解析"；`backend/store/notification_delivery_test.go` 钉住 claim/list SQL 形状；前端 `frontend/src/pages/settings/NotificationSettingsPage.test.ts` 覆盖列表/权限门禁/弹窗状态/重试。
 
 ### Open items（出站）
 

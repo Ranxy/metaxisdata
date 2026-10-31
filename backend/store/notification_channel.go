@@ -84,7 +84,7 @@ func (s *Store) CreateNotificationChannel(ctx context.Context, create *CreateNot
 		return nil, err
 	}
 
-	resourceID, err := common.RandomString(notificationChannelResourceIDLength)
+	resourceID, err := common.RandomResourceID(notificationChannelResourceIDLength)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate a notification channel resource id")
 	}

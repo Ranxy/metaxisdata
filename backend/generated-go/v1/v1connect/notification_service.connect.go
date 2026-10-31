@@ -108,7 +108,9 @@ type NotificationServiceClient interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest]) (*connect.ServerStreamForClient[v1.SubscribeNotificationsResponse], error)
-	// List the outbound channels administrators have configured.
+	// List the outbound channels administrators have configured. The list is not
+	// paginated: a workspace configures a handful of destinations, and the delivery
+	// path reads the whole set anyway.
 	ListNotificationChannels(context.Context, *connect.Request[v1.ListNotificationChannelsRequest]) (*connect.Response[v1.ListNotificationChannelsResponse], error)
 	// Read one outbound channel. The credential is never returned.
 	GetNotificationChannel(context.Context, *connect.Request[v1.GetNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
@@ -121,7 +123,9 @@ type NotificationServiceClient interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. Nothing is written to the ledger or queued.
+	// answered. It queues no delivery and is not audited: it is a diagnostic probe
+	// that changes nothing, and the endpoint's answer is third-party text that does
+	// not belong in the permanent ledger.
 	TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.
@@ -357,7 +361,9 @@ type NotificationServiceHandler interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest], *connect.ServerStream[v1.SubscribeNotificationsResponse]) error
-	// List the outbound channels administrators have configured.
+	// List the outbound channels administrators have configured. The list is not
+	// paginated: a workspace configures a handful of destinations, and the delivery
+	// path reads the whole set anyway.
 	ListNotificationChannels(context.Context, *connect.Request[v1.ListNotificationChannelsRequest]) (*connect.Response[v1.ListNotificationChannelsResponse], error)
 	// Read one outbound channel. The credential is never returned.
 	GetNotificationChannel(context.Context, *connect.Request[v1.GetNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
@@ -370,7 +376,9 @@ type NotificationServiceHandler interface {
 	// Delete one outbound channel and the deliveries still queued for it.
 	DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error)
 	// Post a test message through one stored channel and report what the endpoint
-	// answered. Nothing is written to the ledger or queued.
+	// answered. It queues no delivery and is not audited: it is a diagnostic probe
+	// that changes nothing, and the endpoint's answer is third-party text that does
+	// not belong in the permanent ledger.
 	TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error)
 	// List outbound deliveries, newest first, for administrators to diagnose a
 	// channel.

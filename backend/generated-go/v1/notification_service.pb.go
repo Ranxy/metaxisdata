@@ -2079,7 +2079,8 @@ type NotificationDelivery struct {
 	// Why the last attempt failed. Empty unless it did.
 	LastError  string                 `protobuf:"bytes,8,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	// When the next automatic attempt is due. Unset when the delivery is terminal.
+	// When the next automatic attempt is due. Set while the delivery is PENDING or
+	// SENDING (where it is the lease deadline); unset for SENT and DEAD.
 	NextAttemptTime *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=next_attempt_time,json=nextAttemptTime,proto3" json:"next_attempt_time,omitempty"`
 	// When it was delivered. Unset unless it was.
 	SentTime      *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=sent_time,json=sentTime,proto3" json:"sent_time,omitempty"`
@@ -2590,10 +2591,13 @@ type ListNotificationDeliveriesRequest struct {
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	// Optional channel filter.
 	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
-	Channel       string                    `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
-	State         NotificationDeliveryState `protobuf:"varint,3,opt,name=state,proto3,enum=metaxisdata.v1.NotificationDeliveryState" json:"state,omitempty"`
-	PageSize      int32                     `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                    `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	Channel string                    `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	State   NotificationDeliveryState `protobuf:"varint,3,opt,name=state,proto3,enum=metaxisdata.v1.NotificationDeliveryState" json:"state,omitempty"`
+	// Default 50, maximum 1000.
+	PageSize int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// The token from the previous response; a follow-up keeps the page size the
+	// token was issued with when page_size is unset.
+	PageToken     string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2931,10 +2935,11 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x1eTestNotificationChannelRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"=\n" +
 	"\x1fTestNotificationChannelResponse\x12\x1a\n" +
-	"\bresponse\x18\x01 \x01(\tR\bresponse\"\xd7\x01\n" +
+	"\bresponse\x18\x01 \x01(\tR\bresponse\"\xfd\x01\n" +
 	"!ListNotificationDeliveriesRequest\x12\x1b\n" +
-	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x18\n" +
-	"\achannel\x18\x02 \x01(\tR\achannel\x12?\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12>\n" +
+	"\achannel\x18\x02 \x01(\tB$\xfaA!\n" +
+	"\x1fmetaxisdata/NotificationChannelR\achannel\x12?\n" +
 	"\x05state\x18\x03 \x01(\x0e2).metaxisdata.v1.NotificationDeliveryStateR\x05state\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -2985,7 +2990,7 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"#NOTIFICATION_DELIVERY_STATE_PENDING\x10\x01\x12'\n" +
 	"#NOTIFICATION_DELIVERY_STATE_SENDING\x10\x02\x12$\n" +
 	" NOTIFICATION_DELIVERY_STATE_SENT\x10\x03\x12$\n" +
-	" NOTIFICATION_DELIVERY_STATE_DEAD\x10\x042\x8b\x17\n" +
+	" NOTIFICATION_DELIVERY_STATE_DEAD\x10\x042\x87\x17\n" +
 	"\x13NotificationService\x12\xa2\x01\n" +
 	"\x11ListNotifications\x12(.metaxisdata.v1.ListNotificationsRequest\x1a).metaxisdata.v1.ListNotificationsResponse\"8\xdaA\x06parent\x82\xd3\xe4\x93\x02)\x12'/v1/{parent=workspaces/*}/notifications\x12\xc0\x01\n" +
 	"\x1aGetUnreadNotificationCount\x121.metaxisdata.v1.GetUnreadNotificationCountRequest\x1a2.metaxisdata.v1.GetUnreadNotificationCountResponse\";\x82\xd3\xe4\x93\x025\x123/v1/{parent=workspaces/*}/notifications:unreadCount\x12\x9a\x01\n" +
@@ -2998,8 +3003,8 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x16GetNotificationChannel\x12-.metaxisdata.v1.GetNotificationChannelRequest\x1a#.metaxisdata.v1.NotificationChannel\"Y\xdaA\x04name\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x020\x12./v1/{name=workspaces/*/notificationChannels/*}\x12\xee\x01\n" +
 	"\x19CreateNotificationChannel\x120.metaxisdata.v1.CreateNotificationChannelRequest\x1a#.metaxisdata.v1.NotificationChannel\"z\xdaA\x15parent,channel,secret\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x029:\achannel\"./v1/{parent=workspaces/*}/notificationChannels\x12\xfc\x01\n" +
 	"\x19UpdateNotificationChannel\x120.metaxisdata.v1.UpdateNotificationChannelRequest\x1a#.metaxisdata.v1.NotificationChannel\"\x87\x01\xdaA\x1achannel,secret,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02A:\achannel26/v1/{channel.name=workspaces/*/notificationChannels/*}\x12\xc7\x01\n" +
-	"\x19DeleteNotificationChannel\x120.metaxisdata.v1.DeleteNotificationChannelRequest\x1a\x16.google.protobuf.Empty\"`\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x020*./v1/{name=workspaces/*/notificationChannels/*}\x12\xe4\x01\n" +
-	"\x17TestNotificationChannel\x12..metaxisdata.v1.TestNotificationChannelRequest\x1a/.metaxisdata.v1.TestNotificationChannelResponse\"h\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{name=workspaces/*/notificationChannels/*}:test\x12\xe2\x01\n" +
+	"\x19DeleteNotificationChannel\x120.metaxisdata.v1.DeleteNotificationChannelRequest\x1a\x16.google.protobuf.Empty\"`\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x020*./v1/{name=workspaces/*/notificationChannels/*}\x12\xe0\x01\n" +
+	"\x17TestNotificationChannel\x12..metaxisdata.v1.TestNotificationChannelRequest\x1a/.metaxisdata.v1.TestNotificationChannelResponse\"d\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{name=workspaces/*/notificationChannels/*}:test\x12\xe2\x01\n" +
 	"\x1aListNotificationDeliveries\x121.metaxisdata.v1.ListNotificationDeliveriesRequest\x1a2.metaxisdata.v1.ListNotificationDeliveriesResponse\"]\xdaA\x06parent\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x022\x120/v1/{parent=workspaces/*}/notificationDeliveries\x12\xe0\x01\n" +
 	"\x19RetryNotificationDelivery\x120.metaxisdata.v1.RetryNotificationDeliveryRequest\x1a$.metaxisdata.v1.NotificationDelivery\"k\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02;:\x01*\"6/v1/{name=workspaces/*/notificationDeliveries/*}:retryB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 

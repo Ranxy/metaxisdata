@@ -56,7 +56,17 @@ func NewWebhook(endpoint, signingSecret string, sign bool) Receiver {
 		url:           endpoint,
 		signingSecret: signingSecret,
 		sign:          sign,
-		client:        &http.Client{Timeout: timeout},
+		client: &http.Client{
+			Timeout: timeout,
+			// A redirect is not followed on purpose. Go re-issues a 301/302/303 as a
+			// GET without the body (the endpoint answers 200 and the body is silently
+			// lost), and a 307/308 re-POSTs the body and the signature to a host the
+			// endpoint chose — outside the destination the administrator configured.
+			// A 3xx is therefore a failed attempt.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 
@@ -110,7 +120,13 @@ func (w *webhookReceiver) Post(ctx context.Context, message Message) (string, er
 
 // sanitize removes the endpoint from an error message.
 func (w *webhookReceiver) sanitize(message string) string {
-	return strings.ReplaceAll(message, w.url, "<endpoint>")
+	message = strings.ReplaceAll(message, w.url, "<endpoint>")
+	// The transport quotes the parsed, normalized URL ("HTTPS://Host/path" becomes
+	// "https://host/path"), which the raw replacement would miss.
+	if parsed, err := url.Parse(w.url); err == nil {
+		message = strings.ReplaceAll(message, parsed.String(), "<endpoint>")
+	}
+	return message
 }
 
 // ValidateChannel checks the write-time invariants of one channel. It lives here

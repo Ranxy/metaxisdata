@@ -35,7 +35,8 @@ A channel is one destination and the rules for what it receives:
 
 Delivery is asynchronous: the platform queues the event, posts it, and retries a
 failure with backoff (1m, 5m, 15m, 1h, 6h). After six attempts the delivery is
-**dead**; fix the cause and press **Retry**. An event addressed to five
+**dead**; fix the cause and press **Retry**, which grants a fresh six-attempt
+budget. An event addressed to five
 administrators still reaches a channel once.
 
 ### The webhook body
@@ -48,15 +49,19 @@ administrators still reaches a channel once.
   "severity": "ERROR",
   "title": "Data quality: orders id not null failed on prod/app/public/orders",
   "text": "Status: PASS → FAIL · Severity: ERROR · Observed: 12 rows · Failed rows: 12/1000",
-  "link": "https://metaxis.example.com/data-quality/executions/981",
+  "link": "https://metaxis.example.com/data-quality/executions/workspaces/ws-1/qualityExecutions/981",
   "occurredAt": "2026-10-31T09:12:44Z"
 }
 ```
 
 `link` is present only when the workspace has an **external URL** configured
 (Settings → General); the message then points at the issue, execution or
-instance page behind the event. The body is a fixed shape: fields are added,
-never renamed or removed.
+instance page behind the event. The data-quality links carry the whole resource
+name, because those detail pages read the name from the path. Redirects are not
+followed: a 3xx answer is a failed attempt (a 301/302 would turn the POST into a
+GET without the body, and a 307/308 would re-send the body and signature to a
+host the endpoint chose). The body is a fixed shape: fields are added, never
+renamed or removed.
 
 ### Verifying the signature
 
@@ -68,8 +73,8 @@ filling the fields with new values.
 ## Deliveries
 
 The **Deliveries** card on the same page lists the most recent attempts: the
-queued time, channel, event, state, how many attempts were made, and the last
-error. States are *pending* (waiting, or waiting for a retry), *sending*,
+queued time, channel, event, state, how many attempts were made, when the next
+attempt is due, and the last error. States are *pending* (waiting, or waiting for a retry), *sending*,
 *sent*, and *dead* (out of attempts). Deliveries are kept 30 days; a channel's
 queued deliveries are removed with it.
 
@@ -77,8 +82,9 @@ queued deliveries are removed with it.
 
 Reading channels and deliveries needs `metaxisdata.settings.get`; changing a
 channel, testing it and retrying a delivery need `metaxisdata.settings.update`.
-Every change, test send and retry is recorded in the audit log, with the endpoint
-credential redacted.
+Channel changes and delivery retries are recorded in the audit log, with the
+endpoint credential redacted. A test send is not audited: it queues nothing and
+its response is third-party text that does not belong in the permanent ledger.
 
 The endpoint URL is treated as a credential: it is encrypted at rest with the
 deployment data key, never returned by an API read, redacted from audit rows, and

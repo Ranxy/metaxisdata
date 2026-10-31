@@ -183,11 +183,14 @@ func link(externalURL string, event *storepb.NotificationDeliveryEvent) string {
 	}
 	switch detail := event.GetDetail().(type) {
 	case *storepb.NotificationDeliveryEvent_DataQuality:
+		// The data-quality detail pages carry the whole resource name in their
+		// route (the pages join the segments back to call the RPC), so the link
+		// must append the name, not its last segment.
 		if detail.DataQuality.GetExecution() != "" {
-			return base + "/data-quality/executions/" + lastSegment(detail.DataQuality.GetExecution())
+			return base + "/data-quality/executions/" + detail.DataQuality.GetExecution()
 		}
 		if detail.DataQuality.GetIssue() != "" {
-			return base + "/data-quality/issues/" + lastSegment(detail.DataQuality.GetIssue())
+			return base + "/data-quality/issues/" + detail.DataQuality.GetIssue()
 		}
 		return base + "/data-quality/executions"
 	case *storepb.NotificationDeliveryEvent_SchemaSync:
@@ -203,10 +206,11 @@ func link(externalURL string, event *storepb.NotificationDeliveryEvent) string {
 }
 
 func lastSegment(resource string) string {
-	if i := strings.LastIndexByte(strings.TrimRight(resource, "/"), '/'); i >= 0 {
-		return resource[i+1:]
+	trimmed := strings.TrimRight(resource, "/")
+	if i := strings.LastIndexByte(trimmed, '/'); i >= 0 {
+		return trimmed[i+1:]
 	}
-	return resource
+	return trimmed
 }
 
 // shortResource trims a resource name to its last segment for display.

@@ -21,12 +21,14 @@ type finishedDelivery struct {
 }
 
 type fakeDispatcherStore struct {
-	claimed  []*store.NotificationDeliveryMessage
-	channels []*store.NotificationChannelMessage
-	secret   *storepb.NotificationChannelSecret
-	setting  *storepb.WorkspaceProfileSetting
+	claimed    []*store.NotificationDeliveryMessage
+	channels   []*store.NotificationChannelMessage
+	channelErr error
+	secret     *storepb.NotificationChannelSecret
+	setting    *storepb.WorkspaceProfileSetting
 
 	finished []finishedDelivery
+	released []int64
 }
 
 func (f *fakeDispatcherStore) ClaimNotificationDeliveries(context.Context, int, time.Duration) ([]*store.NotificationDeliveryMessage, error) {
@@ -39,7 +41,12 @@ func (f *fakeDispatcherStore) FinishNotificationDelivery(_ context.Context, id i
 }
 
 func (f *fakeDispatcherStore) ListNotificationChannels(context.Context) ([]*store.NotificationChannelMessage, error) {
-	return f.channels, nil
+	return f.channels, f.channelErr
+}
+
+func (f *fakeDispatcherStore) ReleaseNotificationDelivery(_ context.Context, id int64) error {
+	f.released = append(f.released, id)
+	return nil
 }
 
 func (f *fakeDispatcherStore) GetNotificationChannelSecret(context.Context, int64) (*storepb.NotificationChannelSecret, error) {
@@ -196,4 +203,59 @@ func TestDispatchDeadWhenCredentialMissing(t *testing.T) {
 	require.Len(t, fake.finished, 1)
 	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD, fake.finished[0].state)
 	require.Contains(t, fake.finished[0].lastError, "no endpoint")
+}
+
+// A channel-list read failure must not be mistaken for "every channel is gone":
+// the claimed deliveries are released without an attempt and retried next tick.
+func TestDispatchReleasesBatchWhenChannelReadFails(t *testing.T) {
+	t.Parallel()
+
+	channel, secret := webhookChannelMessage("https://example.com/hook")
+	fake := &fakeDispatcherStore{
+		claimed: []*store.NotificationDeliveryMessage{
+			delivery(21, 1, channel.ID),
+			delivery(22, 1, channel.ID),
+		},
+		channels:   []*store.NotificationChannelMessage{channel},
+		channelErr: context.DeadlineExceeded,
+		secret:     secret,
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Empty(t, fake.finished, "no delivery may be finished when the channel list is unreadable")
+	require.ElementsMatch(t, []int64{21, 22}, fake.released)
+}
+
+// A 3xx answer is a failed attempt: the body was not delivered, so recording SENT
+// would lose the notification silently.
+func TestDispatchTreatsRedirectAsFailure(t *testing.T) {
+	t.Parallel()
+
+	var targetHits int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/stolen", http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+
+	channel, secret := webhookChannelMessage(redirect.URL)
+	fake := &fakeDispatcherStore{
+		claimed:  []*store.NotificationDeliveryMessage{delivery(23, 1, channel.ID)},
+		channels: []*store.NotificationChannelMessage{channel},
+		secret:   secret,
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Len(t, fake.finished, 1)
+	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING, fake.finished[0].state)
+	require.Contains(t, fake.finished[0].lastError, "307")
+	require.Zero(t, targetHits, "the redirect target must never be contacted")
 }
