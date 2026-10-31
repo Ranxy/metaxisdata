@@ -35,6 +35,8 @@ const (
 	ApplicationNamePrefix      = "applications/"
 	ConnectedAppNamePrefix     = "connectedApps/"
 	NotificationPrefix         = "notifications/"
+	NotificationChannelPrefix  = "notificationChannels/"
+	NotificationDeliveryPrefix = "notificationDeliveries/"
 )
 
 // GetOpenLineageToken returns the last segment of an OpenLineage resource name.
@@ -326,4 +328,31 @@ func GetRoleID(name string) (string, error) {
 		return "", errors.Errorf("invalid role ID %q", tokens[0])
 	}
 	return tokens[0], nil
+}
+
+// GetNotificationChannelID returns the resource id from
+// workspaces/{workspace}/notificationChannels/{channel}.
+func GetNotificationChannelID(name string) (string, error) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 4 || parts[0] != "workspaces" || parts[1] == "" || parts[2] != "notificationChannels" {
+		return "", errors.Errorf("invalid notification channel name %q", name)
+	}
+	if !IsValidResourceID(parts[3]) {
+		return "", errors.Errorf("invalid notification channel id in %q", name)
+	}
+	return parts[3], nil
+}
+
+// GetNotificationDeliveryID returns the row id from
+// workspaces/{workspace}/notificationDeliveries/{delivery}.
+func GetNotificationDeliveryID(name string) (int64, error) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 4 || parts[0] != "workspaces" || parts[1] == "" || parts[2] != "notificationDeliveries" {
+		return 0, errors.Errorf("invalid notification delivery name %q", name)
+	}
+	id, err := strconv.ParseInt(parts[3], 10, 64)
+	if err != nil || id <= 0 {
+		return 0, errors.Errorf("invalid notification delivery id in %q", name)
+	}
+	return id, nil
 }

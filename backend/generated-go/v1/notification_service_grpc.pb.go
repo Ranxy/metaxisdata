@@ -27,6 +27,14 @@ const (
 	NotificationService_MarkAllNotificationsRead_FullMethodName   = "/metaxisdata.v1.NotificationService/MarkAllNotificationsRead"
 	NotificationService_DeleteNotification_FullMethodName         = "/metaxisdata.v1.NotificationService/DeleteNotification"
 	NotificationService_SubscribeNotifications_FullMethodName     = "/metaxisdata.v1.NotificationService/SubscribeNotifications"
+	NotificationService_ListNotificationChannels_FullMethodName   = "/metaxisdata.v1.NotificationService/ListNotificationChannels"
+	NotificationService_GetNotificationChannel_FullMethodName     = "/metaxisdata.v1.NotificationService/GetNotificationChannel"
+	NotificationService_CreateNotificationChannel_FullMethodName  = "/metaxisdata.v1.NotificationService/CreateNotificationChannel"
+	NotificationService_UpdateNotificationChannel_FullMethodName  = "/metaxisdata.v1.NotificationService/UpdateNotificationChannel"
+	NotificationService_DeleteNotificationChannel_FullMethodName  = "/metaxisdata.v1.NotificationService/DeleteNotificationChannel"
+	NotificationService_TestNotificationChannel_FullMethodName    = "/metaxisdata.v1.NotificationService/TestNotificationChannel"
+	NotificationService_ListNotificationDeliveries_FullMethodName = "/metaxisdata.v1.NotificationService/ListNotificationDeliveries"
+	NotificationService_RetryNotificationDelivery_FullMethodName  = "/metaxisdata.v1.NotificationService/RetryNotificationDelivery"
 )
 
 // NotificationServiceClient is the client API for NotificationService service.
@@ -69,6 +77,27 @@ type NotificationServiceClient interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(ctx context.Context, in *SubscribeNotificationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SubscribeNotificationsResponse], error)
+	// List the outbound channels administrators have configured.
+	ListNotificationChannels(ctx context.Context, in *ListNotificationChannelsRequest, opts ...grpc.CallOption) (*ListNotificationChannelsResponse, error)
+	// Read one outbound channel. The credential is never returned.
+	GetNotificationChannel(ctx context.Context, in *GetNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error)
+	// Create one outbound channel. The secret is write-only: it is encrypted
+	// before it is stored and is never returned.
+	CreateNotificationChannel(ctx context.Context, in *CreateNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error)
+	// Update one outbound channel. An omitted secret keeps the stored one; a
+	// present secret replaces it.
+	UpdateNotificationChannel(ctx context.Context, in *UpdateNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error)
+	// Delete one outbound channel and the deliveries still queued for it.
+	DeleteNotificationChannel(ctx context.Context, in *DeleteNotificationChannelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Post a test message through one stored channel and report what the endpoint
+	// answered. Nothing is written to the ledger or queued.
+	TestNotificationChannel(ctx context.Context, in *TestNotificationChannelRequest, opts ...grpc.CallOption) (*TestNotificationChannelResponse, error)
+	// List outbound deliveries, newest first, for administrators to diagnose a
+	// channel.
+	ListNotificationDeliveries(ctx context.Context, in *ListNotificationDeliveriesRequest, opts ...grpc.CallOption) (*ListNotificationDeliveriesResponse, error)
+	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+	// or waiting one is left as it is.
+	RetryNotificationDelivery(ctx context.Context, in *RetryNotificationDeliveryRequest, opts ...grpc.CallOption) (*NotificationDelivery, error)
 }
 
 type notificationServiceClient struct {
@@ -158,6 +187,86 @@ func (c *notificationServiceClient) SubscribeNotifications(ctx context.Context, 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NotificationService_SubscribeNotificationsClient = grpc.ServerStreamingClient[SubscribeNotificationsResponse]
 
+func (c *notificationServiceClient) ListNotificationChannels(ctx context.Context, in *ListNotificationChannelsRequest, opts ...grpc.CallOption) (*ListNotificationChannelsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNotificationChannelsResponse)
+	err := c.cc.Invoke(ctx, NotificationService_ListNotificationChannels_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) GetNotificationChannel(ctx context.Context, in *GetNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationChannel)
+	err := c.cc.Invoke(ctx, NotificationService_GetNotificationChannel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) CreateNotificationChannel(ctx context.Context, in *CreateNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationChannel)
+	err := c.cc.Invoke(ctx, NotificationService_CreateNotificationChannel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) UpdateNotificationChannel(ctx context.Context, in *UpdateNotificationChannelRequest, opts ...grpc.CallOption) (*NotificationChannel, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationChannel)
+	err := c.cc.Invoke(ctx, NotificationService_UpdateNotificationChannel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) DeleteNotificationChannel(ctx context.Context, in *DeleteNotificationChannelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, NotificationService_DeleteNotificationChannel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) TestNotificationChannel(ctx context.Context, in *TestNotificationChannelRequest, opts ...grpc.CallOption) (*TestNotificationChannelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TestNotificationChannelResponse)
+	err := c.cc.Invoke(ctx, NotificationService_TestNotificationChannel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) ListNotificationDeliveries(ctx context.Context, in *ListNotificationDeliveriesRequest, opts ...grpc.CallOption) (*ListNotificationDeliveriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNotificationDeliveriesResponse)
+	err := c.cc.Invoke(ctx, NotificationService_ListNotificationDeliveries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) RetryNotificationDelivery(ctx context.Context, in *RetryNotificationDeliveryRequest, opts ...grpc.CallOption) (*NotificationDelivery, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationDelivery)
+	err := c.cc.Invoke(ctx, NotificationService_RetryNotificationDelivery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NotificationServiceServer is the server API for NotificationService service.
 // All implementations must embed UnimplementedNotificationServiceServer
 // for forward compatibility.
@@ -198,6 +307,27 @@ type NotificationServiceServer interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(*SubscribeNotificationsRequest, grpc.ServerStreamingServer[SubscribeNotificationsResponse]) error
+	// List the outbound channels administrators have configured.
+	ListNotificationChannels(context.Context, *ListNotificationChannelsRequest) (*ListNotificationChannelsResponse, error)
+	// Read one outbound channel. The credential is never returned.
+	GetNotificationChannel(context.Context, *GetNotificationChannelRequest) (*NotificationChannel, error)
+	// Create one outbound channel. The secret is write-only: it is encrypted
+	// before it is stored and is never returned.
+	CreateNotificationChannel(context.Context, *CreateNotificationChannelRequest) (*NotificationChannel, error)
+	// Update one outbound channel. An omitted secret keeps the stored one; a
+	// present secret replaces it.
+	UpdateNotificationChannel(context.Context, *UpdateNotificationChannelRequest) (*NotificationChannel, error)
+	// Delete one outbound channel and the deliveries still queued for it.
+	DeleteNotificationChannel(context.Context, *DeleteNotificationChannelRequest) (*emptypb.Empty, error)
+	// Post a test message through one stored channel and report what the endpoint
+	// answered. Nothing is written to the ledger or queued.
+	TestNotificationChannel(context.Context, *TestNotificationChannelRequest) (*TestNotificationChannelResponse, error)
+	// List outbound deliveries, newest first, for administrators to diagnose a
+	// channel.
+	ListNotificationDeliveries(context.Context, *ListNotificationDeliveriesRequest) (*ListNotificationDeliveriesResponse, error)
+	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+	// or waiting one is left as it is.
+	RetryNotificationDelivery(context.Context, *RetryNotificationDeliveryRequest) (*NotificationDelivery, error)
 	mustEmbedUnimplementedNotificationServiceServer()
 }
 
@@ -228,6 +358,30 @@ func (UnimplementedNotificationServiceServer) DeleteNotification(context.Context
 }
 func (UnimplementedNotificationServiceServer) SubscribeNotifications(*SubscribeNotificationsRequest, grpc.ServerStreamingServer[SubscribeNotificationsResponse]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeNotifications not implemented")
+}
+func (UnimplementedNotificationServiceServer) ListNotificationChannels(context.Context, *ListNotificationChannelsRequest) (*ListNotificationChannelsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNotificationChannels not implemented")
+}
+func (UnimplementedNotificationServiceServer) GetNotificationChannel(context.Context, *GetNotificationChannelRequest) (*NotificationChannel, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNotificationChannel not implemented")
+}
+func (UnimplementedNotificationServiceServer) CreateNotificationChannel(context.Context, *CreateNotificationChannelRequest) (*NotificationChannel, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateNotificationChannel not implemented")
+}
+func (UnimplementedNotificationServiceServer) UpdateNotificationChannel(context.Context, *UpdateNotificationChannelRequest) (*NotificationChannel, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateNotificationChannel not implemented")
+}
+func (UnimplementedNotificationServiceServer) DeleteNotificationChannel(context.Context, *DeleteNotificationChannelRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNotificationChannel not implemented")
+}
+func (UnimplementedNotificationServiceServer) TestNotificationChannel(context.Context, *TestNotificationChannelRequest) (*TestNotificationChannelResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TestNotificationChannel not implemented")
+}
+func (UnimplementedNotificationServiceServer) ListNotificationDeliveries(context.Context, *ListNotificationDeliveriesRequest) (*ListNotificationDeliveriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNotificationDeliveries not implemented")
+}
+func (UnimplementedNotificationServiceServer) RetryNotificationDelivery(context.Context, *RetryNotificationDeliveryRequest) (*NotificationDelivery, error) {
+	return nil, status.Error(codes.Unimplemented, "method RetryNotificationDelivery not implemented")
 }
 func (UnimplementedNotificationServiceServer) mustEmbedUnimplementedNotificationServiceServer() {}
 func (UnimplementedNotificationServiceServer) testEmbeddedByValue()                             {}
@@ -369,6 +523,150 @@ func _NotificationService_SubscribeNotifications_Handler(srv interface{}, stream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NotificationService_SubscribeNotificationsServer = grpc.ServerStreamingServer[SubscribeNotificationsResponse]
 
+func _NotificationService_ListNotificationChannels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNotificationChannelsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).ListNotificationChannels(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_ListNotificationChannels_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).ListNotificationChannels(ctx, req.(*ListNotificationChannelsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_GetNotificationChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNotificationChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).GetNotificationChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_GetNotificationChannel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).GetNotificationChannel(ctx, req.(*GetNotificationChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_CreateNotificationChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNotificationChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).CreateNotificationChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_CreateNotificationChannel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).CreateNotificationChannel(ctx, req.(*CreateNotificationChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_UpdateNotificationChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNotificationChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).UpdateNotificationChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_UpdateNotificationChannel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).UpdateNotificationChannel(ctx, req.(*UpdateNotificationChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_DeleteNotificationChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNotificationChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).DeleteNotificationChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_DeleteNotificationChannel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).DeleteNotificationChannel(ctx, req.(*DeleteNotificationChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_TestNotificationChannel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TestNotificationChannelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).TestNotificationChannel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_TestNotificationChannel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).TestNotificationChannel(ctx, req.(*TestNotificationChannelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_ListNotificationDeliveries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNotificationDeliveriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).ListNotificationDeliveries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_ListNotificationDeliveries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).ListNotificationDeliveries(ctx, req.(*ListNotificationDeliveriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_RetryNotificationDelivery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryNotificationDeliveryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).RetryNotificationDelivery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_RetryNotificationDelivery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).RetryNotificationDelivery(ctx, req.(*RetryNotificationDeliveryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NotificationService_ServiceDesc is the grpc.ServiceDesc for NotificationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -399,6 +697,38 @@ var NotificationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteNotification",
 			Handler:    _NotificationService_DeleteNotification_Handler,
+		},
+		{
+			MethodName: "ListNotificationChannels",
+			Handler:    _NotificationService_ListNotificationChannels_Handler,
+		},
+		{
+			MethodName: "GetNotificationChannel",
+			Handler:    _NotificationService_GetNotificationChannel_Handler,
+		},
+		{
+			MethodName: "CreateNotificationChannel",
+			Handler:    _NotificationService_CreateNotificationChannel_Handler,
+		},
+		{
+			MethodName: "UpdateNotificationChannel",
+			Handler:    _NotificationService_UpdateNotificationChannel_Handler,
+		},
+		{
+			MethodName: "DeleteNotificationChannel",
+			Handler:    _NotificationService_DeleteNotificationChannel_Handler,
+		},
+		{
+			MethodName: "TestNotificationChannel",
+			Handler:    _NotificationService_TestNotificationChannel_Handler,
+		},
+		{
+			MethodName: "ListNotificationDeliveries",
+			Handler:    _NotificationService_ListNotificationDeliveries_Handler,
+		},
+		{
+			MethodName: "RetryNotificationDelivery",
+			Handler:    _NotificationService_RetryNotificationDelivery_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

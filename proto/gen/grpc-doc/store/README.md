@@ -168,11 +168,18 @@
 - [store/notification.proto](#store_notification-proto)
     - [DataQualityDetail](#metaxisdata-store-DataQualityDetail)
     - [Notification](#metaxisdata-store-Notification)
+    - [NotificationChannel](#metaxisdata-store-NotificationChannel)
+    - [NotificationChannelConfig](#metaxisdata-store-NotificationChannelConfig)
+    - [NotificationChannelSecret](#metaxisdata-store-NotificationChannelSecret)
+    - [NotificationDeliveryEvent](#metaxisdata-store-NotificationDeliveryEvent)
     - [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail)
     - [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail)
     - [SyncDatabaseResult](#metaxisdata-store-SyncDatabaseResult)
+    - [WebhookChannelConfig](#metaxisdata-store-WebhookChannelConfig)
   
     - [DataQualityNotificationKind](#metaxisdata-store-DataQualityNotificationKind)
+    - [NotificationChannelKind](#metaxisdata-store-NotificationChannelKind)
+    - [NotificationDeliveryState](#metaxisdata-store-NotificationDeliveryState)
     - [NotificationSeverity](#metaxisdata-store-NotificationSeverity)
     - [NotificationType](#metaxisdata-store-NotificationType)
     - [OpenLineageFailureKind](#metaxisdata-store-OpenLineageFailureKind)
@@ -3131,6 +3138,84 @@ columns cannot disagree. The payload holds only the message proper.
 
 
 
+<a name="metaxisdata-store-NotificationChannel"></a>
+
+### NotificationChannel
+NotificationChannel is the stored configuration of one outbound channel, as
+notification_channel.payload. The endpoint URL and the signing secret are not
+part of it: they are write-only and live encrypted in the secret column, so a
+read of the channel returns everything except the credential.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| display_name | [string](#string) |  |  |
+| kind | [NotificationChannelKind](#metaxisdata-store-NotificationChannelKind) |  |  |
+| enabled | [bool](#bool) |  |  |
+| event_types | [NotificationType](#metaxisdata-store-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type. |
+| min_severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  | The lowest severity this channel delivers. UNSPECIFIED means every severity. |
+| language | [string](#string) |  | BCP-47 tag the outbound text is written in, for example &#34;zh-CN&#34;. Empty means the server default. |
+| config | [NotificationChannelConfig](#metaxisdata-store-NotificationChannelConfig) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-NotificationChannelConfig"></a>
+
+### NotificationChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| webhook | [WebhookChannelConfig](#metaxisdata-store-WebhookChannelConfig) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-NotificationChannelSecret"></a>
+
+### NotificationChannelSecret
+NotificationChannelSecret is the write-only half of a channel: what it takes
+to deliver, kept as v1: AES-256-GCM ciphertext in notification_channel.secret
+and never returned by a read.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| webhook_url | [string](#string) |  |  |
+| webhook_signing_secret | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-NotificationDeliveryEvent"></a>
+
+### NotificationDeliveryEvent
+NotificationDeliveryEvent is the workspace-level half of a notification: the
+message without its per-recipient columns. It is notification_delivery.payload
+and is what the dispatcher renders and posts.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| type | [NotificationType](#metaxisdata-store-NotificationType) |  |  |
+| severity | [NotificationSeverity](#metaxisdata-store-NotificationSeverity) |  |  |
+| schema_sync | [SchemaSyncDetail](#metaxisdata-store-SchemaSyncDetail) |  |  |
+| openlineage | [OpenLineageDetail](#metaxisdata-store-OpenLineageDetail) |  |  |
+| data_quality | [DataQualityDetail](#metaxisdata-store-DataQualityDetail) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-OpenLineageDetail"></a>
 
 ### OpenLineageDetail
@@ -3194,6 +3279,21 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
 
 
 
+
+<a name="metaxisdata-store-WebhookChannelConfig"></a>
+
+### WebhookChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sign | [bool](#bool) |  | Whether the delivery body is signed with the channel&#39;s signing secret. |
+
+
+
+
+
  
 
 
@@ -3209,6 +3309,33 @@ DataQualityNotificationKind is the event a data quality notification reports.
 | DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
 | DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
 | DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One dispatch batch failed so many rules that the individual messages were merged. |
+
+
+
+<a name="metaxisdata-store-NotificationChannelKind"></a>
+
+### NotificationChannelKind
+NotificationChannelKind is the protocol one outbound channel speaks.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_CHANNEL_KIND_UNSPECIFIED | 0 |  |
+| NOTIFICATION_CHANNEL_KIND_WEBHOOK | 1 | A generic HTTP POST endpoint. The body is the stable delivery JSON and is optionally signed with the channel&#39;s signing secret. |
+
+
+
+<a name="metaxisdata-store-NotificationDeliveryState"></a>
+
+### NotificationDeliveryState
+NotificationDeliveryState is the lifecycle of one outbound delivery.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| NOTIFICATION_DELIVERY_STATE_UNSPECIFIED | 0 |  |
+| NOTIFICATION_DELIVERY_STATE_PENDING | 1 | Waiting for its next attempt. |
+| NOTIFICATION_DELIVERY_STATE_SENDING | 2 | Leased by a dispatcher; a lease that expires is reclaimed as PENDING. |
+| NOTIFICATION_DELIVERY_STATE_SENT | 3 | Delivered. Terminal. |
+| NOTIFICATION_DELIVERY_STATE_DEAD | 4 | Out of attempts. Terminal until an administrator retries it. |
 
 
 

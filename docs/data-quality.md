@@ -200,7 +200,7 @@ Issues produce in-app notifications (bell icon) for the check's owner, or for th
 workspace administrators when there is no owner; a recovered issue notifies the
 same audience. Execution failures always notify the administrators and cannot be
 muted. When more than ten checks in one target's scan batch fail, one summary
-replaces the per-check messages. There is no email or webhook delivery.
+replaces the per-check messages. An administrator can also forward the same events to a webhook under Settings → Notifications; see [notifications.md](notifications.md).
 
 ## Profiles, labels and suggestions
 

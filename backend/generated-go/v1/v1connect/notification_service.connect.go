@@ -55,6 +55,30 @@ const (
 	// NotificationServiceSubscribeNotificationsProcedure is the fully-qualified name of the
 	// NotificationService's SubscribeNotifications RPC.
 	NotificationServiceSubscribeNotificationsProcedure = "/metaxisdata.v1.NotificationService/SubscribeNotifications"
+	// NotificationServiceListNotificationChannelsProcedure is the fully-qualified name of the
+	// NotificationService's ListNotificationChannels RPC.
+	NotificationServiceListNotificationChannelsProcedure = "/metaxisdata.v1.NotificationService/ListNotificationChannels"
+	// NotificationServiceGetNotificationChannelProcedure is the fully-qualified name of the
+	// NotificationService's GetNotificationChannel RPC.
+	NotificationServiceGetNotificationChannelProcedure = "/metaxisdata.v1.NotificationService/GetNotificationChannel"
+	// NotificationServiceCreateNotificationChannelProcedure is the fully-qualified name of the
+	// NotificationService's CreateNotificationChannel RPC.
+	NotificationServiceCreateNotificationChannelProcedure = "/metaxisdata.v1.NotificationService/CreateNotificationChannel"
+	// NotificationServiceUpdateNotificationChannelProcedure is the fully-qualified name of the
+	// NotificationService's UpdateNotificationChannel RPC.
+	NotificationServiceUpdateNotificationChannelProcedure = "/metaxisdata.v1.NotificationService/UpdateNotificationChannel"
+	// NotificationServiceDeleteNotificationChannelProcedure is the fully-qualified name of the
+	// NotificationService's DeleteNotificationChannel RPC.
+	NotificationServiceDeleteNotificationChannelProcedure = "/metaxisdata.v1.NotificationService/DeleteNotificationChannel"
+	// NotificationServiceTestNotificationChannelProcedure is the fully-qualified name of the
+	// NotificationService's TestNotificationChannel RPC.
+	NotificationServiceTestNotificationChannelProcedure = "/metaxisdata.v1.NotificationService/TestNotificationChannel"
+	// NotificationServiceListNotificationDeliveriesProcedure is the fully-qualified name of the
+	// NotificationService's ListNotificationDeliveries RPC.
+	NotificationServiceListNotificationDeliveriesProcedure = "/metaxisdata.v1.NotificationService/ListNotificationDeliveries"
+	// NotificationServiceRetryNotificationDeliveryProcedure is the fully-qualified name of the
+	// NotificationService's RetryNotificationDelivery RPC.
+	NotificationServiceRetryNotificationDeliveryProcedure = "/metaxisdata.v1.NotificationService/RetryNotificationDelivery"
 )
 
 // NotificationServiceClient is a client for the metaxisdata.v1.NotificationService service.
@@ -84,6 +108,27 @@ type NotificationServiceClient interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest]) (*connect.ServerStreamForClient[v1.SubscribeNotificationsResponse], error)
+	// List the outbound channels administrators have configured.
+	ListNotificationChannels(context.Context, *connect.Request[v1.ListNotificationChannelsRequest]) (*connect.Response[v1.ListNotificationChannelsResponse], error)
+	// Read one outbound channel. The credential is never returned.
+	GetNotificationChannel(context.Context, *connect.Request[v1.GetNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
+	// Create one outbound channel. The secret is write-only: it is encrypted
+	// before it is stored and is never returned.
+	CreateNotificationChannel(context.Context, *connect.Request[v1.CreateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
+	// Update one outbound channel. An omitted secret keeps the stored one; a
+	// present secret replaces it.
+	UpdateNotificationChannel(context.Context, *connect.Request[v1.UpdateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
+	// Delete one outbound channel and the deliveries still queued for it.
+	DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error)
+	// Post a test message through one stored channel and report what the endpoint
+	// answered. Nothing is written to the ledger or queued.
+	TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error)
+	// List outbound deliveries, newest first, for administrators to diagnose a
+	// channel.
+	ListNotificationDeliveries(context.Context, *connect.Request[v1.ListNotificationDeliveriesRequest]) (*connect.Response[v1.ListNotificationDeliveriesResponse], error)
+	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+	// or waiting one is left as it is.
+	RetryNotificationDelivery(context.Context, *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error)
 }
 
 // NewNotificationServiceClient constructs a client for the metaxisdata.v1.NotificationService
@@ -139,6 +184,54 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(notificationServiceMethods.ByName("SubscribeNotifications")),
 			connect.WithClientOptions(opts...),
 		),
+		listNotificationChannels: connect.NewClient[v1.ListNotificationChannelsRequest, v1.ListNotificationChannelsResponse](
+			httpClient,
+			baseURL+NotificationServiceListNotificationChannelsProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("ListNotificationChannels")),
+			connect.WithClientOptions(opts...),
+		),
+		getNotificationChannel: connect.NewClient[v1.GetNotificationChannelRequest, v1.NotificationChannel](
+			httpClient,
+			baseURL+NotificationServiceGetNotificationChannelProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("GetNotificationChannel")),
+			connect.WithClientOptions(opts...),
+		),
+		createNotificationChannel: connect.NewClient[v1.CreateNotificationChannelRequest, v1.NotificationChannel](
+			httpClient,
+			baseURL+NotificationServiceCreateNotificationChannelProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("CreateNotificationChannel")),
+			connect.WithClientOptions(opts...),
+		),
+		updateNotificationChannel: connect.NewClient[v1.UpdateNotificationChannelRequest, v1.NotificationChannel](
+			httpClient,
+			baseURL+NotificationServiceUpdateNotificationChannelProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("UpdateNotificationChannel")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteNotificationChannel: connect.NewClient[v1.DeleteNotificationChannelRequest, emptypb.Empty](
+			httpClient,
+			baseURL+NotificationServiceDeleteNotificationChannelProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("DeleteNotificationChannel")),
+			connect.WithClientOptions(opts...),
+		),
+		testNotificationChannel: connect.NewClient[v1.TestNotificationChannelRequest, v1.TestNotificationChannelResponse](
+			httpClient,
+			baseURL+NotificationServiceTestNotificationChannelProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("TestNotificationChannel")),
+			connect.WithClientOptions(opts...),
+		),
+		listNotificationDeliveries: connect.NewClient[v1.ListNotificationDeliveriesRequest, v1.ListNotificationDeliveriesResponse](
+			httpClient,
+			baseURL+NotificationServiceListNotificationDeliveriesProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("ListNotificationDeliveries")),
+			connect.WithClientOptions(opts...),
+		),
+		retryNotificationDelivery: connect.NewClient[v1.RetryNotificationDeliveryRequest, v1.NotificationDelivery](
+			httpClient,
+			baseURL+NotificationServiceRetryNotificationDeliveryProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("RetryNotificationDelivery")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -151,6 +244,14 @@ type notificationServiceClient struct {
 	markAllNotificationsRead   *connect.Client[v1.MarkAllNotificationsReadRequest, emptypb.Empty]
 	deleteNotification         *connect.Client[v1.DeleteNotificationRequest, emptypb.Empty]
 	subscribeNotifications     *connect.Client[v1.SubscribeNotificationsRequest, v1.SubscribeNotificationsResponse]
+	listNotificationChannels   *connect.Client[v1.ListNotificationChannelsRequest, v1.ListNotificationChannelsResponse]
+	getNotificationChannel     *connect.Client[v1.GetNotificationChannelRequest, v1.NotificationChannel]
+	createNotificationChannel  *connect.Client[v1.CreateNotificationChannelRequest, v1.NotificationChannel]
+	updateNotificationChannel  *connect.Client[v1.UpdateNotificationChannelRequest, v1.NotificationChannel]
+	deleteNotificationChannel  *connect.Client[v1.DeleteNotificationChannelRequest, emptypb.Empty]
+	testNotificationChannel    *connect.Client[v1.TestNotificationChannelRequest, v1.TestNotificationChannelResponse]
+	listNotificationDeliveries *connect.Client[v1.ListNotificationDeliveriesRequest, v1.ListNotificationDeliveriesResponse]
+	retryNotificationDelivery  *connect.Client[v1.RetryNotificationDeliveryRequest, v1.NotificationDelivery]
 }
 
 // ListNotifications calls metaxisdata.v1.NotificationService.ListNotifications.
@@ -188,6 +289,46 @@ func (c *notificationServiceClient) SubscribeNotifications(ctx context.Context, 
 	return c.subscribeNotifications.CallServerStream(ctx, req)
 }
 
+// ListNotificationChannels calls metaxisdata.v1.NotificationService.ListNotificationChannels.
+func (c *notificationServiceClient) ListNotificationChannels(ctx context.Context, req *connect.Request[v1.ListNotificationChannelsRequest]) (*connect.Response[v1.ListNotificationChannelsResponse], error) {
+	return c.listNotificationChannels.CallUnary(ctx, req)
+}
+
+// GetNotificationChannel calls metaxisdata.v1.NotificationService.GetNotificationChannel.
+func (c *notificationServiceClient) GetNotificationChannel(ctx context.Context, req *connect.Request[v1.GetNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error) {
+	return c.getNotificationChannel.CallUnary(ctx, req)
+}
+
+// CreateNotificationChannel calls metaxisdata.v1.NotificationService.CreateNotificationChannel.
+func (c *notificationServiceClient) CreateNotificationChannel(ctx context.Context, req *connect.Request[v1.CreateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error) {
+	return c.createNotificationChannel.CallUnary(ctx, req)
+}
+
+// UpdateNotificationChannel calls metaxisdata.v1.NotificationService.UpdateNotificationChannel.
+func (c *notificationServiceClient) UpdateNotificationChannel(ctx context.Context, req *connect.Request[v1.UpdateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error) {
+	return c.updateNotificationChannel.CallUnary(ctx, req)
+}
+
+// DeleteNotificationChannel calls metaxisdata.v1.NotificationService.DeleteNotificationChannel.
+func (c *notificationServiceClient) DeleteNotificationChannel(ctx context.Context, req *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteNotificationChannel.CallUnary(ctx, req)
+}
+
+// TestNotificationChannel calls metaxisdata.v1.NotificationService.TestNotificationChannel.
+func (c *notificationServiceClient) TestNotificationChannel(ctx context.Context, req *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error) {
+	return c.testNotificationChannel.CallUnary(ctx, req)
+}
+
+// ListNotificationDeliveries calls metaxisdata.v1.NotificationService.ListNotificationDeliveries.
+func (c *notificationServiceClient) ListNotificationDeliveries(ctx context.Context, req *connect.Request[v1.ListNotificationDeliveriesRequest]) (*connect.Response[v1.ListNotificationDeliveriesResponse], error) {
+	return c.listNotificationDeliveries.CallUnary(ctx, req)
+}
+
+// RetryNotificationDelivery calls metaxisdata.v1.NotificationService.RetryNotificationDelivery.
+func (c *notificationServiceClient) RetryNotificationDelivery(ctx context.Context, req *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error) {
+	return c.retryNotificationDelivery.CallUnary(ctx, req)
+}
+
 // NotificationServiceHandler is an implementation of the metaxisdata.v1.NotificationService
 // service.
 type NotificationServiceHandler interface {
@@ -216,6 +357,27 @@ type NotificationServiceHandler interface {
 	// route does. The browser reaches the Connect endpoint directly, the way it does
 	// for ExplainSQL.
 	SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest], *connect.ServerStream[v1.SubscribeNotificationsResponse]) error
+	// List the outbound channels administrators have configured.
+	ListNotificationChannels(context.Context, *connect.Request[v1.ListNotificationChannelsRequest]) (*connect.Response[v1.ListNotificationChannelsResponse], error)
+	// Read one outbound channel. The credential is never returned.
+	GetNotificationChannel(context.Context, *connect.Request[v1.GetNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
+	// Create one outbound channel. The secret is write-only: it is encrypted
+	// before it is stored and is never returned.
+	CreateNotificationChannel(context.Context, *connect.Request[v1.CreateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
+	// Update one outbound channel. An omitted secret keeps the stored one; a
+	// present secret replaces it.
+	UpdateNotificationChannel(context.Context, *connect.Request[v1.UpdateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error)
+	// Delete one outbound channel and the deliveries still queued for it.
+	DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error)
+	// Post a test message through one stored channel and report what the endpoint
+	// answered. Nothing is written to the ledger or queued.
+	TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error)
+	// List outbound deliveries, newest first, for administrators to diagnose a
+	// channel.
+	ListNotificationDeliveries(context.Context, *connect.Request[v1.ListNotificationDeliveriesRequest]) (*connect.Response[v1.ListNotificationDeliveriesResponse], error)
+	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+	// or waiting one is left as it is.
+	RetryNotificationDelivery(context.Context, *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error)
 }
 
 // NewNotificationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -267,6 +429,54 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 		connect.WithSchema(notificationServiceMethods.ByName("SubscribeNotifications")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationServiceListNotificationChannelsHandler := connect.NewUnaryHandler(
+		NotificationServiceListNotificationChannelsProcedure,
+		svc.ListNotificationChannels,
+		connect.WithSchema(notificationServiceMethods.ByName("ListNotificationChannels")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceGetNotificationChannelHandler := connect.NewUnaryHandler(
+		NotificationServiceGetNotificationChannelProcedure,
+		svc.GetNotificationChannel,
+		connect.WithSchema(notificationServiceMethods.ByName("GetNotificationChannel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceCreateNotificationChannelHandler := connect.NewUnaryHandler(
+		NotificationServiceCreateNotificationChannelProcedure,
+		svc.CreateNotificationChannel,
+		connect.WithSchema(notificationServiceMethods.ByName("CreateNotificationChannel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceUpdateNotificationChannelHandler := connect.NewUnaryHandler(
+		NotificationServiceUpdateNotificationChannelProcedure,
+		svc.UpdateNotificationChannel,
+		connect.WithSchema(notificationServiceMethods.ByName("UpdateNotificationChannel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceDeleteNotificationChannelHandler := connect.NewUnaryHandler(
+		NotificationServiceDeleteNotificationChannelProcedure,
+		svc.DeleteNotificationChannel,
+		connect.WithSchema(notificationServiceMethods.ByName("DeleteNotificationChannel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceTestNotificationChannelHandler := connect.NewUnaryHandler(
+		NotificationServiceTestNotificationChannelProcedure,
+		svc.TestNotificationChannel,
+		connect.WithSchema(notificationServiceMethods.ByName("TestNotificationChannel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceListNotificationDeliveriesHandler := connect.NewUnaryHandler(
+		NotificationServiceListNotificationDeliveriesProcedure,
+		svc.ListNotificationDeliveries,
+		connect.WithSchema(notificationServiceMethods.ByName("ListNotificationDeliveries")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceRetryNotificationDeliveryHandler := connect.NewUnaryHandler(
+		NotificationServiceRetryNotificationDeliveryProcedure,
+		svc.RetryNotificationDelivery,
+		connect.WithSchema(notificationServiceMethods.ByName("RetryNotificationDelivery")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.NotificationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NotificationServiceListNotificationsProcedure:
@@ -283,6 +493,22 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 			notificationServiceDeleteNotificationHandler.ServeHTTP(w, r)
 		case NotificationServiceSubscribeNotificationsProcedure:
 			notificationServiceSubscribeNotificationsHandler.ServeHTTP(w, r)
+		case NotificationServiceListNotificationChannelsProcedure:
+			notificationServiceListNotificationChannelsHandler.ServeHTTP(w, r)
+		case NotificationServiceGetNotificationChannelProcedure:
+			notificationServiceGetNotificationChannelHandler.ServeHTTP(w, r)
+		case NotificationServiceCreateNotificationChannelProcedure:
+			notificationServiceCreateNotificationChannelHandler.ServeHTTP(w, r)
+		case NotificationServiceUpdateNotificationChannelProcedure:
+			notificationServiceUpdateNotificationChannelHandler.ServeHTTP(w, r)
+		case NotificationServiceDeleteNotificationChannelProcedure:
+			notificationServiceDeleteNotificationChannelHandler.ServeHTTP(w, r)
+		case NotificationServiceTestNotificationChannelProcedure:
+			notificationServiceTestNotificationChannelHandler.ServeHTTP(w, r)
+		case NotificationServiceListNotificationDeliveriesProcedure:
+			notificationServiceListNotificationDeliveriesHandler.ServeHTTP(w, r)
+		case NotificationServiceRetryNotificationDeliveryProcedure:
+			notificationServiceRetryNotificationDeliveryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -318,4 +544,36 @@ func (UnimplementedNotificationServiceHandler) DeleteNotification(context.Contex
 
 func (UnimplementedNotificationServiceHandler) SubscribeNotifications(context.Context, *connect.Request[v1.SubscribeNotificationsRequest], *connect.ServerStream[v1.SubscribeNotificationsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.SubscribeNotifications is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) ListNotificationChannels(context.Context, *connect.Request[v1.ListNotificationChannelsRequest]) (*connect.Response[v1.ListNotificationChannelsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.ListNotificationChannels is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) GetNotificationChannel(context.Context, *connect.Request[v1.GetNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.GetNotificationChannel is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) CreateNotificationChannel(context.Context, *connect.Request[v1.CreateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.CreateNotificationChannel is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) UpdateNotificationChannel(context.Context, *connect.Request[v1.UpdateNotificationChannelRequest]) (*connect.Response[v1.NotificationChannel], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.UpdateNotificationChannel is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) DeleteNotificationChannel(context.Context, *connect.Request[v1.DeleteNotificationChannelRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.DeleteNotificationChannel is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) TestNotificationChannel(context.Context, *connect.Request[v1.TestNotificationChannelRequest]) (*connect.Response[v1.TestNotificationChannelResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.TestNotificationChannel is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) ListNotificationDeliveries(context.Context, *connect.Request[v1.ListNotificationDeliveriesRequest]) (*connect.Response[v1.ListNotificationDeliveriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.ListNotificationDeliveries is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) RetryNotificationDelivery(context.Context, *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.RetryNotificationDelivery is not implemented"))
 }

@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { EmptySchema, Timestamp } from "@bufbuild/protobuf/wkt";
+import type { EmptySchema, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 import type { QualitySeverity, QualityStatus } from "./data_quality_service_pb";
 
 /**
@@ -657,6 +657,481 @@ export declare type DataQualityDetail = Message<"metaxisdata.v1.DataQualityDetai
 export declare const DataQualityDetailSchema: GenMessage<DataQualityDetail>;
 
 /**
+ * NotificationChannel is one configured outbound destination. The credential is
+ * write-only: reads report only whether one is stored.
+ *
+ * @generated from message metaxisdata.v1.NotificationChannel
+ */
+export declare type NotificationChannel = Message<"metaxisdata.v1.NotificationChannel"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The administrator-facing name, for example "Data quality on-call".
+   *
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationChannelKind kind = 3;
+   */
+  kind: NotificationChannelKind;
+
+  /**
+   * A disabled channel is kept but receives no new deliveries.
+   *
+   * @generated from field: bool enabled = 4;
+   */
+  enabled: boolean;
+
+  /**
+   * The notification types this channel subscribes to. Empty means every type.
+   *
+   * @generated from field: repeated metaxisdata.v1.NotificationType event_types = 5;
+   */
+  eventTypes: NotificationType[];
+
+  /**
+   * The lowest severity this channel delivers. UNSPECIFIED means every severity.
+   *
+   * @generated from field: metaxisdata.v1.NotificationSeverity min_severity = 6;
+   */
+  minSeverity: NotificationSeverity;
+
+  /**
+   * BCP-47 tag the outbound text is written in. Empty means the server default.
+   *
+   * @generated from field: string language = 7;
+   */
+  language: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationChannelConfig config = 8;
+   */
+  config?: NotificationChannelConfig;
+
+  /**
+   * Whether a credential is stored. The credential itself is never returned.
+   *
+   * @generated from field: bool secret_set = 9;
+   */
+  secretSet: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 10;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 11;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationChannel.
+ * Use `create(NotificationChannelSchema)` to create a new message.
+ */
+export declare const NotificationChannelSchema: GenMessage<NotificationChannel>;
+
+/**
+ * @generated from message metaxisdata.v1.NotificationChannelConfig
+ */
+export declare type NotificationChannelConfig = Message<"metaxisdata.v1.NotificationChannelConfig"> & {
+  /**
+   * @generated from oneof metaxisdata.v1.NotificationChannelConfig.config
+   */
+  config: {
+    /**
+     * @generated from field: metaxisdata.v1.WebhookChannelConfig webhook = 1;
+     */
+    value: WebhookChannelConfig;
+    case: "webhook";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationChannelConfig.
+ * Use `create(NotificationChannelConfigSchema)` to create a new message.
+ */
+export declare const NotificationChannelConfigSchema: GenMessage<NotificationChannelConfig>;
+
+/**
+ * @generated from message metaxisdata.v1.WebhookChannelConfig
+ */
+export declare type WebhookChannelConfig = Message<"metaxisdata.v1.WebhookChannelConfig"> & {
+  /**
+   * Whether the delivery body is signed with the channel's signing secret.
+   *
+   * @generated from field: bool sign = 1;
+   */
+  sign: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.WebhookChannelConfig.
+ * Use `create(WebhookChannelConfigSchema)` to create a new message.
+ */
+export declare const WebhookChannelConfigSchema: GenMessage<WebhookChannelConfig>;
+
+/**
+ * NotificationChannelSecret is the write-only credential of a channel.
+ *
+ * @generated from message metaxisdata.v1.NotificationChannelSecret
+ */
+export declare type NotificationChannelSecret = Message<"metaxisdata.v1.NotificationChannelSecret"> & {
+  /**
+   * The endpoint to POST to. Required when creating a webhook channel; an
+   * unset secret on update keeps the stored one.
+   *
+   * @generated from field: string webhook_url = 1;
+   */
+  webhookUrl: string;
+
+  /**
+   * The HMAC-SHA256 key that signs the body when webhook.sign is set.
+   *
+   * @generated from field: string webhook_signing_secret = 2;
+   */
+  webhookSigningSecret: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationChannelSecret.
+ * Use `create(NotificationChannelSecretSchema)` to create a new message.
+ */
+export declare const NotificationChannelSecretSchema: GenMessage<NotificationChannelSecret>;
+
+/**
+ * NotificationDelivery is one outbound attempt at one notification event for one
+ * channel. A failing event fans out to as many deliveries as channels it matched.
+ *
+ * @generated from message metaxisdata.v1.NotificationDelivery
+ */
+export declare type NotificationDelivery = Message<"metaxisdata.v1.NotificationDelivery"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}.
+   * The last segment is the row id.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+   *
+   * @generated from field: string channel = 2;
+   */
+  channel: string;
+
+  /**
+   * The channel display name as it was when the delivery was queued.
+   *
+   * @generated from field: string channel_name = 3;
+   */
+  channelName: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationType event_type = 4;
+   */
+  eventType: NotificationType;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationSeverity severity = 5;
+   */
+  severity: NotificationSeverity;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationDeliveryState state = 6;
+   */
+  state: NotificationDeliveryState;
+
+  /**
+   * How many automatic attempts were made.
+   *
+   * @generated from field: int32 attempts = 7;
+   */
+  attempts: number;
+
+  /**
+   * Why the last attempt failed. Empty unless it did.
+   *
+   * @generated from field: string last_error = 8;
+   */
+  lastError: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 9;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * When the next automatic attempt is due. Unset when the delivery is terminal.
+   *
+   * @generated from field: google.protobuf.Timestamp next_attempt_time = 10;
+   */
+  nextAttemptTime?: Timestamp;
+
+  /**
+   * When it was delivered. Unset unless it was.
+   *
+   * @generated from field: google.protobuf.Timestamp sent_time = 11;
+   */
+  sentTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationDelivery.
+ * Use `create(NotificationDeliverySchema)` to create a new message.
+ */
+export declare const NotificationDeliverySchema: GenMessage<NotificationDelivery>;
+
+/**
+ * @generated from message metaxisdata.v1.ListNotificationChannelsRequest
+ */
+export declare type ListNotificationChannelsRequest = Message<"metaxisdata.v1.ListNotificationChannelsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListNotificationChannelsRequest.
+ * Use `create(ListNotificationChannelsRequestSchema)` to create a new message.
+ */
+export declare const ListNotificationChannelsRequestSchema: GenMessage<ListNotificationChannelsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListNotificationChannelsResponse
+ */
+export declare type ListNotificationChannelsResponse = Message<"metaxisdata.v1.ListNotificationChannelsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.NotificationChannel notification_channels = 1;
+   */
+  notificationChannels: NotificationChannel[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListNotificationChannelsResponse.
+ * Use `create(ListNotificationChannelsResponseSchema)` to create a new message.
+ */
+export declare const ListNotificationChannelsResponseSchema: GenMessage<ListNotificationChannelsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetNotificationChannelRequest
+ */
+export declare type GetNotificationChannelRequest = Message<"metaxisdata.v1.GetNotificationChannelRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetNotificationChannelRequest.
+ * Use `create(GetNotificationChannelRequestSchema)` to create a new message.
+ */
+export declare const GetNotificationChannelRequestSchema: GenMessage<GetNotificationChannelRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateNotificationChannelRequest
+ */
+export declare type CreateNotificationChannelRequest = Message<"metaxisdata.v1.CreateNotificationChannelRequest"> & {
+  /**
+   * Format: workspaces/{workspace}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationChannel channel = 2;
+   */
+  channel?: NotificationChannel;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationChannelSecret secret = 3;
+   */
+  secret?: NotificationChannelSecret;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateNotificationChannelRequest.
+ * Use `create(CreateNotificationChannelRequestSchema)` to create a new message.
+ */
+export declare const CreateNotificationChannelRequestSchema: GenMessage<CreateNotificationChannelRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateNotificationChannelRequest
+ */
+export declare type UpdateNotificationChannelRequest = Message<"metaxisdata.v1.UpdateNotificationChannelRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.NotificationChannel channel = 1;
+   */
+  channel?: NotificationChannel;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationChannelSecret secret = 2;
+   */
+  secret?: NotificationChannelSecret;
+
+  /**
+   * @generated from field: google.protobuf.FieldMask update_mask = 3;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateNotificationChannelRequest.
+ * Use `create(UpdateNotificationChannelRequestSchema)` to create a new message.
+ */
+export declare const UpdateNotificationChannelRequestSchema: GenMessage<UpdateNotificationChannelRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteNotificationChannelRequest
+ */
+export declare type DeleteNotificationChannelRequest = Message<"metaxisdata.v1.DeleteNotificationChannelRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteNotificationChannelRequest.
+ * Use `create(DeleteNotificationChannelRequestSchema)` to create a new message.
+ */
+export declare const DeleteNotificationChannelRequestSchema: GenMessage<DeleteNotificationChannelRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.TestNotificationChannelRequest
+ */
+export declare type TestNotificationChannelRequest = Message<"metaxisdata.v1.TestNotificationChannelRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.TestNotificationChannelRequest.
+ * Use `create(TestNotificationChannelRequestSchema)` to create a new message.
+ */
+export declare const TestNotificationChannelRequestSchema: GenMessage<TestNotificationChannelRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.TestNotificationChannelResponse
+ */
+export declare type TestNotificationChannelResponse = Message<"metaxisdata.v1.TestNotificationChannelResponse"> & {
+  /**
+   * The endpoint's answer, trimmed for display.
+   *
+   * @generated from field: string response = 1;
+   */
+  response: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.TestNotificationChannelResponse.
+ * Use `create(TestNotificationChannelResponseSchema)` to create a new message.
+ */
+export declare const TestNotificationChannelResponseSchema: GenMessage<TestNotificationChannelResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ListNotificationDeliveriesRequest
+ */
+export declare type ListNotificationDeliveriesRequest = Message<"metaxisdata.v1.ListNotificationDeliveriesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * Optional channel filter.
+   * Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+   *
+   * @generated from field: string channel = 2;
+   */
+  channel: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationDeliveryState state = 3;
+   */
+  state: NotificationDeliveryState;
+
+  /**
+   * @generated from field: int32 page_size = 4;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 5;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListNotificationDeliveriesRequest.
+ * Use `create(ListNotificationDeliveriesRequestSchema)` to create a new message.
+ */
+export declare const ListNotificationDeliveriesRequestSchema: GenMessage<ListNotificationDeliveriesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListNotificationDeliveriesResponse
+ */
+export declare type ListNotificationDeliveriesResponse = Message<"metaxisdata.v1.ListNotificationDeliveriesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.NotificationDelivery notification_deliveries = 1;
+   */
+  notificationDeliveries: NotificationDelivery[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListNotificationDeliveriesResponse.
+ * Use `create(ListNotificationDeliveriesResponseSchema)` to create a new message.
+ */
+export declare const ListNotificationDeliveriesResponseSchema: GenMessage<ListNotificationDeliveriesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.RetryNotificationDeliveryRequest
+ */
+export declare type RetryNotificationDeliveryRequest = Message<"metaxisdata.v1.RetryNotificationDeliveryRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.RetryNotificationDeliveryRequest.
+ * Use `create(RetryNotificationDeliveryRequestSchema)` to create a new message.
+ */
+export declare const RetryNotificationDeliveryRequestSchema: GenMessage<RetryNotificationDeliveryRequest>;
+
+/**
  * NotificationType is what a notification is about. It selects which detail
  * message the notification carries.
  *
@@ -904,6 +1379,75 @@ export enum DataQualityNotificationKind {
 export declare const DataQualityNotificationKindSchema: GenEnum<DataQualityNotificationKind>;
 
 /**
+ * NotificationChannelKind is the protocol one outbound channel speaks.
+ *
+ * @generated from enum metaxisdata.v1.NotificationChannelKind
+ */
+export enum NotificationChannelKind {
+  /**
+   * @generated from enum value: NOTIFICATION_CHANNEL_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A generic HTTP POST endpoint.
+   *
+   * @generated from enum value: NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
+   */
+  WEBHOOK = 1,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.NotificationChannelKind.
+ */
+export declare const NotificationChannelKindSchema: GenEnum<NotificationChannelKind>;
+
+/**
+ * NotificationDeliveryState is the lifecycle of one outbound delivery.
+ *
+ * @generated from enum metaxisdata.v1.NotificationDeliveryState
+ */
+export enum NotificationDeliveryState {
+  /**
+   * @generated from enum value: NOTIFICATION_DELIVERY_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Waiting for its next attempt, or for a retry an administrator asked for.
+   *
+   * @generated from enum value: NOTIFICATION_DELIVERY_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * Leased by a dispatcher.
+   *
+   * @generated from enum value: NOTIFICATION_DELIVERY_STATE_SENDING = 2;
+   */
+  SENDING = 2,
+
+  /**
+   * Delivered. Terminal.
+   *
+   * @generated from enum value: NOTIFICATION_DELIVERY_STATE_SENT = 3;
+   */
+  SENT = 3,
+
+  /**
+   * Out of automatic attempts; an administrator can retry it.
+   *
+   * @generated from enum value: NOTIFICATION_DELIVERY_STATE_DEAD = 4;
+   */
+  DEAD = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.NotificationDeliveryState.
+ */
+export declare const NotificationDeliveryStateSchema: GenEnum<NotificationDeliveryState>;
+
+/**
  * NotificationService serves the caller's own in-app messages: the outcome of a
  * sync operation they asked for, and the ingestion failures a workspace
  * administrator needs to see.
@@ -998,6 +1542,91 @@ export declare const NotificationService: GenService<{
     methodKind: "server_streaming";
     input: typeof SubscribeNotificationsRequestSchema;
     output: typeof SubscribeNotificationsResponseSchema;
+  },
+  /**
+   * List the outbound channels administrators have configured.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.ListNotificationChannels
+   */
+  listNotificationChannels: {
+    methodKind: "unary";
+    input: typeof ListNotificationChannelsRequestSchema;
+    output: typeof ListNotificationChannelsResponseSchema;
+  },
+  /**
+   * Read one outbound channel. The credential is never returned.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.GetNotificationChannel
+   */
+  getNotificationChannel: {
+    methodKind: "unary";
+    input: typeof GetNotificationChannelRequestSchema;
+    output: typeof NotificationChannelSchema;
+  },
+  /**
+   * Create one outbound channel. The secret is write-only: it is encrypted
+   * before it is stored and is never returned.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.CreateNotificationChannel
+   */
+  createNotificationChannel: {
+    methodKind: "unary";
+    input: typeof CreateNotificationChannelRequestSchema;
+    output: typeof NotificationChannelSchema;
+  },
+  /**
+   * Update one outbound channel. An omitted secret keeps the stored one; a
+   * present secret replaces it.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.UpdateNotificationChannel
+   */
+  updateNotificationChannel: {
+    methodKind: "unary";
+    input: typeof UpdateNotificationChannelRequestSchema;
+    output: typeof NotificationChannelSchema;
+  },
+  /**
+   * Delete one outbound channel and the deliveries still queued for it.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.DeleteNotificationChannel
+   */
+  deleteNotificationChannel: {
+    methodKind: "unary";
+    input: typeof DeleteNotificationChannelRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * Post a test message through one stored channel and report what the endpoint
+   * answered. Nothing is written to the ledger or queued.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.TestNotificationChannel
+   */
+  testNotificationChannel: {
+    methodKind: "unary";
+    input: typeof TestNotificationChannelRequestSchema;
+    output: typeof TestNotificationChannelResponseSchema;
+  },
+  /**
+   * List outbound deliveries, newest first, for administrators to diagnose a
+   * channel.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.ListNotificationDeliveries
+   */
+  listNotificationDeliveries: {
+    methodKind: "unary";
+    input: typeof ListNotificationDeliveriesRequestSchema;
+    output: typeof ListNotificationDeliveriesResponseSchema;
+  },
+  /**
+   * Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+   * or waiting one is left as it is.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.RetryNotificationDelivery
+   */
+  retryNotificationDelivery: {
+    methodKind: "unary";
+    input: typeof RetryNotificationDeliveryRequestSchema;
+    output: typeof NotificationDeliverySchema;
   },
 }>;
 

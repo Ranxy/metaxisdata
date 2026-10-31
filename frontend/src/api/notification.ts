@@ -1,13 +1,25 @@
 import { create } from "@bufbuild/protobuf";
+import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
   BatchMarkNotificationsReadRequestSchema,
+  CreateNotificationChannelRequestSchema,
+  DeleteNotificationChannelRequestSchema,
   DeleteNotificationRequestSchema,
   GetUnreadNotificationCountRequestSchema,
+  ListNotificationChannelsRequestSchema,
+  ListNotificationDeliveriesRequestSchema,
   ListNotificationsRequestSchema,
   MarkAllNotificationsReadRequestSchema,
   MarkNotificationsSeenRequestSchema,
   type Notification,
+  type NotificationChannel,
+  type NotificationChannelSecret,
+  type NotificationDelivery,
+  NotificationDeliveryState,
+  RetryNotificationDeliveryRequestSchema,
   SubscribeNotificationsRequestSchema,
+  TestNotificationChannelRequestSchema,
+  UpdateNotificationChannelRequestSchema,
 } from "@/types/proto-es/v1/notification_service_pb";
 import { notificationClient } from "./client";
 import type { ListPage } from "./list";
@@ -122,5 +134,99 @@ export function subscribeNotifications(signal?: AbortSignal) {
   return notificationClient.subscribeNotifications(
     create(SubscribeNotificationsRequestSchema, { parent: WORKSPACE_PARENT }),
     { signal }
+  );
+}
+
+// ---- Outbound channels and deliveries -------------------------------------
+//
+// A channel is an administrator-configured destination (a webhook today); a
+// delivery is one queued attempt at one notification event for one channel. The
+// credential is write-only: reads report only whether one is stored.
+
+/** Every configured outbound channel. */
+export async function listNotificationChannels(
+  signal?: AbortSignal
+): Promise<NotificationChannel[]> {
+  const response = await notificationClient.listNotificationChannels(
+    create(ListNotificationChannelsRequestSchema, { parent: WORKSPACE_PARENT }),
+    { signal }
+  );
+  return response.notificationChannels;
+}
+
+/** Create one channel together with its write-only credential. */
+export async function createNotificationChannel(
+  channel: NotificationChannel,
+  secret?: NotificationChannelSecret
+): Promise<NotificationChannel> {
+  return await notificationClient.createNotificationChannel(
+    create(CreateNotificationChannelRequestSchema, {
+      parent: WORKSPACE_PARENT,
+      channel,
+      secret,
+    })
+  );
+}
+
+/** Update the fields named by `updateMask`; an omitted secret keeps the stored one. */
+export async function updateNotificationChannel(
+  channel: NotificationChannel,
+  updateMask: string[],
+  secret?: NotificationChannelSecret
+): Promise<NotificationChannel> {
+  return await notificationClient.updateNotificationChannel(
+    create(UpdateNotificationChannelRequestSchema, {
+      channel,
+      secret,
+      updateMask: create(FieldMaskSchema, { paths: updateMask }),
+    })
+  );
+}
+
+/** Delete one channel and the deliveries still queued for it. */
+export async function deleteNotificationChannel(name: string): Promise<void> {
+  await notificationClient.deleteNotificationChannel(
+    create(DeleteNotificationChannelRequestSchema, { name })
+  );
+}
+
+/** Post one test message through a stored channel and return its answer. */
+export async function testNotificationChannel(name: string): Promise<string> {
+  const response = await notificationClient.testNotificationChannel(
+    create(TestNotificationChannelRequestSchema, { name })
+  );
+  return response.response;
+}
+
+/** One page of outbound deliveries, newest first. */
+export async function listNotificationDeliveriesPage(options: {
+  pageSize: number;
+  pageToken?: string;
+  channel?: string;
+  state?: NotificationDeliveryState;
+  signal?: AbortSignal;
+}): Promise<ListPage<NotificationDelivery>> {
+  const response = await notificationClient.listNotificationDeliveries(
+    create(ListNotificationDeliveriesRequestSchema, {
+      parent: WORKSPACE_PARENT,
+      pageSize: options.pageSize,
+      pageToken: options.pageToken ?? "",
+      channel: options.channel ?? "",
+      state: options.state ?? NotificationDeliveryState.UNSPECIFIED,
+    }),
+    { signal: options.signal }
+  );
+  return {
+    items: response.notificationDeliveries,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Requeue one DEAD delivery for another attempt. */
+export async function retryNotificationDelivery(
+  name: string
+): Promise<NotificationDelivery> {
+  return await notificationClient.retryNotificationDelivery(
+    create(RetryNotificationDeliveryRequestSchema, { name })
   );
 }

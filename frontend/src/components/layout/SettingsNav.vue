@@ -30,6 +30,7 @@
 <script setup lang="ts">
 import {
   AppWindow,
+  Bell,
   ClipboardList,
   Gauge,
   Globe,
@@ -88,6 +89,13 @@ const ALL_ITEMS = computed<SettingsNavItem[]>(() => [
   // The policy page and the account list it governs are one job, so they stay
   // adjacent: a reader looking for "who is in this workspace" should not have
   // to notice that the answer is spread across two entries.
+  {
+    key: "notifications",
+    label: t("menu.notifications"),
+    path: "/settings/notifications",
+    icon: Bell,
+    permission: "metaxisdata.settings.get",
+  },
   {
     key: "iam",
     label: t("menu.iam"),

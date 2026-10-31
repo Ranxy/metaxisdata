@@ -833,6 +833,22 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.NotificationChannel"><span class="badge">M</span>NotificationChannel</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationChannelConfig"><span class="badge">M</span>NotificationChannelConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationChannelSecret"><span class="badge">M</span>NotificationChannelSecret</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationDeliveryEvent"><span class="badge">M</span>NotificationDeliveryEvent</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
                 </li>
               
@@ -844,9 +860,21 @@
                   <a href="#metaxisdata.store.SyncDatabaseResult"><span class="badge">M</span>SyncDatabaseResult</a>
                 </li>
               
+                <li>
+                  <a href="#metaxisdata.store.WebhookChannelConfig"><span class="badge">M</span>WebhookChannelConfig</a>
+                </li>
+              
               
                 <li>
                   <a href="#metaxisdata.store.DataQualityNotificationKind"><span class="badge">E</span>DataQualityNotificationKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationChannelKind"><span class="badge">E</span>NotificationChannelKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.NotificationDeliveryState"><span class="badge">E</span>NotificationDeliveryState</a>
                 </li>
               
                 <li>
@@ -9212,6 +9240,180 @@ to the event&#39;s suppression window. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.NotificationChannel">NotificationChannel</h3>
+        <p>NotificationChannel is the stored configuration of one outbound channel, as</p><p>notification_channel.payload. The endpoint URL and the signing secret are not</p><p>part of it: they are write-only and live encrypted in the secret column, so a</p><p>read of the channel returns everything except the credential.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.store.NotificationChannelKind">NotificationChannelKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>event_types</td>
+                  <td><a href="#metaxisdata.store.NotificationType">NotificationType</a></td>
+                  <td>repeated</td>
+                  <td><p>The notification types this channel subscribes to. Empty means every type. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_severity</td>
+                  <td><a href="#metaxisdata.store.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p>The lowest severity this channel delivers. UNSPECIFIED means every severity. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>BCP-47 tag the outbound text is written in, for example &#34;zh-CN&#34;. Empty
+means the server default. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>config</td>
+                  <td><a href="#metaxisdata.store.NotificationChannelConfig">NotificationChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.NotificationChannelConfig">NotificationChannelConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>webhook</td>
+                  <td><a href="#metaxisdata.store.WebhookChannelConfig">WebhookChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.NotificationChannelSecret">NotificationChannelSecret</h3>
+        <p>NotificationChannelSecret is the write-only half of a channel: what it takes</p><p>to deliver, kept as v1: AES-256-GCM ciphertext in notification_channel.secret</p><p>and never returned by a read.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>webhook_url</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>webhook_signing_secret</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.NotificationDeliveryEvent">NotificationDeliveryEvent</h3>
+        <p>NotificationDeliveryEvent is the workspace-level half of a notification: the</p><p>message without its per-recipient columns. It is notification_delivery.payload</p><p>and is what the dispatcher renders and posts.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>type</td>
+                  <td><a href="#metaxisdata.store.NotificationType">NotificationType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.store.NotificationSeverity">NotificationSeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema_sync</td>
+                  <td><a href="#metaxisdata.store.SchemaSyncDetail">SchemaSyncDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>openlineage</td>
+                  <td><a href="#metaxisdata.store.OpenLineageDetail">OpenLineageDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_quality</td>
+                  <td><a href="#metaxisdata.store.DataQualityDetail">DataQualityDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.OpenLineageDetail">OpenLineageDetail</h3>
         <p>OpenLineageDetail reports an OpenLineage ingestion failure, or a dataset that</p><p>fell through to an external dataset.</p>
 
@@ -9407,6 +9609,30 @@ list is capped; the counts below carry the whole picture. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.WebhookChannelConfig">WebhookChannelConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sign</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the delivery body is signed with the channel&#39;s signing secret. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
 
       
         <h3 id="metaxisdata.store.DataQualityNotificationKind">DataQualityNotificationKind</h3>
@@ -9446,6 +9672,71 @@ list is capped; the counts below carry the whole picture. </p></td>
                 <td>4</td>
                 <td><p>One dispatch batch failed so many rules that the individual messages were
 merged.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.NotificationChannelKind">NotificationChannelKind</h3>
+        <p>NotificationChannelKind is the protocol one outbound channel speaks.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_WEBHOOK</td>
+                <td>1</td>
+                <td><p>A generic HTTP POST endpoint. The body is the stable delivery JSON and is
+optionally signed with the channel&#39;s signing secret.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.NotificationDeliveryState">NotificationDeliveryState</h3>
+        <p>NotificationDeliveryState is the lifecycle of one outbound delivery.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_PENDING</td>
+                <td>1</td>
+                <td><p>Waiting for its next attempt.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_SENDING</td>
+                <td>2</td>
+                <td><p>Leased by a dispatcher; a lease that expires is reclaimed as PENDING.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_SENT</td>
+                <td>3</td>
+                <td><p>Delivered. Terminal.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_DELIVERY_STATE_DEAD</td>
+                <td>4</td>
+                <td><p>Out of attempts. Terminal until an administrator retries it.</p></td>
               </tr>
             
           </tbody>

@@ -57,6 +57,9 @@ const (
 	qualityProfileRetention    = 7 * 24 * time.Hour
 	qualityLLMCacheRetention   = 7 * 24 * time.Hour
 	qualitySuggestionRetention = 90 * 24 * time.Hour
+	// A finished outbound delivery is a diagnostic record: long enough to explain
+	// a missed alert, short enough that the outbox does not grow forever.
+	notificationDeliveryRetention = 30 * 24 * time.Hour
 	// A finished drafting job is the record of one background AI run; it is kept
 	// for a quarter like the suggestions it queued, while a pending/running job is
 	// never pruned.
@@ -92,6 +95,7 @@ type maintenanceStore interface {
 	DeleteExpiredQualitySuggestionJobs(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteExpiredColumnProfiles(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteExpiredDataQualityLLMCache(ctx context.Context, cutoff time.Time) (int64, error)
+	PruneNotificationDeliveries(ctx context.Context, before time.Time) (int64, error)
 	GetWorkspaceGeneralSetting(ctx context.Context) (*storepb.WorkspaceProfileSetting, error)
 }
 
@@ -283,6 +287,15 @@ func (r *Runner) runOnce(ctx context.Context) *passSummary {
 			success: "Pruned decided quality suggestions",
 			delete: func(ctx context.Context) (int64, error) {
 				return r.store.DeleteExpiredQualitySuggestions(ctx, now.Add(-qualitySuggestionRetention))
+			},
+		},
+		{
+			// Only terminal deliveries are pruned; a queued one is still work.
+			name:    "notification_deliveries",
+			failure: "Failed to prune finished notification deliveries",
+			success: "Pruned finished notification deliveries",
+			delete: func(ctx context.Context) (int64, error) {
+				return r.store.PruneNotificationDeliveries(ctx, now.Add(-notificationDeliveryRetention))
 			},
 		},
 	}

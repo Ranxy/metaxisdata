@@ -228,6 +228,10 @@ func IsSensitiveAuditField(key string) bool {
 		// These are bare field names of credential-bearing messages, so a
 		// substring match would not catch them.
 		"key", "sslkey", "sslcert", "sshprivatekey",
+		// A chat or generic webhook endpoint usually carries its own token in the
+		// URL, so the URL is the credential even though the field name does not
+		// say so. external_url stays visible: it is the deployment's own address.
+		"webhookurl", "webhook_url", "webhookendpoint", "webhook_endpoint",
 		"passwd", "pwd", "bearer", "jwt", "session",
 		// The OAuth2 authorization-code flow fields. The verifier and the
 		// client secret are credentials for the token exchange, and the

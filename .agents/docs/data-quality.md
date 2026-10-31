@@ -34,7 +34,7 @@ SPA ──ConnectRPC──► DataQualityService (api/v1) ──► component/da
 | D-06 | 派发批次 = 一个目标的一批执行（定时每个到期目标一个批次、按实例串行；手动选择按目标拆批）；对外的执行 = 一条规则被检查一次 | 连接预算与失败合并以批次为单位；批次只读对外，不成为事务单位；调度单位是目标（D-69），批次身份也是目标（D-70） |
 | D-07 | 规则 head 与不可变 revision **同事务**双写；执行记 `rule_revision` | 编辑不改历史判定 |
 | D-08 | 同一规则至多一个未解决 issue（部分唯一索引 `status <> 3`） | 并发/重试不会开两个问题 |
-| D-09 | 告警只用站内信：`NOTIFICATION_TYPE_DATA_QUALITY` + `store.DataQualityDetail` | 无邮件/webhook；正文由前端 i18n 渲染 |
+| D-09 | 告警写站内信：`NOTIFICATION_TYPE_DATA_QUALITY` + `store.DataQualityDetail`；管理员可在 Settings → Notifications 配置**出站渠道**（当前 Webhook），同一事件按渠道订阅另投一次 | 站内信正文仍由前端 i18n 渲染；出站文本由服务端渲染（`component/notification/outbound`），投递异步、失败重试、不影响站内信语义；见 [notifications.md](notifications.md) 的出站一节 |
 | D-10 | DQ 设置放 `WorkspaceProfileSetting.data_quality`（store 与 v1 两份 proto） | 复用 `settings.get/update` 与设置页，不新增 settings RPC |
 | D-11 | 权限目录新增 `metaxisdata.dataQuality.*`（15 项）；`workspaceMember` 基线加 7 项只读+explain，并含 `users.list`（成员目录） | ACL 拦截器逐 RPC 校验；owner 是展示、通知路由、规则列表筛选与负责人列；目录只读，供选择器与列解析成员 |
 | D-12 | LLM 复用 `component/llm`：补 temperature/JSON/usage、共享 provider 解析；不另建 LLM 栈 | `ParseJSON[T]` 严格解码，ExplainSQL 回归绿 |
@@ -528,4 +528,4 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 
 > 引擎覆盖待办：CI 目前只有 PostgreSQL + MySQL 的 testcontainers。MSSQL / StarRocks / Doris 的类型能力矩阵由单测 + 手工容器 probe 固化（`capabilities_test.go`），**待 CI 环境增加这三种引擎后补真实集成测试**。MariaDB/TiDB/OceanBase 继承 MySQL 家族规则但未逐一探测（MariaDB 的 JSON 是 LONGTEXT），列入同一待办。
 
-**非目标**（不做）：RuleSet/contract-like 整体验证（D-20）、模板/示例库、进程内 Python/WASM/任意代码、LLM-as-judge 判定、自由 SQL 生成并执行、自动修复数据/阈值、邮件/webhook/Slack/PagerDuty、质量分/scorecard、流式/行级检查、分布漂移/季节基线、MCP/CLI 暴露、跨副本调度、跨实例/跨库对账（cross_table 限同库）。
+**非目标**（不做）：RuleSet/contract-like 整体验证（D-20）、模板/示例库、进程内 Python/WASM/任意代码、LLM-as-judge 判定、自由 SQL 生成并执行、自动修复数据/阈值、邮件/IM 渠道（Webhook 已在出站投递中支持）、质量分/scorecard、流式/行级检查、分布漂移/季节基线、MCP/CLI 暴露、跨副本调度、跨实例/跨库对账（cross_table 限同库）。

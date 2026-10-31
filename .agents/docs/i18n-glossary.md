@@ -180,4 +180,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | semantic label | 语义标注 | Data Quality | The accepted meaning of a column, such as email address or business key, chosen from the semantic type catalog. | dataQuality. | zh-CN: `语义标签`, `语意标注` |
 | column profile | 字段画像 | Data Quality | The measured facts about a column's values — null rate, distinct count, extremes, lengths — without reading the rows. | dataQuality. | zh-CN: `列画像`, `字段剖析` |
 | owner | 负责人 | Data Quality | The workspace member responsible for a rule. | dataQuality. | zh-CN: `所有者`, `拥有人` |
+| channel | 渠道 | Notifications | An administrator-configured outbound destination for workspace notifications. | notificationSettings. | zh-CN: `通道`, `信道` |
+| delivery | 投递 | Notifications | One queued attempt to post one notification event to one channel. | notificationSettings. | zh-CN: `推送记录`, `发送记录` |
+| Webhook | Webhook | Notifications | A generic HTTP endpoint that receives a signed JSON body. | notificationSettings. | zh-CN: `网络钩子`, `回调地址`, `钩子` |
 <!-- END GENERATED GLOSSARY -->

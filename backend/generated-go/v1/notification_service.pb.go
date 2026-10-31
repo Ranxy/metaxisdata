@@ -11,6 +11,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -373,6 +374,114 @@ func (x DataQualityNotificationKind) Number() protoreflect.EnumNumber {
 // Deprecated: Use DataQualityNotificationKind.Descriptor instead.
 func (DataQualityNotificationKind) EnumDescriptor() ([]byte, []int) {
 	return file_v1_notification_service_proto_rawDescGZIP(), []int{5}
+}
+
+// NotificationChannelKind is the protocol one outbound channel speaks.
+type NotificationChannelKind int32
+
+const (
+	NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED NotificationChannelKind = 0
+	// A generic HTTP POST endpoint.
+	NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK NotificationChannelKind = 1
+)
+
+// Enum value maps for NotificationChannelKind.
+var (
+	NotificationChannelKind_name = map[int32]string{
+		0: "NOTIFICATION_CHANNEL_KIND_UNSPECIFIED",
+		1: "NOTIFICATION_CHANNEL_KIND_WEBHOOK",
+	}
+	NotificationChannelKind_value = map[string]int32{
+		"NOTIFICATION_CHANNEL_KIND_UNSPECIFIED": 0,
+		"NOTIFICATION_CHANNEL_KIND_WEBHOOK":     1,
+	}
+)
+
+func (x NotificationChannelKind) Enum() *NotificationChannelKind {
+	p := new(NotificationChannelKind)
+	*p = x
+	return p
+}
+
+func (x NotificationChannelKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NotificationChannelKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_notification_service_proto_enumTypes[6].Descriptor()
+}
+
+func (NotificationChannelKind) Type() protoreflect.EnumType {
+	return &file_v1_notification_service_proto_enumTypes[6]
+}
+
+func (x NotificationChannelKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NotificationChannelKind.Descriptor instead.
+func (NotificationChannelKind) EnumDescriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{6}
+}
+
+// NotificationDeliveryState is the lifecycle of one outbound delivery.
+type NotificationDeliveryState int32
+
+const (
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_UNSPECIFIED NotificationDeliveryState = 0
+	// Waiting for its next attempt, or for a retry an administrator asked for.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING NotificationDeliveryState = 1
+	// Leased by a dispatcher.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING NotificationDeliveryState = 2
+	// Delivered. Terminal.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT NotificationDeliveryState = 3
+	// Out of automatic attempts; an administrator can retry it.
+	NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD NotificationDeliveryState = 4
+)
+
+// Enum value maps for NotificationDeliveryState.
+var (
+	NotificationDeliveryState_name = map[int32]string{
+		0: "NOTIFICATION_DELIVERY_STATE_UNSPECIFIED",
+		1: "NOTIFICATION_DELIVERY_STATE_PENDING",
+		2: "NOTIFICATION_DELIVERY_STATE_SENDING",
+		3: "NOTIFICATION_DELIVERY_STATE_SENT",
+		4: "NOTIFICATION_DELIVERY_STATE_DEAD",
+	}
+	NotificationDeliveryState_value = map[string]int32{
+		"NOTIFICATION_DELIVERY_STATE_UNSPECIFIED": 0,
+		"NOTIFICATION_DELIVERY_STATE_PENDING":     1,
+		"NOTIFICATION_DELIVERY_STATE_SENDING":     2,
+		"NOTIFICATION_DELIVERY_STATE_SENT":        3,
+		"NOTIFICATION_DELIVERY_STATE_DEAD":        4,
+	}
+)
+
+func (x NotificationDeliveryState) Enum() *NotificationDeliveryState {
+	p := new(NotificationDeliveryState)
+	*p = x
+	return p
+}
+
+func (x NotificationDeliveryState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NotificationDeliveryState) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_notification_service_proto_enumTypes[7].Descriptor()
+}
+
+func (NotificationDeliveryState) Type() protoreflect.EnumType {
+	return &file_v1_notification_service_proto_enumTypes[7]
+}
+
+func (x NotificationDeliveryState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NotificationDeliveryState.Descriptor instead.
+func (NotificationDeliveryState) EnumDescriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{7}
 }
 
 // Notification is one in-app message for one recipient.
@@ -1651,11 +1760,1011 @@ func (x *DataQualityDetail) GetInstance() string {
 	return ""
 }
 
+// NotificationChannel is one configured outbound destination. The credential is
+// write-only: reads report only whether one is stored.
+type NotificationChannel struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The administrator-facing name, for example "Data quality on-call".
+	DisplayName string                  `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Kind        NotificationChannelKind `protobuf:"varint,3,opt,name=kind,proto3,enum=metaxisdata.v1.NotificationChannelKind" json:"kind,omitempty"`
+	// A disabled channel is kept but receives no new deliveries.
+	Enabled bool `protobuf:"varint,4,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// The notification types this channel subscribes to. Empty means every type.
+	EventTypes []NotificationType `protobuf:"varint,5,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.v1.NotificationType" json:"event_types,omitempty"`
+	// The lowest severity this channel delivers. UNSPECIFIED means every severity.
+	MinSeverity NotificationSeverity `protobuf:"varint,6,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"min_severity,omitempty"`
+	// BCP-47 tag the outbound text is written in. Empty means the server default.
+	Language string                     `protobuf:"bytes,7,opt,name=language,proto3" json:"language,omitempty"`
+	Config   *NotificationChannelConfig `protobuf:"bytes,8,opt,name=config,proto3" json:"config,omitempty"`
+	// Whether a credential is stored. The credential itself is never returned.
+	SecretSet     bool                   `protobuf:"varint,9,opt,name=secret_set,json=secretSet,proto3" json:"secret_set,omitempty"`
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationChannel) Reset() {
+	*x = NotificationChannel{}
+	mi := &file_v1_notification_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationChannel) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationChannel) ProtoMessage() {}
+
+func (x *NotificationChannel) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationChannel.ProtoReflect.Descriptor instead.
+func (*NotificationChannel) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *NotificationChannel) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NotificationChannel) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *NotificationChannel) GetKind() NotificationChannelKind {
+	if x != nil {
+		return x.Kind
+	}
+	return NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED
+}
+
+func (x *NotificationChannel) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *NotificationChannel) GetEventTypes() []NotificationType {
+	if x != nil {
+		return x.EventTypes
+	}
+	return nil
+}
+
+func (x *NotificationChannel) GetMinSeverity() NotificationSeverity {
+	if x != nil {
+		return x.MinSeverity
+	}
+	return NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
+}
+
+func (x *NotificationChannel) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *NotificationChannel) GetConfig() *NotificationChannelConfig {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *NotificationChannel) GetSecretSet() bool {
+	if x != nil {
+		return x.SecretSet
+	}
+	return false
+}
+
+func (x *NotificationChannel) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *NotificationChannel) GetUpdateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdateTime
+	}
+	return nil
+}
+
+type NotificationChannelConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Config:
+	//
+	//	*NotificationChannelConfig_Webhook
+	Config        isNotificationChannelConfig_Config `protobuf_oneof:"config"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationChannelConfig) Reset() {
+	*x = NotificationChannelConfig{}
+	mi := &file_v1_notification_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationChannelConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationChannelConfig) ProtoMessage() {}
+
+func (x *NotificationChannelConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationChannelConfig.ProtoReflect.Descriptor instead.
+func (*NotificationChannelConfig) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *NotificationChannelConfig) GetConfig() isNotificationChannelConfig_Config {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *NotificationChannelConfig) GetWebhook() *WebhookChannelConfig {
+	if x != nil {
+		if x, ok := x.Config.(*NotificationChannelConfig_Webhook); ok {
+			return x.Webhook
+		}
+	}
+	return nil
+}
+
+type isNotificationChannelConfig_Config interface {
+	isNotificationChannelConfig_Config()
+}
+
+type NotificationChannelConfig_Webhook struct {
+	Webhook *WebhookChannelConfig `protobuf:"bytes,1,opt,name=webhook,proto3,oneof"`
+}
+
+func (*NotificationChannelConfig_Webhook) isNotificationChannelConfig_Config() {}
+
+type WebhookChannelConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the delivery body is signed with the channel's signing secret.
+	Sign          bool `protobuf:"varint,1,opt,name=sign,proto3" json:"sign,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebhookChannelConfig) Reset() {
+	*x = WebhookChannelConfig{}
+	mi := &file_v1_notification_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebhookChannelConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebhookChannelConfig) ProtoMessage() {}
+
+func (x *WebhookChannelConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebhookChannelConfig.ProtoReflect.Descriptor instead.
+func (*WebhookChannelConfig) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *WebhookChannelConfig) GetSign() bool {
+	if x != nil {
+		return x.Sign
+	}
+	return false
+}
+
+// NotificationChannelSecret is the write-only credential of a channel.
+type NotificationChannelSecret struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint to POST to. Required when creating a webhook channel; an
+	// unset secret on update keeps the stored one.
+	WebhookUrl string `protobuf:"bytes,1,opt,name=webhook_url,json=webhookUrl,proto3" json:"webhook_url,omitempty"`
+	// The HMAC-SHA256 key that signs the body when webhook.sign is set.
+	WebhookSigningSecret string `protobuf:"bytes,2,opt,name=webhook_signing_secret,json=webhookSigningSecret,proto3" json:"webhook_signing_secret,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *NotificationChannelSecret) Reset() {
+	*x = NotificationChannelSecret{}
+	mi := &file_v1_notification_service_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationChannelSecret) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationChannelSecret) ProtoMessage() {}
+
+func (x *NotificationChannelSecret) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationChannelSecret.ProtoReflect.Descriptor instead.
+func (*NotificationChannelSecret) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *NotificationChannelSecret) GetWebhookUrl() string {
+	if x != nil {
+		return x.WebhookUrl
+	}
+	return ""
+}
+
+func (x *NotificationChannelSecret) GetWebhookSigningSecret() string {
+	if x != nil {
+		return x.WebhookSigningSecret
+	}
+	return ""
+}
+
+// NotificationDelivery is one outbound attempt at one notification event for one
+// channel. A failing event fans out to as many deliveries as channels it matched.
+type NotificationDelivery struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}.
+	// The last segment is the row id.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+	Channel string `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	// The channel display name as it was when the delivery was queued.
+	ChannelName string                    `protobuf:"bytes,3,opt,name=channel_name,json=channelName,proto3" json:"channel_name,omitempty"`
+	EventType   NotificationType          `protobuf:"varint,4,opt,name=event_type,json=eventType,proto3,enum=metaxisdata.v1.NotificationType" json:"event_type,omitempty"`
+	Severity    NotificationSeverity      `protobuf:"varint,5,opt,name=severity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"severity,omitempty"`
+	State       NotificationDeliveryState `protobuf:"varint,6,opt,name=state,proto3,enum=metaxisdata.v1.NotificationDeliveryState" json:"state,omitempty"`
+	// How many automatic attempts were made.
+	Attempts int32 `protobuf:"varint,7,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	// Why the last attempt failed. Empty unless it did.
+	LastError  string                 `protobuf:"bytes,8,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// When the next automatic attempt is due. Unset when the delivery is terminal.
+	NextAttemptTime *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=next_attempt_time,json=nextAttemptTime,proto3" json:"next_attempt_time,omitempty"`
+	// When it was delivered. Unset unless it was.
+	SentTime      *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=sent_time,json=sentTime,proto3" json:"sent_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationDelivery) Reset() {
+	*x = NotificationDelivery{}
+	mi := &file_v1_notification_service_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationDelivery) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationDelivery) ProtoMessage() {}
+
+func (x *NotificationDelivery) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationDelivery.ProtoReflect.Descriptor instead.
+func (*NotificationDelivery) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *NotificationDelivery) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NotificationDelivery) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *NotificationDelivery) GetChannelName() string {
+	if x != nil {
+		return x.ChannelName
+	}
+	return ""
+}
+
+func (x *NotificationDelivery) GetEventType() NotificationType {
+	if x != nil {
+		return x.EventType
+	}
+	return NotificationType_NOTIFICATION_TYPE_UNSPECIFIED
+}
+
+func (x *NotificationDelivery) GetSeverity() NotificationSeverity {
+	if x != nil {
+		return x.Severity
+	}
+	return NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
+}
+
+func (x *NotificationDelivery) GetState() NotificationDeliveryState {
+	if x != nil {
+		return x.State
+	}
+	return NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_UNSPECIFIED
+}
+
+func (x *NotificationDelivery) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
+func (x *NotificationDelivery) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+func (x *NotificationDelivery) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *NotificationDelivery) GetNextAttemptTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NextAttemptTime
+	}
+	return nil
+}
+
+func (x *NotificationDelivery) GetSentTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SentTime
+	}
+	return nil
+}
+
+type ListNotificationChannelsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}
+	Parent        string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNotificationChannelsRequest) Reset() {
+	*x = ListNotificationChannelsRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNotificationChannelsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNotificationChannelsRequest) ProtoMessage() {}
+
+func (x *ListNotificationChannelsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNotificationChannelsRequest.ProtoReflect.Descriptor instead.
+func (*ListNotificationChannelsRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListNotificationChannelsRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+type ListNotificationChannelsResponse struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	NotificationChannels []*NotificationChannel `protobuf:"bytes,1,rep,name=notification_channels,json=notificationChannels,proto3" json:"notification_channels,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ListNotificationChannelsResponse) Reset() {
+	*x = ListNotificationChannelsResponse{}
+	mi := &file_v1_notification_service_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNotificationChannelsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNotificationChannelsResponse) ProtoMessage() {}
+
+func (x *ListNotificationChannelsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNotificationChannelsResponse.ProtoReflect.Descriptor instead.
+func (*ListNotificationChannelsResponse) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListNotificationChannelsResponse) GetNotificationChannels() []*NotificationChannel {
+	if x != nil {
+		return x.NotificationChannels
+	}
+	return nil
+}
+
+type GetNotificationChannelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNotificationChannelRequest) Reset() {
+	*x = GetNotificationChannelRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNotificationChannelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNotificationChannelRequest) ProtoMessage() {}
+
+func (x *GetNotificationChannelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNotificationChannelRequest.ProtoReflect.Descriptor instead.
+func (*GetNotificationChannelRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *GetNotificationChannelRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CreateNotificationChannelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}
+	Parent        string                     `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	Channel       *NotificationChannel       `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	Secret        *NotificationChannelSecret `protobuf:"bytes,3,opt,name=secret,proto3" json:"secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateNotificationChannelRequest) Reset() {
+	*x = CreateNotificationChannelRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateNotificationChannelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateNotificationChannelRequest) ProtoMessage() {}
+
+func (x *CreateNotificationChannelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateNotificationChannelRequest.ProtoReflect.Descriptor instead.
+func (*CreateNotificationChannelRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *CreateNotificationChannelRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateNotificationChannelRequest) GetChannel() *NotificationChannel {
+	if x != nil {
+		return x.Channel
+	}
+	return nil
+}
+
+func (x *CreateNotificationChannelRequest) GetSecret() *NotificationChannelSecret {
+	if x != nil {
+		return x.Secret
+	}
+	return nil
+}
+
+type UpdateNotificationChannelRequest struct {
+	state         protoimpl.MessageState     `protogen:"open.v1"`
+	Channel       *NotificationChannel       `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	Secret        *NotificationChannelSecret `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	UpdateMask    *fieldmaskpb.FieldMask     `protobuf:"bytes,3,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateNotificationChannelRequest) Reset() {
+	*x = UpdateNotificationChannelRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateNotificationChannelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateNotificationChannelRequest) ProtoMessage() {}
+
+func (x *UpdateNotificationChannelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateNotificationChannelRequest.ProtoReflect.Descriptor instead.
+func (*UpdateNotificationChannelRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *UpdateNotificationChannelRequest) GetChannel() *NotificationChannel {
+	if x != nil {
+		return x.Channel
+	}
+	return nil
+}
+
+func (x *UpdateNotificationChannelRequest) GetSecret() *NotificationChannelSecret {
+	if x != nil {
+		return x.Secret
+	}
+	return nil
+}
+
+func (x *UpdateNotificationChannelRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+type DeleteNotificationChannelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteNotificationChannelRequest) Reset() {
+	*x = DeleteNotificationChannelRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteNotificationChannelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteNotificationChannelRequest) ProtoMessage() {}
+
+func (x *DeleteNotificationChannelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteNotificationChannelRequest.ProtoReflect.Descriptor instead.
+func (*DeleteNotificationChannelRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *DeleteNotificationChannelRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type TestNotificationChannelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestNotificationChannelRequest) Reset() {
+	*x = TestNotificationChannelRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestNotificationChannelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestNotificationChannelRequest) ProtoMessage() {}
+
+func (x *TestNotificationChannelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestNotificationChannelRequest.ProtoReflect.Descriptor instead.
+func (*TestNotificationChannelRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *TestNotificationChannelRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type TestNotificationChannelResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The endpoint's answer, trimmed for display.
+	Response      string `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestNotificationChannelResponse) Reset() {
+	*x = TestNotificationChannelResponse{}
+	mi := &file_v1_notification_service_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestNotificationChannelResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestNotificationChannelResponse) ProtoMessage() {}
+
+func (x *TestNotificationChannelResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestNotificationChannelResponse.ProtoReflect.Descriptor instead.
+func (*TestNotificationChannelResponse) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *TestNotificationChannelResponse) GetResponse() string {
+	if x != nil {
+		return x.Response
+	}
+	return ""
+}
+
+type ListNotificationDeliveriesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// Optional channel filter.
+	// Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+	Channel       string                    `protobuf:"bytes,2,opt,name=channel,proto3" json:"channel,omitempty"`
+	State         NotificationDeliveryState `protobuf:"varint,3,opt,name=state,proto3,enum=metaxisdata.v1.NotificationDeliveryState" json:"state,omitempty"`
+	PageSize      int32                     `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                    `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNotificationDeliveriesRequest) Reset() {
+	*x = ListNotificationDeliveriesRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNotificationDeliveriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNotificationDeliveriesRequest) ProtoMessage() {}
+
+func (x *ListNotificationDeliveriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNotificationDeliveriesRequest.ProtoReflect.Descriptor instead.
+func (*ListNotificationDeliveriesRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ListNotificationDeliveriesRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *ListNotificationDeliveriesRequest) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+func (x *ListNotificationDeliveriesRequest) GetState() NotificationDeliveryState {
+	if x != nil {
+		return x.State
+	}
+	return NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_UNSPECIFIED
+}
+
+func (x *ListNotificationDeliveriesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListNotificationDeliveriesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListNotificationDeliveriesResponse struct {
+	state                  protoimpl.MessageState  `protogen:"open.v1"`
+	NotificationDeliveries []*NotificationDelivery `protobuf:"bytes,1,rep,name=notification_deliveries,json=notificationDeliveries,proto3" json:"notification_deliveries,omitempty"`
+	NextPageToken          string                  `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *ListNotificationDeliveriesResponse) Reset() {
+	*x = ListNotificationDeliveriesResponse{}
+	mi := &file_v1_notification_service_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNotificationDeliveriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNotificationDeliveriesResponse) ProtoMessage() {}
+
+func (x *ListNotificationDeliveriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNotificationDeliveriesResponse.ProtoReflect.Descriptor instead.
+func (*ListNotificationDeliveriesResponse) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListNotificationDeliveriesResponse) GetNotificationDeliveries() []*NotificationDelivery {
+	if x != nil {
+		return x.NotificationDeliveries
+	}
+	return nil
+}
+
+func (x *ListNotificationDeliveriesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type RetryNotificationDeliveryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RetryNotificationDeliveryRequest) Reset() {
+	*x = RetryNotificationDeliveryRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RetryNotificationDeliveryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RetryNotificationDeliveryRequest) ProtoMessage() {}
+
+func (x *RetryNotificationDeliveryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RetryNotificationDeliveryRequest.ProtoReflect.Descriptor instead.
+func (*RetryNotificationDeliveryRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *RetryNotificationDeliveryRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 var File_v1_notification_service_proto protoreflect.FileDescriptor
 
 const file_v1_notification_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1dv1/notification_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dv1/data_quality_service.proto\"\x87\x04\n" +
+	"\x1dv1/notification_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\x1a\x1dv1/data_quality_service.proto\"\x87\x04\n" +
 	"\fNotification\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12@\n" +
 	"\vcreate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
@@ -1756,7 +2865,85 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
 	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
-	"\binstance\x18\x12 \x01(\tR\binstance*\x9f\x01\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance\"\xaf\x05\n" +
+	"\x13NotificationChannel\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12&\n" +
+	"\fdisplay_name\x18\x02 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12@\n" +
+	"\x04kind\x18\x03 \x01(\x0e2'.metaxisdata.v1.NotificationChannelKindB\x03\xe0A\x05R\x04kind\x12\x18\n" +
+	"\aenabled\x18\x04 \x01(\bR\aenabled\x12A\n" +
+	"\vevent_types\x18\x05 \x03(\x0e2 .metaxisdata.v1.NotificationTypeR\n" +
+	"eventTypes\x12G\n" +
+	"\fmin_severity\x18\x06 \x01(\x0e2$.metaxisdata.v1.NotificationSeverityR\vminSeverity\x12\x1a\n" +
+	"\blanguage\x18\a \x01(\tR\blanguage\x12A\n" +
+	"\x06config\x18\b \x01(\v2).metaxisdata.v1.NotificationChannelConfigR\x06config\x12\"\n" +
+	"\n" +
+	"secret_set\x18\t \x01(\bB\x03\xe0A\x03R\tsecretSet\x12@\n" +
+	"\vcreate_time\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"createTime\x12@\n" +
+	"\vupdate_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"updateTime:h\xeaAe\n" +
+	"\x1fmetaxisdata/NotificationChannel\x12Bworkspaces/{workspace}/notificationChannels/{notification_channel}\"g\n" +
+	"\x19NotificationChannelConfig\x12@\n" +
+	"\awebhook\x18\x01 \x01(\v2$.metaxisdata.v1.WebhookChannelConfigH\x00R\awebhookB\b\n" +
+	"\x06config\"*\n" +
+	"\x14WebhookChannelConfig\x12\x12\n" +
+	"\x04sign\x18\x01 \x01(\bR\x04sign\"r\n" +
+	"\x19NotificationChannelSecret\x12\x1f\n" +
+	"\vwebhook_url\x18\x01 \x01(\tR\n" +
+	"webhookUrl\x124\n" +
+	"\x16webhook_signing_secret\x18\x02 \x01(\tR\x14webhookSigningSecret\"\xea\x05\n" +
+	"\x14NotificationDelivery\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12>\n" +
+	"\achannel\x18\x02 \x01(\tB$\xfaA!\n" +
+	"\x1fmetaxisdata/NotificationChannelR\achannel\x12&\n" +
+	"\fchannel_name\x18\x03 \x01(\tB\x03\xe0A\x03R\vchannelName\x12D\n" +
+	"\n" +
+	"event_type\x18\x04 \x01(\x0e2 .metaxisdata.v1.NotificationTypeB\x03\xe0A\x03R\teventType\x12E\n" +
+	"\bseverity\x18\x05 \x01(\x0e2$.metaxisdata.v1.NotificationSeverityB\x03\xe0A\x03R\bseverity\x12D\n" +
+	"\x05state\x18\x06 \x01(\x0e2).metaxisdata.v1.NotificationDeliveryStateB\x03\xe0A\x03R\x05state\x12\x1f\n" +
+	"\battempts\x18\a \x01(\x05B\x03\xe0A\x03R\battempts\x12\"\n" +
+	"\n" +
+	"last_error\x18\b \x01(\tB\x03\xe0A\x03R\tlastError\x12@\n" +
+	"\vcreate_time\x18\t \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"createTime\x12K\n" +
+	"\x11next_attempt_time\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\x0fnextAttemptTime\x12<\n" +
+	"\tsent_time\x18\v \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\bsentTime:l\xeaAi\n" +
+	" metaxisdata/NotificationDelivery\x12Eworkspaces/{workspace}/notificationDeliveries/{notification_delivery}\">\n" +
+	"\x1fListNotificationChannelsRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"|\n" +
+	" ListNotificationChannelsResponse\x12X\n" +
+	"\x15notification_channels\x18\x01 \x03(\v2#.metaxisdata.v1.NotificationChannelR\x14notificationChannels\"8\n" +
+	"\x1dGetNotificationChannelRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\xc6\x01\n" +
+	" CreateNotificationChannelRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12B\n" +
+	"\achannel\x18\x02 \x01(\v2#.metaxisdata.v1.NotificationChannelB\x03\xe0A\x02R\achannel\x12A\n" +
+	"\x06secret\x18\x03 \x01(\v2).metaxisdata.v1.NotificationChannelSecretR\x06secret\"\xe6\x01\n" +
+	" UpdateNotificationChannelRequest\x12B\n" +
+	"\achannel\x18\x01 \x01(\v2#.metaxisdata.v1.NotificationChannelB\x03\xe0A\x02R\achannel\x12A\n" +
+	"\x06secret\x18\x02 \x01(\v2).metaxisdata.v1.NotificationChannelSecretR\x06secret\x12;\n" +
+	"\vupdate_mask\x18\x03 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\";\n" +
+	" DeleteNotificationChannelRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"9\n" +
+	"\x1eTestNotificationChannelRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"=\n" +
+	"\x1fTestNotificationChannelResponse\x12\x1a\n" +
+	"\bresponse\x18\x01 \x01(\tR\bresponse\"\xd7\x01\n" +
+	"!ListNotificationDeliveriesRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x18\n" +
+	"\achannel\x18\x02 \x01(\tR\achannel\x12?\n" +
+	"\x05state\x18\x03 \x01(\x0e2).metaxisdata.v1.NotificationDeliveryStateR\x05state\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\"\xab\x01\n" +
+	"\"ListNotificationDeliveriesResponse\x12]\n" +
+	"\x17notification_deliveries\x18\x01 \x03(\v2$.metaxisdata.v1.NotificationDeliveryR\x16notificationDeliveries\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\";\n" +
+	" RetryNotificationDeliveryRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
@@ -1789,7 +2976,16 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"+DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED\x10\x01\x122\n" +
 	".DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED\x10\x02\x123\n" +
 	"/DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED\x10\x03\x120\n" +
-	",DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY\x10\x042\xfb\b\n" +
+	",DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY\x10\x04*k\n" +
+	"\x17NotificationChannelKind\x12)\n" +
+	"%NOTIFICATION_CHANNEL_KIND_UNSPECIFIED\x10\x00\x12%\n" +
+	"!NOTIFICATION_CHANNEL_KIND_WEBHOOK\x10\x01*\xe6\x01\n" +
+	"\x19NotificationDeliveryState\x12+\n" +
+	"'NOTIFICATION_DELIVERY_STATE_UNSPECIFIED\x10\x00\x12'\n" +
+	"#NOTIFICATION_DELIVERY_STATE_PENDING\x10\x01\x12'\n" +
+	"#NOTIFICATION_DELIVERY_STATE_SENDING\x10\x02\x12$\n" +
+	" NOTIFICATION_DELIVERY_STATE_SENT\x10\x03\x12$\n" +
+	" NOTIFICATION_DELIVERY_STATE_DEAD\x10\x042\x8b\x17\n" +
 	"\x13NotificationService\x12\xa2\x01\n" +
 	"\x11ListNotifications\x12(.metaxisdata.v1.ListNotificationsRequest\x1a).metaxisdata.v1.ListNotificationsResponse\"8\xdaA\x06parent\x82\xd3\xe4\x93\x02)\x12'/v1/{parent=workspaces/*}/notifications\x12\xc0\x01\n" +
 	"\x1aGetUnreadNotificationCount\x121.metaxisdata.v1.GetUnreadNotificationCountRequest\x1a2.metaxisdata.v1.GetUnreadNotificationCountResponse\";\x82\xd3\xe4\x93\x025\x123/v1/{parent=workspaces/*}/notifications:unreadCount\x12\x9a\x01\n" +
@@ -1797,7 +2993,15 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x1aBatchMarkNotificationsRead\x121.metaxisdata.v1.BatchMarkNotificationsReadRequest\x1a\x16.google.protobuf.Empty\"@\x82\xd3\xe4\x93\x02::\x01*\"5/v1/{parent=workspaces/*}/notifications:batchMarkRead\x12\xa3\x01\n" +
 	"\x18MarkAllNotificationsRead\x12/.metaxisdata.v1.MarkAllNotificationsReadRequest\x1a\x16.google.protobuf.Empty\">\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{parent=workspaces/*}/notifications:markAllRead\x12\x8f\x01\n" +
 	"\x12DeleteNotification\x12).metaxisdata.v1.DeleteNotificationRequest\x1a\x16.google.protobuf.Empty\"6\xdaA\x04name\x82\xd3\xe4\x93\x02)*'/v1/{name=workspaces/*/notifications/*}\x12{\n" +
-	"\x16SubscribeNotifications\x12-.metaxisdata.v1.SubscribeNotificationsRequest\x1a..metaxisdata.v1.SubscribeNotificationsResponse\"\x000\x01B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x16SubscribeNotifications\x12-.metaxisdata.v1.SubscribeNotificationsRequest\x1a..metaxisdata.v1.SubscribeNotificationsResponse\"\x000\x01\x12\xda\x01\n" +
+	"\x18ListNotificationChannels\x12/.metaxisdata.v1.ListNotificationChannelsRequest\x1a0.metaxisdata.v1.ListNotificationChannelsResponse\"[\xdaA\x06parent\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x020\x12./v1/{parent=workspaces/*}/notificationChannels\x12\xc7\x01\n" +
+	"\x16GetNotificationChannel\x12-.metaxisdata.v1.GetNotificationChannelRequest\x1a#.metaxisdata.v1.NotificationChannel\"Y\xdaA\x04name\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x020\x12./v1/{name=workspaces/*/notificationChannels/*}\x12\xee\x01\n" +
+	"\x19CreateNotificationChannel\x120.metaxisdata.v1.CreateNotificationChannelRequest\x1a#.metaxisdata.v1.NotificationChannel\"z\xdaA\x15parent,channel,secret\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x029:\achannel\"./v1/{parent=workspaces/*}/notificationChannels\x12\xfc\x01\n" +
+	"\x19UpdateNotificationChannel\x120.metaxisdata.v1.UpdateNotificationChannelRequest\x1a#.metaxisdata.v1.NotificationChannel\"\x87\x01\xdaA\x1achannel,secret,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02A:\achannel26/v1/{channel.name=workspaces/*/notificationChannels/*}\x12\xc7\x01\n" +
+	"\x19DeleteNotificationChannel\x120.metaxisdata.v1.DeleteNotificationChannelRequest\x1a\x16.google.protobuf.Empty\"`\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x020*./v1/{name=workspaces/*/notificationChannels/*}\x12\xe4\x01\n" +
+	"\x17TestNotificationChannel\x12..metaxisdata.v1.TestNotificationChannelRequest\x1a/.metaxisdata.v1.TestNotificationChannelResponse\"h\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{name=workspaces/*/notificationChannels/*}:test\x12\xe2\x01\n" +
+	"\x1aListNotificationDeliveries\x121.metaxisdata.v1.ListNotificationDeliveriesRequest\x1a2.metaxisdata.v1.ListNotificationDeliveriesResponse\"]\xdaA\x06parent\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x022\x120/v1/{parent=workspaces/*}/notificationDeliveries\x12\xe0\x01\n" +
+	"\x19RetryNotificationDelivery\x120.metaxisdata.v1.RetryNotificationDeliveryRequest\x1a$.metaxisdata.v1.NotificationDelivery\"k\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02;:\x01*\"6/v1/{name=workspaces/*/notificationDeliveries/*}:retryB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_notification_service_proto_rawDescOnce sync.Once
@@ -1811,8 +3015,8 @@ func file_v1_notification_service_proto_rawDescGZIP() []byte {
 	return file_v1_notification_service_proto_rawDescData
 }
 
-var file_v1_notification_service_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_v1_notification_service_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
+var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_v1_notification_service_proto_goTypes = []any{
 	(NotificationType)(0),                      // 0: metaxisdata.v1.NotificationType
 	(NotificationSeverity)(0),                  // 1: metaxisdata.v1.NotificationSeverity
@@ -1820,67 +3024,123 @@ var file_v1_notification_service_proto_goTypes = []any{
 	(SyncDatabaseState)(0),                     // 3: metaxisdata.v1.SyncDatabaseState
 	(OpenLineageFailureKind)(0),                // 4: metaxisdata.v1.OpenLineageFailureKind
 	(DataQualityNotificationKind)(0),           // 5: metaxisdata.v1.DataQualityNotificationKind
-	(*Notification)(nil),                       // 6: metaxisdata.v1.Notification
-	(*SchemaSyncDetail)(nil),                   // 7: metaxisdata.v1.SchemaSyncDetail
-	(*SyncDatabaseResult)(nil),                 // 8: metaxisdata.v1.SyncDatabaseResult
-	(*OpenLineageDetail)(nil),                  // 9: metaxisdata.v1.OpenLineageDetail
-	(*ListNotificationsRequest)(nil),           // 10: metaxisdata.v1.ListNotificationsRequest
-	(*ListNotificationsResponse)(nil),          // 11: metaxisdata.v1.ListNotificationsResponse
-	(*GetUnreadNotificationCountRequest)(nil),  // 12: metaxisdata.v1.GetUnreadNotificationCountRequest
-	(*GetUnreadNotificationCountResponse)(nil), // 13: metaxisdata.v1.GetUnreadNotificationCountResponse
-	(*MarkNotificationsSeenRequest)(nil),       // 14: metaxisdata.v1.MarkNotificationsSeenRequest
-	(*BatchMarkNotificationsReadRequest)(nil),  // 15: metaxisdata.v1.BatchMarkNotificationsReadRequest
-	(*MarkAllNotificationsReadRequest)(nil),    // 16: metaxisdata.v1.MarkAllNotificationsReadRequest
-	(*DeleteNotificationRequest)(nil),          // 17: metaxisdata.v1.DeleteNotificationRequest
-	(*SubscribeNotificationsRequest)(nil),      // 18: metaxisdata.v1.SubscribeNotificationsRequest
-	(*SubscribeNotificationsResponse)(nil),     // 19: metaxisdata.v1.SubscribeNotificationsResponse
-	(*NotificationEvent)(nil),                  // 20: metaxisdata.v1.NotificationEvent
-	(*KeepAlive)(nil),                          // 21: metaxisdata.v1.KeepAlive
-	(*DataQualityDetail)(nil),                  // 22: metaxisdata.v1.DataQualityDetail
-	(*timestamppb.Timestamp)(nil),              // 23: google.protobuf.Timestamp
-	(QualityStatus)(0),                         // 24: metaxisdata.v1.QualityStatus
-	(QualitySeverity)(0),                       // 25: metaxisdata.v1.QualitySeverity
-	(*emptypb.Empty)(nil),                      // 26: google.protobuf.Empty
+	(NotificationChannelKind)(0),               // 6: metaxisdata.v1.NotificationChannelKind
+	(NotificationDeliveryState)(0),             // 7: metaxisdata.v1.NotificationDeliveryState
+	(*Notification)(nil),                       // 8: metaxisdata.v1.Notification
+	(*SchemaSyncDetail)(nil),                   // 9: metaxisdata.v1.SchemaSyncDetail
+	(*SyncDatabaseResult)(nil),                 // 10: metaxisdata.v1.SyncDatabaseResult
+	(*OpenLineageDetail)(nil),                  // 11: metaxisdata.v1.OpenLineageDetail
+	(*ListNotificationsRequest)(nil),           // 12: metaxisdata.v1.ListNotificationsRequest
+	(*ListNotificationsResponse)(nil),          // 13: metaxisdata.v1.ListNotificationsResponse
+	(*GetUnreadNotificationCountRequest)(nil),  // 14: metaxisdata.v1.GetUnreadNotificationCountRequest
+	(*GetUnreadNotificationCountResponse)(nil), // 15: metaxisdata.v1.GetUnreadNotificationCountResponse
+	(*MarkNotificationsSeenRequest)(nil),       // 16: metaxisdata.v1.MarkNotificationsSeenRequest
+	(*BatchMarkNotificationsReadRequest)(nil),  // 17: metaxisdata.v1.BatchMarkNotificationsReadRequest
+	(*MarkAllNotificationsReadRequest)(nil),    // 18: metaxisdata.v1.MarkAllNotificationsReadRequest
+	(*DeleteNotificationRequest)(nil),          // 19: metaxisdata.v1.DeleteNotificationRequest
+	(*SubscribeNotificationsRequest)(nil),      // 20: metaxisdata.v1.SubscribeNotificationsRequest
+	(*SubscribeNotificationsResponse)(nil),     // 21: metaxisdata.v1.SubscribeNotificationsResponse
+	(*NotificationEvent)(nil),                  // 22: metaxisdata.v1.NotificationEvent
+	(*KeepAlive)(nil),                          // 23: metaxisdata.v1.KeepAlive
+	(*DataQualityDetail)(nil),                  // 24: metaxisdata.v1.DataQualityDetail
+	(*NotificationChannel)(nil),                // 25: metaxisdata.v1.NotificationChannel
+	(*NotificationChannelConfig)(nil),          // 26: metaxisdata.v1.NotificationChannelConfig
+	(*WebhookChannelConfig)(nil),               // 27: metaxisdata.v1.WebhookChannelConfig
+	(*NotificationChannelSecret)(nil),          // 28: metaxisdata.v1.NotificationChannelSecret
+	(*NotificationDelivery)(nil),               // 29: metaxisdata.v1.NotificationDelivery
+	(*ListNotificationChannelsRequest)(nil),    // 30: metaxisdata.v1.ListNotificationChannelsRequest
+	(*ListNotificationChannelsResponse)(nil),   // 31: metaxisdata.v1.ListNotificationChannelsResponse
+	(*GetNotificationChannelRequest)(nil),      // 32: metaxisdata.v1.GetNotificationChannelRequest
+	(*CreateNotificationChannelRequest)(nil),   // 33: metaxisdata.v1.CreateNotificationChannelRequest
+	(*UpdateNotificationChannelRequest)(nil),   // 34: metaxisdata.v1.UpdateNotificationChannelRequest
+	(*DeleteNotificationChannelRequest)(nil),   // 35: metaxisdata.v1.DeleteNotificationChannelRequest
+	(*TestNotificationChannelRequest)(nil),     // 36: metaxisdata.v1.TestNotificationChannelRequest
+	(*TestNotificationChannelResponse)(nil),    // 37: metaxisdata.v1.TestNotificationChannelResponse
+	(*ListNotificationDeliveriesRequest)(nil),  // 38: metaxisdata.v1.ListNotificationDeliveriesRequest
+	(*ListNotificationDeliveriesResponse)(nil), // 39: metaxisdata.v1.ListNotificationDeliveriesResponse
+	(*RetryNotificationDeliveryRequest)(nil),   // 40: metaxisdata.v1.RetryNotificationDeliveryRequest
+	(*timestamppb.Timestamp)(nil),              // 41: google.protobuf.Timestamp
+	(QualityStatus)(0),                         // 42: metaxisdata.v1.QualityStatus
+	(QualitySeverity)(0),                       // 43: metaxisdata.v1.QualitySeverity
+	(*fieldmaskpb.FieldMask)(nil),              // 44: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),                      // 45: google.protobuf.Empty
 }
 var file_v1_notification_service_proto_depIdxs = []int32{
-	23, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
+	41, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.v1.Notification.type:type_name -> metaxisdata.v1.NotificationType
 	1,  // 2: metaxisdata.v1.Notification.severity:type_name -> metaxisdata.v1.NotificationSeverity
-	23, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
-	7,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
-	9,  // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
-	22, // 6: metaxisdata.v1.Notification.data_quality:type_name -> metaxisdata.v1.DataQualityDetail
+	41, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
+	9,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
+	11, // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
+	24, // 6: metaxisdata.v1.Notification.data_quality:type_name -> metaxisdata.v1.DataQualityDetail
 	2,  // 7: metaxisdata.v1.SchemaSyncDetail.trigger:type_name -> metaxisdata.v1.SyncTrigger
-	8,  // 8: metaxisdata.v1.SchemaSyncDetail.databases:type_name -> metaxisdata.v1.SyncDatabaseResult
+	10, // 8: metaxisdata.v1.SchemaSyncDetail.databases:type_name -> metaxisdata.v1.SyncDatabaseResult
 	3,  // 9: metaxisdata.v1.SyncDatabaseResult.state:type_name -> metaxisdata.v1.SyncDatabaseState
 	4,  // 10: metaxisdata.v1.OpenLineageDetail.kind:type_name -> metaxisdata.v1.OpenLineageFailureKind
-	6,  // 11: metaxisdata.v1.ListNotificationsResponse.notifications:type_name -> metaxisdata.v1.Notification
-	20, // 12: metaxisdata.v1.SubscribeNotificationsResponse.notification:type_name -> metaxisdata.v1.NotificationEvent
-	21, // 13: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
-	6,  // 14: metaxisdata.v1.NotificationEvent.notification:type_name -> metaxisdata.v1.Notification
+	8,  // 11: metaxisdata.v1.ListNotificationsResponse.notifications:type_name -> metaxisdata.v1.Notification
+	22, // 12: metaxisdata.v1.SubscribeNotificationsResponse.notification:type_name -> metaxisdata.v1.NotificationEvent
+	23, // 13: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
+	8,  // 14: metaxisdata.v1.NotificationEvent.notification:type_name -> metaxisdata.v1.Notification
 	5,  // 15: metaxisdata.v1.DataQualityDetail.kind:type_name -> metaxisdata.v1.DataQualityNotificationKind
-	24, // 16: metaxisdata.v1.DataQualityDetail.from_status:type_name -> metaxisdata.v1.QualityStatus
-	24, // 17: metaxisdata.v1.DataQualityDetail.to_status:type_name -> metaxisdata.v1.QualityStatus
-	25, // 18: metaxisdata.v1.DataQualityDetail.severity:type_name -> metaxisdata.v1.QualitySeverity
-	10, // 19: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
-	12, // 20: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
-	14, // 21: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
-	15, // 22: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
-	16, // 23: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
-	17, // 24: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
-	18, // 25: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
-	11, // 26: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
-	13, // 27: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
-	26, // 28: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
-	26, // 29: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
-	26, // 30: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
-	26, // 31: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
-	19, // 32: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
-	26, // [26:33] is the sub-list for method output_type
-	19, // [19:26] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	42, // 16: metaxisdata.v1.DataQualityDetail.from_status:type_name -> metaxisdata.v1.QualityStatus
+	42, // 17: metaxisdata.v1.DataQualityDetail.to_status:type_name -> metaxisdata.v1.QualityStatus
+	43, // 18: metaxisdata.v1.DataQualityDetail.severity:type_name -> metaxisdata.v1.QualitySeverity
+	6,  // 19: metaxisdata.v1.NotificationChannel.kind:type_name -> metaxisdata.v1.NotificationChannelKind
+	0,  // 20: metaxisdata.v1.NotificationChannel.event_types:type_name -> metaxisdata.v1.NotificationType
+	1,  // 21: metaxisdata.v1.NotificationChannel.min_severity:type_name -> metaxisdata.v1.NotificationSeverity
+	26, // 22: metaxisdata.v1.NotificationChannel.config:type_name -> metaxisdata.v1.NotificationChannelConfig
+	41, // 23: metaxisdata.v1.NotificationChannel.create_time:type_name -> google.protobuf.Timestamp
+	41, // 24: metaxisdata.v1.NotificationChannel.update_time:type_name -> google.protobuf.Timestamp
+	27, // 25: metaxisdata.v1.NotificationChannelConfig.webhook:type_name -> metaxisdata.v1.WebhookChannelConfig
+	0,  // 26: metaxisdata.v1.NotificationDelivery.event_type:type_name -> metaxisdata.v1.NotificationType
+	1,  // 27: metaxisdata.v1.NotificationDelivery.severity:type_name -> metaxisdata.v1.NotificationSeverity
+	7,  // 28: metaxisdata.v1.NotificationDelivery.state:type_name -> metaxisdata.v1.NotificationDeliveryState
+	41, // 29: metaxisdata.v1.NotificationDelivery.create_time:type_name -> google.protobuf.Timestamp
+	41, // 30: metaxisdata.v1.NotificationDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
+	41, // 31: metaxisdata.v1.NotificationDelivery.sent_time:type_name -> google.protobuf.Timestamp
+	25, // 32: metaxisdata.v1.ListNotificationChannelsResponse.notification_channels:type_name -> metaxisdata.v1.NotificationChannel
+	25, // 33: metaxisdata.v1.CreateNotificationChannelRequest.channel:type_name -> metaxisdata.v1.NotificationChannel
+	28, // 34: metaxisdata.v1.CreateNotificationChannelRequest.secret:type_name -> metaxisdata.v1.NotificationChannelSecret
+	25, // 35: metaxisdata.v1.UpdateNotificationChannelRequest.channel:type_name -> metaxisdata.v1.NotificationChannel
+	28, // 36: metaxisdata.v1.UpdateNotificationChannelRequest.secret:type_name -> metaxisdata.v1.NotificationChannelSecret
+	44, // 37: metaxisdata.v1.UpdateNotificationChannelRequest.update_mask:type_name -> google.protobuf.FieldMask
+	7,  // 38: metaxisdata.v1.ListNotificationDeliveriesRequest.state:type_name -> metaxisdata.v1.NotificationDeliveryState
+	29, // 39: metaxisdata.v1.ListNotificationDeliveriesResponse.notification_deliveries:type_name -> metaxisdata.v1.NotificationDelivery
+	12, // 40: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
+	14, // 41: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
+	16, // 42: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
+	17, // 43: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
+	18, // 44: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
+	19, // 45: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
+	20, // 46: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
+	30, // 47: metaxisdata.v1.NotificationService.ListNotificationChannels:input_type -> metaxisdata.v1.ListNotificationChannelsRequest
+	32, // 48: metaxisdata.v1.NotificationService.GetNotificationChannel:input_type -> metaxisdata.v1.GetNotificationChannelRequest
+	33, // 49: metaxisdata.v1.NotificationService.CreateNotificationChannel:input_type -> metaxisdata.v1.CreateNotificationChannelRequest
+	34, // 50: metaxisdata.v1.NotificationService.UpdateNotificationChannel:input_type -> metaxisdata.v1.UpdateNotificationChannelRequest
+	35, // 51: metaxisdata.v1.NotificationService.DeleteNotificationChannel:input_type -> metaxisdata.v1.DeleteNotificationChannelRequest
+	36, // 52: metaxisdata.v1.NotificationService.TestNotificationChannel:input_type -> metaxisdata.v1.TestNotificationChannelRequest
+	38, // 53: metaxisdata.v1.NotificationService.ListNotificationDeliveries:input_type -> metaxisdata.v1.ListNotificationDeliveriesRequest
+	40, // 54: metaxisdata.v1.NotificationService.RetryNotificationDelivery:input_type -> metaxisdata.v1.RetryNotificationDeliveryRequest
+	13, // 55: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
+	15, // 56: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
+	45, // 57: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
+	45, // 58: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
+	45, // 59: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
+	45, // 60: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
+	21, // 61: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
+	31, // 62: metaxisdata.v1.NotificationService.ListNotificationChannels:output_type -> metaxisdata.v1.ListNotificationChannelsResponse
+	25, // 63: metaxisdata.v1.NotificationService.GetNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
+	25, // 64: metaxisdata.v1.NotificationService.CreateNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
+	25, // 65: metaxisdata.v1.NotificationService.UpdateNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
+	45, // 66: metaxisdata.v1.NotificationService.DeleteNotificationChannel:output_type -> google.protobuf.Empty
+	37, // 67: metaxisdata.v1.NotificationService.TestNotificationChannel:output_type -> metaxisdata.v1.TestNotificationChannelResponse
+	39, // 68: metaxisdata.v1.NotificationService.ListNotificationDeliveries:output_type -> metaxisdata.v1.ListNotificationDeliveriesResponse
+	29, // 69: metaxisdata.v1.NotificationService.RetryNotificationDelivery:output_type -> metaxisdata.v1.NotificationDelivery
+	55, // [55:70] is the sub-list for method output_type
+	40, // [40:55] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_v1_notification_service_proto_init() }
@@ -1888,6 +3148,7 @@ func file_v1_notification_service_proto_init() {
 	if File_v1_notification_service_proto != nil {
 		return
 	}
+	file_v1_annotation_proto_init()
 	file_v1_data_quality_service_proto_init()
 	file_v1_notification_service_proto_msgTypes[0].OneofWrappers = []any{
 		(*Notification_SchemaSync)(nil),
@@ -1899,13 +3160,16 @@ func file_v1_notification_service_proto_init() {
 		(*SubscribeNotificationsResponse_KeepAlive)(nil),
 	}
 	file_v1_notification_service_proto_msgTypes[14].OneofWrappers = []any{}
+	file_v1_notification_service_proto_msgTypes[18].OneofWrappers = []any{
+		(*NotificationChannelConfig_Webhook)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_notification_service_proto_rawDesc), len(file_v1_notification_service_proto_rawDesc)),
-			NumEnums:      6,
-			NumMessages:   17,
+			NumEnums:      8,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -200,3 +200,74 @@ message DataQualityDetail {
   // instances/{instance}. Empty for the per-execution kinds.
   string instance = 18;
 }
+
+// NotificationChannelKind is the protocol one outbound channel speaks.
+enum NotificationChannelKind {
+  NOTIFICATION_CHANNEL_KIND_UNSPECIFIED = 0;
+  // A generic HTTP POST endpoint. The body is the stable delivery JSON and is
+  // optionally signed with the channel's signing secret.
+  NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
+}
+
+// NotificationChannel is the stored configuration of one outbound channel, as
+// notification_channel.payload. The endpoint URL and the signing secret are not
+// part of it: they are write-only and live encrypted in the secret column, so a
+// read of the channel returns everything except the credential.
+message NotificationChannel {
+  string display_name = 1;
+  NotificationChannelKind kind = 2;
+  bool enabled = 3;
+  // The notification types this channel subscribes to. Empty means every type.
+  repeated NotificationType event_types = 4;
+  // The lowest severity this channel delivers. UNSPECIFIED means every severity.
+  NotificationSeverity min_severity = 5;
+  // BCP-47 tag the outbound text is written in, for example "zh-CN". Empty
+  // means the server default.
+  string language = 6;
+  NotificationChannelConfig config = 7;
+}
+
+message NotificationChannelConfig {
+  oneof config {
+    WebhookChannelConfig webhook = 1;
+  }
+}
+
+message WebhookChannelConfig {
+  // Whether the delivery body is signed with the channel's signing secret.
+  bool sign = 1;
+}
+
+// NotificationChannelSecret is the write-only half of a channel: what it takes
+// to deliver, kept as v1: AES-256-GCM ciphertext in notification_channel.secret
+// and never returned by a read.
+message NotificationChannelSecret {
+  string webhook_url = 1;
+  string webhook_signing_secret = 2;
+}
+
+// NotificationDeliveryState is the lifecycle of one outbound delivery.
+enum NotificationDeliveryState {
+  NOTIFICATION_DELIVERY_STATE_UNSPECIFIED = 0;
+  // Waiting for its next attempt.
+  NOTIFICATION_DELIVERY_STATE_PENDING = 1;
+  // Leased by a dispatcher; a lease that expires is reclaimed as PENDING.
+  NOTIFICATION_DELIVERY_STATE_SENDING = 2;
+  // Delivered. Terminal.
+  NOTIFICATION_DELIVERY_STATE_SENT = 3;
+  // Out of attempts. Terminal until an administrator retries it.
+  NOTIFICATION_DELIVERY_STATE_DEAD = 4;
+}
+
+// NotificationDeliveryEvent is the workspace-level half of a notification: the
+// message without its per-recipient columns. It is notification_delivery.payload
+// and is what the dispatcher renders and posts.
+message NotificationDeliveryEvent {
+  NotificationType type = 1;
+  NotificationSeverity severity = 2;
+  oneof detail {
+    SchemaSyncDetail schema_sync = 3;
+    OpenLineageDetail openlineage = 4;
+    DataQualityDetail data_quality = 5;
+  }
+}

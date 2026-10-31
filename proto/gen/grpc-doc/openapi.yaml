@@ -4228,6 +4228,328 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationChannels:
+        get:
+            tags:
+                - NotificationService
+            description: List the outbound channels administrators have configured.
+            operationId: NotificationService_ListNotificationChannels
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListNotificationChannelsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - NotificationService
+            description: |-
+                Create one outbound channel. The secret is write-only: it is encrypted
+                 before it is stored and is never returned.
+            operationId: NotificationService_CreateNotificationChannel
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: secret.webhookUrl
+                  in: query
+                  description: |-
+                    The endpoint to POST to. Required when creating a webhook channel; an
+                     unset secret on update keeps the stored one.
+                  schema:
+                    type: string
+                - name: secret.webhookSigningSecret
+                  in: query
+                  description: The HMAC-SHA256 key that signs the body when webhook.sign is set.
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NotificationChannel'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationChannel'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationChannels/{notificationChannel}:
+        get:
+            tags:
+                - NotificationService
+            description: Read one outbound channel. The credential is never returned.
+            operationId: NotificationService_GetNotificationChannel
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationChannel
+                  in: path
+                  description: The notificationChannel id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationChannel'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - NotificationService
+            description: Delete one outbound channel and the deliveries still queued for it.
+            operationId: NotificationService_DeleteNotificationChannel
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationChannel
+                  in: path
+                  description: The notificationChannel id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - NotificationService
+            description: |-
+                Update one outbound channel. An omitted secret keeps the stored one; a
+                 present secret replaces it.
+            operationId: NotificationService_UpdateNotificationChannel
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationChannel
+                  in: path
+                  description: The notificationChannel id.
+                  required: true
+                  schema:
+                    type: string
+                - name: secret.webhookUrl
+                  in: query
+                  description: |-
+                    The endpoint to POST to. Required when creating a webhook channel; an
+                     unset secret on update keeps the stored one.
+                  schema:
+                    type: string
+                - name: secret.webhookSigningSecret
+                  in: query
+                  description: The HMAC-SHA256 key that signs the body when webhook.sign is set.
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NotificationChannel'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationChannel'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationChannels/{notificationChannel}:test:
+        post:
+            tags:
+                - NotificationService
+            description: |-
+                Post a test message through one stored channel and report what the endpoint
+                 answered. Nothing is written to the ledger or queued.
+            operationId: NotificationService_TestNotificationChannel
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationChannel
+                  in: path
+                  description: The notificationChannel id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TestNotificationChannelRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TestNotificationChannelResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationDeliveries:
+        get:
+            tags:
+                - NotificationService
+            description: |-
+                List outbound deliveries, newest first, for administrators to diagnose a
+                 channel.
+            operationId: NotificationService_ListNotificationDeliveries
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: channel
+                  in: query
+                  description: |-
+                    Optional channel filter.
+                     Format: workspaces/{workspace}/notificationChannels/{notification_channel}
+                  schema:
+                    type: string
+                - name: state
+                  in: query
+                  schema:
+                    enum:
+                        - NOTIFICATION_DELIVERY_STATE_UNSPECIFIED
+                        - NOTIFICATION_DELIVERY_STATE_PENDING
+                        - NOTIFICATION_DELIVERY_STATE_SENDING
+                        - NOTIFICATION_DELIVERY_STATE_SENT
+                        - NOTIFICATION_DELIVERY_STATE_DEAD
+                    type: string
+                    format: enum
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListNotificationDeliveriesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationDeliveries/{notificationDelivery}:retry:
+        post:
+            tags:
+                - NotificationService
+            description: |-
+                Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
+                 or waiting one is left as it is.
+            operationId: NotificationService_RetryNotificationDelivery
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationDelivery
+                  in: path
+                  description: The notificationDelivery id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RetryNotificationDeliveryRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationDelivery'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/notifications:
         get:
             tags:
@@ -9509,6 +9831,22 @@ components:
                     description: |-
                         A token, which can be sent as page_token to retrieve the next page. If this
                          field is omitted, there are no subsequent pages.
+        ListNotificationChannelsResponse:
+            type: object
+            properties:
+                notificationChannels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NotificationChannel'
+        ListNotificationDeliveriesResponse:
+            type: object
+            properties:
+                notificationDeliveries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NotificationDelivery'
+                nextPageToken:
+                    type: string
         ListNotificationsResponse:
             type: object
             properties:
@@ -10221,6 +10559,126 @@ components:
                  notification table and are not written into the payload; the store stamps
                  them on insert and fills them from the row on read, so the payload and the
                  columns cannot disagree. The payload holds only the message proper.
+        NotificationChannel:
+            type: object
+            properties:
+                displayName:
+                    type: string
+                kind:
+                    enum:
+                        - NOTIFICATION_CHANNEL_KIND_UNSPECIFIED
+                        - NOTIFICATION_CHANNEL_KIND_WEBHOOK
+                    type: string
+                    format: enum
+                enabled:
+                    type: boolean
+                eventTypes:
+                    type: array
+                    items:
+                        enum:
+                            - NOTIFICATION_TYPE_UNSPECIFIED
+                            - NOTIFICATION_TYPE_SCHEMA_SYNC
+                            - NOTIFICATION_TYPE_OPENLINEAGE
+                            - NOTIFICATION_TYPE_DATA_QUALITY
+                        type: string
+                        format: enum
+                    description: The notification types this channel subscribes to. Empty means every type.
+                minSeverity:
+                    enum:
+                        - NOTIFICATION_SEVERITY_UNSPECIFIED
+                        - NOTIFICATION_SEVERITY_INFO
+                        - NOTIFICATION_SEVERITY_WARNING
+                        - NOTIFICATION_SEVERITY_ERROR
+                    type: string
+                    description: The lowest severity this channel delivers. UNSPECIFIED means every severity.
+                    format: enum
+                language:
+                    type: string
+                    description: |-
+                        BCP-47 tag the outbound text is written in, for example "zh-CN". Empty
+                         means the server default.
+                config:
+                    $ref: '#/components/schemas/NotificationChannelConfig'
+            description: |-
+                NotificationChannel is the stored configuration of one outbound channel, as
+                 notification_channel.payload. The endpoint URL and the signing secret are not
+                 part of it: they are write-only and live encrypted in the secret column, so a
+                 read of the channel returns everything except the credential.
+        NotificationChannelConfig:
+            type: object
+            properties:
+                webhook:
+                    $ref: '#/components/schemas/WebhookChannelConfig'
+        NotificationDelivery:
+            type: object
+            properties:
+                name:
+                    readOnly: true
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}.
+                         The last segment is the row id.
+                channel:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/notificationChannels/{notification_channel}'
+                channelName:
+                    readOnly: true
+                    type: string
+                    description: The channel display name as it was when the delivery was queued.
+                eventType:
+                    readOnly: true
+                    enum:
+                        - NOTIFICATION_TYPE_UNSPECIFIED
+                        - NOTIFICATION_TYPE_SCHEMA_SYNC
+                        - NOTIFICATION_TYPE_OPENLINEAGE
+                        - NOTIFICATION_TYPE_DATA_QUALITY
+                    type: string
+                    format: enum
+                severity:
+                    readOnly: true
+                    enum:
+                        - NOTIFICATION_SEVERITY_UNSPECIFIED
+                        - NOTIFICATION_SEVERITY_INFO
+                        - NOTIFICATION_SEVERITY_WARNING
+                        - NOTIFICATION_SEVERITY_ERROR
+                    type: string
+                    format: enum
+                state:
+                    readOnly: true
+                    enum:
+                        - NOTIFICATION_DELIVERY_STATE_UNSPECIFIED
+                        - NOTIFICATION_DELIVERY_STATE_PENDING
+                        - NOTIFICATION_DELIVERY_STATE_SENDING
+                        - NOTIFICATION_DELIVERY_STATE_SENT
+                        - NOTIFICATION_DELIVERY_STATE_DEAD
+                    type: string
+                    format: enum
+                attempts:
+                    readOnly: true
+                    type: integer
+                    description: How many automatic attempts were made.
+                    format: int32
+                lastError:
+                    readOnly: true
+                    type: string
+                    description: Why the last attempt failed. Empty unless it did.
+                createTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                nextAttemptTime:
+                    readOnly: true
+                    type: string
+                    description: When the next automatic attempt is due. Unset when the delivery is terminal.
+                    format: date-time
+                sentTime:
+                    readOnly: true
+                    type: string
+                    description: When it was delivered. Unset unless it was.
+                    format: date-time
+            description: |-
+                NotificationDelivery is one outbound attempt at one notification event for one
+                 channel. A failing event fans out to as many deliveries as channels it matched.
         NullPercentConfig:
             type: object
             properties:
@@ -12268,6 +12726,14 @@ components:
                 RegexConfig counts rows whose column value does not match a regular
                  expression. The pattern is Go RE2 syntax and is also translated for the
                  engine's own regex operator.
+        RetryNotificationDeliveryRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}'
         RevokeConnectedAppRequest:
             required:
                 - name
@@ -13267,6 +13733,20 @@ components:
                     description: |-
                         The identity the provider resolved. Field mapping is applied, so a claim
                          that did not resolve is visible as an empty field here.
+        TestNotificationChannelRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/notificationChannels/{notification_channel}'
+        TestNotificationChannelResponse:
+            type: object
+            properties:
+                response:
+                    type: string
+                    description: The endpoint's answer, trimmed for display.
         Transformation:
             type: object
             properties:
@@ -13721,6 +14201,12 @@ components:
                         $ref: '#/components/schemas/RuleMetadata'
                     description: The rules is the list of rules in a view (PostgreSQL specific).
             description: ViewMetadata is the metadata for views.
+        WebhookChannelConfig:
+            type: object
+            properties:
+                sign:
+                    type: boolean
+                    description: Whether the delivery body is signed with the channel's signing secret.
         WorkspaceProfileSetting:
             type: object
             properties:
