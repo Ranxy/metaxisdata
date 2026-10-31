@@ -348,3 +348,243 @@ should be fixed before release; the rest are precision, test, copy and robustnes
 items that can be triaged. With G-1 fixed (or the invariant reworded and the
 numerator intersected)
 and G-2 replaced by a bounded per-target read, I would approve this commit.
+
+---
+
+## Post-review verification (e838733)
+
+Follow-up to the review above. Verified `git diff 04b18b7..e838733`
+(`fix(data-quality): close the coverage and pass-rate review findings`, 27 files
+including the maintenance/user docs, generated output and tests; the commit also
+carries this review document itself, which is not assessed here). The two Majors
+and the cheap Minors were re-checked against the code, then falsified with SQL
+experiments and the affected suites; the goal is a verdict on the fixes, not a
+re-review of P0-3.
+
+### What was exercised
+
+- `git diff 04b18b7..e838733` read in full; both data-quality docs and the new
+  tests read against the code.
+- `go build ./...` — pass; `go test -count=1
+  ./backend/api/v1 ./backend/store ./backend/component/dataquality
+  ./backend/component/qualityreport` — pass (forced, not cached), including the
+  new dropped-column / moved-rule / tally / report-card tests.
+- `go test -tags=integration ./backend/test/integration/runner -run TestDataQuality
+  -count=1` — pass in 41.7 s against real PostgreSQL + MySQL, covering the new
+  20-execution cap assertion, the instance/environment sums-to-totals assertions,
+  the derived journey expectations and the deleted-instance column guard.
+- `gofmt -l backend/` — clean; `golangci-lint run --new-from-rev=04b18b7
+  --allow-parallel-runners ./backend/...` — 0 issues.
+- `cd proto && buf generate` then `git status --porcelain` — no diff (generated
+  Go/frontend/grpc-doc output is current); `buf format -d` and `buf lint` — clean.
+- `pnpm --dir frontend type-check` — pass; `pnpm --dir frontend test run` — 158
+  files / 1611 tests pass; `biome:check` clean; `i18n` passes (107 terms / 94
+  rules; the changed `statCoverageHint`/`scoreLineHint` placeholders are in parity).
+- SQL falsification on the local PostgreSQL 16 (the compose/testcontainers
+  version) with session-local TEMP tables that only shadow the real names inside
+  that session (no permanent object or row touched):
+  - replayed `qualityTargetColumnQuery` and the coverage denominator against
+    synthetic registry rows: duplicate column names across two metadata arms,
+    `null`/name-less column entries, absent metadata arms, a zero-column object,
+    VIEW / EXTERNAL_TABLE / MATERIALIZED_VIEW arms, a DATABASE row, a key absent
+    from the registry, and a key under a soft-deleted instance;
+  - replayed the tally query on 3M executions over 3 targets to read the plan
+    (`Nested Loop Left Join → Limit → Incremental Sort → Index Scan`), and on an
+    all-paused target (300k executions) to bound the residual worst case below.
+
+### G-1 — column coverage: fixed (residual cross-read race, see r-1)
+
+The guard is now real, not just a target-existence check:
+
+- `backend/store/quality_overview.go:78-153` — `qualityTargetColumnQuery` /
+  `ListMetaRegistryTargetColumns` reuse the denominator's exact predicates: the
+  same live-instance join (`split_part(k.guid, ';', 1)` + `i.deleted = FALSE`,
+  which mirrors `qualityCoverageQuery:59-73`) and the same object-type set
+  (`r.object_type = ANY($3)`, `$3 = qualityCoverageObjectTypes`). The
+  `LEFT JOIN LATERAL` over the four metadata arrays keeps a zero-column object as
+  a row with a NULL name, so key presence still means "has a denominator row";
+  the Go map dedupes names per target.
+- `backend/api/v1/data_quality_overview.go:84,185,205` — a rule counts only when
+  its `(guid, object_type)` is present and its `ConfigColumn` is in that target's
+  current name set; the same set feeds the workspace counts and the per-instance
+  `covered` sets, so the breakdown cannot disagree with the totals.
+- Empirically (TEMP-table replay of both queries on PG16): duplicate names across
+  arms return duplicate SQL rows but collapse to one name in the map; NULL names
+  are ignored; an absent arm `{}` yields the key with an empty set; a zero-column
+  object yields `key + NULL name` (key retained); view/external/materialized-view
+  columns are read from their own arms; a DATABASE row is excluded by the type
+  predicate; an absent registry row and a row under a deleted instance yield no
+  key. Because `|union of the four arm name sets| ≤ Σ arm lengths` for every
+  object, a target's counted covered columns can never exceed its denominator
+  columns, so the workspace and per-instance ratios cannot pass 100% *as long as
+  both reads observe the same state*. The journey now asserts the row sums equal
+  the workspace totals (`data_quality_journey_service_test.go:878-903`), and the
+  dropped-column assembly case is pinned at
+  `backend/api/v1/data_quality_overview_test.go:266`.
+- Falsification result: I found no case where a column is counted that is absent
+  from the target's current registry list, and no duplicate/absent-arm/view
+  over-count. The one hole is not in the column guard but in the two-read
+  snapshot — r-1.
+
+### G-2 — bounded tallies: fixed
+
+- `backend/store/quality_execution.go:788-863` — the per-key
+  `LEFT JOIN LATERAL (SELECT e.status … ORDER BY e.started_at DESC, e.id DESC
+  LIMIT $8)` applies the limit before `COUNT(*) FILTER` for PASS/WARN/FAIL; the
+  projection is `e.status` only (no `quality_execution` wide row, no
+  `scanQualityExecution` / sample / threshold / executed_sql JSON unmarshal);
+  the join keeps it to enabled, non-deleted rules whose current target equals the
+  execution's target; `e.state = $7` is COMPLETED; empty keys and
+  `limitPerTarget <= 0` are guarded and tested
+  (`backend/store/quality_execution_test.go:526-541`).
+- Plan checked on PG16 with 3M executions / 300 enabled rules / 3 targets:
+  `Nested Loop Left Join → Limit (rows=20 loops=3) → Incremental Sort
+  (Presorted Key: e.started_at) → Index Scan` on the replay's
+  `(target_guid, target_type, started_at DESC)` index (the equivalent of the
+  production `idx_quality_execution_target_time`), actual `rows=21 loops=3`,
+  0.28 ms: one index range per target stops at the limit; the `id DESC` tiebreak
+  is handled by the incremental sort (PG13+; the deployment/test target is
+  PostgreSQL 16), so the pre-fix "rank all history" cost is gone for the normal
+  case.
+- Semantics match the accepted definition: the window holds COMPLETED verdicts of
+  currently enabled non-archived checks after filtering, PASS/(PASS+WARN+FAIL),
+  WARN is in the denominator only, ERROR/SKIPPED/NOT_EVALUATED are never counted
+  (`QualityTargetExecutionTally` has only Pass/Warn/Fail and
+  `Judged() = Pass+Warn+Fail`; `qualityRecentPassRate`,
+  `backend/api/v1/data_quality_target.go:583-590`). The moved-rule executions are
+  excluded from the tally by the target-identity join, and the 20-row cap is
+  pinned end-to-end (`data_quality_journey_service_test.go:964-988`).
+
+### Minor status
+
+| ID | Status | Evidence / note |
+| --- | --- | --- |
+| g-1 (read order / race) | **partially fixed** | Denominator now reads first (`data_quality_overview.go:55-60`) and the comment explains why (`:55-59`), which handles deletions. The comment's claim "the race can only under-count coverage" is still too strong for re-created rows — see r-1. |
+| g-2 (tooltip window) | fixed | `DataQualityTargetsPage.vue:326-329` passes `window` + `judged`; locale strings at `en-US.json:1347` / `zh-CN.json:1347`; tests updated in `DataQualityTargetsPage.test.ts` (tooltip present for 20/10, absent for judged 0). Nit below (r-5). |
+| g-3 (moved-rule attribution) | fixed | `ruleLatestResult` (`data_quality_target.go:531-537`) is used by the overview (`data_quality_overview.go:225`) and by `qualityTargetScores` (`:554`), which the directory, `GetQualityTarget` and the report all share; the tally SQL pins `e.target_guid = r.target_guid AND e.target_type = r.target_type`. Both docs now say a moved check is unscored until it runs on its new target. Residual display nuance r-6. |
+| g-4 (test gaps) | **mostly fixed** | 25→20 cap, sums-to-totals, pass-rate math (0, 1, mixed, empty) and the dropped-column assembly case were added and pass. The SQL column read itself is exercised against a live/deleted-instance target (`data_quality_journey_service_test.go:1178-1188`) but not against a real DROP/rename COLUMN — see r-4. |
+| g-5 (non-fatal environments) | fixed | `data_quality_overview.go:62-72` logs one WARN and continues with empty titles; the row still falls back to its key. Nit r-7. |
+| g-6 (unique report assertion) | fixed | `backend/api/v1/data_quality_report_test.go:192-201` now asserts the exact card markup with the language-specific label (`Quality score`/`质量分`), so the pre-existing `100.0%` can no longer satisfy it. Nit r-6b. |
+| g-7 (derived journey expectations) | fixed | `data_quality_journey_service_test.go:154-165` computes scored/passing from the `journeyRuleSpec` slice instead of hard-coding 17 / 10-of-17. |
+| g-8 (overview scan cost) | triaged / documented | `.agents/docs/data-quality.md:337` and §7 #25 now state the per-read registry scan and its mitigation. See r-3/r-4 for the new column-name read, which the cost note does not mention. |
+
+### New / residual findings
+
+**r-1 (Minor) — the coverage reads are still two statements; the comment's
+"can only under-count" claim is false for a re-created registry row, so the
+absolute ≥100% guarantee still has a narrow hole.**
+`data_quality_overview.go:55-59` argues only the deletion direction: a row deleted
+between the denominator read (`:60`) and the column read (`:84`) drops out of the
+numerator. The opposite direction exists because GUIDs are name-derived: a table
+(or column) that is dropped and later re-created with the same name gets the same
+GUID, and its enabled rules are still in `enabledRules` (they were read even
+earlier, `:45-49`). If the sync commit that re-creates the object lands between
+`:60` and `:84`, the denominator does not count the object (or its columns) while
+`ListMetaRegistryTargetColumns` returns it again, and its stale column rules are
+counted as covered. Concretely: the workspace's denominator at `:60` holds one
+other table with one column (total 1); between reads a dropped 2-column table with
+two still-enabled column rules is re-created → column read returns 2 names → the
+response can report 2/1 = 200% covered (and monitored tables > total tables; when
+the denominator is 0 the percentage renders as `-` but the counts still
+disagree). The window is the inter-statement gap (µs–ms) against a schema-sync
+commit, but the comment and `docs/data-quality.md:230` ("coverage can never exceed
+100%") state an absolute.
+**Fix (cheap):** put the denominator and the per-target column read in one
+read-only `REPEATABLE READ` transaction, or compute both in one statement (the
+denominator query can emit the per-instance/per-target column names in the same
+snapshot); alternatively accept the residual and reword the comment and the user
+doc to "a delete race can only under-count; a re-creation race inside one read is
+bounded by the read gap". Not release-blocking, but the claim should not be
+absolute while it is false.
+
+**r-2 (Nit) — all-paused target is the residual worst case of the tally query.**
+If every completed execution a target holds belongs to a paused/deleted rule (or
+a moved rule's old-target history), the LATERAL finds no matching row and scans
+that target's whole index range before concluding zero: measured 300k rows /
+98 ms for one such target on PG16, versus ~21 rows for the normal case. It is
+bounded by one target's history and still strictly better than the old ranking
+CTE; only worth a sentence in the D-76/§7 #25 known-limits text if it ever bites.
+
+**r-3 (Nit) — the new column guard streams every monitored target's columns.**
+`quality_overview.go:86-153` returns `(guid, object_type, name)` for every column
+of every enabled rule's target (up to 1000 targets × table width rows per overview
+load) to intersect against at most one configured column per rule. Correct (and
+verified above), but the cheapest fix is to pass the desired `(guid, column)`
+pairs and return only the intersections (an EXISTS/join per pair), which turns the
+read into at most one row per column rule.
+
+**r-4 (Nit) — the docs' new "读取成本" note does not mention the column-name
+read**, and no automated test drops a real column and asserts the coverage number
+drops (`assertJourneySchemaDriftAfterDDLChange` only ADDs a column). Add the
+column read to `.agents/docs/data-quality.md:337`, and one integration assertion
+after a `DROP COLUMN` (the registry sync already runs in the journey) that
+`ListMetaRegistryTargetColumns` no longer lists it and `covered_column_count`
+falls.
+
+**r-5 (Nit) — the frontend duplicates the pass-rate window constant.**
+`DataQualityTargetsPage.vue:647` sets `RECENT_PASS_RATE_WINDOW = 20` next to the
+backend's `qualityTargetRecentExecutionLimit`; the comment says it mirrors the
+backend, but a future limit change silently makes the tooltip lie. Exposing the
+window in the summary (or reusing the judged count in the copy) would remove the
+copy of the constant.
+
+**r-6 (Nit) — the report and target-workspace rule rows still display the raw
+latest execution after a rule moved targets.** `data_quality_report.go:184` and
+`data_quality_target.go:470` build the per-rule "last result" from
+`workspace.latest[rule.ID]` without `ruleLatestResult`, so a moved check shows its
+old-target execution in the rule list while the score card correctly treats it as
+unscored. This is historical display, not a score inconsistency, and pre-dates
+the fix; mention it in the docs or leave as is.
+
+**r-6b (Nit) — the report assertion is now exactly a template snippet**
+(`<div class="value">100.0</div><div class="label">Quality score</div>`), so a
+whitespace/markup reformat breaks the test even when the card is correct. That is
+an acceptable price for uniqueness; a `newReportView` assertion would be less
+brittle.
+
+**r-7 (Nit) — the non-fatal environment read logs one WARN per overview load.**
+If the settings read fails persistently, every page load writes a warning. Either
+rate-limit or log at debug after the first; not worth code now.
+
+### Regressions / new defects
+
+None found. The fix changes no wire schema (proto edits are comments only; field
+numbers untouched, `buf generate` is idempotent), no permission or audit surface,
+and no table/JSONB shape. The removed `ListExistingMetaRegistryTargets` /
+`ListRecentQualityExecutionsByTargets` / `qualifyQualityExecutionColumns` have no
+remaining Go/TS references, and the maintenance reference points at the new
+symbols (`ListMetaRegistryTargetColumns`, `ListQualityTargetExecutionTallies`,
+`ruleLatestResult`). Callers are updated (`data_quality_target.go:126,442`,
+`qualityRecentPassRate` signature), `gofmt`/lint/build/tests are clean, and the
+frontend gates pass. The `.agents/docs/data-quality-target-centric.md` stale
+`CountMonitoredTables` reference (n-3) and the proto comment gaps (n-2) were also
+fixed, and the overview hint now surfaces `judged_table_count` (n-1), the plural
+hint (n-4) and the tooltip window (g-2) are resolved.
+
+### Verdict
+
+**G-1 and G-2 are fixed.** The column guard now intersects with the target's
+current registry column list using the denominator's own object set, and the
+pass-rate read is a bounded, narrow per-target tally whose plan I verified stops
+at the limit. The added tests (dropped column, moved rule, 25→20 cap, sums to
+totals, pass-rate boundaries) are meaningful and pass, as does the full
+integration journey.
+
+Residual: **r-1** (the two coverage reads can still disagree for an object
+re-created between them; the comment's absolute claim is wrong) is the only
+remaining correctness caveat and it is narrow; **r-2** is a bounded performance
+worst case; the rest are documentation/test/copy nits. **Recommendation: approve
+`e838733` for merge.** Close r-1 either by reading the denominator and the column
+sets in one snapshot (one statement or a read-only repeatable-read transaction) or
+by softening the comment/user-doc claim; r-3 (pass configured column pairs) and
+r-4 (DROP COLUMN assertion + cost note) are worthwhile cheap follow-ups.
+
+### r-1 closure (268a2d5)
+
+After this verification, r-1 was closed as recommended: `QualityCoverageSnapshot`
+runs the denominator and the target/column guard in one read-only
+`REPEATABLE READ` transaction (`backend/store/quality_overview.go`), the query
+bodies read through a shared `store.Queryer`, the API consumes the snapshot
+instead of two pooled reads, a store guard test pins the isolation/read-only
+options, and the maintenance reference documents it. G-1 therefore has no
+remaining correctness caveat; r-2/r-3/r-4 remain the nits noted above.
