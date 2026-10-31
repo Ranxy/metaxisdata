@@ -149,6 +149,12 @@ const maxPageOffset = math.MaxInt32
 // number the server applies.
 const defaultPageLimit = 10
 
+// defaultSettingsPageSize is the documented default of the settings-style lists
+// (identity providers and their bindings, application and OpenLineage API keys,
+// namespace mappings): a workspace has a few dozen of each, so one page shows a
+// useful directory while the token still bounds a pathological table.
+const defaultSettingsPageSize = 50
+
 func (p *pageOffset) getNextPageToken() (string, error) {
 	next := int64(p.offset) + int64(p.limit)
 	if next < 0 || next > maxPageOffset {

@@ -172,7 +172,13 @@ func (x *GetIdentityProviderRequest) GetName() string {
 }
 
 type ListIdentityProvidersRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The maximum number of identity providers to return. If unspecified, at most 50 are
+	// returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+	PageSize int32 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous ListIdentityProviders call. Provide this to retrieve
+	// the subsequent page.
+	PageToken     string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -207,11 +213,28 @@ func (*ListIdentityProvidersRequest) Descriptor() ([]byte, []int) {
 	return file_v1_identity_provider_service_proto_rawDescGZIP(), []int{1}
 }
 
+func (x *ListIdentityProvidersRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListIdentityProvidersRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListIdentityProvidersResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	IdentityProviders []*IdentityProvider    `protobuf:"bytes,1,rep,name=identity_providers,json=identityProviders,proto3" json:"identity_providers,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// A token, which can be sent as page_token to retrieve the next page. If this
+	// field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListIdentityProvidersResponse) Reset() {
@@ -249,6 +272,13 @@ func (x *ListIdentityProvidersResponse) GetIdentityProviders() []*IdentityProvid
 		return x.IdentityProviders
 	}
 	return nil
+}
+
+func (x *ListIdentityProvidersResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 type CreateIdentityProviderRequest struct {
@@ -590,7 +620,13 @@ type ListIdentityProviderBindingsRequest struct {
 	Idp string `protobuf:"bytes,1,opt,name=idp,proto3" json:"idp,omitempty"`
 	// Optional. Restrict the answer to one account.
 	// Format: users/{user}
-	User          string `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
+	User string `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
+	// The maximum number of bindings to return. If unspecified, at most 50 are
+	// returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token, received from a previous ListIdentityProviderBindings call. Provide this to retrieve
+	// the subsequent page.
+	PageToken     string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -639,11 +675,28 @@ func (x *ListIdentityProviderBindingsRequest) GetUser() string {
 	return ""
 }
 
+func (x *ListIdentityProviderBindingsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListIdentityProviderBindingsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
 type ListIdentityProviderBindingsResponse struct {
 	state                    protoimpl.MessageState     `protogen:"open.v1"`
 	IdentityProviderBindings []*IdentityProviderBinding `protobuf:"bytes,1,rep,name=identity_provider_bindings,json=identityProviderBindings,proto3" json:"identity_provider_bindings,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// A token, which can be sent as page_token to retrieve the next page. If this
+	// field is omitted, there are no subsequent pages.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListIdentityProviderBindingsResponse) Reset() {
@@ -681,6 +734,13 @@ func (x *ListIdentityProviderBindingsResponse) GetIdentityProviderBindings() []*
 		return x.IdentityProviderBindings
 	}
 	return nil
+}
+
+func (x *ListIdentityProviderBindingsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
 }
 
 // IdentityProviderBinding is one account's way in through one identity provider.
@@ -1309,10 +1369,14 @@ const file_v1_identity_provider_service_proto_rawDesc = "" +
 	"\"v1/identity_provider_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"V\n" +
 	"\x1aGetIdentityProviderRequest\x128\n" +
 	"\x04name\x18\x01 \x01(\tB$\xe0A\x02\xfaA\x1e\n" +
-	"\x1cmetaxisdata/IdentityProviderR\x04name\"\x1e\n" +
-	"\x1cListIdentityProvidersRequest\"p\n" +
+	"\x1cmetaxisdata/IdentityProviderR\x04name\"Z\n" +
+	"\x1cListIdentityProvidersRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x98\x01\n" +
 	"\x1dListIdentityProvidersResponse\x12O\n" +
-	"\x12identity_providers\x18\x01 \x03(\v2 .metaxisdata.v1.IdentityProviderR\x11identityProviders\"\xaa\x01\n" +
+	"\x12identity_providers\x18\x01 \x03(\v2 .metaxisdata.v1.IdentityProviderR\x11identityProviders\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xaa\x01\n" +
 	"\x1dCreateIdentityProviderRequest\x12R\n" +
 	"\x11identity_provider\x18\x01 \x01(\v2 .metaxisdata.v1.IdentityProviderB\x03\xe0A\x02R\x10identityProvider\x125\n" +
 	"\x14identity_provider_id\x18\x02 \x01(\tB\x03\xe0A\x02R\x12identityProviderId\"\xb5\x01\n" +
@@ -1332,14 +1396,18 @@ const file_v1_identity_provider_service_proto_rawDesc = "" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12#\n" +
 	"\rcode_verifier\x18\x02 \x01(\tR\fcodeVerifier\"e\n" +
 	"\x1cTestIdentityProviderResponse\x12E\n" +
-	"\tuser_info\x18\x01 \x01(\v2(.metaxisdata.v1.IdentityProviderUserInfoR\buserInfo\"\x85\x01\n" +
+	"\tuser_info\x18\x01 \x01(\v2(.metaxisdata.v1.IdentityProviderUserInfoR\buserInfo\"\xc1\x01\n" +
 	"#ListIdentityProviderBindingsRequest\x123\n" +
 	"\x03idp\x18\x01 \x01(\tB!\xfaA\x1e\n" +
 	"\x1cmetaxisdata/IdentityProviderR\x03idp\x12)\n" +
 	"\x04user\x18\x02 \x01(\tB\x15\xfaA\x12\n" +
-	"\x10metaxisdata/UserR\x04user\"\x8d\x01\n" +
+	"\x10metaxisdata/UserR\x04user\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"\xb5\x01\n" +
 	"$ListIdentityProviderBindingsResponse\x12e\n" +
-	"\x1aidentity_provider_bindings\x18\x01 \x03(\v2'.metaxisdata.v1.IdentityProviderBindingR\x18identityProviderBindings\"\xe1\x01\n" +
+	"\x1aidentity_provider_bindings\x18\x01 \x03(\v2'.metaxisdata.v1.IdentityProviderBindingR\x18identityProviderBindings\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe1\x01\n" +
 	"\x17IdentityProviderBinding\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\"\n" +
 	"\n" +

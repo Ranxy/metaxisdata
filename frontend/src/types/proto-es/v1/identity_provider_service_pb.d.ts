@@ -34,6 +34,21 @@ export declare const GetIdentityProviderRequestSchema: GenMessage<GetIdentityPro
  * @generated from message metaxisdata.v1.ListIdentityProvidersRequest
  */
 export declare type ListIdentityProvidersRequest = Message<"metaxisdata.v1.ListIdentityProvidersRequest"> & {
+  /**
+   * The maximum number of identity providers to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListIdentityProviders call. Provide this to retrieve
+   * the subsequent page.
+   *
+   * @generated from field: string page_token = 2;
+   */
+  pageToken: string;
 };
 
 /**
@@ -50,6 +65,14 @@ export declare type ListIdentityProvidersResponse = Message<"metaxisdata.v1.List
    * @generated from field: repeated metaxisdata.v1.IdentityProvider identity_providers = 1;
    */
   identityProviders: IdentityProvider[];
+
+  /**
+   * A token, which can be sent as page_token to retrieve the next page. If this
+   * field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**
@@ -222,6 +245,22 @@ export declare type ListIdentityProviderBindingsRequest = Message<"metaxisdata.v
    * @generated from field: string user = 2;
    */
   user: string;
+
+  /**
+   * The maximum number of bindings to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * A page token, received from a previous ListIdentityProviderBindings call. Provide this to retrieve
+   * the subsequent page.
+   *
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
 };
 
 /**
@@ -238,6 +277,14 @@ export declare type ListIdentityProviderBindingsResponse = Message<"metaxisdata.
    * @generated from field: repeated metaxisdata.v1.IdentityProviderBinding identity_provider_bindings = 1;
    */
   identityProviderBindings: IdentityProviderBinding[];
+
+  /**
+   * A token, which can be sent as page_token to retrieve the next page. If this
+   * field is omitted, there are no subsequent pages.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
 };
 
 /**

@@ -145,10 +145,22 @@ message GetIdentityProviderRequest {
   ];
 }
 
-message ListIdentityProvidersRequest {}
+message ListIdentityProvidersRequest {
+  // The maximum number of identity providers to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 1;
+
+  // A page token, received from a previous ListIdentityProviders call. Provide this to retrieve
+  // the subsequent page.
+  string page_token = 2;
+}
 
 message ListIdentityProvidersResponse {
   repeated IdentityProvider identity_providers = 1;
+
+  // A token, which can be sent as page_token to retrieve the next page. If this
+  // field is omitted, there are no subsequent pages.
+  string next_page_token = 2;
 }
 
 message CreateIdentityProviderRequest {
@@ -213,10 +225,22 @@ message ListIdentityProviderBindingsRequest {
   // Optional. Restrict the answer to one account.
   // Format: users/{user}
   string user = 2 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
+
+  // The maximum number of bindings to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 3;
+
+  // A page token, received from a previous ListIdentityProviderBindings call. Provide this to retrieve
+  // the subsequent page.
+  string page_token = 4;
 }
 
 message ListIdentityProviderBindingsResponse {
   repeated IdentityProviderBinding identity_provider_bindings = 1;
+
+  // A token, which can be sent as page_token to retrieve the next page. If this
+  // field is omitted, there are no subsequent pages.
+  string next_page_token = 2;
 }
 
 // IdentityProviderBinding is one account's way in through one identity provider.

@@ -52,13 +52,30 @@ func (s *IdentityProviderService) GetIdentityProvider(ctx context.Context, req *
 // ListIdentityProviders lists every configured identity provider. It is public so
 // the login page can render the SSO targets before a session exists; the client
 // secret is never part of the answer.
-func (s *IdentityProviderService) ListIdentityProviders(ctx context.Context, _ *connect.Request[v1pb.ListIdentityProvidersRequest]) (*connect.Response[v1pb.ListIdentityProvidersResponse], error) {
-	messages, err := s.store.ListIdentityProviders(ctx, &store.FindIdentityProviderMessage{})
+func (s *IdentityProviderService) ListIdentityProviders(ctx context.Context, req *connect.Request[v1pb.ListIdentityProvidersRequest]) (*connect.Response[v1pb.ListIdentityProvidersResponse], error) {
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: defaultSettingsPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+	messages, err := s.store.ListIdentityProviders(ctx, &store.FindIdentityProviderMessage{
+		Limit:  &limitPlusOne,
+		Offset: &offset.offset,
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list identity providers"))
 	}
-	response := &v1pb.ListIdentityProvidersResponse{}
-	for _, message := range messages {
+	page, nextPageToken, err := paginate(messages, offset)
+	if err != nil {
+		return nil, err
+	}
+	response := &v1pb.ListIdentityProvidersResponse{NextPageToken: nextPageToken}
+	for _, message := range page {
 		response.IdentityProviders = append(response.IdentityProviders, convertToIdentityProvider(message))
 	}
 	return connect.NewResponse(response), nil
@@ -240,12 +257,29 @@ func (s *IdentityProviderService) ListIdentityProviderBindings(ctx context.Conte
 		find.PrincipalID = &userID
 	}
 
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: defaultSettingsPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	limitPlusOne := offset.limit + 1
+	find.Limit = &limitPlusOne
+	find.Offset = &offset.offset
+
 	bindings, err := s.store.ListIdentityProviderBindings(ctx, find)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to list identity provider bindings"))
 	}
-	response := &v1pb.ListIdentityProviderBindingsResponse{}
-	for _, binding := range bindings {
+	page, nextPageToken, err := paginate(bindings, offset)
+	if err != nil {
+		return nil, err
+	}
+	response := &v1pb.ListIdentityProviderBindingsResponse{NextPageToken: nextPageToken}
+	for _, binding := range page {
 		response.IdentityProviderBindings = append(response.IdentityProviderBindings, &v1pb.IdentityProviderBinding{
 			User:      common.FormatUserUID(binding.PrincipalID),
 			UserEmail: binding.UserEmail,

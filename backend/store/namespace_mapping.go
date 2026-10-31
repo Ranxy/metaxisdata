@@ -26,6 +26,8 @@ type NamespaceMappingMessage struct {
 type FindNamespaceMappingMessage struct {
 	ID        *int64
 	Namespace *string
+	Limit     *int
+	Offset    *int
 }
 
 // CreateNamespaceMapping creates a new namespace mapping.
@@ -79,12 +81,18 @@ func (s *Store) ListNamespaceMapping(ctx context.Context, find *FindNamespaceMap
 		where, args = append(where, fmt.Sprintf("namespace = $%d", len(args)+1)), append(args, *find.Namespace)
 	}
 
-	rows, err := s.GetDB().QueryContext(ctx, `
+	query := `
 		SELECT id, namespace, instance_resource_id, database_name, created_at, updated_at
 		FROM namespace_mapping
-		WHERE `+strings.Join(where, " AND ")+`
-		ORDER BY id ASC
-	`, args...)
+		WHERE ` + strings.Join(where, " AND ") + `
+		ORDER BY id ASC`
+	if find.Limit != nil {
+		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
+	}
+	if find.Offset != nil {
+		query += fmt.Sprintf(" OFFSET %d", *find.Offset)
+	}
+	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query namespace mappings")
 	}

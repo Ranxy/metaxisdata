@@ -3076,6 +3076,22 @@ can be told apart from the ones issued later. </p></td>
                   <td><p>Format: applications/{application_id} </p></td>
                 </tr>
               
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of API keys to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListApplicationAPIKeys call. Provide this to retrieve
+the subsequent page. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -3098,6 +3114,14 @@ can be told apart from the ones issued later. </p></td>
                   <td><a href="#metaxisdata.v1.ApplicationAPIKey">ApplicationAPIKey</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as page_token to retrieve the next page. If this
+field is omitted, there are no subsequent pages. </p></td>
                 </tr>
               
             </tbody>
@@ -22301,6 +22325,22 @@ Format: idps/{idp} </p></td>
 Format: users/{user} </p></td>
                 </tr>
               
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of bindings to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListIdentityProviderBindings call. Provide this to retrieve
+the subsequent page. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -22325,6 +22365,14 @@ Format: users/{user} </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as page_token to retrieve the next page. If this
+field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -22336,6 +22384,32 @@ Format: users/{user} </p></td>
         <p></p>
 
         
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of identity providers to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListIdentityProviders call. Provide this to retrieve
+the subsequent page. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -22354,6 +22428,14 @@ Format: users/{user} </p></td>
                   <td><a href="#metaxisdata.v1.IdentityProvider">IdentityProvider</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as page_token to retrieve the next page. If this
+field is omitted, there are no subsequent pages. </p></td>
                 </tr>
               
             </tbody>
@@ -26301,6 +26383,32 @@ Format: openlineage/tasks/{task} </p></td>
         <p></p>
 
         
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of API keys to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListAPIKeys call. Provide this to retrieve
+the subsequent page. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -26321,6 +26429,14 @@ Format: openlineage/tasks/{task} </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as page_token to retrieve the next page. If this
+field is omitted, there are no subsequent pages. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -26332,6 +26448,32 @@ Format: openlineage/tasks/{task} </p></td>
         <p></p>
 
         
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of namespace mappings to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A page token, received from a previous ListNamespaceMappings call. Provide this to retrieve
+the subsequent page. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       
@@ -26350,6 +26492,14 @@ Format: openlineage/tasks/{task} </p></td>
                   <td><a href="#metaxisdata.v1.NamespaceMapping">NamespaceMapping</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A token, which can be sent as page_token to retrieve the next page. If this
+field is omitted, there are no subsequent pages. </p></td>
                 </tr>
               
             </tbody>
