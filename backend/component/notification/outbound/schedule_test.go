@@ -156,3 +156,102 @@ func TestValidateQuietHoursSetting(t *testing.T) {
 		MaintenanceWindows: []*storepb.MaintenanceWindow{{Start: timestamppb.New(time.Now()), End: timestamppb.New(time.Now().Add(time.Hour))}},
 	}))
 }
+
+// A DST spring-forward must not turn a nightly window into a 24-hour hold: when
+// the whole window falls in the skipped hour, that day's window is inactive.
+func TestQuietUntilDSTSpringForwardDoesNotHoldADay(t *testing.T) {
+	t.Parallel()
+
+	paris, err := time.LoadLocation("Europe/Paris")
+	require.NoError(t, err)
+	sundayTwoToThree := quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_SUNDAY}, "02:00", "03:00"))
+	sundayTwoToThree.Timezone = "Europe/Paris"
+
+	// On the transition date 02:00-03:00 does not exist; the window is skipped.
+	_, quiet := QuietUntil(time.Date(2025, 3, 30, 3, 30, 0, 0, paris), sundayTwoToThree)
+	require.False(t, quiet, "the DST-collapsed window must fail open, not hold for a day")
+
+	// A normal Sunday still holds.
+	until, quiet := QuietUntil(time.Date(2025, 3, 23, 2, 30, 0, 0, paris), sundayTwoToThree)
+	require.True(t, quiet)
+	require.Equal(t, time.Date(2025, 3, 23, 3, 0, 0, 0, paris), until.In(paris))
+
+	// The New York gap collapses 02:30 onto 01:30, so that day's window is
+	// inactive too: no 24-hour hold, and the missing hour fails open.
+	newYork, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	nyWindow := quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_SUNDAY}, "01:30", "02:30"))
+	nyWindow.Timezone = "America/New_York"
+	_, quiet = QuietUntil(time.Date(2025, 3, 9, 3, 15, 0, 0, newYork), nyWindow)
+	require.False(t, quiet)
+
+	// Sydney has the same gap on 2025-10-05.
+	sydney, err := time.LoadLocation("Australia/Sydney")
+	require.NoError(t, err)
+	sydneyWindow := quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_SUNDAY}, "02:00", "03:00"))
+	sydneyWindow.Timezone = "Australia/Sydney"
+	_, quiet = QuietUntil(time.Date(2025, 10, 5, 3, 30, 0, 0, sydney), sydneyWindow)
+	require.False(t, quiet)
+}
+
+// The fall-back day has two 02:30 wall times; either one is inside the window and
+// must not extend it by a day.
+func TestQuietUntilDSTFallBack(t *testing.T) {
+	t.Parallel()
+
+	paris, err := time.LoadLocation("Europe/Paris")
+	require.NoError(t, err)
+	setting := quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_SUNDAY}, "02:00", "03:00"))
+	setting.Timezone = "Europe/Paris"
+
+	now := time.Date(2025, 10, 26, 2, 30, 0, 0, paris)
+	until, quiet := QuietUntil(now, setting)
+	require.True(t, quiet)
+	require.LessOrEqual(t, until.Sub(now), 2*time.Hour)
+}
+
+// Overlapping windows resolve to the latest end: the last one releases.
+func TestQuietUntilOverlappingWindowsUseTheLatestEnd(t *testing.T) {
+	t.Parallel()
+
+	location := shanghai(t)
+	setting := quietSetting(
+		recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "22:00", "23:00"),
+		recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "22:30", "23:30"),
+	)
+	now := time.Date(2025, 1, 6, 22, 45, 0, 0, location)
+	until, quiet := QuietUntil(now, setting)
+	require.True(t, quiet)
+	require.Equal(t, time.Date(2025, 1, 6, 23, 30, 0, 0, location), until.In(location))
+}
+
+// A typo cannot hold alerting for a month: a maintenance window is bounded.
+func TestValidateQuietHoursSettingCapsMaintenanceDuration(t *testing.T) {
+	t.Parallel()
+
+	long := &storepb.QuietHoursSetting{
+		Enabled:  true,
+		Timezone: "UTC",
+		MaintenanceWindows: []*storepb.MaintenanceWindow{{
+			Start: timestamppb.New(time.Now()),
+			End:   timestamppb.New(time.Now().Add(31 * 24 * time.Hour)),
+		}},
+	}
+	require.Error(t, ValidateQuietHoursSetting(long))
+	require.NoError(t, ValidateQuietHoursSetting(&storepb.QuietHoursSetting{
+		Enabled:  true,
+		Timezone: "UTC",
+		MaintenanceWindows: []*storepb.MaintenanceWindow{{
+			Start: timestamppb.New(time.Now()),
+			End:   timestamppb.New(time.Now().Add(29 * 24 * time.Hour)),
+		}},
+	}))
+}
+
+// The clock is "HH:MM", not "H:M".
+func TestValidateQuietHoursSettingRejectsLooseClock(t *testing.T) {
+	t.Parallel()
+
+	setting := quietSetting(recurringWindow([]storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, "5:30", "08:00"))
+	require.Error(t, ValidateQuietHoursSetting(setting))
+}

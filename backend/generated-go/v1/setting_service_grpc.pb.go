@@ -63,8 +63,9 @@ type SettingServiceClient interface {
 	SendTestEmail(ctx context.Context, in *SendTestEmailRequest, opts ...grpc.CallOption) (*SendTestEmailResponse, error)
 	// Get the workspace quiet-hours schedule for outbound notifications.
 	GetQuietHoursSetting(ctx context.Context, in *GetQuietHoursSettingRequest, opts ...grpc.CallOption) (*QuietHoursSetting, error)
-	// Update the workspace quiet-hours schedule. Disabling it clears the schedule
-	// and releases every held delivery on the next dispatcher tick.
+	// Update the workspace quiet-hours schedule. Any update releases the deliveries
+	// the previous schedule was holding, so shortening or disabling it takes effect
+	// immediately; held rows are then re-evaluated by the next dispatcher tick.
 	UpdateQuietHoursSetting(ctx context.Context, in *UpdateQuietHoursSettingRequest, opts ...grpc.CallOption) (*QuietHoursSetting, error)
 }
 
@@ -199,8 +200,9 @@ type SettingServiceServer interface {
 	SendTestEmail(context.Context, *SendTestEmailRequest) (*SendTestEmailResponse, error)
 	// Get the workspace quiet-hours schedule for outbound notifications.
 	GetQuietHoursSetting(context.Context, *GetQuietHoursSettingRequest) (*QuietHoursSetting, error)
-	// Update the workspace quiet-hours schedule. Disabling it clears the schedule
-	// and releases every held delivery on the next dispatcher tick.
+	// Update the workspace quiet-hours schedule. Any update releases the deliveries
+	// the previous schedule was holding, so shortening or disabling it takes effect
+	// immediately; held rows are then re-evaluated by the next dispatcher tick.
 	UpdateQuietHoursSetting(context.Context, *UpdateQuietHoursSettingRequest) (*QuietHoursSetting, error)
 	mustEmbedUnimplementedSettingServiceServer()
 }

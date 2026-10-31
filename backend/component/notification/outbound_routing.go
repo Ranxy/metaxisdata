@@ -69,15 +69,16 @@ func (s *Service) routingGroups(ctx context.Context, routes []*store.Notificatio
 	if len(needed) == 0 {
 		return nil
 	}
-	groups, err := s.store.ListGroups(ctx, &store.FindGroupMessage{})
-	if err != nil {
-		slog.Warn("Failed to read the groups named by notification routing rules", clog.WithError(err))
-		return nil
-	}
-	members := make(map[string][]int32, len(groups))
-	for _, group := range groups {
-		key := strings.ToLower(group.Email)
-		if !needed[key] || group.Payload == nil {
+	// Read only the groups a rule actually names; the store caches them per email,
+	// so a storm of events does not reload the whole IAM catalog every time.
+	members := make(map[string][]int32, len(needed))
+	for key := range needed {
+		group, err := s.store.GetGroup(ctx, key)
+		if err != nil {
+			slog.Warn("Failed to read a group named by a notification routing rule", slog.String("group", key), clog.WithError(err))
+			continue
+		}
+		if group == nil || group.Payload == nil {
 			continue
 		}
 		for _, member := range group.Payload.GetMembers() {

@@ -1867,19 +1867,25 @@ async function loadRoutes() {
   }
 }
 
+// The routing dialog's owner and group pickers are loaded on first open, not on
+// page load: a reader with settings.get but without users.list/groups.list would
+// otherwise get an error toast every visit, and the routes card itself still works.
+let routeChoicesLoaded = false;
+
 async function loadRouteChoices() {
-  if (!canGetSettings.value) {
+  if (routeChoicesLoaded || !canGetSettings.value) {
     return;
   }
-  try {
-    const [userList, groupResponse] = await Promise.all([
-      listAllUsers(),
-      listGroups(),
-    ]);
-    users.value = userList;
-    groups.value = groupResponse.groups;
-  } catch (error) {
-    notify.error(formatError(error));
+  routeChoicesLoaded = true;
+  const [userResult, groupResult] = await Promise.allSettled([
+    listAllUsers(),
+    listGroups(),
+  ]);
+  if (userResult.status === "fulfilled") {
+    users.value = userResult.value;
+  }
+  if (groupResult.status === "fulfilled") {
+    groups.value = groupResult.value.groups;
   }
 }
 
@@ -1896,11 +1902,13 @@ function resetRouteForm() {
 function openCreateRoute() {
   editingRoute.value = null;
   resetRouteForm();
+  void loadRouteChoices();
   routeDialogOpen.value = true;
 }
 
 function openEditRoute(route: NotificationRoute) {
   editingRoute.value = route;
+  void loadRouteChoices();
   routeForm.displayName = route.displayName;
   routeForm.enabled = route.enabled;
   routeForm.eventTypes = [...(route.match?.eventTypes ?? [])];
@@ -2422,7 +2430,6 @@ onMounted(async () => {
     loadEmailSetting(),
     loadQuietHours(),
     loadRoutes(),
-    loadRouteChoices(),
   ]);
 });
 </script>

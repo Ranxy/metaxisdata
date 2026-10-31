@@ -414,3 +414,35 @@ func TestRouteRespectsTheChannelSubscription(t *testing.T) {
 	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
 	require.Empty(t, fake.deliveries)
 }
+
+// An unreadable route table fails open: ordinary subscription channels still
+// receive the event, and routed_only channels keep waiting for a working rule.
+func TestRoutingReadFailureFallsBackToSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()), testChannel(2, routedOnlyChannel()))
+	fake.routesErr = context.DeadlineExceeded
+	service := newServiceWithStore(fake)
+
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Len(t, fake.deliveries, 1)
+	require.Equal(t, int64(1), fake.deliveries[0].ChannelID)
+}
+
+// A group read failure only loses that group filter; the subscription path is
+// unaffected.
+func TestRoutingGroupReadFailureFallsBackToSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()))
+	// The route names a group the store cannot read (the fake returns an error for
+	// an unknown email), so the rule matches nothing.
+	fake.routes = []*store.NotificationRouteMessage{
+		routeMessage(&storepb.NotificationRouteMatch{Groups: []string{"missing@example.com"}}),
+	}
+	service := newServiceWithStore(fake)
+
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Len(t, fake.deliveries, 1)
+	require.Equal(t, int64(1), fake.deliveries[0].ChannelID)
+}

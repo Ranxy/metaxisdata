@@ -84,7 +84,6 @@ type AdminStore interface {
 	// how many inbox rows it produced, plus the channels a routing rule selects.
 	ListNotificationChannels(ctx context.Context) ([]*store.NotificationChannelMessage, error)
 	ListNotificationRoutes(ctx context.Context) ([]*store.NotificationRouteMessage, error)
-	ListGroups(ctx context.Context, find *store.FindGroupMessage) ([]*store.GroupMessage, error)
 	CreateNotificationDeliveries(ctx context.Context, creates []*store.CreateNotificationDeliveryMessage) error
 }
 

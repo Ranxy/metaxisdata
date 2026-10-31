@@ -109,14 +109,6 @@ func (f *fakeStore) ListNotificationRoutes(context.Context) ([]*store.Notificati
 	return f.routes, f.routesErr
 }
 
-func (f *fakeStore) ListGroups(_ context.Context, _ *store.FindGroupMessage) ([]*store.GroupMessage, error) {
-	groups := make([]*store.GroupMessage, 0, len(f.groups))
-	for _, group := range f.groups {
-		groups = append(groups, group)
-	}
-	return groups, nil
-}
-
 func (f *fakeStore) CreateNotificationDeliveries(_ context.Context, creates []*store.CreateNotificationDeliveryMessage) error {
 	if f.deliveryErr != nil {
 		return f.deliveryErr

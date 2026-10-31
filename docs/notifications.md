@@ -150,7 +150,15 @@ back to *pending* with its next attempt set to the moment the window ends. It
 does not consume an attempt, so the six-attempt budget is not spent waiting, and
 the first dispatcher tick after the window sends it. The inbox is unaffected. An
 invalid or unreadable schedule is ignored (deliveries proceed) rather than
-blocking alerts.
+blocking alerts, and a window whose bounds fall into a daylight-saving transition
+(a skipped local hour) is ignored for that day rather than stretching into a
+day-long hold. A maintenance window is capped at 30 days, so a typo cannot hold
+alerting indefinitely.
+
+Saving a new schedule releases the deliveries the previous schedule was holding,
+so shortening or disabling quiet hours during an incident sends them on the next
+dispatcher tick instead of at the old window's end. A delivery held by a window
+shows as *pending*; the Deliveries card shows its next attempt.
 
 ### Routing rules
 

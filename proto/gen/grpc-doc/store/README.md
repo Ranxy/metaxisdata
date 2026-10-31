@@ -3296,7 +3296,7 @@ rule, so a team can watch its own rules without receiving the whole workspace.
 | display_name | [string](#string) |  |  |
 | enabled | [bool](#bool) |  |  |
 | match | [NotificationRouteMatch](#metaxisdata-store-NotificationRouteMatch) |  |  |
-| channels | [string](#string) | repeated | Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}). A channel deleted after the route was written is ignored at enqueue time. |
+| channels | [string](#string) | repeated | Target channels by notification channel resource id. A channel deleted after the route was written is ignored at enqueue time rather than dropping the rule. |
 
 
 

@@ -188,11 +188,17 @@ func (r *Runner) quietHours(ctx context.Context) (time.Time, bool) {
 
 // deferDelivery puts a claimed delivery back to PENDING with its next attempt at
 // the end of the quiet window. The claim incremented attempts, so the store
-// decrements it back: deferral is scheduling, not a failed post.
+// decrements it back: deferral is scheduling, not a failed post. A failed defer
+// falls back to the ordinary release path, so the row is not left SENDING for the
+// lease to re-claim and charge an attempt.
 func (r *Runner) deferDelivery(ctx context.Context, delivery *store.NotificationDeliveryMessage, until time.Time) {
 	if err := r.store.DeferNotificationDelivery(ctx, delivery.ID, until); err != nil {
 		slog.Warn("Failed to defer an outbound notification delivery for quiet hours",
 			slog.Int64("delivery", delivery.ID), log.WithError(err))
+		if releaseErr := r.store.ReleaseNotificationDelivery(ctx, delivery.ID); releaseErr != nil {
+			slog.Warn("Failed to release an outbound notification delivery after a quiet-hours deferral failed",
+				slog.Int64("delivery", delivery.ID), log.WithError(releaseErr))
+		}
 		return
 	}
 	r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryDeferred)

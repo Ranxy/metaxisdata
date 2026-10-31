@@ -1843,8 +1843,8 @@ type NotificationRoute struct {
 	DisplayName string                  `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	Enabled     bool                    `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	Match       *NotificationRouteMatch `protobuf:"bytes,3,opt,name=match,proto3" json:"match,omitempty"`
-	// Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
-	// A channel deleted after the route was written is ignored at enqueue time.
+	// Target channels by notification channel resource id. A channel deleted after
+	// the route was written is ignored at enqueue time rather than dropping the rule.
 	Channels      []string `protobuf:"bytes,4,rep,name=channels,proto3" json:"channels,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

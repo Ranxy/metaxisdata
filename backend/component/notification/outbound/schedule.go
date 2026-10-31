@@ -15,6 +15,9 @@ const (
 	maxQuietWindows = 20
 	// maxMaintenanceWindows bounds the one-off schedule one workspace may store.
 	maxMaintenanceWindows = 20
+	// maxMaintenanceWindowDuration bounds one maintenance window. A typo far in the
+	// future must not hold every alert long enough to look like an outage.
+	maxMaintenanceWindowDuration = 30 * 24 * time.Hour
 )
 
 // ValidateQuietHoursSetting checks a quiet-hours schedule. A disabled schedule is
@@ -64,8 +67,12 @@ func ValidateQuietHoursSetting(setting *storepb.QuietHoursSetting) error {
 		if window.GetStart() == nil || window.GetEnd() == nil {
 			return errors.New("a maintenance window needs a start and an end")
 		}
-		if !window.GetStart().AsTime().Before(window.GetEnd().AsTime()) {
+		start, end := window.GetStart().AsTime(), window.GetEnd().AsTime()
+		if !start.Before(end) {
 			return errors.New("a maintenance window must start before it ends")
+		}
+		if end.Sub(start) > maxMaintenanceWindowDuration {
+			return errors.New("a maintenance window is longer than 30 days")
 		}
 	}
 	return nil
@@ -138,8 +145,16 @@ func quietWindowEnd(local time.Time, window *storepb.QuietWindow) (time.Time, bo
 		}
 		windowStart := time.Date(date.Year(), date.Month(), date.Day(), start/60, start%60, 0, 0, local.Location())
 		windowEnd := time.Date(date.Year(), date.Month(), date.Day(), end/60, end%60, 0, 0, local.Location())
-		if !windowEnd.After(windowStart) {
+		if end <= start {
+			// The window crosses midnight by intent.
 			windowEnd = windowEnd.AddDate(0, 0, 1)
+		}
+		if !windowEnd.After(windowStart) {
+			// A DST spring-forward can normalize both bounds into the skipped hour
+			// (or an otherwise impossible interval). Treat that day's window as
+			// inactive rather than reading it as a 24-hour hold: a bad schedule must
+			// never silence alerting for a day.
+			continue
 		}
 		if !local.Before(windowStart) && local.Before(windowEnd) {
 			return windowEnd, true
@@ -151,7 +166,7 @@ func quietWindowEnd(local time.Time, window *storepb.QuietWindow) (time.Time, bo
 // parseClock reads "HH:MM" as minutes since midnight.
 func parseClock(value string) (int, error) {
 	parts := strings.Split(strings.TrimSpace(value), ":")
-	if len(parts) != 2 {
+	if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 2 {
 		return 0, errors.New(`must be "HH:MM"`)
 	}
 	hour, hourErr := strconv.Atoi(parts[0])

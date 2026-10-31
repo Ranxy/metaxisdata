@@ -64,7 +64,8 @@ func TestDeferNotificationDeliveryQuery(t *testing.T) {
 		"SET state = $2",
 		"attempts = GREATEST(attempts - 1, 0)",
 		"next_attempt_at = $3",
-		"WHERE id = $1",
+		"quiet_deferred = TRUE",
+		"WHERE id = $1 AND state = $4",
 	} {
 		require.Contains(t, deferNotificationDeliveryQuery, fragment)
 	}

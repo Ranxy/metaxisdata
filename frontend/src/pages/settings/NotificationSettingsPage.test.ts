@@ -546,6 +546,30 @@ describe("NotificationSettingsPage", () => {
     expect(notifyMocks.success).toHaveBeenCalledWith("Quiet hours saved");
   });
 
+  it("toggles the quiet-hours switch and a window day", async () => {
+    mountPage();
+    await flushPromises();
+
+    const quietCard = cardByHeading("Quiet hours") as HTMLElement;
+
+    // A real DOM click on a day checkbox must reach the form and be saved.
+    await clickCheckbox(checkboxByText("Mon", quietCard));
+    buttonsByText("Save", quietCard)[0]?.click();
+    await flushPromises();
+    expect(settingMocks.updateQuietHoursSetting).toHaveBeenCalledTimes(1);
+    let saved = settingMocks.updateQuietHoursSetting.mock.calls[0][0];
+    expect(saved.windows[0].days).toEqual([DayOfWeek.FRIDAY]);
+
+    // And so must the enable switch: turning quiet hours off keeps the schedule.
+    await clickCheckbox(checkboxByText("Enable quiet hours", quietCard));
+    buttonsByText("Save", quietCard)[0]?.click();
+    await flushPromises();
+    expect(settingMocks.updateQuietHoursSetting).toHaveBeenCalledTimes(2);
+    saved = settingMocks.updateQuietHoursSetting.mock.calls[1][0];
+    expect(saved.enabled).toBe(false);
+    expect(saved.windows).toHaveLength(1);
+  });
+
   it("lists routing rules with their match and target channels", async () => {
     mountPage();
     await flushPromises();

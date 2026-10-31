@@ -1340,6 +1340,9 @@ CREATE TABLE IF NOT EXISTS notification_delivery (
     payload JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     sent_at TIMESTAMPTZ,
+    -- TRUE while the workspace quiet-hours schedule is holding this row, so a
+    -- schedule change can release it early.
+    quiet_deferred BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT uk_notification_delivery_event_channel UNIQUE (event_id, channel_id)
 );
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_due

@@ -684,10 +684,18 @@ func (s *SettingService) UpdateQuietHoursSetting(ctx context.Context, request *c
 		if err := s.store.DeleteQuietHoursSetting(ctx); err != nil {
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to clear the quiet hours setting"))
 		}
+		if _, err := s.store.ReleaseQuietDeferredDeliveries(ctx); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to release the deliveries held by the previous quiet hours schedule"))
+		}
 		return connect.NewResponse(&v1pb.QuietHoursSetting{}), nil
 	}
 	if err := s.store.SetQuietHoursSetting(ctx, setting); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update the quiet hours setting"))
+	}
+	// A new or shorter schedule takes effect immediately: rows held by the old one
+	// are due now, and the dispatcher re-defers the ones still inside a window.
+	if _, err := s.store.ReleaseQuietDeferredDeliveries(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to release the deliveries held by the previous quiet hours schedule"))
 	}
 	stored, err := s.store.GetQuietHoursSetting(ctx)
 	if err != nil {
@@ -701,7 +709,11 @@ func (s *SettingService) UpdateQuietHoursSetting(ctx context.Context, request *c
 func mergeQuietHoursSettingUpdate(existing *storepb.QuietHoursSetting, update *v1pb.QuietHoursSetting, paths []string) (*storepb.QuietHoursSetting, error) {
 	merged := &storepb.QuietHoursSetting{}
 	if existing != nil {
-		merged = existing
+		cloned, ok := proto.Clone(existing).(*storepb.QuietHoursSetting)
+		if !ok {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("failed to clone the quiet hours setting"))
+		}
+		merged = cloned
 	}
 	if len(paths) == 0 {
 		paths = []string{"enabled", "timezone", "windows", "maintenance_windows"}

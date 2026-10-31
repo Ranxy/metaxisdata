@@ -1,3 +1,9 @@
+-- A quiet-hours hold is distinguishable from retry backoff, so a schedule change
+-- can release exactly the rows it is holding instead of waiting for the old
+-- window's end.
+ALTER TABLE notification_delivery
+    ADD COLUMN IF NOT EXISTS quiet_deferred BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- Owner/team routing rules for outbound notifications. A route selects extra
 -- channels for the events whose in-app audience matches it, so a team can watch
 -- the rules it owns without receiving the whole workspace. The target channels

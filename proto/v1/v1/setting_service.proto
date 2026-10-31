@@ -92,8 +92,9 @@ service SettingService {
     option (metaxisdata.v1.permission) = "metaxisdata.settings.get";
   }
 
-  // Update the workspace quiet-hours schedule. Disabling it clears the schedule
-  // and releases every held delivery on the next dispatcher tick.
+  // Update the workspace quiet-hours schedule. Any update releases the deliveries
+  // the previous schedule was holding, so shortening or disabling it takes effect
+  // immediately; held rows are then re-evaluated by the next dispatcher tick.
   rpc UpdateQuietHoursSetting(UpdateQuietHoursSettingRequest) returns (QuietHoursSetting) {
     option (google.api.http) = {
       patch: "/v1/settings/quietHours"

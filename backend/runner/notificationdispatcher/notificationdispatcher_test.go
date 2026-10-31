@@ -34,6 +34,7 @@ type fakeDispatcherStore struct {
 	email         *storepb.EmailSetting
 	quietHours    *storepb.QuietHoursSetting
 	quietHoursErr error
+	deferErr      error
 	users         map[int]*store.UserMessage
 
 	finished []finishedDelivery
@@ -81,6 +82,9 @@ func (f *fakeDispatcherStore) GetQuietHoursSetting(context.Context) (*storepb.Qu
 }
 
 func (f *fakeDispatcherStore) DeferNotificationDelivery(_ context.Context, id int64, nextAttempt time.Time) error {
+	if f.deferErr != nil {
+		return f.deferErr
+	}
 	f.deferred = append(f.deferred, deferredDelivery{id: id, nextAttempt: nextAttempt})
 	return nil
 }
@@ -591,6 +595,56 @@ func TestDispatchQuietHoursBypassChannel(t *testing.T) {
 		channels:   []*store.NotificationChannelMessage{channel},
 		secret:     secret,
 		quietHours: quietNow(),
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Equal(t, 1, hits)
+	require.Empty(t, fake.deferred)
+	require.Len(t, fake.finished, 1)
+	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT, fake.finished[0].state)
+}
+
+// A failed defer must not leave the row SENDING for the lease to re-claim: it
+// falls back to the ordinary release path, which also gives the attempt back.
+func TestDispatchFallsBackToReleaseWhenDeferFails(t *testing.T) {
+	t.Parallel()
+
+	channel, secret := webhookChannelMessage("https://example.com/hook")
+	fake := &fakeDispatcherStore{
+		claimed:    []*store.NotificationDeliveryMessage{delivery(43, 1, channel.ID)},
+		channels:   []*store.NotificationChannelMessage{channel},
+		secret:     secret,
+		quietHours: quietNow(),
+		deferErr:   context.DeadlineExceeded,
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Empty(t, fake.deferred)
+	require.Equal(t, []int64{43}, fake.released)
+	require.Empty(t, fake.finished)
+}
+
+// A broken quiet-hours setting fails open: the delivery is attempted normally.
+func TestDispatchFailsOpenWhenQuietHoursCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		_, _ = w.Write([]byte(`{"errcode":0}`))
+	}))
+	defer server.Close()
+
+	channel, secret := webhookChannelMessage(server.URL)
+	fake := &fakeDispatcherStore{
+		claimed:       []*store.NotificationDeliveryMessage{delivery(44, 1, channel.ID)},
+		channels:      []*store.NotificationChannelMessage{channel},
+		secret:        secret,
+		quietHoursErr: context.DeadlineExceeded,
 	}
 	runner := NewRunner(nil, nil)
 	runner.store = fake

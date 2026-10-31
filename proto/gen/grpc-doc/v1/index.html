@@ -30856,8 +30856,9 @@ the settings page can repeat while an administrator types the server in.</p></td
                 <td>UpdateQuietHoursSetting</td>
                 <td><a href="#metaxisdata.v1.UpdateQuietHoursSettingRequest">UpdateQuietHoursSettingRequest</a></td>
                 <td><a href="#metaxisdata.v1.QuietHoursSetting">QuietHoursSetting</a></td>
-                <td><p>Update the workspace quiet-hours schedule. Disabling it clears the schedule
-and releases every held delivery on the next dispatcher tick.</p></td>
+                <td><p>Update the workspace quiet-hours schedule. Any update releases the deliveries
+the previous schedule was holding, so shortening or disabling it takes effect
+immediately; held rows are then re-evaluated by the next dispatcher tick.</p></td>
               </tr>
             
           </tbody>

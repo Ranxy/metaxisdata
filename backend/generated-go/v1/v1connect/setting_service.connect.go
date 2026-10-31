@@ -93,8 +93,9 @@ type SettingServiceClient interface {
 	SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error)
 	// Get the workspace quiet-hours schedule for outbound notifications.
 	GetQuietHoursSetting(context.Context, *connect.Request[v1.GetQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
-	// Update the workspace quiet-hours schedule. Disabling it clears the schedule
-	// and releases every held delivery on the next dispatcher tick.
+	// Update the workspace quiet-hours schedule. Any update releases the deliveries
+	// the previous schedule was holding, so shortening or disabling it takes effect
+	// immediately; held rows are then re-evaluated by the next dispatcher tick.
 	UpdateQuietHoursSetting(context.Context, *connect.Request[v1.UpdateQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
 }
 
@@ -255,8 +256,9 @@ type SettingServiceHandler interface {
 	SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error)
 	// Get the workspace quiet-hours schedule for outbound notifications.
 	GetQuietHoursSetting(context.Context, *connect.Request[v1.GetQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
-	// Update the workspace quiet-hours schedule. Disabling it clears the schedule
-	// and releases every held delivery on the next dispatcher tick.
+	// Update the workspace quiet-hours schedule. Any update releases the deliveries
+	// the previous schedule was holding, so shortening or disabling it takes effect
+	// immediately; held rows are then re-evaluated by the next dispatcher tick.
 	UpdateQuietHoursSetting(context.Context, *connect.Request[v1.UpdateQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
 }
 

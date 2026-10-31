@@ -337,8 +337,8 @@ message NotificationRoute {
   string display_name = 1;
   bool enabled = 2;
   NotificationRouteMatch match = 3;
-  // Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
-  // A channel deleted after the route was written is ignored at enqueue time.
+  // Target channels by notification channel resource id. A channel deleted after
+  // the route was written is ignored at enqueue time rather than dropping the rule.
   repeated string channels = 4;
 }
 

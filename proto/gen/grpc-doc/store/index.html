@@ -9646,8 +9646,8 @@ resolving at delivery time. </p></td>
                   <td>channels</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
-A channel deleted after the route was written is ignored at enqueue time. </p></td>
+                  <td><p>Target channels by notification channel resource id. A channel deleted after
+the route was written is ignored at enqueue time rather than dropping the rule. </p></td>
                 </tr>
               
             </tbody>

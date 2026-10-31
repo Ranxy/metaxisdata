@@ -842,8 +842,9 @@ export declare const SettingService: GenService<{
     output: typeof QuietHoursSettingSchema;
   },
   /**
-   * Update the workspace quiet-hours schedule. Disabling it clears the schedule
-   * and releases every held delivery on the next dispatcher tick.
+   * Update the workspace quiet-hours schedule. Any update releases the deliveries
+   * the previous schedule was holding, so shortening or disabling it takes effect
+   * immediately; held rows are then re-evaluated by the next dispatcher tick.
    *
    * @generated from rpc metaxisdata.v1.SettingService.UpdateQuietHoursSetting
    */

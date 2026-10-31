@@ -65,7 +65,10 @@ func (s *NotificationService) CreateNotificationRoute(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateNotificationRouteChannels(ctx, payload); err != nil {
+	if err := s.validateNotificationRouteMatch(ctx, payload.GetMatch()); err != nil {
+		return nil, err
+	}
+	if err := s.validateNotificationRouteChannels(ctx, payload, nil); err != nil {
 		return nil, err
 	}
 	created, err := s.store.CreateNotificationRoute(ctx, &store.CreateNotificationRouteMessage{Payload: payload})
@@ -96,7 +99,10 @@ func (s *NotificationService) UpdateNotificationRoute(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateNotificationRouteChannels(ctx, payload); err != nil {
+	if err := s.validateNotificationRouteMatch(ctx, payload.GetMatch()); err != nil {
+		return nil, err
+	}
+	if err := s.validateNotificationRouteChannels(ctx, payload, existing.Payload); err != nil {
 		return nil, err
 	}
 	updated, err := s.store.UpdateNotificationRoute(ctx, &store.UpdateNotificationRouteMessage{
@@ -136,15 +142,75 @@ func (s *NotificationService) DeleteNotificationRoute(ctx context.Context, req *
 
 // validateNotificationRouteChannels refuses a route that names a channel the
 // workspace no longer has, so a typo surfaces at write time rather than silently
-// dropping the route's events.
-func (s *NotificationService) validateNotificationRouteChannels(ctx context.Context, payload *storepb.NotificationRoute) error {
+// dropping the route's events. On update only newly added channels are checked: a
+// channel deleted after the route was written must not block renaming or
+// disabling the route.
+func (s *NotificationService) validateNotificationRouteChannels(ctx context.Context, payload, existing *storepb.NotificationRoute) error {
+	kept := make(map[string]bool, len(payload.GetChannels()))
+	if existing != nil {
+		for _, resourceID := range existing.GetChannels() {
+			kept[resourceID] = true
+		}
+	}
 	for _, resourceID := range payload.GetChannels() {
+		if kept[resourceID] {
+			continue
+		}
 		channel, err := s.store.GetNotificationChannel(ctx, resourceID)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the notification channel"))
 		}
 		if channel == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("notification channel %q not found", resourceID))
+		}
+	}
+	return nil
+}
+
+// validateNotificationRouteMatch checks that the people and groups a route names
+// exist and that its enums are known. A typo would otherwise make a routed_only
+// channel receive nothing, silently.
+func (s *NotificationService) validateNotificationRouteMatch(ctx context.Context, match *storepb.NotificationRouteMatch) error {
+	if match == nil {
+		return nil
+	}
+	for _, eventType := range match.GetEventTypes() {
+		switch eventType {
+		case storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
+			storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE,
+			storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY:
+		default:
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported event type %q", eventType.String()))
+		}
+	}
+	switch match.GetMinSeverity() {
+	case storepb.NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED,
+		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO,
+		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING,
+		storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR:
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported severity %q", match.GetMinSeverity().String()))
+	}
+	for _, owner := range match.GetOwners() {
+		userID, err := common.GetUserID(owner)
+		if err != nil {
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid owner %q", owner))
+		}
+		user, err := s.store.GetUserByID(ctx, userID)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the route owner"))
+		}
+		if user == nil {
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("owner %q not found", owner))
+		}
+	}
+	for _, group := range match.GetGroups() {
+		found, err := s.store.GetGroup(ctx, group)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the route group"))
+		}
+		if found == nil {
+			return connect.NewError(connect.CodeInvalidArgument, errors.Errorf("group %q not found", group))
 		}
 	}
 	return nil

@@ -3770,8 +3770,9 @@ paths:
             tags:
                 - SettingService
             description: |-
-                Update the workspace quiet-hours schedule. Disabling it clears the schedule
-                 and releases every held delivery on the next dispatcher tick.
+                Update the workspace quiet-hours schedule. Any update releases the deliveries
+                 the previous schedule was holding, so shortening or disabling it takes effect
+                 immediately; held rows are then re-evaluated by the next dispatcher tick.
             operationId: SettingService_UpdateQuietHoursSetting
             parameters:
                 - name: updateMask
@@ -11128,8 +11129,8 @@ components:
                     items:
                         type: string
                     description: |-
-                        Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
-                         A channel deleted after the route was written is ignored at enqueue time.
+                        Target channels by notification channel resource id. A channel deleted after
+                         the route was written is ignored at enqueue time rather than dropping the rule.
             description: |-
                 NotificationRoute is one owner/team routing rule, as notification_route.payload.
                  It selects extra channels for the events whose in-app audience matches the

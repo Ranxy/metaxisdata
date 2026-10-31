@@ -10729,7 +10729,7 @@ Enabling it switches the process-wide log level to debug, gates the verbose requ
 | UpdateEmailSetting | [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Update the workspace email setting. The password is write-only: an empty one on update keeps the stored password, and no read returns it. |
 | SendTestEmail | [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest) | [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse) | Send a test email to the caller&#39;s own address through the configured SMTP server. It is not audited: it changes nothing, and it is a diagnostic probe the settings page can repeat while an administrator types the server in. |
 | GetQuietHoursSetting | [GetQuietHoursSettingRequest](#metaxisdata-v1-GetQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Get the workspace quiet-hours schedule for outbound notifications. |
-| UpdateQuietHoursSetting | [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Update the workspace quiet-hours schedule. Disabling it clears the schedule and releases every held delivery on the next dispatcher tick. |
+| UpdateQuietHoursSetting | [UpdateQuietHoursSettingRequest](#metaxisdata-v1-UpdateQuietHoursSettingRequest) | [QuietHoursSetting](#metaxisdata-v1-QuietHoursSetting) | Update the workspace quiet-hours schedule. Any update releases the deliveries the previous schedule was holding, so shortening or disabling it takes effect immediately; held rows are then re-evaluated by the next dispatcher tick. |
 
  
 

@@ -316,11 +316,11 @@
 | O-12 | 邮件走**工作区级** SMTP 设置（`SettingName.EMAIL`，`EmailSetting` payload），不按渠道存 SMTP 凭据；密码在 payload 里是 `v1:` AES-256-GCM 密文、write-only、审计脱敏；认证方式 PLAIN/LOGIN/CRAM-MD5 强制要求 STARTTLS/SSL-TLS | 一个部署只有一个发信服务器；密码与渠道 endpoint 同一套加密/不落明文契约；禁止明文连接上送密码 |
 | O-13 | EMAIL 收件人 = 渠道固定地址 ∪（可选）事件 audience；audience 由 `Send`（单个收件人）或 `SendToWorkspaceAdmins`（全部管理员）在入队时写入投递 payload，发送时再查用户邮箱；去重不区分大小写、最多 50 个；解析为空 → **DEAD**，SMTP 未配置 → 按退避重试（配置补齐可自愈），预算耗尽后 DEAD | 邮件没有"已登录用户"这一层，"谁该收到"必须来自事件语义（规则 owner / 同步发起人 / 管理员）；发送时查邮箱让改址/删号自然生效；固定地址保证无人可解析时仍有兜底 |
 | O-14 | `notification_delivery` 的唯一索引与事件 id 语义不变；EMAIL 与 HTTP 渠道共用 outbox/dispatcher/重试/指标 | 不为邮件单开投递路径，投递记录、重试、DEAD 诊断一致 |
-| O-15 | 静默窗口是**工作区级**设置（`SettingName.QUIET_HOURS`，`QuietHoursSetting`），支持周期窗口（按 ISO 星期 + `HH:MM`，end<=start 跨午夜）与一次性维护窗口；渠道可 `bypass_quiet_hours` 豁免 | 一个部署一套作息；值班渠道必须能穿透维护期；一次性窗口覆盖计划维护 |
-| O-16 | 静默期**暂缓不丢弃**：dispatcher 在批次开始算一次 `QuietUntil`，非豁免渠道的投递用 `DeferNotificationDelivery` 放回 PENDING、`next_attempt_at = 窗口结束`，并把认领时 +1 的 attempts 减回去；指标 outcome 记 `deferred` | 告警不丢、不消耗 6 次预算、窗口结束后的第一个 tick 补发；调度不是失败，不能算 attempt |
-| O-17 | 静默设置读取/解析失败**fail open**（记日志后照常投递）；窗口结束时间已过也照常投递 | 坏的静默配置不能成为全站告警的静默器 |
+| O-15 | 静默窗口是**工作区级**设置（`SettingName.QUIET_HOURS`，`QuietHoursSetting`），支持周期窗口（按 ISO 星期 + `HH:MM`，end<=start 跨午夜）与一次性维护窗口（单个窗口 ≤30 天）；渠道可 `bypass_quiet_hours` 豁免 | 一个部署一套作息；值班渠道必须能穿透维护期；一次性窗口覆盖计划维护；30 天上限防止笔误把告警静默成"停机" |
+| O-16 | 静默期**暂缓不丢弃**：dispatcher 在批次开始算一次 `QuietUntil`，非豁免渠道的投递用 `DeferNotificationDelivery` 放回 PENDING、`next_attempt_at = 窗口结束`，并把认领时 +1 的 attempts 减回去；投递行带 `quiet_deferred` 标记，指标 outcome 记 `deferred` | 告警不丢、不消耗 6 次预算、窗口结束后的第一个 tick 补发；标记让"改/关静默设置"能精确释放被扣住的行，而不会误伤重试退避行 |
+| O-17 | 静默设置读取/解析失败**fail open**（记日志后照常投递）；窗口结束时间已过也照常投递；周期窗口的两个边界若落在夏令时跳变的小时里，该天窗口按"不存在"跳过（fail open），不推导成 24 小时 | 坏的静默配置不能成为全站告警的静默器；DST 每年一次，绝不能把夜间窗口变成整天 |
 | O-18 | 路由规则是独立表 `notification_route`（`NotificationRoute` payload）：match = event_types + min_severity + owners(`users/{id}`) + groups(IAM group email)，channels = 渠道 resource id 列表；规则**只做加法** | 团队渠道用 `routed_only` 排除普通订阅，普通值班渠道不受影响；删除渠道不会连带删规则 |
-| O-19 | 路由匹配在 **enqueue 时**做：audience 来自投递事件（规则 owner / 同步发起人 / 管理员），owner 直接命中，group 通过 IAM 组成员展开；路由表或 group 读取失败**fail open** 回到订阅 fan-out | 事件写入时必须决定发到哪些渠道；失败时宁可多发（订阅）也不漏发；owner 归属变化只影响后续事件 |
+| O-19 | 路由匹配在 **enqueue 时**做：audience 来自投递事件（规则 owner / 同步发起人 / 管理员），owner 直接命中，group 通过 IAM 组成员展开（只读规则点名的 group，走 `GetGroup` 缓存）；路由表或 group 读取失败**fail open** 回到订阅 fan-out（`routed_only` 渠道此时不投递，等管理员修复） | 事件写入时必须决定发到哪些渠道；失败时宁可多发（订阅）也不漏发；owner 归属变化只影响后续事件 |
 | O-20 | 路由目标渠道仍要满足自身 `enabled` + `event_types` + `min_severity` 过滤；`routed_only` 渠道未被任何规则选中则完全跳过 | 规则表达"谁的事发到哪个渠道"，渠道自己的过滤仍是第二道闸；避免配置矛盾时意外群发 |
 | O-21 | "未确认 N 小时升级到第二渠道"**不做** | 产品反馈并非所有部署喜欢自动升级（会重复打扰值班）；等有明确需求再评估，避免做成默认行为 |
 
@@ -349,6 +349,10 @@
 | routed_only 渠道没有任何规则选中 | 不建投递（渠道完全跳过），不是失败 |
 | 路由 group 读取失败 | 该次 enqueue 的 group 条件不命中（owner 条件仍可命中）；按 fail open 处理 |
 | 维护窗口结束时间已过 | 视为不活跃；可在设置里删除该窗口 |
+| 维护窗口超过 30 天 | 设置校验直接拒绝（`InvalidArgument`），防止笔误把告警静默成"停机" |
+| 周期窗口边界落在 DST 跳变的小时 | 该天该窗口视为不存在（fail open），不会推导成 24 小时 |
+| 管理员修改/关闭静默设置 | 保存成功后先 `ReleaseQuietDeferredDeliveries` 把带 `quiet_deferred` 标记的行全部置为 due；若新设置仍在窗口内，dispatcher 下个 tick 会按新窗口重新推迟 |
+| DST 跳变/静默推迟的失败释放 | 推迟失败时 dispatcher 回退到普通 `ReleaseNotificationDelivery`，避免行卡在 SENDING 被租约重认领后消耗 attempt |
 | 同一事件重复入队 | 唯一索引吞掉；不会重复投递 |
 | 站内信因去重未写入 | 不产生投递（事件不存在） |
 | 站内信写入成功但 outbox 写入失败 | 只记日志；站内信仍在，事件不投递（best effort，与包契约一致） |
