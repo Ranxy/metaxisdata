@@ -54,6 +54,12 @@ const (
 	// SettingServiceSendTestEmailProcedure is the fully-qualified name of the SettingService's
 	// SendTestEmail RPC.
 	SettingServiceSendTestEmailProcedure = "/metaxisdata.v1.SettingService/SendTestEmail"
+	// SettingServiceGetQuietHoursSettingProcedure is the fully-qualified name of the SettingService's
+	// GetQuietHoursSetting RPC.
+	SettingServiceGetQuietHoursSettingProcedure = "/metaxisdata.v1.SettingService/GetQuietHoursSetting"
+	// SettingServiceUpdateQuietHoursSettingProcedure is the fully-qualified name of the
+	// SettingService's UpdateQuietHoursSetting RPC.
+	SettingServiceUpdateQuietHoursSettingProcedure = "/metaxisdata.v1.SettingService/UpdateQuietHoursSetting"
 )
 
 // SettingServiceClient is a client for the metaxisdata.v1.SettingService service.
@@ -85,6 +91,11 @@ type SettingServiceClient interface {
 	// server. It is not audited: it changes nothing, and it is a diagnostic probe
 	// the settings page can repeat while an administrator types the server in.
 	SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error)
+	// Get the workspace quiet-hours schedule for outbound notifications.
+	GetQuietHoursSetting(context.Context, *connect.Request[v1.GetQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
+	// Update the workspace quiet-hours schedule. Disabling it clears the schedule
+	// and releases every held delivery on the next dispatcher tick.
+	UpdateQuietHoursSetting(context.Context, *connect.Request[v1.UpdateQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
 }
 
 // NewSettingServiceClient constructs a client for the metaxisdata.v1.SettingService service. By
@@ -140,6 +151,18 @@ func NewSettingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(settingServiceMethods.ByName("SendTestEmail")),
 			connect.WithClientOptions(opts...),
 		),
+		getQuietHoursSetting: connect.NewClient[v1.GetQuietHoursSettingRequest, v1.QuietHoursSetting](
+			httpClient,
+			baseURL+SettingServiceGetQuietHoursSettingProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("GetQuietHoursSetting")),
+			connect.WithClientOptions(opts...),
+		),
+		updateQuietHoursSetting: connect.NewClient[v1.UpdateQuietHoursSettingRequest, v1.QuietHoursSetting](
+			httpClient,
+			baseURL+SettingServiceUpdateQuietHoursSettingProcedure,
+			connect.WithSchema(settingServiceMethods.ByName("UpdateQuietHoursSetting")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -152,6 +175,8 @@ type settingServiceClient struct {
 	getEmailSetting               *connect.Client[v1.GetEmailSettingRequest, v1.EmailSetting]
 	updateEmailSetting            *connect.Client[v1.UpdateEmailSettingRequest, v1.EmailSetting]
 	sendTestEmail                 *connect.Client[v1.SendTestEmailRequest, v1.SendTestEmailResponse]
+	getQuietHoursSetting          *connect.Client[v1.GetQuietHoursSettingRequest, v1.QuietHoursSetting]
+	updateQuietHoursSetting       *connect.Client[v1.UpdateQuietHoursSettingRequest, v1.QuietHoursSetting]
 }
 
 // GetWorkspaceProfileSetting calls metaxisdata.v1.SettingService.GetWorkspaceProfileSetting.
@@ -189,6 +214,16 @@ func (c *settingServiceClient) SendTestEmail(ctx context.Context, req *connect.R
 	return c.sendTestEmail.CallUnary(ctx, req)
 }
 
+// GetQuietHoursSetting calls metaxisdata.v1.SettingService.GetQuietHoursSetting.
+func (c *settingServiceClient) GetQuietHoursSetting(ctx context.Context, req *connect.Request[v1.GetQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error) {
+	return c.getQuietHoursSetting.CallUnary(ctx, req)
+}
+
+// UpdateQuietHoursSetting calls metaxisdata.v1.SettingService.UpdateQuietHoursSetting.
+func (c *settingServiceClient) UpdateQuietHoursSetting(ctx context.Context, req *connect.Request[v1.UpdateQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error) {
+	return c.updateQuietHoursSetting.CallUnary(ctx, req)
+}
+
 // SettingServiceHandler is an implementation of the metaxisdata.v1.SettingService service.
 type SettingServiceHandler interface {
 	// Get the workspace profile setting.
@@ -218,6 +253,11 @@ type SettingServiceHandler interface {
 	// server. It is not audited: it changes nothing, and it is a diagnostic probe
 	// the settings page can repeat while an administrator types the server in.
 	SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error)
+	// Get the workspace quiet-hours schedule for outbound notifications.
+	GetQuietHoursSetting(context.Context, *connect.Request[v1.GetQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
+	// Update the workspace quiet-hours schedule. Disabling it clears the schedule
+	// and releases every held delivery on the next dispatcher tick.
+	UpdateQuietHoursSetting(context.Context, *connect.Request[v1.UpdateQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error)
 }
 
 // NewSettingServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -269,6 +309,18 @@ func NewSettingServiceHandler(svc SettingServiceHandler, opts ...connect.Handler
 		connect.WithSchema(settingServiceMethods.ByName("SendTestEmail")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingServiceGetQuietHoursSettingHandler := connect.NewUnaryHandler(
+		SettingServiceGetQuietHoursSettingProcedure,
+		svc.GetQuietHoursSetting,
+		connect.WithSchema(settingServiceMethods.ByName("GetQuietHoursSetting")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingServiceUpdateQuietHoursSettingHandler := connect.NewUnaryHandler(
+		SettingServiceUpdateQuietHoursSettingProcedure,
+		svc.UpdateQuietHoursSetting,
+		connect.WithSchema(settingServiceMethods.ByName("UpdateQuietHoursSetting")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.SettingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingServiceGetWorkspaceProfileSettingProcedure:
@@ -285,6 +337,10 @@ func NewSettingServiceHandler(svc SettingServiceHandler, opts ...connect.Handler
 			settingServiceUpdateEmailSettingHandler.ServeHTTP(w, r)
 		case SettingServiceSendTestEmailProcedure:
 			settingServiceSendTestEmailHandler.ServeHTTP(w, r)
+		case SettingServiceGetQuietHoursSettingProcedure:
+			settingServiceGetQuietHoursSettingHandler.ServeHTTP(w, r)
+		case SettingServiceUpdateQuietHoursSettingProcedure:
+			settingServiceUpdateQuietHoursSettingHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -320,4 +376,12 @@ func (UnimplementedSettingServiceHandler) UpdateEmailSetting(context.Context, *c
 
 func (UnimplementedSettingServiceHandler) SendTestEmail(context.Context, *connect.Request[v1.SendTestEmailRequest]) (*connect.Response[v1.SendTestEmailResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.SendTestEmail is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) GetQuietHoursSetting(context.Context, *connect.Request[v1.GetQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.GetQuietHoursSetting is not implemented"))
+}
+
+func (UnimplementedSettingServiceHandler) UpdateQuietHoursSetting(context.Context, *connect.Request[v1.UpdateQuietHoursSettingRequest]) (*connect.Response[v1.QuietHoursSetting], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.SettingService.UpdateQuietHoursSetting is not implemented"))
 }

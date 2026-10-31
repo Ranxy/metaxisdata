@@ -1179,8 +1179,15 @@ type NotificationChannel struct {
 	MinSeverity NotificationSeverity `protobuf:"varint,5,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
 	// BCP-47 tag the outbound text is written in, for example "zh-CN". Empty
 	// means the server default.
-	Language      string                     `protobuf:"bytes,6,opt,name=language,proto3" json:"language,omitempty"`
-	Config        *NotificationChannelConfig `protobuf:"bytes,7,opt,name=config,proto3" json:"config,omitempty"`
+	Language string                     `protobuf:"bytes,6,opt,name=language,proto3" json:"language,omitempty"`
+	Config   *NotificationChannelConfig `protobuf:"bytes,7,opt,name=config,proto3" json:"config,omitempty"`
+	// Whether the channel ignores the workspace quiet-hours schedule. An on-call
+	// channel that must page during a maintenance window sets it.
+	BypassQuietHours bool `protobuf:"varint,8,opt,name=bypass_quiet_hours,json=bypassQuietHours,proto3" json:"bypass_quiet_hours,omitempty"`
+	// Whether the channel receives only events a routing rule selected. A team
+	// channel sets it so it does not also receive every event its subscription
+	// filter would otherwise admit.
+	RoutedOnly    bool `protobuf:"varint,9,opt,name=routed_only,json=routedOnly,proto3" json:"routed_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1262,6 +1269,20 @@ func (x *NotificationChannel) GetConfig() *NotificationChannelConfig {
 		return x.Config
 	}
 	return nil
+}
+
+func (x *NotificationChannel) GetBypassQuietHours() bool {
+	if x != nil {
+		return x.BypassQuietHours
+	}
+	return false
+}
+
+func (x *NotificationChannel) GetRoutedOnly() bool {
+	if x != nil {
+		return x.RoutedOnly
+	}
+	return false
 }
 
 type NotificationChannelConfig struct {
@@ -1814,6 +1835,154 @@ func (*NotificationDeliveryEvent_Openlineage) isNotificationDeliveryEvent_Detail
 
 func (*NotificationDeliveryEvent_DataQuality) isNotificationDeliveryEvent_Detail() {}
 
+// NotificationRoute is one owner/team routing rule, as notification_route.payload.
+// It selects extra channels for the events whose in-app audience matches the
+// rule, so a team can watch its own rules without receiving the whole workspace.
+type NotificationRoute struct {
+	state       protoimpl.MessageState  `protogen:"open.v1"`
+	DisplayName string                  `protobuf:"bytes,1,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Enabled     bool                    `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Match       *NotificationRouteMatch `protobuf:"bytes,3,opt,name=match,proto3" json:"match,omitempty"`
+	// Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
+	// A channel deleted after the route was written is ignored at enqueue time.
+	Channels      []string `protobuf:"bytes,4,rep,name=channels,proto3" json:"channels,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationRoute) Reset() {
+	*x = NotificationRoute{}
+	mi := &file_store_notification_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationRoute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationRoute) ProtoMessage() {}
+
+func (x *NotificationRoute) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationRoute.ProtoReflect.Descriptor instead.
+func (*NotificationRoute) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *NotificationRoute) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *NotificationRoute) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *NotificationRoute) GetMatch() *NotificationRouteMatch {
+	if x != nil {
+		return x.Match
+	}
+	return nil
+}
+
+func (x *NotificationRoute) GetChannels() []string {
+	if x != nil {
+		return x.Channels
+	}
+	return nil
+}
+
+// NotificationRouteMatch is who and what a route selects. An empty field is a
+// wildcard, and so is a match with no filters at all: every event concerns the
+// rule's audience, so a route with no owner and no group selects every event.
+type NotificationRouteMatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The notification types this route selects. Empty means every type.
+	EventTypes []NotificationType `protobuf:"varint,1,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.store.NotificationType" json:"event_types,omitempty"`
+	// The lowest severity this route selects. UNSPECIFIED means every severity.
+	MinSeverity NotificationSeverity `protobuf:"varint,2,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.store.NotificationSeverity" json:"min_severity,omitempty"`
+	// Audience filters, as users/{user} resource names. Empty means any audience.
+	Owners []string `protobuf:"bytes,3,rep,name=owners,proto3" json:"owners,omitempty"`
+	// Audience filters, as group emails of IAM groups. Empty means any audience.
+	Groups        []string `protobuf:"bytes,4,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationRouteMatch) Reset() {
+	*x = NotificationRouteMatch{}
+	mi := &file_store_notification_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationRouteMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationRouteMatch) ProtoMessage() {}
+
+func (x *NotificationRouteMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_store_notification_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationRouteMatch.ProtoReflect.Descriptor instead.
+func (*NotificationRouteMatch) Descriptor() ([]byte, []int) {
+	return file_store_notification_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *NotificationRouteMatch) GetEventTypes() []NotificationType {
+	if x != nil {
+		return x.EventTypes
+	}
+	return nil
+}
+
+func (x *NotificationRouteMatch) GetMinSeverity() NotificationSeverity {
+	if x != nil {
+		return x.MinSeverity
+	}
+	return NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
+}
+
+func (x *NotificationRouteMatch) GetOwners() []string {
+	if x != nil {
+		return x.Owners
+	}
+	return nil
+}
+
+func (x *NotificationRouteMatch) GetGroups() []string {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
 var File_store_notification_proto protoreflect.FileDescriptor
 
 const file_store_notification_proto_rawDesc = "" +
@@ -1885,7 +2054,7 @@ const file_store_notification_proto_rawDesc = "" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
 	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
-	"\binstance\x18\x12 \x01(\tR\binstance\"\x86\x03\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance\"\xd5\x03\n" +
 	"\x13NotificationChannel\x12!\n" +
 	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12>\n" +
 	"\x04kind\x18\x02 \x01(\x0e2*.metaxisdata.store.NotificationChannelKindR\x04kind\x12\x18\n" +
@@ -1894,7 +2063,10 @@ const file_store_notification_proto_rawDesc = "" +
 	"eventTypes\x12J\n" +
 	"\fmin_severity\x18\x05 \x01(\x0e2'.metaxisdata.store.NotificationSeverityR\vminSeverity\x12\x1a\n" +
 	"\blanguage\x18\x06 \x01(\tR\blanguage\x12D\n" +
-	"\x06config\x18\a \x01(\v2,.metaxisdata.store.NotificationChannelConfigR\x06config\"\xf2\x02\n" +
+	"\x06config\x18\a \x01(\v2,.metaxisdata.store.NotificationChannelConfigR\x06config\x12,\n" +
+	"\x12bypass_quiet_hours\x18\b \x01(\bR\x10bypassQuietHours\x12\x1f\n" +
+	"\vrouted_only\x18\t \x01(\bR\n" +
+	"routedOnly\"\xf2\x02\n" +
 	"\x19NotificationChannelConfig\x12C\n" +
 	"\awebhook\x18\x01 \x01(\v2'.metaxisdata.store.WebhookChannelConfigH\x00R\awebhook\x12F\n" +
 	"\bdingtalk\x18\x02 \x01(\v2(.metaxisdata.store.DingTalkChannelConfigH\x00R\bdingtalk\x12=\n" +
@@ -1923,7 +2095,18 @@ const file_store_notification_proto_rawDesc = "" +
 	"\vopenlineage\x18\x04 \x01(\v2$.metaxisdata.store.OpenLineageDetailH\x00R\vopenlineage\x12I\n" +
 	"\fdata_quality\x18\x05 \x01(\v2$.metaxisdata.store.DataQualityDetailH\x00R\vdataQuality\x12*\n" +
 	"\x11audience_user_ids\x18\x06 \x03(\x05R\x0faudienceUserIdsB\b\n" +
-	"\x06detail*\x9f\x01\n" +
+	"\x06detail\"\xad\x01\n" +
+	"\x11NotificationRoute\x12!\n" +
+	"\fdisplay_name\x18\x01 \x01(\tR\vdisplayName\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\x12?\n" +
+	"\x05match\x18\x03 \x01(\v2).metaxisdata.store.NotificationRouteMatchR\x05match\x12\x1a\n" +
+	"\bchannels\x18\x04 \x03(\tR\bchannels\"\xda\x01\n" +
+	"\x16NotificationRouteMatch\x12D\n" +
+	"\vevent_types\x18\x01 \x03(\x0e2#.metaxisdata.store.NotificationTypeR\n" +
+	"eventTypes\x12J\n" +
+	"\fmin_severity\x18\x02 \x01(\x0e2'.metaxisdata.store.NotificationSeverityR\vminSeverity\x12\x16\n" +
+	"\x06owners\x18\x03 \x03(\tR\x06owners\x12\x16\n" +
+	"\x06groups\x18\x04 \x03(\tR\x06groups*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_SCHEMA_SYNC\x10\x01\x12!\n" +
@@ -1984,7 +2167,7 @@ func file_store_notification_proto_rawDescGZIP() []byte {
 }
 
 var file_store_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_store_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_store_notification_proto_goTypes = []any{
 	(NotificationType)(0),             // 0: metaxisdata.store.NotificationType
 	(NotificationSeverity)(0),         // 1: metaxisdata.store.NotificationSeverity
@@ -2008,15 +2191,17 @@ var file_store_notification_proto_goTypes = []any{
 	(*EmailChannelConfig)(nil),        // 19: metaxisdata.store.EmailChannelConfig
 	(*NotificationChannelSecret)(nil), // 20: metaxisdata.store.NotificationChannelSecret
 	(*NotificationDeliveryEvent)(nil), // 21: metaxisdata.store.NotificationDeliveryEvent
-	(*timestamppb.Timestamp)(nil),     // 22: google.protobuf.Timestamp
-	(QualityStatus)(0),                // 23: metaxisdata.store.QualityStatus
-	(QualitySeverity)(0),              // 24: metaxisdata.store.QualitySeverity
+	(*NotificationRoute)(nil),         // 22: metaxisdata.store.NotificationRoute
+	(*NotificationRouteMatch)(nil),    // 23: metaxisdata.store.NotificationRouteMatch
+	(*timestamppb.Timestamp)(nil),     // 24: google.protobuf.Timestamp
+	(QualityStatus)(0),                // 25: metaxisdata.store.QualityStatus
+	(QualitySeverity)(0),              // 26: metaxisdata.store.QualitySeverity
 }
 var file_store_notification_proto_depIdxs = []int32{
-	22, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
+	24, // 0: metaxisdata.store.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.store.Notification.type:type_name -> metaxisdata.store.NotificationType
 	1,  // 2: metaxisdata.store.Notification.severity:type_name -> metaxisdata.store.NotificationSeverity
-	22, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
+	24, // 3: metaxisdata.store.Notification.read_time:type_name -> google.protobuf.Timestamp
 	9,  // 4: metaxisdata.store.Notification.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
 	11, // 5: metaxisdata.store.Notification.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
 	12, // 6: metaxisdata.store.Notification.data_quality:type_name -> metaxisdata.store.DataQualityDetail
@@ -2025,9 +2210,9 @@ var file_store_notification_proto_depIdxs = []int32{
 	3,  // 9: metaxisdata.store.SyncDatabaseResult.state:type_name -> metaxisdata.store.SyncDatabaseState
 	4,  // 10: metaxisdata.store.OpenLineageDetail.kind:type_name -> metaxisdata.store.OpenLineageFailureKind
 	5,  // 11: metaxisdata.store.DataQualityDetail.kind:type_name -> metaxisdata.store.DataQualityNotificationKind
-	23, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
-	23, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
-	24, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
+	25, // 12: metaxisdata.store.DataQualityDetail.from_status:type_name -> metaxisdata.store.QualityStatus
+	25, // 13: metaxisdata.store.DataQualityDetail.to_status:type_name -> metaxisdata.store.QualityStatus
+	26, // 14: metaxisdata.store.DataQualityDetail.severity:type_name -> metaxisdata.store.QualitySeverity
 	6,  // 15: metaxisdata.store.NotificationChannel.kind:type_name -> metaxisdata.store.NotificationChannelKind
 	0,  // 16: metaxisdata.store.NotificationChannel.event_types:type_name -> metaxisdata.store.NotificationType
 	1,  // 17: metaxisdata.store.NotificationChannel.min_severity:type_name -> metaxisdata.store.NotificationSeverity
@@ -2042,11 +2227,14 @@ var file_store_notification_proto_depIdxs = []int32{
 	9,  // 26: metaxisdata.store.NotificationDeliveryEvent.schema_sync:type_name -> metaxisdata.store.SchemaSyncDetail
 	11, // 27: metaxisdata.store.NotificationDeliveryEvent.openlineage:type_name -> metaxisdata.store.OpenLineageDetail
 	12, // 28: metaxisdata.store.NotificationDeliveryEvent.data_quality:type_name -> metaxisdata.store.DataQualityDetail
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	23, // 29: metaxisdata.store.NotificationRoute.match:type_name -> metaxisdata.store.NotificationRouteMatch
+	0,  // 30: metaxisdata.store.NotificationRouteMatch.event_types:type_name -> metaxisdata.store.NotificationType
+	1,  // 31: metaxisdata.store.NotificationRouteMatch.min_severity:type_name -> metaxisdata.store.NotificationSeverity
+	32, // [32:32] is the sub-list for method output_type
+	32, // [32:32] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_store_notification_proto_init() }
@@ -2078,7 +2266,7 @@ func file_store_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_notification_proto_rawDesc), len(file_store_notification_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -79,6 +79,21 @@ const (
 	// NotificationServiceRetryNotificationDeliveryProcedure is the fully-qualified name of the
 	// NotificationService's RetryNotificationDelivery RPC.
 	NotificationServiceRetryNotificationDeliveryProcedure = "/metaxisdata.v1.NotificationService/RetryNotificationDelivery"
+	// NotificationServiceListNotificationRoutesProcedure is the fully-qualified name of the
+	// NotificationService's ListNotificationRoutes RPC.
+	NotificationServiceListNotificationRoutesProcedure = "/metaxisdata.v1.NotificationService/ListNotificationRoutes"
+	// NotificationServiceGetNotificationRouteProcedure is the fully-qualified name of the
+	// NotificationService's GetNotificationRoute RPC.
+	NotificationServiceGetNotificationRouteProcedure = "/metaxisdata.v1.NotificationService/GetNotificationRoute"
+	// NotificationServiceCreateNotificationRouteProcedure is the fully-qualified name of the
+	// NotificationService's CreateNotificationRoute RPC.
+	NotificationServiceCreateNotificationRouteProcedure = "/metaxisdata.v1.NotificationService/CreateNotificationRoute"
+	// NotificationServiceUpdateNotificationRouteProcedure is the fully-qualified name of the
+	// NotificationService's UpdateNotificationRoute RPC.
+	NotificationServiceUpdateNotificationRouteProcedure = "/metaxisdata.v1.NotificationService/UpdateNotificationRoute"
+	// NotificationServiceDeleteNotificationRouteProcedure is the fully-qualified name of the
+	// NotificationService's DeleteNotificationRoute RPC.
+	NotificationServiceDeleteNotificationRouteProcedure = "/metaxisdata.v1.NotificationService/DeleteNotificationRoute"
 )
 
 // NotificationServiceClient is a client for the metaxisdata.v1.NotificationService service.
@@ -134,6 +149,18 @@ type NotificationServiceClient interface {
 	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
 	// or waiting one is left as it is.
 	RetryNotificationDelivery(context.Context, *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error)
+	// List the owner/team routing rules. A route selects extra channels for the
+	// events whose in-app audience matches it.
+	ListNotificationRoutes(context.Context, *connect.Request[v1.ListNotificationRoutesRequest]) (*connect.Response[v1.ListNotificationRoutesResponse], error)
+	// Read one routing rule.
+	GetNotificationRoute(context.Context, *connect.Request[v1.GetNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error)
+	// Create one routing rule.
+	CreateNotificationRoute(context.Context, *connect.Request[v1.CreateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error)
+	// Update one routing rule: a masked update, or a full update of its mutable
+	// fields when the mask is empty.
+	UpdateNotificationRoute(context.Context, *connect.Request[v1.UpdateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error)
+	// Delete one routing rule.
+	DeleteNotificationRoute(context.Context, *connect.Request[v1.DeleteNotificationRouteRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewNotificationServiceClient constructs a client for the metaxisdata.v1.NotificationService
@@ -237,6 +264,36 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(notificationServiceMethods.ByName("RetryNotificationDelivery")),
 			connect.WithClientOptions(opts...),
 		),
+		listNotificationRoutes: connect.NewClient[v1.ListNotificationRoutesRequest, v1.ListNotificationRoutesResponse](
+			httpClient,
+			baseURL+NotificationServiceListNotificationRoutesProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("ListNotificationRoutes")),
+			connect.WithClientOptions(opts...),
+		),
+		getNotificationRoute: connect.NewClient[v1.GetNotificationRouteRequest, v1.NotificationRoute](
+			httpClient,
+			baseURL+NotificationServiceGetNotificationRouteProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("GetNotificationRoute")),
+			connect.WithClientOptions(opts...),
+		),
+		createNotificationRoute: connect.NewClient[v1.CreateNotificationRouteRequest, v1.NotificationRoute](
+			httpClient,
+			baseURL+NotificationServiceCreateNotificationRouteProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("CreateNotificationRoute")),
+			connect.WithClientOptions(opts...),
+		),
+		updateNotificationRoute: connect.NewClient[v1.UpdateNotificationRouteRequest, v1.NotificationRoute](
+			httpClient,
+			baseURL+NotificationServiceUpdateNotificationRouteProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("UpdateNotificationRoute")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteNotificationRoute: connect.NewClient[v1.DeleteNotificationRouteRequest, emptypb.Empty](
+			httpClient,
+			baseURL+NotificationServiceDeleteNotificationRouteProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("DeleteNotificationRoute")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -257,6 +314,11 @@ type notificationServiceClient struct {
 	testNotificationChannel    *connect.Client[v1.TestNotificationChannelRequest, v1.TestNotificationChannelResponse]
 	listNotificationDeliveries *connect.Client[v1.ListNotificationDeliveriesRequest, v1.ListNotificationDeliveriesResponse]
 	retryNotificationDelivery  *connect.Client[v1.RetryNotificationDeliveryRequest, v1.NotificationDelivery]
+	listNotificationRoutes     *connect.Client[v1.ListNotificationRoutesRequest, v1.ListNotificationRoutesResponse]
+	getNotificationRoute       *connect.Client[v1.GetNotificationRouteRequest, v1.NotificationRoute]
+	createNotificationRoute    *connect.Client[v1.CreateNotificationRouteRequest, v1.NotificationRoute]
+	updateNotificationRoute    *connect.Client[v1.UpdateNotificationRouteRequest, v1.NotificationRoute]
+	deleteNotificationRoute    *connect.Client[v1.DeleteNotificationRouteRequest, emptypb.Empty]
 }
 
 // ListNotifications calls metaxisdata.v1.NotificationService.ListNotifications.
@@ -334,6 +396,31 @@ func (c *notificationServiceClient) RetryNotificationDelivery(ctx context.Contex
 	return c.retryNotificationDelivery.CallUnary(ctx, req)
 }
 
+// ListNotificationRoutes calls metaxisdata.v1.NotificationService.ListNotificationRoutes.
+func (c *notificationServiceClient) ListNotificationRoutes(ctx context.Context, req *connect.Request[v1.ListNotificationRoutesRequest]) (*connect.Response[v1.ListNotificationRoutesResponse], error) {
+	return c.listNotificationRoutes.CallUnary(ctx, req)
+}
+
+// GetNotificationRoute calls metaxisdata.v1.NotificationService.GetNotificationRoute.
+func (c *notificationServiceClient) GetNotificationRoute(ctx context.Context, req *connect.Request[v1.GetNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error) {
+	return c.getNotificationRoute.CallUnary(ctx, req)
+}
+
+// CreateNotificationRoute calls metaxisdata.v1.NotificationService.CreateNotificationRoute.
+func (c *notificationServiceClient) CreateNotificationRoute(ctx context.Context, req *connect.Request[v1.CreateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error) {
+	return c.createNotificationRoute.CallUnary(ctx, req)
+}
+
+// UpdateNotificationRoute calls metaxisdata.v1.NotificationService.UpdateNotificationRoute.
+func (c *notificationServiceClient) UpdateNotificationRoute(ctx context.Context, req *connect.Request[v1.UpdateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error) {
+	return c.updateNotificationRoute.CallUnary(ctx, req)
+}
+
+// DeleteNotificationRoute calls metaxisdata.v1.NotificationService.DeleteNotificationRoute.
+func (c *notificationServiceClient) DeleteNotificationRoute(ctx context.Context, req *connect.Request[v1.DeleteNotificationRouteRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteNotificationRoute.CallUnary(ctx, req)
+}
+
 // NotificationServiceHandler is an implementation of the metaxisdata.v1.NotificationService
 // service.
 type NotificationServiceHandler interface {
@@ -388,6 +475,18 @@ type NotificationServiceHandler interface {
 	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
 	// or waiting one is left as it is.
 	RetryNotificationDelivery(context.Context, *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error)
+	// List the owner/team routing rules. A route selects extra channels for the
+	// events whose in-app audience matches it.
+	ListNotificationRoutes(context.Context, *connect.Request[v1.ListNotificationRoutesRequest]) (*connect.Response[v1.ListNotificationRoutesResponse], error)
+	// Read one routing rule.
+	GetNotificationRoute(context.Context, *connect.Request[v1.GetNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error)
+	// Create one routing rule.
+	CreateNotificationRoute(context.Context, *connect.Request[v1.CreateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error)
+	// Update one routing rule: a masked update, or a full update of its mutable
+	// fields when the mask is empty.
+	UpdateNotificationRoute(context.Context, *connect.Request[v1.UpdateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error)
+	// Delete one routing rule.
+	DeleteNotificationRoute(context.Context, *connect.Request[v1.DeleteNotificationRouteRequest]) (*connect.Response[emptypb.Empty], error)
 }
 
 // NewNotificationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -487,6 +586,36 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 		connect.WithSchema(notificationServiceMethods.ByName("RetryNotificationDelivery")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationServiceListNotificationRoutesHandler := connect.NewUnaryHandler(
+		NotificationServiceListNotificationRoutesProcedure,
+		svc.ListNotificationRoutes,
+		connect.WithSchema(notificationServiceMethods.ByName("ListNotificationRoutes")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceGetNotificationRouteHandler := connect.NewUnaryHandler(
+		NotificationServiceGetNotificationRouteProcedure,
+		svc.GetNotificationRoute,
+		connect.WithSchema(notificationServiceMethods.ByName("GetNotificationRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceCreateNotificationRouteHandler := connect.NewUnaryHandler(
+		NotificationServiceCreateNotificationRouteProcedure,
+		svc.CreateNotificationRoute,
+		connect.WithSchema(notificationServiceMethods.ByName("CreateNotificationRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceUpdateNotificationRouteHandler := connect.NewUnaryHandler(
+		NotificationServiceUpdateNotificationRouteProcedure,
+		svc.UpdateNotificationRoute,
+		connect.WithSchema(notificationServiceMethods.ByName("UpdateNotificationRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceDeleteNotificationRouteHandler := connect.NewUnaryHandler(
+		NotificationServiceDeleteNotificationRouteProcedure,
+		svc.DeleteNotificationRoute,
+		connect.WithSchema(notificationServiceMethods.ByName("DeleteNotificationRoute")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.NotificationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NotificationServiceListNotificationsProcedure:
@@ -519,6 +648,16 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 			notificationServiceListNotificationDeliveriesHandler.ServeHTTP(w, r)
 		case NotificationServiceRetryNotificationDeliveryProcedure:
 			notificationServiceRetryNotificationDeliveryHandler.ServeHTTP(w, r)
+		case NotificationServiceListNotificationRoutesProcedure:
+			notificationServiceListNotificationRoutesHandler.ServeHTTP(w, r)
+		case NotificationServiceGetNotificationRouteProcedure:
+			notificationServiceGetNotificationRouteHandler.ServeHTTP(w, r)
+		case NotificationServiceCreateNotificationRouteProcedure:
+			notificationServiceCreateNotificationRouteHandler.ServeHTTP(w, r)
+		case NotificationServiceUpdateNotificationRouteProcedure:
+			notificationServiceUpdateNotificationRouteHandler.ServeHTTP(w, r)
+		case NotificationServiceDeleteNotificationRouteProcedure:
+			notificationServiceDeleteNotificationRouteHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -586,4 +725,24 @@ func (UnimplementedNotificationServiceHandler) ListNotificationDeliveries(contex
 
 func (UnimplementedNotificationServiceHandler) RetryNotificationDelivery(context.Context, *connect.Request[v1.RetryNotificationDeliveryRequest]) (*connect.Response[v1.NotificationDelivery], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.RetryNotificationDelivery is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) ListNotificationRoutes(context.Context, *connect.Request[v1.ListNotificationRoutesRequest]) (*connect.Response[v1.ListNotificationRoutesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.ListNotificationRoutes is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) GetNotificationRoute(context.Context, *connect.Request[v1.GetNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.GetNotificationRoute is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) CreateNotificationRoute(context.Context, *connect.Request[v1.CreateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.CreateNotificationRoute is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) UpdateNotificationRoute(context.Context, *connect.Request[v1.UpdateNotificationRouteRequest]) (*connect.Response[v1.NotificationRoute], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.UpdateNotificationRoute is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) DeleteNotificationRoute(context.Context, *connect.Request[v1.DeleteNotificationRouteRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.NotificationService.DeleteNotificationRoute is not implemented"))
 }

@@ -3,6 +3,7 @@ syntax = "proto3";
 package metaxisdata.store;
 
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "generated-go/store";
 
@@ -29,6 +30,9 @@ enum SettingName {
   // EMAIL is the workspace SMTP configuration, an EmailSetting payload. It is
   // absent until an administrator configures email delivery.
   EMAIL = 17;
+  // QUIET_HOURS is the outbound notification quiet-hours schedule, a
+  // QuietHoursSetting payload. It is absent when quiet hours are off.
+  QUIET_HOURS = 18;
 }
 
 message WorkspaceProfileSetting {
@@ -174,4 +178,47 @@ enum EmailSMTPAuthentication {
   EMAIL_SMTP_AUTHENTICATION_PLAIN = 2;
   EMAIL_SMTP_AUTHENTICATION_LOGIN = 3;
   EMAIL_SMTP_AUTHENTICATION_CRAM_MD5 = 4;
+}
+
+// DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+enum DayOfWeek {
+  DAY_OF_WEEK_UNSPECIFIED = 0;
+  DAY_OF_WEEK_MONDAY = 1;
+  DAY_OF_WEEK_TUESDAY = 2;
+  DAY_OF_WEEK_WEDNESDAY = 3;
+  DAY_OF_WEEK_THURSDAY = 4;
+  DAY_OF_WEEK_FRIDAY = 5;
+  DAY_OF_WEEK_SATURDAY = 6;
+  DAY_OF_WEEK_SUNDAY = 7;
+}
+
+// QuietHoursSetting is the stored form of metaxisdata.v1.QuietHoursSetting: the
+// schedule during which outbound deliveries are held, as SETTING_NAME_QUIET_HOURS.
+// Every window is evaluated in timezone on the server's clock; the setting is
+// absent (or disabled) when quiet hours are off.
+message QuietHoursSetting {
+  bool enabled = 1;
+  // IANA time zone the windows are evaluated in, for example "Asia/Shanghai".
+  string timezone = 2;
+  // Recurring weekly windows.
+  repeated QuietWindow windows = 3;
+  // One-off absolute windows; a window whose end has passed is inert.
+  repeated MaintenanceWindow maintenance_windows = 4;
+}
+
+// QuietWindow is one recurring weekly quiet window.
+message QuietWindow {
+  // The days the window starts on. A window whose end is at or before its start
+  // crosses midnight into the following day.
+  repeated DayOfWeek days = 1;
+  // "HH:MM" in the setting's time zone.
+  string start = 2;
+  // "HH:MM" in the setting's time zone.
+  string end = 3;
+}
+
+// MaintenanceWindow is one absolute quiet window, for planned maintenance.
+message MaintenanceWindow {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
 }

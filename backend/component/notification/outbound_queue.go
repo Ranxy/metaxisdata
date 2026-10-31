@@ -37,11 +37,17 @@ func (s *Service) enqueueOutbound(ctx context.Context, n *storepb.Notification, 
 			clog.WithError(err))
 		return
 	}
+	// A routed_only channel is dropped unless a matching rule selected it; the
+	// selection is computed once for the whole event.
+	selected := s.routedChannelIDs(ctx, event, channels)
 
 	now := time.Now()
 	var creates []*store.CreateNotificationDeliveryMessage
 	for _, channel := range channels {
 		if !subscribes(channel.Payload, event) {
+			continue
+		}
+		if channel.Payload.GetRoutedOnly() && !selected[channel.ID] {
 			continue
 		}
 		creates = append(creates, &store.CreateNotificationDeliveryMessage{

@@ -7,11 +7,15 @@ import {
   EmailSettingSchema,
   GetDebugConfigRequestSchema,
   GetEmailSettingRequestSchema,
+  GetQuietHoursSettingRequestSchema,
   GetWorkspaceProfileSettingRequestSchema,
+  type QuietHoursSetting,
+  QuietHoursSettingSchema,
   SendTestEmailRequestSchema,
   SMTPConfigSchema,
   UpdateDebugConfigRequestSchema,
   UpdateEmailSettingRequestSchema,
+  UpdateQuietHoursSettingRequestSchema,
   UpdateWorkspaceProfileSettingRequestSchema,
   WorkspaceProfileSettingSchema,
 } from "@/types/proto-es/v1/setting_service_pb";
@@ -129,4 +133,37 @@ export async function updateEmailSetting(
 /** Send one test message through the stored SMTP setting. */
 export async function sendTestEmail(): Promise<void> {
   await settingClient.sendTestEmail(create(SendTestEmailRequestSchema, {}));
+}
+
+/**
+ * The workspace quiet-hours schedule for outbound notifications. A workspace
+ * that never configured one reads back as an empty setting, not a 404.
+ */
+export async function getQuietHoursSetting(): Promise<QuietHoursSetting> {
+  return await settingClient.getQuietHoursSetting(
+    create(GetQuietHoursSettingRequestSchema, {})
+  );
+}
+
+/**
+ * The update request for the quiet-hours schedule. Exported so its mask can be
+ * asserted without a transport: those four fields are the whole schedule.
+ */
+export function buildUpdateQuietHoursSettingRequest(
+  setting: QuietHoursSetting
+) {
+  return create(UpdateQuietHoursSettingRequestSchema, {
+    setting: create(QuietHoursSettingSchema, setting),
+    updateMask: create(FieldMaskSchema, {
+      paths: ["enabled", "timezone", "windows", "maintenance_windows"],
+    }),
+  });
+}
+
+export async function updateQuietHoursSetting(
+  setting: QuietHoursSetting
+): Promise<QuietHoursSetting> {
+  return await settingClient.updateQuietHoursSetting(
+    buildUpdateQuietHoursSettingRequest(setting)
+  );
 }

@@ -1798,7 +1798,14 @@ type NotificationChannel struct {
 	// the kind is immutable, and a config of another case has no delivery path.
 	Config *NotificationChannelConfig `protobuf:"bytes,8,opt,name=config,proto3" json:"config,omitempty"`
 	// Whether a credential is stored. The credential itself is never returned.
-	SecretSet     bool                   `protobuf:"varint,9,opt,name=secret_set,json=secretSet,proto3" json:"secret_set,omitempty"`
+	SecretSet bool `protobuf:"varint,9,opt,name=secret_set,json=secretSet,proto3" json:"secret_set,omitempty"`
+	// Whether the channel ignores the workspace quiet-hours schedule. An on-call
+	// channel that must page during a maintenance window sets it.
+	BypassQuietHours bool `protobuf:"varint,12,opt,name=bypass_quiet_hours,json=bypassQuietHours,proto3" json:"bypass_quiet_hours,omitempty"`
+	// Whether the channel receives only events a routing rule selected. A team
+	// channel sets it so it does not also receive every event its subscription
+	// filter would otherwise admit.
+	RoutedOnly    bool                   `protobuf:"varint,13,opt,name=routed_only,json=routedOnly,proto3" json:"routed_only,omitempty"`
 	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1894,6 +1901,20 @@ func (x *NotificationChannel) GetConfig() *NotificationChannelConfig {
 func (x *NotificationChannel) GetSecretSet() bool {
 	if x != nil {
 		return x.SecretSet
+	}
+	return false
+}
+
+func (x *NotificationChannel) GetBypassQuietHours() bool {
+	if x != nil {
+		return x.BypassQuietHours
+	}
+	return false
+}
+
+func (x *NotificationChannel) GetRoutedOnly() bool {
+	if x != nil {
+		return x.RoutedOnly
 	}
 	return false
 }
@@ -3036,6 +3057,466 @@ func (x *RetryNotificationDeliveryRequest) GetName() string {
 	return ""
 }
 
+// NotificationRoute is one owner/team routing rule. When an event's in-app
+// audience matches the rule, the rule's channels receive the event even if they
+// are routed_only; a channel that is not routed_only keeps receiving events from
+// its own subscription as before.
+type NotificationRoute struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The administrator-facing name, for example "Data platform team".
+	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// A disabled route selects no channel and keeps its configuration.
+	Enabled bool                    `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Match   *NotificationRouteMatch `protobuf:"bytes,4,opt,name=match,proto3" json:"match,omitempty"`
+	// The channels the route delivers to, as channel resource names. A deleted
+	// channel is ignored; the rule's other channels still receive the event.
+	Channels      []string               `protobuf:"bytes,5,rep,name=channels,proto3" json:"channels,omitempty"`
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	UpdateTime    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationRoute) Reset() {
+	*x = NotificationRoute{}
+	mi := &file_v1_notification_service_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationRoute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationRoute) ProtoMessage() {}
+
+func (x *NotificationRoute) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationRoute.ProtoReflect.Descriptor instead.
+func (*NotificationRoute) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *NotificationRoute) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NotificationRoute) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *NotificationRoute) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *NotificationRoute) GetMatch() *NotificationRouteMatch {
+	if x != nil {
+		return x.Match
+	}
+	return nil
+}
+
+func (x *NotificationRoute) GetChannels() []string {
+	if x != nil {
+		return x.Channels
+	}
+	return nil
+}
+
+func (x *NotificationRoute) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+func (x *NotificationRoute) GetUpdateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdateTime
+	}
+	return nil
+}
+
+// NotificationRouteMatch is who and what a route selects. An empty field is a
+// wildcard: a route with no event types, severity floor, owners and groups
+// selects every event.
+type NotificationRouteMatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The notification types this route selects. Empty means every type.
+	EventTypes []NotificationType `protobuf:"varint,1,rep,packed,name=event_types,json=eventTypes,proto3,enum=metaxisdata.v1.NotificationType" json:"event_types,omitempty"`
+	// The lowest severity this route selects. UNSPECIFIED means every severity.
+	MinSeverity NotificationSeverity `protobuf:"varint,2,opt,name=min_severity,json=minSeverity,proto3,enum=metaxisdata.v1.NotificationSeverity" json:"min_severity,omitempty"`
+	// Audience filters, as users/{user} resource names. Empty means any audience.
+	Owners []string `protobuf:"bytes,3,rep,name=owners,proto3" json:"owners,omitempty"`
+	// Audience filters, as group emails of IAM groups. Empty means any audience.
+	Groups        []string `protobuf:"bytes,4,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationRouteMatch) Reset() {
+	*x = NotificationRouteMatch{}
+	mi := &file_v1_notification_service_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationRouteMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationRouteMatch) ProtoMessage() {}
+
+func (x *NotificationRouteMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationRouteMatch.ProtoReflect.Descriptor instead.
+func (*NotificationRouteMatch) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *NotificationRouteMatch) GetEventTypes() []NotificationType {
+	if x != nil {
+		return x.EventTypes
+	}
+	return nil
+}
+
+func (x *NotificationRouteMatch) GetMinSeverity() NotificationSeverity {
+	if x != nil {
+		return x.MinSeverity
+	}
+	return NotificationSeverity_NOTIFICATION_SEVERITY_UNSPECIFIED
+}
+
+func (x *NotificationRouteMatch) GetOwners() []string {
+	if x != nil {
+		return x.Owners
+	}
+	return nil
+}
+
+func (x *NotificationRouteMatch) GetGroups() []string {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
+type ListNotificationRoutesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}
+	Parent        string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNotificationRoutesRequest) Reset() {
+	*x = ListNotificationRoutesRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNotificationRoutesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNotificationRoutesRequest) ProtoMessage() {}
+
+func (x *ListNotificationRoutesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNotificationRoutesRequest.ProtoReflect.Descriptor instead.
+func (*ListNotificationRoutesRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ListNotificationRoutesRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+type ListNotificationRoutesResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	NotificationRoutes []*NotificationRoute   `protobuf:"bytes,1,rep,name=notification_routes,json=notificationRoutes,proto3" json:"notification_routes,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ListNotificationRoutesResponse) Reset() {
+	*x = ListNotificationRoutesResponse{}
+	mi := &file_v1_notification_service_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNotificationRoutesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNotificationRoutesResponse) ProtoMessage() {}
+
+func (x *ListNotificationRoutesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNotificationRoutesResponse.ProtoReflect.Descriptor instead.
+func (*ListNotificationRoutesResponse) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ListNotificationRoutesResponse) GetNotificationRoutes() []*NotificationRoute {
+	if x != nil {
+		return x.NotificationRoutes
+	}
+	return nil
+}
+
+type GetNotificationRouteRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNotificationRouteRequest) Reset() {
+	*x = GetNotificationRouteRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNotificationRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNotificationRouteRequest) ProtoMessage() {}
+
+func (x *GetNotificationRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNotificationRouteRequest.ProtoReflect.Descriptor instead.
+func (*GetNotificationRouteRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *GetNotificationRouteRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type CreateNotificationRouteRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}
+	Parent        string             `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	Route         *NotificationRoute `protobuf:"bytes,2,opt,name=route,proto3" json:"route,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateNotificationRouteRequest) Reset() {
+	*x = CreateNotificationRouteRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateNotificationRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateNotificationRouteRequest) ProtoMessage() {}
+
+func (x *CreateNotificationRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateNotificationRouteRequest.ProtoReflect.Descriptor instead.
+func (*CreateNotificationRouteRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *CreateNotificationRouteRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateNotificationRouteRequest) GetRoute() *NotificationRoute {
+	if x != nil {
+		return x.Route
+	}
+	return nil
+}
+
+type UpdateNotificationRouteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Route         *NotificationRoute     `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateNotificationRouteRequest) Reset() {
+	*x = UpdateNotificationRouteRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateNotificationRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateNotificationRouteRequest) ProtoMessage() {}
+
+func (x *UpdateNotificationRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateNotificationRouteRequest.ProtoReflect.Descriptor instead.
+func (*UpdateNotificationRouteRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *UpdateNotificationRouteRequest) GetRoute() *NotificationRoute {
+	if x != nil {
+		return x.Route
+	}
+	return nil
+}
+
+func (x *UpdateNotificationRouteRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
+type DeleteNotificationRouteRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteNotificationRouteRequest) Reset() {
+	*x = DeleteNotificationRouteRequest{}
+	mi := &file_v1_notification_service_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteNotificationRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteNotificationRouteRequest) ProtoMessage() {}
+
+func (x *DeleteNotificationRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_notification_service_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteNotificationRouteRequest.ProtoReflect.Descriptor instead.
+func (*DeleteNotificationRouteRequest) Descriptor() ([]byte, []int) {
+	return file_v1_notification_service_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *DeleteNotificationRouteRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 var File_v1_notification_service_proto protoreflect.FileDescriptor
 
 const file_v1_notification_service_proto_rawDesc = "" +
@@ -3141,7 +3622,7 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
 	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
-	"\binstance\x18\x12 \x01(\tR\binstance\"\xaf\x05\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance\"\xfe\x05\n" +
 	"\x13NotificationChannel\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12@\n" +
@@ -3153,7 +3634,10 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\blanguage\x18\a \x01(\tR\blanguage\x12A\n" +
 	"\x06config\x18\b \x01(\v2).metaxisdata.v1.NotificationChannelConfigR\x06config\x12\"\n" +
 	"\n" +
-	"secret_set\x18\t \x01(\bB\x03\xe0A\x03R\tsecretSet\x12@\n" +
+	"secret_set\x18\t \x01(\bB\x03\xe0A\x03R\tsecretSet\x12,\n" +
+	"\x12bypass_quiet_hours\x18\f \x01(\bR\x10bypassQuietHours\x12\x1f\n" +
+	"\vrouted_only\x18\r \x01(\bR\n" +
+	"routedOnly\x12@\n" +
 	"\vcreate_time\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
 	"createTime\x12@\n" +
@@ -3231,6 +3715,40 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x17notification_deliveries\x18\x01 \x03(\v2$.metaxisdata.v1.NotificationDeliveryR\x16notificationDeliveries\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\";\n" +
 	" RetryNotificationDeliveryRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\xd6\x03\n" +
+	"\x11NotificationRoute\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x03R\x04name\x12&\n" +
+	"\fdisplay_name\x18\x02 \x01(\tB\x03\xe0A\x02R\vdisplayName\x12\x18\n" +
+	"\aenabled\x18\x03 \x01(\bR\aenabled\x12<\n" +
+	"\x05match\x18\x04 \x01(\v2&.metaxisdata.v1.NotificationRouteMatchR\x05match\x12@\n" +
+	"\bchannels\x18\x05 \x03(\tB$\xfaA!\n" +
+	"\x1fmetaxisdata/NotificationChannelR\bchannels\x12@\n" +
+	"\vcreate_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"createTime\x12@\n" +
+	"\vupdate_time\x18\a \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
+	"updateTime:b\xeaA_\n" +
+	"\x1dmetaxisdata/NotificationRoute\x12>workspaces/{workspace}/notificationRoutes/{notification_route}\"\xeb\x01\n" +
+	"\x16NotificationRouteMatch\x12A\n" +
+	"\vevent_types\x18\x01 \x03(\x0e2 .metaxisdata.v1.NotificationTypeR\n" +
+	"eventTypes\x12G\n" +
+	"\fmin_severity\x18\x02 \x01(\x0e2$.metaxisdata.v1.NotificationSeverityR\vminSeverity\x12-\n" +
+	"\x06owners\x18\x03 \x03(\tB\x15\xfaA\x12\n" +
+	"\x10metaxisdata/UserR\x06owners\x12\x16\n" +
+	"\x06groups\x18\x04 \x03(\tR\x06groups\"<\n" +
+	"\x1dListNotificationRoutesRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"t\n" +
+	"\x1eListNotificationRoutesResponse\x12R\n" +
+	"\x13notification_routes\x18\x01 \x03(\v2!.metaxisdata.v1.NotificationRouteR\x12notificationRoutes\"6\n" +
+	"\x1bGetNotificationRouteRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"{\n" +
+	"\x1eCreateNotificationRouteRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12<\n" +
+	"\x05route\x18\x02 \x01(\v2!.metaxisdata.v1.NotificationRouteB\x03\xe0A\x02R\x05route\"\x9b\x01\n" +
+	"\x1eUpdateNotificationRouteRequest\x12<\n" +
+	"\x05route\x18\x01 \x01(\v2!.metaxisdata.v1.NotificationRouteB\x03\xe0A\x02R\x05route\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\"9\n" +
+	"\x1eDeleteNotificationRouteRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name*\x9f\x01\n" +
 	"\x10NotificationType\x12!\n" +
 	"\x1dNOTIFICATION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
@@ -3277,7 +3795,7 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"#NOTIFICATION_DELIVERY_STATE_PENDING\x10\x01\x12'\n" +
 	"#NOTIFICATION_DELIVERY_STATE_SENDING\x10\x02\x12$\n" +
 	" NOTIFICATION_DELIVERY_STATE_SENT\x10\x03\x12$\n" +
-	" NOTIFICATION_DELIVERY_STATE_DEAD\x10\x042\x87\x17\n" +
+	" NOTIFICATION_DELIVERY_STATE_DEAD\x10\x042\xa9\x1f\n" +
 	"\x13NotificationService\x12\xa2\x01\n" +
 	"\x11ListNotifications\x12(.metaxisdata.v1.ListNotificationsRequest\x1a).metaxisdata.v1.ListNotificationsResponse\"8\xdaA\x06parent\x82\xd3\xe4\x93\x02)\x12'/v1/{parent=workspaces/*}/notifications\x12\xc0\x01\n" +
 	"\x1aGetUnreadNotificationCount\x121.metaxisdata.v1.GetUnreadNotificationCountRequest\x1a2.metaxisdata.v1.GetUnreadNotificationCountResponse\";\x82\xd3\xe4\x93\x025\x123/v1/{parent=workspaces/*}/notifications:unreadCount\x12\x9a\x01\n" +
@@ -3293,7 +3811,12 @@ const file_v1_notification_service_proto_rawDesc = "" +
 	"\x19DeleteNotificationChannel\x120.metaxisdata.v1.DeleteNotificationChannelRequest\x1a\x16.google.protobuf.Empty\"`\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x020*./v1/{name=workspaces/*/notificationChannels/*}\x12\xe0\x01\n" +
 	"\x17TestNotificationChannel\x12..metaxisdata.v1.TestNotificationChannelRequest\x1a/.metaxisdata.v1.TestNotificationChannelResponse\"d\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{name=workspaces/*/notificationChannels/*}:test\x12\xe2\x01\n" +
 	"\x1aListNotificationDeliveries\x121.metaxisdata.v1.ListNotificationDeliveriesRequest\x1a2.metaxisdata.v1.ListNotificationDeliveriesResponse\"]\xdaA\x06parent\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x022\x120/v1/{parent=workspaces/*}/notificationDeliveries\x12\xe0\x01\n" +
-	"\x19RetryNotificationDelivery\x120.metaxisdata.v1.RetryNotificationDeliveryRequest\x1a$.metaxisdata.v1.NotificationDelivery\"k\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02;:\x01*\"6/v1/{name=workspaces/*/notificationDeliveries/*}:retryB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x19RetryNotificationDelivery\x120.metaxisdata.v1.RetryNotificationDeliveryRequest\x1a$.metaxisdata.v1.NotificationDelivery\"k\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02;:\x01*\"6/v1/{name=workspaces/*/notificationDeliveries/*}:retry\x12\xd2\x01\n" +
+	"\x16ListNotificationRoutes\x12-.metaxisdata.v1.ListNotificationRoutesRequest\x1a..metaxisdata.v1.ListNotificationRoutesResponse\"Y\xdaA\x06parent\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02.\x12,/v1/{parent=workspaces/*}/notificationRoutes\x12\xbf\x01\n" +
+	"\x14GetNotificationRoute\x12+.metaxisdata.v1.GetNotificationRouteRequest\x1a!.metaxisdata.v1.NotificationRoute\"W\xdaA\x04name\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02.\x12,/v1/{name=workspaces/*/notificationRoutes/*}\x12\xdb\x01\n" +
+	"\x17CreateNotificationRoute\x12..metaxisdata.v1.CreateNotificationRouteRequest\x1a!.metaxisdata.v1.NotificationRoute\"m\xdaA\fparent,route\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x025:\x05route\",/v1/{parent=workspaces/*}/notificationRoutes\x12\xe6\x01\n" +
+	"\x17UpdateNotificationRoute\x12..metaxisdata.v1.UpdateNotificationRouteRequest\x1a!.metaxisdata.v1.NotificationRoute\"x\xdaA\x11route,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02;:\x05route22/v1/{route.name=workspaces/*/notificationRoutes/*}\x12\xc1\x01\n" +
+	"\x17DeleteNotificationRoute\x12..metaxisdata.v1.DeleteNotificationRouteRequest\x1a\x16.google.protobuf.Empty\"^\xdaA\x04name\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02.*,/v1/{name=workspaces/*/notificationRoutes/*}B6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_notification_service_proto_rawDescOnce sync.Once
@@ -3308,7 +3831,7 @@ func file_v1_notification_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_notification_service_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_v1_notification_service_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
 var file_v1_notification_service_proto_goTypes = []any{
 	(NotificationType)(0),                      // 0: metaxisdata.v1.NotificationType
 	(NotificationSeverity)(0),                  // 1: metaxisdata.v1.NotificationSeverity
@@ -3355,17 +3878,25 @@ var file_v1_notification_service_proto_goTypes = []any{
 	(*ListNotificationDeliveriesRequest)(nil),  // 42: metaxisdata.v1.ListNotificationDeliveriesRequest
 	(*ListNotificationDeliveriesResponse)(nil), // 43: metaxisdata.v1.ListNotificationDeliveriesResponse
 	(*RetryNotificationDeliveryRequest)(nil),   // 44: metaxisdata.v1.RetryNotificationDeliveryRequest
-	(*timestamppb.Timestamp)(nil),              // 45: google.protobuf.Timestamp
-	(QualityStatus)(0),                         // 46: metaxisdata.v1.QualityStatus
-	(QualitySeverity)(0),                       // 47: metaxisdata.v1.QualitySeverity
-	(*fieldmaskpb.FieldMask)(nil),              // 48: google.protobuf.FieldMask
-	(*emptypb.Empty)(nil),                      // 49: google.protobuf.Empty
+	(*NotificationRoute)(nil),                  // 45: metaxisdata.v1.NotificationRoute
+	(*NotificationRouteMatch)(nil),             // 46: metaxisdata.v1.NotificationRouteMatch
+	(*ListNotificationRoutesRequest)(nil),      // 47: metaxisdata.v1.ListNotificationRoutesRequest
+	(*ListNotificationRoutesResponse)(nil),     // 48: metaxisdata.v1.ListNotificationRoutesResponse
+	(*GetNotificationRouteRequest)(nil),        // 49: metaxisdata.v1.GetNotificationRouteRequest
+	(*CreateNotificationRouteRequest)(nil),     // 50: metaxisdata.v1.CreateNotificationRouteRequest
+	(*UpdateNotificationRouteRequest)(nil),     // 51: metaxisdata.v1.UpdateNotificationRouteRequest
+	(*DeleteNotificationRouteRequest)(nil),     // 52: metaxisdata.v1.DeleteNotificationRouteRequest
+	(*timestamppb.Timestamp)(nil),              // 53: google.protobuf.Timestamp
+	(QualityStatus)(0),                         // 54: metaxisdata.v1.QualityStatus
+	(QualitySeverity)(0),                       // 55: metaxisdata.v1.QualitySeverity
+	(*fieldmaskpb.FieldMask)(nil),              // 56: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),                      // 57: google.protobuf.Empty
 }
 var file_v1_notification_service_proto_depIdxs = []int32{
-	45, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
+	53, // 0: metaxisdata.v1.Notification.create_time:type_name -> google.protobuf.Timestamp
 	0,  // 1: metaxisdata.v1.Notification.type:type_name -> metaxisdata.v1.NotificationType
 	1,  // 2: metaxisdata.v1.Notification.severity:type_name -> metaxisdata.v1.NotificationSeverity
-	45, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
+	53, // 3: metaxisdata.v1.Notification.read_time:type_name -> google.protobuf.Timestamp
 	9,  // 4: metaxisdata.v1.Notification.schema_sync:type_name -> metaxisdata.v1.SchemaSyncDetail
 	11, // 5: metaxisdata.v1.Notification.openlineage:type_name -> metaxisdata.v1.OpenLineageDetail
 	24, // 6: metaxisdata.v1.Notification.data_quality:type_name -> metaxisdata.v1.DataQualityDetail
@@ -3378,15 +3909,15 @@ var file_v1_notification_service_proto_depIdxs = []int32{
 	23, // 13: metaxisdata.v1.SubscribeNotificationsResponse.keep_alive:type_name -> metaxisdata.v1.KeepAlive
 	8,  // 14: metaxisdata.v1.NotificationEvent.notification:type_name -> metaxisdata.v1.Notification
 	5,  // 15: metaxisdata.v1.DataQualityDetail.kind:type_name -> metaxisdata.v1.DataQualityNotificationKind
-	46, // 16: metaxisdata.v1.DataQualityDetail.from_status:type_name -> metaxisdata.v1.QualityStatus
-	46, // 17: metaxisdata.v1.DataQualityDetail.to_status:type_name -> metaxisdata.v1.QualityStatus
-	47, // 18: metaxisdata.v1.DataQualityDetail.severity:type_name -> metaxisdata.v1.QualitySeverity
+	54, // 16: metaxisdata.v1.DataQualityDetail.from_status:type_name -> metaxisdata.v1.QualityStatus
+	54, // 17: metaxisdata.v1.DataQualityDetail.to_status:type_name -> metaxisdata.v1.QualityStatus
+	55, // 18: metaxisdata.v1.DataQualityDetail.severity:type_name -> metaxisdata.v1.QualitySeverity
 	6,  // 19: metaxisdata.v1.NotificationChannel.kind:type_name -> metaxisdata.v1.NotificationChannelKind
 	0,  // 20: metaxisdata.v1.NotificationChannel.event_types:type_name -> metaxisdata.v1.NotificationType
 	1,  // 21: metaxisdata.v1.NotificationChannel.min_severity:type_name -> metaxisdata.v1.NotificationSeverity
 	26, // 22: metaxisdata.v1.NotificationChannel.config:type_name -> metaxisdata.v1.NotificationChannelConfig
-	45, // 23: metaxisdata.v1.NotificationChannel.create_time:type_name -> google.protobuf.Timestamp
-	45, // 24: metaxisdata.v1.NotificationChannel.update_time:type_name -> google.protobuf.Timestamp
+	53, // 23: metaxisdata.v1.NotificationChannel.create_time:type_name -> google.protobuf.Timestamp
+	53, // 24: metaxisdata.v1.NotificationChannel.update_time:type_name -> google.protobuf.Timestamp
 	27, // 25: metaxisdata.v1.NotificationChannelConfig.webhook:type_name -> metaxisdata.v1.WebhookChannelConfig
 	28, // 26: metaxisdata.v1.NotificationChannelConfig.dingtalk:type_name -> metaxisdata.v1.DingTalkChannelConfig
 	29, // 27: metaxisdata.v1.NotificationChannelConfig.wecom:type_name -> metaxisdata.v1.WeComChannelConfig
@@ -3395,52 +3926,71 @@ var file_v1_notification_service_proto_depIdxs = []int32{
 	0,  // 30: metaxisdata.v1.NotificationDelivery.event_type:type_name -> metaxisdata.v1.NotificationType
 	1,  // 31: metaxisdata.v1.NotificationDelivery.severity:type_name -> metaxisdata.v1.NotificationSeverity
 	7,  // 32: metaxisdata.v1.NotificationDelivery.state:type_name -> metaxisdata.v1.NotificationDeliveryState
-	45, // 33: metaxisdata.v1.NotificationDelivery.create_time:type_name -> google.protobuf.Timestamp
-	45, // 34: metaxisdata.v1.NotificationDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
-	45, // 35: metaxisdata.v1.NotificationDelivery.sent_time:type_name -> google.protobuf.Timestamp
+	53, // 33: metaxisdata.v1.NotificationDelivery.create_time:type_name -> google.protobuf.Timestamp
+	53, // 34: metaxisdata.v1.NotificationDelivery.next_attempt_time:type_name -> google.protobuf.Timestamp
+	53, // 35: metaxisdata.v1.NotificationDelivery.sent_time:type_name -> google.protobuf.Timestamp
 	25, // 36: metaxisdata.v1.ListNotificationChannelsResponse.notification_channels:type_name -> metaxisdata.v1.NotificationChannel
 	25, // 37: metaxisdata.v1.CreateNotificationChannelRequest.channel:type_name -> metaxisdata.v1.NotificationChannel
 	32, // 38: metaxisdata.v1.CreateNotificationChannelRequest.secret:type_name -> metaxisdata.v1.NotificationChannelSecret
 	25, // 39: metaxisdata.v1.UpdateNotificationChannelRequest.channel:type_name -> metaxisdata.v1.NotificationChannel
 	32, // 40: metaxisdata.v1.UpdateNotificationChannelRequest.secret:type_name -> metaxisdata.v1.NotificationChannelSecret
-	48, // 41: metaxisdata.v1.UpdateNotificationChannelRequest.update_mask:type_name -> google.protobuf.FieldMask
+	56, // 41: metaxisdata.v1.UpdateNotificationChannelRequest.update_mask:type_name -> google.protobuf.FieldMask
 	7,  // 42: metaxisdata.v1.ListNotificationDeliveriesRequest.state:type_name -> metaxisdata.v1.NotificationDeliveryState
 	33, // 43: metaxisdata.v1.ListNotificationDeliveriesResponse.notification_deliveries:type_name -> metaxisdata.v1.NotificationDelivery
-	12, // 44: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
-	14, // 45: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
-	16, // 46: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
-	17, // 47: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
-	18, // 48: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
-	19, // 49: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
-	20, // 50: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
-	34, // 51: metaxisdata.v1.NotificationService.ListNotificationChannels:input_type -> metaxisdata.v1.ListNotificationChannelsRequest
-	36, // 52: metaxisdata.v1.NotificationService.GetNotificationChannel:input_type -> metaxisdata.v1.GetNotificationChannelRequest
-	37, // 53: metaxisdata.v1.NotificationService.CreateNotificationChannel:input_type -> metaxisdata.v1.CreateNotificationChannelRequest
-	38, // 54: metaxisdata.v1.NotificationService.UpdateNotificationChannel:input_type -> metaxisdata.v1.UpdateNotificationChannelRequest
-	39, // 55: metaxisdata.v1.NotificationService.DeleteNotificationChannel:input_type -> metaxisdata.v1.DeleteNotificationChannelRequest
-	40, // 56: metaxisdata.v1.NotificationService.TestNotificationChannel:input_type -> metaxisdata.v1.TestNotificationChannelRequest
-	42, // 57: metaxisdata.v1.NotificationService.ListNotificationDeliveries:input_type -> metaxisdata.v1.ListNotificationDeliveriesRequest
-	44, // 58: metaxisdata.v1.NotificationService.RetryNotificationDelivery:input_type -> metaxisdata.v1.RetryNotificationDeliveryRequest
-	13, // 59: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
-	15, // 60: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
-	49, // 61: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
-	49, // 62: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
-	49, // 63: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
-	49, // 64: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
-	21, // 65: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
-	35, // 66: metaxisdata.v1.NotificationService.ListNotificationChannels:output_type -> metaxisdata.v1.ListNotificationChannelsResponse
-	25, // 67: metaxisdata.v1.NotificationService.GetNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
-	25, // 68: metaxisdata.v1.NotificationService.CreateNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
-	25, // 69: metaxisdata.v1.NotificationService.UpdateNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
-	49, // 70: metaxisdata.v1.NotificationService.DeleteNotificationChannel:output_type -> google.protobuf.Empty
-	41, // 71: metaxisdata.v1.NotificationService.TestNotificationChannel:output_type -> metaxisdata.v1.TestNotificationChannelResponse
-	43, // 72: metaxisdata.v1.NotificationService.ListNotificationDeliveries:output_type -> metaxisdata.v1.ListNotificationDeliveriesResponse
-	33, // 73: metaxisdata.v1.NotificationService.RetryNotificationDelivery:output_type -> metaxisdata.v1.NotificationDelivery
-	59, // [59:74] is the sub-list for method output_type
-	44, // [44:59] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	46, // 44: metaxisdata.v1.NotificationRoute.match:type_name -> metaxisdata.v1.NotificationRouteMatch
+	53, // 45: metaxisdata.v1.NotificationRoute.create_time:type_name -> google.protobuf.Timestamp
+	53, // 46: metaxisdata.v1.NotificationRoute.update_time:type_name -> google.protobuf.Timestamp
+	0,  // 47: metaxisdata.v1.NotificationRouteMatch.event_types:type_name -> metaxisdata.v1.NotificationType
+	1,  // 48: metaxisdata.v1.NotificationRouteMatch.min_severity:type_name -> metaxisdata.v1.NotificationSeverity
+	45, // 49: metaxisdata.v1.ListNotificationRoutesResponse.notification_routes:type_name -> metaxisdata.v1.NotificationRoute
+	45, // 50: metaxisdata.v1.CreateNotificationRouteRequest.route:type_name -> metaxisdata.v1.NotificationRoute
+	45, // 51: metaxisdata.v1.UpdateNotificationRouteRequest.route:type_name -> metaxisdata.v1.NotificationRoute
+	56, // 52: metaxisdata.v1.UpdateNotificationRouteRequest.update_mask:type_name -> google.protobuf.FieldMask
+	12, // 53: metaxisdata.v1.NotificationService.ListNotifications:input_type -> metaxisdata.v1.ListNotificationsRequest
+	14, // 54: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:input_type -> metaxisdata.v1.GetUnreadNotificationCountRequest
+	16, // 55: metaxisdata.v1.NotificationService.MarkNotificationsSeen:input_type -> metaxisdata.v1.MarkNotificationsSeenRequest
+	17, // 56: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:input_type -> metaxisdata.v1.BatchMarkNotificationsReadRequest
+	18, // 57: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:input_type -> metaxisdata.v1.MarkAllNotificationsReadRequest
+	19, // 58: metaxisdata.v1.NotificationService.DeleteNotification:input_type -> metaxisdata.v1.DeleteNotificationRequest
+	20, // 59: metaxisdata.v1.NotificationService.SubscribeNotifications:input_type -> metaxisdata.v1.SubscribeNotificationsRequest
+	34, // 60: metaxisdata.v1.NotificationService.ListNotificationChannels:input_type -> metaxisdata.v1.ListNotificationChannelsRequest
+	36, // 61: metaxisdata.v1.NotificationService.GetNotificationChannel:input_type -> metaxisdata.v1.GetNotificationChannelRequest
+	37, // 62: metaxisdata.v1.NotificationService.CreateNotificationChannel:input_type -> metaxisdata.v1.CreateNotificationChannelRequest
+	38, // 63: metaxisdata.v1.NotificationService.UpdateNotificationChannel:input_type -> metaxisdata.v1.UpdateNotificationChannelRequest
+	39, // 64: metaxisdata.v1.NotificationService.DeleteNotificationChannel:input_type -> metaxisdata.v1.DeleteNotificationChannelRequest
+	40, // 65: metaxisdata.v1.NotificationService.TestNotificationChannel:input_type -> metaxisdata.v1.TestNotificationChannelRequest
+	42, // 66: metaxisdata.v1.NotificationService.ListNotificationDeliveries:input_type -> metaxisdata.v1.ListNotificationDeliveriesRequest
+	44, // 67: metaxisdata.v1.NotificationService.RetryNotificationDelivery:input_type -> metaxisdata.v1.RetryNotificationDeliveryRequest
+	47, // 68: metaxisdata.v1.NotificationService.ListNotificationRoutes:input_type -> metaxisdata.v1.ListNotificationRoutesRequest
+	49, // 69: metaxisdata.v1.NotificationService.GetNotificationRoute:input_type -> metaxisdata.v1.GetNotificationRouteRequest
+	50, // 70: metaxisdata.v1.NotificationService.CreateNotificationRoute:input_type -> metaxisdata.v1.CreateNotificationRouteRequest
+	51, // 71: metaxisdata.v1.NotificationService.UpdateNotificationRoute:input_type -> metaxisdata.v1.UpdateNotificationRouteRequest
+	52, // 72: metaxisdata.v1.NotificationService.DeleteNotificationRoute:input_type -> metaxisdata.v1.DeleteNotificationRouteRequest
+	13, // 73: metaxisdata.v1.NotificationService.ListNotifications:output_type -> metaxisdata.v1.ListNotificationsResponse
+	15, // 74: metaxisdata.v1.NotificationService.GetUnreadNotificationCount:output_type -> metaxisdata.v1.GetUnreadNotificationCountResponse
+	57, // 75: metaxisdata.v1.NotificationService.MarkNotificationsSeen:output_type -> google.protobuf.Empty
+	57, // 76: metaxisdata.v1.NotificationService.BatchMarkNotificationsRead:output_type -> google.protobuf.Empty
+	57, // 77: metaxisdata.v1.NotificationService.MarkAllNotificationsRead:output_type -> google.protobuf.Empty
+	57, // 78: metaxisdata.v1.NotificationService.DeleteNotification:output_type -> google.protobuf.Empty
+	21, // 79: metaxisdata.v1.NotificationService.SubscribeNotifications:output_type -> metaxisdata.v1.SubscribeNotificationsResponse
+	35, // 80: metaxisdata.v1.NotificationService.ListNotificationChannels:output_type -> metaxisdata.v1.ListNotificationChannelsResponse
+	25, // 81: metaxisdata.v1.NotificationService.GetNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
+	25, // 82: metaxisdata.v1.NotificationService.CreateNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
+	25, // 83: metaxisdata.v1.NotificationService.UpdateNotificationChannel:output_type -> metaxisdata.v1.NotificationChannel
+	57, // 84: metaxisdata.v1.NotificationService.DeleteNotificationChannel:output_type -> google.protobuf.Empty
+	41, // 85: metaxisdata.v1.NotificationService.TestNotificationChannel:output_type -> metaxisdata.v1.TestNotificationChannelResponse
+	43, // 86: metaxisdata.v1.NotificationService.ListNotificationDeliveries:output_type -> metaxisdata.v1.ListNotificationDeliveriesResponse
+	33, // 87: metaxisdata.v1.NotificationService.RetryNotificationDelivery:output_type -> metaxisdata.v1.NotificationDelivery
+	48, // 88: metaxisdata.v1.NotificationService.ListNotificationRoutes:output_type -> metaxisdata.v1.ListNotificationRoutesResponse
+	45, // 89: metaxisdata.v1.NotificationService.GetNotificationRoute:output_type -> metaxisdata.v1.NotificationRoute
+	45, // 90: metaxisdata.v1.NotificationService.CreateNotificationRoute:output_type -> metaxisdata.v1.NotificationRoute
+	45, // 91: metaxisdata.v1.NotificationService.UpdateNotificationRoute:output_type -> metaxisdata.v1.NotificationRoute
+	57, // 92: metaxisdata.v1.NotificationService.DeleteNotificationRoute:output_type -> google.protobuf.Empty
+	73, // [73:93] is the sub-list for method output_type
+	53, // [53:73] is the sub-list for method input_type
+	53, // [53:53] is the sub-list for extension type_name
+	53, // [53:53] is the sub-list for extension extendee
+	0,  // [0:53] is the sub-list for field type_name
 }
 
 func init() { file_v1_notification_service_proto_init() }
@@ -3473,7 +4023,7 @@ func file_v1_notification_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_notification_service_proto_rawDesc), len(file_v1_notification_service_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   37,
+			NumMessages:   45,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

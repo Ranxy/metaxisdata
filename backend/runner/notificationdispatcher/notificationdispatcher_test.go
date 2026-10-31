@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -25,16 +26,24 @@ type finishedDelivery struct {
 }
 
 type fakeDispatcherStore struct {
-	claimed    []*store.NotificationDeliveryMessage
-	channels   []*store.NotificationChannelMessage
-	channelErr error
-	secret     *storepb.NotificationChannelSecret
-	setting    *storepb.WorkspaceProfileSetting
-	email      *storepb.EmailSetting
-	users      map[int]*store.UserMessage
+	claimed       []*store.NotificationDeliveryMessage
+	channels      []*store.NotificationChannelMessage
+	channelErr    error
+	secret        *storepb.NotificationChannelSecret
+	setting       *storepb.WorkspaceProfileSetting
+	email         *storepb.EmailSetting
+	quietHours    *storepb.QuietHoursSetting
+	quietHoursErr error
+	users         map[int]*store.UserMessage
 
 	finished []finishedDelivery
+	deferred []deferredDelivery
 	released []int64
+}
+
+type deferredDelivery struct {
+	id          int64
+	nextAttempt time.Time
 }
 
 func (f *fakeDispatcherStore) ClaimNotificationDeliveries(context.Context, int, time.Duration) ([]*store.NotificationDeliveryMessage, error) {
@@ -65,6 +74,15 @@ func (f *fakeDispatcherStore) GetWorkspaceGeneralSetting(context.Context) (*stor
 
 func (f *fakeDispatcherStore) GetEmailSettingForDelivery(context.Context) (*storepb.EmailSetting, error) {
 	return f.email, nil
+}
+
+func (f *fakeDispatcherStore) GetQuietHoursSetting(context.Context) (*storepb.QuietHoursSetting, error) {
+	return f.quietHours, f.quietHoursErr
+}
+
+func (f *fakeDispatcherStore) DeferNotificationDelivery(_ context.Context, id int64, nextAttempt time.Time) error {
+	f.deferred = append(f.deferred, deferredDelivery{id: id, nextAttempt: nextAttempt})
+	return nil
 }
 
 func (f *fakeDispatcherStore) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {
@@ -508,4 +526,78 @@ func TestDispatchEmailFailsWhenEveryRecipientIsRejected(t *testing.T) {
 	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING, fake.finished[0].state)
 	require.Contains(t, fake.finished[0].lastError, "rejected every recipient")
 	require.NotContains(t, fake.finished[0].lastError, "oncall@example.com")
+}
+
+// quietNow is a schedule that is active right now, expressed as a maintenance
+// window so the test does not depend on the current weekday.
+func quietNow() *storepb.QuietHoursSetting {
+	now := time.Now()
+	return &storepb.QuietHoursSetting{
+		Enabled:  true,
+		Timezone: "UTC",
+		MaintenanceWindows: []*storepb.MaintenanceWindow{{
+			Start: timestamppb.New(now.Add(-time.Hour)),
+			End:   timestamppb.New(now.Add(time.Hour)),
+		}},
+	}
+}
+
+// A quiet-window delivery is rescheduled to the end of the window without an
+// attempt: the endpoint is never contacted and the delivery is not charged.
+func TestDispatchDefersQuietHours(t *testing.T) {
+	t.Parallel()
+
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		_, _ = w.Write([]byte(`{"errcode":0}`))
+	}))
+	defer server.Close()
+
+	channel, secret := webhookChannelMessage(server.URL)
+	fake := &fakeDispatcherStore{
+		claimed:    []*store.NotificationDeliveryMessage{delivery(41, 1, channel.ID)},
+		channels:   []*store.NotificationChannelMessage{channel},
+		secret:     secret,
+		quietHours: quietNow(),
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	before := time.Now()
+	runner.dispatch(context.Background())
+
+	require.Zero(t, hits, "the endpoint must not be contacted during the window")
+	require.Empty(t, fake.finished)
+	require.Len(t, fake.deferred, 1)
+	require.Equal(t, int64(41), fake.deferred[0].id)
+	require.WithinDuration(t, before.Add(time.Hour), fake.deferred[0].nextAttempt, time.Minute)
+}
+
+// A channel that bypasses quiet hours keeps delivering during the window.
+func TestDispatchQuietHoursBypassChannel(t *testing.T) {
+	t.Parallel()
+
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		_, _ = w.Write([]byte(`{"errcode":0}`))
+	}))
+	defer server.Close()
+
+	channel, secret := webhookChannelMessage(server.URL)
+	channel.Payload.BypassQuietHours = true
+	fake := &fakeDispatcherStore{
+		claimed:    []*store.NotificationDeliveryMessage{delivery(42, 1, channel.ID)},
+		channels:   []*store.NotificationChannelMessage{channel},
+		secret:     secret,
+		quietHours: quietNow(),
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Equal(t, 1, hits)
+	require.Empty(t, fake.deferred)
+	require.Len(t, fake.finished, 1)
+	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT, fake.finished[0].state)
 }

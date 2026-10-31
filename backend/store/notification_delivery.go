@@ -112,7 +112,7 @@ func scanNotificationDelivery(row deliveryScanner) (*NotificationDeliveryMessage
 		payload []byte
 		sentAt  sql.NullTime
 	)
-	if err := row.Scan(
+	dest := []any{
 		&message.ID,
 		&message.EventID,
 		&message.ChannelID,
@@ -123,7 +123,8 @@ func scanNotificationDelivery(row deliveryScanner) (*NotificationDeliveryMessage
 		&payload,
 		&message.CreatedAt,
 		&sentAt,
-	); err != nil {
+	}
+	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
 	message.State = storepb.NotificationDeliveryState(state)
@@ -182,17 +183,46 @@ func (s *Store) FinishNotificationDelivery(ctx context.Context, id int64, state 
 	if id <= 0 {
 		return common.Errorf(common.Invalid, "a notification delivery id is required")
 	}
-	if _, err := s.GetDB().ExecContext(ctx, `
+	const query = `
 		UPDATE notification_delivery
 		SET state = $2,
 		    last_error = $3,
 		    next_attempt_at = $4,
 		    sent_at = CASE WHEN $2 = $5 THEN NOW() ELSE NULL END
-		WHERE id = $1`,
+		WHERE id = $1`
+	_, err := s.GetDB().ExecContext(ctx, query,
 		id, int16(state), lastError, nextAttempt,
 		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT),
-	); err != nil {
+	)
+	if err != nil {
 		return errors.Wrap(err, "failed to finish the notification delivery")
+	}
+	return nil
+}
+
+// deferNotificationDeliveryQuery is the quiet-hours reschedule. It must put the
+// row back to PENDING and give the attempt back, or a deferral would consume the
+// delivery's retry budget.
+const deferNotificationDeliveryQuery = `
+	UPDATE notification_delivery
+	SET state = $2,
+	    attempts = GREATEST(attempts - 1, 0),
+	    next_attempt_at = $3
+	WHERE id = $1`
+
+// DeferNotificationDelivery reschedules a claimed delivery without charging it an
+// attempt: a quiet-hours deferral is scheduling, not a failed post, and the claim
+// already incremented the counter. It leaves the row PENDING with the given next
+// attempt, so the first tick after the window ends picks it up.
+func (s *Store) DeferNotificationDelivery(ctx context.Context, id int64, nextAttempt time.Time) error {
+	if id <= 0 {
+		return common.Errorf(common.Invalid, "a notification delivery id is required")
+	}
+	_, err := s.GetDB().ExecContext(ctx, deferNotificationDeliveryQuery,
+		id, int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING), nextAttempt,
+	)
+	if err != nil {
+		return errors.Wrap(err, "failed to defer the notification delivery")
 	}
 	return nil
 }
@@ -360,16 +390,18 @@ func (s *Store) ReleaseNotificationDelivery(ctx context.Context, id int64) error
 	if id <= 0 {
 		return common.Errorf(common.Invalid, "a notification delivery id is required")
 	}
-	if _, err := s.GetDB().ExecContext(ctx, `
+	const query = `
 		UPDATE notification_delivery
 		SET state = $2,
 		    attempts = GREATEST(attempts - 1, 0),
 		    next_attempt_at = NOW()
-		WHERE id = $1 AND state = $3`,
+		WHERE id = $1 AND state = $3`
+	_, err := s.GetDB().ExecContext(ctx, query,
 		id,
 		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING),
 		int16(storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENDING),
-	); err != nil {
+	)
+	if err != nil {
 		return errors.Wrap(err, "failed to release the notification delivery")
 	}
 	return nil

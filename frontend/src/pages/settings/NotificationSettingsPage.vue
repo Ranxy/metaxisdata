@@ -160,7 +160,7 @@
       </CardHeader>
       <CardContent class="pt-4">
         <p
-          v-if="!canGetEmailSetting"
+          v-if="!canGetSettings"
           class="px-4 py-6 text-center text-sm text-muted-foreground"
         >
           {{ t("notificationSettings.emailReadOnly") }}
@@ -240,6 +240,341 @@
                   : ''
               "
             />
+          </div>
+        </PageState>
+      </CardContent>
+    </Card>
+
+    <!-- Quiet hours: hold deliveries during a recurring or maintenance window. -->
+    <Card>
+      <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 border-b">
+        <div class="space-y-1">
+          <CardTitle class="text-base">
+            {{ t("notificationSettings.quietHours") }}
+          </CardTitle>
+          <CardDescription>
+            {{ t("notificationSettings.quietHoursDescription") }}
+          </CardDescription>
+        </div>
+        <Button
+          size="sm"
+          :disabled="!canUpdate || quietHoursLoading || quietHoursSaving"
+          @click="saveQuietHours"
+        >
+          <Loader2
+            v-if="quietHoursSaving"
+            class="mr-1.5 h-4 w-4 animate-spin"
+          />
+          {{ t("common.save") }}
+        </Button>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <p
+          v-if="!canGetSettings"
+          class="px-4 py-6 text-center text-sm text-muted-foreground"
+        >
+          {{ t("notificationSettings.quietHoursReadOnly") }}
+        </p>
+        <PageState
+          v-else
+          :loading="quietHoursLoading"
+        >
+          <div class="space-y-5">
+            <div class="space-y-1.5">
+              <label class="flex items-center gap-2 text-sm">
+                <Checkbox
+                  :checked="quietHoursForm.enabled"
+                  :disabled="!canUpdate"
+                  @update:checked="onQuietHoursEnabledChange"
+                />
+                <span>{{ t("notificationSettings.quietHoursEnabled") }}</span>
+              </label>
+              <p
+                v-if="!quietHoursForm.enabled"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("notificationSettings.quietHoursOffHint") }}
+              </p>
+            </div>
+
+            <div class="max-w-sm space-y-2.5">
+              <Label>{{ t("notificationSettings.quietHoursTimezone") }}</Label>
+              <Select
+                :model-value="quietHoursForm.timezone"
+                :disabled="quietHoursDisabled"
+                @update:model-value="onQuietHoursTimezoneChange"
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="zone in timezoneOptions"
+                    :key="zone"
+                    :value="zone"
+                  >
+                    {{ zone }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                {{ t("notificationSettings.quietHoursTimezoneHint") }}
+              </p>
+            </div>
+
+            <div class="space-y-3">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="space-y-1">
+                  <p class="text-sm font-medium">
+                    {{ t("notificationSettings.quietWindows") }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("notificationSettings.quietWindowsHint") }}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="quietHoursDisabled"
+                  @click="addQuietWindow"
+                >
+                  <Plus class="mr-1.5 h-4 w-4" />
+                  {{ t("notificationSettings.addQuietWindow") }}
+                </Button>
+              </div>
+              <p
+                v-if="quietHoursForm.windows.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("notificationSettings.noQuietWindows") }}
+              </p>
+              <div
+                v-for="(window, index) in quietHoursForm.windows"
+                :key="index"
+                class="rounded-md border p-3"
+              >
+                <div class="flex flex-wrap items-end gap-3">
+                  <div class="min-w-56 flex-1 space-y-1.5">
+                    <Label class="text-xs">
+                      {{ t("notificationSettings.quietWindowDays") }}
+                    </Label>
+                    <div class="flex flex-wrap gap-x-3 gap-y-1.5">
+                      <label
+                        v-for="day in dayOptions"
+                        :key="day.value"
+                        class="flex items-center gap-1.5 text-xs"
+                      >
+                        <Checkbox
+                          :checked="window.days.includes(day.value)"
+                          :disabled="quietHoursDisabled"
+                          @update:checked="(value: boolean | 'indeterminate') => toggleQuietWindowDay(window, day.value, value === true)"
+                        />
+                        <span>{{ day.label }}</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="w-32">
+                    <FormField
+                      v-model="window.start"
+                      type="time"
+                      :label="t('notificationSettings.quietWindowStart')"
+                      :disabled="quietHoursDisabled"
+                    />
+                  </div>
+                  <div class="w-32">
+                    <FormField
+                      v-model="window.end"
+                      type="time"
+                      :label="t('notificationSettings.quietWindowEnd')"
+                      :disabled="quietHoursDisabled"
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="text-destructive"
+                    :disabled="quietHoursDisabled"
+                    @click="removeQuietWindow(index)"
+                  >
+                    {{ t("common.delete") }}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="space-y-1">
+                  <p class="text-sm font-medium">
+                    {{ t("notificationSettings.maintenanceWindows") }}
+                  </p>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("notificationSettings.maintenanceWindowsHint") }}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="quietHoursDisabled"
+                  @click="addMaintenanceWindow"
+                >
+                  <Plus class="mr-1.5 h-4 w-4" />
+                  {{ t("notificationSettings.addMaintenanceWindow") }}
+                </Button>
+              </div>
+              <p
+                v-if="quietHoursForm.maintenanceWindows.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("notificationSettings.noMaintenanceWindows") }}
+              </p>
+              <div
+                v-for="(window, index) in quietHoursForm.maintenanceWindows"
+                :key="index"
+                class="rounded-md border p-3"
+              >
+                <div class="flex flex-wrap items-end gap-3">
+                  <div class="min-w-56 flex-1">
+                    <FormField
+                      v-model="window.start"
+                      type="datetime-local"
+                      :label="t('notificationSettings.maintenanceWindowStart')"
+                      :disabled="quietHoursDisabled"
+                    />
+                  </div>
+                  <div class="min-w-56 flex-1">
+                    <FormField
+                      v-model="window.end"
+                      type="datetime-local"
+                      :label="t('notificationSettings.maintenanceWindowEnd')"
+                      :disabled="quietHoursDisabled"
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="text-destructive"
+                    :disabled="quietHoursDisabled"
+                    @click="removeMaintenanceWindow(index)"
+                  >
+                    {{ t("common.delete") }}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </PageState>
+      </CardContent>
+    </Card>
+
+    <!-- Routing rules: owner and team rules that select extra channels. -->
+    <Card>
+      <CardHeader class="flex flex-row flex-wrap items-start justify-between gap-3 border-b">
+        <div class="space-y-1">
+          <CardTitle class="text-base">
+            {{ t("notificationSettings.routes") }}
+          </CardTitle>
+          <CardDescription>
+            {{ t("notificationSettings.routesDescription") }}
+          </CardDescription>
+        </div>
+        <Button
+          size="sm"
+          :disabled="!canUpdate"
+          @click="openCreateRoute"
+        >
+          <Plus class="mr-1.5 h-4 w-4" />
+          {{ t("notificationSettings.newRoute") }}
+        </Button>
+      </CardHeader>
+      <CardContent class="pt-4">
+        <p
+          v-if="!canGetSettings"
+          class="px-4 py-6 text-center text-sm text-muted-foreground"
+        >
+          {{ t("notificationSettings.routesReadOnly") }}
+        </p>
+        <PageState
+          v-else
+          :loading="routesLoading"
+        >
+          <div
+            v-if="routes.length === 0"
+            class="px-4 py-10 text-center"
+          >
+            <p class="text-sm font-medium">
+              {{ t("notificationSettings.emptyRoutesTitle") }}
+            </p>
+            <p class="mt-1 text-sm text-muted-foreground">
+              {{ t("notificationSettings.emptyRoutesDescription") }}
+            </p>
+          </div>
+          <div
+            v-else
+            class="rounded-md border"
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{{ t("notificationSettings.name") }}</TableHead>
+                  <TableHead>{{ t("notificationSettings.status") }}</TableHead>
+                  <TableHead>{{ t("notificationSettings.routeMatch") }}</TableHead>
+                  <TableHead>{{ t("notificationSettings.routeChannels") }}</TableHead>
+                  <TableHead class="text-right">
+                    {{ t("common.actions") }}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow
+                  v-for="route in routes"
+                  :key="route.name"
+                >
+                  <TableCell class="font-medium">
+                    {{ route.displayName }}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      :variant="route.enabled ? 'default' : 'secondary'"
+                      class="font-normal"
+                    >
+                      {{
+                        route.enabled
+                          ? t("notificationSettings.enabled")
+                          : t("notificationSettings.disabled")
+                      }}
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-xs text-muted-foreground">
+                    {{ routeMatchLabel(route) }}
+                  </TableCell>
+                  <TableCell class="text-xs text-muted-foreground">
+                    {{ routeChannelsLabel(route) }}
+                  </TableCell>
+                  <TableCell class="text-right">
+                    <div class="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        :disabled="!canUpdate"
+                        @click="openEditRoute(route)"
+                      >
+                        {{ t("common.edit") }}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="text-destructive"
+                        :disabled="!canUpdate"
+                        @click="confirmDeleteRoute(route)"
+                      >
+                        {{ t("common.delete") }}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </PageState>
       </CardContent>
@@ -458,8 +793,8 @@
             />
             <div class="flex items-start gap-2">
               <Checkbox
-                :model-value="form.includeAudience"
-                @update:model-value="onIncludeAudienceChange"
+                :checked="form.includeAudience"
+                @update:checked="onIncludeAudienceChange"
               />
               <Label class="text-sm leading-5">
                 {{ t("notificationSettings.includeAudience") }}
@@ -480,8 +815,8 @@
             <template v-if="supportsSigning">
               <div class="flex items-center gap-2">
                 <Checkbox
-                  :model-value="form.sign"
-                  @update:model-value="onSignChange"
+                  :checked="form.sign"
+                  @update:checked="onSignChange"
                 />
                 <Label class="text-sm">
                   {{ signingLabel }}
@@ -549,8 +884,8 @@
                 class="flex items-center gap-2 text-sm"
               >
                 <Checkbox
-                  :model-value="form.eventTypes.includes(option.value)"
-                  @update:model-value="(value: boolean | 'indeterminate') => toggleEventType(option.value, value === true)"
+                  :checked="form.eventTypes.includes(option.value)"
+                  @update:checked="(value: boolean | 'indeterminate') => toggleEventType(option.value, value === true)"
                 />
                 <span>{{ option.label }}</span>
               </label>
@@ -562,10 +897,37 @@
 
           <div class="flex items-center gap-2">
             <Checkbox
-              :model-value="form.enabled"
-              @update:model-value="onEnabledChange"
+              :checked="form.enabled"
+              @update:checked="onEnabledChange"
             />
             <Label class="text-sm">{{ t("notificationSettings.enabled") }}</Label>
+          </div>
+
+          <div class="space-y-3">
+            <label class="flex items-start gap-2 text-sm">
+              <Checkbox
+                :checked="form.bypassQuietHours"
+                @update:checked="onBypassQuietHoursChange"
+              />
+              <span>
+                {{ t("notificationSettings.bypassQuietHours") }}
+                <span class="block text-xs text-muted-foreground">
+                  {{ t("notificationSettings.bypassQuietHoursHint") }}
+                </span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 text-sm">
+              <Checkbox
+                :checked="form.routedOnly"
+                @update:checked="onRoutedOnlyChange"
+              />
+              <span>
+                {{ t("notificationSettings.routedOnly") }}
+                <span class="block text-xs text-muted-foreground">
+                  {{ t("notificationSettings.routedOnlyHint") }}
+                </span>
+              </span>
+            </label>
           </div>
         </div>
 
@@ -597,28 +959,242 @@
       :item-name="pendingDelete?.displayName ?? ''"
       @confirm="deleteChannel"
     />
+
+    <!-- Create / edit one routing rule. -->
+    <Dialog
+      :open="routeDialogOpen"
+      @update:open="(open) => (routeDialogOpen = open)"
+    >
+      <DialogContent class="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {{
+              editingRoute
+                ? t("notificationSettings.editRoute")
+                : t("notificationSettings.newRoute")
+            }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ t("notificationSettings.routeDialogDescription") }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-4">
+          <FormField
+            v-model="routeForm.displayName"
+            :label="t('notificationSettings.name')"
+            :placeholder="t('notificationSettings.routeNamePlaceholder')"
+            required
+          />
+
+          <div class="flex items-center gap-2">
+            <Checkbox
+              :checked="routeForm.enabled"
+              @update:checked="onRouteEnabledChange"
+            />
+            <Label class="text-sm">{{ t("notificationSettings.enabled") }}</Label>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-sm font-medium">
+              {{ t("notificationSettings.routeMatch") }}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {{ t("notificationSettings.routeMatchHint") }}
+            </p>
+          </div>
+
+          <div class="space-y-2.5">
+            <Label>{{ t("notificationSettings.minSeverity") }}</Label>
+            <Select
+              :model-value="String(routeForm.minSeverity)"
+              @update:model-value="onRouteMinSeverityChange"
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">
+                  {{ t("notificationSettings.severityAny") }}
+                </SelectItem>
+                <SelectItem value="1">
+                  {{ t("notificationSettings.severityInfo") }}
+                </SelectItem>
+                <SelectItem value="2">
+                  {{ t("notificationSettings.severityWarning") }}
+                </SelectItem>
+                <SelectItem value="3">
+                  {{ t("notificationSettings.severityError") }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="space-y-2">
+            <Label>{{ t("notificationSettings.eventTypes") }}</Label>
+            <div class="space-y-2">
+              <label
+                v-for="option in eventTypeOptions"
+                :key="option.value"
+                class="flex items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  :checked="routeForm.eventTypes.includes(option.value)"
+                  @update:checked="(value: boolean | 'indeterminate') => toggleRouteEventType(option.value, value === true)"
+                />
+                <span>{{ option.label }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="space-y-1">
+              <Label>{{ t("notificationSettings.routeOwners") }}</Label>
+              <p class="text-xs text-muted-foreground">
+                {{ t("notificationSettings.routeAudienceHint") }}
+              </p>
+            </div>
+            <div class="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+              <p
+                v-if="users.length === 0"
+                class="text-xs text-muted-foreground"
+              >
+                {{ t("notificationSettings.routeNoUsers") }}
+              </p>
+              <label
+                v-for="user in users"
+                :key="user.name"
+                class="flex items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  :checked="routeForm.owners.includes(user.name)"
+                  @update:checked="(value: boolean | 'indeterminate') => toggleRouteOwner(user.name, value === true)"
+                />
+                <span>{{ user.email }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="space-y-1">
+              <Label>{{ t("notificationSettings.routeGroups") }}</Label>
+              <p class="text-xs text-muted-foreground">
+                {{ t("notificationSettings.routeAudienceHint") }}
+              </p>
+            </div>
+            <div class="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+              <p
+                v-if="groups.length === 0"
+                class="text-xs text-muted-foreground"
+              >
+                {{ t("notificationSettings.routeNoGroups") }}
+              </p>
+              <label
+                v-for="group in groups"
+                :key="group.name"
+                class="flex items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  :checked="routeForm.groups.includes(groupEmail(group))"
+                  @update:checked="(value: boolean | 'indeterminate') => toggleRouteGroup(groupEmail(group), value === true)"
+                />
+                <span>{{ group.title || groupEmail(group) }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="space-y-1">
+              <Label>{{ t("notificationSettings.routeChannels") }}</Label>
+              <p class="text-xs text-muted-foreground">
+                {{ t("notificationSettings.routeChannelsHint") }}
+              </p>
+            </div>
+            <div class="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+              <p
+                v-if="channels.length === 0"
+                class="text-xs text-muted-foreground"
+              >
+                {{ t("notificationSettings.routeNoChannels") }}
+              </p>
+              <label
+                v-for="channel in channels"
+                :key="channel.name"
+                class="flex items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  :checked="routeForm.channels.includes(channel.name)"
+                  @update:checked="(value: boolean | 'indeterminate') => toggleRouteChannel(channel.name, value === true)"
+                />
+                <span>{{ channel.displayName }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="routeDialogOpen = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="routeSaving"
+            @click="saveRoute"
+          >
+            <Loader2
+              v-if="routeSaving"
+              class="mr-1.5 h-4 w-4 animate-spin"
+            />
+            {{ t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <ConfirmDeleteDialog
+      v-model="routeDeleteOpen"
+      :title="t('notificationSettings.deleteRouteTitle')"
+      :message="t('notificationSettings.deleteRouteDescription')"
+      :item-name="pendingDeleteRoute?.displayName ?? ''"
+      @confirm="deleteRoute"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
+import {
+  type Timestamp,
+  timestampDate,
+  timestampFromDate,
+} from "@bufbuild/protobuf/wkt";
 import { Loader2, Plus, RefreshCcw } from "lucide-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { listGroups } from "@/api/group";
 import {
   createNotificationChannel,
+  createNotificationRoute,
   deleteNotificationChannel,
+  deleteNotificationRoute,
   listNotificationChannels,
   listNotificationDeliveriesPage,
+  listNotificationRoutes,
   retryNotificationDelivery,
   testNotificationChannel,
   updateNotificationChannel,
+  updateNotificationRoute,
 } from "@/api/notification";
 import {
   getEmailSetting,
+  getQuietHoursSetting,
   sendTestEmail,
   updateEmailSetting,
+  updateQuietHoursSetting,
 } from "@/api/setting";
+import { listAllUsers } from "@/api/user";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -660,6 +1236,7 @@ import {
 import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
+import type { Group } from "@/types/proto-es/v1/group_service_pb";
 import {
   type NotificationChannel,
   NotificationChannelConfigSchema,
@@ -668,15 +1245,27 @@ import {
   NotificationChannelSecretSchema,
   type NotificationDelivery,
   NotificationDeliveryState,
+  type NotificationRoute,
+  type NotificationRouteMatch,
+  NotificationRouteMatchSchema,
+  NotificationRouteSchema,
   NotificationSeverity,
   NotificationType,
 } from "@/types/proto-es/v1/notification_service_pb";
 import {
+  DayOfWeek,
   EmailSettingSchema,
+  type MaintenanceWindow,
+  MaintenanceWindowSchema,
+  type QuietHoursSetting,
+  QuietHoursSettingSchema,
+  type QuietWindow,
+  QuietWindowSchema,
   SMTPAuthentication,
   SMTPConfigSchema,
   SMTPEncryption,
 } from "@/types/proto-es/v1/setting_service_pb";
+import type { User } from "@/types/proto-es/v1/user_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 
 /**
@@ -695,7 +1284,7 @@ const { formatError } = useErrorHandler();
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.settings.update")
 );
-const canGetEmailSetting = computed(() =>
+const canGetSettings = computed(() =>
   authStore.hasPermission("metaxisdata.settings.get")
 );
 
@@ -724,6 +1313,8 @@ interface ChannelForm {
   sign: boolean;
   addresses: string;
   includeAudience: boolean;
+  bypassQuietHours: boolean;
+  routedOnly: boolean;
   enabled: boolean;
   eventTypes: NotificationType[];
   minSeverity: NotificationSeverity;
@@ -738,6 +1329,8 @@ const form = reactive<ChannelForm>({
   sign: false,
   addresses: "",
   includeAudience: false,
+  bypassQuietHours: false,
+  routedOnly: false,
   enabled: true,
   eventTypes: [],
   minSeverity: NotificationSeverity.UNSPECIFIED,
@@ -896,7 +1489,7 @@ const emailForm = reactive<EmailForm>({
 });
 
 async function loadEmailSetting() {
-  if (!canGetEmailSetting.value) {
+  if (!canGetSettings.value) {
     return;
   }
   emailLoading.value = true;
@@ -977,8 +1570,500 @@ function onAuthenticationChange(value: unknown) {
   emailForm.authentication = Number(value) as SMTPAuthentication;
 }
 
-// ---- Channel dialog --------------------------------------------------------
+// ---- Workspace quiet hours -------------------------------------------------
 
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const browserTimezone = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+})();
+
+// A short curated list; the browser zone and any stored zone are added to it.
+const QUIET_HOURS_TIMEZONES = [
+  "UTC",
+  "Asia/Shanghai",
+  "Asia/Tokyo",
+  "Asia/Singapore",
+  "Asia/Kolkata",
+  "Europe/London",
+  "Europe/Berlin",
+  "Europe/Paris",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Australia/Sydney",
+];
+
+interface QuietWindowForm {
+  days: DayOfWeek[];
+  start: string;
+  end: string;
+}
+
+interface MaintenanceWindowForm {
+  start: string;
+  end: string;
+}
+
+interface QuietHoursFormState {
+  enabled: boolean;
+  timezone: string;
+  windows: QuietWindowForm[];
+  maintenanceWindows: MaintenanceWindowForm[];
+}
+
+const quietHoursLoading = ref(false);
+const quietHoursSaving = ref(false);
+const quietHoursForm = reactive<QuietHoursFormState>({
+  enabled: false,
+  timezone: browserTimezone,
+  windows: [],
+  maintenanceWindows: [],
+});
+
+const quietHoursDisabled = computed(
+  () => !canUpdate.value || !quietHoursForm.enabled
+);
+
+const timezoneOptions = computed(() => {
+  const options = [...QUIET_HOURS_TIMEZONES];
+  for (const zone of [browserTimezone, quietHoursForm.timezone]) {
+    if (zone && !options.includes(zone)) {
+      options.unshift(zone);
+    }
+  }
+  return options;
+});
+
+const dayOptions = computed(() => [
+  { value: DayOfWeek.MONDAY, label: t("notificationSettings.dayMonday") },
+  { value: DayOfWeek.TUESDAY, label: t("notificationSettings.dayTuesday") },
+  { value: DayOfWeek.WEDNESDAY, label: t("notificationSettings.dayWednesday") },
+  { value: DayOfWeek.THURSDAY, label: t("notificationSettings.dayThursday") },
+  { value: DayOfWeek.FRIDAY, label: t("notificationSettings.dayFriday") },
+  { value: DayOfWeek.SATURDAY, label: t("notificationSettings.daySaturday") },
+  { value: DayOfWeek.SUNDAY, label: t("notificationSettings.daySunday") },
+]);
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** A Timestamp as the `YYYY-MM-DDTHH:mm` value a datetime-local input takes. */
+function toLocalDateTimeInput(value?: Timestamp): string {
+  if (!value) {
+    return "";
+  }
+  const date = timestampDate(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const day = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+    date.getDate()
+  )}`;
+  return `${day}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** A `YYYY-MM-DDTHH:mm` value, read as local time, as a Timestamp. */
+function fromLocalDateTimeInput(value: string): Timestamp | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+  return timestampFromDate(date);
+}
+
+async function loadQuietHours() {
+  if (!canGetSettings.value) {
+    return;
+  }
+  quietHoursLoading.value = true;
+  try {
+    const setting = await getQuietHoursSetting();
+    quietHoursForm.enabled = setting.enabled;
+    quietHoursForm.timezone = setting.timezone || browserTimezone;
+    quietHoursForm.windows = setting.windows.map((window) => ({
+      days: [...window.days],
+      start: window.start,
+      end: window.end,
+    }));
+    quietHoursForm.maintenanceWindows = setting.maintenanceWindows.map(
+      (window) => ({
+        start: toLocalDateTimeInput(window.start),
+        end: toLocalDateTimeInput(window.end),
+      })
+    );
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    quietHoursLoading.value = false;
+  }
+}
+
+function onQuietHoursEnabledChange(value: boolean | "indeterminate") {
+  quietHoursForm.enabled = value === true;
+}
+
+function onQuietHoursTimezoneChange(value: unknown) {
+  quietHoursForm.timezone = String(value);
+}
+
+function addQuietWindow() {
+  quietHoursForm.windows.push({ days: [], start: "", end: "" });
+}
+
+function removeQuietWindow(index: number) {
+  quietHoursForm.windows.splice(index, 1);
+}
+
+function toggleQuietWindowDay(
+  window: QuietWindowForm,
+  day: DayOfWeek,
+  checked: boolean
+) {
+  if (checked) {
+    if (!window.days.includes(day)) {
+      window.days.push(day);
+    }
+    return;
+  }
+  window.days = window.days.filter((item) => item !== day);
+}
+
+function addMaintenanceWindow() {
+  quietHoursForm.maintenanceWindows.push({ start: "", end: "" });
+}
+
+function removeMaintenanceWindow(index: number) {
+  quietHoursForm.maintenanceWindows.splice(index, 1);
+}
+
+/**
+ * The schedule to write, or null when the form is invalid (a toast says why).
+ * A completely blank editor row is skipped instead of blocking the save.
+ */
+function buildQuietHoursSetting(): QuietHoursSetting | null {
+  const enabled = quietHoursForm.enabled;
+  const timezone = quietHoursForm.timezone.trim();
+  if (enabled && timezone === "") {
+    notify.error(t("notificationSettings.quietHoursTimezoneRequired"));
+    return null;
+  }
+  const windows: QuietWindow[] = [];
+  for (const window of quietHoursForm.windows) {
+    const start = window.start.trim();
+    const end = window.end.trim();
+    if (window.days.length === 0 && !start && !end) {
+      continue;
+    }
+    if (
+      window.days.length === 0 ||
+      !HHMM_RE.test(start) ||
+      !HHMM_RE.test(end) ||
+      start === end
+    ) {
+      notify.error(t("notificationSettings.quietWindowInvalid"));
+      return null;
+    }
+    windows.push(create(QuietWindowSchema, { days: window.days, start, end }));
+  }
+  const maintenanceWindows: MaintenanceWindow[] = [];
+  for (const window of quietHoursForm.maintenanceWindows) {
+    const start = fromLocalDateTimeInput(window.start.trim());
+    const end = fromLocalDateTimeInput(window.end.trim());
+    if (!start && !end) {
+      continue;
+    }
+    if (!start || !end || start.seconds >= end.seconds) {
+      notify.error(t("notificationSettings.maintenanceWindowInvalid"));
+      return null;
+    }
+    maintenanceWindows.push(create(MaintenanceWindowSchema, { start, end }));
+  }
+  if (enabled && windows.length === 0 && maintenanceWindows.length === 0) {
+    notify.error(t("notificationSettings.quietHoursNeedWindow"));
+    return null;
+  }
+  return create(QuietHoursSettingSchema, {
+    enabled,
+    timezone,
+    windows,
+    maintenanceWindows,
+  });
+}
+
+async function saveQuietHours() {
+  if (!canUpdate.value) {
+    return;
+  }
+  const setting = buildQuietHoursSetting();
+  if (!setting) {
+    return;
+  }
+  quietHoursSaving.value = true;
+  try {
+    await updateQuietHoursSetting(setting);
+    notify.success(t("notificationSettings.quietHoursSaved"));
+    await loadQuietHours();
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    quietHoursSaving.value = false;
+  }
+}
+
+// ---- Routing rules ---------------------------------------------------------
+
+const routes = ref<NotificationRoute[]>([]);
+const routesLoading = ref(false);
+const users = ref<User[]>([]);
+const groups = ref<Group[]>([]);
+
+const routeDialogOpen = ref(false);
+const routeSaving = ref(false);
+const editingRoute = ref<NotificationRoute | null>(null);
+const pendingDeleteRoute = ref<NotificationRoute | null>(null);
+const routeDeleteOpen = ref(false);
+
+interface RouteForm {
+  displayName: string;
+  enabled: boolean;
+  eventTypes: NotificationType[];
+  minSeverity: NotificationSeverity;
+  owners: string[];
+  groups: string[];
+  channels: string[];
+}
+
+const routeForm = reactive<RouteForm>({
+  displayName: "",
+  enabled: true,
+  eventTypes: [],
+  minSeverity: NotificationSeverity.UNSPECIFIED,
+  owners: [],
+  groups: [],
+  channels: [],
+});
+
+async function loadRoutes() {
+  if (!canGetSettings.value) {
+    return;
+  }
+  routesLoading.value = true;
+  try {
+    routes.value = await listNotificationRoutes();
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    routesLoading.value = false;
+  }
+}
+
+async function loadRouteChoices() {
+  if (!canGetSettings.value) {
+    return;
+  }
+  try {
+    const [userList, groupResponse] = await Promise.all([
+      listAllUsers(),
+      listGroups(),
+    ]);
+    users.value = userList;
+    groups.value = groupResponse.groups;
+  } catch (error) {
+    notify.error(formatError(error));
+  }
+}
+
+function resetRouteForm() {
+  routeForm.displayName = "";
+  routeForm.enabled = true;
+  routeForm.eventTypes = [];
+  routeForm.minSeverity = NotificationSeverity.UNSPECIFIED;
+  routeForm.owners = [];
+  routeForm.groups = [];
+  routeForm.channels = [];
+}
+
+function openCreateRoute() {
+  editingRoute.value = null;
+  resetRouteForm();
+  routeDialogOpen.value = true;
+}
+
+function openEditRoute(route: NotificationRoute) {
+  editingRoute.value = route;
+  routeForm.displayName = route.displayName;
+  routeForm.enabled = route.enabled;
+  routeForm.eventTypes = [...(route.match?.eventTypes ?? [])];
+  routeForm.minSeverity =
+    route.match?.minSeverity ?? NotificationSeverity.UNSPECIFIED;
+  routeForm.owners = [...(route.match?.owners ?? [])];
+  routeForm.groups = [...(route.match?.groups ?? [])];
+  routeForm.channels = [...route.channels];
+  routeDialogOpen.value = true;
+}
+
+function onRouteEnabledChange(value: boolean | "indeterminate") {
+  routeForm.enabled = value === true;
+}
+
+function onRouteMinSeverityChange(value: unknown) {
+  routeForm.minSeverity = Number(value) as NotificationSeverity;
+}
+
+function toggleRouteEventType(value: NotificationType, checked: boolean) {
+  if (checked) {
+    if (!routeForm.eventTypes.includes(value)) {
+      routeForm.eventTypes.push(value);
+    }
+    return;
+  }
+  routeForm.eventTypes = routeForm.eventTypes.filter((item) => item !== value);
+}
+
+function toggleRouteOwner(name: string, checked: boolean) {
+  routeForm.owners = checked
+    ? [...routeForm.owners, name]
+    : routeForm.owners.filter((item) => item !== name);
+}
+
+function toggleRouteGroup(email: string, checked: boolean) {
+  routeForm.groups = checked
+    ? [...routeForm.groups, email]
+    : routeForm.groups.filter((item) => item !== email);
+}
+
+function toggleRouteChannel(name: string, checked: boolean) {
+  routeForm.channels = checked
+    ? [...routeForm.channels, name]
+    : routeForm.channels.filter((item) => item !== name);
+}
+
+function buildRoute(): NotificationRoute {
+  return create(NotificationRouteSchema, {
+    name: editingRoute.value?.name ?? "",
+    displayName: routeForm.displayName.trim(),
+    enabled: routeForm.enabled,
+    match: create(NotificationRouteMatchSchema, {
+      eventTypes: routeForm.eventTypes,
+      minSeverity: routeForm.minSeverity,
+      owners: routeForm.owners,
+      groups: routeForm.groups,
+    }),
+    channels: routeForm.channels,
+  });
+}
+
+async function saveRoute() {
+  if (routeForm.displayName.trim() === "") {
+    notify.error(t("notificationSettings.routeNameRequired"));
+    return;
+  }
+  if (routeForm.channels.length === 0) {
+    notify.error(t("notificationSettings.routeChannelsRequired"));
+    return;
+  }
+  routeSaving.value = true;
+  try {
+    if (editingRoute.value) {
+      await updateNotificationRoute(buildRoute(), [
+        "display_name",
+        "enabled",
+        "match",
+        "channels",
+      ]);
+      notify.success(t("notificationSettings.routeUpdated"));
+    } else {
+      await createNotificationRoute(buildRoute());
+      notify.success(t("notificationSettings.routeCreated"));
+    }
+    routeDialogOpen.value = false;
+    await loadRoutes();
+  } catch (error) {
+    notify.error(formatError(error));
+  } finally {
+    routeSaving.value = false;
+  }
+}
+
+function confirmDeleteRoute(route: NotificationRoute) {
+  pendingDeleteRoute.value = route;
+  routeDeleteOpen.value = true;
+}
+
+async function deleteRoute() {
+  const route = pendingDeleteRoute.value;
+  if (!route) {
+    return;
+  }
+  try {
+    await deleteNotificationRoute(route.name);
+    notify.success(t("notificationSettings.routeDeleted"));
+    pendingDeleteRoute.value = null;
+    routeDeleteOpen.value = false;
+    await loadRoutes();
+  } catch (error) {
+    notify.error(formatError(error));
+  }
+}
+
+function groupEmail(group: Group): string {
+  return group.name.replace(/^groups\//, "");
+}
+
+function userLabel(name: string): string {
+  return users.value.find((user) => user.name === name)?.email ?? name;
+}
+
+function audienceLabel(match?: NotificationRouteMatch): string {
+  const owners = match?.owners ?? [];
+  const routeGroups = match?.groups ?? [];
+  if (owners.length === 0 && routeGroups.length === 0) {
+    return t("notificationSettings.matchAnyAudience");
+  }
+  return [...owners.map((name) => userLabel(name)), ...routeGroups].join(
+    listSeparator.value
+  );
+}
+
+function routeMatchLabel(route: NotificationRoute): string {
+  const match = route.match;
+  const types = match?.eventTypes.length
+    ? match.eventTypes
+        .map((value) => eventTypeLabel(value))
+        .join(listSeparator.value)
+    : t("notificationSettings.allEvents");
+  const severity = severityLabel(
+    match?.minSeverity ?? NotificationSeverity.UNSPECIFIED
+  );
+  return `${types} · ${severity} · ${audienceLabel(match)}`;
+}
+
+function channelDisplayName(name: string): string {
+  return (
+    channels.value.find((channel) => channel.name === name)?.displayName ?? name
+  );
+}
+
+function routeChannelsLabel(route: NotificationRoute): string {
+  if (route.channels.length === 0) {
+    return t("notificationSettings.noChannels");
+  }
+  return route.channels
+    .map((name) => channelDisplayName(name))
+    .join(listSeparator.value);
+}
+
+// ---- Channel dialog --------------------------------------------------------
 function resetKindFields() {
   form.endpoint = "";
   form.signingSecret = "";
@@ -991,6 +2076,8 @@ function resetForm() {
   form.displayName = "";
   form.kind = NotificationChannelKind.WEBHOOK;
   resetKindFields();
+  form.bypassQuietHours = false;
+  form.routedOnly = false;
   form.enabled = true;
   form.eventTypes = [];
   form.minSeverity = NotificationSeverity.UNSPECIFIED;
@@ -1020,6 +2107,8 @@ function openEdit(channel: NotificationChannel) {
     form.addresses = config.value.addresses.join(", ");
     form.includeAudience = config.value.includeAudience;
   }
+  form.bypassQuietHours = channel.bypassQuietHours;
+  form.routedOnly = channel.routedOnly;
   form.enabled = channel.enabled;
   form.eventTypes = [...channel.eventTypes];
   form.minSeverity = channel.minSeverity;
@@ -1054,6 +2143,14 @@ function onLanguageChange(value: unknown) {
 
 function onEnabledChange(value: boolean | "indeterminate") {
   form.enabled = value === true;
+}
+
+function onBypassQuietHoursChange(value: boolean | "indeterminate") {
+  form.bypassQuietHours = value === true;
+}
+
+function onRoutedOnlyChange(value: boolean | "indeterminate") {
+  form.routedOnly = value === true;
 }
 
 function toggleEventType(value: NotificationType, checked: boolean) {
@@ -1115,6 +2212,8 @@ function buildChannel(): NotificationChannel {
     minSeverity: form.minSeverity,
     language: form.language,
     config: buildConfig(),
+    bypassQuietHours: form.bypassQuietHours,
+    routedOnly: form.routedOnly,
   });
 }
 
@@ -1168,6 +2267,8 @@ async function saveChannel() {
           "min_severity",
           "language",
           "config",
+          "bypass_quiet_hours",
+          "routed_only",
         ],
         buildSecret()
       );
@@ -1315,6 +2416,13 @@ function deliveryStateVariant(
 }
 
 onMounted(async () => {
-  await Promise.all([loadChannels(), loadDeliveries(true), loadEmailSetting()]);
+  await Promise.all([
+    loadChannels(),
+    loadDeliveries(true),
+    loadEmailSetting(),
+    loadQuietHours(),
+    loadRoutes(),
+    loadRouteChoices(),
+  ]);
 });
 </script>

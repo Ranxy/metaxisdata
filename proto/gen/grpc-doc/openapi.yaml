@@ -3747,6 +3747,60 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/settings/quietHours:
+        get:
+            tags:
+                - SettingService
+            description: Get the workspace quiet-hours schedule for outbound notifications.
+            operationId: SettingService_GetQuietHoursSetting
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QuietHoursSetting'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - SettingService
+            description: |-
+                Update the workspace quiet-hours schedule. Disabling it clears the schedule
+                 and releases every held delivery on the next dispatcher tick.
+            operationId: SettingService_UpdateQuietHoursSetting
+            parameters:
+                - name: updateMask
+                  in: query
+                  description: |-
+                    The list of fields to update: enabled, timezone, windows or
+                     maintenance_windows.
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QuietHoursSetting'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QuietHoursSetting'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/settings/workspaceProfile:
         get:
             tags:
@@ -4647,6 +4701,169 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/NotificationDelivery'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationRoutes:
+        get:
+            tags:
+                - NotificationService
+            description: |-
+                List the owner/team routing rules. A route selects extra channels for the
+                 events whose in-app audience matches it.
+            operationId: NotificationService_ListNotificationRoutes
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListNotificationRoutesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - NotificationService
+            description: Create one routing rule.
+            operationId: NotificationService_CreateNotificationRoute
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NotificationRoute'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationRoute'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/notificationRoutes/{notificationRoute}:
+        get:
+            tags:
+                - NotificationService
+            description: Read one routing rule.
+            operationId: NotificationService_GetNotificationRoute
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationRoute
+                  in: path
+                  description: The notificationRoute id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationRoute'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - NotificationService
+            description: Delete one routing rule.
+            operationId: NotificationService_DeleteNotificationRoute
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationRoute
+                  in: path
+                  description: The notificationRoute id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - NotificationService
+            description: |-
+                Update one routing rule: a masked update, or a full update of its mutable
+                 fields when the mask is empty.
+            operationId: NotificationService_UpdateNotificationRoute
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: notificationRoute
+                  in: path
+                  description: The notificationRoute id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NotificationRoute'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NotificationRoute'
                 default:
                     description: Default error response
                     content:
@@ -10023,6 +10240,13 @@ components:
                         $ref: '#/components/schemas/NotificationDelivery'
                 nextPageToken:
                     type: string
+        ListNotificationRoutesResponse:
+            type: object
+            properties:
+                notificationRoutes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NotificationRoute'
         ListNotificationsResponse:
             type: object
             properties:
@@ -10303,6 +10527,16 @@ components:
         LogoutRequest:
             type: object
             properties: {}
+        MaintenanceWindow:
+            type: object
+            properties:
+                start:
+                    type: string
+                    format: date-time
+                end:
+                    type: string
+                    format: date-time
+            description: MaintenanceWindow is one absolute quiet window, for planned maintenance.
         ManualSQL:
             type: object
             properties:
@@ -10779,6 +11013,17 @@ components:
                          means the server default.
                 config:
                     $ref: '#/components/schemas/NotificationChannelConfig'
+                bypassQuietHours:
+                    type: boolean
+                    description: |-
+                        Whether the channel ignores the workspace quiet-hours schedule. An on-call
+                         channel that must page during a maintenance window sets it.
+                routedOnly:
+                    type: boolean
+                    description: |-
+                        Whether the channel receives only events a routing rule selected. A team
+                         channel sets it so it does not also receive every event its subscription
+                         filter would otherwise admit.
             description: |-
                 NotificationChannel is the stored configuration of one outbound channel, as
                  notification_channel.payload. The endpoint URL and the signing secret are not
@@ -10869,6 +11114,63 @@ components:
             description: |-
                 NotificationDelivery is one outbound attempt at one notification event for one
                  channel. A failing event fans out to as many deliveries as channels it matched.
+        NotificationRoute:
+            type: object
+            properties:
+                displayName:
+                    type: string
+                enabled:
+                    type: boolean
+                match:
+                    $ref: '#/components/schemas/NotificationRouteMatch'
+                channels:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
+                         A channel deleted after the route was written is ignored at enqueue time.
+            description: |-
+                NotificationRoute is one owner/team routing rule, as notification_route.payload.
+                 It selects extra channels for the events whose in-app audience matches the
+                 rule, so a team can watch its own rules without receiving the whole workspace.
+        NotificationRouteMatch:
+            type: object
+            properties:
+                eventTypes:
+                    type: array
+                    items:
+                        enum:
+                            - NOTIFICATION_TYPE_UNSPECIFIED
+                            - NOTIFICATION_TYPE_SCHEMA_SYNC
+                            - NOTIFICATION_TYPE_OPENLINEAGE
+                            - NOTIFICATION_TYPE_DATA_QUALITY
+                        type: string
+                        format: enum
+                    description: The notification types this route selects. Empty means every type.
+                minSeverity:
+                    enum:
+                        - NOTIFICATION_SEVERITY_UNSPECIFIED
+                        - NOTIFICATION_SEVERITY_INFO
+                        - NOTIFICATION_SEVERITY_WARNING
+                        - NOTIFICATION_SEVERITY_ERROR
+                    type: string
+                    description: The lowest severity this route selects. UNSPECIFIED means every severity.
+                    format: enum
+                owners:
+                    type: array
+                    items:
+                        type: string
+                    description: Audience filters, as users/{user} resource names. Empty means any audience.
+                groups:
+                    type: array
+                    items:
+                        type: string
+                    description: Audience filters, as group emails of IAM groups. Empty means any audience.
+            description: |-
+                NotificationRouteMatch is who and what a route selects. An empty field is a
+                 wildcard, and so is a match with no filters at all: every event concerns the
+                 rule's audience, so a route with no owner and no group selects every event.
         NullPercentConfig:
             type: object
             properties:
@@ -12845,6 +13147,56 @@ components:
                     type: integer
                     format: int32
             description: QualityTrendPoint is one day of result tallies.
+        QuietHoursSetting:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                timezone:
+                    type: string
+                    description: IANA time zone the windows are evaluated in, for example "Asia/Shanghai".
+                windows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QuietWindow'
+                    description: Recurring weekly windows.
+                maintenanceWindows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MaintenanceWindow'
+                    description: One-off absolute windows; a window whose end has passed is inert.
+            description: |-
+                QuietHoursSetting is the stored form of metaxisdata.v1.QuietHoursSetting: the
+                 schedule during which outbound deliveries are held, as SETTING_NAME_QUIET_HOURS.
+                 Every window is evaluated in timezone on the server's clock; the setting is
+                 absent (or disabled) when quiet hours are off.
+        QuietWindow:
+            type: object
+            properties:
+                days:
+                    type: array
+                    items:
+                        enum:
+                            - DAY_OF_WEEK_UNSPECIFIED
+                            - DAY_OF_WEEK_MONDAY
+                            - DAY_OF_WEEK_TUESDAY
+                            - DAY_OF_WEEK_WEDNESDAY
+                            - DAY_OF_WEEK_THURSDAY
+                            - DAY_OF_WEEK_FRIDAY
+                            - DAY_OF_WEEK_SATURDAY
+                            - DAY_OF_WEEK_SUNDAY
+                        type: string
+                        format: enum
+                    description: |-
+                        The days the window starts on. A window whose end is at or before its start
+                         crosses midnight into the following day.
+                start:
+                    type: string
+                    description: '"HH:MM" in the setting''s time zone.'
+                end:
+                    type: string
+                    description: '"HH:MM" in the setting''s time zone.'
+            description: QuietWindow is one recurring weekly quiet window.
         RangeConfig:
             type: object
             properties:

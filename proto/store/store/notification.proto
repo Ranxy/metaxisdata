@@ -236,6 +236,13 @@ message NotificationChannel {
   // means the server default.
   string language = 6;
   NotificationChannelConfig config = 7;
+  // Whether the channel ignores the workspace quiet-hours schedule. An on-call
+  // channel that must page during a maintenance window sets it.
+  bool bypass_quiet_hours = 8;
+  // Whether the channel receives only events a routing rule selected. A team
+  // channel sets it so it does not also receive every event its subscription
+  // filter would otherwise admit.
+  bool routed_only = 9;
 }
 
 message NotificationChannelConfig {
@@ -321,4 +328,30 @@ message NotificationDeliveryEvent {
   // field. Storing ids rather than addresses keeps a changed or deleted account
   // resolving at delivery time.
   repeated int32 audience_user_ids = 6;
+}
+
+// NotificationRoute is one owner/team routing rule, as notification_route.payload.
+// It selects extra channels for the events whose in-app audience matches the
+// rule, so a team can watch its own rules without receiving the whole workspace.
+message NotificationRoute {
+  string display_name = 1;
+  bool enabled = 2;
+  NotificationRouteMatch match = 3;
+  // Target channels by resource id (workspaces/{workspace}/notificationChannels/{id}).
+  // A channel deleted after the route was written is ignored at enqueue time.
+  repeated string channels = 4;
+}
+
+// NotificationRouteMatch is who and what a route selects. An empty field is a
+// wildcard, and so is a match with no filters at all: every event concerns the
+// rule's audience, so a route with no owner and no group selects every event.
+message NotificationRouteMatch {
+  // The notification types this route selects. Empty means every type.
+  repeated NotificationType event_types = 1;
+  // The lowest severity this route selects. UNSPECIFIED means every severity.
+  NotificationSeverity min_severity = 2;
+  // Audience filters, as users/{user} resource names. Empty means any audience.
+  repeated string owners = 3;
+  // Audience filters, as group emails of IAM groups. Empty means any audience.
+  repeated string groups = 4;
 }

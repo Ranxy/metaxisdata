@@ -187,4 +187,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | WeCom | 企业微信 | Notifications | A WeCom group robot whose key is part of the webhook URL. | notificationSettings. | zh-CN: `企微`, `企业微信号` |
 | Feishu | 飞书 | Notifications | A Feishu custom bot that receives notification text. | notificationSettings. | zh-CN: `飞书机器人`, `飞书群机器人` |
 | SMTP | SMTP | Notifications | The mail transport the workspace email setting points at. | notificationSettings. | — |
+| quiet hours | 静默时段 | Notifications | A workspace schedule during which outbound notifications are held instead of delivered. | notificationSettings. | zh-CN: `免打扰时段`, `安静时段` |
+| maintenance window | 维护窗口 | Notifications | A one-off absolute quiet window, for planned maintenance. | notificationSettings. | zh-CN: `维护时段` |
+| routing rule | 路由规则 | Notifications | An owner or team rule that sends matching events to the channels it names. | notificationSettings. | zh-CN: `路由策略`, `分发规则` |
 <!-- END GENERATED GLOSSARY -->

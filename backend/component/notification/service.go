@@ -78,10 +78,13 @@ type AdminStore interface {
 	GetWorkspaceIamPolicy(ctx context.Context) (*store.IamPolicyMessage, error)
 	GetGroup(ctx context.Context, email string) (*store.GroupMessage, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
-	// ListNotificationChannels and CreateNotificationDeliveries are the outbound
-	// enqueue path: a written message is queued once per channel that subscribes
-	// to it, independently of how many inbox rows it produced.
+	// ListNotificationChannels, ListNotificationRoutes and
+	// CreateNotificationDeliveries are the outbound enqueue path: a written
+	// message is queued once per channel that subscribes to it, independently of
+	// how many inbox rows it produced, plus the channels a routing rule selects.
 	ListNotificationChannels(ctx context.Context) ([]*store.NotificationChannelMessage, error)
+	ListNotificationRoutes(ctx context.Context) ([]*store.NotificationRouteMessage, error)
+	ListGroups(ctx context.Context, find *store.FindGroupMessage) ([]*store.GroupMessage, error)
 	CreateNotificationDeliveries(ctx context.Context, creates []*store.CreateNotificationDeliveryMessage) error
 }
 

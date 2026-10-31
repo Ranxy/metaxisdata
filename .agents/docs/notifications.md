@@ -316,6 +316,13 @@
 | O-12 | 邮件走**工作区级** SMTP 设置（`SettingName.EMAIL`，`EmailSetting` payload），不按渠道存 SMTP 凭据；密码在 payload 里是 `v1:` AES-256-GCM 密文、write-only、审计脱敏；认证方式 PLAIN/LOGIN/CRAM-MD5 强制要求 STARTTLS/SSL-TLS | 一个部署只有一个发信服务器；密码与渠道 endpoint 同一套加密/不落明文契约；禁止明文连接上送密码 |
 | O-13 | EMAIL 收件人 = 渠道固定地址 ∪（可选）事件 audience；audience 由 `Send`（单个收件人）或 `SendToWorkspaceAdmins`（全部管理员）在入队时写入投递 payload，发送时再查用户邮箱；去重不区分大小写、最多 50 个；解析为空 → **DEAD**，SMTP 未配置 → 按退避重试（配置补齐可自愈），预算耗尽后 DEAD | 邮件没有"已登录用户"这一层，"谁该收到"必须来自事件语义（规则 owner / 同步发起人 / 管理员）；发送时查邮箱让改址/删号自然生效；固定地址保证无人可解析时仍有兜底 |
 | O-14 | `notification_delivery` 的唯一索引与事件 id 语义不变；EMAIL 与 HTTP 渠道共用 outbox/dispatcher/重试/指标 | 不为邮件单开投递路径，投递记录、重试、DEAD 诊断一致 |
+| O-15 | 静默窗口是**工作区级**设置（`SettingName.QUIET_HOURS`，`QuietHoursSetting`），支持周期窗口（按 ISO 星期 + `HH:MM`，end<=start 跨午夜）与一次性维护窗口；渠道可 `bypass_quiet_hours` 豁免 | 一个部署一套作息；值班渠道必须能穿透维护期；一次性窗口覆盖计划维护 |
+| O-16 | 静默期**暂缓不丢弃**：dispatcher 在批次开始算一次 `QuietUntil`，非豁免渠道的投递用 `DeferNotificationDelivery` 放回 PENDING、`next_attempt_at = 窗口结束`，并把认领时 +1 的 attempts 减回去；指标 outcome 记 `deferred` | 告警不丢、不消耗 6 次预算、窗口结束后的第一个 tick 补发；调度不是失败，不能算 attempt |
+| O-17 | 静默设置读取/解析失败**fail open**（记日志后照常投递）；窗口结束时间已过也照常投递 | 坏的静默配置不能成为全站告警的静默器 |
+| O-18 | 路由规则是独立表 `notification_route`（`NotificationRoute` payload）：match = event_types + min_severity + owners(`users/{id}`) + groups(IAM group email)，channels = 渠道 resource id 列表；规则**只做加法** | 团队渠道用 `routed_only` 排除普通订阅，普通值班渠道不受影响；删除渠道不会连带删规则 |
+| O-19 | 路由匹配在 **enqueue 时**做：audience 来自投递事件（规则 owner / 同步发起人 / 管理员），owner 直接命中，group 通过 IAM 组成员展开；路由表或 group 读取失败**fail open** 回到订阅 fan-out | 事件写入时必须决定发到哪些渠道；失败时宁可多发（订阅）也不漏发；owner 归属变化只影响后续事件 |
+| O-20 | 路由目标渠道仍要满足自身 `enabled` + `event_types` + `min_severity` 过滤；`routed_only` 渠道未被任何规则选中则完全跳过 | 规则表达"谁的事发到哪个渠道"，渠道自己的过滤仍是第二道闸；避免配置矛盾时意外群发 |
+| O-21 | "未确认 N 小时升级到第二渠道"**不做** | 产品反馈并非所有部署喜欢自动升级（会重复打扰值班）；等有明确需求再评估，避免做成默认行为 |
 
 ### 失败模式
 
@@ -334,6 +341,14 @@
 | SMTP 认证失败/连接被拒/TLS 错误 | 按普通失败重试，`last_error` 带服务器文本（不含密码）；预算耗尽后 DEAD |
 | SMTP 密码密文无法解密 | 读取设置失败按普通失败重试；管理员重填密码后 DEAD 的可手动重试 |
 | 收件人解析时用户查询失败 | 按普通失败重试，不把该投递误判为"无收件人" |
+| 投递落在静默窗口内 | 放回 PENDING、`next_attempt_at = max(窗口结束)`，attempts 减回；指标 `deferred`；不调用适配器 |
+| 静默窗口内有 `bypass_quiet_hours` 渠道 | 照常投递（同一批次内按渠道分别判断） |
+| 静默设置读不到/时区非法/窗口格式错 | 记日志后照常投递（fail open），不让坏配置静默全站 |
+| 路由表读取失败 | 记日志后回退到订阅 fan-out（fail open）；`routed_only` 渠道此时收不到，需管理员修复 |
+| 路由命中的渠道已被删除 | 忽略该渠道，规则其余渠道照常；规则本身保留 |
+| routed_only 渠道没有任何规则选中 | 不建投递（渠道完全跳过），不是失败 |
+| 路由 group 读取失败 | 该次 enqueue 的 group 条件不命中（owner 条件仍可命中）；按 fail open 处理 |
+| 维护窗口结束时间已过 | 视为不活跃；可在设置里删除该窗口 |
 | 同一事件重复入队 | 唯一索引吞掉；不会重复投递 |
 | 站内信因去重未写入 | 不产生投递（事件不存在） |
 | 站内信写入成功但 outbox 写入失败 | 只记日志；站内信仍在，事件不投递（best effort，与包契约一致） |
@@ -343,20 +358,20 @@
 
 ### Where things live（出站部分）
 
-- 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`LATEST.sql`。PR-2 的 kind/config/audience/EmailSetting 都是 proto 增量，无需新迁移（`payload`/`secret` 为 JSONB/TEXT，`setting.name` 为文本列）。唯一注意：PR-1 的 `NotificationChannelSecret` 字段叫 `webhook_url`/`webhook_signing_secret`，PR-2 改名为 `endpoint`/`signing_secret`；PR-1 从未发布，因此没有需要迁移的存量渠道。若在 PR-1 构建上建过渠道（仅开发环境可能），升级后凭据读不出，重新填写一次 endpoint/签名密钥即可（读接口仍显示 `secret_set`，编辑保存会覆盖）。
-- store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/清理/列表）、`backend/store/email_setting.go`（SMTP 配置读写、密码加解密、清空）。
-- 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out、订阅过滤、audience 写入）、`backend/component/notification/outbound/`（`outbound.go` 渠道与 Receiver 工厂、`render.go` zh/en 模板与深链、`channel.go` 写时校验与邮箱地址规范化、`webhook.go`、`chat.go` + `dingtalk.go`/`wecom.go`/`feishu.go`、`email.go`（SMTP 发送与 MIME）、`recipients.go`（收件人解析））。
-- runner：`backend/runner/notificationdispatcher/`（EMAIL 渠道在此解析 SMTP 设置与 audience 邮箱）；`backend/server/server.go` 注册第 7 个 runner。
-- API：`backend/api/v1/notification_outbound_service.go`（8 个 RPC，权限复用 settings.*）、`backend/api/v1/setting_service.go` 的 `GetEmailSetting`/`UpdateEmailSetting`/`SendTestEmail`；SMTP 密码字段标 `INPUT_ONLY`，审计按字段名脱敏（`endpoint`、`password`）。
+- 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`0034##notification_route.sql`、`LATEST.sql`。PR-2 的 kind/config/audience/EmailSetting 都是 proto 增量，无需新迁移（`payload`/`secret` 为 JSONB/TEXT，`setting.name` 为文本列）。唯一注意：PR-1 的 `NotificationChannelSecret` 字段叫 `webhook_url`/`webhook_signing_secret`，PR-2 改名为 `endpoint`/`signing_secret`；PR-1 从未发布，因此没有需要迁移的存量渠道。若在 PR-1 构建上建过渠道（仅开发环境可能），升级后凭据读不出，重新填写一次 endpoint/签名密钥即可（读接口仍显示 `secret_set`，编辑保存会覆盖）。
+- store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/静默推迟/清理/列表）、`backend/store/email_setting.go`（SMTP 配置读写、密码加解密、清空）、`backend/store/quiet_hours.go`、`backend/store/notification_route.go`。
+- 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out、订阅过滤、audience 写入）、`outbound_routing.go`（路由匹配与 group 展开）、`outbound/schedule.go`（静默窗口计算与校验，纯函数）、`outbound/` 的其余部分（`outbound.go` 渠道与 Receiver 工厂、`render.go` zh/en 模板与深链、`channel.go` 写时校验与邮箱地址规范化、`webhook.go`、`chat.go` + `dingtalk.go`/`wecom.go`/`feishu.go`、`email.go`（SMTP 发送与 MIME）、`recipients.go`（收件人解析））。
+- runner：`backend/runner/notificationdispatcher/`（静默窗口在此计算并推迟投递；EMAIL 渠道在此解析 SMTP 设置与 audience 邮箱）；`backend/server/server.go` 注册第 7 个 runner。
+- API：`backend/api/v1/notification_outbound_service.go`（13 个 RPC：渠道/投递 + 路由 CRUD，权限复用 settings.*）、`backend/api/v1/notification_route_service.go`、`backend/api/v1/setting_service.go` 的 email 与 quiet-hours RPC；SMTP 密码字段标 `INPUT_ONLY`，审计按字段名脱敏（`endpoint`、`password`）。
 - 前端：`frontend/src/pages/settings/NotificationSettingsPage.vue`（渠道弹窗按 kind 切换字段 + SMTP 卡片）、`frontend/src/api/notification.ts`、`frontend/src/api/setting.ts` 的 email 部分、`components/layout/SettingsNav.vue`、`router/index.ts`、`locales/*.json` 的 `notificationSettings.*`、`glossary.json`（Notifications 类目：channel/delivery/webhook/dingtalk/wecom/feishu/smtp）。
 - 文档：`docs/notifications.md`（运维侧）。
 - 测试：`go test ./backend/component/notification/... ./backend/runner/notificationdispatcher/... ./backend/runner/maintenance/... ./backend/api/v1/ ./backend/store/ ./backend/common/`；`backend/common/resource_name_test.go` 钉住"生成的 id 必须能被自己的 name parser 解析"；`backend/store/notification_delivery_test.go` 钉住 claim/list SQL 形状；`outbound/chat_test.go` 钉住三种 IM 的 payload/签名/错误码/脱敏/不跟随重定向；`outbound/email_test.go` 钉住地址规范化、收件人解析、MIME 头注入防护与 SMTP 配置校验；`notificationdispatcher_test.go` 用本地假 SMTP 服务器跑通"audience + 固定地址 → DATA 段"；`backend/api/v1/setting_service_test.go` 钉住 EmailSetting 掩码合并、密码不入 payload、清空与校验；前端 `frontend/src/pages/settings/NotificationSettingsPage.test.ts` 覆盖列表/权限门禁/弹窗状态/重试/新 kind 字段/SMTP 保存。
 
 ### Open items（出站）
 
-1. 静默窗口（维护期只记录不发送）与"未确认 N 小时升级到第二渠道"：PR-3。
-2. 按 owner/团队路由到不同渠道（规则表）与按严重级别分渠道：在渠道级订阅之上再加。
-3. 投递的可观测性目前只有 `notification_deliveries_attempted_total{outcome}` 与耗时直方图；队列深度 gauge 待补。
+1. "未确认 N 小时升级到第二渠道"**明确不做**（产品反馈：并非所有部署喜欢自动升级）；若以后要做，应默认关闭并做成渠道级可选策略（见 O-21）。
+2. 路由规则目前只按 owner/群组 + 事件类型/严重级别匹配；按 target（实例/库/表）路由、规则优先级与兜底渠道未做。
+3. 投递的可观测性目前只有 `notification_deliveries_attempted_total{outcome}`（含 `deferred`）与耗时直方图；队列深度 gauge 待补。
 4. 跨副本 dispatcher：与单副本假设一致，不做；多副本需 `SKIP LOCKED` 之外的无害化重复投递语义（当前唯一索引只防同事件同渠道，跨副本各自认领不同行是安全的，但事件级重复仍需 `LISTEN/NOTIFY` 才能避免）。
 5. 邮件投递的集成覆盖目前是"dispatcher + 本地假 SMTP 服务器"与单元测试；没有对真实外部 SMTP 的集成套件（外部依赖不适合 CI），上线前手工用 **Send test email** 验证一次真实服务器即可。
 6. IM 渠道按厂商 API 直发；厂商若改协议（如飞书新版 webhook 鉴权）需要在对应 `outbound/*.go` 适配器内升级，`payload`/`secret` 形状不变时无需迁移。

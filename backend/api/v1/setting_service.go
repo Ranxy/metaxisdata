@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
@@ -646,6 +647,176 @@ func convertToV1EmailSetting(message *store.EmailSettingMessage) *v1pb.EmailSett
 		Encryption:     v1pb.SMTPEncryption(smtpConfig.GetEncryption()),
 		Authentication: v1pb.SMTPAuthentication(smtpConfig.GetAuthentication()),
 		Username:       smtpConfig.GetUsername(),
+	}
+	return result
+}
+
+// GetQuietHoursSetting returns the workspace quiet-hours schedule. An unset
+// schedule is returned empty rather than as a 404, so the settings page renders
+// one form either way.
+func (s *SettingService) GetQuietHoursSetting(ctx context.Context, _ *connect.Request[v1pb.GetQuietHoursSettingRequest]) (*connect.Response[v1pb.QuietHoursSetting], error) {
+	setting, err := s.store.GetQuietHoursSetting(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the quiet hours setting"))
+	}
+	return connect.NewResponse(convertToV1QuietHoursSetting(setting)), nil
+}
+
+// UpdateQuietHoursSetting rewrites the masked fields of the schedule. Clearing
+// every field turns quiet hours off and removes the setting.
+func (s *SettingService) UpdateQuietHoursSetting(ctx context.Context, request *connect.Request[v1pb.UpdateQuietHoursSettingRequest]) (*connect.Response[v1pb.QuietHoursSetting], error) {
+	if request.Msg.Setting == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("setting must be set"))
+	}
+	if request.Msg.UpdateMask == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("update_mask must be set"))
+	}
+	existing, err := s.store.GetQuietHoursSetting(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the quiet hours setting"))
+	}
+	setting, err := mergeQuietHoursSettingUpdate(existing, request.Msg.Setting, request.Msg.UpdateMask.Paths)
+	if err != nil {
+		return nil, err
+	}
+	if !setting.GetEnabled() && setting.GetTimezone() == "" &&
+		len(setting.GetWindows()) == 0 && len(setting.GetMaintenanceWindows()) == 0 {
+		if err := s.store.DeleteQuietHoursSetting(ctx); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to clear the quiet hours setting"))
+		}
+		return connect.NewResponse(&v1pb.QuietHoursSetting{}), nil
+	}
+	if err := s.store.SetQuietHoursSetting(ctx, setting); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update the quiet hours setting"))
+	}
+	stored, err := s.store.GetQuietHoursSetting(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the quiet hours setting"))
+	}
+	return connect.NewResponse(convertToV1QuietHoursSetting(stored)), nil
+}
+
+// mergeQuietHoursSettingUpdate applies the mask to the stored schedule. An empty
+// mask is a full update.
+func mergeQuietHoursSettingUpdate(existing *storepb.QuietHoursSetting, update *v1pb.QuietHoursSetting, paths []string) (*storepb.QuietHoursSetting, error) {
+	merged := &storepb.QuietHoursSetting{}
+	if existing != nil {
+		merged = existing
+	}
+	if len(paths) == 0 {
+		paths = []string{"enabled", "timezone", "windows", "maintenance_windows"}
+	}
+	for _, path := range paths {
+		switch path {
+		case "enabled":
+			merged.Enabled = update.GetEnabled()
+		case "timezone":
+			merged.Timezone = strings.TrimSpace(update.GetTimezone())
+		case "windows":
+			windows, err := quietWindowsFromV1(update.GetWindows())
+			if err != nil {
+				return nil, err
+			}
+			merged.Windows = windows
+		case "maintenance_windows", "maintenanceWindows":
+			maintenance, err := maintenanceWindowsFromV1(update.GetMaintenanceWindows())
+			if err != nil {
+				return nil, err
+			}
+			merged.MaintenanceWindows = maintenance
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
+		}
+	}
+	if err := outbound.ValidateQuietHoursSetting(merged); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return merged, nil
+}
+
+// quietWindowsFromV1 converts the recurring windows, de-duplicating days and
+// rejecting an unknown weekday.
+func quietWindowsFromV1(windows []*v1pb.QuietWindow) ([]*storepb.QuietWindow, error) {
+	result := make([]*storepb.QuietWindow, 0, len(windows))
+	for _, window := range windows {
+		if window == nil {
+			continue
+		}
+		days := make([]storepb.DayOfWeek, 0, len(window.GetDays()))
+		for _, day := range window.GetDays() {
+			converted := storepb.DayOfWeek(day)
+			if converted == storepb.DayOfWeek_DAY_OF_WEEK_UNSPECIFIED {
+				continue
+			}
+			if converted > storepb.DayOfWeek_DAY_OF_WEEK_SUNDAY {
+				return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid day %q", day.String()))
+			}
+			if !slices.Contains(days, converted) {
+				days = append(days, converted)
+			}
+		}
+		result = append(result, &storepb.QuietWindow{
+			Days:  days,
+			Start: strings.TrimSpace(window.GetStart()),
+			End:   strings.TrimSpace(window.GetEnd()),
+		})
+	}
+	return result, nil
+}
+
+// maintenanceWindowsFromV1 converts the one-off windows, checking the timestamps
+// are valid instants.
+func maintenanceWindowsFromV1(windows []*v1pb.MaintenanceWindow) ([]*storepb.MaintenanceWindow, error) {
+	result := make([]*storepb.MaintenanceWindow, 0, len(windows))
+	for _, window := range windows {
+		if window == nil {
+			continue
+		}
+		if window.GetStart() == nil || window.GetEnd() == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a maintenance window needs a start and an end"))
+		}
+		if err := window.GetStart().CheckValid(); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Wrap(err, "invalid maintenance window start"))
+		}
+		if err := window.GetEnd().CheckValid(); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Wrap(err, "invalid maintenance window end"))
+		}
+		result = append(result, &storepb.MaintenanceWindow{
+			Start: window.GetStart(),
+			End:   window.GetEnd(),
+		})
+	}
+	return result, nil
+}
+
+// convertToV1QuietHoursSetting renders the stored schedule. Nil and empty both
+// render as an empty disabled schedule.
+func convertToV1QuietHoursSetting(setting *storepb.QuietHoursSetting) *v1pb.QuietHoursSetting {
+	result := &v1pb.QuietHoursSetting{}
+	if setting == nil {
+		return result
+	}
+	result.Enabled = setting.GetEnabled()
+	result.Timezone = setting.GetTimezone()
+	for _, window := range setting.GetWindows() {
+		converted := &v1pb.QuietWindow{
+			Start: window.GetStart(),
+			End:   window.GetEnd(),
+		}
+		for _, day := range window.GetDays() {
+			converted.Days = append(converted.Days, v1pb.DayOfWeek(day))
+		}
+		result.Windows = append(result.Windows, converted)
+	}
+	for _, window := range setting.GetMaintenanceWindows() {
+		converted := &v1pb.MaintenanceWindow{}
+		if window.GetStart() != nil {
+			converted.Start = timestamppb.New(window.GetStart().AsTime())
+		}
+		if window.GetEnd() != nil {
+			converted.End = timestamppb.New(window.GetEnd().AsTime())
+		}
+		result.MaintenanceWindows = append(result.MaintenanceWindows, converted)
 	}
 	return result
 }

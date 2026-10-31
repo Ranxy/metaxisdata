@@ -268,3 +268,149 @@ func TestEventIDsArePerCall(t *testing.T) {
 	require.NotEqual(t, fake.deliveries[0].EventID, fake.deliveries[1].EventID)
 	require.WithinDuration(t, time.Now(), fake.deliveries[0].NextAttempt, time.Minute)
 }
+
+// ---- routing rules ---------------------------------------------------------
+
+func routedOnlyChannel() *storepb.NotificationChannel {
+	channel := enabledWebhookChannel()
+	channel.RoutedOnly = true
+	return channel
+}
+
+func channelResourceID(id int64) string {
+	return "chan" + string(rune('a'+id))
+}
+
+func routeMessage(match *storepb.NotificationRouteMatch, channels ...string) *store.NotificationRouteMessage {
+	return &store.NotificationRouteMessage{
+		ID:         1,
+		ResourceID: "routea",
+		Payload: &storepb.NotificationRoute{
+			DisplayName: "route",
+			Enabled:     true,
+			Match:       match,
+			Channels:    channels,
+		},
+	}
+}
+
+func ownerEvent(recipientID int32) *storepb.Notification {
+	return &storepb.Notification{
+		RecipientId: recipientID,
+		Type:        storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY,
+		Severity:    storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+		Detail: &storepb.Notification_DataQuality{DataQuality: &storepb.DataQualityDetail{
+			Kind:       storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_OPENED,
+			RuleTitle:  "no nulls",
+			TargetPath: "prod/db/public/orders",
+		}},
+	}
+}
+
+// A routed_only channel never receives events its subscription admits; only a
+// matching rule selects it.
+func TestRoutedOnlyChannelNeedsAMatchingRoute(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, routedOnlyChannel()))
+	service := newServiceWithStore(fake)
+
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Empty(t, fake.deliveries)
+
+	fake.routes = []*store.NotificationRouteMessage{
+		routeMessage(&storepb.NotificationRouteMatch{Owners: []string{"users/2"}}, channelResourceID(1)),
+	}
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Len(t, fake.deliveries, 1)
+	require.Equal(t, int64(1), fake.deliveries[0].ChannelID)
+}
+
+// A route selects by owner or by group membership of the owner; the audience is
+// the event's in-app recipient.
+func TestRouteMatchesAnOwnerOrAGroupMember(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, routedOnlyChannel()))
+	fake.groups = map[string]*store.GroupMessage{
+		"data-platform@example.com": {
+			Email: "data-platform@example.com",
+			Payload: &storepb.GroupPayload{Members: []*storepb.GroupMember{
+				{Member: "users/2"},
+			}},
+		},
+	}
+	service := newServiceWithStore(fake)
+
+	fake.routes = []*store.NotificationRouteMessage{
+		routeMessage(&storepb.NotificationRouteMatch{Groups: []string{"data-platform@example.com"}}, channelResourceID(1)),
+	}
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Len(t, fake.deliveries, 1)
+
+	// A different owner is not in the group, so the route selects nothing.
+	fake.deliveries = nil
+	require.NoError(t, service.Send(context.Background(), ownerEvent(3)))
+	require.Empty(t, fake.deliveries)
+}
+
+// The route's own type and severity filters are part of the match.
+func TestRouteFiltersByTypeAndSeverity(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, routedOnlyChannel()))
+	service := newServiceWithStore(fake)
+
+	fake.routes = []*store.NotificationRouteMessage{
+		routeMessage(&storepb.NotificationRouteMatch{
+			EventTypes:  []storepb.NotificationType{storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC},
+			MinSeverity: storepb.NotificationSeverity_NOTIFICATION_SEVERITY_ERROR,
+			Owners:      []string{"users/2"},
+		}, channelResourceID(1)),
+	}
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Empty(t, fake.deliveries, "the route names another event type")
+
+	fake.routes[0].Payload.Match.EventTypes = nil
+	fake.routes[0].Payload.Match.MinSeverity = storepb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Len(t, fake.deliveries, 1)
+}
+
+// A channel that is not routed_only keeps its ordinary subscription behavior even
+// when routes exist; a disabled route selects nothing.
+func TestRoutingLeavesOrdinaryChannelsAlone(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()), testChannel(2, routedOnlyChannel()))
+	service := newServiceWithStore(fake)
+
+	fake.routes = []*store.NotificationRouteMessage{
+		routeMessage(&storepb.NotificationRouteMatch{Owners: []string{"users/2"}}, channelResourceID(2)),
+	}
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Len(t, fake.deliveries, 2, "the ordinary channel and the routed channel")
+
+	fake.deliveries = nil
+	fake.routes[0].Payload.Enabled = false
+	require.NoError(t, service.Send(context.Background(), ownerEvent(3)))
+	require.Len(t, fake.deliveries, 1, "only the ordinary channel")
+	require.Equal(t, int64(1), fake.deliveries[0].ChannelID)
+}
+
+// A route that selects a channel whose own subscription rejects the event does not
+// deliver to it; the channel's filters still win.
+func TestRouteRespectsTheChannelSubscription(t *testing.T) {
+	t.Parallel()
+
+	channel := routedOnlyChannel()
+	channel.EventTypes = []storepb.NotificationType{storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE}
+	fake := adminFakeStore(t, testChannel(1, channel))
+	service := newServiceWithStore(fake)
+
+	fake.routes = []*store.NotificationRouteMessage{
+		routeMessage(&storepb.NotificationRouteMatch{}, channelResourceID(1)),
+	}
+	require.NoError(t, service.Send(context.Background(), ownerEvent(2)))
+	require.Empty(t, fake.deliveries)
+}

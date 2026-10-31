@@ -35,6 +35,11 @@ const (
 	NotificationService_TestNotificationChannel_FullMethodName    = "/metaxisdata.v1.NotificationService/TestNotificationChannel"
 	NotificationService_ListNotificationDeliveries_FullMethodName = "/metaxisdata.v1.NotificationService/ListNotificationDeliveries"
 	NotificationService_RetryNotificationDelivery_FullMethodName  = "/metaxisdata.v1.NotificationService/RetryNotificationDelivery"
+	NotificationService_ListNotificationRoutes_FullMethodName     = "/metaxisdata.v1.NotificationService/ListNotificationRoutes"
+	NotificationService_GetNotificationRoute_FullMethodName       = "/metaxisdata.v1.NotificationService/GetNotificationRoute"
+	NotificationService_CreateNotificationRoute_FullMethodName    = "/metaxisdata.v1.NotificationService/CreateNotificationRoute"
+	NotificationService_UpdateNotificationRoute_FullMethodName    = "/metaxisdata.v1.NotificationService/UpdateNotificationRoute"
+	NotificationService_DeleteNotificationRoute_FullMethodName    = "/metaxisdata.v1.NotificationService/DeleteNotificationRoute"
 )
 
 // NotificationServiceClient is the client API for NotificationService service.
@@ -105,6 +110,18 @@ type NotificationServiceClient interface {
 	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
 	// or waiting one is left as it is.
 	RetryNotificationDelivery(ctx context.Context, in *RetryNotificationDeliveryRequest, opts ...grpc.CallOption) (*NotificationDelivery, error)
+	// List the owner/team routing rules. A route selects extra channels for the
+	// events whose in-app audience matches it.
+	ListNotificationRoutes(ctx context.Context, in *ListNotificationRoutesRequest, opts ...grpc.CallOption) (*ListNotificationRoutesResponse, error)
+	// Read one routing rule.
+	GetNotificationRoute(ctx context.Context, in *GetNotificationRouteRequest, opts ...grpc.CallOption) (*NotificationRoute, error)
+	// Create one routing rule.
+	CreateNotificationRoute(ctx context.Context, in *CreateNotificationRouteRequest, opts ...grpc.CallOption) (*NotificationRoute, error)
+	// Update one routing rule: a masked update, or a full update of its mutable
+	// fields when the mask is empty.
+	UpdateNotificationRoute(ctx context.Context, in *UpdateNotificationRouteRequest, opts ...grpc.CallOption) (*NotificationRoute, error)
+	// Delete one routing rule.
+	DeleteNotificationRoute(ctx context.Context, in *DeleteNotificationRouteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type notificationServiceClient struct {
@@ -274,6 +291,56 @@ func (c *notificationServiceClient) RetryNotificationDelivery(ctx context.Contex
 	return out, nil
 }
 
+func (c *notificationServiceClient) ListNotificationRoutes(ctx context.Context, in *ListNotificationRoutesRequest, opts ...grpc.CallOption) (*ListNotificationRoutesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNotificationRoutesResponse)
+	err := c.cc.Invoke(ctx, NotificationService_ListNotificationRoutes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) GetNotificationRoute(ctx context.Context, in *GetNotificationRouteRequest, opts ...grpc.CallOption) (*NotificationRoute, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationRoute)
+	err := c.cc.Invoke(ctx, NotificationService_GetNotificationRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) CreateNotificationRoute(ctx context.Context, in *CreateNotificationRouteRequest, opts ...grpc.CallOption) (*NotificationRoute, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationRoute)
+	err := c.cc.Invoke(ctx, NotificationService_CreateNotificationRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) UpdateNotificationRoute(ctx context.Context, in *UpdateNotificationRouteRequest, opts ...grpc.CallOption) (*NotificationRoute, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotificationRoute)
+	err := c.cc.Invoke(ctx, NotificationService_UpdateNotificationRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *notificationServiceClient) DeleteNotificationRoute(ctx context.Context, in *DeleteNotificationRouteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, NotificationService_DeleteNotificationRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NotificationServiceServer is the server API for NotificationService service.
 // All implementations must embed UnimplementedNotificationServiceServer
 // for forward compatibility.
@@ -342,6 +409,18 @@ type NotificationServiceServer interface {
 	// Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered
 	// or waiting one is left as it is.
 	RetryNotificationDelivery(context.Context, *RetryNotificationDeliveryRequest) (*NotificationDelivery, error)
+	// List the owner/team routing rules. A route selects extra channels for the
+	// events whose in-app audience matches it.
+	ListNotificationRoutes(context.Context, *ListNotificationRoutesRequest) (*ListNotificationRoutesResponse, error)
+	// Read one routing rule.
+	GetNotificationRoute(context.Context, *GetNotificationRouteRequest) (*NotificationRoute, error)
+	// Create one routing rule.
+	CreateNotificationRoute(context.Context, *CreateNotificationRouteRequest) (*NotificationRoute, error)
+	// Update one routing rule: a masked update, or a full update of its mutable
+	// fields when the mask is empty.
+	UpdateNotificationRoute(context.Context, *UpdateNotificationRouteRequest) (*NotificationRoute, error)
+	// Delete one routing rule.
+	DeleteNotificationRoute(context.Context, *DeleteNotificationRouteRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedNotificationServiceServer()
 }
 
@@ -396,6 +475,21 @@ func (UnimplementedNotificationServiceServer) ListNotificationDeliveries(context
 }
 func (UnimplementedNotificationServiceServer) RetryNotificationDelivery(context.Context, *RetryNotificationDeliveryRequest) (*NotificationDelivery, error) {
 	return nil, status.Error(codes.Unimplemented, "method RetryNotificationDelivery not implemented")
+}
+func (UnimplementedNotificationServiceServer) ListNotificationRoutes(context.Context, *ListNotificationRoutesRequest) (*ListNotificationRoutesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNotificationRoutes not implemented")
+}
+func (UnimplementedNotificationServiceServer) GetNotificationRoute(context.Context, *GetNotificationRouteRequest) (*NotificationRoute, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNotificationRoute not implemented")
+}
+func (UnimplementedNotificationServiceServer) CreateNotificationRoute(context.Context, *CreateNotificationRouteRequest) (*NotificationRoute, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateNotificationRoute not implemented")
+}
+func (UnimplementedNotificationServiceServer) UpdateNotificationRoute(context.Context, *UpdateNotificationRouteRequest) (*NotificationRoute, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateNotificationRoute not implemented")
+}
+func (UnimplementedNotificationServiceServer) DeleteNotificationRoute(context.Context, *DeleteNotificationRouteRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNotificationRoute not implemented")
 }
 func (UnimplementedNotificationServiceServer) mustEmbedUnimplementedNotificationServiceServer() {}
 func (UnimplementedNotificationServiceServer) testEmbeddedByValue()                             {}
@@ -681,6 +775,96 @@ func _NotificationService_RetryNotificationDelivery_Handler(srv interface{}, ctx
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NotificationService_ListNotificationRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNotificationRoutesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).ListNotificationRoutes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_ListNotificationRoutes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).ListNotificationRoutes(ctx, req.(*ListNotificationRoutesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_GetNotificationRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNotificationRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).GetNotificationRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_GetNotificationRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).GetNotificationRoute(ctx, req.(*GetNotificationRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_CreateNotificationRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNotificationRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).CreateNotificationRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_CreateNotificationRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).CreateNotificationRoute(ctx, req.(*CreateNotificationRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_UpdateNotificationRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNotificationRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).UpdateNotificationRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_UpdateNotificationRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).UpdateNotificationRoute(ctx, req.(*UpdateNotificationRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NotificationService_DeleteNotificationRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNotificationRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotificationServiceServer).DeleteNotificationRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NotificationService_DeleteNotificationRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotificationServiceServer).DeleteNotificationRoute(ctx, req.(*DeleteNotificationRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NotificationService_ServiceDesc is the grpc.ServiceDesc for NotificationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -743,6 +927,26 @@ var NotificationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RetryNotificationDelivery",
 			Handler:    _NotificationService_RetryNotificationDelivery_Handler,
+		},
+		{
+			MethodName: "ListNotificationRoutes",
+			Handler:    _NotificationService_ListNotificationRoutes_Handler,
+		},
+		{
+			MethodName: "GetNotificationRoute",
+			Handler:    _NotificationService_GetNotificationRoute_Handler,
+		},
+		{
+			MethodName: "CreateNotificationRoute",
+			Handler:    _NotificationService_CreateNotificationRoute_Handler,
+		},
+		{
+			MethodName: "UpdateNotificationRoute",
+			Handler:    _NotificationService_UpdateNotificationRoute_Handler,
+		},
+		{
+			MethodName: "DeleteNotificationRoute",
+			Handler:    _NotificationService_DeleteNotificationRoute_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

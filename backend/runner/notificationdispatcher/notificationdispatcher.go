@@ -71,6 +71,11 @@ type Store interface {
 	GetEmailSettingForDelivery(ctx context.Context) (*storepb.EmailSetting, error)
 	// GetUserByID resolves an audience user id to the address email goes to.
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+	// GetQuietHoursSetting returns the workspace quiet-hours schedule, or nil.
+	GetQuietHoursSetting(ctx context.Context) (*storepb.QuietHoursSetting, error)
+	// DeferNotificationDelivery reschedules a claimed delivery without charging
+	// it an attempt.
+	DeferNotificationDelivery(ctx context.Context, id int64, nextAttempt time.Time) error
 }
 
 // Runner drives the dispatcher loop.
@@ -142,16 +147,55 @@ func (r *Runner) dispatch(ctx context.Context) {
 		externalURL = setting.GetExternalUrl()
 	}
 
+	// Quiet hours are evaluated once per batch. A delivery whose channel does not
+	// bypass the schedule is put back without charging it an attempt; the first
+	// tick after the window ends claims it again.
+	quietUntil, quiet := r.quietHours(ctx)
+
 	semaphore := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 	for _, delivery := range deliveries {
 		wg.Go(func() {
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
-			r.attempt(ctx, delivery, byID[delivery.ChannelID], externalURL)
+			channel := byID[delivery.ChannelID]
+			if quiet && channel != nil && !channel.Payload.GetBypassQuietHours() {
+				r.deferDelivery(ctx, delivery, quietUntil)
+				return
+			}
+			r.attempt(ctx, delivery, channel, externalURL)
 		})
 	}
 	wg.Wait()
+}
+
+// quietHours reads the workspace schedule and reports whether the dispatcher is
+// inside a window and when it ends. A read or parse failure fails open: a broken
+// schedule must not hold every alert.
+func (r *Runner) quietHours(ctx context.Context) (time.Time, bool) {
+	setting, err := r.store.GetQuietHoursSetting(ctx)
+	if err != nil {
+		slog.Warn("Failed to read the quiet hours setting for outbound notifications", log.WithError(err))
+		return time.Time{}, false
+	}
+	until, quiet := outbound.QuietUntil(time.Now(), setting)
+	if quiet && !until.After(time.Now()) {
+		// A window that ends now is not worth deferring to; attempt normally.
+		return time.Time{}, false
+	}
+	return until, quiet
+}
+
+// deferDelivery puts a claimed delivery back to PENDING with its next attempt at
+// the end of the quiet window. The claim incremented attempts, so the store
+// decrements it back: deferral is scheduling, not a failed post.
+func (r *Runner) deferDelivery(ctx context.Context, delivery *store.NotificationDeliveryMessage, until time.Time) {
+	if err := r.store.DeferNotificationDelivery(ctx, delivery.ID, until); err != nil {
+		slog.Warn("Failed to defer an outbound notification delivery for quiet hours",
+			slog.Int64("delivery", delivery.ID), log.WithError(err))
+		return
+	}
+	r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryDeferred)
 }
 
 // attempt renders and posts one delivery, then records its terminal or retry

@@ -1,9 +1,13 @@
 import { create } from "@bufbuild/protobuf";
-import { DurationSchema } from "@bufbuild/protobuf/wkt";
+import { DurationSchema, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DataQualitySettingSchema,
+  DayOfWeek,
   EmailSettingSchema,
+  MaintenanceWindowSchema,
+  QuietHoursSettingSchema,
+  QuietWindowSchema,
   SMTPAuthentication,
   SMTPConfigSchema,
   SMTPEncryption,
@@ -13,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   getEmailSetting: vi.fn(),
   updateEmailSetting: vi.fn(),
   sendTestEmail: vi.fn(),
+  getQuietHoursSetting: vi.fn(),
+  updateQuietHoursSetting: vi.fn(),
 }));
 
 vi.mock("./client", () => ({
@@ -20,15 +26,20 @@ vi.mock("./client", () => ({
     getEmailSetting: mocks.getEmailSetting,
     updateEmailSetting: mocks.updateEmailSetting,
     sendTestEmail: mocks.sendTestEmail,
+    getQuietHoursSetting: mocks.getQuietHoursSetting,
+    updateQuietHoursSetting: mocks.updateQuietHoursSetting,
   },
 }));
 
 import {
   buildUpdateDataQualitySettingRequest,
   buildUpdateEmailSettingRequest,
+  buildUpdateQuietHoursSettingRequest,
   getEmailSetting,
+  getQuietHoursSetting,
   sendTestEmail,
   updateEmailSetting,
+  updateQuietHoursSetting,
 } from "./setting";
 
 beforeEach(() => {
@@ -47,6 +58,26 @@ function emailSetting() {
       username: "mailer",
       password: "s3cret",
     }),
+  });
+}
+
+function quietHoursSetting() {
+  return create(QuietHoursSettingSchema, {
+    enabled: true,
+    timezone: "Asia/Shanghai",
+    windows: [
+      create(QuietWindowSchema, {
+        days: [DayOfWeek.MONDAY, DayOfWeek.FRIDAY],
+        start: "18:00",
+        end: "09:00",
+      }),
+    ],
+    maintenanceWindows: [
+      create(MaintenanceWindowSchema, {
+        start: timestampFromDate(new Date("2026-11-01T01:00:00Z")),
+        end: timestampFromDate(new Date("2026-11-01T03:00:00Z")),
+      }),
+    ],
   });
 }
 
@@ -134,5 +165,66 @@ describe("email setting API", () => {
     expect(mocks.sendTestEmail.mock.calls[0][0].$typeName).toBe(
       "metaxisdata.v1.SendTestEmailRequest"
     );
+  });
+});
+
+describe("buildUpdateQuietHoursSettingRequest", () => {
+  it("writes the whole schedule behind its four mask paths", () => {
+    const request = buildUpdateQuietHoursSettingRequest(quietHoursSetting());
+
+    expect(request.updateMask?.paths).toEqual([
+      "enabled",
+      "timezone",
+      "windows",
+      "maintenance_windows",
+    ]);
+    expect(request.setting).toMatchObject({
+      enabled: true,
+      timezone: "Asia/Shanghai",
+    });
+    expect(request.setting?.windows[0]).toMatchObject({
+      days: [DayOfWeek.MONDAY, DayOfWeek.FRIDAY],
+      start: "18:00",
+      end: "09:00",
+    });
+    expect(request.setting?.maintenanceWindows[0].start?.seconds).toBe(
+      BigInt(new Date("2026-11-01T01:00:00Z").getTime() / 1000)
+    );
+    expect(request.setting?.maintenanceWindows[0].end?.seconds).toBe(
+      BigInt(new Date("2026-11-01T03:00:00Z").getTime() / 1000)
+    );
+  });
+});
+
+describe("quiet-hours API", () => {
+  it("reads the schedule with an empty request", async () => {
+    mocks.getQuietHoursSetting.mockResolvedValue(quietHoursSetting());
+
+    const setting = await getQuietHoursSetting();
+
+    expect(setting.timezone).toBe("Asia/Shanghai");
+    expect(mocks.getQuietHoursSetting).toHaveBeenCalledTimes(1);
+    expect(mocks.getQuietHoursSetting.mock.calls[0][0].$typeName).toBe(
+      "metaxisdata.v1.GetQuietHoursSettingRequest"
+    );
+  });
+
+  it("updates the schedule through the request builder", async () => {
+    mocks.updateQuietHoursSetting.mockResolvedValue(quietHoursSetting());
+
+    await updateQuietHoursSetting(quietHoursSetting());
+
+    expect(mocks.updateQuietHoursSetting).toHaveBeenCalledTimes(1);
+    const request = mocks.updateQuietHoursSetting.mock.calls[0][0];
+    expect(request.$typeName).toBe(
+      "metaxisdata.v1.UpdateQuietHoursSettingRequest"
+    );
+    expect(request.updateMask?.paths).toEqual([
+      "enabled",
+      "timezone",
+      "windows",
+      "maintenance_windows",
+    ]);
+    expect(request.setting?.windows).toHaveLength(1);
   });
 });

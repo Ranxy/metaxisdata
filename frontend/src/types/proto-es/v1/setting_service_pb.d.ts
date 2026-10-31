@@ -4,7 +4,7 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { Duration, FieldMask } from "@bufbuild/protobuf/wkt";
+import type { Duration, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file v1/setting_service.proto.
@@ -473,6 +473,149 @@ export declare type SendTestEmailResponse = Message<"metaxisdata.v1.SendTestEmai
 export declare const SendTestEmailResponseSchema: GenMessage<SendTestEmailResponse>;
 
 /**
+ * QuietHoursSetting is the workspace schedule during which outbound
+ * notifications are held rather than delivered. Held deliveries keep their
+ * place and are sent once the window ends; a channel that sets bypass_quiet_hours
+ * keeps delivering during the window.
+ *
+ * @generated from message metaxisdata.v1.QuietHoursSetting
+ */
+export declare type QuietHoursSetting = Message<"metaxisdata.v1.QuietHoursSetting"> & {
+  /**
+   * Whether quiet hours are on. A disabled schedule is kept but selects nothing.
+   *
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * The IANA time zone the windows are evaluated in, for example
+   * "Asia/Shanghai". Required while enabled.
+   *
+   * @generated from field: string timezone = 2;
+   */
+  timezone: string;
+
+  /**
+   * Recurring weekly windows. At least one window or maintenance window is
+   * required while enabled.
+   *
+   * @generated from field: repeated metaxisdata.v1.QuietWindow windows = 3;
+   */
+  windows: QuietWindow[];
+
+  /**
+   * One-off absolute windows for planned maintenance. A window whose end has
+   * passed is inert and can be removed.
+   *
+   * @generated from field: repeated metaxisdata.v1.MaintenanceWindow maintenance_windows = 4;
+   */
+  maintenanceWindows: MaintenanceWindow[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QuietHoursSetting.
+ * Use `create(QuietHoursSettingSchema)` to create a new message.
+ */
+export declare const QuietHoursSettingSchema: GenMessage<QuietHoursSetting>;
+
+/**
+ * QuietWindow is one recurring weekly quiet window.
+ *
+ * @generated from message metaxisdata.v1.QuietWindow
+ */
+export declare type QuietWindow = Message<"metaxisdata.v1.QuietWindow"> & {
+  /**
+   * The days the window starts on. A window whose end is at or before its start
+   * crosses midnight into the following day.
+   *
+   * @generated from field: repeated metaxisdata.v1.DayOfWeek days = 1;
+   */
+  days: DayOfWeek[];
+
+  /**
+   * "HH:MM" in the setting's time zone.
+   *
+   * @generated from field: string start = 2;
+   */
+  start: string;
+
+  /**
+   * "HH:MM" in the setting's time zone.
+   *
+   * @generated from field: string end = 3;
+   */
+  end: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QuietWindow.
+ * Use `create(QuietWindowSchema)` to create a new message.
+ */
+export declare const QuietWindowSchema: GenMessage<QuietWindow>;
+
+/**
+ * MaintenanceWindow is one absolute quiet window, for planned maintenance.
+ *
+ * @generated from message metaxisdata.v1.MaintenanceWindow
+ */
+export declare type MaintenanceWindow = Message<"metaxisdata.v1.MaintenanceWindow"> & {
+  /**
+   * @generated from field: google.protobuf.Timestamp start = 1;
+   */
+  start?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp end = 2;
+   */
+  end?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.MaintenanceWindow.
+ * Use `create(MaintenanceWindowSchema)` to create a new message.
+ */
+export declare const MaintenanceWindowSchema: GenMessage<MaintenanceWindow>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQuietHoursSettingRequest
+ */
+export declare type GetQuietHoursSettingRequest = Message<"metaxisdata.v1.GetQuietHoursSettingRequest"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQuietHoursSettingRequest.
+ * Use `create(GetQuietHoursSettingRequestSchema)` to create a new message.
+ */
+export declare const GetQuietHoursSettingRequestSchema: GenMessage<GetQuietHoursSettingRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQuietHoursSettingRequest
+ */
+export declare type UpdateQuietHoursSettingRequest = Message<"metaxisdata.v1.UpdateQuietHoursSettingRequest"> & {
+  /**
+   * The schedule to update.
+   *
+   * @generated from field: metaxisdata.v1.QuietHoursSetting setting = 1;
+   */
+  setting?: QuietHoursSetting;
+
+  /**
+   * The list of fields to update: enabled, timezone, windows or
+   * maintenance_windows.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQuietHoursSettingRequest.
+ * Use `create(UpdateQuietHoursSettingRequestSchema)` to create a new message.
+ */
+export declare const UpdateQuietHoursSettingRequestSchema: GenMessage<UpdateQuietHoursSettingRequest>;
+
+/**
  * SMTPEncryption is the transport security of the SMTP connection.
  *
  * @generated from enum metaxisdata.v1.SMTPEncryption
@@ -548,6 +691,58 @@ export enum SMTPAuthentication {
  * Describes the enum metaxisdata.v1.SMTPAuthentication.
  */
 export declare const SMTPAuthenticationSchema: GenEnum<SMTPAuthentication>;
+
+/**
+ * DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+ *
+ * @generated from enum metaxisdata.v1.DayOfWeek
+ */
+export enum DayOfWeek {
+  /**
+   * @generated from enum value: DAY_OF_WEEK_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_MONDAY = 1;
+   */
+  MONDAY = 1,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_TUESDAY = 2;
+   */
+  TUESDAY = 2,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_WEDNESDAY = 3;
+   */
+  WEDNESDAY = 3,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_THURSDAY = 4;
+   */
+  THURSDAY = 4,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_FRIDAY = 5;
+   */
+  FRIDAY = 5,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_SATURDAY = 6;
+   */
+  SATURDAY = 6,
+
+  /**
+   * @generated from enum value: DAY_OF_WEEK_SUNDAY = 7;
+   */
+  SUNDAY = 7,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.DayOfWeek.
+ */
+export declare const DayOfWeekSchema: GenEnum<DayOfWeek>;
 
 /**
  * @generated from service metaxisdata.v1.SettingService
@@ -635,6 +830,27 @@ export declare const SettingService: GenService<{
     methodKind: "unary";
     input: typeof SendTestEmailRequestSchema;
     output: typeof SendTestEmailResponseSchema;
+  },
+  /**
+   * Get the workspace quiet-hours schedule for outbound notifications.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.GetQuietHoursSetting
+   */
+  getQuietHoursSetting: {
+    methodKind: "unary";
+    input: typeof GetQuietHoursSettingRequestSchema;
+    output: typeof QuietHoursSettingSchema;
+  },
+  /**
+   * Update the workspace quiet-hours schedule. Disabling it clears the schedule
+   * and releases every held delivery on the next dispatcher tick.
+   *
+   * @generated from rpc metaxisdata.v1.SettingService.UpdateQuietHoursSetting
+   */
+  updateQuietHoursSetting: {
+    methodKind: "unary";
+    input: typeof UpdateQuietHoursSettingRequestSchema;
+    output: typeof QuietHoursSettingSchema;
   },
 }>;
 

@@ -1428,6 +1428,59 @@
       "scope": [
         "notificationSettings."
       ]
+    },
+    {
+      "id": "quiet-hours",
+      "category": "Notifications",
+      "definition": "A workspace schedule during which outbound notifications are held instead of delivered.",
+      "translations": {
+        "en-US": "quiet hours",
+        "zh-CN": "静默时段"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "免打扰时段",
+          "安静时段"
+        ]
+      }
+    },
+    {
+      "id": "maintenance-window",
+      "category": "Notifications",
+      "definition": "A one-off absolute quiet window, for planned maintenance.",
+      "translations": {
+        "en-US": "maintenance window",
+        "zh-CN": "维护窗口"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "维护时段"
+        ]
+      }
+    },
+    {
+      "id": "routing-rule",
+      "category": "Notifications",
+      "definition": "An owner or team rule that sends matching events to the channels it names.",
+      "translations": {
+        "en-US": "routing rule",
+        "zh-CN": "路由规则"
+      },
+      "scope": [
+        "notificationSettings."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "路由策略",
+          "分发规则"
+        ]
+      }
     }
   ]
 }

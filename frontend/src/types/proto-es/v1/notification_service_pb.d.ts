@@ -726,6 +726,23 @@ export declare type NotificationChannel = Message<"metaxisdata.v1.NotificationCh
   secretSet: boolean;
 
   /**
+   * Whether the channel ignores the workspace quiet-hours schedule. An on-call
+   * channel that must page during a maintenance window sets it.
+   *
+   * @generated from field: bool bypass_quiet_hours = 12;
+   */
+  bypassQuietHours: boolean;
+
+  /**
+   * Whether the channel receives only events a routing rule selected. A team
+   * channel sets it so it does not also receive every event its subscription
+   * filter would otherwise admit.
+   *
+   * @generated from field: bool routed_only = 13;
+   */
+  routedOnly: boolean;
+
+  /**
    * @generated from field: google.protobuf.Timestamp create_time = 10;
    */
   createTime?: Timestamp;
@@ -1247,6 +1264,223 @@ export declare type RetryNotificationDeliveryRequest = Message<"metaxisdata.v1.R
  * Use `create(RetryNotificationDeliveryRequestSchema)` to create a new message.
  */
 export declare const RetryNotificationDeliveryRequestSchema: GenMessage<RetryNotificationDeliveryRequest>;
+
+/**
+ * NotificationRoute is one owner/team routing rule. When an event's in-app
+ * audience matches the rule, the rule's channels receive the event even if they
+ * are routed_only; a channel that is not routed_only keeps receiving events from
+ * its own subscription as before.
+ *
+ * @generated from message metaxisdata.v1.NotificationRoute
+ */
+export declare type NotificationRoute = Message<"metaxisdata.v1.NotificationRoute"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The administrator-facing name, for example "Data platform team".
+   *
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * A disabled route selects no channel and keeps its configuration.
+   *
+   * @generated from field: bool enabled = 3;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationRouteMatch match = 4;
+   */
+  match?: NotificationRouteMatch;
+
+  /**
+   * The channels the route delivers to, as channel resource names. A deleted
+   * channel is ignored; the rule's other channels still receive the event.
+   *
+   * @generated from field: repeated string channels = 5;
+   */
+  channels: string[];
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 6;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 7;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationRoute.
+ * Use `create(NotificationRouteSchema)` to create a new message.
+ */
+export declare const NotificationRouteSchema: GenMessage<NotificationRoute>;
+
+/**
+ * NotificationRouteMatch is who and what a route selects. An empty field is a
+ * wildcard: a route with no event types, severity floor, owners and groups
+ * selects every event.
+ *
+ * @generated from message metaxisdata.v1.NotificationRouteMatch
+ */
+export declare type NotificationRouteMatch = Message<"metaxisdata.v1.NotificationRouteMatch"> & {
+  /**
+   * The notification types this route selects. Empty means every type.
+   *
+   * @generated from field: repeated metaxisdata.v1.NotificationType event_types = 1;
+   */
+  eventTypes: NotificationType[];
+
+  /**
+   * The lowest severity this route selects. UNSPECIFIED means every severity.
+   *
+   * @generated from field: metaxisdata.v1.NotificationSeverity min_severity = 2;
+   */
+  minSeverity: NotificationSeverity;
+
+  /**
+   * Audience filters, as users/{user} resource names. Empty means any audience.
+   *
+   * @generated from field: repeated string owners = 3;
+   */
+  owners: string[];
+
+  /**
+   * Audience filters, as group emails of IAM groups. Empty means any audience.
+   *
+   * @generated from field: repeated string groups = 4;
+   */
+  groups: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.NotificationRouteMatch.
+ * Use `create(NotificationRouteMatchSchema)` to create a new message.
+ */
+export declare const NotificationRouteMatchSchema: GenMessage<NotificationRouteMatch>;
+
+/**
+ * @generated from message metaxisdata.v1.ListNotificationRoutesRequest
+ */
+export declare type ListNotificationRoutesRequest = Message<"metaxisdata.v1.ListNotificationRoutesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListNotificationRoutesRequest.
+ * Use `create(ListNotificationRoutesRequestSchema)` to create a new message.
+ */
+export declare const ListNotificationRoutesRequestSchema: GenMessage<ListNotificationRoutesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListNotificationRoutesResponse
+ */
+export declare type ListNotificationRoutesResponse = Message<"metaxisdata.v1.ListNotificationRoutesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.NotificationRoute notification_routes = 1;
+   */
+  notificationRoutes: NotificationRoute[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListNotificationRoutesResponse.
+ * Use `create(ListNotificationRoutesResponseSchema)` to create a new message.
+ */
+export declare const ListNotificationRoutesResponseSchema: GenMessage<ListNotificationRoutesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetNotificationRouteRequest
+ */
+export declare type GetNotificationRouteRequest = Message<"metaxisdata.v1.GetNotificationRouteRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetNotificationRouteRequest.
+ * Use `create(GetNotificationRouteRequestSchema)` to create a new message.
+ */
+export declare const GetNotificationRouteRequestSchema: GenMessage<GetNotificationRouteRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateNotificationRouteRequest
+ */
+export declare type CreateNotificationRouteRequest = Message<"metaxisdata.v1.CreateNotificationRouteRequest"> & {
+  /**
+   * Format: workspaces/{workspace}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.NotificationRoute route = 2;
+   */
+  route?: NotificationRoute;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateNotificationRouteRequest.
+ * Use `create(CreateNotificationRouteRequestSchema)` to create a new message.
+ */
+export declare const CreateNotificationRouteRequestSchema: GenMessage<CreateNotificationRouteRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateNotificationRouteRequest
+ */
+export declare type UpdateNotificationRouteRequest = Message<"metaxisdata.v1.UpdateNotificationRouteRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.NotificationRoute route = 1;
+   */
+  route?: NotificationRoute;
+
+  /**
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateNotificationRouteRequest.
+ * Use `create(UpdateNotificationRouteRequestSchema)` to create a new message.
+ */
+export declare const UpdateNotificationRouteRequestSchema: GenMessage<UpdateNotificationRouteRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteNotificationRouteRequest
+ */
+export declare type DeleteNotificationRouteRequest = Message<"metaxisdata.v1.DeleteNotificationRouteRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/notificationRoutes/{notification_route}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteNotificationRouteRequest.
+ * Use `create(DeleteNotificationRouteRequestSchema)` to create a new message.
+ */
+export declare const DeleteNotificationRouteRequestSchema: GenMessage<DeleteNotificationRouteRequest>;
 
 /**
  * NotificationType is what a notification is about. It selects which detail
@@ -1780,6 +2014,58 @@ export declare const NotificationService: GenService<{
     methodKind: "unary";
     input: typeof RetryNotificationDeliveryRequestSchema;
     output: typeof NotificationDeliverySchema;
+  },
+  /**
+   * List the owner/team routing rules. A route selects extra channels for the
+   * events whose in-app audience matches it.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.ListNotificationRoutes
+   */
+  listNotificationRoutes: {
+    methodKind: "unary";
+    input: typeof ListNotificationRoutesRequestSchema;
+    output: typeof ListNotificationRoutesResponseSchema;
+  },
+  /**
+   * Read one routing rule.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.GetNotificationRoute
+   */
+  getNotificationRoute: {
+    methodKind: "unary";
+    input: typeof GetNotificationRouteRequestSchema;
+    output: typeof NotificationRouteSchema;
+  },
+  /**
+   * Create one routing rule.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.CreateNotificationRoute
+   */
+  createNotificationRoute: {
+    methodKind: "unary";
+    input: typeof CreateNotificationRouteRequestSchema;
+    output: typeof NotificationRouteSchema;
+  },
+  /**
+   * Update one routing rule: a masked update, or a full update of its mutable
+   * fields when the mask is empty.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.UpdateNotificationRoute
+   */
+  updateNotificationRoute: {
+    methodKind: "unary";
+    input: typeof UpdateNotificationRouteRequestSchema;
+    output: typeof NotificationRouteSchema;
+  },
+  /**
+   * Delete one routing rule.
+   *
+   * @generated from rpc metaxisdata.v1.NotificationService.DeleteNotificationRoute
+   */
+  deleteNotificationRoute: {
+    methodKind: "unary";
+    input: typeof DeleteNotificationRouteRequestSchema;
+    output: typeof EmptySchema;
   },
 }>;
 

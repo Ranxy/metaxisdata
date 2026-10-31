@@ -1,9 +1,13 @@
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError, createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  NotificationRouteMatchSchema,
+  NotificationRouteSchema,
   NotificationService,
+  NotificationSeverity,
+  NotificationType,
   SubscribeNotificationsRequestSchema,
   type SubscribeNotificationsResponse,
 } from "@/types/proto-es/v1/notification_service_pb";
@@ -12,6 +16,31 @@ import {
   setSessionRefresher,
   setUnauthenticatedHandler,
 } from "./session";
+
+const apiMocks = vi.hoisted(() => ({
+  listNotificationRoutes: vi.fn(),
+  createNotificationRoute: vi.fn(),
+  updateNotificationRoute: vi.fn(),
+  deleteNotificationRoute: vi.fn(),
+}));
+
+// The routing-rule calls go through the shared client; the stream tests below
+// build their own transport, so this mock only reaches the API functions.
+vi.mock("./client", () => ({
+  notificationClient: {
+    listNotificationRoutes: apiMocks.listNotificationRoutes,
+    createNotificationRoute: apiMocks.createNotificationRoute,
+    updateNotificationRoute: apiMocks.updateNotificationRoute,
+    deleteNotificationRoute: apiMocks.deleteNotificationRoute,
+  },
+}));
+
+import {
+  createNotificationRoute,
+  deleteNotificationRoute,
+  listNotificationRoutes,
+  updateNotificationRoute,
+} from "./notification";
 
 /**
  * These exercise the real transport and the real interceptor against a mocked fetch, so
@@ -156,5 +185,100 @@ describe("the notification stream and an expired session", () => {
     expect((failure as ConnectError).code).toBe(Code.Unauthenticated);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+function route() {
+  return create(NotificationRouteSchema, {
+    name: "workspaces/ws-1/notificationRoutes/route123",
+    displayName: "Data platform team",
+    enabled: true,
+    match: create(NotificationRouteMatchSchema, {
+      eventTypes: [NotificationType.DATA_QUALITY],
+      minSeverity: NotificationSeverity.WARNING,
+      owners: ["users/u1"],
+      groups: ["data-platform@example.com"],
+    }),
+    channels: ["workspaces/ws-1/notificationChannels/abc123"],
+  });
+}
+
+describe("notification routing rules", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lists the workspace routes", async () => {
+    apiMocks.listNotificationRoutes.mockResolvedValue({
+      notificationRoutes: [route()],
+    });
+
+    const routes = await listNotificationRoutes();
+
+    expect(routes).toHaveLength(1);
+    expect(routes[0].displayName).toBe("Data platform team");
+    const request = apiMocks.listNotificationRoutes.mock.calls[0][0];
+    expect(request.$typeName).toBe(
+      "metaxisdata.v1.ListNotificationRoutesRequest"
+    );
+    expect(request.parent).toBe("workspaces/-");
+  });
+
+  it("creates a route under the workspace", async () => {
+    apiMocks.createNotificationRoute.mockResolvedValue(route());
+
+    await createNotificationRoute(route());
+
+    const request = apiMocks.createNotificationRoute.mock.calls[0][0];
+    expect(request.$typeName).toBe(
+      "metaxisdata.v1.CreateNotificationRouteRequest"
+    );
+    expect(request.parent).toBe("workspaces/-");
+    expect(request.route?.match).toMatchObject({
+      eventTypes: [NotificationType.DATA_QUALITY],
+      minSeverity: NotificationSeverity.WARNING,
+      owners: ["users/u1"],
+      groups: ["data-platform@example.com"],
+    });
+    expect(request.route?.channels).toEqual([
+      "workspaces/ws-1/notificationChannels/abc123",
+    ]);
+  });
+
+  it("updates a route with the mutable-field mask", async () => {
+    apiMocks.updateNotificationRoute.mockResolvedValue(route());
+
+    await updateNotificationRoute(route(), [
+      "display_name",
+      "enabled",
+      "match",
+      "channels",
+    ]);
+
+    const request = apiMocks.updateNotificationRoute.mock.calls[0][0];
+    expect(request.$typeName).toBe(
+      "metaxisdata.v1.UpdateNotificationRouteRequest"
+    );
+    expect(request.updateMask?.paths).toEqual([
+      "display_name",
+      "enabled",
+      "match",
+      "channels",
+    ]);
+    expect(request.route?.displayName).toBe("Data platform team");
+  });
+
+  it("deletes a route by resource name", async () => {
+    apiMocks.deleteNotificationRoute.mockResolvedValue({});
+
+    await deleteNotificationRoute(
+      "workspaces/ws-1/notificationRoutes/route123"
+    );
+
+    const request = apiMocks.deleteNotificationRoute.mock.calls[0][0];
+    expect(request.$typeName).toBe(
+      "metaxisdata.v1.DeleteNotificationRouteRequest"
+    );
+    expect(request.name).toBe("workspaces/ws-1/notificationRoutes/route123");
   });
 });

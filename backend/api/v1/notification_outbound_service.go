@@ -358,11 +358,13 @@ func storeNotificationChannelPayload(channel *v1pb.NotificationChannel) (*storep
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a notification channel is required"))
 	}
 	payload := &storepb.NotificationChannel{
-		DisplayName: strings.TrimSpace(channel.GetDisplayName()),
-		Kind:        storepb.NotificationChannelKind(channel.GetKind()),
-		Enabled:     channel.GetEnabled(),
-		MinSeverity: storepb.NotificationSeverity(channel.GetMinSeverity()),
-		Language:    strings.TrimSpace(channel.GetLanguage()),
+		DisplayName:      strings.TrimSpace(channel.GetDisplayName()),
+		Kind:             storepb.NotificationChannelKind(channel.GetKind()),
+		Enabled:          channel.GetEnabled(),
+		MinSeverity:      storepb.NotificationSeverity(channel.GetMinSeverity()),
+		Language:         strings.TrimSpace(channel.GetLanguage()),
+		BypassQuietHours: channel.GetBypassQuietHours(),
+		RoutedOnly:       channel.GetRoutedOnly(),
 	}
 	payload.EventTypes = notificationEventTypes(channel.GetEventTypes())
 	config, err := storeNotificationChannelConfig(payload.Kind, channel.GetConfig())
@@ -469,6 +471,10 @@ func mergeNotificationChannelUpdate(update *v1pb.NotificationChannel, paths []st
 			merged.MinSeverity = storepb.NotificationSeverity(update.GetMinSeverity())
 		case "language":
 			merged.Language = strings.TrimSpace(update.GetLanguage())
+		case "bypass_quiet_hours", "bypassQuietHours":
+			merged.BypassQuietHours = update.GetBypassQuietHours()
+		case "routed_only", "routedOnly":
+			merged.RoutedOnly = update.GetRoutedOnly()
 		case "config":
 			config, err := storeNotificationChannelConfig(merged.Kind, update.GetConfig())
 			if err != nil {
@@ -548,13 +554,15 @@ func convertToV1NotificationChannel(channel *store.NotificationChannelMessage, w
 		return nil
 	}
 	converted := &v1pb.NotificationChannel{
-		Name:        common.FormatWorkspace(workspaceID) + "/notificationChannels/" + channel.ResourceID,
-		DisplayName: channel.Payload.GetDisplayName(),
-		Kind:        v1pb.NotificationChannelKind(channel.Payload.GetKind()),
-		Enabled:     channel.Payload.GetEnabled(),
-		MinSeverity: v1pb.NotificationSeverity(channel.Payload.GetMinSeverity()),
-		Language:    channel.Payload.GetLanguage(),
-		SecretSet:   channel.HasSecret,
+		Name:             common.FormatWorkspace(workspaceID) + "/notificationChannels/" + channel.ResourceID,
+		DisplayName:      channel.Payload.GetDisplayName(),
+		Kind:             v1pb.NotificationChannelKind(channel.Payload.GetKind()),
+		Enabled:          channel.Payload.GetEnabled(),
+		MinSeverity:      v1pb.NotificationSeverity(channel.Payload.GetMinSeverity()),
+		Language:         channel.Payload.GetLanguage(),
+		SecretSet:        channel.HasSecret,
+		BypassQuietHours: channel.Payload.GetBypassQuietHours(),
+		RoutedOnly:       channel.Payload.GetRoutedOnly(),
 	}
 	for _, eventType := range channel.Payload.GetEventTypes() {
 		converted.EventTypes = append(converted.EventTypes, v1pb.NotificationType(eventType))

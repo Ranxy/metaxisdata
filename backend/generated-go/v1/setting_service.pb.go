@@ -12,6 +12,7 @@ import (
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -135,6 +136,71 @@ func (x SMTPAuthentication) Number() protoreflect.EnumNumber {
 // Deprecated: Use SMTPAuthentication.Descriptor instead.
 func (SMTPAuthentication) EnumDescriptor() ([]byte, []int) {
 	return file_v1_setting_service_proto_rawDescGZIP(), []int{1}
+}
+
+// DayOfWeek is an ISO 8601 weekday: 1 is Monday and 7 is Sunday.
+type DayOfWeek int32
+
+const (
+	DayOfWeek_DAY_OF_WEEK_UNSPECIFIED DayOfWeek = 0
+	DayOfWeek_DAY_OF_WEEK_MONDAY      DayOfWeek = 1
+	DayOfWeek_DAY_OF_WEEK_TUESDAY     DayOfWeek = 2
+	DayOfWeek_DAY_OF_WEEK_WEDNESDAY   DayOfWeek = 3
+	DayOfWeek_DAY_OF_WEEK_THURSDAY    DayOfWeek = 4
+	DayOfWeek_DAY_OF_WEEK_FRIDAY      DayOfWeek = 5
+	DayOfWeek_DAY_OF_WEEK_SATURDAY    DayOfWeek = 6
+	DayOfWeek_DAY_OF_WEEK_SUNDAY      DayOfWeek = 7
+)
+
+// Enum value maps for DayOfWeek.
+var (
+	DayOfWeek_name = map[int32]string{
+		0: "DAY_OF_WEEK_UNSPECIFIED",
+		1: "DAY_OF_WEEK_MONDAY",
+		2: "DAY_OF_WEEK_TUESDAY",
+		3: "DAY_OF_WEEK_WEDNESDAY",
+		4: "DAY_OF_WEEK_THURSDAY",
+		5: "DAY_OF_WEEK_FRIDAY",
+		6: "DAY_OF_WEEK_SATURDAY",
+		7: "DAY_OF_WEEK_SUNDAY",
+	}
+	DayOfWeek_value = map[string]int32{
+		"DAY_OF_WEEK_UNSPECIFIED": 0,
+		"DAY_OF_WEEK_MONDAY":      1,
+		"DAY_OF_WEEK_TUESDAY":     2,
+		"DAY_OF_WEEK_WEDNESDAY":   3,
+		"DAY_OF_WEEK_THURSDAY":    4,
+		"DAY_OF_WEEK_FRIDAY":      5,
+		"DAY_OF_WEEK_SATURDAY":    6,
+		"DAY_OF_WEEK_SUNDAY":      7,
+	}
+)
+
+func (x DayOfWeek) Enum() *DayOfWeek {
+	p := new(DayOfWeek)
+	*p = x
+	return p
+}
+
+func (x DayOfWeek) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DayOfWeek) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_setting_service_proto_enumTypes[2].Descriptor()
+}
+
+func (DayOfWeek) Type() protoreflect.EnumType {
+	return &file_v1_setting_service_proto_enumTypes[2]
+}
+
+func (x DayOfWeek) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DayOfWeek.Descriptor instead.
+func (DayOfWeek) EnumDescriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{2}
 }
 
 type WorkspaceProfileSetting struct {
@@ -1019,11 +1085,299 @@ func (*SendTestEmailResponse) Descriptor() ([]byte, []int) {
 	return file_v1_setting_service_proto_rawDescGZIP(), []int{13}
 }
 
+// QuietHoursSetting is the workspace schedule during which outbound
+// notifications are held rather than delivered. Held deliveries keep their
+// place and are sent once the window ends; a channel that sets bypass_quiet_hours
+// keeps delivering during the window.
+type QuietHoursSetting struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether quiet hours are on. A disabled schedule is kept but selects nothing.
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// The IANA time zone the windows are evaluated in, for example
+	// "Asia/Shanghai". Required while enabled.
+	Timezone string `protobuf:"bytes,2,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	// Recurring weekly windows. At least one window or maintenance window is
+	// required while enabled.
+	Windows []*QuietWindow `protobuf:"bytes,3,rep,name=windows,proto3" json:"windows,omitempty"`
+	// One-off absolute windows for planned maintenance. A window whose end has
+	// passed is inert and can be removed.
+	MaintenanceWindows []*MaintenanceWindow `protobuf:"bytes,4,rep,name=maintenance_windows,json=maintenanceWindows,proto3" json:"maintenance_windows,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *QuietHoursSetting) Reset() {
+	*x = QuietHoursSetting{}
+	mi := &file_v1_setting_service_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuietHoursSetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuietHoursSetting) ProtoMessage() {}
+
+func (x *QuietHoursSetting) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuietHoursSetting.ProtoReflect.Descriptor instead.
+func (*QuietHoursSetting) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *QuietHoursSetting) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *QuietHoursSetting) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
+}
+
+func (x *QuietHoursSetting) GetWindows() []*QuietWindow {
+	if x != nil {
+		return x.Windows
+	}
+	return nil
+}
+
+func (x *QuietHoursSetting) GetMaintenanceWindows() []*MaintenanceWindow {
+	if x != nil {
+		return x.MaintenanceWindows
+	}
+	return nil
+}
+
+// QuietWindow is one recurring weekly quiet window.
+type QuietWindow struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The days the window starts on. A window whose end is at or before its start
+	// crosses midnight into the following day.
+	Days []DayOfWeek `protobuf:"varint,1,rep,packed,name=days,proto3,enum=metaxisdata.v1.DayOfWeek" json:"days,omitempty"`
+	// "HH:MM" in the setting's time zone.
+	Start string `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`
+	// "HH:MM" in the setting's time zone.
+	End           string `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QuietWindow) Reset() {
+	*x = QuietWindow{}
+	mi := &file_v1_setting_service_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QuietWindow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QuietWindow) ProtoMessage() {}
+
+func (x *QuietWindow) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QuietWindow.ProtoReflect.Descriptor instead.
+func (*QuietWindow) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *QuietWindow) GetDays() []DayOfWeek {
+	if x != nil {
+		return x.Days
+	}
+	return nil
+}
+
+func (x *QuietWindow) GetStart() string {
+	if x != nil {
+		return x.Start
+	}
+	return ""
+}
+
+func (x *QuietWindow) GetEnd() string {
+	if x != nil {
+		return x.End
+	}
+	return ""
+}
+
+// MaintenanceWindow is one absolute quiet window, for planned maintenance.
+type MaintenanceWindow struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Start         *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=start,proto3" json:"start,omitempty"`
+	End           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=end,proto3" json:"end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MaintenanceWindow) Reset() {
+	*x = MaintenanceWindow{}
+	mi := &file_v1_setting_service_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MaintenanceWindow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MaintenanceWindow) ProtoMessage() {}
+
+func (x *MaintenanceWindow) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MaintenanceWindow.ProtoReflect.Descriptor instead.
+func (*MaintenanceWindow) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *MaintenanceWindow) GetStart() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Start
+	}
+	return nil
+}
+
+func (x *MaintenanceWindow) GetEnd() *timestamppb.Timestamp {
+	if x != nil {
+		return x.End
+	}
+	return nil
+}
+
+type GetQuietHoursSettingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetQuietHoursSettingRequest) Reset() {
+	*x = GetQuietHoursSettingRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetQuietHoursSettingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetQuietHoursSettingRequest) ProtoMessage() {}
+
+func (x *GetQuietHoursSettingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetQuietHoursSettingRequest.ProtoReflect.Descriptor instead.
+func (*GetQuietHoursSettingRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{17}
+}
+
+type UpdateQuietHoursSettingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The schedule to update.
+	Setting *QuietHoursSetting `protobuf:"bytes,1,opt,name=setting,proto3" json:"setting,omitempty"`
+	// The list of fields to update: enabled, timezone, windows or
+	// maintenance_windows.
+	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateQuietHoursSettingRequest) Reset() {
+	*x = UpdateQuietHoursSettingRequest{}
+	mi := &file_v1_setting_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateQuietHoursSettingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateQuietHoursSettingRequest) ProtoMessage() {}
+
+func (x *UpdateQuietHoursSettingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_setting_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateQuietHoursSettingRequest.ProtoReflect.Descriptor instead.
+func (*UpdateQuietHoursSettingRequest) Descriptor() ([]byte, []int) {
+	return file_v1_setting_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *UpdateQuietHoursSettingRequest) GetSetting() *QuietHoursSetting {
+	if x != nil {
+		return x.Setting
+	}
+	return nil
+}
+
+func (x *UpdateQuietHoursSettingRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
+	if x != nil {
+		return x.UpdateMask
+	}
+	return nil
+}
+
 var File_v1_setting_service_proto protoreflect.FileDescriptor
 
 const file_v1_setting_service_proto_rawDesc = "" +
 	"\n" +
-	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x13v1/annotation.proto\"\xb1\x04\n" +
+	"\x18v1/setting_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"\xb1\x04\n" +
 	"\x17WorkspaceProfileSetting\x12!\n" +
 	"\fexternal_url\x18\x01 \x01(\tR\vexternalUrl\x12'\n" +
 	"\x0fdisallow_signup\x18\x02 \x01(\bR\x0edisallowSignup\x128\n" +
@@ -1084,7 +1438,24 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\"\x16\n" +
 	"\x14SendTestEmailRequest\"\x17\n" +
-	"\x15SendTestEmailResponse*\x86\x01\n" +
+	"\x15SendTestEmailResponse\"\xd4\x01\n" +
+	"\x11QuietHoursSetting\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1a\n" +
+	"\btimezone\x18\x02 \x01(\tR\btimezone\x125\n" +
+	"\awindows\x18\x03 \x03(\v2\x1b.metaxisdata.v1.QuietWindowR\awindows\x12R\n" +
+	"\x13maintenance_windows\x18\x04 \x03(\v2!.metaxisdata.v1.MaintenanceWindowR\x12maintenanceWindows\"d\n" +
+	"\vQuietWindow\x12-\n" +
+	"\x04days\x18\x01 \x03(\x0e2\x19.metaxisdata.v1.DayOfWeekR\x04days\x12\x14\n" +
+	"\x05start\x18\x02 \x01(\tR\x05start\x12\x10\n" +
+	"\x03end\x18\x03 \x01(\tR\x03end\"s\n" +
+	"\x11MaintenanceWindow\x120\n" +
+	"\x05start\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x05start\x12,\n" +
+	"\x03end\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03end\"\x1d\n" +
+	"\x1bGetQuietHoursSettingRequest\"\x9f\x01\n" +
+	"\x1eUpdateQuietHoursSettingRequest\x12@\n" +
+	"\asetting\x18\x01 \x01(\v2!.metaxisdata.v1.QuietHoursSettingB\x03\xe0A\x02R\asetting\x12;\n" +
+	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask*\x86\x01\n" +
 	"\x0eSMTPEncryption\x12\x1f\n" +
 	"\x1bSMTP_ENCRYPTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14SMTP_ENCRYPTION_NONE\x10\x01\x12\x1c\n" +
@@ -1095,8 +1466,16 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x18SMTP_AUTHENTICATION_NONE\x10\x01\x12\x1d\n" +
 	"\x19SMTP_AUTHENTICATION_PLAIN\x10\x02\x12\x1d\n" +
 	"\x19SMTP_AUTHENTICATION_LOGIN\x10\x03\x12 \n" +
-	"\x1cSMTP_AUTHENTICATION_CRAM_MD5\x10\x042\x94\n" +
-	"\n" +
+	"\x1cSMTP_AUTHENTICATION_CRAM_MD5\x10\x04*\xd8\x01\n" +
+	"\tDayOfWeek\x12\x1b\n" +
+	"\x17DAY_OF_WEEK_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12DAY_OF_WEEK_MONDAY\x10\x01\x12\x17\n" +
+	"\x13DAY_OF_WEEK_TUESDAY\x10\x02\x12\x19\n" +
+	"\x15DAY_OF_WEEK_WEDNESDAY\x10\x03\x12\x18\n" +
+	"\x14DAY_OF_WEEK_THURSDAY\x10\x04\x12\x16\n" +
+	"\x12DAY_OF_WEEK_FRIDAY\x10\x05\x12\x18\n" +
+	"\x14DAY_OF_WEEK_SATURDAY\x10\x06\x12\x16\n" +
+	"\x12DAY_OF_WEEK_SUNDAY\x10\a2\x8c\r\n" +
 	"\x0eSettingService\x12\xbf\x01\n" +
 	"\x1aGetWorkspaceProfileSetting\x121.metaxisdata.v1.GetWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"E\x80\xea0\x01\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/settings/workspaceProfile\x12\xe7\x01\n" +
 	"\x1dUpdateWorkspaceProfileSetting\x124.metaxisdata.v1.UpdateWorkspaceProfileSettingRequest\x1a'.metaxisdata.v1.WorkspaceProfileSetting\"g\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02(:\asetting2\x1d/v1/settings/workspaceProfile\x12\x9d\x01\n" +
@@ -1104,7 +1483,9 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x11UpdateDebugConfig\x12(.metaxisdata.v1.UpdateDebugConfigRequest\x1a).metaxisdata.v1.UpdateDebugConfigResponse\"P\xdaA\aenabled\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1d:\x01*2\x18/v1/settings/debugConfig\x12\x8f\x01\n" +
 	"\x0fGetEmailSetting\x12&.metaxisdata.v1.GetEmailSettingRequest\x1a\x1c.metaxisdata.v1.EmailSetting\"6\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/settings/email\x12\xbb\x01\n" +
 	"\x12UpdateEmailSetting\x12).metaxisdata.v1.UpdateEmailSettingRequest\x1a\x1c.metaxisdata.v1.EmailSetting\"\\\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1d:\asetting2\x12/v1/settings/email\x12\xa8\x01\n" +
-	"\rSendTestEmail\x12$.metaxisdata.v1.SendTestEmailRequest\x1a%.metaxisdata.v1.SendTestEmailResponse\"J\x8a\xea0\x1bmetaxisdata.settings.update\x82\xd3\xe4\x93\x02%:\x01*\" /v1/settings/email:sendTestEmailB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\rSendTestEmail\x12$.metaxisdata.v1.SendTestEmailRequest\x1a%.metaxisdata.v1.SendTestEmailResponse\"J\x8a\xea0\x1bmetaxisdata.settings.update\x82\xd3\xe4\x93\x02%:\x01*\" /v1/settings/email:sendTestEmail\x12\xa3\x01\n" +
+	"\x14GetQuietHoursSetting\x12+.metaxisdata.v1.GetQuietHoursSettingRequest\x1a!.metaxisdata.v1.QuietHoursSetting\";\x8a\xea0\x18metaxisdata.settings.get\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/settings/quietHours\x12\xcf\x01\n" +
+	"\x17UpdateQuietHoursSetting\x12..metaxisdata.v1.UpdateQuietHoursSettingRequest\x1a!.metaxisdata.v1.QuietHoursSetting\"a\xdaA\x13setting,update_mask\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02\":\asetting2\x17/v1/settings/quietHoursB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_setting_service_proto_rawDescOnce sync.Once
@@ -1118,57 +1499,75 @@ func file_v1_setting_service_proto_rawDescGZIP() []byte {
 	return file_v1_setting_service_proto_rawDescData
 }
 
-var file_v1_setting_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_v1_setting_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_v1_setting_service_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_v1_setting_service_proto_goTypes = []any{
 	(SMTPEncryption)(0),                          // 0: metaxisdata.v1.SMTPEncryption
 	(SMTPAuthentication)(0),                      // 1: metaxisdata.v1.SMTPAuthentication
-	(*WorkspaceProfileSetting)(nil),              // 2: metaxisdata.v1.WorkspaceProfileSetting
-	(*DataQualitySetting)(nil),                   // 3: metaxisdata.v1.DataQualitySetting
-	(*GetWorkspaceProfileSettingRequest)(nil),    // 4: metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	(*UpdateWorkspaceProfileSettingRequest)(nil), // 5: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	(*GetDebugConfigRequest)(nil),                // 6: metaxisdata.v1.GetDebugConfigRequest
-	(*GetDebugConfigResponse)(nil),               // 7: metaxisdata.v1.GetDebugConfigResponse
-	(*UpdateDebugConfigRequest)(nil),             // 8: metaxisdata.v1.UpdateDebugConfigRequest
-	(*UpdateDebugConfigResponse)(nil),            // 9: metaxisdata.v1.UpdateDebugConfigResponse
-	(*EmailSetting)(nil),                         // 10: metaxisdata.v1.EmailSetting
-	(*SMTPConfig)(nil),                           // 11: metaxisdata.v1.SMTPConfig
-	(*GetEmailSettingRequest)(nil),               // 12: metaxisdata.v1.GetEmailSettingRequest
-	(*UpdateEmailSettingRequest)(nil),            // 13: metaxisdata.v1.UpdateEmailSettingRequest
-	(*SendTestEmailRequest)(nil),                 // 14: metaxisdata.v1.SendTestEmailRequest
-	(*SendTestEmailResponse)(nil),                // 15: metaxisdata.v1.SendTestEmailResponse
-	(*durationpb.Duration)(nil),                  // 16: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),                // 17: google.protobuf.FieldMask
+	(DayOfWeek)(0),                               // 2: metaxisdata.v1.DayOfWeek
+	(*WorkspaceProfileSetting)(nil),              // 3: metaxisdata.v1.WorkspaceProfileSetting
+	(*DataQualitySetting)(nil),                   // 4: metaxisdata.v1.DataQualitySetting
+	(*GetWorkspaceProfileSettingRequest)(nil),    // 5: metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	(*UpdateWorkspaceProfileSettingRequest)(nil), // 6: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	(*GetDebugConfigRequest)(nil),                // 7: metaxisdata.v1.GetDebugConfigRequest
+	(*GetDebugConfigResponse)(nil),               // 8: metaxisdata.v1.GetDebugConfigResponse
+	(*UpdateDebugConfigRequest)(nil),             // 9: metaxisdata.v1.UpdateDebugConfigRequest
+	(*UpdateDebugConfigResponse)(nil),            // 10: metaxisdata.v1.UpdateDebugConfigResponse
+	(*EmailSetting)(nil),                         // 11: metaxisdata.v1.EmailSetting
+	(*SMTPConfig)(nil),                           // 12: metaxisdata.v1.SMTPConfig
+	(*GetEmailSettingRequest)(nil),               // 13: metaxisdata.v1.GetEmailSettingRequest
+	(*UpdateEmailSettingRequest)(nil),            // 14: metaxisdata.v1.UpdateEmailSettingRequest
+	(*SendTestEmailRequest)(nil),                 // 15: metaxisdata.v1.SendTestEmailRequest
+	(*SendTestEmailResponse)(nil),                // 16: metaxisdata.v1.SendTestEmailResponse
+	(*QuietHoursSetting)(nil),                    // 17: metaxisdata.v1.QuietHoursSetting
+	(*QuietWindow)(nil),                          // 18: metaxisdata.v1.QuietWindow
+	(*MaintenanceWindow)(nil),                    // 19: metaxisdata.v1.MaintenanceWindow
+	(*GetQuietHoursSettingRequest)(nil),          // 20: metaxisdata.v1.GetQuietHoursSettingRequest
+	(*UpdateQuietHoursSettingRequest)(nil),       // 21: metaxisdata.v1.UpdateQuietHoursSettingRequest
+	(*durationpb.Duration)(nil),                  // 22: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                // 23: google.protobuf.FieldMask
+	(*timestamppb.Timestamp)(nil),                // 24: google.protobuf.Timestamp
 }
 var file_v1_setting_service_proto_depIdxs = []int32{
-	3,  // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
-	16, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	2,  // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
-	17, // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	11, // 4: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
+	4,  // 0: metaxisdata.v1.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.v1.DataQualitySetting
+	22, // 1: metaxisdata.v1.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	3,  // 2: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.setting:type_name -> metaxisdata.v1.WorkspaceProfileSetting
+	23, // 3: metaxisdata.v1.UpdateWorkspaceProfileSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	12, // 4: metaxisdata.v1.EmailSetting.smtp:type_name -> metaxisdata.v1.SMTPConfig
 	0,  // 5: metaxisdata.v1.SMTPConfig.encryption:type_name -> metaxisdata.v1.SMTPEncryption
 	1,  // 6: metaxisdata.v1.SMTPConfig.authentication:type_name -> metaxisdata.v1.SMTPAuthentication
-	10, // 7: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
-	17, // 8: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
-	4,  // 9: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
-	5,  // 10: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
-	6,  // 11: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
-	8,  // 12: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
-	12, // 13: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
-	13, // 14: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
-	14, // 15: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
-	2,  // 16: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	2,  // 17: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
-	7,  // 18: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
-	9,  // 19: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
-	10, // 20: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
-	10, // 21: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
-	15, // 22: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
-	16, // [16:23] is the sub-list for method output_type
-	9,  // [9:16] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	11, // 7: metaxisdata.v1.UpdateEmailSettingRequest.setting:type_name -> metaxisdata.v1.EmailSetting
+	23, // 8: metaxisdata.v1.UpdateEmailSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	18, // 9: metaxisdata.v1.QuietHoursSetting.windows:type_name -> metaxisdata.v1.QuietWindow
+	19, // 10: metaxisdata.v1.QuietHoursSetting.maintenance_windows:type_name -> metaxisdata.v1.MaintenanceWindow
+	2,  // 11: metaxisdata.v1.QuietWindow.days:type_name -> metaxisdata.v1.DayOfWeek
+	24, // 12: metaxisdata.v1.MaintenanceWindow.start:type_name -> google.protobuf.Timestamp
+	24, // 13: metaxisdata.v1.MaintenanceWindow.end:type_name -> google.protobuf.Timestamp
+	17, // 14: metaxisdata.v1.UpdateQuietHoursSettingRequest.setting:type_name -> metaxisdata.v1.QuietHoursSetting
+	23, // 15: metaxisdata.v1.UpdateQuietHoursSettingRequest.update_mask:type_name -> google.protobuf.FieldMask
+	5,  // 16: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:input_type -> metaxisdata.v1.GetWorkspaceProfileSettingRequest
+	6,  // 17: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:input_type -> metaxisdata.v1.UpdateWorkspaceProfileSettingRequest
+	7,  // 18: metaxisdata.v1.SettingService.GetDebugConfig:input_type -> metaxisdata.v1.GetDebugConfigRequest
+	9,  // 19: metaxisdata.v1.SettingService.UpdateDebugConfig:input_type -> metaxisdata.v1.UpdateDebugConfigRequest
+	13, // 20: metaxisdata.v1.SettingService.GetEmailSetting:input_type -> metaxisdata.v1.GetEmailSettingRequest
+	14, // 21: metaxisdata.v1.SettingService.UpdateEmailSetting:input_type -> metaxisdata.v1.UpdateEmailSettingRequest
+	15, // 22: metaxisdata.v1.SettingService.SendTestEmail:input_type -> metaxisdata.v1.SendTestEmailRequest
+	20, // 23: metaxisdata.v1.SettingService.GetQuietHoursSetting:input_type -> metaxisdata.v1.GetQuietHoursSettingRequest
+	21, // 24: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:input_type -> metaxisdata.v1.UpdateQuietHoursSettingRequest
+	3,  // 25: metaxisdata.v1.SettingService.GetWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	3,  // 26: metaxisdata.v1.SettingService.UpdateWorkspaceProfileSetting:output_type -> metaxisdata.v1.WorkspaceProfileSetting
+	8,  // 27: metaxisdata.v1.SettingService.GetDebugConfig:output_type -> metaxisdata.v1.GetDebugConfigResponse
+	10, // 28: metaxisdata.v1.SettingService.UpdateDebugConfig:output_type -> metaxisdata.v1.UpdateDebugConfigResponse
+	11, // 29: metaxisdata.v1.SettingService.GetEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	11, // 30: metaxisdata.v1.SettingService.UpdateEmailSetting:output_type -> metaxisdata.v1.EmailSetting
+	16, // 31: metaxisdata.v1.SettingService.SendTestEmail:output_type -> metaxisdata.v1.SendTestEmailResponse
+	17, // 32: metaxisdata.v1.SettingService.GetQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
+	17, // 33: metaxisdata.v1.SettingService.UpdateQuietHoursSetting:output_type -> metaxisdata.v1.QuietHoursSetting
+	25, // [25:34] is the sub-list for method output_type
+	16, // [16:25] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_v1_setting_service_proto_init() }
@@ -1182,8 +1581,8 @@ func file_v1_setting_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_setting_service_proto_rawDesc), len(file_v1_setting_service_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   14,
+			NumEnums:      3,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

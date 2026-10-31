@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -652,4 +653,102 @@ func TestValidateEmailSettingAcceptsAnUnencryptedLoginlessServer(t *testing.T) {
 			Authentication: storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN,
 		},
 	}, true))
+}
+
+func TestMergeQuietHoursSettingUpdate(t *testing.T) {
+	t.Parallel()
+
+	setting, err := mergeQuietHoursSettingUpdate(nil, &v1pb.QuietHoursSetting{
+		Enabled:  true,
+		Timezone: " Asia/Shanghai ",
+		Windows: []*v1pb.QuietWindow{{
+			Days:  []v1pb.DayOfWeek{v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY, v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY},
+			Start: "22:00",
+			End:   "08:00",
+		}},
+		MaintenanceWindows: []*v1pb.MaintenanceWindow{{
+			Start: timestamppb.New(time.Date(2026, 11, 2, 2, 0, 0, 0, time.UTC)),
+			End:   timestamppb.New(time.Date(2026, 11, 2, 4, 0, 0, 0, time.UTC)),
+		}},
+	}, nil)
+	require.NoError(t, err)
+	require.True(t, setting.GetEnabled())
+	require.Equal(t, "Asia/Shanghai", setting.GetTimezone())
+	require.Len(t, setting.GetWindows(), 1)
+	require.Equal(t, []storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY}, setting.GetWindows()[0].GetDays())
+	require.Len(t, setting.GetMaintenanceWindows(), 1)
+
+	// A masked update keeps everything the mask does not name.
+	merged, err := mergeQuietHoursSettingUpdate(setting, &v1pb.QuietHoursSetting{Enabled: false}, []string{"enabled"})
+	require.NoError(t, err)
+	require.False(t, merged.GetEnabled())
+	require.Equal(t, "Asia/Shanghai", merged.GetTimezone())
+	require.Len(t, merged.GetWindows(), 1)
+}
+
+func TestMergeQuietHoursSettingUpdateRejectsIncompleteSchedules(t *testing.T) {
+	t.Parallel()
+
+	valid := &v1pb.QuietHoursSetting{
+		Enabled:  true,
+		Timezone: "UTC",
+		Windows:  []*v1pb.QuietWindow{{Days: []v1pb.DayOfWeek{v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY}, Start: "22:00", End: "08:00"}},
+	}
+	tests := map[string]*v1pb.QuietHoursSetting{
+		"no timezone":        {Enabled: true, Windows: valid.GetWindows()},
+		"invalid timezone":   {Enabled: true, Timezone: "Mars/Olympus", Windows: valid.GetWindows()},
+		"no windows":         {Enabled: true, Timezone: "UTC"},
+		"no days":            {Enabled: true, Timezone: "UTC", Windows: []*v1pb.QuietWindow{{Start: "22:00", End: "08:00"}}},
+		"invalid day":        {Enabled: true, Timezone: "UTC", Windows: []*v1pb.QuietWindow{{Days: []v1pb.DayOfWeek{v1pb.DayOfWeek(9)}, Start: "22:00", End: "08:00"}}},
+		"invalid clock":      {Enabled: true, Timezone: "UTC", Windows: []*v1pb.QuietWindow{{Days: valid.Windows[0].Days, Start: "25:00", End: "08:00"}}},
+		"same start and end": {Enabled: true, Timezone: "UTC", Windows: []*v1pb.QuietWindow{{Days: valid.Windows[0].Days, Start: "22:00", End: "22:00"}}},
+		"maintenance backwards": {Enabled: true, Timezone: "UTC", MaintenanceWindows: []*v1pb.MaintenanceWindow{{
+			Start: timestamppb.New(time.Date(2026, 11, 2, 4, 0, 0, 0, time.UTC)),
+			End:   timestamppb.New(time.Date(2026, 11, 2, 2, 0, 0, 0, time.UTC)),
+		}}},
+	}
+	for name, setting := range tests {
+		_, err := mergeQuietHoursSettingUpdate(nil, setting, nil)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), name)
+	}
+
+	_, err := mergeQuietHoursSettingUpdate(nil, &v1pb.QuietHoursSetting{}, []string{"surprise"})
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// Clearing every field is the off switch and passes validation.
+	empty, err := mergeQuietHoursSettingUpdate(validSettingForQuietHours(), &v1pb.QuietHoursSetting{}, nil)
+	require.NoError(t, err)
+	require.Empty(t, empty.GetEnabled())
+	require.Empty(t, empty.GetWindows())
+}
+
+func validSettingForQuietHours() *storepb.QuietHoursSetting {
+	return &storepb.QuietHoursSetting{
+		Enabled:  true,
+		Timezone: "UTC",
+		Windows: []*storepb.QuietWindow{{
+			Days:  []storepb.DayOfWeek{storepb.DayOfWeek_DAY_OF_WEEK_MONDAY},
+			Start: "22:00",
+			End:   "08:00",
+		}},
+	}
+}
+
+func TestConvertToV1QuietHoursSetting(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, convertToV1QuietHoursSetting(nil).GetEnabled())
+
+	start := time.Date(2026, 11, 2, 2, 0, 0, 0, time.UTC)
+	setting := validSettingForQuietHours()
+	setting.MaintenanceWindows = []*storepb.MaintenanceWindow{{
+		Start: timestamppb.New(start),
+		End:   timestamppb.New(start.Add(2 * time.Hour)),
+	}}
+	converted := convertToV1QuietHoursSetting(setting)
+	require.True(t, converted.GetEnabled())
+	require.Equal(t, "UTC", converted.GetTimezone())
+	require.Equal(t, []v1pb.DayOfWeek{v1pb.DayOfWeek_DAY_OF_WEEK_MONDAY}, converted.GetWindows()[0].GetDays())
+	require.Equal(t, "22:00", converted.GetWindows()[0].GetStart())
+	require.Equal(t, start, converted.GetMaintenanceWindows()[0].GetStart().AsTime())
 }
