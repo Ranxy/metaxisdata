@@ -213,6 +213,11 @@ message DataQualityDigestDetail {
   google.protobuf.Timestamp period_start = 1;
   google.protobuf.Timestamp period_end = 2;
 
+  // The IANA time zone the period label is written in (the digest schedule's
+  // zone, for example "Asia/Shanghai"). A UTC label can name the wrong calendar
+  // days for schedules east of UTC+9, so the zone travels with the period.
+  string timezone = 18;
+
   // How many targets had at least one enabled check in the period.
   int32 target_count = 3;
   // How many enabled checks the workspace had at the end of the period.
@@ -229,7 +234,9 @@ message DataQualityDigestDetail {
   int32 new_issue_count = 10;
   int32 recovered_issue_count = 11;
 
-  // The open state at the end of the period.
+  // The open state as of the aggregation (the runner reads it while building
+  // the digest, so it describes the moment the digest is produced, which is at
+  // or shortly after period_end).
   int32 open_issue_count = 12;
   int32 open_warning_count = 13;
   int32 open_error_count = 14;

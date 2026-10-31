@@ -9240,6 +9240,15 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
                 </tr>
               
                 <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The IANA time zone the period label is written in (the digest schedule&#39;s
+zone, for example &#34;Asia/Shanghai&#34;). A UTC label can name the wrong calendar
+days for schedules east of UTC&#43;9, so the zone travels with the period. </p></td>
+                </tr>
+              
+                <tr>
                   <td>target_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
@@ -9306,7 +9315,9 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
                   <td>open_issue_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The open state at the end of the period. </p></td>
+                  <td><p>The open state as of the aggregation (the runner reads it while building
+the digest, so it describes the moment the digest is produced, which is at
+or shortly after period_end). </p></td>
                 </tr>
               
                 <tr>

@@ -7364,6 +7364,11 @@ export declare const DataQualityService: GenService<{
    * CSV document, streamed in slices. This is a file download, not a list: it
    * stops at max_rows and reports the running row count on every slice.
    *
+   * Rows are read page by page, so the file is not a consistent snapshot: a row
+   * written while the export runs may fall in this file or the next. A stream
+   * error means the file is incomplete and must be discarded — only a completed
+   * stream is a document.
+   *
    * No (google.api.http) annotation: this is a server-streaming method, and the
    * REST gateway cannot carry one. The browser reaches the Connect endpoint
    * directly, the way it does for ExplainSQL.
@@ -7422,6 +7427,11 @@ export declare const DataQualityService: GenService<{
    * Export the issues the same filters select as ListQualityIssues as one CSV
    * document, streamed in slices. This is a file download, not a list: it stops
    * at max_rows and reports the running row count on every slice.
+   *
+   * Rows are read page by page, so the file is not a consistent snapshot: a row
+   * written while the export runs may fall in this file or the next. A stream
+   * error means the file is incomplete and must be discarded — only a completed
+   * stream is a document.
    *
    * No (google.api.http) annotation, for the same reason as
    * ExportQualityExecutions.
@@ -7649,6 +7659,11 @@ export declare const DataQualityService: GenService<{
    * Export the targets the same filters select as ListQualityTargets as one CSV
    * document, streamed in slices. This is a file download, not a list: it stops
    * at max_rows and reports the running row count on every slice.
+   *
+   * Rows are read page by page, so the file is not a consistent snapshot: a row
+   * written while the export runs may fall in this file or the next. A stream
+   * error means the file is incomplete and must be discarded — only a completed
+   * stream is a document.
    *
    * No (google.api.http) annotation, for the same reason as
    * ExportQualityExecutions.

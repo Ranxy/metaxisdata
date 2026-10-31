@@ -7131,12 +7131,16 @@ scheduling is an internal concern and is not exposed as a resource.
 | GetQualityExecution | [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest) | [QualityExecution](#metaxisdata-v1-QualityExecution) | Read one execution: its state, verdict, and the evidence behind it. |
 | ExportQualityExecutions | [ExportQualityExecutionsRequest](#metaxisdata-v1-ExportQualityExecutionsRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the executions the same filters select as ListQualityExecutions as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
 
+Rows are read page by page, so the file is not a consistent snapshot: a row written while the export runs may fall in this file or the next. A stream error means the file is incomplete and must be discarded — only a completed stream is a document.
+
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | ListQualityRuns | [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest) | [ListQualityRunsResponse](#metaxisdata-v1-ListQualityRunsResponse) | List runs, newest first. A run is one dispatch batch that belongs to one target: the executions one scheduler tick or one manual request planned for that target. Runs are the batch-level read model the execution directory groups by target; the run itself carries the target and its counts. |
 | GetQualityRun | [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest) | [QualityRun](#metaxisdata-v1-QualityRun) | Read one run: its target, state, verdict and counts. |
 | ListQualityIssues | [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest) | [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse) | List quality issues, newest first. |
 | GetQualityIssue | [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Read one quality issue. |
 | ExportQualityIssues | [ExportQualityIssuesRequest](#metaxisdata-v1-ExportQualityIssuesRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the issues the same filters select as ListQualityIssues as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
+
+Rows are read page by page, so the file is not a consistent snapshot: a row written while the export runs may fall in this file or the next. A stream error means the file is incomplete and must be discarded — only a completed stream is a document.
 
 No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | UpdateQualityIssue | [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest) | [QualityIssue](#metaxisdata-v1-QualityIssue) | Acknowledge, resolve or mute one quality issue. |
@@ -7161,6 +7165,8 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
 | ExportQualityTargets | [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the targets the same filters select as ListQualityTargets as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
+
+Rows are read page by page, so the file is not a consistent snapshot: a row written while the export runs may fall in this file or the next. A stream error means the file is incomplete and must be discarded — only a completed stream is a document.
 
 No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |

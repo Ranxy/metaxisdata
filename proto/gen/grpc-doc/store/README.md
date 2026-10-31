@@ -3136,6 +3136,7 @@ quality table.
 | ----- | ---- | ----- | ----------- |
 | period_start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The period the digest covers: [period_start, period_end). |
 | period_end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| timezone | [string](#string) |  | The IANA time zone the period label is written in (the digest schedule&#39;s zone, for example &#34;Asia/Shanghai&#34;). A UTC label can name the wrong calendar days for schedules east of UTC&#43;9, so the zone travels with the period. |
 | target_count | [int32](#int32) |  | How many targets had at least one enabled check in the period. |
 | rule_count | [int32](#int32) |  | How many enabled checks the workspace had at the end of the period. |
 | execution_count | [int32](#int32) |  | The verdict tally of the period&#39;s completed executions. |
@@ -3145,7 +3146,7 @@ quality table.
 | errored_count | [int32](#int32) |  |  |
 | new_issue_count | [int32](#int32) |  | The problem ledger&#39;s movement in the period. |
 | recovered_issue_count | [int32](#int32) |  |  |
-| open_issue_count | [int32](#int32) |  | The open state at the end of the period. |
+| open_issue_count | [int32](#int32) |  | The open state as of the aggregation (the runner reads it while building the digest, so it describes the moment the digest is produced, which is at or shortly after period_end). |
 | open_warning_count | [int32](#int32) |  |  |
 | open_error_count | [int32](#int32) |  |  |
 | open_critical_count | [int32](#int32) |  |  |

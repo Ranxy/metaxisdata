@@ -1178,6 +1178,10 @@ type DataQualityDigestDetail struct {
 	// The period the digest covers: [period_start, period_end).
 	PeriodStart *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=period_start,json=periodStart,proto3" json:"period_start,omitempty"`
 	PeriodEnd   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=period_end,json=periodEnd,proto3" json:"period_end,omitempty"`
+	// The IANA time zone the period label is written in (the digest schedule's
+	// zone, for example "Asia/Shanghai"). A UTC label can name the wrong calendar
+	// days for schedules east of UTC+9, so the zone travels with the period.
+	Timezone string `protobuf:"bytes,18,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	// How many targets had at least one enabled check in the period.
 	TargetCount int32 `protobuf:"varint,3,opt,name=target_count,json=targetCount,proto3" json:"target_count,omitempty"`
 	// How many enabled checks the workspace had at the end of the period.
@@ -1191,7 +1195,9 @@ type DataQualityDigestDetail struct {
 	// The problem ledger's movement in the period.
 	NewIssueCount       int32 `protobuf:"varint,10,opt,name=new_issue_count,json=newIssueCount,proto3" json:"new_issue_count,omitempty"`
 	RecoveredIssueCount int32 `protobuf:"varint,11,opt,name=recovered_issue_count,json=recoveredIssueCount,proto3" json:"recovered_issue_count,omitempty"`
-	// The open state at the end of the period.
+	// The open state as of the aggregation (the runner reads it while building
+	// the digest, so it describes the moment the digest is produced, which is at
+	// or shortly after period_end).
 	OpenIssueCount    int32 `protobuf:"varint,12,opt,name=open_issue_count,json=openIssueCount,proto3" json:"open_issue_count,omitempty"`
 	OpenWarningCount  int32 `protobuf:"varint,13,opt,name=open_warning_count,json=openWarningCount,proto3" json:"open_warning_count,omitempty"`
 	OpenErrorCount    int32 `protobuf:"varint,14,opt,name=open_error_count,json=openErrorCount,proto3" json:"open_error_count,omitempty"`
@@ -1247,6 +1253,13 @@ func (x *DataQualityDigestDetail) GetPeriodEnd() *timestamppb.Timestamp {
 		return x.PeriodEnd
 	}
 	return nil
+}
+
+func (x *DataQualityDigestDetail) GetTimezone() string {
+	if x != nil {
+		return x.Timezone
+	}
+	return ""
 }
 
 func (x *DataQualityDigestDetail) GetTargetCount() int32 {
@@ -2408,11 +2421,12 @@ const file_store_notification_proto_rawDesc = "" +
 	"error_code\x18\x0f \x01(\tR\terrorCode\x12*\n" +
 	"\x11failed_rule_count\x18\x10 \x01(\x05R\x0ffailedRuleCount\x12(\n" +
 	"\x10total_rule_count\x18\x11 \x01(\x05R\x0etotalRuleCount\x12\x1a\n" +
-	"\binstance\x18\x12 \x01(\tR\binstance\"\xa3\x06\n" +
+	"\binstance\x18\x12 \x01(\tR\binstance\"\xbf\x06\n" +
 	"\x17DataQualityDigestDetail\x12=\n" +
 	"\fperiod_start\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\vperiodStart\x129\n" +
 	"\n" +
-	"period_end\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tperiodEnd\x12!\n" +
+	"period_end\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tperiodEnd\x12\x1a\n" +
+	"\btimezone\x18\x12 \x01(\tR\btimezone\x12!\n" +
 	"\ftarget_count\x18\x03 \x01(\x05R\vtargetCount\x12\x1d\n" +
 	"\n" +
 	"rule_count\x18\x04 \x01(\x05R\truleCount\x12'\n" +
