@@ -1,7 +1,6 @@
 package outbound
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -129,8 +128,4 @@ func TestNewReceiverRequiresTheKindsConfigAndSecret(t *testing.T) {
 	// A channel with no kind cannot be delivered at all.
 	_, err = NewReceiver(&storepb.NotificationChannel{}, nil, nil)
 	require.Error(t, err)
-
-	// The context is unused by construction but keeps the signature honest for
-	// the delivery path.
-	_ = context.Background()
 }

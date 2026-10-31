@@ -445,6 +445,11 @@ func mergeNotificationChannelUpdate(update *v1pb.NotificationChannel, paths []st
 	if existing == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("the notification channel no longer exists"))
 	}
+	// The kind is immutable, so a full update that names another kind is a
+	// client mistake rather than a silent no-op.
+	if kind := storepb.NotificationChannelKind(update.GetKind()); kind != storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_UNSPECIFIED && kind != existing.GetKind() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the notification channel kind is immutable"))
+	}
 	if len(paths) == 0 {
 		paths = []string{"display_name", "enabled", "event_types", "min_severity", "language", "config"}
 	}

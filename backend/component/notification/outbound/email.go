@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -44,11 +45,16 @@ func NewEmail(setting *storepb.EmailSetting) (Receiver, error) {
 	if setting.GetSmtp().GetPort() <= 0 || setting.GetSmtp().GetPort() > 65535 {
 		return nil, errors.New("the email setting has no valid SMTP port")
 	}
-	if _, err := smtpEncryption(setting); err != nil {
+	encryption, err := smtpEncryption(setting)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := smtpAuth(setting); err != nil {
+	auth, err := smtpAuth(setting)
+	if err != nil {
 		return nil, err
+	}
+	if auth != nil && encryption == storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE {
+		return nil, errors.New("SMTP authentication requires transport encryption")
 	}
 	return &emailReceiver{setting: setting}, nil
 }
@@ -179,25 +185,40 @@ func sendEmail(ctx context.Context, setting *storepb.EmailSetting, to []string, 
 	if err := client.Mail(from.Address); err != nil {
 		return fmt.Errorf("SMTP MAIL FROM failed: %w", err)
 	}
+	// A rejected recipient must not cancel the message for everyone else. The
+	// server's answer names the failing address, so it is not echoed into
+	// last_error; the delivery only fails when no recipient was accepted.
+	accepted := 0
+	var firstErr error
 	for _, recipient := range to {
 		if err := client.Rcpt(recipient); err != nil {
-			return fmt.Errorf("SMTP RCPT TO %s failed: %w", recipient, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
+		accepted++
+	}
+	if accepted == 0 {
+		if firstErr != nil {
+			return fmt.Errorf("the SMTP server rejected every recipient: %w", firstErr)
+		}
+		return errors.New("the SMTP server accepted no recipient")
 	}
 	writer, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("SMTP DATA failed: %w", err)
 	}
-	if _, err := writer.Write([]byte(buildEmailMessage(from.Address, setting.GetFromName(), to, subject, body))); err != nil {
+	if _, err := writer.Write([]byte(buildEmailMessage(from.Address, setting.GetFromName(), subject, body))); err != nil {
 		_ = writer.Close()
 		return fmt.Errorf("failed to write the email body: %w", err)
 	}
 	if err := writer.Close(); err != nil {
 		return fmt.Errorf("failed to finish the email body: %w", err)
 	}
-	if err := client.Quit(); err != nil {
-		return fmt.Errorf("SMTP QUIT failed: %w", err)
-	}
+	// The message is accepted once the DATA terminator is acknowledged, so a
+	// failing QUIT must not turn the attempt into a retry and a duplicate mail.
+	_ = client.Quit()
 	return nil
 }
 
@@ -234,19 +255,23 @@ func dialSMTP(ctx context.Context, address, host string, encryption storepb.Emai
 	}
 }
 
-// buildEmailMessage renders a single-part UTF-8 message. The subject uses
-// RFC 2047 encoding and the body quoted-printable, so a non-ASCII notification
-// survives every server on the way without an 8BITMIME extension.
-func buildEmailMessage(from, fromName string, to []string, subject, body string) string {
+// buildEmailMessage renders a single-part UTF-8 message. The subject is
+// RFC 2047-encoded and folded, and the body is quoted-printable, so a non-ASCII
+// notification survives every server on the way without an 8BITMIME extension.
+// Recipients are envelope-only (Bcc semantics): the To header names no one, so a
+// shared on-call mailbox does not learn the internal owners' and administrators'
+// addresses.
+func buildEmailMessage(from, fromName, subject, body string) string {
 	var message bytes.Buffer
 	fromHeader := from
 	if name := sanitizeHeader(fromName); name != "" {
-		fromHeader = mime.QEncoding.Encode("utf-8", name) + " <" + from + ">"
+		fromHeader = encodeHeader(name) + " <" + from + ">"
 	}
 	fmt.Fprintf(&message, "From: %s\r\n", fromHeader)
-	fmt.Fprintf(&message, "To: %s\r\n", strings.Join(to, ", "))
-	fmt.Fprintf(&message, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", sanitizeHeader(subject)))
+	_, _ = message.WriteString("To: undisclosed-recipients:;\r\n")
+	fmt.Fprintf(&message, "Subject: %s\r\n", encodeHeader(truncate(sanitizeHeader(subject), 120)))
 	fmt.Fprintf(&message, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	_, _ = message.WriteString("Auto-Submitted: auto-generated\r\n")
 	_, _ = message.WriteString("MIME-Version: 1.0\r\n")
 	_, _ = message.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	_, _ = message.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
@@ -260,6 +285,28 @@ func buildEmailMessage(from, fromName string, to []string, subject, body string)
 		_, _ = message.WriteString("\r\n")
 	}
 	return message.String()
+}
+
+// encodeHeader RFC 2047-encodes a header value and folds it into encoded words of
+// at most ~72 characters. A single encoded word breaks on a long CJK title: every
+// UTF-8 byte becomes three characters and an encoded word may not exceed 75.
+func encodeHeader(value string) string {
+	if value == "" {
+		return ""
+	}
+	var words []string
+	var chunk strings.Builder
+	for _, r := range value {
+		if chunk.Len()+utf8.RuneLen(r) > 20 {
+			words = append(words, mime.QEncoding.Encode("utf-8", chunk.String()))
+			chunk.Reset()
+		}
+		_, _ = chunk.WriteRune(r)
+	}
+	if chunk.Len() > 0 {
+		words = append(words, mime.QEncoding.Encode("utf-8", chunk.String()))
+	}
+	return strings.Join(words, "\r\n ")
 }
 
 // sanitizeHeader strips the line breaks that would let a stored value inject a

@@ -216,3 +216,65 @@ func TestConvertToV1NotificationDeliveryNextAttempt(t *testing.T) {
 	require.Nil(t, converted.GetNextAttemptTime())
 	require.NotNil(t, converted.GetSentTime())
 }
+
+// Every kind's stored config must render back as the same oneof case; a wrong
+// mapping would make the edit dialog show another kind's fields.
+func TestConvertToV1NotificationChannelConfigCoversEveryKind(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config *storepb.NotificationChannelConfig
+		caseID string
+	}{
+		{
+			name:   "webhook",
+			config: &storepb.NotificationChannelConfig{Config: &storepb.NotificationChannelConfig_Webhook{Webhook: &storepb.WebhookChannelConfig{Sign: true}}},
+			caseID: "webhook",
+		},
+		{
+			name:   "dingtalk",
+			config: &storepb.NotificationChannelConfig{Config: &storepb.NotificationChannelConfig_Dingtalk{Dingtalk: &storepb.DingTalkChannelConfig{Sign: true}}},
+			caseID: "dingtalk",
+		},
+		{
+			name:   "wecom",
+			config: &storepb.NotificationChannelConfig{Config: &storepb.NotificationChannelConfig_Wecom{Wecom: &storepb.WeComChannelConfig{}}},
+			caseID: "wecom",
+		},
+		{
+			name:   "feishu",
+			config: &storepb.NotificationChannelConfig{Config: &storepb.NotificationChannelConfig_Feishu{Feishu: &storepb.FeishuChannelConfig{Sign: true}}},
+			caseID: "feishu",
+		},
+		{
+			name: "email",
+			config: &storepb.NotificationChannelConfig{Config: &storepb.NotificationChannelConfig_Email{Email: &storepb.EmailChannelConfig{
+				Addresses:       []string{"oncall@example.com"},
+				IncludeAudience: true,
+			}}},
+			caseID: "email",
+		},
+	}
+	for _, tc := range tests {
+		converted := convertToV1NotificationChannelConfig(tc.config)
+		require.NotNil(t, converted, tc.name)
+		oneof := converted.ProtoReflect().WhichOneof(converted.ProtoReflect().Descriptor().Oneofs().Get(0))
+		require.Equal(t, tc.caseID, string(oneof.Name()), tc.name)
+	}
+	require.Nil(t, convertToV1NotificationChannelConfig(nil))
+}
+
+// A full update that names another kind is a client mistake, not a silent no-op.
+func TestMergeNotificationChannelUpdateRejectsAKindChange(t *testing.T) {
+	t.Parallel()
+
+	update := &v1pb.NotificationChannel{
+		Kind: v1pb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL,
+		Config: &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Email{Email: &v1pb.EmailChannelConfig{IncludeAudience: true}},
+		},
+	}
+	_, err := mergeNotificationChannelUpdate(update, nil, storedWebhookChannel())
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}

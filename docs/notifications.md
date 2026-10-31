@@ -99,7 +99,9 @@ The three chat kinds speak their vendor's group-robot API:
 
 The robot answer's protocol code is part of delivery: an `errcode`/`code` that is
 not zero is a failed attempt, even when the HTTP status is 200. WeCom truncates a
-long message to its 4096-byte markdown limit.
+long message to its 4096-byte markdown limit. DingTalk and Feishu reject a signed
+request whose timestamp is more than an hour from their clock, so the server's
+clock must be synchronized (NTP).
 
 ### Email
 
@@ -110,14 +112,23 @@ LOGIN, or CRAM-MD5), user name and password. Authentication cannot be combined
 with unencrypted transport. The password is write-only: it is stored encrypted,
 never returned by a read, and redacted from the audit log; leave the field empty
 while editing to keep the stored one. **Send test email** sends a message to your
-own address and tells you whether the SMTP transaction completed.
+own address and tells you whether the SMTP transaction completed. To turn email
+delivery off, clear both the From address and the host and save; the server then
+deletes the setting, and every email channel fails until it is configured again.
 
 An email channel lists fixed recipients and/or follows the event's audience. The
 audience is resolved when the delivery runs, so an owner who changes their
 address receives it at the new one and a deleted account is skipped. One SMTP
-transaction carries the fixed addresses and the audience together, capped at 50
-recipients. Email has no application-level answer: a completed SMTP transaction
-is the receipt, and the delivery record shows an empty endpoint response.
+transaction carries the fixed addresses and the audience together; a delivery
+with more than 50 recipients fails rather than silently dropping people, and is
+retried like any other failure. A recipient the server rejects is skipped as long
+as at least one other recipient accepted the message. Recipients are
+envelope-only: the `To` header names nobody, so a shared on-call mailbox does not
+learn the internal owners' and administrators' addresses. Email has no
+application-level answer: a completed SMTP transaction is the receipt, so a
+sent delivery has no error and no endpoint body. The **Test** action on an email
+channel sends one message to that channel's fixed recipients (the SMTP card's
+**Send test email** goes to your own address).
 
 ## Deliveries
 

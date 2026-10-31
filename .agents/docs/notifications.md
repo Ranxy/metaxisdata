@@ -343,7 +343,7 @@
 
 ### Where things live（出站部分）
 
-- 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`LATEST.sql`。PR-2 的 kind/secret/audience/EmailSetting 都是 proto 增量，无需新迁移（`payload`/`secret` 为 JSONB/TEXT，`setting.name` 为文本列）。
+- 迁移：`backend/migrator/migration/0.1/0033##notification_outbound.sql`、`LATEST.sql`。PR-2 的 kind/config/audience/EmailSetting 都是 proto 增量，无需新迁移（`payload`/`secret` 为 JSONB/TEXT，`setting.name` 为文本列）。唯一注意：PR-1 的 `NotificationChannelSecret` 字段叫 `webhook_url`/`webhook_signing_secret`，PR-2 改名为 `endpoint`/`signing_secret`；PR-1 从未发布，因此没有需要迁移的存量渠道。若在 PR-1 构建上建过渠道（仅开发环境可能），升级后凭据读不出，重新填写一次 endpoint/签名密钥即可（读接口仍显示 `secret_set`，编辑保存会覆盖）。
 - store：`backend/store/notification_channel.go`（payload + 加密凭据）、`backend/store/notification_delivery.go`（入队/认领/完成/重投/清理/列表）、`backend/store/email_setting.go`（SMTP 配置读写、密码加解密、清空）。
 - 组件：`backend/component/notification/outbound_queue.go`（事件 fan-out、订阅过滤、audience 写入）、`backend/component/notification/outbound/`（`outbound.go` 渠道与 Receiver 工厂、`render.go` zh/en 模板与深链、`channel.go` 写时校验与邮箱地址规范化、`webhook.go`、`chat.go` + `dingtalk.go`/`wecom.go`/`feishu.go`、`email.go`（SMTP 发送与 MIME）、`recipients.go`（收件人解析））。
 - runner：`backend/runner/notificationdispatcher/`（EMAIL 渠道在此解析 SMTP 设置与 audience 邮箱）；`backend/server/server.go` 注册第 7 个 runner。

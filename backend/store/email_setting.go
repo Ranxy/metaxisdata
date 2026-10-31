@@ -95,10 +95,11 @@ func (s *Store) SetEmailSetting(ctx context.Context, setting *storepb.EmailSetti
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal the email setting")
 	}
-	if _, err := s.UpsertSetting(ctx, &SetSettingMessage{
+	update := &SetSettingMessage{
 		Name:  storepb.SettingName_EMAIL,
 		Value: string(payload),
-	}); err != nil {
+	}
+	if _, err := s.UpsertSetting(ctx, update); err != nil {
 		return errors.Wrap(err, "failed to save the email setting")
 	}
 	return nil

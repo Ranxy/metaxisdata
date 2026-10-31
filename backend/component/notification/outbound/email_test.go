@@ -91,17 +91,29 @@ func TestEmailRecipientsBoundsTheList(t *testing.T) {
 func TestBuildEmailMessage(t *testing.T) {
 	t.Parallel()
 
-	message := buildEmailMessage("alerts@example.com", "数据质量值班", []string{"oncall@example.com"},
+	message := buildEmailMessage("alerts@example.com", "数据质量值班",
 		"数据质量：no nulls 失败", "状态：PASS → FAIL\n\nhttps://app.example.com/data-quality/executions/x")
 	require.Contains(t, message, "From: =?utf-8?")
 	require.Contains(t, message, "<alerts@example.com>")
-	require.Contains(t, message, "To: oncall@example.com\r\n")
+	// Recipients are envelope-only; no one sees the others' addresses.
+	require.Contains(t, message, "To: undisclosed-recipients:;\r\n")
+	require.NotContains(t, message, "oncall@example.com")
 	require.Contains(t, message, "Subject: =?utf-8?")
+	require.Contains(t, message, "Auto-Submitted: auto-generated")
 	require.Contains(t, message, "Content-Type: text/plain; charset=utf-8")
 	require.Contains(t, message, "Content-Transfer-Encoding: quoted-printable")
 	require.Contains(t, message, "Date: ")
+
+	// A long CJK subject is truncated and folded into several encoded words, so no
+	// header line can approach the RFC 5322 limit.
+	long := buildEmailMessage("alerts@example.com", "", strings.Repeat("数据质量检查失败", 40), "b")
+	require.Contains(t, long, "\r\n ")
+	for _, line := range strings.Split(long, "\r\n") {
+		require.LessOrEqual(t, len(line), 998)
+	}
+
 	// A header injection attempt in the display name is flattened, not carried.
-	require.NotContains(t, buildEmailMessage("alerts@example.com", "a\r\nBcc: victim@example.com", []string{"oncall@example.com"}, "s", "b"), "\r\nBcc:")
+	require.NotContains(t, buildEmailMessage("alerts@example.com", "a\r\nBcc: victim@example.com", "s", "b"), "\r\nBcc:")
 }
 
 func TestNewEmailRequiresACompleteSetting(t *testing.T) {
@@ -137,6 +149,12 @@ func TestNewEmailRequiresACompleteSetting(t *testing.T) {
 		},
 		"no login user": func(setting *storepb.EmailSetting) {
 			setting.Smtp.Authentication = storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN
+		},
+		"authentication needs encryption": func(setting *storepb.EmailSetting) {
+			setting.Smtp.Encryption = storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE
+			setting.Smtp.Authentication = storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN
+			setting.Smtp.Username = "alerts"
+			setting.Smtp.Password = "s3cret"
 		},
 	} {
 		setting := valid()

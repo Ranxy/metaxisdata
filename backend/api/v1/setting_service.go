@@ -471,12 +471,13 @@ func (s *SettingService) SendTestEmail(ctx context.Context, _ *connect.Request[v
 		title = "Metaxisdata 测试邮件"
 		text = "这是来自「设置 → 通知」的测试邮件，没有数据质量检查失败。"
 	}
-	if _, err := receiver.Post(ctx, outbound.Message{
+	message := outbound.Message{
 		Title:      title,
 		Text:       text,
 		Recipients: []string{caller.Email},
 		OccurredAt: time.Now(),
-	}); err != nil {
+	}
+	if _, err := receiver.Post(ctx, message); err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	return connect.NewResponse(&v1pb.SendTestEmailResponse{}), nil

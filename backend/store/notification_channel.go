@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/pkg/errors"
@@ -19,6 +20,11 @@ const notificationChannelResourceIDLength = 12
 // notificationChannelColumns is the column list every notification_channel read
 // returns, in the order scanNotificationChannel consumes it.
 const notificationChannelColumns = `id, resource_id, payload, (secret <> '') AS has_secret, created_at, updated_at`
+
+const (
+	notificationChannelSecretQuery = `SELECT secret FROM notification_channel WHERE id = $1`
+	deleteNotificationChannelQuery = `DELETE FROM notification_channel WHERE resource_id = $1`
+)
 
 // NotificationChannelMessage is one outbound channel as the store holds it. The
 // credential is not part of the message: it is only reachable through
@@ -188,8 +194,7 @@ func (s *Store) DeleteNotificationChannel(ctx context.Context, resourceID string
 	if resourceID == "" {
 		return common.Errorf(common.Invalid, "a notification channel resource id is required")
 	}
-	if _, err := s.GetDB().ExecContext(ctx, `
-		DELETE FROM notification_channel WHERE resource_id = $1`, resourceID); err != nil {
+	if _, err := s.GetDB().ExecContext(ctx, deleteNotificationChannelQuery, resourceID); err != nil {
 		return errors.Wrap(err, "failed to delete the notification channel")
 	}
 	return nil
@@ -202,8 +207,7 @@ func (s *Store) GetNotificationChannelSecret(ctx context.Context, channelID int6
 		return nil, common.Errorf(common.Invalid, "a notification channel id is required")
 	}
 	var encrypted string
-	if err := s.GetDB().QueryRowContext(ctx, `
-		SELECT secret FROM notification_channel WHERE id = $1`, channelID).Scan(&encrypted); err != nil {
+	if err := s.GetDB().QueryRowContext(ctx, notificationChannelSecretQuery, channelID).Scan(&encrypted); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -220,9 +224,37 @@ func (s *Store) GetNotificationChannelSecret(ctx context.Context, channelID int6
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decrypt the notification channel secret")
 	}
+	secret, err := unmarshalNotificationChannelSecret(plaintext)
+	if err != nil {
+		return nil, err
+	}
+	return secret, nil
+}
+
+// unmarshalNotificationChannelSecret decodes the sealed credential. PR-1 stored
+// it under webhookUrl/webhookSigningSecret before the fields were renamed; that
+// build was never released, but reading the old keys once keeps a development
+// channel usable instead of silently reporting an empty endpoint while
+// secret_set stays true.
+func unmarshalNotificationChannelSecret(plaintext string) (*storepb.NotificationChannelSecret, error) {
 	secret := &storepb.NotificationChannelSecret{}
 	if err := common.ProtojsonUnmarshaler.Unmarshal([]byte(plaintext), secret); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal the notification channel secret")
+	}
+	if secret.GetEndpoint() != "" || secret.GetSigningSecret() != "" {
+		return secret, nil
+	}
+	var legacy struct {
+		WebhookURL           string `json:"webhookUrl"`
+		WebhookSigningSecret string `json:"webhookSigningSecret"`
+	}
+	if err := json.Unmarshal([]byte(plaintext), &legacy); err == nil {
+		if legacy.WebhookURL != "" {
+			secret.Endpoint = legacy.WebhookURL
+		}
+		if legacy.WebhookSigningSecret != "" {
+			secret.SigningSecret = legacy.WebhookSigningSecret
+		}
 	}
 	return secret, nil
 }
