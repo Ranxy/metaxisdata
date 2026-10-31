@@ -71,7 +71,28 @@ func TestSendToWorkspaceAdminsQueuesOneDeliveryPerChannel(t *testing.T) {
 	for _, delivery := range fake.deliveries {
 		require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE, delivery.Payload.GetType())
 		require.NotNil(t, delivery.Payload.GetOpenlineage())
+		// The audience is every administrator the event concerned, even though the
+		// delivery itself is one row per channel.
+		require.ElementsMatch(t, []int32{2, 3}, delivery.Payload.GetAudienceUserIds())
 	}
+}
+
+// A single-recipient event carries that recipient as the audience the email
+// channel resolves at send time.
+func TestSendCarriesTheRecipientAsTheAudience(t *testing.T) {
+	t.Parallel()
+
+	fake := adminFakeStore(t, testChannel(1, enabledWebhookChannel()))
+	service := newServiceWithStore(fake)
+
+	require.NoError(t, service.Send(context.Background(), &storepb.Notification{
+		RecipientId: 2,
+		Type:        storepb.NotificationType_NOTIFICATION_TYPE_SCHEMA_SYNC,
+		Severity:    storepb.NotificationSeverity_NOTIFICATION_SEVERITY_INFO,
+		Detail:      &storepb.Notification_SchemaSync{SchemaSync: &storepb.SchemaSyncDetail{InstanceTitle: "prod"}},
+	}))
+	require.Len(t, fake.deliveries, 1)
+	require.Equal(t, []int32{2}, fake.deliveries[0].Payload.GetAudienceUserIds())
 }
 
 // A repeated event inside its dedupe window writes no inbox row and therefore
@@ -180,7 +201,8 @@ func TestEnqueueSkipsMessageWithoutDetail(t *testing.T) {
 }
 
 // The delivery payload carries the event, not the recipient: an outbox row is
-// workspace-level and must not hold one person's address.
+// workspace-level and must not hold one person's address. The audience is the
+// event-level list of user ids, which the email channel resolves at send time.
 func TestDeliveryEventStripsRecipient(t *testing.T) {
 	t.Parallel()
 
@@ -193,19 +215,20 @@ func TestDeliveryEventStripsRecipient(t *testing.T) {
 			RuleTitle:  "no nulls",
 			TargetPath: "prod/db/public/orders",
 		}},
-	})
+	}, []int32{7})
 	require.NotNil(t, event)
 	require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY, event.GetType())
 	require.Equal(t, "no nulls", event.GetDataQuality().GetRuleTitle())
-	// The store model has no recipient field at all; the assertion that matters is
-	// that the event is built from the detail half only.
-	require.NotContains(t, event.String(), "recipient")
+	// The per-recipient columns are gone; the audience is the event-level
+	// replacement the email channel reads.
+	require.NotContains(t, event.String(), "recipientId")
+	require.Equal(t, []int32{7}, event.GetAudienceUserIds())
 }
 
 func TestDeliveryEventWithoutDetailIsNil(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, deliveryEvent(&storepb.Notification{Type: storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY}))
+	require.Nil(t, deliveryEvent(&storepb.Notification{Type: storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY}, nil))
 }
 
 // The queue write is best effort: a store failure must not fail the producer

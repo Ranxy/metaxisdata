@@ -26,6 +26,9 @@ enum SettingName {
   // ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on
   // first startup and never leaves the process otherwise.
   ENCRYPTION_KEY = 16;
+  // EMAIL is the workspace SMTP configuration, an EmailSetting payload. It is
+  // absent until an administrator configures email delivery.
+  EMAIL = 17;
 }
 
 message WorkspaceProfileSetting {
@@ -130,4 +133,45 @@ message DataQualitySetting {
   bool send_sample_values_to_llm = 9;
   int32 daily_llm_analysis_limit = 10;
   int32 llm_concurrency_limit = 11;
+}
+
+// EmailSetting is the stored form of metaxisdata.v1.EmailSetting: the workspace's
+// SMTP server, as the SETTING_NAME_EMAIL row. The smtp.password field holds a v1:
+// AES-256-GCM ciphertext; only the store writes and reads it, and no other
+// reader ever sees the plaintext.
+message EmailSetting {
+  string from = 1;
+  string from_name = 2;
+  EmailSMTPConfig smtp = 3;
+}
+
+message EmailSMTPConfig {
+  string host = 1;
+  int32 port = 2;
+  EmailSMTPEncryption encryption = 3;
+  EmailSMTPAuthentication authentication = 4;
+  string username = 5;
+  // The login password as v1: ciphertext. Empty when no password is stored.
+  string password = 6;
+}
+
+// EmailSMTPEncryption is the transport security of the SMTP connection.
+enum EmailSMTPEncryption {
+  EMAIL_SMTP_ENCRYPTION_UNSPECIFIED = 0;
+  // No transport encryption. Only for a server on a trusted network.
+  EMAIL_SMTP_ENCRYPTION_NONE = 1;
+  // Upgrade the connection with STARTTLS after the greeting.
+  EMAIL_SMTP_ENCRYPTION_STARTTLS = 2;
+  // Implicit TLS from the first byte, usually port 465.
+  EMAIL_SMTP_ENCRYPTION_SSL_TLS = 3;
+}
+
+// EmailSMTPAuthentication is the login mechanism of the SMTP connection.
+enum EmailSMTPAuthentication {
+  EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED = 0;
+  // No login; only for a server that accepts mail from trusted hosts.
+  EMAIL_SMTP_AUTHENTICATION_NONE = 1;
+  EMAIL_SMTP_AUTHENTICATION_PLAIN = 2;
+  EMAIL_SMTP_AUTHENTICATION_LOGIN = 3;
+  EMAIL_SMTP_AUTHENTICATION_CRAM_MD5 = 4;
 }

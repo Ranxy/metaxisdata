@@ -66,6 +66,11 @@ type Store interface {
 	ListNotificationChannels(ctx context.Context) ([]*store.NotificationChannelMessage, error)
 	GetNotificationChannelSecret(ctx context.Context, channelID int64) (*storepb.NotificationChannelSecret, error)
 	GetWorkspaceGeneralSetting(ctx context.Context) (*storepb.WorkspaceProfileSetting, error)
+	// GetEmailSettingForDelivery returns the decrypted SMTP configuration, or nil
+	// when email delivery is not configured.
+	GetEmailSettingForDelivery(ctx context.Context) (*storepb.EmailSetting, error)
+	// GetUserByID resolves an audience user id to the address email goes to.
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 }
 
 // Runner drives the dispatcher loop.
@@ -163,7 +168,41 @@ func (r *Runner) attempt(ctx context.Context, delivery *store.NotificationDelive
 		r.finishFailure(ctx, delivery, "failed to read the channel credential: "+err.Error())
 		return
 	}
-	receiver, err := outbound.NewReceiver(channel.Payload, secret)
+
+	// An email channel delivers through the workspace SMTP setting and resolves
+	// its recipients at send time: the audience ids are the people the event's
+	// in-app message addressed, so a changed or deleted account is handled when
+	// the delivery runs rather than when it was queued.
+	var emailSetting *storepb.EmailSetting
+	var recipients []string
+	if channel.Payload.GetKind() == storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL {
+		emailSetting, err = r.store.GetEmailSettingForDelivery(ctx)
+		if err != nil {
+			r.finishFailure(ctx, delivery, "failed to read the email setting: "+err.Error())
+			return
+		}
+		if emailSetting == nil {
+			// A configuration gap an administrator can close: retry with the normal
+			// backoff instead of burning the delivery, and record why it waits.
+			r.finishFailure(ctx, delivery, "email delivery is not configured")
+			return
+		}
+		recipients, err = outbound.EmailRecipients(ctx, channel.Payload.GetConfig().GetEmail(), delivery.Payload.GetAudienceUserIds(), r.userEmail)
+		if err != nil {
+			r.finishFailure(ctx, delivery, err.Error())
+			return
+		}
+		if len(recipients) == 0 {
+			// No address could be resolved (for example the only audience member was
+			// deleted and the channel lists no fixed address): retrying cannot
+			// invent one, so the delivery is dead and the reason is visible.
+			r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryDead)
+			r.finish(ctx, delivery, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD, "no email recipient could be resolved", time.Now())
+			return
+		}
+	}
+
+	receiver, err := outbound.NewReceiver(channel.Payload, secret, emailSetting)
 	if err != nil {
 		r.metrics.CountNotificationDelivery(metrics.NotificationDeliveryDead)
 		r.finish(ctx, delivery, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD, truncateError(err.Error()), time.Now())
@@ -173,6 +212,7 @@ func (r *Runner) attempt(ctx context.Context, delivery *store.NotificationDelive
 	message := outbound.Render(channel.Payload.GetLanguage(), delivery.Payload, externalURL, delivery.CreatedAt)
 	message.EventID = delivery.EventID
 	message.DeliveryID = delivery.ID
+	message.Recipients = recipients
 
 	attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
 	defer cancel()
@@ -186,6 +226,21 @@ func (r *Runner) attempt(ctx context.Context, delivery *store.NotificationDelive
 	}
 	r.metrics.CountNotificationDelivery(metrics.NotificationDeliverySent)
 	r.finish(ctx, delivery, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT, "", time.Now())
+}
+
+// userEmail resolves one audience user id to its address. A missing or deleted
+// account yields an empty address, which the resolver skips: the event's other
+// recipients still receive the message, and a deleted account's old address is
+// not mailed.
+func (r *Runner) userEmail(ctx context.Context, userID int32) (string, error) {
+	user, err := r.store.GetUserByID(ctx, int(userID))
+	if err != nil {
+		return "", err
+	}
+	if user == nil || user.MemberDeleted {
+		return "", nil
+	}
+	return user.Email, nil
 }
 
 // finishFailure records a failed attempt: DEAD once the budget is spent, PENDING

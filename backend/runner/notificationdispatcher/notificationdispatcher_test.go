@@ -1,9 +1,13 @@
 package notificationdispatcher
 
 import (
+	"bufio"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +30,8 @@ type fakeDispatcherStore struct {
 	channelErr error
 	secret     *storepb.NotificationChannelSecret
 	setting    *storepb.WorkspaceProfileSetting
+	email      *storepb.EmailSetting
+	users      map[int]*store.UserMessage
 
 	finished []finishedDelivery
 	released []int64
@@ -57,6 +63,14 @@ func (f *fakeDispatcherStore) GetWorkspaceGeneralSetting(context.Context) (*stor
 	return f.setting, nil
 }
 
+func (f *fakeDispatcherStore) GetEmailSettingForDelivery(context.Context) (*storepb.EmailSetting, error) {
+	return f.email, nil
+}
+
+func (f *fakeDispatcherStore) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {
+	return f.users[id], nil
+}
+
 func webhookChannelMessage(url string) (*store.NotificationChannelMessage, *storepb.NotificationChannelSecret) {
 	channel := &store.NotificationChannelMessage{
 		ID:         7,
@@ -70,7 +84,7 @@ func webhookChannelMessage(url string) (*store.NotificationChannelMessage, *stor
 			},
 		},
 	}
-	return channel, &storepb.NotificationChannelSecret{WebhookUrl: url}
+	return channel, &storepb.NotificationChannelSecret{Endpoint: url}
 }
 
 func delivery(id int64, attempts int32, channelID int64) *store.NotificationDeliveryMessage {
@@ -258,4 +272,175 @@ func TestDispatchTreatsRedirectAsFailure(t *testing.T) {
 	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING, fake.finished[0].state)
 	require.Contains(t, fake.finished[0].lastError, "307")
 	require.Zero(t, targetHits, "the redirect target must never be contacted")
+}
+
+// emailChannelMessage is an email channel listing the given fixed addresses.
+func emailChannelMessage(addresses []string, includeAudience bool) *store.NotificationChannelMessage {
+	return &store.NotificationChannelMessage{
+		ID:         8,
+		ResourceID: "channel8",
+		Payload: &storepb.NotificationChannel{
+			DisplayName: "email",
+			Kind:        storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL,
+			Enabled:     true,
+			Config: &storepb.NotificationChannelConfig{
+				Config: &storepb.NotificationChannelConfig_Email{Email: &storepb.EmailChannelConfig{
+					Addresses:       addresses,
+					IncludeAudience: includeAudience,
+				}},
+			},
+		},
+	}
+}
+
+// emailSetting is an SMTP configuration pointing at the given server.
+func emailSetting(host string, port int32) *storepb.EmailSetting {
+	return &storepb.EmailSetting{
+		From:     "alerts@example.com",
+		FromName: "Metaxisdata",
+		Smtp: &storepb.EmailSMTPConfig{
+			Host:           host,
+			Port:           port,
+			Encryption:     storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE,
+			Authentication: storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_NONE,
+		},
+	}
+}
+
+// fakeSMTPServer speaks enough SMTP for one net/smtp transaction and reports the
+// DATA section it received.
+func fakeSMTPServer(t *testing.T) (string, int32, <-chan string) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	host, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	messages := make(chan string, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		reader := bufio.NewReader(conn)
+		writer := bufio.NewWriter(conn)
+		write := func(line string) {
+			_, _ = writer.WriteString(line + "\r\n")
+			_ = writer.Flush()
+		}
+		write("220 localhost ESMTP")
+		var body strings.Builder
+		inData := false
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			line = strings.TrimRight(line, "\r\n")
+			if inData {
+				if line == "." {
+					inData = false
+					messages <- body.String()
+					write("250 OK")
+					continue
+				}
+				_, _ = body.WriteString(line)
+				_, _ = body.WriteString("\r\n")
+				continue
+			}
+			switch {
+			case strings.HasPrefix(line, "EHLO"), strings.HasPrefix(line, "HELO"):
+				write("250-localhost")
+				write("250 OK")
+			case strings.HasPrefix(line, "MAIL FROM"):
+				write("250 OK")
+			case strings.HasPrefix(line, "RCPT TO"):
+				write("250 OK")
+			case line == "DATA":
+				inData = true
+				write("354 End data with <CR><LF>.<CR><LF>")
+			case line == "QUIT":
+				write("221 Bye")
+				return
+			default:
+				write("250 OK")
+			}
+		}
+	}()
+	return host, int32(port), messages
+}
+
+// An email delivery waits while the workspace SMTP setting is missing: the gap is
+// configuration an administrator can close, not a permanent failure.
+func TestDispatchEmailNotConfiguredRetries(t *testing.T) {
+	t.Parallel()
+
+	channel := emailChannelMessage([]string{"oncall@example.com"}, false)
+	fake := &fakeDispatcherStore{
+		claimed:  []*store.NotificationDeliveryMessage{delivery(31, 1, channel.ID)},
+		channels: []*store.NotificationChannelMessage{channel},
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Len(t, fake.finished, 1)
+	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_PENDING, fake.finished[0].state)
+	require.Contains(t, fake.finished[0].lastError, "not configured")
+}
+
+// An email channel whose only recipient source is an audience that resolves to
+// nobody cannot recover by retrying, so the delivery is dead and says why.
+func TestDispatchEmailWithoutResolvableRecipientIsDead(t *testing.T) {
+	t.Parallel()
+
+	host, port, _ := fakeSMTPServer(t)
+	channel := emailChannelMessage(nil, true)
+	message := delivery(32, 1, channel.ID)
+	message.Payload.AudienceUserIds = []int32{7}
+	fake := &fakeDispatcherStore{
+		claimed:  []*store.NotificationDeliveryMessage{message},
+		channels: []*store.NotificationChannelMessage{channel},
+		email:    emailSetting(host, port),
+		users:    map[int]*store.UserMessage{},
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Len(t, fake.finished, 1)
+	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_DEAD, fake.finished[0].state)
+	require.Contains(t, fake.finished[0].lastError, "no email recipient")
+}
+
+// One email delivery carries the fixed addresses and the event's audience, and a
+// completed SMTP transaction is the receipt.
+func TestDispatchSendsEmail(t *testing.T) {
+	t.Parallel()
+
+	host, port, messages := fakeSMTPServer(t)
+	channel := emailChannelMessage([]string{"oncall@example.com"}, true)
+	message := delivery(33, 1, channel.ID)
+	message.Payload.AudienceUserIds = []int32{7}
+	fake := &fakeDispatcherStore{
+		claimed:  []*store.NotificationDeliveryMessage{message},
+		channels: []*store.NotificationChannelMessage{channel},
+		email:    emailSetting(host, port),
+		users:    map[int]*store.UserMessage{7: {ID: 7, Email: "owner@example.com"}},
+	}
+	runner := NewRunner(nil, nil)
+	runner.store = fake
+	runner.dispatch(context.Background())
+
+	require.Len(t, fake.finished, 1)
+	require.Equal(t, storepb.NotificationDeliveryState_NOTIFICATION_DELIVERY_STATE_SENT, fake.finished[0].state)
+	body := <-messages
+	require.Contains(t, body, "To: oncall@example.com, owner@example.com")
+	require.Contains(t, body, "From: Metaxisdata <alerts@example.com>")
+	require.Contains(t, body, "Subject:")
 }

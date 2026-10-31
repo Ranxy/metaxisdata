@@ -2026,6 +2026,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.DingTalkChannelConfig"><span class="badge">M</span>DingTalkChannelConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.EmailChannelConfig"><span class="badge">M</span>EmailChannelConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.FeishuChannelConfig"><span class="badge">M</span>FeishuChannelConfig</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetNotificationChannelRequest"><span class="badge">M</span>GetNotificationChannelRequest</a>
                 </li>
               
@@ -2131,6 +2143,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.UpdateNotificationChannelRequest"><span class="badge">M</span>UpdateNotificationChannelRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.WeComChannelConfig"><span class="badge">M</span>WeComChannelConfig</a>
                 </li>
               
                 <li>
@@ -2402,6 +2418,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.EmailSetting"><span class="badge">M</span>EmailSetting</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetDebugConfigRequest"><span class="badge">M</span>GetDebugConfigRequest</a>
                 </li>
               
@@ -2410,7 +2430,23 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetEmailSettingRequest"><span class="badge">M</span>GetEmailSettingRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetWorkspaceProfileSettingRequest"><span class="badge">M</span>GetWorkspaceProfileSettingRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SMTPConfig"><span class="badge">M</span>SMTPConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SendTestEmailRequest"><span class="badge">M</span>SendTestEmailRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SendTestEmailResponse"><span class="badge">M</span>SendTestEmailResponse</a>
                 </li>
               
                 <li>
@@ -2422,6 +2458,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.UpdateEmailSettingRequest"><span class="badge">M</span>UpdateEmailSettingRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.UpdateWorkspaceProfileSettingRequest"><span class="badge">M</span>UpdateWorkspaceProfileSettingRequest</a>
                 </li>
               
@@ -2429,6 +2469,14 @@
                   <a href="#metaxisdata.v1.WorkspaceProfileSetting"><span class="badge">M</span>WorkspaceProfileSetting</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.v1.SMTPAuthentication"><span class="badge">E</span>SMTPAuthentication</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.SMTPEncryption"><span class="badge">E</span>SMTPEncryption</a>
+                </li>
               
               
               
@@ -25073,6 +25121,89 @@ instances/{instance}. Empty for the per-execution kinds. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.DingTalkChannelConfig">DingTalkChannelConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sign</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the robot request is signed with the channel&#39;s signing secret. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.EmailChannelConfig">EmailChannelConfig</h3>
+        <p>EmailChannelConfig decides who receives the email for an event.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>addresses</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Addresses that receive every event the channel subscribes to, for example a
+team or on-call list. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>include_audience</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the people the event concerns also receive the email: the rule&#39;s
+owner, the initiator of a sync operation, or the workspace administrators
+for an event that concerns nobody in particular. At least one address or
+this flag is required. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.FeishuChannelConfig">FeishuChannelConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sign</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the bot request is signed with the channel&#39;s signing secret. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetNotificationChannelRequest">GetNotificationChannelRequest</h3>
         <p></p>
 
@@ -25558,7 +25689,8 @@ to retrieve the subsequent page. </p></td>
                   <td>config</td>
                   <td><a href="#metaxisdata.v1.NotificationChannelConfig">NotificationChannelConfig</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>The kind&#39;s configuration. The oneof case must match kind and cannot change:
+the kind is immutable, and a config of another case has no delivery path. </p></td>
                 </tr>
               
                 <tr>
@@ -25606,6 +25738,34 @@ to retrieve the subsequent page. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>dingtalk</td>
+                  <td><a href="#metaxisdata.v1.DingTalkChannelConfig">DingTalkChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>wecom</td>
+                  <td><a href="#metaxisdata.v1.WeComChannelConfig">WeComChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>feishu</td>
+                  <td><a href="#metaxisdata.v1.FeishuChannelConfig">FeishuChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>email</td>
+                  <td><a href="#metaxisdata.v1.EmailChannelConfig">EmailChannelConfig</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -25624,18 +25784,21 @@ to retrieve the subsequent page. </p></td>
             <tbody>
               
                 <tr>
-                  <td>webhook_url</td>
+                  <td>endpoint</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The endpoint to POST to. Required when creating a webhook channel; an
-unset secret on update keeps the stored one. </p></td>
+                  <td><p>The endpoint to POST to. Required when creating a webhook-like channel
+(webhook, DingTalk, WeCom or Feishu); an unset secret on update keeps the
+stored one. </p></td>
                 </tr>
               
                 <tr>
-                  <td>webhook_signing_secret</td>
+                  <td>signing_secret</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The HMAC-SHA256 key that signs the body when webhook.sign is set. </p></td>
+                  <td><p>The signing key: the HMAC-SHA256 key of a webhook body, or the robot&#39;s
+signing secret. Required when the channel&#39;s config signs, and ignored
+otherwise. </p></td>
                 </tr>
               
             </tbody>
@@ -26145,6 +26308,13 @@ default. The client ignores it. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.WeComChannelConfig">WeComChannelConfig</h3>
+        <p>WeComChannelConfig has no options: the robot key is the endpoint's query.</p>
+
+        
+
+        
+      
         <h3 id="metaxisdata.v1.WebhookChannelConfig">WebhookChannelConfig</h3>
         <p></p>
 
@@ -26213,7 +26383,7 @@ default. The client ignores it. </p></td>
         </table>
       
         <h3 id="metaxisdata.v1.NotificationChannelKind">NotificationChannelKind</h3>
-        <p>NotificationChannelKind is the protocol one outbound channel speaks.</p>
+        <p>NotificationChannelKind is the protocol one outbound channel speaks. The kind</p><p>decides the config shape and which credential fields are required.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -26229,7 +26399,31 @@ default. The client ignores it. </p></td>
               <tr>
                 <td>NOTIFICATION_CHANNEL_KIND_WEBHOOK</td>
                 <td>1</td>
-                <td><p>A generic HTTP POST endpoint.</p></td>
+                <td><p>A generic HTTP endpoint that receives the delivery JSON, optionally signed.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_DINGTALK</td>
+                <td>2</td>
+                <td><p>A DingTalk group robot, optionally signed.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_WECOM</td>
+                <td>3</td>
+                <td><p>A WeCom group robot. Its bot key is part of the endpoint.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_FEISHU</td>
+                <td>4</td>
+                <td><p>A Feishu custom bot, optionally signed.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_CHANNEL_KIND_EMAIL</td>
+                <td>5</td>
+                <td><p>An email sent through the workspace email setting.</p></td>
               </tr>
             
           </tbody>
@@ -26586,9 +26780,10 @@ present secret replaces it.</p></td>
                 <td><a href="#metaxisdata.v1.TestNotificationChannelRequest">TestNotificationChannelRequest</a></td>
                 <td><a href="#metaxisdata.v1.TestNotificationChannelResponse">TestNotificationChannelResponse</a></td>
                 <td><p>Post a test message through one stored channel and report what the endpoint
-answered. It queues no delivery and is not audited: it is a diagnostic probe
-that changes nothing, and the endpoint&#39;s answer is third-party text that does
-not belong in the permanent ledger.</p></td>
+answered. An email channel sends the message through the workspace SMTP
+setting instead, and its answer is empty. It queues no delivery and is not
+audited: it is a diagnostic probe that changes nothing, and the endpoint&#39;s
+answer is third-party text that does not belong in the permanent ledger.</p></td>
               </tr>
             
               <tr>
@@ -29468,6 +29663,52 @@ means the server default (8); accepted range 1-64. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.EmailSetting">EmailSetting</h3>
+        <p>EmailSetting configures the SMTP server workspace notifications are emailed</p><p>through. There is one per workspace: a channel of kind EMAIL delivers through</p><p>it, and an email channel fails while it is unset.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>from</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The From address. It must be an address the SMTP server is allowed to send
+as. Empty means email delivery is not configured. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>from_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The display name shown beside the From address. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>smtp</td>
+                  <td><a href="#metaxisdata.v1.SMTPConfig">SMTPConfig</a></td>
+                  <td></td>
+                  <td><p>The SMTP server. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>password_set</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether a password is stored. The password itself is never returned. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetDebugConfigRequest">GetDebugConfigRequest</h3>
         <p></p>
 
@@ -29499,7 +29740,90 @@ means the server default (8); accepted range 1-64. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetEmailSettingRequest">GetEmailSettingRequest</h3>
+        <p></p>
+
+        
+
+        
+      
         <h3 id="metaxisdata.v1.GetWorkspaceProfileSettingRequest">GetWorkspaceProfileSettingRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.SMTPConfig">SMTPConfig</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>host</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The SMTP server host name. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>port</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25
+on a trusted network. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>encryption</td>
+                  <td><a href="#metaxisdata.v1.SMTPEncryption">SMTPEncryption</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>authentication</td>
+                  <td><a href="#metaxisdata.v1.SMTPAuthentication">SMTPAuthentication</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>username</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The user name the login authenticates as. Required unless authentication is
+NONE. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>password</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The login password. It is write-only: an empty value on update keeps the
+stored password, and no read returns it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.SendTestEmailRequest">SendTestEmailRequest</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="metaxisdata.v1.SendTestEmailResponse">SendTestEmailResponse</h3>
         <p></p>
 
         
@@ -29545,6 +29869,39 @@ means the server default (8); accepted range 1-64. </p></td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p>The resulting runtime debug mode. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateEmailSettingRequest">UpdateEmailSettingRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>setting</td>
+                  <td><a href="#metaxisdata.v1.EmailSetting">EmailSetting</a></td>
+                  <td></td>
+                  <td><p>The setting to update. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The list of fields to update: from, from_name, smtp, or one of
+smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username,
+smtp.password. </p></td>
                 </tr>
               
             </tbody>
@@ -29692,6 +30049,82 @@ which is why the reader resolves defaults instead of trusting the wire value. </
       
 
       
+        <h3 id="metaxisdata.v1.SMTPAuthentication">SMTPAuthentication</h3>
+        <p>SMTPAuthentication is the login mechanism of the SMTP connection.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SMTP_AUTHENTICATION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_AUTHENTICATION_NONE</td>
+                <td>1</td>
+                <td><p>No login; only for a server that accepts mail from trusted hosts.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_AUTHENTICATION_PLAIN</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_AUTHENTICATION_LOGIN</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_AUTHENTICATION_CRAM_MD5</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.SMTPEncryption">SMTPEncryption</h3>
+        <p>SMTPEncryption is the transport security of the SMTP connection.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SMTP_ENCRYPTION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_ENCRYPTION_NONE</td>
+                <td>1</td>
+                <td><p>No transport encryption. Only for a server on a trusted network.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_ENCRYPTION_STARTTLS</td>
+                <td>2</td>
+                <td><p>Upgrade the connection with STARTTLS after the greeting.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SMTP_ENCRYPTION_SSL_TLS</td>
+                <td>3</td>
+                <td><p>Implicit TLS from the first byte, usually port 465.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
 
       
 
@@ -29739,6 +30172,31 @@ Enabling it switches the process-wide log level to debug, gates the
 verbose request logging emitted by the debug interceptor, exposes
 /debug/pprof, and allows panic handlers to return stack traces to the
 caller. Disabling it restores info-level logging and generic panic errors.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetEmailSetting</td>
+                <td><a href="#metaxisdata.v1.GetEmailSettingRequest">GetEmailSettingRequest</a></td>
+                <td><a href="#metaxisdata.v1.EmailSetting">EmailSetting</a></td>
+                <td><p>Get the workspace email setting. It is returned empty when email delivery
+is not configured, so the settings page can render one form either way.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateEmailSetting</td>
+                <td><a href="#metaxisdata.v1.UpdateEmailSettingRequest">UpdateEmailSettingRequest</a></td>
+                <td><a href="#metaxisdata.v1.EmailSetting">EmailSetting</a></td>
+                <td><p>Update the workspace email setting. The password is write-only: an empty
+one on update keeps the stored password, and no read returns it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>SendTestEmail</td>
+                <td><a href="#metaxisdata.v1.SendTestEmailRequest">SendTestEmailRequest</a></td>
+                <td><a href="#metaxisdata.v1.SendTestEmailResponse">SendTestEmailResponse</a></td>
+                <td><p>Send a test email to the caller&#39;s own address through the configured SMTP
+server. It is not audited: it changes nothing, and it is a diagnostic probe
+the settings page can repeat while an administrator types the server in.</p></td>
               </tr>
             
           </tbody>
@@ -29795,6 +30253,36 @@ caller. Disabling it restores info-level logging and generic panic errors.</p></
                 <td>UpdateDebugConfig</td>
                 <td>PATCH</td>
                 <td>/v1/settings/debugConfig</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetEmailSetting</td>
+                <td>GET</td>
+                <td>/v1/settings/email</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateEmailSetting</td>
+                <td>PATCH</td>
+                <td>/v1/settings/email</td>
+                <td>setting</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>SendTestEmail</td>
+                <td>POST</td>
+                <td>/v1/settings/email:sendTestEmail</td>
                 <td>*</td>
               </tr>
               

@@ -3662,6 +3662,91 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/settings/email:
+        get:
+            tags:
+                - SettingService
+            description: |-
+                Get the workspace email setting. It is returned empty when email delivery
+                 is not configured, so the settings page can render one form either way.
+            operationId: SettingService_GetEmailSetting
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EmailSetting'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - SettingService
+            description: |-
+                Update the workspace email setting. The password is write-only: an empty
+                 one on update keeps the stored password, and no read returns it.
+            operationId: SettingService_UpdateEmailSetting
+            parameters:
+                - name: updateMask
+                  in: query
+                  description: |-
+                    The list of fields to update: from, from_name, smtp, or one of
+                     smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username,
+                     smtp.password.
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EmailSetting'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EmailSetting'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/settings/email:sendTestEmail:
+        post:
+            tags:
+                - SettingService
+            description: |-
+                Send a test email to the caller's own address through the configured SMTP
+                 server. It is not audited: it changes nothing, and it is a diagnostic probe
+                 the settings page can repeat while an administrator types the server in.
+            operationId: SettingService_SendTestEmail
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SendTestEmailRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SendTestEmailResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/settings/workspaceProfile:
         get:
             tags:
@@ -4271,16 +4356,20 @@ paths:
                   required: true
                   schema:
                     type: string
-                - name: secret.webhookUrl
+                - name: secret.endpoint
                   in: query
                   description: |-
-                    The endpoint to POST to. Required when creating a webhook channel; an
-                     unset secret on update keeps the stored one.
+                    The endpoint to POST to. Required when creating a webhook-like channel
+                     (webhook, DingTalk, WeCom or Feishu); an unset secret on update keeps the
+                     stored one.
                   schema:
                     type: string
-                - name: secret.webhookSigningSecret
+                - name: secret.signingSecret
                   in: query
-                  description: The HMAC-SHA256 key that signs the body when webhook.sign is set.
+                  description: |-
+                    The signing key: the HMAC-SHA256 key of a webhook body, or the robot's
+                     signing secret. Required when the channel's config signs, and ignored
+                     otherwise.
                   schema:
                     type: string
             requestBody:
@@ -4382,16 +4471,20 @@ paths:
                   required: true
                   schema:
                     type: string
-                - name: secret.webhookUrl
+                - name: secret.endpoint
                   in: query
                   description: |-
-                    The endpoint to POST to. Required when creating a webhook channel; an
-                     unset secret on update keeps the stored one.
+                    The endpoint to POST to. Required when creating a webhook-like channel
+                     (webhook, DingTalk, WeCom or Feishu); an unset secret on update keeps the
+                     stored one.
                   schema:
                     type: string
-                - name: secret.webhookSigningSecret
+                - name: secret.signingSecret
                   in: query
-                  description: The HMAC-SHA256 key that signs the body when webhook.sign is set.
+                  description: |-
+                    The signing key: the HMAC-SHA256 key of a webhook body, or the robot's
+                     signing secret. Required when the channel's config signs, and ignored
+                     otherwise.
                   schema:
                     type: string
                 - name: updateMask
@@ -4424,9 +4517,10 @@ paths:
                 - NotificationService
             description: |-
                 Post a test message through one stored channel and report what the endpoint
-                 answered. It queues no delivery and is not audited: it is a diagnostic probe
-                 that changes nothing, and the endpoint's answer is third-party text that does
-                 not belong in the permanent ledger.
+                 answered. An email channel sends the message through the workspace SMTP
+                 setting instead, and its answer is empty. It queues no delivery and is not
+                 audited: it is a diagnostic probe that changes nothing, and the endpoint's
+                 answer is third-party text that does not belong in the permanent ledger.
             operationId: NotificationService_TestNotificationChannel
             parameters:
                 - name: workspace
@@ -8489,6 +8583,73 @@ components:
                     type: boolean
                     description: Whether the index is built in parallel.
             description: DimensionalConfig holds dimensional parameters of a spatial index.
+        DingTalkChannelConfig:
+            type: object
+            properties:
+                sign:
+                    type: boolean
+                    description: Whether the robot request is signed with the channel's signing secret.
+        EmailChannelConfig:
+            type: object
+            properties:
+                addresses:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Addresses that receive every event the channel subscribes to, for example a
+                         team or on-call list.
+                includeAudience:
+                    type: boolean
+                    description: |-
+                        Whether the people the event concerns also receive the email: the rule's
+                         owner, the initiator of a sync operation, or the workspace administrators
+                         for an event that concerns nobody in particular.
+            description: EmailChannelConfig decides who receives the email for an event.
+        EmailSMTPConfig:
+            type: object
+            properties:
+                host:
+                    type: string
+                port:
+                    type: integer
+                    format: int32
+                encryption:
+                    enum:
+                        - EMAIL_SMTP_ENCRYPTION_UNSPECIFIED
+                        - EMAIL_SMTP_ENCRYPTION_NONE
+                        - EMAIL_SMTP_ENCRYPTION_STARTTLS
+                        - EMAIL_SMTP_ENCRYPTION_SSL_TLS
+                    type: string
+                    format: enum
+                authentication:
+                    enum:
+                        - EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED
+                        - EMAIL_SMTP_AUTHENTICATION_NONE
+                        - EMAIL_SMTP_AUTHENTICATION_PLAIN
+                        - EMAIL_SMTP_AUTHENTICATION_LOGIN
+                        - EMAIL_SMTP_AUTHENTICATION_CRAM_MD5
+                    type: string
+                    format: enum
+                username:
+                    type: string
+                password:
+                    type: string
+                    description: 'The login password as v1: ciphertext. Empty when no password is stored.'
+        EmailSetting:
+            type: object
+            properties:
+                from:
+                    type: string
+                fromName:
+                    type: string
+                smtp:
+                    $ref: '#/components/schemas/EmailSMTPConfig'
+            description: |-
+                EmailSetting is the stored form of metaxisdata.v1.EmailSetting: the workspace's
+                 SMTP server, as the SETTING_NAME_EMAIL row. The smtp.password field holds a v1:
+                 AES-256-GCM ciphertext; only the store writes and reads it, and no other
+                 reader ever sees the plaintext.
         EnumTypeMetadata:
             type: object
             properties:
@@ -8803,6 +8964,12 @@ components:
                     items:
                         $ref: '#/components/schemas/ColumnValue'
             description: FailureSample is one failed row, already truncated.
+        FeishuChannelConfig:
+            type: object
+            properties:
+                sign:
+                    type: boolean
+                    description: Whether the bot request is signed with the channel's signing secret.
         FetchLLMModelsRequest:
             type: object
             properties:
@@ -10577,6 +10744,10 @@ components:
                     enum:
                         - NOTIFICATION_CHANNEL_KIND_UNSPECIFIED
                         - NOTIFICATION_CHANNEL_KIND_WEBHOOK
+                        - NOTIFICATION_CHANNEL_KIND_DINGTALK
+                        - NOTIFICATION_CHANNEL_KIND_WECOM
+                        - NOTIFICATION_CHANNEL_KIND_FEISHU
+                        - NOTIFICATION_CHANNEL_KIND_EMAIL
                     type: string
                     format: enum
                 enabled:
@@ -10618,6 +10789,14 @@ components:
             properties:
                 webhook:
                     $ref: '#/components/schemas/WebhookChannelConfig'
+                dingtalk:
+                    $ref: '#/components/schemas/DingTalkChannelConfig'
+                wecom:
+                    $ref: '#/components/schemas/WeComChannelConfig'
+                feishu:
+                    $ref: '#/components/schemas/FeishuChannelConfig'
+                email:
+                    $ref: '#/components/schemas/EmailChannelConfig'
         NotificationDelivery:
             type: object
             properties:
@@ -13166,6 +13345,12 @@ components:
                         The rule types the deterministic mapping would suggest for this label, in
                          display order. The model may rank types but may not invent one.
             description: SemanticLabelSuggestion is a model-proposed semantic label for one column.
+        SendTestEmailRequest:
+            type: object
+            properties: {}
+        SendTestEmailResponse:
+            type: object
+            properties: {}
         SequenceMetadata:
             type: object
             properties:
@@ -14212,6 +14397,10 @@ components:
                         $ref: '#/components/schemas/RuleMetadata'
                     description: The rules is the list of rules in a view (PostgreSQL specific).
             description: ViewMetadata is the metadata for views.
+        WeComChannelConfig:
+            type: object
+            properties: {}
+            description: 'WeComChannelConfig has no options: the robot key is the endpoint''s query.'
         WebhookChannelConfig:
             type: object
             properties:

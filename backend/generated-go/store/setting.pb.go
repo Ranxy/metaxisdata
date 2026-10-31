@@ -40,6 +40,9 @@ const (
 	// ciphertext under METAXISDATA_ENCRYPTION_KEY when one is. It is generated on
 	// first startup and never leaves the process otherwise.
 	SettingName_ENCRYPTION_KEY SettingName = 16
+	// EMAIL is the workspace SMTP configuration, an EmailSetting payload. It is
+	// absent until an administrator configures email delivery.
+	SettingName_EMAIL SettingName = 17
 )
 
 // Enum value maps for SettingName.
@@ -53,6 +56,7 @@ var (
 		14: "PASSWORD_RESTRICTION",
 		15: "ENVIRONMENT",
 		16: "ENCRYPTION_KEY",
+		17: "EMAIL",
 	}
 	SettingName_value = map[string]int32{
 		"SETTING_NAME_UNSPECIFIED": 0,
@@ -63,6 +67,7 @@ var (
 		"PASSWORD_RESTRICTION":     14,
 		"ENVIRONMENT":              15,
 		"ENCRYPTION_KEY":           16,
+		"EMAIL":                    17,
 	}
 )
 
@@ -91,6 +96,119 @@ func (x SettingName) Number() protoreflect.EnumNumber {
 // Deprecated: Use SettingName.Descriptor instead.
 func (SettingName) EnumDescriptor() ([]byte, []int) {
 	return file_store_setting_proto_rawDescGZIP(), []int{0}
+}
+
+// EmailSMTPEncryption is the transport security of the SMTP connection.
+type EmailSMTPEncryption int32
+
+const (
+	EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_UNSPECIFIED EmailSMTPEncryption = 0
+	// No transport encryption. Only for a server on a trusted network.
+	EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE EmailSMTPEncryption = 1
+	// Upgrade the connection with STARTTLS after the greeting.
+	EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_STARTTLS EmailSMTPEncryption = 2
+	// Implicit TLS from the first byte, usually port 465.
+	EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_SSL_TLS EmailSMTPEncryption = 3
+)
+
+// Enum value maps for EmailSMTPEncryption.
+var (
+	EmailSMTPEncryption_name = map[int32]string{
+		0: "EMAIL_SMTP_ENCRYPTION_UNSPECIFIED",
+		1: "EMAIL_SMTP_ENCRYPTION_NONE",
+		2: "EMAIL_SMTP_ENCRYPTION_STARTTLS",
+		3: "EMAIL_SMTP_ENCRYPTION_SSL_TLS",
+	}
+	EmailSMTPEncryption_value = map[string]int32{
+		"EMAIL_SMTP_ENCRYPTION_UNSPECIFIED": 0,
+		"EMAIL_SMTP_ENCRYPTION_NONE":        1,
+		"EMAIL_SMTP_ENCRYPTION_STARTTLS":    2,
+		"EMAIL_SMTP_ENCRYPTION_SSL_TLS":     3,
+	}
+)
+
+func (x EmailSMTPEncryption) Enum() *EmailSMTPEncryption {
+	p := new(EmailSMTPEncryption)
+	*p = x
+	return p
+}
+
+func (x EmailSMTPEncryption) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EmailSMTPEncryption) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_setting_proto_enumTypes[1].Descriptor()
+}
+
+func (EmailSMTPEncryption) Type() protoreflect.EnumType {
+	return &file_store_setting_proto_enumTypes[1]
+}
+
+func (x EmailSMTPEncryption) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EmailSMTPEncryption.Descriptor instead.
+func (EmailSMTPEncryption) EnumDescriptor() ([]byte, []int) {
+	return file_store_setting_proto_rawDescGZIP(), []int{1}
+}
+
+// EmailSMTPAuthentication is the login mechanism of the SMTP connection.
+type EmailSMTPAuthentication int32
+
+const (
+	EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED EmailSMTPAuthentication = 0
+	// No login; only for a server that accepts mail from trusted hosts.
+	EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_NONE     EmailSMTPAuthentication = 1
+	EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN    EmailSMTPAuthentication = 2
+	EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_LOGIN    EmailSMTPAuthentication = 3
+	EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_CRAM_MD5 EmailSMTPAuthentication = 4
+)
+
+// Enum value maps for EmailSMTPAuthentication.
+var (
+	EmailSMTPAuthentication_name = map[int32]string{
+		0: "EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED",
+		1: "EMAIL_SMTP_AUTHENTICATION_NONE",
+		2: "EMAIL_SMTP_AUTHENTICATION_PLAIN",
+		3: "EMAIL_SMTP_AUTHENTICATION_LOGIN",
+		4: "EMAIL_SMTP_AUTHENTICATION_CRAM_MD5",
+	}
+	EmailSMTPAuthentication_value = map[string]int32{
+		"EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED": 0,
+		"EMAIL_SMTP_AUTHENTICATION_NONE":        1,
+		"EMAIL_SMTP_AUTHENTICATION_PLAIN":       2,
+		"EMAIL_SMTP_AUTHENTICATION_LOGIN":       3,
+		"EMAIL_SMTP_AUTHENTICATION_CRAM_MD5":    4,
+	}
+)
+
+func (x EmailSMTPAuthentication) Enum() *EmailSMTPAuthentication {
+	p := new(EmailSMTPAuthentication)
+	*p = x
+	return p
+}
+
+func (x EmailSMTPAuthentication) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EmailSMTPAuthentication) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_setting_proto_enumTypes[2].Descriptor()
+}
+
+func (EmailSMTPAuthentication) Type() protoreflect.EnumType {
+	return &file_store_setting_proto_enumTypes[2]
+}
+
+func (x EmailSMTPAuthentication) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EmailSMTPAuthentication.Descriptor instead.
+func (EmailSMTPAuthentication) EnumDescriptor() ([]byte, []int) {
+	return file_store_setting_proto_rawDescGZIP(), []int{2}
 }
 
 type WorkspaceProfileSetting struct {
@@ -509,6 +627,155 @@ func (x *DataQualitySetting) GetLlmConcurrencyLimit() int32 {
 	return 0
 }
 
+// EmailSetting is the stored form of metaxisdata.v1.EmailSetting: the workspace's
+// SMTP server, as the SETTING_NAME_EMAIL row. The smtp.password field holds a v1:
+// AES-256-GCM ciphertext; only the store writes and reads it, and no other
+// reader ever sees the plaintext.
+type EmailSetting struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	From          string                 `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	FromName      string                 `protobuf:"bytes,2,opt,name=from_name,json=fromName,proto3" json:"from_name,omitempty"`
+	Smtp          *EmailSMTPConfig       `protobuf:"bytes,3,opt,name=smtp,proto3" json:"smtp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EmailSetting) Reset() {
+	*x = EmailSetting{}
+	mi := &file_store_setting_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmailSetting) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmailSetting) ProtoMessage() {}
+
+func (x *EmailSetting) ProtoReflect() protoreflect.Message {
+	mi := &file_store_setting_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmailSetting.ProtoReflect.Descriptor instead.
+func (*EmailSetting) Descriptor() ([]byte, []int) {
+	return file_store_setting_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *EmailSetting) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *EmailSetting) GetFromName() string {
+	if x != nil {
+		return x.FromName
+	}
+	return ""
+}
+
+func (x *EmailSetting) GetSmtp() *EmailSMTPConfig {
+	if x != nil {
+		return x.Smtp
+	}
+	return nil
+}
+
+type EmailSMTPConfig struct {
+	state          protoimpl.MessageState  `protogen:"open.v1"`
+	Host           string                  `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Port           int32                   `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	Encryption     EmailSMTPEncryption     `protobuf:"varint,3,opt,name=encryption,proto3,enum=metaxisdata.store.EmailSMTPEncryption" json:"encryption,omitempty"`
+	Authentication EmailSMTPAuthentication `protobuf:"varint,4,opt,name=authentication,proto3,enum=metaxisdata.store.EmailSMTPAuthentication" json:"authentication,omitempty"`
+	Username       string                  `protobuf:"bytes,5,opt,name=username,proto3" json:"username,omitempty"`
+	// The login password as v1: ciphertext. Empty when no password is stored.
+	Password      string `protobuf:"bytes,6,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EmailSMTPConfig) Reset() {
+	*x = EmailSMTPConfig{}
+	mi := &file_store_setting_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EmailSMTPConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EmailSMTPConfig) ProtoMessage() {}
+
+func (x *EmailSMTPConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_store_setting_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EmailSMTPConfig.ProtoReflect.Descriptor instead.
+func (*EmailSMTPConfig) Descriptor() ([]byte, []int) {
+	return file_store_setting_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *EmailSMTPConfig) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *EmailSMTPConfig) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *EmailSMTPConfig) GetEncryption() EmailSMTPEncryption {
+	if x != nil {
+		return x.Encryption
+	}
+	return EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_UNSPECIFIED
+}
+
+func (x *EmailSMTPConfig) GetAuthentication() EmailSMTPAuthentication {
+	if x != nil {
+		return x.Authentication
+	}
+	return EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED
+}
+
+func (x *EmailSMTPConfig) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *EmailSMTPConfig) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
 type EnvironmentSetting_Environment struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The resource id of the environment.
@@ -525,7 +792,7 @@ type EnvironmentSetting_Environment struct {
 
 func (x *EnvironmentSetting_Environment) Reset() {
 	*x = EnvironmentSetting_Environment{}
-	mi := &file_store_setting_proto_msgTypes[4]
+	mi := &file_store_setting_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +804,7 @@ func (x *EnvironmentSetting_Environment) String() string {
 func (*EnvironmentSetting_Environment) ProtoMessage() {}
 
 func (x *EnvironmentSetting_Environment) ProtoReflect() protoreflect.Message {
-	mi := &file_store_setting_proto_msgTypes[4]
+	mi := &file_store_setting_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +897,20 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x19send_sample_values_to_llm\x18\t \x01(\bR\x15sendSampleValuesToLlm\x127\n" +
 	"\x18daily_llm_analysis_limit\x18\n" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
-	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit*\xc1\x02\n" +
+	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\"w\n" +
+	"\fEmailSetting\x12\x12\n" +
+	"\x04from\x18\x01 \x01(\tR\x04from\x12\x1b\n" +
+	"\tfrom_name\x18\x02 \x01(\tR\bfromName\x126\n" +
+	"\x04smtp\x18\x03 \x01(\v2\".metaxisdata.store.EmailSMTPConfigR\x04smtp\"\x8d\x02\n" +
+	"\x0fEmailSMTPConfig\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\x12F\n" +
+	"\n" +
+	"encryption\x18\x03 \x01(\x0e2&.metaxisdata.store.EmailSMTPEncryptionR\n" +
+	"encryption\x12R\n" +
+	"\x0eauthentication\x18\x04 \x01(\x0e2*.metaxisdata.store.EmailSMTPAuthenticationR\x0eauthentication\x12\x1a\n" +
+	"\busername\x18\x05 \x01(\tR\busername\x12\x1a\n" +
+	"\bpassword\x18\x06 \x01(\tR\bpassword*\xcc\x02\n" +
 	"\vSettingName\x12\x1c\n" +
 	"\x18SETTING_NAME_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAUTH_SECRET\x10\x01\x12\x11\n" +
@@ -639,7 +919,19 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x11WORKSPACE_PROFILE\x10\x04\x12\x18\n" +
 	"\x14PASSWORD_RESTRICTION\x10\x0e\x12\x0f\n" +
 	"\vENVIRONMENT\x10\x0f\x12\x12\n" +
-	"\x0eENCRYPTION_KEY\x10\x10\"\x04\b\x05\x10\r*\x12WORKSPACE_APPROVAL*\x1bWORKSPACE_EXTERNAL_APPROVAL*\x06APP_IM*\tWATERMARK*\x02AI*\x0fSCHEMA_TEMPLATE*\x13DATA_CLASSIFICATION*\x0eSEMANTIC_TYPES*\x04SCIMB\x14Z\x12generated-go/storeb\x06proto3"
+	"\x0eENCRYPTION_KEY\x10\x10\x12\t\n" +
+	"\x05EMAIL\x10\x11\"\x04\b\x05\x10\r*\x12WORKSPACE_APPROVAL*\x1bWORKSPACE_EXTERNAL_APPROVAL*\x06APP_IM*\tWATERMARK*\x02AI*\x0fSCHEMA_TEMPLATE*\x13DATA_CLASSIFICATION*\x0eSEMANTIC_TYPES*\x04SCIM*\xa3\x01\n" +
+	"\x13EmailSMTPEncryption\x12%\n" +
+	"!EMAIL_SMTP_ENCRYPTION_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aEMAIL_SMTP_ENCRYPTION_NONE\x10\x01\x12\"\n" +
+	"\x1eEMAIL_SMTP_ENCRYPTION_STARTTLS\x10\x02\x12!\n" +
+	"\x1dEMAIL_SMTP_ENCRYPTION_SSL_TLS\x10\x03*\xda\x01\n" +
+	"\x17EmailSMTPAuthentication\x12)\n" +
+	"%EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eEMAIL_SMTP_AUTHENTICATION_NONE\x10\x01\x12#\n" +
+	"\x1fEMAIL_SMTP_AUTHENTICATION_PLAIN\x10\x02\x12#\n" +
+	"\x1fEMAIL_SMTP_AUTHENTICATION_LOGIN\x10\x03\x12&\n" +
+	"\"EMAIL_SMTP_AUTHENTICATION_CRAM_MD5\x10\x04B\x14Z\x12generated-go/storeb\x06proto3"
 
 var (
 	file_store_setting_proto_rawDescOnce sync.Once
@@ -653,29 +945,36 @@ func file_store_setting_proto_rawDescGZIP() []byte {
 	return file_store_setting_proto_rawDescData
 }
 
-var file_store_setting_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_store_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_store_setting_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_store_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_store_setting_proto_goTypes = []any{
 	(SettingName)(0),                       // 0: metaxisdata.store.SettingName
-	(*WorkspaceProfileSetting)(nil),        // 1: metaxisdata.store.WorkspaceProfileSetting
-	(*PasswordRestrictionSetting)(nil),     // 2: metaxisdata.store.PasswordRestrictionSetting
-	(*EnvironmentSetting)(nil),             // 3: metaxisdata.store.EnvironmentSetting
-	(*DataQualitySetting)(nil),             // 4: metaxisdata.store.DataQualitySetting
-	(*EnvironmentSetting_Environment)(nil), // 5: metaxisdata.store.EnvironmentSetting.Environment
-	nil,                                    // 6: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	(*durationpb.Duration)(nil),            // 7: google.protobuf.Duration
+	(EmailSMTPEncryption)(0),               // 1: metaxisdata.store.EmailSMTPEncryption
+	(EmailSMTPAuthentication)(0),           // 2: metaxisdata.store.EmailSMTPAuthentication
+	(*WorkspaceProfileSetting)(nil),        // 3: metaxisdata.store.WorkspaceProfileSetting
+	(*PasswordRestrictionSetting)(nil),     // 4: metaxisdata.store.PasswordRestrictionSetting
+	(*EnvironmentSetting)(nil),             // 5: metaxisdata.store.EnvironmentSetting
+	(*DataQualitySetting)(nil),             // 6: metaxisdata.store.DataQualitySetting
+	(*EmailSetting)(nil),                   // 7: metaxisdata.store.EmailSetting
+	(*EmailSMTPConfig)(nil),                // 8: metaxisdata.store.EmailSMTPConfig
+	(*EnvironmentSetting_Environment)(nil), // 9: metaxisdata.store.EnvironmentSetting.Environment
+	nil,                                    // 10: metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	(*durationpb.Duration)(nil),            // 11: google.protobuf.Duration
 }
 var file_store_setting_proto_depIdxs = []int32{
-	4, // 0: metaxisdata.store.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.store.DataQualitySetting
-	7, // 1: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
-	5, // 2: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
-	7, // 3: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
-	6, // 4: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	6,  // 0: metaxisdata.store.WorkspaceProfileSetting.data_quality:type_name -> metaxisdata.store.DataQualitySetting
+	11, // 1: metaxisdata.store.PasswordRestrictionSetting.password_rotation:type_name -> google.protobuf.Duration
+	9,  // 2: metaxisdata.store.EnvironmentSetting.environments:type_name -> metaxisdata.store.EnvironmentSetting.Environment
+	11, // 3: metaxisdata.store.DataQualitySetting.default_schedule_interval:type_name -> google.protobuf.Duration
+	8,  // 4: metaxisdata.store.EmailSetting.smtp:type_name -> metaxisdata.store.EmailSMTPConfig
+	1,  // 5: metaxisdata.store.EmailSMTPConfig.encryption:type_name -> metaxisdata.store.EmailSMTPEncryption
+	2,  // 6: metaxisdata.store.EmailSMTPConfig.authentication:type_name -> metaxisdata.store.EmailSMTPAuthentication
+	10, // 7: metaxisdata.store.EnvironmentSetting.Environment.tags:type_name -> metaxisdata.store.EnvironmentSetting.Environment.TagsEntry
+	8,  // [8:8] is the sub-list for method output_type
+	8,  // [8:8] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_store_setting_proto_init() }
@@ -688,8 +987,8 @@ func file_store_setting_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_setting_proto_rawDesc), len(file_store_setting_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   6,
+			NumEnums:      3,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

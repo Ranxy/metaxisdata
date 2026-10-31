@@ -15,6 +15,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 func TestUpdateDebugConfigDrivesRuntimeDebugAndLogLevel(t *testing.T) {
@@ -474,4 +475,181 @@ func TestConvertToWorkspaceProfileSettingKeepsExplicitDisabledSamples(t *testing
 	require.Equal(t, int32(dataquality.DefaultDailyExecutionLimit), dataQuality.GetDailyExecutionLimit())
 	require.Equal(t, int32(dataquality.DefaultDailyColumnAnalysisLimit), dataQuality.GetDailyColumnAnalysisLimit())
 	require.Equal(t, int32(dataquality.DefaultMaxColumnsPerAnalysis), dataQuality.GetMaxColumnsPerAnalysis())
+}
+
+func storedEmailSetting() *storepb.EmailSetting {
+	return &storepb.EmailSetting{
+		From:     "alerts@example.com",
+		FromName: "Metaxisdata",
+		Smtp: &storepb.EmailSMTPConfig{
+			Host:           "smtp.example.com",
+			Port:           587,
+			Encryption:     storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_STARTTLS,
+			Authentication: storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN,
+			Username:       "alerts",
+		},
+	}
+}
+
+// The plaintext password never enters the stored payload; it is returned next to
+// it so the store can seal it.
+func TestMergeEmailSettingUpdateKeepsThePasswordOutOfThePayload(t *testing.T) {
+	t.Parallel()
+
+	merged, password, err := mergeEmailSettingUpdate(nil, &v1pb.EmailSetting{
+		From:     " alerts@example.com ",
+		FromName: "Alerts",
+		Smtp: &v1pb.SMTPConfig{
+			Host:           " smtp.example.com ",
+			Port:           587,
+			Encryption:     v1pb.SMTPEncryption_SMTP_ENCRYPTION_STARTTLS,
+			Authentication: v1pb.SMTPAuthentication_SMTP_AUTHENTICATION_PLAIN,
+			Username:       " alerts ",
+			Password:       "s3cret",
+		},
+	}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "alerts@example.com", merged.GetFrom())
+	require.Equal(t, "Alerts", merged.GetFromName())
+	require.Equal(t, "smtp.example.com", merged.GetSmtp().GetHost())
+	require.Equal(t, "alerts", merged.GetSmtp().GetUsername())
+	require.Empty(t, merged.GetSmtp().GetPassword(), "the payload never carries the plaintext")
+	require.NotNil(t, password)
+	require.Equal(t, "s3cret", *password)
+}
+
+// A masked update that names no new password keeps the stored one, so rotating
+// the server address does not require re-entering the password.
+func TestMergeEmailSettingUpdateKeepsTheStoredPassword(t *testing.T) {
+	t.Parallel()
+
+	existing := &store.EmailSettingMessage{Setting: storedEmailSetting(), HasPassword: true}
+	merged, password, err := mergeEmailSettingUpdate(existing, &v1pb.EmailSetting{FromName: "Renamed"}, []string{"from_name"})
+	require.NoError(t, err)
+	require.Nil(t, password)
+	require.Equal(t, "Renamed", merged.GetFromName())
+	require.Equal(t, "alerts@example.com", merged.GetFrom())
+}
+
+func TestMergeEmailSettingUpdatePasswordRotation(t *testing.T) {
+	t.Parallel()
+
+	existing := &store.EmailSettingMessage{Setting: storedEmailSetting(), HasPassword: true}
+	_, password, err := mergeEmailSettingUpdate(existing, &v1pb.EmailSetting{
+		Smtp: &v1pb.SMTPConfig{Password: "new-secret"},
+	}, []string{"smtp.password"})
+	require.NoError(t, err)
+	require.NotNil(t, password)
+	require.Equal(t, "new-secret", *password)
+}
+
+// Clearing the From address and the host is how an administrator turns email
+// delivery off; the RPC then deletes the setting instead of storing a
+// half-configured server.
+func TestMergeEmailSettingUpdateClearsEverything(t *testing.T) {
+	t.Parallel()
+
+	existing := &store.EmailSettingMessage{Setting: storedEmailSetting(), HasPassword: true}
+	merged, password, err := mergeEmailSettingUpdate(existing, &v1pb.EmailSetting{
+		Smtp: &v1pb.SMTPConfig{},
+	}, nil)
+	require.NoError(t, err)
+	require.Nil(t, password)
+	require.Empty(t, merged.GetFrom())
+	require.Empty(t, merged.GetSmtp().GetHost())
+}
+
+func TestMergeEmailSettingUpdateRejectsIncompleteSettings(t *testing.T) {
+	t.Parallel()
+
+	existing := &store.EmailSettingMessage{Setting: storedEmailSetting(), HasPassword: true}
+	tests := []struct {
+		name     string
+		existing *store.EmailSettingMessage
+		update   *v1pb.EmailSetting
+		paths    []string
+	}{
+		{
+			name: "invalid from",
+			update: &v1pb.EmailSetting{From: "not-an-address", Smtp: &v1pb.SMTPConfig{
+				Host: "smtp.example.com", Port: 587,
+				Encryption:     v1pb.SMTPEncryption_SMTP_ENCRYPTION_STARTTLS,
+				Authentication: v1pb.SMTPAuthentication_SMTP_AUTHENTICATION_NONE,
+			}},
+		},
+		{
+			name: "authentication needs a password",
+			update: &v1pb.EmailSetting{From: "alerts@example.com", Smtp: &v1pb.SMTPConfig{
+				Host: "smtp.example.com", Port: 587,
+				Encryption:     v1pb.SMTPEncryption_SMTP_ENCRYPTION_STARTTLS,
+				Authentication: v1pb.SMTPAuthentication_SMTP_AUTHENTICATION_PLAIN,
+				Username:       "alerts",
+			}},
+		},
+		{
+			name: "authentication needs encryption",
+			update: &v1pb.EmailSetting{From: "alerts@example.com", Smtp: &v1pb.SMTPConfig{
+				Host: "smtp.example.com", Port: 25,
+				Encryption:     v1pb.SMTPEncryption_SMTP_ENCRYPTION_NONE,
+				Authentication: v1pb.SMTPAuthentication_SMTP_AUTHENTICATION_PLAIN,
+				Username:       "alerts",
+				Password:       "s3cret",
+			}},
+		},
+		{
+			name:     "from cannot be cleared while the host stays",
+			existing: existing,
+			update:   &v1pb.EmailSetting{},
+			paths:    []string{"from"},
+		},
+		{
+			name:     "unsupported mask",
+			existing: existing,
+			update:   &v1pb.EmailSetting{},
+			paths:    []string{"surprise"},
+		},
+	}
+	for _, tc := range tests {
+		_, _, err := mergeEmailSettingUpdate(tc.existing, tc.update, tc.paths)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), tc.name)
+	}
+}
+
+func TestConvertToV1EmailSetting(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, convertToV1EmailSetting(nil).GetFrom())
+
+	converted := convertToV1EmailSetting(&store.EmailSettingMessage{Setting: storedEmailSetting(), HasPassword: true})
+	require.Equal(t, "alerts@example.com", converted.GetFrom())
+	require.Equal(t, "Metaxisdata", converted.GetFromName())
+	require.True(t, converted.GetPasswordSet())
+	require.Empty(t, converted.GetSmtp().GetPassword(), "the password is write-only")
+	require.Equal(t, int32(587), converted.GetSmtp().GetPort())
+	require.Equal(t, v1pb.SMTPEncryption_SMTP_ENCRYPTION_STARTTLS, converted.GetSmtp().GetEncryption())
+}
+
+func TestValidateEmailSettingAcceptsAnUnencryptedLoginlessServer(t *testing.T) {
+	t.Parallel()
+
+	setting := &storepb.EmailSetting{
+		From: "alerts@example.com",
+		Smtp: &storepb.EmailSMTPConfig{
+			Host:           "mail.internal",
+			Port:           25,
+			Encryption:     storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE,
+			Authentication: storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_NONE,
+		},
+	}
+	require.NoError(t, validateEmailSetting(setting, false))
+
+	// Clearing the From address and the host is the off switch, and the remaining
+	// fields do not have to be zeroed as well.
+	require.NoError(t, validateEmailSetting(&storepb.EmailSetting{
+		Smtp: &storepb.EmailSMTPConfig{
+			Port:           587,
+			Encryption:     storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_STARTTLS,
+			Authentication: storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN,
+		},
+	}, true))
 }

@@ -480,6 +480,9 @@
     - [DataQualityDetail](#metaxisdata-v1-DataQualityDetail)
     - [DeleteNotificationChannelRequest](#metaxisdata-v1-DeleteNotificationChannelRequest)
     - [DeleteNotificationRequest](#metaxisdata-v1-DeleteNotificationRequest)
+    - [DingTalkChannelConfig](#metaxisdata-v1-DingTalkChannelConfig)
+    - [EmailChannelConfig](#metaxisdata-v1-EmailChannelConfig)
+    - [FeishuChannelConfig](#metaxisdata-v1-FeishuChannelConfig)
     - [GetNotificationChannelRequest](#metaxisdata-v1-GetNotificationChannelRequest)
     - [GetUnreadNotificationCountRequest](#metaxisdata-v1-GetUnreadNotificationCountRequest)
     - [GetUnreadNotificationCountResponse](#metaxisdata-v1-GetUnreadNotificationCountResponse)
@@ -507,6 +510,7 @@
     - [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest)
     - [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse)
     - [UpdateNotificationChannelRequest](#metaxisdata-v1-UpdateNotificationChannelRequest)
+    - [WeComChannelConfig](#metaxisdata-v1-WeComChannelConfig)
     - [WebhookChannelConfig](#metaxisdata-v1-WebhookChannelConfig)
   
     - [DataQualityNotificationKind](#metaxisdata-v1-DataQualityNotificationKind)
@@ -577,13 +581,22 @@
   
 - [v1/setting_service.proto](#v1_setting_service-proto)
     - [DataQualitySetting](#metaxisdata-v1-DataQualitySetting)
+    - [EmailSetting](#metaxisdata-v1-EmailSetting)
     - [GetDebugConfigRequest](#metaxisdata-v1-GetDebugConfigRequest)
     - [GetDebugConfigResponse](#metaxisdata-v1-GetDebugConfigResponse)
+    - [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest)
     - [GetWorkspaceProfileSettingRequest](#metaxisdata-v1-GetWorkspaceProfileSettingRequest)
+    - [SMTPConfig](#metaxisdata-v1-SMTPConfig)
+    - [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest)
+    - [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse)
     - [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest)
     - [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse)
+    - [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest)
     - [UpdateWorkspaceProfileSettingRequest](#metaxisdata-v1-UpdateWorkspaceProfileSettingRequest)
     - [WorkspaceProfileSetting](#metaxisdata-v1-WorkspaceProfileSetting)
+  
+    - [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication)
+    - [SMTPEncryption](#metaxisdata-v1-SMTPEncryption)
   
     - [SettingService](#metaxisdata-v1-SettingService)
   
@@ -8592,6 +8605,52 @@ only; the client renders the localized sentence from the kind and these fields.
 
 
 
+<a name="metaxisdata-v1-DingTalkChannelConfig"></a>
+
+### DingTalkChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sign | [bool](#bool) |  | Whether the robot request is signed with the channel&#39;s signing secret. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-EmailChannelConfig"></a>
+
+### EmailChannelConfig
+EmailChannelConfig decides who receives the email for an event.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| addresses | [string](#string) | repeated | Addresses that receive every event the channel subscribes to, for example a team or on-call list. |
+| include_audience | [bool](#bool) |  | Whether the people the event concerns also receive the email: the rule&#39;s owner, the initiator of a sync operation, or the workspace administrators for an event that concerns nobody in particular. At least one address or this flag is required. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-FeishuChannelConfig"></a>
+
+### FeishuChannelConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sign | [bool](#bool) |  | Whether the bot request is signed with the channel&#39;s signing secret. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetNotificationChannelRequest"></a>
 
 ### GetNotificationChannelRequest
@@ -8815,7 +8874,7 @@ write-only: reads report only whether one is stored.
 | event_types | [NotificationType](#metaxisdata-v1-NotificationType) | repeated | The notification types this channel subscribes to. Empty means every type. |
 | min_severity | [NotificationSeverity](#metaxisdata-v1-NotificationSeverity) |  | The lowest severity this channel delivers. UNSPECIFIED means every severity. |
 | language | [string](#string) |  | BCP-47 tag the outbound text is written in. Empty means the server default. |
-| config | [NotificationChannelConfig](#metaxisdata-v1-NotificationChannelConfig) |  |  |
+| config | [NotificationChannelConfig](#metaxisdata-v1-NotificationChannelConfig) |  | The kind&#39;s configuration. The oneof case must match kind and cannot change: the kind is immutable, and a config of another case has no delivery path. |
 | secret_set | [bool](#bool) |  | Whether a credential is stored. The credential itself is never returned. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
@@ -8834,6 +8893,10 @@ write-only: reads report only whether one is stored.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | webhook | [WebhookChannelConfig](#metaxisdata-v1-WebhookChannelConfig) |  |  |
+| dingtalk | [DingTalkChannelConfig](#metaxisdata-v1-DingTalkChannelConfig) |  |  |
+| wecom | [WeComChannelConfig](#metaxisdata-v1-WeComChannelConfig) |  |  |
+| feishu | [FeishuChannelConfig](#metaxisdata-v1-FeishuChannelConfig) |  |  |
+| email | [EmailChannelConfig](#metaxisdata-v1-EmailChannelConfig) |  |  |
 
 
 
@@ -8848,8 +8911,8 @@ NotificationChannelSecret is the write-only credential of a channel.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| webhook_url | [string](#string) |  | The endpoint to POST to. Required when creating a webhook channel; an unset secret on update keeps the stored one. |
-| webhook_signing_secret | [string](#string) |  | The HMAC-SHA256 key that signs the body when webhook.sign is set. |
+| endpoint | [string](#string) |  | The endpoint to POST to. Required when creating a webhook-like channel (webhook, DingTalk, WeCom or Feishu); an unset secret on update keeps the stored one. |
+| signing_secret | [string](#string) |  | The signing key: the HMAC-SHA256 key of a webhook body, or the robot&#39;s signing secret. Required when the channel&#39;s config signs, and ignored otherwise. |
 
 
 
@@ -9056,6 +9119,16 @@ SyncDatabaseResult is one database&#39;s outcome in a schema sync operation.
 
 
 
+<a name="metaxisdata-v1-WeComChannelConfig"></a>
+
+### WeComChannelConfig
+WeComChannelConfig has no options: the robot key is the endpoint&#39;s query.
+
+
+
+
+
+
 <a name="metaxisdata-v1-WebhookChannelConfig"></a>
 
 ### WebhookChannelConfig
@@ -9091,12 +9164,17 @@ DataQualityNotificationKind is the event a data quality notification reports.
 <a name="metaxisdata-v1-NotificationChannelKind"></a>
 
 ### NotificationChannelKind
-NotificationChannelKind is the protocol one outbound channel speaks.
+NotificationChannelKind is the protocol one outbound channel speaks. The kind
+decides the config shape and which credential fields are required.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | NOTIFICATION_CHANNEL_KIND_UNSPECIFIED | 0 |  |
-| NOTIFICATION_CHANNEL_KIND_WEBHOOK | 1 | A generic HTTP POST endpoint. |
+| NOTIFICATION_CHANNEL_KIND_WEBHOOK | 1 | A generic HTTP endpoint that receives the delivery JSON, optionally signed. |
+| NOTIFICATION_CHANNEL_KIND_DINGTALK | 2 | A DingTalk group robot, optionally signed. |
+| NOTIFICATION_CHANNEL_KIND_WECOM | 3 | A WeCom group robot. Its bot key is part of the endpoint. |
+| NOTIFICATION_CHANNEL_KIND_FEISHU | 4 | A Feishu custom bot, optionally signed. |
+| NOTIFICATION_CHANNEL_KIND_EMAIL | 5 | An email sent through the workspace email setting. |
 
 
 
@@ -9224,7 +9302,7 @@ No (google.api.http) annotation: this is a server-streaming method, and the REST
 | CreateNotificationChannel | [CreateNotificationChannelRequest](#metaxisdata-v1-CreateNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Create one outbound channel. The secret is write-only: it is encrypted before it is stored and is never returned. |
 | UpdateNotificationChannel | [UpdateNotificationChannelRequest](#metaxisdata-v1-UpdateNotificationChannelRequest) | [NotificationChannel](#metaxisdata-v1-NotificationChannel) | Update one outbound channel. An omitted secret keeps the stored one; a present secret replaces it. |
 | DeleteNotificationChannel | [DeleteNotificationChannelRequest](#metaxisdata-v1-DeleteNotificationChannelRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete one outbound channel and the deliveries still queued for it. |
-| TestNotificationChannel | [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest) | [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse) | Post a test message through one stored channel and report what the endpoint answered. It queues no delivery and is not audited: it is a diagnostic probe that changes nothing, and the endpoint&#39;s answer is third-party text that does not belong in the permanent ledger. |
+| TestNotificationChannel | [TestNotificationChannelRequest](#metaxisdata-v1-TestNotificationChannelRequest) | [TestNotificationChannelResponse](#metaxisdata-v1-TestNotificationChannelResponse) | Post a test message through one stored channel and report what the endpoint answered. An email channel sends the message through the workspace SMTP setting instead, and its answer is empty. It queues no delivery and is not audited: it is a diagnostic probe that changes nothing, and the endpoint&#39;s answer is third-party text that does not belong in the permanent ledger. |
 | ListNotificationDeliveries | [ListNotificationDeliveriesRequest](#metaxisdata-v1-ListNotificationDeliveriesRequest) | [ListNotificationDeliveriesResponse](#metaxisdata-v1-ListNotificationDeliveriesResponse) | List outbound deliveries, newest first, for administrators to diagnose a channel. |
 | RetryNotificationDelivery | [RetryNotificationDeliveryRequest](#metaxisdata-v1-RetryNotificationDeliveryRequest) | [NotificationDelivery](#metaxisdata-v1-NotificationDelivery) | Requeue one delivery: a DEAD delivery becomes PENDING again and a delivered or waiting one is left as it is. |
 
@@ -10149,6 +10227,26 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 
 
 
+<a name="metaxisdata-v1-EmailSetting"></a>
+
+### EmailSetting
+EmailSetting configures the SMTP server workspace notifications are emailed
+through. There is one per workspace: a channel of kind EMAIL delivers through
+it, and an email channel fails while it is unset.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| from | [string](#string) |  | The From address. It must be an address the SMTP server is allowed to send as. Empty means email delivery is not configured. |
+| from_name | [string](#string) |  | The display name shown beside the From address. |
+| smtp | [SMTPConfig](#metaxisdata-v1-SMTPConfig) |  | The SMTP server. |
+| password_set | [bool](#bool) |  | Whether a password is stored. The password itself is never returned. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetDebugConfigRequest"></a>
 
 ### GetDebugConfigRequest
@@ -10174,9 +10272,59 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 
 
 
+<a name="metaxisdata-v1-GetEmailSettingRequest"></a>
+
+### GetEmailSettingRequest
+
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetWorkspaceProfileSettingRequest"></a>
 
 ### GetWorkspaceProfileSettingRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-SMTPConfig"></a>
+
+### SMTPConfig
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| host | [string](#string) |  | The SMTP server host name. |
+| port | [int32](#int32) |  | The SMTP server port: usually 587 for STARTTLS, 465 for implicit TLS, or 25 on a trusted network. |
+| encryption | [SMTPEncryption](#metaxisdata-v1-SMTPEncryption) |  |  |
+| authentication | [SMTPAuthentication](#metaxisdata-v1-SMTPAuthentication) |  |  |
+| username | [string](#string) |  | The user name the login authenticates as. Required unless authentication is NONE. |
+| password | [string](#string) |  | The login password. It is write-only: an empty value on update keeps the stored password, and no read returns it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SendTestEmailRequest"></a>
+
+### SendTestEmailRequest
+
+
+
+
+
+
+
+<a name="metaxisdata-v1-SendTestEmailResponse"></a>
+
+### SendTestEmailResponse
 
 
 
@@ -10208,6 +10356,22 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | enabled | [bool](#bool) |  | The resulting runtime debug mode. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateEmailSettingRequest"></a>
+
+### UpdateEmailSettingRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| setting | [EmailSetting](#metaxisdata-v1-EmailSetting) |  | The setting to update. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The list of fields to update: from, from_name, smtp, or one of smtp.host, smtp.port, smtp.encryption, smtp.authentication, smtp.username, smtp.password. |
 
 
 
@@ -10257,6 +10421,35 @@ Empty (the default) turns the feature off for every provider. The address claim 
 
  
 
+
+<a name="metaxisdata-v1-SMTPAuthentication"></a>
+
+### SMTPAuthentication
+SMTPAuthentication is the login mechanism of the SMTP connection.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SMTP_AUTHENTICATION_UNSPECIFIED | 0 |  |
+| SMTP_AUTHENTICATION_NONE | 1 | No login; only for a server that accepts mail from trusted hosts. |
+| SMTP_AUTHENTICATION_PLAIN | 2 |  |
+| SMTP_AUTHENTICATION_LOGIN | 3 |  |
+| SMTP_AUTHENTICATION_CRAM_MD5 | 4 |  |
+
+
+
+<a name="metaxisdata-v1-SMTPEncryption"></a>
+
+### SMTPEncryption
+SMTPEncryption is the transport security of the SMTP connection.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| SMTP_ENCRYPTION_UNSPECIFIED | 0 |  |
+| SMTP_ENCRYPTION_NONE | 1 | No transport encryption. Only for a server on a trusted network. |
+| SMTP_ENCRYPTION_STARTTLS | 2 | Upgrade the connection with STARTTLS after the greeting. |
+| SMTP_ENCRYPTION_SSL_TLS | 3 | Implicit TLS from the first byte, usually port 465. |
+
+
  
 
  
@@ -10277,6 +10470,9 @@ This method is readable without credentials because the login page needs to know
 | UpdateDebugConfig | [UpdateDebugConfigRequest](#metaxisdata-v1-UpdateDebugConfigRequest) | [UpdateDebugConfigResponse](#metaxisdata-v1-UpdateDebugConfigResponse) | Update the workspace runtime debug config.
 
 Enabling it switches the process-wide log level to debug, gates the verbose request logging emitted by the debug interceptor, exposes /debug/pprof, and allows panic handlers to return stack traces to the caller. Disabling it restores info-level logging and generic panic errors. |
+| GetEmailSetting | [GetEmailSettingRequest](#metaxisdata-v1-GetEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Get the workspace email setting. It is returned empty when email delivery is not configured, so the settings page can render one form either way. |
+| UpdateEmailSetting | [UpdateEmailSettingRequest](#metaxisdata-v1-UpdateEmailSettingRequest) | [EmailSetting](#metaxisdata-v1-EmailSetting) | Update the workspace email setting. The password is write-only: an empty one on update keeps the stored password, and no read returns it. |
+| SendTestEmail | [SendTestEmailRequest](#metaxisdata-v1-SendTestEmailRequest) | [SendTestEmailResponse](#metaxisdata-v1-SendTestEmailResponse) | Send a test email to the caller&#39;s own address through the configured SMTP server. It is not audited: it changes nothing, and it is a diagnostic probe the settings page can repeat while an administrator types the server in. |
 
  
 

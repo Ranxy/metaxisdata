@@ -230,7 +230,7 @@ func (s *Store) GetNotificationChannelSecret(ctx context.Context, channelID int6
 // encryptNotificationChannelSecret seals the credential. An empty secret is
 // stored as the empty string so the update path can tell "keep" from "replace".
 func (s *Store) encryptNotificationChannelSecret(secret *storepb.NotificationChannelSecret) (string, error) {
-	if secret == nil || (secret.GetWebhookUrl() == "" && secret.GetWebhookSigningSecret() == "") {
+	if secret == nil || (secret.GetEndpoint() == "" && secret.GetSigningSecret() == "") {
 		return "", nil
 	}
 	raw, err := protojson.Marshal(secret)

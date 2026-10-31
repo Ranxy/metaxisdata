@@ -711,6 +711,9 @@ export declare type NotificationChannel = Message<"metaxisdata.v1.NotificationCh
   language: string;
 
   /**
+   * The kind's configuration. The oneof case must match kind and cannot change:
+   * the kind is immutable, and a config of another case has no delivery path.
+   *
    * @generated from field: metaxisdata.v1.NotificationChannelConfig config = 8;
    */
   config?: NotificationChannelConfig;
@@ -752,6 +755,30 @@ export declare type NotificationChannelConfig = Message<"metaxisdata.v1.Notifica
      */
     value: WebhookChannelConfig;
     case: "webhook";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.DingTalkChannelConfig dingtalk = 2;
+     */
+    value: DingTalkChannelConfig;
+    case: "dingtalk";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.WeComChannelConfig wecom = 3;
+     */
+    value: WeComChannelConfig;
+    case: "wecom";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.FeishuChannelConfig feishu = 4;
+     */
+    value: FeishuChannelConfig;
+    case: "feishu";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.EmailChannelConfig email = 5;
+     */
+    value: EmailChannelConfig;
+    case: "email";
   } | { case: undefined; value?: undefined };
 };
 
@@ -780,25 +807,109 @@ export declare type WebhookChannelConfig = Message<"metaxisdata.v1.WebhookChanne
 export declare const WebhookChannelConfigSchema: GenMessage<WebhookChannelConfig>;
 
 /**
+ * @generated from message metaxisdata.v1.DingTalkChannelConfig
+ */
+export declare type DingTalkChannelConfig = Message<"metaxisdata.v1.DingTalkChannelConfig"> & {
+  /**
+   * Whether the robot request is signed with the channel's signing secret.
+   *
+   * @generated from field: bool sign = 1;
+   */
+  sign: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DingTalkChannelConfig.
+ * Use `create(DingTalkChannelConfigSchema)` to create a new message.
+ */
+export declare const DingTalkChannelConfigSchema: GenMessage<DingTalkChannelConfig>;
+
+/**
+ * WeComChannelConfig has no options: the robot key is the endpoint's query.
+ *
+ * @generated from message metaxisdata.v1.WeComChannelConfig
+ */
+export declare type WeComChannelConfig = Message<"metaxisdata.v1.WeComChannelConfig"> & {
+};
+
+/**
+ * Describes the message metaxisdata.v1.WeComChannelConfig.
+ * Use `create(WeComChannelConfigSchema)` to create a new message.
+ */
+export declare const WeComChannelConfigSchema: GenMessage<WeComChannelConfig>;
+
+/**
+ * @generated from message metaxisdata.v1.FeishuChannelConfig
+ */
+export declare type FeishuChannelConfig = Message<"metaxisdata.v1.FeishuChannelConfig"> & {
+  /**
+   * Whether the bot request is signed with the channel's signing secret.
+   *
+   * @generated from field: bool sign = 1;
+   */
+  sign: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.FeishuChannelConfig.
+ * Use `create(FeishuChannelConfigSchema)` to create a new message.
+ */
+export declare const FeishuChannelConfigSchema: GenMessage<FeishuChannelConfig>;
+
+/**
+ * EmailChannelConfig decides who receives the email for an event.
+ *
+ * @generated from message metaxisdata.v1.EmailChannelConfig
+ */
+export declare type EmailChannelConfig = Message<"metaxisdata.v1.EmailChannelConfig"> & {
+  /**
+   * Addresses that receive every event the channel subscribes to, for example a
+   * team or on-call list.
+   *
+   * @generated from field: repeated string addresses = 1;
+   */
+  addresses: string[];
+
+  /**
+   * Whether the people the event concerns also receive the email: the rule's
+   * owner, the initiator of a sync operation, or the workspace administrators
+   * for an event that concerns nobody in particular. At least one address or
+   * this flag is required.
+   *
+   * @generated from field: bool include_audience = 2;
+   */
+  includeAudience: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.EmailChannelConfig.
+ * Use `create(EmailChannelConfigSchema)` to create a new message.
+ */
+export declare const EmailChannelConfigSchema: GenMessage<EmailChannelConfig>;
+
+/**
  * NotificationChannelSecret is the write-only credential of a channel.
  *
  * @generated from message metaxisdata.v1.NotificationChannelSecret
  */
 export declare type NotificationChannelSecret = Message<"metaxisdata.v1.NotificationChannelSecret"> & {
   /**
-   * The endpoint to POST to. Required when creating a webhook channel; an
-   * unset secret on update keeps the stored one.
+   * The endpoint to POST to. Required when creating a webhook-like channel
+   * (webhook, DingTalk, WeCom or Feishu); an unset secret on update keeps the
+   * stored one.
    *
-   * @generated from field: string webhook_url = 1;
+   * @generated from field: string endpoint = 1;
    */
-  webhookUrl: string;
+  endpoint: string;
 
   /**
-   * The HMAC-SHA256 key that signs the body when webhook.sign is set.
+   * The signing key: the HMAC-SHA256 key of a webhook body, or the robot's
+   * signing secret. Required when the channel's config signs, and ignored
+   * otherwise.
    *
-   * @generated from field: string webhook_signing_secret = 2;
+   * @generated from field: string signing_secret = 2;
    */
-  webhookSigningSecret: string;
+  signingSecret: string;
 };
 
 /**
@@ -1385,7 +1496,8 @@ export enum DataQualityNotificationKind {
 export declare const DataQualityNotificationKindSchema: GenEnum<DataQualityNotificationKind>;
 
 /**
- * NotificationChannelKind is the protocol one outbound channel speaks.
+ * NotificationChannelKind is the protocol one outbound channel speaks. The kind
+ * decides the config shape and which credential fields are required.
  *
  * @generated from enum metaxisdata.v1.NotificationChannelKind
  */
@@ -1396,11 +1508,39 @@ export enum NotificationChannelKind {
   UNSPECIFIED = 0,
 
   /**
-   * A generic HTTP POST endpoint.
+   * A generic HTTP endpoint that receives the delivery JSON, optionally signed.
    *
    * @generated from enum value: NOTIFICATION_CHANNEL_KIND_WEBHOOK = 1;
    */
   WEBHOOK = 1,
+
+  /**
+   * A DingTalk group robot, optionally signed.
+   *
+   * @generated from enum value: NOTIFICATION_CHANNEL_KIND_DINGTALK = 2;
+   */
+  DINGTALK = 2,
+
+  /**
+   * A WeCom group robot. Its bot key is part of the endpoint.
+   *
+   * @generated from enum value: NOTIFICATION_CHANNEL_KIND_WECOM = 3;
+   */
+  WECOM = 3,
+
+  /**
+   * A Feishu custom bot, optionally signed.
+   *
+   * @generated from enum value: NOTIFICATION_CHANNEL_KIND_FEISHU = 4;
+   */
+  FEISHU = 4,
+
+  /**
+   * An email sent through the workspace email setting.
+   *
+   * @generated from enum value: NOTIFICATION_CHANNEL_KIND_EMAIL = 5;
+   */
+  EMAIL = 5,
 }
 
 /**
@@ -1607,9 +1747,10 @@ export declare const NotificationService: GenService<{
   },
   /**
    * Post a test message through one stored channel and report what the endpoint
-   * answered. It queues no delivery and is not audited: it is a diagnostic probe
-   * that changes nothing, and the endpoint's answer is third-party text that does
-   * not belong in the permanent ledger.
+   * answered. An email channel sends the message through the workspace SMTP
+   * setting instead, and its answer is empty. It queues no delivery and is not
+   * audited: it is a diagnostic probe that changes nothing, and the endpoint's
+   * answer is third-party text that does not belong in the permanent ledger.
    *
    * @generated from rpc metaxisdata.v1.NotificationService.TestNotificationChannel
    */

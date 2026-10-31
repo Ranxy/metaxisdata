@@ -22,9 +22,12 @@ const outboundEventIDLength = 12
 //
 // One call is one event. The same event addressed to five administrators
 // produces five inbox rows but one event id, and the unique (event_id,
-// channel_id) index makes a repeated enqueue a no-op.
-func (s *Service) enqueueOutbound(ctx context.Context, n *storepb.Notification) {
-	event := deliveryEvent(n)
+// channel_id) index makes a repeated enqueue a no-op. audience is the user ids
+// the event's in-app message addressed, carried for the email channel: it is
+// resolved to addresses at send time, so a changed or deleted account resolves
+// then.
+func (s *Service) enqueueOutbound(ctx context.Context, n *storepb.Notification, audience []int32) {
+	event := deliveryEvent(n, audience)
 	if event == nil {
 		return
 	}
@@ -106,11 +109,14 @@ func severityRank(severity storepb.NotificationSeverity) int {
 
 // deliveryEvent strips the per-recipient half of a notification: the outbox is
 // workspace-level, so recipient, read state and dedupe key do not belong in it.
+// The audience ids are the event-level counterpart: who the message concerned,
+// kept for the email channel because it resolves them to addresses at send time.
 // It returns nil for a message with no detail, which has nothing to post.
-func deliveryEvent(n *storepb.Notification) *storepb.NotificationDeliveryEvent {
+func deliveryEvent(n *storepb.Notification, audience []int32) *storepb.NotificationDeliveryEvent {
 	event := &storepb.NotificationDeliveryEvent{
-		Type:     n.GetType(),
-		Severity: n.GetSeverity(),
+		Type:            n.GetType(),
+		Severity:        n.GetSeverity(),
+		AudienceUserIds: audience,
 	}
 	switch detail := n.GetDetail().(type) {
 	case *storepb.Notification_SchemaSync:

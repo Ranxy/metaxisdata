@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/notification/outbound"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -62,16 +63,26 @@ func TestMergeNotificationChannelUpdateRejectsUnsupportedPaths(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-// An empty mask is a full update; it must still validate the fields it writes.
+// An empty mask is a full update of the mutable fields; the immutable kind comes
+// from the stored channel, and the config is still required.
 func TestMergeNotificationChannelUpdateFullReplace(t *testing.T) {
 	t.Parallel()
 
 	_, err := mergeNotificationChannelUpdate(&v1pb.NotificationChannel{}, nil, storedWebhookChannel())
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "a full replace needs a display name")
 
-	merged, err := mergeNotificationChannelUpdate(&v1pb.NotificationChannel{DisplayName: "renamed"}, nil, storedWebhookChannel())
+	_, err = mergeNotificationChannelUpdate(&v1pb.NotificationChannel{DisplayName: "renamed"}, nil, storedWebhookChannel())
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), "a full replace needs a config")
+
+	merged, err := mergeNotificationChannelUpdate(&v1pb.NotificationChannel{
+		DisplayName: "renamed",
+		Config: &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Webhook{Webhook: &v1pb.WebhookChannelConfig{}},
+		},
+	}, nil, storedWebhookChannel())
 	require.NoError(t, err)
 	require.Equal(t, "renamed", merged.GetDisplayName())
+	require.Equal(t, storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_WEBHOOK, merged.GetKind())
 }
 
 func TestStoreNotificationChannelPayload(t *testing.T) {
@@ -84,6 +95,9 @@ func TestStoreNotificationChannelPayload(t *testing.T) {
 		EventTypes: []v1pb.NotificationType{
 			v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY,
 			v1pb.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED,
+		},
+		Config: &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Webhook{Webhook: &v1pb.WebhookChannelConfig{}},
 		},
 	})
 	require.NoError(t, err)
@@ -102,19 +116,60 @@ func TestStoreNotificationChannelPayload(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
+// An email channel's addresses are validated and de-duplicated at write time, and
+// the channel must name at least one recipient source.
+func TestStoreNotificationChannelPayloadEmail(t *testing.T) {
+	t.Parallel()
+
+	payload, err := storeNotificationChannelPayload(&v1pb.NotificationChannel{
+		DisplayName: "on-call",
+		Kind:        v1pb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL,
+		Config: &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Email{Email: &v1pb.EmailChannelConfig{
+				Addresses:       []string{" OnCall@example.com ", "", "oncall@example.com", "lead@example.com"},
+				IncludeAudience: true,
+			}},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"OnCall@example.com", "lead@example.com"}, payload.GetConfig().GetEmail().GetAddresses())
+	require.True(t, payload.GetConfig().GetEmail().GetIncludeAudience())
+
+	payload, err = storeNotificationChannelPayload(&v1pb.NotificationChannel{
+		DisplayName: "on-call",
+		Kind:        v1pb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_EMAIL,
+		Config: &v1pb.NotificationChannelConfig{
+			Config: &v1pb.NotificationChannelConfig_Email{Email: &v1pb.EmailChannelConfig{}},
+		},
+	})
+	require.NoError(t, err)
+	require.Error(t, outbound.ValidateChannel(payload, nil), "an email channel needs a recipient source")
+}
+
+// The kind is immutable, so a stored channel's config case is the only one its
+// kind may carry.
+func TestStoreNotificationChannelConfigRejectsAnotherKindsConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := storeNotificationChannelConfig(storepb.NotificationChannelKind_NOTIFICATION_CHANNEL_KIND_DINGTALK, &v1pb.NotificationChannelConfig{
+		Config: &v1pb.NotificationChannelConfig_Webhook{Webhook: &v1pb.WebhookChannelConfig{}},
+	})
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
 func TestStoreNotificationChannelSecret(t *testing.T) {
 	t.Parallel()
 
 	require.Nil(t, storeNotificationChannelSecret(nil))
 	require.Nil(t, storeNotificationChannelSecret(&v1pb.NotificationChannelSecret{}))
-	require.Nil(t, storeNotificationChannelSecret(&v1pb.NotificationChannelSecret{WebhookUrl: "  "}))
+	require.Nil(t, storeNotificationChannelSecret(&v1pb.NotificationChannelSecret{Endpoint: "  "}))
 
 	secret := storeNotificationChannelSecret(&v1pb.NotificationChannelSecret{
-		WebhookUrl:           " https://example.com/hook ",
-		WebhookSigningSecret: "s3cret",
+		Endpoint:      " https://example.com/hook ",
+		SigningSecret: "s3cret",
 	})
-	require.Equal(t, "https://example.com/hook", secret.GetWebhookUrl())
-	require.Equal(t, "s3cret", secret.GetWebhookSigningSecret())
+	require.Equal(t, "https://example.com/hook", secret.GetEndpoint())
+	require.Equal(t, "s3cret", secret.GetSigningSecret())
 }
 
 func TestConvertToV1NotificationChannel(t *testing.T) {

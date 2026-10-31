@@ -3,17 +3,21 @@ package v1
 import (
 	"context"
 	"log/slog"
+	"net/mail"
 	"slices"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/notification/outbound"
 	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -391,4 +395,256 @@ func (s *SettingService) UpdateDebugConfig(_ context.Context, request *connect.R
 		log.LogLevel.Set(slog.LevelInfo)
 	}
 	return connect.NewResponse(&v1pb.UpdateDebugConfigResponse{Enabled: enabled}), nil
+}
+
+// GetEmailSetting returns the workspace SMTP setting. An unset setting is
+// returned empty rather than as a 404, so the settings page renders one form
+// whether or not email delivery was ever configured.
+func (s *SettingService) GetEmailSetting(ctx context.Context, _ *connect.Request[v1pb.GetEmailSettingRequest]) (*connect.Response[v1pb.EmailSetting], error) {
+	setting, err := s.store.GetEmailSetting(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the email setting"))
+	}
+	return connect.NewResponse(convertToV1EmailSetting(setting)), nil
+}
+
+// UpdateEmailSetting rewrites the masked fields of the workspace SMTP setting.
+// The password is write-only: an empty one keeps the stored password, and a read
+// reports only whether one is stored. Clearing every field turns email delivery
+// off.
+func (s *SettingService) UpdateEmailSetting(ctx context.Context, request *connect.Request[v1pb.UpdateEmailSettingRequest]) (*connect.Response[v1pb.EmailSetting], error) {
+	if request.Msg.Setting == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("setting must be set"))
+	}
+	if request.Msg.UpdateMask == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("update_mask must be set"))
+	}
+	existing, err := s.store.GetEmailSetting(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the email setting"))
+	}
+	setting, password, err := mergeEmailSettingUpdate(existing, request.Msg.Setting, request.Msg.UpdateMask.Paths)
+	if err != nil {
+		return nil, err
+	}
+	// Clearing the From address and the host is the explicit way to turn email
+	// delivery off; the remaining SMTP fields are then irrelevant and are dropped
+	// rather than stored as a half-configured server.
+	if strings.TrimSpace(setting.GetFrom()) == "" && strings.TrimSpace(setting.GetSmtp().GetHost()) == "" {
+		if err := s.store.DeleteEmailSetting(ctx); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to clear the email setting"))
+		}
+		return connect.NewResponse(&v1pb.EmailSetting{}), nil
+	}
+	if err := s.store.SetEmailSetting(ctx, setting, password); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to update the email setting"))
+	}
+	stored, err := s.store.GetEmailSetting(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the email setting"))
+	}
+	return connect.NewResponse(convertToV1EmailSetting(stored)), nil
+}
+
+// SendTestEmail sends one message to the caller's own address through the
+// configured SMTP server. It changes nothing, so it is a diagnostic probe the
+// settings page can repeat while an administrator types the server in.
+func (s *SettingService) SendTestEmail(ctx context.Context, _ *connect.Request[v1pb.SendTestEmailRequest]) (*connect.Response[v1pb.SendTestEmailResponse], error) {
+	setting, err := s.store.GetEmailSettingForDelivery(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to read the email setting"))
+	}
+	if setting == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("email delivery is not configured"))
+	}
+	caller, ok := GetUserFromContext(ctx)
+	if !ok || caller == nil || caller.Email == "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the caller has no email address"))
+	}
+	receiver, err := outbound.NewEmail(setting)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	title := "Metaxisdata test email"
+	text := "This is a test email from Settings > Notifications. No data quality check failed."
+	if normalizeLanguage(currentUserLanguage(ctx)) == "zh-CN" {
+		title = "Metaxisdata 测试邮件"
+		text = "这是来自「设置 → 通知」的测试邮件，没有数据质量检查失败。"
+	}
+	if _, err := receiver.Post(ctx, outbound.Message{
+		Title:      title,
+		Text:       text,
+		Recipients: []string{caller.Email},
+		OccurredAt: time.Now(),
+	}); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&v1pb.SendTestEmailResponse{}), nil
+}
+
+// mergeEmailSettingUpdate applies the update mask to the stored setting and
+// returns the merged value plus the password the store should seal. A nil
+// password keeps the stored one; an empty mask is a full update. An empty
+// password is never a request to clear a login password, because the request
+// cannot tell "unchanged" from "cleared" — disabling authentication is how a
+// password stops being required.
+func mergeEmailSettingUpdate(existing *store.EmailSettingMessage, update *v1pb.EmailSetting, paths []string) (*storepb.EmailSetting, *string, error) {
+	merged := &storepb.EmailSetting{Smtp: &storepb.EmailSMTPConfig{}}
+	hasPassword := false
+	if existing != nil && existing.Setting != nil {
+		cloned, ok := proto.Clone(existing.Setting).(*storepb.EmailSetting)
+		if !ok {
+			return nil, nil, connect.NewError(connect.CodeInternal, errors.New("failed to clone the email setting"))
+		}
+		merged = cloned
+		if merged.Smtp == nil {
+			merged.Smtp = &storepb.EmailSMTPConfig{}
+		}
+		hasPassword = existing.HasPassword
+	}
+	var password *string
+	if len(paths) == 0 {
+		paths = []string{"from", "from_name", "smtp"}
+	}
+	for _, path := range paths {
+		switch path {
+		case "from":
+			merged.From = strings.TrimSpace(update.GetFrom())
+		case "from_name", "fromName":
+			merged.FromName = strings.TrimSpace(update.GetFromName())
+		case "smtp":
+			config, value := emailSMTPConfigFromV1(update.GetSmtp())
+			merged.Smtp = config
+			if value != nil {
+				password = value
+				hasPassword = *value != ""
+			}
+		case "smtp.host":
+			merged.Smtp.Host = strings.TrimSpace(update.GetSmtp().GetHost())
+		case "smtp.port":
+			merged.Smtp.Port = update.GetSmtp().GetPort()
+		case "smtp.encryption":
+			merged.Smtp.Encryption = storepb.EmailSMTPEncryption(update.GetSmtp().GetEncryption())
+		case "smtp.authentication":
+			merged.Smtp.Authentication = storepb.EmailSMTPAuthentication(update.GetSmtp().GetAuthentication())
+		case "smtp.username":
+			merged.Smtp.Username = strings.TrimSpace(update.GetSmtp().GetUsername())
+		case "smtp.password":
+			if value := update.GetSmtp().GetPassword(); value != "" {
+				password = &value
+				hasPassword = true
+			}
+		default:
+			return nil, nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("unsupported update_mask %q", path))
+		}
+	}
+	if err := validateEmailSetting(merged, hasPassword); err != nil {
+		return nil, nil, err
+	}
+	return merged, password, nil
+}
+
+// emailSMTPConfigFromV1 converts the API's SMTP config, returning the password
+// separately: the store owns sealing it, so the stored shape never carries it in
+// the clear.
+func emailSMTPConfigFromV1(config *v1pb.SMTPConfig) (*storepb.EmailSMTPConfig, *string) {
+	if config == nil {
+		return &storepb.EmailSMTPConfig{}, nil
+	}
+	converted := &storepb.EmailSMTPConfig{
+		Host:           strings.TrimSpace(config.GetHost()),
+		Port:           config.GetPort(),
+		Encryption:     storepb.EmailSMTPEncryption(config.GetEncryption()),
+		Authentication: storepb.EmailSMTPAuthentication(config.GetAuthentication()),
+		Username:       strings.TrimSpace(config.GetUsername()),
+	}
+	var password *string
+	if value := config.GetPassword(); value != "" {
+		password = &value
+	}
+	return converted, password
+}
+
+// validateEmailSetting checks a complete configuration. Clearing the From
+// address and the host is how an administrator turns email delivery off.
+func validateEmailSetting(setting *storepb.EmailSetting, hasPassword bool) error {
+	from := strings.TrimSpace(setting.GetFrom())
+	host := strings.TrimSpace(setting.GetSmtp().GetHost())
+	if from == "" && host == "" {
+		return nil
+	}
+	if from == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
+	}
+	if parsed, err := mail.ParseAddress(from); err != nil || parsed.Address != from {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("from must be a valid email address"))
+	}
+	if strings.ContainsAny(setting.GetFromName(), "\r\n") {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("from_name must not contain line breaks"))
+	}
+	if len([]rune(setting.GetFromName())) > 100 {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("from_name is longer than 100 characters"))
+	}
+	if host == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.host is required"))
+	}
+	if len(host) > 255 || strings.ContainsAny(host, " \t\r\n/:") {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.host is not a valid host name"))
+	}
+	if port := setting.GetSmtp().GetPort(); port < 1 || port > 65535 {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.port must be between 1 and 65535"))
+	}
+	switch setting.GetSmtp().GetEncryption() {
+	case storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE,
+		storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_STARTTLS,
+		storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_SSL_TLS:
+	case storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_UNSPECIFIED:
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.encryption is required"))
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.encryption is not supported"))
+	}
+	switch authentication := setting.GetSmtp().GetAuthentication(); authentication {
+	case storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_NONE:
+	case storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_PLAIN,
+		storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_LOGIN,
+		storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_CRAM_MD5:
+		if setting.GetSmtp().GetUsername() == "" {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.username is required for this authentication mechanism"))
+		}
+		if !hasPassword {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.password is required for this authentication mechanism"))
+		}
+	case storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_UNSPECIFIED:
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.authentication is required"))
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.authentication is not supported"))
+	}
+	// A login over an unencrypted connection hands the password to anyone on the
+	// path, so authentication requires transport encryption.
+	if setting.GetSmtp().GetEncryption() == storepb.EmailSMTPEncryption_EMAIL_SMTP_ENCRYPTION_NONE &&
+		setting.GetSmtp().GetAuthentication() != storepb.EmailSMTPAuthentication_EMAIL_SMTP_AUTHENTICATION_NONE {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("smtp.encryption must be STARTTLS or SSL/TLS when authentication is enabled"))
+	}
+	return nil
+}
+
+// convertToV1EmailSetting renders the stored setting. The password is never
+// copied; a read reports only whether one is stored.
+func convertToV1EmailSetting(message *store.EmailSettingMessage) *v1pb.EmailSetting {
+	result := &v1pb.EmailSetting{}
+	if message == nil || message.Setting == nil {
+		return result
+	}
+	smtpConfig := message.Setting.GetSmtp()
+	result.From = message.Setting.GetFrom()
+	result.FromName = message.Setting.GetFromName()
+	result.PasswordSet = message.HasPassword
+	result.Smtp = &v1pb.SMTPConfig{
+		Host:           smtpConfig.GetHost(),
+		Port:           smtpConfig.GetPort(),
+		Encryption:     v1pb.SMTPEncryption(smtpConfig.GetEncryption()),
+		Authentication: v1pb.SMTPAuthentication(smtpConfig.GetAuthentication()),
+		Username:       smtpConfig.GetUsername(),
+	}
+	return result
 }
