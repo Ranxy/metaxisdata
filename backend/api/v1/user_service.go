@@ -106,9 +106,10 @@ func (s *UserService) GetCurrentUser(ctx context.Context, _ *connect.Request[emp
 // ListUsers lists all users.
 func (s *UserService) ListUsers(ctx context.Context, request *connect.Request[v1pb.ListUsersRequest]) (*connect.Response[v1pb.ListUsersResponse], error) {
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   request.Msg.PageToken,
-		limit:   int(request.Msg.PageSize),
-		maximum: 1000,
+		token:        request.Msg.PageToken,
+		limit:        int(request.Msg.PageSize),
+		maximum:      1000,
+		defaultLimit: defaultPageLimit,
 	})
 	if err != nil {
 		return nil, err

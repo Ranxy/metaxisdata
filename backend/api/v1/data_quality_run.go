@@ -12,11 +12,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// qualityRunDefaultPageSize is what an unset page_size means for the run list,
-// matching the RPC's documented default. A follow-up page keeps the size its token
-// was issued with (parseLimitAndOffset restores it).
-const qualityRunDefaultPageSize = 50
-
 // ListQualityRuns lists the internal dispatch batches, newest first. A run is a
 // read-only projection: it groups the executions one scheduler tick or one manual
 // request planned for one target, and the run itself names that target.
@@ -25,14 +20,11 @@ func (s *DataQualityService) ListQualityRuns(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, err
 	}
-	requested := int(req.Msg.GetPageSize())
-	if requested == 0 && req.Msg.GetPageToken() == "" {
-		requested = qualityRunDefaultPageSize
-	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   requested,
-		maximum: qualityListMaximum,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      qualityListMaximum,
+		defaultLimit: qualityDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err

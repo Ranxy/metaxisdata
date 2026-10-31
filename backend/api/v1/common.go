@@ -123,9 +123,13 @@ func unmarshalPageToken(s string, pageToken *storepb.PageToken) error {
 }
 
 type pageSize struct {
-	token   string
-	limit   int
+	token string
+	limit int
+	// maximum caps what the caller may ask for.
 	maximum int
+	// defaultLimit is what an unset page_size means on a first page. Zero falls
+	// back to defaultPageLimit for RPCs whose proto does not promise a value.
+	defaultLimit int
 }
 
 type pageOffset struct {
@@ -138,6 +142,12 @@ type pageOffset struct {
 // page); the bound also keeps a forged token from asking the database for an
 // absurd OFFSET.
 const maxPageOffset = math.MaxInt32
+
+// defaultPageLimit is the page size of a list RPC whose proto documents no
+// default of its own. A list that does document one passes it as pageSize's
+// defaultLimit, so the number the client reads in the proto comment is the
+// number the server applies.
+const defaultPageLimit = 10
 
 func (p *pageOffset) getNextPageToken() (string, error) {
 	next := int64(p.offset) + int64(p.limit)
@@ -205,7 +215,10 @@ func parseLimitAndOffset(size *pageSize) (*pageOffset, error) {
 		offset.limit = int(size.limit)
 	}
 	if offset.limit <= 0 {
-		offset.limit = 10
+		offset.limit = size.defaultLimit
+	}
+	if offset.limit <= 0 {
+		offset.limit = defaultPageLimit
 	}
 	if offset.limit > size.maximum {
 		offset.limit = size.maximum

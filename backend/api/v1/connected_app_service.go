@@ -41,6 +41,10 @@ func NewConnectedAppService(stores *store.Store, iamManager *iam.Manager, stateC
 	return &ConnectedAppService{stores: stores, iam: iamManager, stateCfg: stateCfg}
 }
 
+// connectedAppDefaultPageSize is the page size the RPC documents. A follow-up
+// page keeps the size its token was issued with instead of re-defaulting.
+const connectedAppDefaultPageSize = 50
+
 // ListConnectedApps returns the caller's connections, or the whole workspace's
 // when the caller holds metaxisdata.connectedApps.list.
 func (s *ConnectedAppService) ListConnectedApps(ctx context.Context, req *connect.Request[v1pb.ListConnectedAppsRequest]) (*connect.Response[v1pb.ListConnectedAppsResponse], error) {
@@ -55,17 +59,11 @@ func (s *ConnectedAppService) ListConnectedApps(ctx context.Context, req *connec
 		return nil, err
 	}
 
-	limit := int(req.Msg.GetPageSize())
-	if limit == 0 && req.Msg.GetPageToken() == "" {
-		// The shared pager defaults to 10; this list is a settings table, where a
-		// small first page reads like a bug. A follow-up request keeps the page
-		// size the token was issued with.
-		limit = 50
-	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   limit,
-		maximum: 1000,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: connectedAppDefaultPageSize,
 	})
 	if err != nil {
 		return nil, err

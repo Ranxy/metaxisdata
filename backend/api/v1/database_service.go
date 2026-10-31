@@ -16,6 +16,10 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
+// defaultSearchPageSize is what SearchMetadata returned before it could page,
+// and what its proto documents.
+const defaultSearchPageSize = 50
+
 // DatabaseService implements the database service.
 type DatabaseService struct {
 	v1connect.UnimplementedDatabaseServiceHandler
@@ -61,9 +65,10 @@ func syncDatabaseError(name string, err error) error {
 
 func (s *DatabaseService) ListDatabases(ctx context.Context, req *connect.Request[v1pb.ListDatabasesRequest]) (*connect.Response[v1pb.ListDatabasesResponse], error) {
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.PageToken,
-		limit:   int(req.Msg.PageSize),
-		maximum: 1000,
+		token:        req.Msg.PageToken,
+		limit:        int(req.Msg.PageSize),
+		maximum:      1000,
+		defaultLimit: defaultPageLimit,
 	})
 	if err != nil {
 		return nil, err
@@ -177,9 +182,10 @@ func (s *DatabaseService) ListMetadata(ctx context.Context, req *connect.Request
 	}
 
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.PageToken,
-		limit:   int(req.Msg.PageSize),
-		maximum: 1000,
+		token:        req.Msg.PageToken,
+		limit:        int(req.Msg.PageSize),
+		maximum:      1000,
+		defaultLimit: defaultPageLimit,
 	})
 	if err != nil {
 		return nil, err
@@ -309,16 +315,11 @@ func (s *DatabaseService) SearchMetadata(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("search_str is required"))
 	}
 
-	// Search used to be hard-coded to 50 results; keep that as the default now
-	// that the request can page.
-	size := int(req.Msg.GetPageSize())
-	if size <= 0 {
-		size = 50
-	}
 	offset, err := parseLimitAndOffset(&pageSize{
-		token:   req.Msg.GetPageToken(),
-		limit:   size,
-		maximum: 1000,
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      1000,
+		defaultLimit: defaultSearchPageSize,
 	})
 	if err != nil {
 		return nil, err

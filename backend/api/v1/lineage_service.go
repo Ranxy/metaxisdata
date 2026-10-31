@@ -48,14 +48,11 @@ const (
 // helper it defaults to defaultLineagePageSize rather than 10, because callers
 // (the lineage graph) ask for the whole list at once.
 func lineagePageOffset(pageSizeValue int32, pageToken string) (*pageOffset, error) {
-	limit := int(pageSizeValue)
-	if limit <= 0 && pageToken == "" {
-		limit = defaultLineagePageSize
-	}
 	return parseLimitAndOffset(&pageSize{
-		token:   pageToken,
-		limit:   limit,
-		maximum: maxLineagePageSize,
+		token:        pageToken,
+		limit:        int(pageSizeValue),
+		maximum:      maxLineagePageSize,
+		defaultLimit: defaultLineagePageSize,
 	})
 }
 
