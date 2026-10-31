@@ -31,9 +31,20 @@ const (
 	keyID = "v1"
 	// AccessTokenAudienceFmt is the format of the acccess token audience.
 	AccessTokenAudienceFmt = "mt.user.access.%s"
-	apiTokenDuration       = 1 * time.Hour
-	// DefaultTokenDuration is the default token expiration duration.
-	DefaultTokenDuration = 7 * 24 * time.Hour
+	// DefaultAccessTokenDuration is how long a web session's access token lives.
+	// The SPA renews it with a rotating refresh token, so the short lifetime does
+	// not sign anyone out.
+	DefaultAccessTokenDuration = 1 * time.Hour
+	// DeviceLoginTokenDuration is the lifetime of the bearer token a CLI receives
+	// from the device login. It is deliberately longer than a browser session:
+	// the CLI has no refresh token, and re-running `mxd login` is the ordinary
+	// recovery.
+	DeviceLoginTokenDuration = 7 * 24 * time.Hour
+	// MCPAccessTokenDuration is the lifetime of an access token minted for the
+	// MCP resource server. A client renews it from its rotating refresh token, so
+	// a leak is useful for at most an hour without costing the client a browser
+	// round trip.
+	MCPAccessTokenDuration = 1 * time.Hour
 	// DefaultRefreshTokenDuration is how long a refresh token stays usable. It is
 	// deliberately longer than an access token: it is the credential that
 	// outlives a session, and single-use rotation means a stolen copy is
@@ -307,9 +318,10 @@ func GenerateRestrictedAccessToken(userName string, userID int, mode common.Rele
 	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), restriction, "", 0)
 }
 
-// GenerateAPIToken generates an API token.
+// GenerateAPIToken generates an API token. A service account's token is an
+// access token like any other, so it gets the default access-token lifetime.
 func GenerateAPIToken(userName string, userID int, mode common.ReleaseMode, secret string) (string, error) {
-	expirationTime := time.Now().Add(apiTokenDuration)
+	expirationTime := time.Now().Add(DefaultAccessTokenDuration)
 	return generateToken(userName, userID, AccessTokenAudience(mode), "", expirationTime, []byte(secret), "", "", 0)
 }
 

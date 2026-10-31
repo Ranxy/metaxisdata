@@ -127,7 +127,7 @@ func (s *AuthService) Login(ctx context.Context, req *connect.Request[v1pb.Login
 		}
 	}
 
-	tokenDuration := auth.GetTokenDuration(ctx, s.store)
+	tokenDuration := auth.DefaultAccessTokenDuration
 
 	var loginToken string
 	switch loginUser.Type {

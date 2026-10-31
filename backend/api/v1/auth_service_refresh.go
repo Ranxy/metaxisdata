@@ -18,7 +18,7 @@ import (
 // that same deadline.
 func (s *AuthService) setWebRefreshCookie(ctx context.Context, responseHeader http.Header, user *store.UserMessage) error {
 	now := time.Now()
-	expiresAt := now.Add(auth.GetRefreshTokenDuration(ctx, s.store))
+	expiresAt := now.Add(auth.DefaultRefreshTokenDuration)
 	token, err := s.storeWebSession(ctx, user, now, expiresAt)
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func (s *AuthService) Refresh(ctx context.Context, req *connect.Request[v1pb.Ref
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.Errorf("the session predates the last password change"))
 	}
 
-	accessToken, err := auth.GenerateAccessToken(user.Name, user.ID, s.profile.Mode, s.secret, auth.GetTokenDuration(ctx, s.store))
+	accessToken, err := auth.GenerateAccessToken(user.Name, user.ID, s.profile.Mode, s.secret, auth.DefaultAccessTokenDuration)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Errorf("failed to generate an access token"))
 	}

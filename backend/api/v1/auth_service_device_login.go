@@ -150,7 +150,7 @@ func (s *AuthService) ExchangeDeviceLogin(ctx context.Context, req *connect.Requ
 
 	// The token lifetime is resolved once and reused, so the reported remaining
 	// lifetime cannot drift from the one the token was minted with.
-	tokenDuration := auth.GetTokenDuration(ctx, s.store)
+	tokenDuration := auth.DeviceLoginTokenDuration
 	user, token, err := s.issueDeviceLoginToken(ctx, login, tokenDuration)
 	if err != nil {
 		return nil, err

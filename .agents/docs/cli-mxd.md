@@ -125,7 +125,7 @@ CLI ── ExchangeDeviceLogin {device_code} ──► APPROVED 首次：签发 
     ◄── token + user + expires_in；写入凭据文件，stdout 一个 JSON
 ```
 
-**状态机**：`PENDING ──approve──► APPROVED ──exchange(首次)──► CONSUMED（条目删除）`；`PENDING ──deny──► DENIED`；超 TTL → `EXPIRED`（lazy 清理）。approve 时绑定确认者 `user_id`，exchange 为该用户签发 `GenerateAccessToken`（与 web 登录同一路径，含 last-login 更新）；exchange 一次性，重复轮询得到 `CodeNotFound`，CLI 翻译成 `device_session_expired`（退出码 2）而不是泛化的「未找到」。
+**状态机**：`PENDING ──approve──► APPROVED ──exchange(首次)──► CONSUMED（条目删除）`；`PENDING ──deny──► DENIED`；超 TTL → `EXPIRED`（lazy 清理）。approve 时绑定确认者 `user_id`，exchange 为该用户签发 `GenerateAccessToken`（与 web 登录共用签发函数，但用 `DeviceLoginTokenDuration` 的 7 天寿命；web 会话 access token 只有 1 小时，含 last-login 更新）；exchange 一次性，重复轮询得到 `CodeNotFound`，CLI 翻译成 `device_session_expired`（退出码 2）而不是泛化的「未找到」。
 
 **服务端边界**（`backend/component/state/device_login.go:32-49`）：TTL 10 分钟、最短轮询间隔 1s、建议 3s、容量 10000；`user_code` 8 位 Crockford base32（排除 `ILOU`，`O→0`/`I,L→1` 归一化）、`device_code` 43 位 base62；生成后校验唯一（碰撞重试 5 次，`ErrDeviceLoginCodeTaken`）。
 

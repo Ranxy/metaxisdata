@@ -31,11 +31,6 @@ func HashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// GetRefreshTokenDuration is how long a newly issued refresh token stays usable.
-func GetRefreshTokenDuration(_ context.Context, _ *store.Store) time.Duration {
-	return DefaultRefreshTokenDuration
-}
-
 // GetRefreshTokenCookie builds the web session's refresh cookie. Passing
 // token="" clears it, which is what Logout sets.
 //

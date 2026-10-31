@@ -122,8 +122,22 @@ func TestGeneratedTokensRoundTrip(t *testing.T) {
 			return []byte(secret), nil
 		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}))
 		require.NoError(t, err)
-		require.WithinDuration(t, time.Now().Add(apiTokenDuration), apiClaims.ExpiresAt.Time, time.Minute)
+		require.WithinDuration(t, time.Now().Add(DefaultAccessTokenDuration), apiClaims.ExpiresAt.Time, time.Minute)
 	})
+}
+
+// The three access-token lifetimes are deliberate: a web session and an MCP
+// access token live an hour, while the CLI's device login has no refresh path and
+// keeps the week it always had. A refresh token must outlive every access token
+// minted from it, which is what makes pruning a refresh row safe.
+func TestTokenDurations(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, time.Hour, DefaultAccessTokenDuration)
+	require.Equal(t, time.Hour, MCPAccessTokenDuration)
+	require.Equal(t, 7*24*time.Hour, DeviceLoginTokenDuration)
+	require.Greater(t, DefaultRefreshTokenDuration, DefaultAccessTokenDuration)
+	require.Greater(t, DefaultRefreshTokenDuration, MCPAccessTokenDuration)
 }
 
 // VerifyAccessToken is what both the auth interceptor and Logout rely on. Logout
@@ -284,6 +298,8 @@ func TestGetTokenCookie(t *testing.T) {
 		require.False(t, cookie.Secure)
 		require.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
 		require.True(t, cookie.HttpOnly)
+		require.WithinDuration(t, time.Now().Add(DefaultAccessTokenDuration-time.Second), cookie.Expires, time.Minute,
+			"the cookie expires just before the one-hour token it carries")
 	})
 }
 

@@ -276,7 +276,7 @@ func (s *Server) createGrant(ctx context.Context, grant oauthGrant, resource str
 		UserID:    grant.user.ID,
 		Resource:  resource,
 		Scope:     grantedScope(grant.scopes),
-		ExpiresAt: s.now().Add(auth.GetRefreshTokenDuration(ctx, s.config.Stores)),
+		ExpiresAt: s.now().Add(auth.DefaultRefreshTokenDuration),
 		CreatedAt: grant.issuedAt,
 	})
 	if err != nil {
@@ -293,7 +293,7 @@ func (s *Server) rotateGrant(ctx context.Context, clientID, oldHash string, now 
 	if err != nil {
 		return 0, "", false, err
 	}
-	expiresAt := now.Add(auth.GetRefreshTokenDuration(ctx, s.config.Stores))
+	expiresAt := now.Add(auth.DefaultRefreshTokenDuration)
 	id, rotated, err := s.config.tokenStore().RotateOAuthGrant(ctx, clientID, oldHash, auth.HashToken(token), expiresAt, now)
 	if err != nil || !rotated {
 		return 0, "", rotated, err
@@ -328,7 +328,7 @@ func (s *Server) writeGrantResponse(w http.ResponseWriter, r *http.Request, endp
 	recordAuditActor(r, grant.user.Email)
 	recordAuditDetail(r, map[string]any{"clientId": grant.clientID, "resource": endpoints.Resource, "connectedAppId": grantID})
 
-	duration := auth.GetTokenDuration(r.Context(), s.config.Stores)
+	duration := auth.MCPAccessTokenDuration
 	scope := grantedScope(grant.scopes)
 	accessToken, err := auth.GenerateMCPAccessToken(grant.user.Name, grant.user.ID, grant.clientID, grantID, endpoints.Resource, scope, s.config.Secret, duration)
 	if err != nil {

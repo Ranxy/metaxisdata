@@ -48,7 +48,6 @@ func GetTokenCookie(ctx context.Context, stores *store.Store, token string) *htt
 		}
 	}
 	secure, sameSite := cookieSecurity(ctx, stores)
-	tokenDuration := GetTokenDuration(ctx, stores)
 	return &http.Cookie{
 		Name:  AccessTokenCookieName,
 		Value: token,
@@ -57,7 +56,7 @@ func GetTokenCookie(ctx context.Context, stores *store.Store, token string) *htt
 		// Suppose we have a valid refresh token, we will refresh the token in 2 cases:
 		// 1. The access token is about to expire in <<refreshThresholdDuration>>
 		// 2. The access token has already expired, we refresh the token so that the ongoing request can pass through.
-		Expires: time.Now().Add(tokenDuration - 1*time.Second),
+		Expires: time.Now().Add(DefaultAccessTokenDuration - 1*time.Second),
 		Path:    "/",
 		// Http-only helps mitigate the risk of client side script accessing the protected cookie.
 		HttpOnly: true,
@@ -86,11 +85,4 @@ func cookieSecurityForExternalURL(externalURL string) (bool, http.SameSite) {
 		return true, http.SameSiteNoneMode
 	}
 	return false, http.SameSiteLaxMode
-}
-
-func GetTokenDuration(_ context.Context, _ *store.Store) time.Duration {
-	tokenDuration := DefaultTokenDuration
-	// maybe we can add a setting for token duration in the future
-
-	return tokenDuration
 }
