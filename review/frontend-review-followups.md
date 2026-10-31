@@ -20,6 +20,7 @@
 | 10 | **FD2（第二步）**：详情列抽成 `LineageNodeDetailPanel` + 9 条测试 | FD2 | `6d1c63b` |
 | 11 | **FD3（第一步）**：`useDataQualityPermissions` 权限矩阵 | FD3 | `8caa2d2` |
 | 12 | **FD3（第二步）**：`utils/dataQualityExecutions` 纯派生 + 9 条测试 | FD3 | `46ee4e7` |
+| 13 | **FD3（第三步）**：`useTargetWorkspaceDialogs` + 14 条测试 | FD3 | `45a9741` |
 
 ## 实施说明
 
@@ -76,7 +77,8 @@
 
 - **权限矩阵**（`8caa2d2`）：`composables/useDataQualityPermissions.ts` 统一 14 个 DQ 权限名；`DataQualityTargetPage`（8 个 `canX`）与 `QualityCheckDrawer`（7 个）改为一次解构，两处重复的权限字符串消失；4 条测试覆盖授予/拒绝/权限集变化/未加载 profile。
 - **执行页纯派生**（`46ee4e7`）：`utils/dataQualityExecutions.ts` 承接 target 行读数（GUID/名称/路径、最新批次 state/outcome、verdict 计数、failed/unfinished、时间与耗时、状态提示），页面里约 120 行私有函数删除；`utils/dataQualityExecutions.test.ts` 9 条测试覆盖边界（无 target、无 batch、无 counts、未完成、运行中、无起止时间），覆盖率 100% 行。
-- 剩余：`useTargetWorkspaceDialogs`（TargetPage 查询驱动抽屉，约 320 行）、`useTargetScheduleEditor`、`useSuggestionFilters`/`useExecutionFilters`；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
+- **抽屉状态机**（`45a9741`）：`composables/useTargetWorkspaceDialogs.ts` 承接 inline composer（新建/编辑/从 AI 草案打开）、check 侧栏、以及 `?check=`/`?add=1`/`?edit=1` 三条深链的解析与 URL 清理；TargetPage **1502 → 1355 行**，页面只剩提交/关闭时的业务处理。新增 **14 条测试**：三种打开方式、scope/列种子、侧栏开关与 query 清理、深链（有效/过期/与 add 冲突/edit 无对应规则）、`add=1` 无权限提示、无 query 时不写 URL。
+- 剩余：`useTargetScheduleEditor`、`useSuggestionFilters`/`useExecutionFilters`；以及 FD2 的 `useLineageGraphData`/`useLineageSelection`。
 
 ### 排序调整
 
