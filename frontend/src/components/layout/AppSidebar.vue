@@ -1,5 +1,6 @@
 <template>
   <aside
+    ref="sidebarRef"
     :inert="!isDesktop && !appStore.mobileNavOpen ? true : undefined"
     :class="[
       'flex w-64 flex-col border-r bg-background',
@@ -202,7 +203,7 @@ import {
   Target,
   X,
 } from "lucide-vue-next";
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { Button } from "@/components/ui/button";
@@ -211,6 +212,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useDrawerFocus } from "@/composables/useDrawerFocus";
 import type { Permission } from "@/lib/permissions";
 import { useAppStore } from "@/store/modules/app";
 import { useAuthStore } from "@/store/modules/auth";
@@ -227,6 +229,15 @@ const brandName = "MetaxisData";
 // Below `lg` the sidebar is an overlay drawer, so the rail never applies there.
 const isDesktop = useMediaQuery("(min-width: 1024px)");
 const rail = computed(() => isDesktop.value && appStore.sidebarCollapsed);
+
+// The drawer is modal below `lg`: Escape closes it, Tab stays inside it, and
+// focus returns to the header's menu button when it closes.
+const sidebarRef = ref<HTMLElement | null>(null);
+useDrawerFocus(
+  sidebarRef,
+  computed(() => !isDesktop.value && appStore.mobileNavOpen),
+  () => appStore.setMobileNavOpen(false)
+);
 
 interface MenuItem {
   key: string;

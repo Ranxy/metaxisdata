@@ -42,7 +42,15 @@ export const i18n = createI18n<[MessageSchema], AppLocale, false>({
   },
 });
 
-/** Applies a locale to vue-i18n; called by the app store when the user switches. */
+/**
+ * Applies a locale to vue-i18n and to the document. Vue-i18n translates text but
+ * leaves the document language alone, so a screen reader would pronounce a
+ * Chinese page with English phonetics; `<html lang>` is what tells it otherwise.
+ * Called by the app store on a switch and once at bootstrap.
+ */
 export function applyLocale(locale: AppLocale) {
   i18n.global.locale.value = locale;
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = locale;
+  }
 }

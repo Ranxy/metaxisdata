@@ -5,7 +5,7 @@ import { setSessionRefresher, setUnauthenticatedHandler } from "./api/session";
 import { i18n } from "./locales";
 import router, { handleSessionExpired } from "./router";
 import { pinia } from "./store";
-import { initTheme } from "./store/modules/app";
+import { initLocale, initTheme } from "./store/modules/app";
 import "./assets/styles/main.css";
 // vue-sonner's ESM build does not inject its own styles, so without this the
 // Toaster renders unstyled and unpositioned and every toast is invisible.
@@ -15,9 +15,10 @@ async function bootstrap() {
   const app = createApp(App);
 
   app.use(pinia);
-  // Resolve the persisted theme before the first paint so the app never
-  // flashes the wrong palette.
+  // Resolve the persisted theme and language before the first paint so the app
+  // never flashes the wrong palette, and <html lang> matches the copy.
   initTheme();
+  initLocale();
   app.use(router);
   app.use(i18n);
 

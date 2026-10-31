@@ -78,6 +78,11 @@ function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", dark);
 }
 
+/** Applies the stored locale (and `<html lang>`) before the first paint. */
+export function initLocale() {
+  applyLocale(useAppStore().locale);
+}
+
 /** Applies the persisted theme and keeps "system" in step with the OS. */
 export function initTheme() {
   const store = useAppStore();
