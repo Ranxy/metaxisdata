@@ -26,9 +26,9 @@ type QualityTargetScheduleMessage struct {
 	TargetGUID string
 	TargetType storepb.MetaType
 	// ScheduleInterval is the target's nominal cadence. The column stores whole
-	// seconds. An interval target runs on it; a cron target keeps the cron
-	// expression's nominal gap here as the cadence it falls back to when the
-	// expression is cleared, and as the target cycle the frequency-tier gate counts.
+	// seconds. An interval target runs on it; a cron target keeps the expression's
+	// nominal gap here as the cadence it falls back to when the expression is
+	// cleared. A check's run cadence compares due slots and never reads it.
 	ScheduleInterval time.Duration
 	// Cron is the five-field expression the target runs on instead of its interval;
 	// empty for an interval target.
@@ -232,8 +232,8 @@ func requireQualitySchedule(targetGUID string, targetType storepb.MetaType, spec
 // normalizedQualitySchedule stores the target's nominal cadence in the interval
 // column. For a cron schedule that is the gap between its next two occurrences,
 // clamped to the accepted interval range: it is the cadence a target falls back to
-// when the expression is cleared, and it is the target cycle a frequency tier
-// counts.
+// when the expression is cleared. A check's run cadence compares due slots and
+// does not read it.
 func normalizedQualitySchedule(spec schedule.Spec, now time.Time) schedule.Spec {
 	if !spec.IsCron() {
 		return spec

@@ -135,8 +135,9 @@ func TestDueQualityTargetStatementsBoundTheWork(t *testing.T) {
 }
 
 // A cron target stores the expression's nominal gap in the interval column: it is
-// the cadence the target falls back to when the expression is cleared, and the
-// target cycle a frequency tier counts. An interval target keeps its own value.
+// the cadence the target falls back to when the expression is cleared. A check's
+// run cadence compares due slots, not this value. An interval target keeps its own
+// interval.
 func TestNormalizedQualitySchedule(t *testing.T) {
 	t.Parallel()
 

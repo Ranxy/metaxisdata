@@ -108,22 +108,24 @@ The target's own schedule is the **floor**: a check never runs more often than
 its target, and a cadence denser than the target's does nothing — *Hourly* on a
 target that runs every two hours still only runs when the target does.
 
-Cadences count **target cycles**, not wall-clock time. A cadence covers a whole
-number of target cycles — its period divided by the target's cycle, rounded up,
-and at least one — so the check runs every k-th cycle. (For a cron target the
-cycle counted is the expression's nominal interval, the gap between its next two
-occurrences.) That keeps the alignment stable and predictable: *Weekly* on a
-daily target runs every 7th cycle, *Hourly* on a 15-minute target every 4th
-cycle, and a cadence equal to the target's own never skips a cycle. A run that
-starts late does not shift the alignment, and a target cycle that was skipped
+A cadence is measured on the target's own cycles: a check runs in a cycle only
+when the cycle its previous completed scheduled run belonged to is at least the
+cadence period earlier. So *Weekly* on a daily target runs in the 7th following
+cycle, *Hourly* on a 15-minute target in the 4th, and a cadence equal to the
+target's own never skips a cycle when the target's cycles are all the same
+length. The comparison uses the cycle a run belonged to, not when it actually
+executed, so a late run or a skipped cycle cannot shift it — and a skipped cycle
 (the server was down, the instance's connection budget stayed busy, or you
-rescheduled the target) is not made up later.
+rescheduled the target) is not made up later. A daylight-saving transition can
+make one cron cycle slightly shorter than the cadence period; that single cycle
+is skipped, the next one runs, and the cadence does not drift.
 
-**Run now** ignores the cadence and always runs the check. Changing the cadence
-only affects future scheduled runs: it does not change the check's definition or
-create a new revision of it, so its history and thresholds are untouched. A
-cadence is not a schedule of its own — there is no per-check cron expression. If a
-check needs a rhythm independent of its target, move it to its own target.
+**Run now** ignores the cadence and always runs the check, and a manual run does
+not count toward the cadence. Changing the cadence only affects future scheduled
+runs: it does not change the check's definition or create a new revision of it,
+so its history and thresholds are untouched. A cadence is not a schedule of its
+own — there is no per-check cron expression. If a check needs a rhythm independent
+of its target, move it to its own target.
 
 The cadence appears as a small badge on the check's row and in its drawer only
 when it is not *Follow target*.
