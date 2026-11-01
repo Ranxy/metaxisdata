@@ -499,10 +499,15 @@ runs the profile step first when the reader may; the queue then holds drafts who
 reason cites the observation ("0.42% NULL across 12,345 rows; the proposed bound
 is 0.63%, 1.5× the observation"). The tolerances are fixed and conservative: half
 of the observed row count as a volume floor, twice the observed freshness lag
-(never under an hour), 1.5× the observed null rate, a tenth of the observed numeric
-span on each side, a fifth above the observed longest text value. A text-length
-draft is only proposed for a column already labeled free text, because a short
-code's length today says nothing about the length it should have.
+(never under an hour; a table whose newest value is more than fifteen days old
+gets no freshness draft, because the bound would then be less than twice what we
+observed), 1.5× the observed null rate up to 50% (a column that is at least half
+NULL gets none), a tenth of the observed numeric span on each side, a fifth above
+the observed longest text value. A text-length draft is only proposed for a column
+already labeled free text, because a short code's length today says nothing about
+the length it should have. An enumeration is only proposed when the profile could
+list every value without cutting one for display, so a draft never contains a
+shortened spelling of a value the column holds.
 
 It deliberately proposes nothing where a static threshold would be a guess:
 custom SQL, CEL expressions, cross-table reconciliation, grouped checks and
@@ -522,7 +527,7 @@ again therefore never adds a second copy: a check-draft proposal that is still
 pending is **refreshed** in place (the row keeps its identity, and its *refreshed*
 time moves), while a column that already has a pending label proposal is skipped
 before the model is called. The result toast reports what happened — created,
-refreshed, skipped — and names the columns it left out (up to six, with a count
+refreshed, skipped — and names the columns it derived no proposal for (up to six, with a count
 for the rest).
 
 A generation pass also reconciles proposals with reality:
@@ -540,7 +545,8 @@ A generation pass also reconciles proposals with reality:
   overwritten by a derived pass either. The one exception is deliberate — a
   recommendation may replace a pending label-pass draft, whose parameters are the
   fixed defaults, with the thresholds it observed. *Regenerate* overrides this for
-  the pass you are running.
+  the pass you are running. The queue write enforces this itself, so two passes
+  running at the same moment cannot override each other.
 - Submitting the same drafting job twice while the first one is still pending or
   running returns the first job instead of starting a second analysis.
 
@@ -613,7 +619,7 @@ pruned.
 | An AI analysis is rejected as over quota | Settings → Data Quality → Today's AI usage shows used/limit and concurrency. Raise **Daily AI analyses** (L1+L2, max 1,000,000) or **Concurrent LLM calls** (1–64); the change applies to the next analysis without a restart. |
 | A model rejects the output budget | The provider profile's **Max output tokens** is above what that model accepts. The server first retries that request once at 4,096 tokens; if it is still rejected, lower the profile budget (Settings → LLM providers) or use a model with a larger output cap. The failure shows a provider-status diagnostic. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
-| *Recommend checks* proposes nothing, or far fewer checks than expected | The columns were never profiled (the server refuses to recommend without a profile fresher than seven days), every check the profile supports is already a saved check, or the proposals were already accepted/rejected. Rejecting a recommendation keeps it out of later passes until you use *Regenerate*. A column can also be listed as skipped because its profile cannot support a check (for example a mostly-NULL column, or a value set the sample could not enumerate completely). |
+| *Recommend checks* proposes nothing, or far fewer checks than expected | The columns were never profiled (the server refuses to recommend without a profile fresher than seven days), every check the profile supports is already a saved check, or the proposals were already accepted/rejected. Rejecting a recommendation keeps it out of later passes until you use *Regenerate*. A column can also be listed as skipped because its profile cannot support a check (for example a mostly-NULL column, a value set the sample could not enumerate completely, or a value the profile had to shorten for display). |
 | *Recommend checks* proposed a threshold that looks too loose or too tight | The bound is the observation plus a fixed tolerance and is a starting point, not a verdict: edit it in the check dialog before saving, or lower the tolerance by making the check stricter. A range check will legitimately fail when the data moves past today's extremes; widen it or replace it with an aggregate check once the shape is understood. |
 | Running *AI label fields* changed the recommendation thresholds | It should not: a pending recommendation is not overwritten by a label-pass draft. If a draft shows the default parameters instead, the recommendation was rejected/decided first, or *Regenerate* was used on the label pass. |
 | A CSV export stops early | The selection is capped at 100,000 rows; the app warns when the file was cut. Narrow the filters (especially the time window) and export again. |
