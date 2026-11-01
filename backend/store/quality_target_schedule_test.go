@@ -107,6 +107,11 @@ func TestQualityFrequencyGate(t *testing.T) {
 
 	gate := qualityFrequencyGateSQL(4, 5)
 	require.Contains(t, gate, "gate.started_at > s.next_run_at - MAKE_INTERVAL(secs => GREATEST(0,")
+	// The tier is quantized to the target's own cycle: a run's started_at follows its
+	// cycle's due instant, so a plain "period - cycle" window would skip every other
+	// cycle for a tier equal to the cadence.
+	require.Contains(t, gate, "CEIL(")
+	require.Contains(t, gate, "* s.schedule_interval_seconds")
 	require.Contains(t, gate, "gate.trigger = $5")
 	require.Contains(t, gate, "gate.state = $4")
 	require.Contains(t, dueQualityTargetRulesStatement, qualityFrequencyGateSQL(4, 5),

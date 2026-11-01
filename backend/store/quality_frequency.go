@@ -34,12 +34,16 @@ func qualityFrequencyTierPeriod(tier storepb.QualityFrequencyTier) time.Duration
 // qualityFrequencyGateSQL renders the predicate a rule must satisfy to run in the
 // current target cycle: no completed scheduled execution may have started after
 // the gate boundary. A tiered check runs at most once per its period, and the
-// target's own tick stays the floor: the boundary is the tier period minus one
-// target cycle. A check that ran in the previous cycle is then exactly one cycle
-// older than the current due instant, so a tier equal to the target's cadence (a
-// daily check on a daily target) never trips the gate, while a coarser tier skips
-// the cycles in between. A tier denser than the target yields a negative window,
-// which floors at zero, so it never blocks.
+// target's own tick stays the floor. Because a run's started_at is a few seconds
+// after its cycle's due instant, the gate cannot compare against "the current due
+// instant minus the tier period" directly: a daily check on a daily target would
+// then skip every other day. Instead the tier is quantized to the target's own
+// cadence: it covers ceil(period / cycle) cycles, and the boundary is one cycle
+// short of that. So a tier equal to the target's cadence (daily on daily) never
+// trips the gate, hourly on a 15-minute target skips three of four cycles, and a
+// 35-minute target with an hourly tier runs every second cycle rather than every
+// cycle (which would be denser than the tier). A tier denser than the target
+// covers one cycle, so it never blocks.
 //
 // completedArg and scheduledArg are the 1-based placeholder numbers the calling
 // query uses for the COMPLETED state and the SCHEDULED trigger, so the due-rules
@@ -54,6 +58,9 @@ func qualityFrequencyGateSQL(completedArg, scheduledArg int) string {
 		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY, int(dailyFrequencyTier/time.Second),
 		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY, int(weeklyFrequencyTier/time.Second),
 	)
+	window := fmt.Sprintf(`MAKE_INTERVAL(secs => GREATEST(0,
+			(GREATEST(1, CEIL((%s)::numeric / NULLIF(s.schedule_interval_seconds, 0)))::int - 1)
+				* s.schedule_interval_seconds))`, tierSeconds)
 	return fmt.Sprintf(`NOT EXISTS (
 			SELECT 1 FROM quality_execution gate
 			WHERE gate.rule_id = r.id
@@ -61,7 +68,7 @@ func qualityFrequencyGateSQL(completedArg, scheduledArg int) string {
 				AND gate.target_type = r.target_type
 				AND gate.trigger = $%d
 				AND gate.state = $%d
-				AND gate.started_at > s.next_run_at - MAKE_INTERVAL(secs => GREATEST(0, (%s) - s.schedule_interval_seconds))
+				AND gate.started_at > s.next_run_at - %s
 		)`,
-		scheduledArg, completedArg, tierSeconds)
+		scheduledArg, completedArg, window)
 }
