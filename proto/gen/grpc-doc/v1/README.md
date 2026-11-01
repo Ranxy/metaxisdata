@@ -6115,7 +6115,7 @@ proposals; these counts let the client explain the result.
 | skipped_existing_fact | [int32](#int32) |  | Skipped because the fact already exists: the column has a label, or a rule with the same identity exists. |
 | skipped_pending | [int32](#int32) |  | Skipped because an equivalent proposal is already pending; the default mode leaves it untouched instead of spending another analysis. |
 | skipped_decided | [int32](#int32) |  | Skipped because the same proposal was already accepted or rejected and the request did not force regeneration. |
-| skipped_columns | [string](#string) | repeated | The columns a label pass left out, so the client can name them. |
+| skipped_columns | [string](#string) | repeated | The columns a generation pass derived no proposal for, so the client can name them. A label pass lists columns it left out because they already had a label or a live proposal; a deterministic recommendation lists columns no check could be derived for. A column whose candidate lost the pass&#39;s per-type budget is not listed, because a proposal for it was derived. |
 
 
 
@@ -6327,7 +6327,7 @@ the values are strings parsed with the column&#39;s type.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| columns | [string](#string) | repeated | The columns to consider; empty means every column of the table. At most 50. |
+| columns | [string](#string) | repeated | The columns to consider for column-level checks; empty means every column of the table. At most 50. Table-level checks (row count, freshness) describe the relation as a whole, so they are considered regardless of this list. |
 | language | [string](#string) |  | The language the draft titles and rationales are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
 | force_regenerate | [bool](#bool) |  | Regenerate proposals that already have a pending proposal, or were already decided. Regeneration still never duplicates: it refreshes the one pending proposal per identity. |
 

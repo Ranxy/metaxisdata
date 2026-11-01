@@ -18217,7 +18217,11 @@ request did not force regeneration. </p></td>
                   <td>skipped_columns</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>The columns a label pass left out, so the client can name them. </p></td>
+                  <td><p>The columns a generation pass derived no proposal for, so the client can name
+them. A label pass lists columns it left out because they already had a label or
+a live proposal; a deterministic recommendation lists columns no check could be
+derived for. A column whose candidate lost the pass&#39;s per-type budget is not
+listed, because a proposal for it was derived. </p></td>
                 </tr>
               
             </tbody>
@@ -18843,7 +18847,9 @@ on both ends. </p></td>
                   <td>columns</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>The columns to consider; empty means every column of the table. At most 50. </p></td>
+                  <td><p>The columns to consider for column-level checks; empty means every column of
+the table. At most 50. Table-level checks (row count, freshness) describe the
+relation as a whole, so they are considered regardless of this list. </p></td>
                 </tr>
               
                 <tr>

@@ -11895,7 +11895,17 @@ components:
                     type: string
                 count:
                     type: string
-            description: ProfileValue is one frequent value of a low-cardinality column.
+                truncated:
+                    type: boolean
+                    description: |-
+                        True when the observed value was longer than the display bound and was cut for
+                         storage. A consumer that turns the value into a rule parameter must skip it.
+            description: |-
+                ProfileValue is one frequent value of a low-cardinality column.
+                 ProfileValue is one frequent value of a low-cardinality column. The value is
+                 bounded by the display limit, so a consumer that needs the exact value (an
+                 accepted-values set, say) must consult truncated: a truncated spelling is not a
+                 value the column holds.
         PublishQualityContractRequest:
             required:
                 - parent
@@ -13225,7 +13235,12 @@ components:
                     type: array
                     items:
                         type: string
-                    description: The columns a label pass left out, so a caller can name them.
+                    description: |-
+                        The columns a generation pass derived no proposal for, so a caller can name
+                         them. A label pass lists columns it left out because they already had a label or
+                         a live proposal; a deterministic recommendation lists columns no check could be
+                         derived for. A column whose candidate lost the pass's per-type budget is not
+                         listed, because a proposal for it was derived.
             description: |-
                 QualitySuggestionQueueSummary is what one generation pass did to the review
                  queue. Generation reconciles proposals instead of appending them, so a pass can
@@ -13615,7 +13630,10 @@ components:
                     type: array
                     items:
                         type: string
-                    description: The columns to consider; empty means every column of the table. At most 50.
+                    description: |-
+                        The columns to consider for column-level checks; empty means every column of
+                         the table. At most 50. Table-level checks (row count, freshness) describe the
+                         relation as a whole, so they are considered regardless of this list.
                 language:
                     type: string
                     description: |-

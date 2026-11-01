@@ -5801,7 +5801,11 @@ type QualitySuggestionQueueSummary struct {
 	// Skipped because the same proposal was already accepted or rejected and the
 	// request did not force regeneration.
 	SkippedDecided int32 `protobuf:"varint,6,opt,name=skipped_decided,json=skippedDecided,proto3" json:"skipped_decided,omitempty"`
-	// The columns a label pass left out, so the client can name them.
+	// The columns a generation pass derived no proposal for, so the client can name
+	// them. A label pass lists columns it left out because they already had a label or
+	// a live proposal; a deterministic recommendation lists columns no check could be
+	// derived for. A column whose candidate lost the pass's per-type budget is not
+	// listed, because a proposal for it was derived.
 	SkippedColumns []string `protobuf:"bytes,7,rep,name=skipped_columns,json=skippedColumns,proto3" json:"skipped_columns,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -9801,7 +9805,9 @@ type RecommendQualityChecksRequest struct {
 	// The globally unique metadata GUID of the table.
 	TableGuid string   `protobuf:"bytes,2,opt,name=table_guid,json=tableGuid,proto3" json:"table_guid,omitempty"`
 	MetaType  MetaType `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
-	// The columns to consider; empty means every column of the table. At most 50.
+	// The columns to consider for column-level checks; empty means every column of
+	// the table. At most 50. Table-level checks (row count, freshness) describe the
+	// relation as a whole, so they are considered regardless of this list.
 	Columns []string `protobuf:"bytes,4,rep,name=columns,proto3" json:"columns,omitempty"`
 	// The language the draft titles and rationales are written in, e.g. "en" or
 	// "zh-CN".
