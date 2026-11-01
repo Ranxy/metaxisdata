@@ -1,8 +1,9 @@
 # Querying metaxisdata over MCP
 
-This deployment serves its metadata registry and its lineage as read-only tools.
-They answer from what the schema sync and the lineage runner actually analyzed, so
-prefer them over reading SQL files by hand.
+This deployment serves its metadata registry, its lineage and its data-quality
+signals as read-only tools. They answer from what the schema sync, the lineage
+runner and the quality runner actually analyzed, so prefer them over reading SQL
+files by hand.
 
 ## How objects are addressed
 
@@ -31,6 +32,7 @@ work around: pick from the candidates, or narrow the reference.
 | What is under this database or schema? | `list_metadata` |
 | What does this table look like? | `get_metadata` |
 | What is this object's definition? | `get_ddl` |
+| Is this table healthy, should I trust it? | `get_quality_signal` |
 | What does this SQL statement read and write? | `analyze_sql` |
 | What feeds this table, or what does it feed? | `get_lineage_graph` |
 | What may I read? | `whoami` |
@@ -78,6 +80,33 @@ edges, so an object whose definition yields no column-level relation — a
 picks `up` (where data comes from), `down` (what it feeds) or `both`, `depth`
 (1–10, default 3) says how far to walk, and `column` keeps only the edges touching
 one column.
+
+## Reading a quality signal
+
+`get_quality_signal` reports the data-quality view of one object — the same trust
+signal the workspace's metadata browser shows. Ask it when the question is "is this
+table healthy / should I trust it".
+
+A table with no check at all is **not monitored**: the answer is `monitored: false`,
+not a failure, because the object exists and nothing watches it. A table whose
+checks all exist but are paused still answers, with `enabledRuleCount: 0` — nothing
+is watching its data until one is resumed. A monitored object reports:
+
+- `worstStatus` — the worst latest result across its checks (`PASS`, `WARN`,
+  `FAIL`, `ERROR`, `SKIPPED` or `NOT_EVALUATED`), omitted before any check has run;
+- `lastRunTime` — when its checks last ran;
+- `qualityScore` — 0–100 over its enabled checks' judged results, omitted until one
+  is judged;
+- `recentPassRate` with `recentExecutionCount` — the pass share of its newest
+  completed runs, and how many verdicts that share covers;
+- `coveredColumnCount` of `totalColumnCount` — column coverage: current registry
+  columns that an enabled check reads, out of the columns the target has now;
+- `openIssueCount` and `enabledRuleCount` — unresolved issues, and checks that are
+  actually on;
+- `schemaChanged` — a check was saved against an older schema, so it may no longer
+  describe the table;
+- `orphaned` — the object, its instance or its database no longer resolves; the
+  rules stay readable but runs are skipped.
 
 ## What a failure means
 

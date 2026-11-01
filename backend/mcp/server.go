@@ -54,6 +54,10 @@ type (
 	PrincipalReader interface {
 		GetCurrentUser(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1pb.User], error)
 	}
+	// QualityReader is the slice of DataQualityService the tools use.
+	QualityReader interface {
+		ListQualityTargets(context.Context, *connect.Request[v1pb.ListQualityTargetsRequest]) (*connect.Response[v1pb.ListQualityTargetsResponse], error)
+	}
 )
 
 // PermissionChecker resolves whether a caller holds a permission. *iam.Manager is
@@ -88,7 +92,7 @@ const (
 	// instructions is what a client shows its model before the first call. It is
 	// short on purpose: the tool descriptions carry the detail, and some clients
 	// re-send this with every request.
-	instructions = `metaxisdata is a data governance registry: it knows the schemas of the databases synced into it, and the column-level lineage between their tables. Every tool here reads; nothing writes.
+	instructions = `metaxisdata is a data governance registry: it knows the schemas of the databases synced into it, the column-level lineage between their tables, and the data-quality checks that watch them. Every tool here reads; nothing writes.
 
 Three rules decide whether a call works:
 
@@ -96,7 +100,7 @@ Three rules decide whether a call works:
 2. Analyze a SQL statement against an explicit scope. A statement's unqualified names cannot say which instance they belong to, so analyze_sql takes scopes: [{instance, database, schema?}]. Without one it answers with the databases that exist rather than guessing.
 3. A failure is a question to rephrase, not a change to undo: the error envelope carries a code, a hint, and — when a name was unknown or ambiguous — the candidates it could have meant.
 
-Which tool answers what: analyze_sql for a statement you have in hand; get_lineage_graph for an object already in the registry; search_metadata when you only have a name; get_metadata and get_ddl for its shape.`
+Which tool answers what: analyze_sql for a statement you have in hand; get_lineage_graph for an object already in the registry; search_metadata when you only have a name; get_metadata and get_ddl for its shape; get_quality_signal for whether an object is watched by data quality checks and how healthy it is — a table with no live check is not monitored, which it reports as monitored: false rather than failing.`
 )
 
 // Config is everything the MCP server needs. Services are required; Stores and
@@ -107,6 +111,7 @@ type Config struct {
 	Databases  DatabaseReader
 	Lineage    LineageReader
 	Principals PrincipalReader
+	Quality    QualityReader
 	Checker    PermissionChecker
 	// CallLimiter bounds how often one principal may call a tool. Wiring it is what
 	// keeps a token holder from turning the endpoint into a ledger and query pump;

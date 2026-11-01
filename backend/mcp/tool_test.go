@@ -12,27 +12,29 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// fakeReaders implements all four reader interfaces, with one function per
+// fakeReaders implements all five reader interfaces, with one function per
 // method: a test states exactly what a tool may see, and any call it did not
 // expect fails the test instead of quietly succeeding.
 type fakeReaders struct {
 	t *testing.T
 
-	listInstances   func(*v1pb.ListInstancesRequest) (*v1pb.ListInstancesResponse, error)
-	listDatabases   func(*v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse, error)
-	listMetadata    func(*v1pb.ListMetadataRequest) (*v1pb.MetadataResponse, error)
-	getMetadata     func(*v1pb.GetMetadataRequest) (*v1pb.GetMetadataResponse, error)
-	searchMetadata  func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error)
-	getSchemaString func(*v1pb.GetSchemaStringRequest) (*v1pb.MetadataSchemaString, error)
-	analyzeSQL      func(*v1pb.AnalyzeSQLRequest) (*v1pb.AnalyzeSQLResponse, error)
-	getLineageGraph func(*v1pb.GetLineageGraphRequest) (*v1pb.GetLineageGraphResponse, error)
-	getCurrentUser  func(*emptypb.Empty) (*v1pb.User, error)
+	listInstances      func(*v1pb.ListInstancesRequest) (*v1pb.ListInstancesResponse, error)
+	listDatabases      func(*v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse, error)
+	listMetadata       func(*v1pb.ListMetadataRequest) (*v1pb.MetadataResponse, error)
+	getMetadata        func(*v1pb.GetMetadataRequest) (*v1pb.GetMetadataResponse, error)
+	searchMetadata     func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error)
+	getSchemaString    func(*v1pb.GetSchemaStringRequest) (*v1pb.MetadataSchemaString, error)
+	analyzeSQL         func(*v1pb.AnalyzeSQLRequest) (*v1pb.AnalyzeSQLResponse, error)
+	getLineageGraph    func(*v1pb.GetLineageGraphRequest) (*v1pb.GetLineageGraphResponse, error)
+	getCurrentUser     func(*emptypb.Empty) (*v1pb.User, error)
+	listQualityTargets func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error)
 }
 
 func (f *fakeReaders) unexpected(method string) error {
@@ -140,6 +142,17 @@ func (f *fakeReaders) GetCurrentUser(_ context.Context, _ *connect.Request[empty
 	return connect.NewResponse(response), nil
 }
 
+func (f *fakeReaders) ListQualityTargets(_ context.Context, request *connect.Request[v1pb.ListQualityTargetsRequest]) (*connect.Response[v1pb.ListQualityTargetsResponse], error) {
+	if f.listQualityTargets == nil {
+		return nil, f.unexpected("ListQualityTargets")
+	}
+	response, err := f.listQualityTargets(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
 type fakeChecker struct {
 	allow bool
 	err   error
@@ -159,6 +172,7 @@ func newTestServer(t *testing.T, readers *fakeReaders, checker PermissionChecker
 		Databases:  readers,
 		Lineage:    readers,
 		Principals: readers,
+		Quality:    readers,
 		Checker:    checker,
 		Now:        func() time.Time { return time.Unix(0, 0) },
 	})
@@ -635,6 +649,161 @@ func TestGetLineageGraphFiltersByColumn(t *testing.T) {
 	graph := asMap(t, value)
 	require.Len(t, listOf(t, graph, "edges"), 1)
 	require.Len(t, listOf(t, graph, "nodes"), 2, "the nodes the surviving edge connects, and the root")
+}
+
+// --- quality signals ---
+
+func TestGetQualitySignalReadsOneMonitoredTarget(t *testing.T) {
+	t.Parallel()
+
+	score, passRate := 87.5, 0.75
+	var seen *v1pb.ListQualityTargetsRequest
+	readers := &fakeReaders{
+		listInstances: oneInstance(),
+		listDatabases: oneDatabase(),
+		searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
+			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
+				foundTable(storedTable("1;shop;;orders", "orders")),
+			}}, nil
+		},
+		listQualityTargets: func(request *v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			seen = request
+			return &v1pb.ListQualityTargetsResponse{QualityTargets: []*v1pb.QualityTargetSummary{{
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "1;shop;;orders",
+					MetaType: v1pb.MetaType_TABLE,
+					Path:     &v1pb.QualityTargetPath{Instance: "prod-mysql", Database: "shop", Object: "orders"},
+				},
+				EnabledRuleCount:     4,
+				WorstStatus:          v1pb.QualityStatus_QUALITY_STATUS_WARN,
+				LastRunTime:          timestamppb.New(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)),
+				QualityScore:         &score,
+				RecentPassRate:       &passRate,
+				RecentExecutionCount: 6,
+				CoveredColumnCount:   2,
+				TotalColumnCount:     5,
+				OpenIssueCount:       1,
+				SchemaChanged:        true,
+			}}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_signal", map[string]any{
+		"object": map[string]string{"instance": "prod-mysql", "database": "shop", "name": "orders"},
+	})
+	require.NoError(t, err)
+
+	// The selection is exact and unpaged: one key, no filters, no page size.
+	require.Equal(t, "workspaces/-", seen.GetParent())
+	require.Len(t, seen.GetTargets(), 1)
+	require.Equal(t, "1;shop;;orders", seen.GetTargets()[0].GetTargetGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, seen.GetTargets()[0].GetMetaType())
+	require.Zero(t, seen.GetPageSize())
+	require.Zero(t, seen.GetPageToken())
+
+	payload := asMap(t, value)
+	require.Equal(t, true, payload["monitored"])
+	require.Equal(t, "TABLE", payload["metaType"])
+	require.Equal(t, "1;shop;;orders", payload["guid"])
+	require.Equal(t, "orders", payload["name"])
+	require.Equal(t, "QUALITY_STATUS_WARN", payload["worstStatus"])
+	require.Equal(t, "2026-01-02T03:04:05Z", payload["lastRunTime"])
+	require.Equal(t, 87.5, payload["qualityScore"])
+	require.Equal(t, 0.75, payload["recentPassRate"])
+	require.Equal(t, float64(6), payload["recentExecutionCount"])
+	require.Equal(t, float64(2), payload["coveredColumnCount"])
+	require.Equal(t, float64(5), payload["totalColumnCount"])
+	require.Equal(t, float64(1), payload["openIssueCount"])
+	require.Equal(t, float64(4), payload["enabledRuleCount"])
+	require.Equal(t, true, payload["schemaChanged"])
+	require.Equal(t, false, payload["orphaned"])
+}
+
+// TestGetQualitySignalReportsAnUnmonitoredObject pins the distinction the tool
+// exists to preserve: a target the server omits from a selection has no live
+// rule, which is an answer — not monitored — and not a missing object.
+func TestGetQualitySignalReportsAnUnmonitoredObject(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		listQualityTargets: func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			return &v1pb.ListQualityTargetsResponse{}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_signal", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err, "no live rule is not a not_found")
+
+	payload := asMap(t, value)
+	require.Equal(t, false, payload["monitored"])
+	require.Equal(t, "1;shop;;orders", payload["guid"])
+	require.Equal(t, "TABLE", payload["metaType"])
+	require.NotContains(t, payload, "worstStatus")
+	require.NotContains(t, payload, "qualityScore")
+	require.NotContains(t, payload, "enabledRuleCount", "an unmonitored object has no signal to report")
+}
+
+// TestGetQualitySignalOmitsWhatHasNotBeenJudged covers a monitored target whose
+// checks have not run yet: the judged fields are absent rather than reported as
+// zero, which would read as a measured result.
+func TestGetQualitySignalOmitsWhatHasNotBeenJudged(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		listQualityTargets: func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			return &v1pb.ListQualityTargetsResponse{QualityTargets: []*v1pb.QualityTargetSummary{{
+				Target:           &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+				EnabledRuleCount: 1,
+			}}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_signal", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, true, payload["monitored"])
+	require.Equal(t, float64(1), payload["enabledRuleCount"])
+	require.NotContains(t, payload, "worstStatus")
+	require.NotContains(t, payload, "lastRunTime")
+	require.NotContains(t, payload, "qualityScore")
+	require.NotContains(t, payload, "recentPassRate")
+}
+
+func TestGetQualitySignalNeedsAMetaTypeForABareGUID(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+	_, err := callTool(t, server, "get_quality_signal", map[string]any{
+		"object": map[string]string{"guid": "1;shop;;orders"},
+	})
+	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
+}
+
+// TestGetQualitySignalAnswersUnmonitoredForAnUnwatchableType covers the object
+// types no rule can watch: the quality RPC refuses such a key, so the tool answers
+// the truthful signal — nothing monitors it — instead of asking.
+func TestGetQualitySignalAnswersUnmonitoredForAnUnwatchableType(t *testing.T) {
+	t.Parallel()
+
+	// No quality reader is configured: any RPC call at all fails the test.
+	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_signal", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;amount"},
+		"meta_type": "COLUMN",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, false, payload["monitored"])
+	require.Equal(t, "COLUMN", payload["metaType"])
+	require.NotContains(t, payload, "enabledRuleCount")
 }
 
 // --- dispatch ---

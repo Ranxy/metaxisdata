@@ -37,6 +37,7 @@ func TestToolSchemasMatchTheirArgumentStructs(t *testing.T) {
 		{tool: "list_metadata", args: listMetadataArgs{}, nested: map[string]any{"parent": objectRef{}}},
 		{tool: "get_metadata", args: getMetadataArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "get_ddl", args: getDDLArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "get_quality_signal", args: getQualitySignalArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "analyze_sql", args: analyzeSQLArgs{}, nested: map[string]any{"scopes": analysisScope{}}},
 		{tool: "get_lineage_graph", args: getLineageGraphArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "whoami", args: struct{}{}},

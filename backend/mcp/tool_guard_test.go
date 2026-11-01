@@ -17,10 +17,11 @@ import (
 // appear here deliberately, so a tool that writes — or that reaches a corner of
 // the API nobody meant to expose — cannot slip in behind a plausible name.
 var readPermissions = map[string]bool{
-	permission.InstancesList: true,
-	permission.DatabasesList: true,
-	permission.DatabasesRead: true,
-	permission.LineageGet:    true,
+	permission.InstancesList:        true,
+	permission.DatabasesList:        true,
+	permission.DatabasesRead:        true,
+	permission.LineageGet:           true,
+	permission.DataQualityRulesList: true,
 }
 
 // methodsWithoutAPermission are the RPCs a tool may wrap without requiring a
@@ -88,6 +89,7 @@ var wantTools = []string{
 	"get_ddl",
 	"get_lineage_graph",
 	"get_metadata",
+	"get_quality_signal",
 	"list_databases",
 	"list_instances",
 	"list_metadata",
