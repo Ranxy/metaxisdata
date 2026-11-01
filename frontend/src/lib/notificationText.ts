@@ -11,6 +11,7 @@ import {
   SyncTrigger,
 } from "@/types/proto-es/v1/notification_service_pb";
 import { formatObservedValue as formatDataQualityValue } from "@/utils/dataQuality";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * Everything the UI needs to render one message, as i18n keys and parameters
@@ -134,19 +135,16 @@ function qualityResourceHref(
 }
 
 /**
- * The target workspace path of a registry GUID. The route carries a GUID as a
- * repeated param, one segment per `;`-part, with `~` standing in for the empty
- * segment an engine without schemas has (see utils/guid.ts).
+ * The target workspace path of a registry GUID: the same repeated-param encoding
+ * every other target link uses (`guidToRouteParams`), so a target link reads the
+ * same wherever it is built.
  */
 function qualityTargetHref(guid: string): string | undefined {
-  const segments = guid.split(";");
-  if (segments.length < 3) {
+  const params = guidToRouteParams(guid);
+  if (params.length < 3) {
     return undefined;
   }
-  const parts = segments.map((segment) =>
-    encodeURIComponent(segment === "" ? "~" : segment)
-  );
-  return `${DATA_QUALITY_PATH}/targets/${parts.join("/")}`;
+  return `${DATA_QUALITY_PATH}/targets/${params.map(encodeURIComponent).join("/")}`;
 }
 
 /** The unit a data quality detail recorded, mapped to the observed-value kind. */

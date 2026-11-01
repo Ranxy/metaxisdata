@@ -10,9 +10,9 @@
 它服务的判断只有一句：**"检查保存时依赖的结构，现在还是不是那个结构"**。消费方：
 
 - 目标目录与工作台徽标（`QualityTargetSummary.schema_changed` / `QualityRule.target_schema_changed`）；
-- 目标/检查 CSV 导出与 MCP `get_quality_signal`（同一字段，自动生效）；
+- 目标目录的 CSV 导出（`schema_changed` 列）与 MCP `get_quality_signal`（同一字段，自动生效）；
 - 结构变更通知（`TARGET_SCHEMA_CHANGED`）；
-- `AcknowledgeQualityTargetSchema`，即"确认结构变更"后重建基线。
+- `AcknowledgeQualityTargetSchema`，即"确认 Schema 变更"后重建基线。
 
 `schema_drift` 规则与它**不是一回事**：drift 规则把"保存时写进 config 的列快照"和当前列比对，是用户逐条声明的检查；指纹是自动维护的信号。drift 规则不会被确认操作改写。
 
@@ -32,7 +32,7 @@
 两条必须知道的后果：
 
 1. **口径版本变更 = 全量重写**。改这个函数（增加字段、覆盖新类型）必须同时 bump domain 常量，并在同一变更里说明：所有已存指纹都会变化一次，所有已保存检查会在下一次 sync 后显示"结构已变更"，需要用户确认。
-2. **StarRocks/Doris 的语义收窄**（P1-2 的刻意取舍）：旧口径是 DDL hash，分区/分布/属性变化也会点亮徽标；新口径只看列/主键/视图定义，因此**只改分区或 table properties 不再点亮**。DDL 仍照常抓取并展示（[object-ddl-storage.md](object-ddl-storage.md)）；需要"属性也敏感"的场景用 `schema_drift` 或 DDL 浏览。
+2. **StarRocks/Doris 的语义收窄**（P1-2 的刻意取舍）：这些引擎上的**指纹快照**只看列/主键/视图定义，因此只改分区或 table properties 不再点亮徽标；**升级前保存**的 StarRocks/Doris 规则快照仍是 DDL hash，legacy 分支会继续按 DDL 比较，直到该规则被编辑或目标被确认（此后换成指纹口径）。DDL 仍照常抓取并展示（[object-ddl-storage.md](object-ddl-storage.md)）；需要"属性也敏感"的场景用 `schema_drift` 或 DDL 浏览。另见下文的引擎元数据边界。
 
 ## 存储
 
@@ -77,12 +77,18 @@
 - 通知 detail 只有 target（`target_guid`、`target_path`）与 kind，没有 rule/execution：一次结构变更属于整个目标。前端文案 `notifications.dataQualityTargetSchemaChangedTitle/Message`，链接到目标工作台。
 - 投递是 best effort：通知写失败只记日志，不影响 sync 结果。
 
-## 确认结构变更（`AcknowledgeQualityTargetSchema`）
+## 确认 Schema 变更（`AcknowledgeQualityTargetSchema`）
 
 - RPC：`POST /v1/{parent=workspaces/*}/qualityTargets:acknowledgeSchemaChange`；请求 `parent` + `target_guid` + 可选 `meta_type`（目标有规则时服务端自行推导）；响应 `baselined_rule_count`。
 - 语义：把该目标**非归档、未删除**的每条检查的 `target_meta_hash` 更新为当前指纹（`store.BaselineQualityRulesToSchemaHash`），清掉 `schema_changed`。只写 `target_meta_hash` 与 `updated_at`，**不写 `quality_rule_revision`、不 bump revision**：revision 记录的是检查定义，re-baseline 改变的是"这条定义是对着哪个形状复核过的"，不是定义本身。这是"revision 不可变"的**显式例外**，见 [data-quality.md](data-quality.md) 的不变量。
 - 幂等：第二次调用返回 0。目标没有指纹（已从 registry 消失或该库尚未同步）→ `FailedPrecondition`；权限 `dataQuality.rules.update`；写审计；`updated_by` 不动（"谁确认的"由审计账本记录，不冒充规则编辑人）。
-- 前端入口：目标工作台页头"目标 Schema 已变更"徽标旁的"确认结构变更"按钮（有 `rules.update` 时显示），成功后就地清徽标并提示条数。
+- 前端入口：目标工作台页头"目标 Schema 已变更"徽标旁的"确认 Schema 变更"按钮（有 `rules.update` 时显示），成功后就地清徽标并提示条数。
+
+## 引擎元数据边界
+
+- **StarRocks/Doris 没有索引/主键元数据**：该驱动的 `information_schema` 不提供索引信息（`backend/plugin/db/starrocks/sync.go` 的 `// TODO: add index information`），所以这两个引擎上的指纹是「列名/类型/可空/顺序」而不是完整的主键口径。主键变化在这两个引擎上由 `schema_drift` 规则（列快照比对）或升级前的 DDL-hash 规则（DDL 里包含 PRIMARY KEY）覆盖；新规则的主键变化不会点亮徽标。记录在 [backend-open-items.md](backend-open-items.md)。
+- 其他引擎（MySQL/MariaDB/TiDB/OceanBase 走 MySQL 驱动、PostgreSQL、SQL Server）的元数据带 `Nullable` 与 `IndexMetadata.primary`，指纹是完整的列 + 主键口径。StarRocks/Doris 的 `Nullable` 在本功能里一并接通（驱动此前只把它用于默认值推导）。
+- 视图/物化视图的 `definition` 在所有引擎上都有；列顺序由同步查询的 `ORDINAL_POSITION`/`attnum`/`column_id` 排序保证，因此指纹不会因遍历顺序抖动。
 
 ## 不变量
 
@@ -98,7 +104,7 @@
 | --- | --- |
 | 读已存指纹失败 | 该 database 的 sync 失败并重试（与读 digest 同级）；不会写一半 |
 | 对象的类型声明有形状但元数据没有 | 跳过该对象并 `Warn`，不失败整库同步 |
-| 升级后该库还没同步过 | 没有指纹行：`schema_changed` 不判定（不是 false 到 true 的误报），确认操作返回 `FailedPrecondition`；一次同步后目标有指纹。在这个间隙里**新建**的规则快照为 NULL，目标有指纹后也不会自动补（编辑一次该规则才重写快照），是已知边界 |
+| 升级后该库还没同步过 | 没有指纹行：`schema_changed` 不判定（不是 false 到 true 的误报），确认操作返回 `FailedPrecondition`；一次同步后目标有指纹。在这个间隙里**新建**的规则快照为 NULL，目标有指纹后不会自动补：编辑一次该规则（改定义）或对目标做一次确认（确认会连带补齐该目标全部非归档规则）才重写快照 |
 | 升级前保存的 StarRocks/Doris 规则 | 快照是 DDL hash，legacy 分支使其保持"未变"；规则一旦被编辑就换成指纹 |
 | 结构改了又改回（两次 sync 之间） | 指纹相同，没有事件；信号表达的是"当前形状与保存时是否一致"，不是变更日志 |
 | 规则归档后结构变化 | 归档检查不参与通知与确认（与目录聚合一致） |

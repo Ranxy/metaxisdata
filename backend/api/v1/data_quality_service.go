@@ -1413,9 +1413,9 @@ func dedupeInt64(ids []int64) []int64 {
 }
 
 // targetSchemaChanges reports, per rule id, whether the target's current
-// structure differs from the snapshot taken when the rule was saved. Rules
-// without a snapshot, or whose target has no fingerprint, are absent from the
-// map.
+// structure differs from the snapshot taken when the rule was saved. A rule
+// without a snapshot is absent from the map; a target without a fingerprint
+// reports false rather than a change.
 func (s *DataQualityService) targetSchemaChanges(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64]bool, error) {
 	changed := make(map[int64]bool, len(rules))
 	snapshots := make(map[int64][]byte, len(rules))

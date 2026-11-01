@@ -86,8 +86,8 @@ type QualityTargetMessage struct {
 	// UNSPECIFIED when none of them has run.
 	WorstStatus storepb.QualityStatus
 	LastRunTime *time.Time
-	// SchemaChanged is true when at least one rule's saved target hash differs
-	// from the current registry schema hash.
+	// SchemaChanged is true when at least one rule's saved structure snapshot
+	// differs from the target's current structure fingerprint.
 	SchemaChanged bool
 	// Orphaned is true when the target no longer resolves. It is filled by the
 	// API, which owns the registry read, not by the aggregate query.

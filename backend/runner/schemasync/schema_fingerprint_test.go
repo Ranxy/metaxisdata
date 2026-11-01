@@ -81,6 +81,25 @@ func TestDiffSchemaFingerprints(t *testing.T) {
 	require.Equal(t, []store.MetaGUIDKey{keys[1]}, batch.changed)
 }
 
+// A snapshot can repeat the same (GUID, object type) — the metadata batch
+// tolerates it first-wins, and the fingerprint upsert would reject a duplicate
+// source row and take the whole database's sync down with it.
+func TestCollectSchemaFingerprintsDeduplicatesCollidingResources(t *testing.T) {
+	t.Parallel()
+
+	first := fingerprintResource("inst;db;;orders", "id")
+	duplicate := fingerprintResource("inst;db;;orders", "id", "name")
+	firstFingerprint, ok := store.CalcSchemaFingerprint(first.Metadata)
+	require.True(t, ok)
+
+	items, fingerprints, keys := collectSchemaFingerprints([]*store.CreateMetaRegistryResourceMessage{first, duplicate})
+	require.Len(t, items, 1, "one write per key, like batchMetaCreate.diff")
+	require.Len(t, keys, 1)
+	require.Equal(t, first.GUIDKey(), keys[0])
+	require.Equal(t, firstFingerprint, fingerprints[first.GUIDKey()], "the first entry is the one the metadata row keeps")
+	require.Len(t, diffSchemaFingerprints(items, fingerprints, nil).writes, 1)
+}
+
 // A resource the type says has a shape but whose metadata does not is skipped
 // instead of failing the database's sync.
 func TestCollectSchemaFingerprintsSkipsResourcesWithoutAShape(t *testing.T) {

@@ -22,6 +22,9 @@ import (
 type fakeStore struct {
 	workspaceID string
 	policy      *storepb.IamPolicy
+	// policyReads counts the IAM policy resolutions, so a test can prove a
+	// suppressed repeat does not pay for the audience lookup.
+	policyReads int
 	groups      map[string]*store.GroupMessage
 	users       map[int]*store.UserMessage
 
@@ -123,6 +126,7 @@ func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {
 }
 
 func (f *fakeStore) GetWorkspaceIamPolicy(context.Context) (*store.IamPolicyMessage, error) {
+	f.policyReads++
 	return &store.IamPolicyMessage{Policy: f.policy}, nil
 }
 
@@ -282,6 +286,32 @@ func TestSendToWorkspaceAdminsExpandsGroupsAndSkipsTheBot(t *testing.T) {
 	// The second occurrence inside the window reaches nobody.
 	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), message))
 	require.Len(t, fake.created, 2)
+}
+
+// The suppression gate runs before the audience is resolved: a repeat inside the
+// window must not pay for the IAM policy read and group expansion.
+func TestSendToWorkspaceAdminsClaimsBeforeResolvingTheAudience(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{
+		workspaceID: "ws-1",
+		policy: &storepb.IamPolicy{Bindings: []*storepb.Binding{
+			{Role: common.FormatRole(common.WorkspaceMember), Members: []string{common.AllUsers}},
+			{Role: common.FormatRole(common.WorkspaceAdmin), Members: []string{"users/2"}},
+		}},
+		users: map[int]*store.UserMessage{2: {ID: 2, Name: "alice"}},
+	}
+	service := newServiceWithStore(fake)
+
+	message := newOpenLineageMessage()
+	message.DedupeKey = DedupeKey("openlineage", "ns-1:INVALID_EVENT", time.Now(), BackgroundFailureWindow)
+	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), message))
+	require.Equal(t, 1, fake.policyReads)
+	require.Len(t, fake.created, 1)
+
+	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), message))
+	require.Equal(t, 1, fake.policyReads, "a suppressed repeat must not resolve the audience")
+	require.Len(t, fake.created, 1)
 }
 
 // A deployment whose only administrator is the allUsers baseline has nobody to

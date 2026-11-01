@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -96,6 +97,22 @@ func renderDataQuality(zh bool, detail *storepb.DataQualityDetail, message *Mess
 		} else {
 			message.Title = fmt.Sprintf("Data quality: %d/%d checks failed in one scan on %s", detail.GetFailedRuleCount(), detail.GetTotalRuleCount(), target)
 			message.Text = joinFacts(zh, fact(zh, "Instance", shortResource(detail.GetInstance())))
+		}
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED:
+		// One event for the target, not for one check: the reader is asked to
+		// review every check that was saved against the old shape.
+		if zh {
+			message.Title = fmt.Sprintf("数据质量：%s 的 Schema 已变更", target)
+			message.Text = joinFacts(zh,
+				fact(zh, "目标", target),
+				fact(zh, "说明", "检查保存时的 Schema 已与当前不一致，请在下次执行前复核，复核后确认变更"),
+			)
+		} else {
+			message.Title = fmt.Sprintf("Data quality: %s changed its schema", target)
+			message.Text = joinFacts(zh,
+				fact(zh, "Target", target),
+				fact(zh, "Note", "the checks were saved against an older schema; review them before the next run and acknowledge the change"),
+			)
 		}
 	default:
 		if zh {
@@ -386,6 +403,11 @@ func link(externalURL string, event *storepb.NotificationDeliveryEvent) string {
 	}
 	switch detail := event.GetDetail().(type) {
 	case *storepb.NotificationDeliveryEvent_DataQuality:
+		// A structure change has no execution or issue to point at: its subject is
+		// the target, so it links the target workspace.
+		if detail.DataQuality.GetKind() == storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED {
+			return qualityTargetLink(base, detail.DataQuality.GetTargetGuid())
+		}
 		// The data-quality detail pages carry the whole resource name in their
 		// route (the pages join the segments back to call the RPC), so the link
 		// must append the name, not its last segment.
@@ -410,6 +432,25 @@ func link(externalURL string, event *storepb.NotificationDeliveryEvent) string {
 	default:
 		return base
 	}
+}
+
+// qualityTargetLink renders a target workspace link from a registry GUID. The
+// route carries one path segment per `;`-part, with `~` standing in for the
+// empty segment an engine without schemas has; the frontend decodes it the same
+// way (see frontend/src/utils/guid.ts).
+func qualityTargetLink(base, guid string) string {
+	if guid == "" {
+		return base + "/data-quality/targets"
+	}
+	segments := strings.Split(guid, ";")
+	for i, segment := range segments {
+		if segment == "" {
+			segments[i] = "~"
+			continue
+		}
+		segments[i] = url.PathEscape(segment)
+	}
+	return base + "/data-quality/targets/" + strings.Join(segments, "/")
 }
 
 func lastSegment(resource string) string {

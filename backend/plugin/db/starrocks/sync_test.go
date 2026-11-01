@@ -96,3 +96,25 @@ func TestSanitizeCatalogString(t *testing.T) {
 	require.Equal(t, "ab", sanitizeCatalogString("a\x00b"))
 	require.Equal(t, "plain", sanitizeCatalogString("plain"))
 }
+
+// The catalog's nullability must reach the stored metadata: the structure
+// fingerprint, schema-drift rules and the metadata browser all read it from
+// there, and this engine has no other source for it.
+func TestNewColumnMetadataRecordsNullability(t *testing.T) {
+	t.Parallel()
+
+	nullable, err := newColumnMetadata("email", 2, sql.NullString{}, "YES", "varchar(128)", "utf8mb4", "utf8mb4_bin", "contact", "")
+	require.NoError(t, err)
+	require.True(t, nullable.GetNullable())
+	require.Equal(t, int32(2), nullable.GetPosition())
+	require.Equal(t, "varchar(128)", nullable.GetType())
+	require.Equal(t, "contact", nullable.GetComment())
+
+	notNull, err := newColumnMetadata("id", 1, sql.NullString{}, "NO", "bigint", "", "", "", "")
+	require.NoError(t, err)
+	require.False(t, notNull.GetNullable())
+
+	// A value the catalog does not define is an error, not a silent false.
+	_, err = newColumnMetadata("bad", 3, sql.NullString{}, "MAYBE", "text", "", "", "", "")
+	require.Error(t, err)
+}

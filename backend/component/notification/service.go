@@ -279,20 +279,31 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 	if n == nil {
 		return errors.New("notification is required")
 	}
-
 	// See Send: detached from the caller's cancellation, bounded in time. The
 	// recipient resolution is part of the delivery, so a caller whose request was
 	// cancelled still tells the administrators.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
 	defer cancel()
 
+	// Claim before resolving the audience: a suppressed repeat must not pay the
+	// IAM policy read and group expansion, which is the whole point of the gate.
+	key := n.GetDedupeKey()
+	if !s.claim(key) {
+		return nil
+	}
+	fail := func(err error) error {
+		s.release(key)
+		return err
+	}
+
 	admins, err := s.WorkspaceAdminIDs(ctx)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	if len(admins) == 0 {
 		// No administrator can act on it, so there is no inbox to put it in. The
-		// caller's own log line stays the record.
+		// caller's own log line stays the record. The window stays claimed, so a
+		// workspace without an administrator does not retry the resolution.
 		slog.Warn("No workspace administrator to receive a notification",
 			slog.String("type", n.GetType().String()))
 		return nil
@@ -302,7 +313,10 @@ func (s *Service) SendToWorkspaceAdmins(ctx context.Context, n *storepb.Notifica
 	for _, id := range admins {
 		recipients = append(recipients, int32(id))
 	}
-	return s.SendToRecipients(ctx, n, recipients)
+	if err := s.deliverToRecipients(ctx, n, recipients); err != nil {
+		return fail(err)
+	}
+	return nil
 }
 
 // SendToRecipients delivers a copy of the notification to each named recipient.
@@ -324,11 +338,17 @@ func (s *Service) SendToRecipients(ctx context.Context, n *storepb.Notification,
 	if !s.claim(key) {
 		return nil
 	}
-	fail := func(err error) error {
+	if err := s.deliverToRecipients(ctx, n, recipientIDs); err != nil {
 		s.release(key)
 		return err
 	}
+	return nil
+}
 
+// deliverToRecipients writes one row per recipient and queues the outbox event
+// once. It does not touch the suppression gate: the two send entry points claim
+// the key before resolving their audience, and release it here on failure.
+func (s *Service) deliverToRecipients(ctx context.Context, n *storepb.Notification, recipientIDs []int32) error {
 	var (
 		firstErr error
 		written  bool
@@ -347,7 +367,7 @@ func (s *Service) SendToRecipients(ctx context.Context, n *storepb.Notification,
 
 		clone, ok := proto.Clone(n).(*storepb.Notification)
 		if !ok {
-			return fail(errors.New("failed to clone notification"))
+			return errors.New("failed to clone notification")
 		}
 		// Each recipient gets their own row, and therefore their own read state.
 		clone.Id = 0
@@ -361,7 +381,7 @@ func (s *Service) SendToRecipients(ctx context.Context, n *storepb.Notification,
 		written = written || wrote
 	}
 	if firstErr != nil {
-		return fail(firstErr)
+		return firstErr
 	}
 	if written {
 		s.enqueueOutbound(ctx, n, audience)

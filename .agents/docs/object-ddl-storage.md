@@ -4,7 +4,7 @@
 
 ## What it is
 
-> 不要和**结构指纹**混淆：本表的 `schema`/`schema_hash` 是引擎自己的 DDL，只在抓得到 DDL 的引擎（StarRocks/Doris）上有行、且是**纯展示**数据。数据质量的“目标结构是否变了”用的是另一张表 `meta_registry_schema_fingerprint`（每个引擎都有，由元数据推导），见 [schema-fingerprint.md](schema-fingerprint.md)。
+> 不要和**结构指纹**混淆：本表的 `schema`/`schema_hash` 是引擎自己的 DDL，只在抓得到 DDL 的引擎（StarRocks/Doris）上有行。`schema` 是**纯展示**数据；`schema_hash` 只在数据质量的结构比较里作为**升级前快照的兼容分支**被读（见 [data-quality.md](data-quality.md) D-24）。数据质量的“目标结构是否变了”用的是另一张表 `meta_registry_schema_fingerprint`（每个引擎都有，由元数据推导），见 [schema-fingerprint.md](schema-fingerprint.md)。
 
 `GetSchemaString` used to rebuild an object's DDL from structured metadata through `backend/plugin/schema`. That is lossy — StarRocks/Doris metadata carries no `DISTRIBUTED BY`, `PROPERTIES`, partitioning or rollups, and those engines have no `plugin/schema` registration at all, so the call failed with `engine STARROCKS is not supported`. This feature captures the engine's own DDL (`SHOW CREATE …`) during schema sync and stores it per object, keyed by the same `(guid, object_type)` as `meta_registry_resource`; `GetSchemaString` returns it verbatim and falls back to reconstruction when there is no row. No proto, API or frontend change: the metadata browser, `Explain SQL` and the schema dialog work unchanged.
 

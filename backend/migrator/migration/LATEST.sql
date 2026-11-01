@@ -930,8 +930,9 @@ CREATE TABLE IF NOT EXISTS quality_rule (
     target_guid TEXT COLLATE "C" NOT NULL,
     target_type INT2 NOT NULL,
     target_path JSONB NOT NULL DEFAULT '{}',
-    -- The target's meta_hash when the rule was saved. A different current hash
-    -- means the target's schema changed and the rule may need review.
+    -- The target's structure fingerprint when the rule was saved (see
+    -- meta_registry_schema_fingerprint). A different current fingerprint means the
+    -- target's schema changed and the rule may need review.
     target_meta_hash BYTEA,
     config JSONB NOT NULL DEFAULT '{}',
     severity INT2 NOT NULL,

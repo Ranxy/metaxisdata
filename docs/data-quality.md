@@ -136,15 +136,18 @@ If a table's **structure changed after its checks were saved** — a column adde
 dropped, renamed, retyped or made nullable, a primary key changed, or a view's SQL
 rewritten — the target row and the target workspace show a **Target schema
 changed** badge. This works on every engine: the platform fingerprints each
-table's columns, primary key and a view's definition during schema sync, not just
-the few engines whose DDL it stores. The badge means "review these checks against
-the new shape"; it does not change, pause or fail them. From the target
-workspace, **Acknowledge structure** (the button beside the badge, for users who
-can edit checks) records that the checks were reviewed against the current shape
-and clears the badge. Editing and saving one check re-baselines that check only,
-so the target keeps the badge until every check is re-baselined or acknowledged.
-A check that should notice the change on every run is a **schema drift** check,
-which compares against the column list saved with it.
+table's columns, primary key (on engines that report index metadata) and a
+view's definition during schema sync, not just the few engines whose DDL it
+stores. The badge means "review these checks against the new shape"; it does not
+change, pause or fail them. From the target workspace, **Acknowledge schema
+change** (the button beside the badge, for users who can edit checks) records
+that the checks were reviewed against the current schema and clears the badge.
+Saving a check re-baselines that check only, and only when the edit changes its
+definition (type, target, filter, thresholds or parameters) — renaming it,
+changing its severity or its owner does not. The target keeps the badge until
+every check is re-baselined or acknowledged. A check that should notice the
+change on every run is a **schema drift** check, which compares against the
+column list saved with it.
 
 The Targets, Checks, Issues and Suggestions lists keep their filters in the
 address bar, so refreshing or sharing a link returns to the same view.

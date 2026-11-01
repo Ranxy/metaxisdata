@@ -1294,6 +1294,22 @@ func assertJourneySchemaDriftAfterDDLChange(t *testing.T, fixture *qualityFixtur
 	require.True(t, readRule().GetTargetSchemaChanged(),
 		"the target's structure fingerprint changed on MySQL too")
 
+	// The directory aggregates the flag in SQL, so reading it proves the SQL
+	// predicate agrees with the per-rule Go one.
+	directory := func() bool {
+		listed, err := fixture.dataQuality.ListQualityTargets(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+			Parent: "workspaces/-",
+			Targets: []*v1pb.QualityTargetKey{{
+				TargetGuid: targetGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+			}},
+		}))
+		require.NoError(t, err, "read the target from the directory")
+		require.Len(t, listed.Msg.GetQualityTargets(), 1)
+		return listed.Msg.GetQualityTargets()[0].GetSchemaChanged()
+	}
+	require.True(t, directory(), "the directory's SQL predicate sees the change too")
+
 	message := waitForJourneyTargetSchemaChangeNotification(t, fixture, targetGUID)
 	require.Equal(t, targetGUID, message.GetDataQuality().GetTargetGuid())
 	require.Equal(t, v1pb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, message.GetSeverity())
@@ -1310,6 +1326,7 @@ func assertJourneySchemaDriftAfterDDLChange(t *testing.T, fixture *qualityFixtur
 	require.NoError(t, err, "acknowledge the structure change")
 	require.Greater(t, acknowledged.Msg.GetBaselinedRuleCount(), int32(0))
 	require.False(t, readRule().GetTargetSchemaChanged(), "the acknowledgement clears the signal")
+	require.False(t, directory(), "the directory agrees that the signal is cleared")
 
 	again, err := fixture.dataQuality.AcknowledgeQualityTargetSchema(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.AcknowledgeQualityTargetSchemaRequest{
 		Parent:     "workspaces/-",

@@ -81,14 +81,30 @@ func prepareSchemaFingerprints(ctx context.Context, s *store.Store, candidates [
 // but whose metadata does not is skipped rather than failing the database's sync:
 // the fingerprint is a read model for data quality, and one malformed object must
 // not stop the registry from converging.
+//
+// A snapshot can name the same (GUID, object type) twice, and the fingerprint
+// upsert has the same "cannot affect row a second time" constraint the metadata
+// batch has, so the first entry wins here exactly like batchMetaCreate.diff.
 func collectSchemaFingerprints(candidates []*store.CreateMetaRegistryResourceMessage) ([]*store.CreateMetaRegistryResourceMessage, map[store.MetaGUIDKey][]byte, []store.MetaGUIDKey) {
 	items := make([]*store.CreateMetaRegistryResourceMessage, 0, len(candidates))
 	fingerprints := make(map[store.MetaGUIDKey][]byte, len(candidates))
 	keys := make([]store.MetaGUIDKey, 0, len(candidates))
+	seen := make(map[store.MetaGUIDKey]struct{}, len(candidates))
 	for _, item := range candidates {
 		if !supportsSchemaFingerprint(item.ObjectType) {
 			continue
 		}
+		key := item.GUIDKey()
+		if _, duplicate := seen[key]; duplicate {
+			slog.Warn("Skipping a duplicate metadata resource while fingerprinting",
+				slog.String("guid", item.GUID),
+				slog.String("objectType", item.ObjectType.String()))
+			continue
+		}
+		// Mark the key before the shape check: the metadata batch keeps the first
+		// duplicate too, so a later duplicate must not describe a shape the stored
+		// metadata row does not have.
+		seen[key] = struct{}{}
 		fingerprint, ok := store.CalcSchemaFingerprint(item.Metadata)
 		if !ok {
 			slog.Warn("Skipping an object whose metadata has no shape",
@@ -96,7 +112,6 @@ func collectSchemaFingerprints(candidates []*store.CreateMetaRegistryResourceMes
 				slog.String("objectType", item.ObjectType.String()))
 			continue
 		}
-		key := item.GUIDKey()
 		items = append(items, item)
 		fingerprints[key] = fingerprint
 		keys = append(keys, key)

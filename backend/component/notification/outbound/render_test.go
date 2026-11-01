@@ -92,6 +92,41 @@ func TestRenderDataQualityRecovered(t *testing.T) {
 	require.Contains(t, rendered.Text, "FAIL → PASS")
 }
 
+// A structure change arrives from the schema syncer, not the quality runner. It
+// must be readable on an email or chat card and link the target workspace, not
+// the executions list.
+func TestRenderDataQualityTargetSchemaChanged(t *testing.T) {
+	t.Parallel()
+
+	event := dataQualityEvent(&storepb.DataQualityDetail{
+		Kind:       storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED,
+		TargetGuid: "inst-1;app;;orders",
+		TargetPath: "inst-1/app/orders",
+	})
+
+	en := Render("en-US", event, "https://app.example.com/", time.Now())
+	require.Contains(t, en.Title, "inst-1/app/orders")
+	require.Contains(t, en.Title, "changed its schema")
+	require.Contains(t, en.Text, "review them before the next run")
+	require.Equal(t, "https://app.example.com/data-quality/targets/inst-1/app/~/orders", en.Link)
+
+	zh := Render("zh-CN", event, "https://app.example.com", time.Now())
+	require.Contains(t, zh.Title, "Schema 已变更")
+	require.Contains(t, zh.Text, "复核")
+	require.Equal(t, "https://app.example.com/data-quality/targets/inst-1/app/~/orders", zh.Link)
+}
+
+func TestQualityTargetLink(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "https://app/data-quality/targets/inst/db/public/orders",
+		qualityTargetLink("https://app", "inst;db;public;orders"))
+	require.Equal(t, "https://app/data-quality/targets/inst/db/~/orders",
+		qualityTargetLink("https://app", "inst;db;;orders"))
+	require.Equal(t, "https://app/data-quality/targets",
+		qualityTargetLink("https://app", ""))
+}
+
 func TestRenderSchemaSyncFailure(t *testing.T) {
 	t.Parallel()
 
