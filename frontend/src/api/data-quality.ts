@@ -262,19 +262,24 @@ export async function acknowledgeQualityTargetSchema(options: {
 
 /**
  * Set a target's one schedule. Every enabled check on the target runs at this
- * cadence; scheduling is rescheduled from now and does not run the checks.
+ * cadence; scheduling is rescheduled from now and does not run the checks. The
+ * two forms are exclusive: a fixed interval, or a five-field cron expression in
+ * an IANA time zone.
  */
-export async function updateQualityTargetSchedule(options: {
-  targetGuid: string;
-  /** UNSPECIFIED lets the server derive it from the target's rules. */
-  metaType?: MetaType;
-  scheduleInterval: Duration;
-}): Promise<QualityTargetSchedule> {
+export async function updateQualityTargetSchedule(
+  options: {
+    targetGuid: string;
+    /** UNSPECIFIED lets the server derive it from the target's rules. */
+    metaType?: MetaType;
+  } & ({ scheduleInterval: Duration } | { cron: string; timezone: string })
+): Promise<QualityTargetSchedule> {
   const request = create(UpdateQualityTargetScheduleRequestSchema, {
     parent: WORKSPACE_PARENT,
     targetGuid: options.targetGuid,
     metaType: options.metaType ?? MetaType.UNSPECIFIED,
-    scheduleInterval: options.scheduleInterval,
+    ...("scheduleInterval" in options
+      ? { scheduleInterval: options.scheduleInterval }
+      : { cron: options.cron, timezone: options.timezone }),
   });
   return await dataQualityClient.updateQualityTargetSchedule(request);
 }

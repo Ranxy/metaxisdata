@@ -28,6 +28,15 @@
           <Badge :variant="qualitySeverityVariant(rule.severity)">
             {{ t(qualitySeverityKey(rule.severity)) }}
           </Badge>
+          <!-- Only a check that runs less often than its target says so; the
+               default (follow the target) leaves the row unchanged. -->
+          <Badge
+            v-if="rule.frequencyTier !== QualityFrequencyTier.UNSPECIFIED"
+            :variant="qualityFrequencyTierVariant(rule.frequencyTier)"
+            :title="t('dataQuality.frequencyTierHint')"
+          >
+            {{ t(qualityFrequencyTierKey(rule.frequencyTier)) }}
+          </Badge>
           <Badge
             v-if="rule.orphanedReason"
             variant="danger"
@@ -124,12 +133,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   type QualityExecutionSummary,
+  QualityFrequencyTier,
   type QualityRule,
   QualityRuleState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   formatObservedValue,
   formatTargetPath,
+  qualityFrequencyTierKey,
+  qualityFrequencyTierVariant,
   qualityRuleTypeKey,
   qualitySeverityKey,
   qualitySeverityVariant,

@@ -349,13 +349,20 @@ function latestRunFixture(
 
 /** The target's one schedule, as the summary carries it. */
 function targetScheduleFixture(
-  options: { intervalSeconds?: bigint; nextRunInMinutes?: number } = {}
+  options: {
+    intervalSeconds?: bigint;
+    cron?: string;
+    timezone?: string;
+    nextRunInMinutes?: number;
+  } = {}
 ): QualityTargetSchedule {
   return create(QualityTargetScheduleSchema, {
     scheduleInterval: create(DurationSchema, {
       seconds: options.intervalSeconds ?? 3_600n,
       nanos: 0,
     }),
+    cron: options.cron ?? "",
+    timezone: options.timezone ?? "",
     nextRunTime:
       options.nextRunInMinutes === undefined
         ? undefined
@@ -667,7 +674,12 @@ describe("DataQualityTargetPage", () => {
     mocks.listAllMetadata.mockResolvedValue([]);
     mocks.updateQualityTargetSchedule.mockImplementation(async (options) =>
       create(QualityTargetScheduleSchema, {
-        scheduleInterval: options.scheduleInterval,
+        // The server always reports the nominal gap, cron form included.
+        scheduleInterval:
+          options.scheduleInterval ??
+          create(DurationSchema, { seconds: 86_400n, nanos: 0 }),
+        cron: options.cron ?? "",
+        timezone: options.timezone ?? "",
         nextRunTime: timestampFromDate(new Date(Date.now() + 3_600_000)),
       })
     );
@@ -2193,6 +2205,105 @@ describe("DataQualityTargetPage", () => {
     save?.click();
     await flushPromises();
     expect(mocks.updateQualityTargetSchedule).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("shows a cron schedule and its zone in the header", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          schedule: targetScheduleFixture({
+            intervalSeconds: 86_400n,
+            cron: "0 2 * * *",
+            timezone: "Asia/Shanghai",
+            nextRunInMinutes: 30,
+          }),
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    const text = wrapper.text();
+    expect(text).toContain("0 2 * * *");
+    expect(text).toContain("Asia/Shanghai");
+    expect(text).toContain(
+      label("dataQuality.workspace.nextRun", {
+        time: formatRelativeTime(new Date(Date.now() + 30 * 60_000), "en-US"),
+      })
+    );
+    wrapper.unmount();
+  });
+
+  it("edits the target schedule to a cron expression in a time zone", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({
+          schedule: targetScheduleFixture({ intervalSeconds: 3_600n }),
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    document.body
+      .querySelector<HTMLElement>(
+        `[aria-label="${label("dataQuality.workspace.editSchedule")}"]`
+      )
+      ?.click();
+    await flushPromises();
+
+    dialogButton(label("dataQuality.workspace.scheduleCron"))?.click();
+    await flushPromises();
+    setInput("#dq-target-schedule-cron", "0 2 * * *");
+    await flushPromises();
+    dialogButton(label("common.save"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityTargetSchedule).toHaveBeenCalledTimes(1);
+    const [request] = mocks.updateQualityTargetSchedule.mock.calls[0] as [
+      {
+        targetGuid: string;
+        metaType: MetaType;
+        cron?: string;
+        timezone?: string;
+        scheduleInterval?: unknown;
+      },
+    ];
+    // The cron form sends the expression and zone, never the interval.
+    expect(request.targetGuid).toBe(TARGET);
+    expect(request.cron).toBe("0 2 * * *");
+    expect(request.scheduleInterval).toBeUndefined();
+    expect(typeof request.timezone).toBe("string");
+    expect(request.timezone).not.toBe("");
+    // The header switches to the expression it now runs on.
+    expect(wrapper.text()).toContain("0 2 * * *");
+    wrapper.unmount();
+  });
+
+  it("accepts a cron schedule when only the header refreshes", async () => {
+    const { wrapper } = await mountPage();
+
+    // A rule lifecycle change re-reads the schedule; a cron target has no
+    // interval, so the refresh must not mistake it for an empty schedule.
+    mocks.getQualityTargetSchedule.mockResolvedValue(
+      targetScheduleFixture({
+        intervalSeconds: 86_400n,
+        cron: "0 2 * * *",
+        timezone: "Asia/Shanghai",
+      })
+    );
+    const changed = create(QualityRuleSchema, {
+      name: RULE_DATASET,
+      title: "Row count floor",
+      ruleType: QualityRuleType.ROW_COUNT,
+      target: target(),
+      severity: QualitySeverity.ERROR,
+      state: QualityRuleState.ENABLED,
+    });
+    wrapper.findComponent(QualityCheckDrawer).vm.$emit("changed", changed);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("0 2 * * *");
+    expect(wrapper.text()).toContain("Asia/Shanghai");
     wrapper.unmount();
   });
 });

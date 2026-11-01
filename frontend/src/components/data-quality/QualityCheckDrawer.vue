@@ -393,6 +393,25 @@
                         </Badge>
                       </dd>
                     </div>
+                    <!-- The cadence is only shown when it differs from the
+                         target's own tick; UNSPECIFIED means "follow target". -->
+                    <div
+                      v-if="rule.frequencyTier !== QualityFrequencyTier.UNSPECIFIED"
+                    >
+                      <dt class="text-xs text-muted-foreground">
+                        {{ t("dataQuality.frequencyTierLabel") }}
+                      </dt>
+                      <dd
+                        class="mt-0.5"
+                        :title="t('dataQuality.frequencyTierHint')"
+                      >
+                        <Badge
+                          :variant="qualityFrequencyTierVariant(rule.frequencyTier)"
+                        >
+                          {{ t(qualityFrequencyTierKey(rule.frequencyTier)) }}
+                        </Badge>
+                      </dd>
+                    </div>
                     <div>
                       <dt class="text-xs text-muted-foreground">
                         {{ t("dataQuality.filterOwner") }}
@@ -621,6 +640,7 @@ import { notify } from "@/lib/notify";
 import {
   type QualityExecution,
   QualityExecutionState,
+  QualityFrequencyTier,
   type QualityRule,
   QualityRuleSchema,
   QualityRuleState,
@@ -644,6 +664,8 @@ import {
   qualityExecutionStateVariant,
   qualityExecutionTriggerKey,
   qualityFilterOperatorKey,
+  qualityFrequencyTierKey,
+  qualityFrequencyTierVariant,
   qualityRuleStateKey,
   qualityRuleStateVariant,
   qualityRuleTypeKey,

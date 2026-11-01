@@ -10,6 +10,7 @@ import {
   QualityExecutionState,
   QualityExecutionTrigger,
   QualityFilterOperator,
+  QualityFrequencyTier,
   QualityIssueStatus,
   type QualityObservedKind,
   QualityResolutionReason,
@@ -267,6 +268,62 @@ export function qualityRuleStateVariant(
       return "warning";
     case QualityRuleState.ARCHIVED:
       return "neutral";
+    default:
+      return "secondary";
+  }
+}
+
+// ---- run cadence ----
+
+/** One option of the run-cadence select: the tier and the key it renders as. */
+export interface QualityFrequencyTierOption {
+  value: QualityFrequencyTier;
+  labelKey: string;
+}
+
+/**
+ * The tiers a check can run at, in catalogue order. The keys are written as
+ * literals so the i18n checker can trace them, and the select translates
+ * `labelKey`; a check's tier bounds scheduled runs only.
+ */
+export const QUALITY_FREQUENCY_TIER_OPTIONS: QualityFrequencyTierOption[] = [
+  {
+    value: QualityFrequencyTier.UNSPECIFIED,
+    labelKey: "dataQuality.frequencyTier.followTarget",
+  },
+  {
+    value: QualityFrequencyTier.HOURLY,
+    labelKey: "dataQuality.frequencyTier.hourly",
+  },
+  {
+    value: QualityFrequencyTier.DAILY,
+    labelKey: "dataQuality.frequencyTier.daily",
+  },
+  {
+    value: QualityFrequencyTier.WEEKLY,
+    labelKey: "dataQuality.frequencyTier.weekly",
+  },
+];
+
+/** The label key for a check's run cadence; UNSPECIFIED follows the target. */
+export function qualityFrequencyTierKey(tier: QualityFrequencyTier): string {
+  return (
+    QUALITY_FREQUENCY_TIER_OPTIONS.find((option) => option.value === tier)
+      ?.labelKey ?? "dataQuality.frequencyTier.followTarget"
+  );
+}
+
+/** The badge variant for a check's run cadence. */
+export function qualityFrequencyTierVariant(
+  tier: QualityFrequencyTier
+): QualityBadgeVariant {
+  switch (tier) {
+    case QualityFrequencyTier.HOURLY:
+      return "info";
+    case QualityFrequencyTier.DAILY:
+      return "secondary";
+    case QualityFrequencyTier.WEEKLY:
+      return "outline";
     default:
       return "secondary";
   }

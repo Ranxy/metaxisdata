@@ -11,6 +11,7 @@ import {
   QualityDimension,
   QualityEmptyBehavior,
   QualityFilterOperator,
+  QualityFrequencyTier,
   type QualityRule,
   QualityRuleConfigSchema,
   QualityRuleSchema,
@@ -44,6 +45,7 @@ import {
   invalidNumber,
   isOnEmptyRelevant,
   isThresholdMetricType,
+  isValidCronExpression,
   MAX_ACCEPTED_VALUES,
   MAX_CEL_COLUMNS,
   MAX_CEL_EXPRESSION_BYTES,
@@ -668,6 +670,35 @@ describe("target schedule helpers", () => {
       1
     );
   });
+
+  it("accepts only a well-shaped five-field cron expression", () => {
+    expect(isValidCronExpression("0 2 * * *")).toBe(true);
+    expect(isValidCronExpression("*/30 9-17 * * 1-5")).toBe(true);
+    expect(isValidCronExpression("0 2 * * MON")).toBe(true);
+    // The shape check is deliberately shallow: the server parses the expression.
+    expect(isValidCronExpression("  0 2 * * *  ")).toBe(true);
+    expect(isValidCronExpression("0 2 * *")).toBe(false);
+    expect(isValidCronExpression("0 2 * * * *")).toBe(false);
+    expect(isValidCronExpression("0 2 * * @daily")).toBe(false);
+    expect(isValidCronExpression("0 2 * * 1; DROP TABLE orders")).toBe(false);
+    expect(isValidCronExpression("")).toBe(false);
+  });
+});
+
+describe("run cadence", () => {
+  it("starts a new rule on the target's own schedule", () => {
+    expect(emptyRuleForm().frequencyTier).toBe(
+      QualityFrequencyTier.UNSPECIFIED
+    );
+  });
+
+  it("round-trips the tier through the rule", () => {
+    const form = validForm(QualityRuleType.ROW_COUNT);
+    form.frequencyTier = QualityFrequencyTier.DAILY;
+    const rule = formToRule(form, { target: TARGET });
+    expect(rule.frequencyTier).toBe(QualityFrequencyTier.DAILY);
+    expect(ruleToForm(rule).frequencyTier).toBe(QualityFrequencyTier.DAILY);
+  });
 });
 
 describe("update mask", () => {
@@ -761,6 +792,16 @@ describe("update mask", () => {
         ];
       })
     ).toEqual(["config"]);
+  });
+
+  // The cadence is scheduling metadata: it travels under its own path and never
+  // as a config change, so the server does not append a rule revision for it.
+  it("names a changed run cadence as frequency_tier alone", () => {
+    expect(
+      changed((form) => {
+        form.frequencyTier = QualityFrequencyTier.WEEKLY;
+      })
+    ).toEqual(["frequency_tier"]);
   });
 
   it("treats an edited schema-drift snapshot as a config change", () => {
