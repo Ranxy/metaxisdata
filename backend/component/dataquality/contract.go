@@ -52,7 +52,13 @@ func ValidateTargetFilter(ctx context.Context, s *store.Store, guid string, meta
 	if err != nil {
 		return err
 	}
-	if _, _, err := CompileFilter(dialect, resolution.Target, parsed); err != nil {
+	// A contract filter may scope a time variable like a rule filter does; the
+	// reference instant is enough to check the column types.
+	resolved, err := ResolveFilterVariables(parsed, referenceTimeVariables())
+	if err != nil {
+		return err
+	}
+	if _, _, err := CompileFilter(dialect, resolution.Target, resolved); err != nil {
 		return err
 	}
 	return nil

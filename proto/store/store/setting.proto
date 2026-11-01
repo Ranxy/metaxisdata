@@ -138,6 +138,9 @@ message DataQualitySetting {
   int32 daily_llm_analysis_limit = 10;
   int32 llm_concurrency_limit = 11;
   QualityDigestSetting weekly_digest = 12;
+  // IANA time zone the time variables of check filters and custom SQL are
+  // resolved in, for example "Asia/Shanghai". Empty means UTC.
+  string time_zone = 13;
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest

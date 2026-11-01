@@ -214,6 +214,16 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
    * @generated from field: metaxisdata.v1.QualityDigestSetting weekly_digest = 12;
    */
   weeklyDigest?: QualityDigestSetting;
+
+  /**
+   * The IANA time zone (for example "Asia/Shanghai") the time variables of
+   * check filters and custom SQL are resolved in: ${today}, ${yesterday} and
+   * the ${now} family. Empty means UTC. It does not affect a check's schedule,
+   * which belongs to the target.
+   *
+   * @generated from field: string time_zone = 13;
+   */
+  timeZone: string;
 };
 
 /**

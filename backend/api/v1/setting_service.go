@@ -204,6 +204,10 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	if value := dataQuality.GetMaxColumnsPerAnalysis(); value < 0 || value > dataquality.MaxColumnsPerAnalysisLimit {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("max_columns_per_analysis must be between 0 and %d", dataquality.MaxColumnsPerAnalysisLimit))
 	}
+	timeZone := strings.TrimSpace(dataQuality.GetTimeZone())
+	if err := dataquality.ValidateTimeZone(timeZone); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	provider := strings.TrimSpace(dataQuality.GetLlmProviderProfile())
 	if provider != "" && !validLLMProviderProfileName(provider) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", dataQuality.GetLlmProviderProfile()))
@@ -236,6 +240,7 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
 		WeeklyDigest:             digest,
+		TimeZone:                 timeZone,
 	}
 	if interval != nil {
 		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
@@ -295,6 +300,7 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
 		WeeklyDigest:             digest,
+		TimeZone:                 dataQuality.GetTimeZone(),
 	}
 }
 
@@ -318,6 +324,7 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 		LlmConcurrencyLimit:      int32(resolved.LLMConcurrencyLimit),
 		MaxColumnsPerAnalysis:    int32(resolved.MaxColumnsPerAnalysis),
 		SendSampleValuesToLlm:    resolved.SendSampleValuesToLLM,
+		TimeZone:                 resolved.TimeZone,
 		WeeklyDigest: &storepb.QualityDigestSetting{
 			Enabled:   resolved.Digest.Enabled,
 			DayOfWeek: dataquality.DigestDayOfWeek(resolved.Digest.Day),

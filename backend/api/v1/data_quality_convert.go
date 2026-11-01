@@ -735,6 +735,24 @@ func formatQueryParameter(value any) string {
 	}
 }
 
+// convertQualityRuleSamplingToV1 copies the sampling intent into its public
+// shape. A nil (or unrecognized) method means the check reads every filtered row.
+func convertQualityRuleSamplingToV1(sampling *storepb.QualityRuleSampling) *v1pb.QualityRuleSampling {
+	if sampling == nil {
+		return nil
+	}
+	switch method := sampling.GetMethod().(type) {
+	case *storepb.QualityRuleSampling_MaxRows:
+		return &v1pb.QualityRuleSampling{Method: &v1pb.QualityRuleSampling_MaxRows{MaxRows: method.MaxRows}}
+	case *storepb.QualityRuleSampling_Percent:
+		return &v1pb.QualityRuleSampling{Method: &v1pb.QualityRuleSampling_Percent{Percent: method.Percent}}
+	case nil:
+		return nil
+	default:
+		return nil
+	}
+}
+
 // convertQualityRuleConfigToV1 converts the typed rule parameters into their
 // public shape. Exactly one oneof arm is set on either side.
 func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.QualityRuleConfig {
@@ -745,6 +763,8 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 		ThresholdMetric: v1pb.QualityThresholdMetric(config.GetThresholdMetric()),
 		Filter:          convertQualityFilterToV1(config.GetFilter()),
 		OnEmpty:         v1pb.QualityEmptyBehavior(config.GetOnEmpty()),
+		TimeoutSeconds:  config.GetTimeoutSeconds(),
+		Sampling:        convertQualityRuleSamplingToV1(config.GetSampling()),
 	}
 	switch arm := config.GetConfig().(type) {
 	case *storepb.QualityRuleConfig_RowCount:
@@ -901,6 +921,24 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 	return converted
 }
 
+// convertQualityRuleSamplingFromV1 copies the sampling intent into the stored
+// shape. A nil (or unrecognized) method means the check reads every filtered row.
+func convertQualityRuleSamplingFromV1(sampling *v1pb.QualityRuleSampling) *storepb.QualityRuleSampling {
+	if sampling == nil {
+		return nil
+	}
+	switch method := sampling.GetMethod().(type) {
+	case *v1pb.QualityRuleSampling_MaxRows:
+		return &storepb.QualityRuleSampling{Method: &storepb.QualityRuleSampling_MaxRows{MaxRows: method.MaxRows}}
+	case *v1pb.QualityRuleSampling_Percent:
+		return &storepb.QualityRuleSampling{Method: &storepb.QualityRuleSampling_Percent{Percent: method.Percent}}
+	case nil:
+		return nil
+	default:
+		return nil
+	}
+}
+
 // convertQualityRuleConfigFromV1 converts the public rule parameters into the
 // stored shape.
 func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.QualityRuleConfig {
@@ -911,6 +949,8 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 		ThresholdMetric: storepb.QualityThresholdMetric(config.GetThresholdMetric()),
 		Filter:          convertQualityFilterFromV1(config.GetFilter()),
 		OnEmpty:         storepb.QualityEmptyBehavior(config.GetOnEmpty()),
+		TimeoutSeconds:  config.GetTimeoutSeconds(),
+		Sampling:        convertQualityRuleSamplingFromV1(config.GetSampling()),
 	}
 	switch arm := config.GetConfig().(type) {
 	case *v1pb.QualityRuleConfig_RowCount:

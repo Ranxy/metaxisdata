@@ -518,6 +518,25 @@ export function missingRequiredFields(
   if (!filled(form.title)) {
     missing.push({ field: "title", labelKey: "dataQuality.editor.title" });
   }
+  // The execution section is shared by every rule type: a chosen sampling method
+  // needs its amount before a dry run or save.
+  if (
+    form.config.sampleMethod === "percent" &&
+    !filled(form.config.samplePercent)
+  ) {
+    missing.push({
+      field: "samplePercent",
+      labelKey: "dataQuality.editor.samplePercent",
+    });
+  } else if (
+    form.config.sampleMethod === "maxRows" &&
+    !filled(form.config.sampleMaxRows)
+  ) {
+    missing.push({
+      field: "sampleMaxRows",
+      labelKey: "dataQuality.editor.sampleMaxRows",
+    });
+  }
 
   const schema = ruleFieldSchema(form.ruleType);
   if (!schema) {

@@ -237,7 +237,8 @@ func (s *DataQualityService) validRecommendedChecks(ctx context.Context, resolut
 		// the full rule validation resolves it against the registry.
 		if candidate.RuleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY {
 			_, err := dataquality.ValidateRule(ctx, s.store, candidate.RuleType,
-				resolution.Target.GUID, resolution.Target.MetaType, candidate.Config, nil, nil)
+				resolution.Target.GUID, resolution.Target.MetaType, candidate.Config, nil, nil,
+				dataquality.NewTimeVariables(time.Now(), nil))
 			if err != nil {
 				slog.Warn("dropping a recommended referential check whose parent does not resolve",
 					slog.String("table_guid", resolution.Target.GUID),

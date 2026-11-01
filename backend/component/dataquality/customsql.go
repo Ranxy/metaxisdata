@@ -31,6 +31,11 @@ const maxCustomSQLBytes = compileMaxCustomSQLLength
 // EXPLAIN, DDL, DML, procedure calls, SELECT ... INTO and row-locking SELECTs. The
 // statement is never rewritten here; the executor wraps it in COUNT(*) and the
 // read-only transaction decides the rest.
+//
+// A time variable is rendered as a quoted literal for the parse only. That proves
+// the statement is still one read-only query with the variable in place, and it
+// refuses a variable written inside a string literal, which would otherwise become
+// a placeholder surrounded by quotes.
 func ValidateCustomSQL(engine storepb.Engine, sql string) error {
 	statement := strings.TrimSpace(sql)
 	if statement == "" {
@@ -39,18 +44,22 @@ func ValidateCustomSQL(engine storepb.Engine, sql string) error {
 	if len(statement) > maxCustomSQLBytes {
 		return invalidConfig("custom SQL must be at most %d bytes, got %d", maxCustomSQLBytes, len(statement))
 	}
+	parseable, err := customSQLForParsing(statement)
+	if err != nil {
+		return err
+	}
 
 	switch engine {
 	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_OCEANBASE:
-		return validateMySQLCustomSQL(statement)
+		return validateMySQLCustomSQL(parseable)
 	case storepb.Engine_POSTGRES:
-		return validatePostgresCustomSQL(statement)
+		return validatePostgresCustomSQL(parseable)
 	case storepb.Engine_MSSQL:
-		return validateMSSQLCustomSQL(statement)
+		return validateMSSQLCustomSQL(parseable)
 	case storepb.Engine_STARROCKS:
-		return validateStarRocksCustomSQL(statement)
+		return validateStarRocksCustomSQL(parseable)
 	case storepb.Engine_DORIS:
-		return validateDorisCustomSQL(statement)
+		return validateDorisCustomSQL(parseable)
 	case storepb.Engine_ENGINE_UNSPECIFIED:
 		return invalidConfig("the target instance has no engine, so its custom SQL cannot be parsed")
 	default:

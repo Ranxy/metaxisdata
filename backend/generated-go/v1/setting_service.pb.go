@@ -388,7 +388,12 @@ type DataQualitySetting struct {
 	// inbox copy. A data_quality update that omits this nested message keeps the
 	// stored schedule (so a client that predates the digest cannot clear it);
 	// sending the message explicitly replaces it, including with enabled=false.
-	WeeklyDigest  *QualityDigestSetting `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
+	WeeklyDigest *QualityDigestSetting `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
+	// The IANA time zone (for example "Asia/Shanghai") the time variables of
+	// check filters and custom SQL are resolved in: ${today}, ${yesterday} and
+	// the ${now} family. Empty means UTC. It does not affect a check's schedule,
+	// which belongs to the target.
+	TimeZone      string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -505,6 +510,13 @@ func (x *DataQualitySetting) GetWeeklyDigest() *QualityDigestSetting {
 		return x.WeeklyDigest
 	}
 	return nil
+}
+
+func (x *DataQualitySetting) GetTimeZone() string {
+	if x != nil {
+		return x.TimeZone
+	}
+	return ""
 }
 
 // QualityDigestSetting is the schedule of the weekly data quality digest.
@@ -1479,7 +1491,7 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x17sso_email_identity_idps\x18\n" +
 	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
 	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"\xd1\x05\n" +
+	"R\x18allow_sso_email_identity\"\xee\x05\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1493,7 +1505,8 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x18daily_llm_analysis_limit\x18\n" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
 	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12I\n" +
-	"\rweekly_digest\x18\f \x01(\v2$.metaxisdata.v1.QualityDigestSettingR\fweeklyDigest\"\x9b\x01\n" +
+	"\rweekly_digest\x18\f \x01(\v2$.metaxisdata.v1.QualityDigestSettingR\fweeklyDigest\x12\x1b\n" +
+	"\ttime_zone\x18\r \x01(\tR\btimeZone\"\x9b\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x129\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x19.metaxisdata.v1.DayOfWeekR\tdayOfWeek\x12\x12\n" +

@@ -30,6 +30,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -93,9 +94,8 @@ const (
 	// batchExecutionTimeout bounds one batch, including every rule and every
 	// query in it. It is the design's 15-minute execution budget.
 	batchExecutionTimeout = 15 * time.Minute
-	// ruleQueryTimeout bounds one rule's aggregate query. It is fixed: the rule
-	// config has no per-rule timeout override.
-	ruleQueryTimeout = 60 * time.Second
+	// ruleQueryTimeout is the fallback for a rule whose config names no timeout.
+	ruleQueryTimeout = dataquality.DefaultCheckTimeout
 	// ruleResultMaxBytes bounds the aggregate row and the failure sample the
 	// executor keeps in memory.
 	ruleResultMaxBytes = 1 << 20
@@ -128,14 +128,18 @@ const (
 // execOptions is the execution budget for one rule. StoreSamples asks the
 // executor for the failing rows that make a FAIL result explainable; the
 // workspace settings decide whether they are kept and how many.
-func (r *Runner) execOptions() dataquality.ExecOptions {
+func (r *Runner) execOptions(config *storepb.QualityRuleConfig) dataquality.ExecOptions {
 	settings := r.currentSettings()
 	sampleLimit := settings.FailureSampleLimit
 	if sampleLimit <= 0 {
 		sampleLimit = ruleSampleLimit
 	}
+	timeout := dataquality.CheckTimeout(config)
+	if timeout <= 0 {
+		timeout = ruleQueryTimeout
+	}
 	return dataquality.ExecOptions{
-		QueryTimeout: ruleQueryTimeout,
+		QueryTimeout: timeout,
 		MaxRows:      1,
 		MaxBytes:     ruleResultMaxBytes,
 		SampleLimit:  sampleLimit,

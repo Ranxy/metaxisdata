@@ -211,6 +211,12 @@ message DataQualitySetting {
   // stored schedule (so a client that predates the digest cannot clear it);
   // sending the message explicitly replaces it, including with enabled=false.
   QualityDigestSetting weekly_digest = 12;
+
+  // The IANA time zone (for example "Asia/Shanghai") the time variables of
+  // check filters and custom SQL are resolved in: ${today}, ${yesterday} and
+  // the ${now} family. Empty means UTC. It does not affect a check's schedule,
+  // which belongs to the target.
+  string time_zone = 13;
 }
 
 // QualityDigestSetting is the schedule of the weekly data quality digest.

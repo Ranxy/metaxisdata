@@ -529,6 +529,28 @@ message QualityRuleConfig {
   QualityThresholdMetric threshold_metric = 28;
   QualityFilter filter = 29;
   QualityEmptyBehavior on_empty = 30;
+  // How long one query of this rule may run, in seconds. 0 means the server
+  // default (60); the accepted range is 1-300.
+  int32 timeout_seconds = 31;
+  // How much of the target relation the rule reads. Absent means every row the
+  // filter selects.
+  QualityRuleSampling sampling = 32;
+}
+
+// QualityRuleSampling bounds how much of the target relation one execution
+// reads. The two methods are user intents, not SQL mechanisms: which clause, or
+// which bounded derived relation, implements one is the engine dialect's
+// business, and an engine that cannot express the chosen method refuses the rule
+// at save time.
+message QualityRuleSampling {
+  oneof method {
+    // Read at most this many rows of the filtered relation. Every engine can
+    // express it; the rows are an arbitrary prefix, not a random sample.
+    int64 max_rows = 1;
+    // Read approximately this percent (1-99) of the relation with the engine's
+    // own sampling clause. Only some engines have one; the rest refuse it.
+    double percent = 2;
+  }
 }
 
 // RowCountConfig bounds the number of rows. At least one bound is required; a

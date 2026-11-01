@@ -87,6 +87,11 @@ export interface DataQualitySettingsForm {
   /** Blank/0 means the server default (50); the form caps at 200. */
   maxColumnsPerAnalysis: string;
   sendSampleValuesToLlm: boolean;
+  /**
+   * The IANA zone the time variables resolve in; blank means UTC. The server
+   * returns the resolved value, so a workspace that never chose one shows "UTC".
+   */
+  checkTimeZone: string;
   weeklyDigest: WeeklyDigestForm;
 }
 
@@ -109,6 +114,9 @@ export function settingsToForm(
     llmConcurrencyLimit: numberToInput(setting?.llmConcurrencyLimit),
     maxColumnsPerAnalysis: numberToInput(setting?.maxColumnsPerAnalysis),
     sendSampleValuesToLlm: setting?.sendSampleValuesToLlm ?? false,
+    // A blank zone is UTC; the field shows that only as a placeholder so an
+    // unconfigured workspace is not made to look explicitly configured.
+    checkTimeZone: setting?.timeZone ?? "",
     weeklyDigest: {
       enabled: digest?.enabled ?? DEFAULT_DIGEST.enabled,
       // An unset weekday is not a weekday; show the default the server resolves.
@@ -140,6 +148,7 @@ export function formToSetting(
     llmConcurrencyLimit: inputToInt(form.llmConcurrencyLimit) ?? 0,
     maxColumnsPerAnalysis: inputToInt(form.maxColumnsPerAnalysis) ?? 0,
     sendSampleValuesToLlm: form.sendSampleValuesToLlm,
+    timeZone: form.checkTimeZone.trim(),
     // The whole `data_quality` field is written on save, so the digest has to be
     // part of the message even when this page did not touch it; otherwise the
     // write would clear a schedule configured elsewhere.
@@ -244,6 +253,10 @@ export function validateSettingsForm(
     });
   }
   validateDigest(form.weeklyDigest, issue);
+  const checkTimeZone = form.checkTimeZone.trim();
+  if (checkTimeZone !== "" && !isValidTimeZone(checkTimeZone)) {
+    issue("checkTimeZoneInvalid");
+  }
   return issues;
 }
 

@@ -12,12 +12,15 @@ import { Select } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
+import { useInstanceStore } from "@/store/modules/instance";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   QualityComparison,
   QualityEmptyBehavior,
   QualityFilterOperator,
   type QualityRule,
   QualityRuleConfigSchema,
+  QualityRuleSamplingSchema,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleTrendSchema,
@@ -37,6 +40,7 @@ import {
   UniqueConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { InstanceSchema } from "@/types/proto-es/v1/instance_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import {
   qualityRuleTypeDescriptionKey,
@@ -170,7 +174,10 @@ function ruleFixture(
         schema: "public",
         object: "orders",
       }),
-      columns: [],
+      // The API records the columns the config reads on the target snapshot, so
+      // the fixture does too: a missing list would look like a target change.
+      columns:
+        ruleType === QualityRuleType.UNIQUE ? [options.column ?? "email"] : [],
     }),
     config: options.config ?? create(QualityRuleConfigSchema, { config }),
   });
@@ -236,6 +243,7 @@ async function mountComposer(
     scope?: "dataset" | "column";
     initialColumn?: string;
     columnDetails?: TargetColumnDetail[];
+    engine?: Engine;
   } = {}
 ) {
   const pinia = createPinia();
@@ -243,6 +251,16 @@ async function mountComposer(
   useAuthStore().user = create(UserSchema, {
     permissions: options.permissions ?? PERMISSIONS,
   });
+  // The editor reads the target's engine from the shared instance cache; seed it
+  // so the dialog never reaches the API for a list the workspace already has.
+  const instanceStore = useInstanceStore();
+  instanceStore.instances = [
+    create(InstanceSchema, {
+      name: "instances/inst1",
+      engine: options.engine ?? Engine.POSTGRES,
+    }),
+  ];
+  instanceStore.loaded = true;
   const wrapper = mount(TargetRuleComposer, {
     attachTo: document.body,
     props: {
@@ -650,6 +668,64 @@ describe("TargetRuleComposer", () => {
     expect(mask).toContain("owner");
     expect(mask).toContain("tags");
     expect(mask).toContain("config");
+    wrapper.unmount();
+  });
+
+  it("saves the execution settings from the details", async () => {
+    // A sampleable check type: a row count describes the whole table and has no
+    // sampling control.
+    const original = ruleFixture({ ruleType: QualityRuleType.UNIQUE });
+    mocks.updateQualityRule.mockResolvedValue(
+      ruleFixture({ ruleType: QualityRuleType.UNIQUE })
+    );
+    const wrapper = await mountComposer({ rule: original });
+    await nextTick();
+
+    setInput("#dq-config-timeout", "120");
+    wrapper
+      .findAllComponents(Select)
+      .find((candidate) => candidate.find("#dq-config-sampling").exists())
+      ?.vm.$emit("update:modelValue", "maxRows");
+    await nextTick();
+    setInput("#dq-config-sample-max-rows", "1000");
+    await flushPromises();
+
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.config?.timeoutSeconds).toBe(120);
+    expect(rule.config?.sampling?.method.case).toBe("maxRows");
+    expect(rule.config?.sampling?.method.value).toBe(1000n);
+    expect(mask).toEqual(["config"]);
+    wrapper.unmount();
+  });
+
+  it("keeps a stored percentage on a target that cannot express it", async () => {
+    // MySQL has no sampling clause; the editor shows the method selected but
+    // refuses the save until the reader picks another one.
+    const stored = ruleFixture({ ruleType: QualityRuleType.UNIQUE });
+    if (stored.config) {
+      stored.config.sampling = create(QualityRuleSamplingSchema, {
+        method: { case: "percent", value: 25 },
+      });
+    }
+    const wrapper = await mountComposer({
+      rule: stored,
+      engine: Engine.MYSQL,
+    });
+    await nextTick();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.editor.samplePercentUnsupported")
+    );
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 

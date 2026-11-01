@@ -923,6 +923,32 @@ message QualityRuleConfig {
   QualityThresholdMetric threshold_metric = 28;
   QualityFilter filter = 29;
   QualityEmptyBehavior on_empty = 30;
+  // How long one query of this check may run, in seconds. Zero means the server
+  // default (60); the accepted range is 1-300. A scheduled check still ends with
+  // its batch, so a long limit can be cut short by the batch's own deadline.
+  int32 timeout_seconds = 31;
+  // How much of the target the check reads. Absent means every row the filter
+  // selects. This is the only sampling knob: which SQL mechanism implements a
+  // method depends on the target engine.
+  QualityRuleSampling sampling = 32;
+}
+
+// QualityRuleSampling bounds how much of the target one execution reads. The two
+// methods are user intents: "read a share of the rows" and "read at most this
+// many rows". The editor only offers the methods the target engine can express,
+// and the server refuses one it cannot, so a check never silently degrades to a
+// different sample.
+message QualityRuleSampling {
+  oneof method {
+    // Read at most this many rows of the filtered relation. Every engine can
+    // express it, and the read cost is bounded; the rows are an arbitrary
+    // prefix, so the sample is not random.
+    int64 max_rows = 1;
+    // Read approximately this percent (1-99) of the relation. The engine's own
+    // sampling clause decides the exact behavior; it is approximately random,
+    // and its cost depends on the engine.
+    double percent = 2;
+  }
 }
 
 // RowCountConfig bounds the number of rows. At least one bound is required; a

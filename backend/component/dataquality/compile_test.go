@@ -126,18 +126,21 @@ func compileRuleGoldens() []compileGolden {
 			}},
 			wantColumns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 			wantKind:    QueryAggregate,
-			mysqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-				"(SELECT COUNT(*) FROM `shop`.`orders`) AS total_rows FROM " +
-				"(SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` WHERE `email` IS NOT NULL " +
-				"GROUP BY `email` HAVING COUNT(*) > 1) dq",
-			postgresSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, ` +
-				`(SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM ` +
-				`(SELECT "email", COUNT(*) AS cnt FROM "public"."orders" WHERE "email" IS NOT NULL ` +
-				`GROUP BY "email" HAVING COUNT(*) > 1) dq`,
-			mssqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-				"(SELECT COUNT(*) FROM [public].[orders]) AS total_rows FROM " +
-				"(SELECT [email], COUNT(*) AS cnt FROM [public].[orders] WHERE [email] IS NOT NULL " +
-				"GROUP BY [email] HAVING COUNT(*) > 1) dq",
+			mysqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
+				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT `email`, COUNT(*) AS cnt, " +
+				"CASE WHEN `email` IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM `shop`.`orders` " +
+				"GROUP BY `email`) dq",
+			postgresSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
+				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, ` +
+				`COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "email", COUNT(*) AS cnt, ` +
+				`CASE WHEN "email" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM "public"."orders" ` +
+				`GROUP BY "email") dq`,
+			mssqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
+				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT [email], COUNT(*) AS cnt, " +
+				"CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM [public].[orders] " +
+				"GROUP BY [email]) dq",
 		},
 		{
 			name:     "unique_combination",
@@ -147,21 +150,21 @@ func compileRuleGoldens() []compileGolden {
 			}},
 			wantColumns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 			wantKind:    QueryAggregate,
-			mysqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-				"(SELECT COUNT(*) FROM `shop`.`orders`) AS total_rows FROM " +
-				"(SELECT `amount`, `status`, COUNT(*) AS cnt FROM `shop`.`orders` " +
-				"WHERE `amount` IS NOT NULL AND `status` IS NOT NULL " +
-				"GROUP BY `amount`, `status` HAVING COUNT(*) > 1) dq",
-			postgresSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, ` +
-				`(SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM ` +
-				`(SELECT "amount", "status", COUNT(*) AS cnt FROM "public"."orders" ` +
-				`WHERE "amount" IS NOT NULL AND "status" IS NOT NULL ` +
-				`GROUP BY "amount", "status" HAVING COUNT(*) > 1) dq`,
-			mssqlSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-				"(SELECT COUNT(*) FROM [public].[orders]) AS total_rows FROM " +
-				"(SELECT [amount], [status], COUNT(*) AS cnt FROM [public].[orders] " +
-				"WHERE [amount] IS NOT NULL AND [status] IS NOT NULL " +
-				"GROUP BY [amount], [status] HAVING COUNT(*) > 1) dq",
+			mysqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
+				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT `amount`, `status`, COUNT(*) AS cnt, " +
+				"CASE WHEN `amount` IS NOT NULL AND `status` IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed " +
+				"FROM `shop`.`orders` GROUP BY `amount`, `status`) dq",
+			postgresSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
+				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, ` +
+				`COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "amount", "status", COUNT(*) AS cnt, ` +
+				`CASE WHEN "amount" IS NOT NULL AND "status" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed ` +
+				`FROM "public"."orders" GROUP BY "amount", "status") dq`,
+			mssqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
+				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT [amount], [status], COUNT(*) AS cnt, " +
+				"CASE WHEN [amount] IS NOT NULL AND [status] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed " +
+				"FROM [public].[orders] GROUP BY [amount], [status]) dq",
 		},
 		{
 			name:     "accepted_values",
@@ -1010,11 +1013,12 @@ func TestCompileAllColumnUniqueUsesEveryColumn(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, (SELECT COUNT(*) FROM "public"."orders") AS total_rows FROM (SELECT "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name", COUNT(*) AS cnt FROM "public"."orders" WHERE "id" IS NOT NULL AND "email" IS NOT NULL AND "amount" IS NOT NULL AND "created_at" IS NOT NULL AND "status" IS NOT NULL AND "qty" IS NOT NULL AND "price" IS NOT NULL AND "updated_at" IS NOT NULL AND "name" IS NOT NULL GROUP BY "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name" HAVING COUNT(*) > 1) dq`, query.SQL)
+	require.Equal(t, `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name", COUNT(*) AS cnt, CASE WHEN "id" IS NOT NULL AND "email" IS NOT NULL AND "amount" IS NOT NULL AND "created_at" IS NOT NULL AND "status" IS NOT NULL AND "qty" IS NOT NULL AND "price" IS NOT NULL AND "updated_at" IS NOT NULL AND "name" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM "public"."orders" GROUP BY "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name") dq`, query.SQL)
 }
 
-// TestCompileCountNullsKeepsNullKeys pins the count_nulls opt-in: only then does
-// the grouped input keep NULL keys.
+// TestCompileCountNullsKeepsNullKeys pins the count_nulls opt-in: only then is a
+// group with a NULL key a candidate duplicate. Without it the group is flagged so
+// the row still contributes to total_rows.
 func TestCompileCountNullsKeepsNullKeys(t *testing.T) {
 	t.Parallel()
 
@@ -1030,16 +1034,15 @@ func TestCompileCountNullsKeepsNullKeys(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotContains(t, query.SQL, "IS NOT NULL")
-	require.Equal(t, "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, "+
-		"(SELECT COUNT(*) FROM `shop`.`orders`) AS total_rows FROM "+
-		"(SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` GROUP BY `email` HAVING COUNT(*) > 1) dq", query.SQL)
+	require.Equal(t, "SELECT COALESCE(SUM(CASE WHEN cnt > 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, "+
+		"COUNT(CASE WHEN cnt > 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows "+
+		"FROM (SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` GROUP BY `email`) dq", query.SQL)
 }
 
-// TestCompileUniqueFilterPlaceholderOrder pins how a filtered unique rule binds
-// its arguments: the filter predicate appears once in the total_rows scalar
-// subquery and once inside the grouped input, so a positional dialect (?) binds
-// the values once per occurrence while numbered dialects reuse $n / @pN.
-func TestCompileUniqueFilterPlaceholderOrder(t *testing.T) {
+// TestCompileUniqueFilterArgsBindOnce pins that duplicate detection reads the
+// relation once, so the filter predicate appears once and every dialect binds its
+// arguments exactly once — the positional (?) dialect included.
+func TestCompileUniqueFilterArgsBindOnce(t *testing.T) {
 	t.Parallel()
 
 	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{
@@ -1056,30 +1059,29 @@ func TestCompileUniqueFilterPlaceholderOrder(t *testing.T) {
 	}{
 		{
 			engine: storepb.Engine_MYSQL,
-			wantSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-				"(SELECT COUNT(*) FROM `shop`.`orders` WHERE `status` = ? AND `qty` >= ?) AS total_rows FROM " +
-				"(SELECT `email`, COUNT(*) AS cnt FROM `shop`.`orders` " +
-				"WHERE `status` = ? AND `qty` >= ? AND `email` IS NOT NULL " +
-				"GROUP BY `email` HAVING COUNT(*) > 1) dq",
-			// The filter's two ?s appear twice in the text, so their values bind twice.
-			wantArgs: []any{"paid", int64(3), "paid", int64(3)},
+			wantSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
+				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT `email`, COUNT(*) AS cnt, " +
+				"CASE WHEN `email` IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM `shop`.`orders` " +
+				"WHERE `status` = ? AND `qty` >= ? GROUP BY `email`) dq",
+			wantArgs: []any{"paid", int64(3)},
 		},
 		{
 			engine: storepb.Engine_POSTGRES,
-			wantSQL: `SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, ` +
-				`(SELECT COUNT(*) FROM "public"."orders" WHERE "status" = $1 AND "qty" >= $2) AS total_rows FROM ` +
-				`(SELECT "email", COUNT(*) AS cnt FROM "public"."orders" ` +
-				`WHERE "status" = $1 AND "qty" >= $2 AND "email" IS NOT NULL ` +
-				`GROUP BY "email" HAVING COUNT(*) > 1) dq`,
+			wantSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
+				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, ` +
+				`COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "email", COUNT(*) AS cnt, ` +
+				`CASE WHEN "email" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM "public"."orders" ` +
+				`WHERE "status" = $1 AND "qty" >= $2 GROUP BY "email") dq`,
 			wantArgs: []any{"paid", int64(3)},
 		},
 		{
 			engine: storepb.Engine_MSSQL,
-			wantSQL: "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-				"(SELECT COUNT(*) FROM [public].[orders] WHERE [status] = @p1 AND [qty] >= @p2) AS total_rows FROM " +
-				"(SELECT [email], COUNT(*) AS cnt FROM [public].[orders] " +
-				"WHERE [status] = @p1 AND [qty] >= @p2 AND [email] IS NOT NULL " +
-				"GROUP BY [email] HAVING COUNT(*) > 1) dq",
+			wantSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
+				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT [email], COUNT(*) AS cnt, " +
+				"CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM [public].[orders] " +
+				"WHERE [status] = @p1 AND [qty] >= @p2 GROUP BY [email]) dq",
 			wantArgs: []any{"paid", int64(3)},
 		},
 	}

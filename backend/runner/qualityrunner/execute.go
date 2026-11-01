@@ -346,7 +346,9 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		queryer = readOnly
 	}
 
-	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, r.execOptions())
+	options := r.execOptions(snapshot.Config)
+	options.Variables = dataquality.NewTimeVariables(startedAt, r.currentSettings().TimeZoneLocation())
+	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, options)
 	if err != nil {
 		// A stored rule this build cannot compile (an engine whose dialect was
 		// removed, or a definition the current metadata no longer satisfies) is an

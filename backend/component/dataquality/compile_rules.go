@@ -1,7 +1,7 @@
 package dataquality
 
 import (
-	"slices"
+	"strconv"
 	"strings"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -75,11 +75,7 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateNullPercent(config); err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -106,7 +102,7 @@ func compileNullPercent(input CompileInput) (CompiledQuery, error) {
 		}
 		condition = qualified + " IS NULL OR " + qualified + " IN (" + strings.Join(placeholders, ", ") + ")"
 	}
-	return compileCountSelect(table, where, condition, args.values()), nil
+	return compileCountSelect(relation, where, condition, args.values()), nil
 }
 
 // compileUnique counts the rows that duplicate a non-NULL value. The derived table
@@ -173,46 +169,50 @@ func compileUniqueCombination(input CompileInput) (CompiledQuery, error) {
 	return compileUniqueQuery(input, columns, config.GetCountNulls())
 }
 
-// compileUniqueQuery renders the grouped duplicate-count query unique and
-// unique_combination share. It also reports the filtered table's row count so a
-// PERCENT threshold has the same denominator the other count rules use.
+// compileUniqueQuery renders the single-pass duplicate-count query unique and
+// unique_combination share. One scan produces everything the verdict needs: the
+// duplicate rows, the duplicated groups and the total row count a PERCENT
+// threshold divides by. A rule that does not count NULLs still keeps the
+// NULL-key rows in that total — they form a group flagged by the derived `keyed`
+// column and are simply not counted as duplicates — so the relation is read once
+// instead of once for the total and once for the groups.
+//
+// The single relation reference is not just an optimization: it is what lets a
+// sampled rule judge the duplicates and the denominator from the same sampled
+// rows. Two references would sample independently, and a positional dialect
+// would also bind the filter arguments twice.
 func compileUniqueQuery(input CompileInput, columns []string, countNulls bool) (CompiledQuery, error) {
 	quoted := make([]string, 0, len(columns))
 	for _, column := range columns {
 		quoted = append(quoted, qualify(input.Dialect, column))
 	}
-	table, err := compileTable(input.Dialect, input.Target)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	innerWhere := where
-	if !countNulls {
-		// A duplicate of NULL is not a duplicate in SQL uniqueness, so the grouped
-		// input drops NULL keys unless the rule opts in.
-		for _, column := range quoted {
-			innerWhere = compileAppendWhere(innerWhere, column+" IS NOT NULL")
-		}
 	}
 	selectList := strings.Join(quoted, ", ")
-	// The filter predicate appears twice: once in the total_rows scalar subquery and
-	// once inside the grouped input. Numbered dialects can reuse the same $n/@pN
-	// for both occurrences, but a positional dialect binds one ? per occurrence, so
-	// its arguments are passed once per appearance in the SQL text.
-	query := "SELECT COALESCE(SUM(cnt - 1), 0) AS failed_rows, COUNT(*) AS duplicate_groups, " +
-		"(SELECT COUNT(*) FROM " + table + where + ") AS total_rows FROM (" +
-		"SELECT " + selectList + ", COUNT(*) AS cnt FROM " + table + innerWhere +
-		" GROUP BY " + selectList + " HAVING COUNT(*) > 1) dq"
-	args := filterArgs
-	if compilePositional(input.Dialect) && len(filterArgs) > 0 {
-		args = slices.Concat(filterArgs, filterArgs)
+	innerList := selectList + ", COUNT(*) AS cnt"
+	failure := "cnt > 1"
+	if !countNulls {
+		// A duplicate of NULL is not a duplicate in SQL uniqueness, so a group whose
+		// key holds a NULL is flagged and only fully-keyed groups count. The flag's
+		// alias must not collide with a real column of the target, which would make
+		// the outer reference ambiguous (and would also break all_columns).
+		keyedAlias := uniqueKeyedAlias(input.Target)
+		keyed := make([]string, 0, len(quoted))
+		for _, column := range quoted {
+			keyed = append(keyed, column+" IS NOT NULL")
+		}
+		innerList += ", CASE WHEN " + strings.Join(keyed, " AND ") + " THEN 1 ELSE 0 END AS " + keyedAlias
+		failure = "cnt > 1 AND " + keyedAlias + " = 1"
 	}
+	query := "SELECT COALESCE(SUM(CASE WHEN " + failure + " THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, " +
+		"COUNT(CASE WHEN " + failure + " THEN 1 END) AS duplicate_groups, " +
+		"COALESCE(SUM(cnt), 0) AS total_rows FROM (" +
+		"SELECT " + innerList + " FROM " + relation + where + " GROUP BY " + selectList + ") dq"
 	return CompiledQuery{
 		SQL:     query,
-		Args:    args,
+		Args:    filterArgs,
 		Kind:    QueryAggregate,
 		Columns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 	}, nil
@@ -241,11 +241,7 @@ func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -264,7 +260,7 @@ func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	if !config.GetAllowNull() {
 		condition = qualified + " IS NULL OR " + condition
 	}
-	return compileCountSelect(table, where, condition, args.values()), nil
+	return compileCountSelect(relation, where, condition, args.values()), nil
 }
 
 // compileRange counts rows outside the configured interval. inclusive decides
@@ -307,11 +303,7 @@ func compileRange(input CompileInput) (CompiledQuery, error) {
 			}
 		}
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -333,7 +325,7 @@ func compileRange(input CompileInput) (CompiledQuery, error) {
 		}
 		conditions = append(conditions, qualified+" "+operator+" "+args.add(maxValue))
 	}
-	return compileCountSelect(table, where, strings.Join(conditions, " OR "), args.values()), nil
+	return compileCountSelect(relation, where, strings.Join(conditions, " OR "), args.values()), nil
 }
 
 // compileRegex counts rows that do not match the pattern. A NULL does not match,
@@ -358,11 +350,7 @@ func compileRegex(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -371,7 +359,7 @@ func compileRegex(input CompileInput) (CompiledQuery, error) {
 	placeholder := args.add(pattern)
 	qualified := qualify(input.Dialect, column.Name)
 	condition := qualified + " IS NULL OR " + qualified + " " + operator + " " + placeholder
-	return compileCountSelect(table, where, condition, args.values()), nil
+	return compileCountSelect(relation, where, condition, args.values()), nil
 }
 
 // compileStringLength counts rows whose text length is outside the configured
@@ -401,11 +389,7 @@ func compileStringLength(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -419,7 +403,7 @@ func compileStringLength(input CompileInput) (CompiledQuery, error) {
 	if config.MaxLen != nil {
 		conditions = append(conditions, length+" > "+args.add(*config.MaxLen))
 	}
-	return compileCountSelect(table, where, strings.Join(conditions, " OR "), args.values()), nil
+	return compileCountSelect(relation, where, strings.Join(conditions, " OR "), args.values()), nil
 }
 
 // compileReferentialIntegrity counts child rows whose foreign-key value has no
@@ -505,11 +489,7 @@ func compileCrossColumn(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -529,7 +509,7 @@ func compileCrossColumn(input CompileInput) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	return compileCountSelect(table, where, condition, args.values()), nil
+	return compileCountSelect(relation, where, condition, args.values()), nil
 }
 
 // compileFreshness measures how old the newest timestamp is. The lag is computed
@@ -610,8 +590,14 @@ func compileCustomSQL(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
+	// A time variable renders as a generated ISO literal, so the statement the save
+	// path parsed is the statement that runs.
+	rendered, err := RenderCustomSQLVariables(userSQL, input.Variables)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
 	return CompiledQuery{
-		SQL:     "SELECT COUNT(*) AS failed_rows FROM (" + userSQL + ") dq",
+		SQL:     "SELECT COUNT(*) AS failed_rows FROM (" + rendered + ") dq",
 		Kind:    QueryAggregate,
 		Columns: []string{"failed_rows"},
 	}, nil
@@ -653,11 +639,7 @@ func compileGroupCheck(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -673,7 +655,7 @@ func compileGroupCheck(input CompileInput) (CompiledQuery, error) {
 	groupList := qualifyColumns(input.Dialect, columns)
 	query := "SELECT COUNT(*) AS total_groups, SUM(CASE WHEN " + strings.Join(conditions, " OR ") +
 		" THEN 1 ELSE 0 END) AS failed_groups FROM (SELECT " + groupList +
-		", COUNT(*) AS cnt FROM " + table + where + " GROUP BY " + groupList + ") dq"
+		", COUNT(*) AS cnt FROM " + relation + where + " GROUP BY " + groupList + ") dq"
 	return CompiledQuery{
 		SQL:     query,
 		Args:    args.values(),
@@ -701,11 +683,7 @@ func compileAggregate(input CompileInput) (CompiledQuery, error) {
 		return CompiledQuery{}, invalidConfig("the aggregate config is missing")
 	}
 	function := config.GetFunction()
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -736,7 +714,7 @@ func compileAggregate(input CompileInput) (CompiledQuery, error) {
 		return CompiledQuery{}, err
 	}
 	return CompiledQuery{
-		SQL:     "SELECT COUNT(*) AS total_rows, " + expression + " AS observed FROM " + table + where,
+		SQL:     "SELECT COUNT(*) AS total_rows, " + expression + " AS observed FROM " + relation + where,
 		Args:    args.values(),
 		Kind:    QueryAggregate,
 		Columns: []string{"total_rows", "observed"},
@@ -812,4 +790,31 @@ func crossTableExpression(dialect Dialect, function storepb.QualityAggregateFunc
 		column = resolved.Name
 	}
 	return aggregateExpression(dialect, function, qualify(dialect, column), "")
+}
+
+// uniqueKeyedAlias picks the alias of the derived "this group has no NULL key"
+// flag. A target column may be spelled like the obvious alias, and all_columns
+// puts every column beside it in the same derived relation, so the name is chosen
+// outside the target's column list (case-insensitively, because an unquoted
+// PostgreSQL identifier folds).
+func uniqueKeyedAlias(target ResolvedTarget) string {
+	const base = "__dq_keyed"
+	alias := base
+	for suffix := 2; ; suffix++ {
+		if !targetHasColumnFold(target, alias) {
+			return alias
+		}
+		alias = base + "_" + strconv.Itoa(suffix)
+	}
+}
+
+// targetHasColumnFold reports whether any column of the target matches name
+// ignoring case.
+func targetHasColumnFold(target ResolvedTarget, name string) bool {
+	for _, column := range target.Columns {
+		if strings.EqualFold(column.Name, name) {
+			return true
+		}
+	}
+	return false
 }

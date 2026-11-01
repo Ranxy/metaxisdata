@@ -18,6 +18,9 @@ type CompileInput struct {
 	// to (the aggregate, the CEL sample and the failed-row sample) sees the same
 	// rows. The empty filter adds nothing.
 	ContractFilter Filter
+	// Variables is the instant and zone the rule's time variables resolve in. The
+	// zero value is fine for a rule that uses none.
+	Variables TimeVariables
 }
 
 // compilerFunc turns a validated rule into the read-only statement that observes
@@ -45,6 +48,13 @@ func Compile(input CompileInput) (CompiledQuery, error) {
 	if arm != input.Type {
 		return CompiledQuery{}, invalidConfig("the config is for %s, not for the rule's %s", arm, input.Type)
 	}
+	// Sampling is re-checked here even though the save path already refused an
+	// impossible one: a rule stored before this check existed, or with a target
+	// that moved to another engine, must not compile into a statement that silently
+	// ignores its sampling.
+	if err := validateSampling(input.Target, input.Type, input.Config.GetSampling()); err != nil {
+		return CompiledQuery{}, err
+	}
 	return spec.Compiler(input)
 }
 
@@ -54,7 +64,11 @@ func Compile(input CompileInput) (CompiledQuery, error) {
 // sequence; compiling them separately and joining the SQL would restart the
 // second filter's numbering at 1.
 func whereClause(input CompileInput) (string, []any, error) {
-	clause, args, err := CompileFilter(input.Dialect, input.Target, mergeFilters(input.Filter, input.ContractFilter))
+	filter, err := ResolveFilterVariables(mergeFilters(input.Filter, input.ContractFilter), input.Variables)
+	if err != nil {
+		return "", nil, err
+	}
+	clause, args, err := CompileFilter(input.Dialect, input.Target, filter)
 	if err != nil {
 		return "", nil, err
 	}
@@ -81,4 +95,41 @@ func requireColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
 // qualify renders one column of the target, quoted for the dialect.
 func qualify(dialect Dialect, column string) string {
 	return dialect.QuoteIdentifier(column)
+}
+
+// scanRelation renders what a rule's statement reads from: the target relation with
+// the rule's and the contract's filters applied, plus the sampling when the config
+// names one.
+//
+// The second value is the WHERE clause still to append outside the relation. A row
+// limit keeps the filter inside the derived relation, because it must bound the
+// filtered rows; a table-sample clause leaves the filter outside, because the
+// engine's sampling already limited the rows.
+func scanRelation(input CompileInput) (string, string, []any, error) {
+	table, err := compileTable(input.Dialect, input.Target)
+	if err != nil {
+		return "", "", nil, err
+	}
+	where, args, err := whereClause(input)
+	if err != nil {
+		return "", "", nil, err
+	}
+	switch method := input.Config.GetSampling().GetMethod().(type) {
+	case nil:
+		return table, where, args, nil
+	case *storepb.QualityRuleSampling_MaxRows:
+		relation, err := input.Dialect.BoundedRelation(table, where, method.MaxRows)
+		if err != nil {
+			return "", "", nil, invalidConfig("%v", err)
+		}
+		return relation, "", args, nil
+	case *storepb.QualityRuleSampling_Percent:
+		relation, err := input.Dialect.SampledRelation(table, method.Percent)
+		if err != nil {
+			return "", "", nil, invalidConfig("%v", err)
+		}
+		return relation, where, args, nil
+	default:
+		return "", "", nil, invalidConfig("unknown sampling method %T", method)
+	}
 }

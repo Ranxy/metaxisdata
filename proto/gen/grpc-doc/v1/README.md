@@ -315,6 +315,7 @@
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
     - [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory)
+    - [QualityRuleSampling](#metaxisdata-v1-QualityRuleSampling)
     - [QualityRuleTrend](#metaxisdata-v1-QualityRuleTrend)
     - [QualityRuleTrendPoint](#metaxisdata-v1-QualityRuleTrendPoint)
     - [QualityRun](#metaxisdata-v1-QualityRun)
@@ -5960,6 +5961,8 @@ behavior and the count/percent metric are shared by every type.
 | threshold_metric | [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric) |  |  |
 | filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior) |  |  |
+| timeout_seconds | [int32](#int32) |  | How long one query of this check may run, in seconds. Zero means the server default (60); the accepted range is 1-300. A scheduled check still ends with its batch, so a long limit can be cut short by the batch&#39;s own deadline. |
+| sampling | [QualityRuleSampling](#metaxisdata-v1-QualityRuleSampling) |  | How much of the target the check reads. Absent means every row the filter selects. This is the only sampling knob: which SQL mechanism implements a method depends on the target engine. |
 
 
 
@@ -5996,6 +5999,26 @@ QualityRuleHistory is one rule&#39;s recent completed executions.
 | ----- | ---- | ----- | ----------- |
 | rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
 | executions | [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary) | repeated | Newest first. At most 20 are returned. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityRuleSampling"></a>
+
+### QualityRuleSampling
+QualityRuleSampling bounds how much of the target one execution reads. The two
+methods are user intents: &#34;read a share of the rows&#34; and &#34;read at most this
+many rows&#34;. The editor only offers the methods the target engine can express,
+and the server refuses one it cannot, so a check never silently degrades to a
+different sample.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| max_rows | [int64](#int64) |  | Read at most this many rows of the filtered relation. Every engine can express it, and the read cost is bounded; the rows are an arbitrary prefix, so the sample is not random. |
+| percent | [double](#double) |  | Read approximately this percent (1-99) of the relation. The engine&#39;s own sampling clause decides the exact behavior; it is approximately random, and its cost depends on the engine. |
 
 
 
@@ -10864,6 +10887,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | daily_llm_analysis_limit | [int32](#int32) |  | The workspace&#39;s daily L1&#43;L2 LLM analysis ceiling (rule drafts and failure explanations). Zero means the server default (10000); capped at 1000000. |
 | llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
 | weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
+| time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
 
 
 

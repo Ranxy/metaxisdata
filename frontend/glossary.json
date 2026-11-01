@@ -743,6 +743,25 @@
       }
     },
     {
+      "id": "time-zone",
+      "category": "Platform",
+      "definition": "The IANA zone a stored clock time is interpreted in; empty means UTC.",
+      "translations": {
+        "en-US": "time zone",
+        "zh-CN": "时区"
+      },
+      "scope": [
+        "dataQuality.",
+        "dataQualitySettings.",
+        "notificationSettings."
+      ],
+      "avoid": {
+        "en-US": [
+          "/\\btimezone\\b/i"
+        ]
+      }
+    },
+    {
       "id": "sync",
       "category": "Platform",
       "definition": "Pulling a source's schema into the registry.",
@@ -1286,6 +1305,51 @@
           "抽样"
         ]
       }
+    },
+    {
+      "id": "sampling",
+      "category": "Data Quality",
+      "definition": "Reading part of a target in one execution — a share of the rows or a bounded row count — instead of every row the filter selects.",
+      "translations": {
+        "en-US": "sampling",
+        "zh-CN": "采样"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "抽样"
+        ]
+      }
+    },
+    {
+      "id": "time-variable",
+      "category": "Data Quality",
+      "definition": "A placeholder such as ${today} in a filter value or custom SQL that the server resolves per execution in the workspace's check time zone; the browser never resolves it.",
+      "translations": {
+        "en-US": "time variable",
+        "zh-CN": "时间变量"
+      },
+      "scope": [
+        "dataQuality.",
+        "dataQualitySettings."
+      ],
+      "when": {
+        "en-US": "/\\btime variables?\\b/i"
+      }
+    },
+    {
+      "id": "timeout",
+      "category": "Data Quality",
+      "definition": "How long one check's query may run, in seconds; zero or blank means the server default.",
+      "translations": {
+        "en-US": "timeout",
+        "zh-CN": "超时"
+      },
+      "scope": [
+        "dataQuality."
+      ]
     },
     {
       "id": "suggestion",

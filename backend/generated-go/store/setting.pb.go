@@ -588,8 +588,11 @@ type DataQualitySetting struct {
 	DailyLlmAnalysisLimit    int32                  `protobuf:"varint,10,opt,name=daily_llm_analysis_limit,json=dailyLlmAnalysisLimit,proto3" json:"daily_llm_analysis_limit,omitempty"`
 	LlmConcurrencyLimit      int32                  `protobuf:"varint,11,opt,name=llm_concurrency_limit,json=llmConcurrencyLimit,proto3" json:"llm_concurrency_limit,omitempty"`
 	WeeklyDigest             *QualityDigestSetting  `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// IANA time zone the time variables of check filters and custom SQL are
+	// resolved in, for example "Asia/Shanghai". Empty means UTC.
+	TimeZone      string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -704,6 +707,13 @@ func (x *DataQualitySetting) GetWeeklyDigest() *QualityDigestSetting {
 		return x.WeeklyDigest
 	}
 	return nil
+}
+
+func (x *DataQualitySetting) GetTimeZone() string {
+	if x != nil {
+		return x.TimeZone
+	}
+	return ""
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest
@@ -1229,7 +1239,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd4\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf1\x05\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1243,7 +1253,8 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x18daily_llm_analysis_limit\x18\n" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
 	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12L\n" +
-	"\rweekly_digest\x18\f \x01(\v2'.metaxisdata.store.QualityDigestSettingR\fweeklyDigest\"\x9e\x01\n" +
+	"\rweekly_digest\x18\f \x01(\v2'.metaxisdata.store.QualityDigestSettingR\fweeklyDigest\x12\x1b\n" +
+	"\ttime_zone\x18\r \x01(\tR\btimeZone\"\x9e\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12<\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x1c.metaxisdata.store.DayOfWeekR\tdayOfWeek\x12\x12\n" +

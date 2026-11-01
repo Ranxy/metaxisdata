@@ -672,7 +672,12 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType sto
 	} else if contract != nil {
 		contractFilter = contract.Settings.GetFilter()
 	}
-	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil, contractFilter)
+	settings, err := dataquality.LoadSettings(ctx, s.store)
+	if err != nil {
+		return nil, filled, err
+	}
+	variables := dataquality.NewTimeVariables(time.Now(), settings.TimeZoneLocation())
+	validated, err := dataquality.ValidateRule(ctx, s.store, ruleType, guid, metaType, config, nil, contractFilter, variables)
 	if err != nil {
 		return nil, filled, err
 	}

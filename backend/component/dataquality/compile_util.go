@@ -157,10 +157,10 @@ func groupCheckBounds(config *storepb.GroupCheckConfig) (minValue, maxValue int6
 // compileCountSelect renders the two-column shape shared by the column-level
 // count rules: the filtered row total and the rows the failure condition selects.
 // The evaluator reads both columns by name, so they are a contract.
-func compileCountSelect(table, where, failureCondition string, args []any) CompiledQuery {
+func compileCountSelect(relation, where, failureCondition string, args []any) CompiledQuery {
 	return CompiledQuery{
 		SQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN " + failureCondition +
-			" THEN 1 ELSE 0 END) AS failed_rows FROM " + table + where,
+			" THEN 1 ELSE 0 END) AS failed_rows FROM " + relation + where,
 		Args:    args,
 		Kind:    QueryAggregate,
 		Columns: []string{"total_rows", "failed_rows"},

@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   CelExpressionConfigSchema,
   FreshnessConfigSchema,
@@ -28,6 +29,7 @@ import {
   buildFilter,
   buildRuleConfig,
   buildTarget,
+  canSampleRuleType,
   columnsForConfig,
   computeUpdateMask,
   defaultOnEmptyForNewRule,
@@ -49,12 +51,21 @@ import {
   MAX_FILTER_CLAUSES,
   MAX_FILTER_VALUES,
   MAX_NULL_VALUES,
+  MAX_SAMPLE_MAX_ROWS,
+  MAX_SAMPLE_PERCENT,
+  MAX_TIMEOUT_SECONDS,
+  MIN_SAMPLE_MAX_ROWS,
+  MIN_SAMPLE_PERCENT,
+  MIN_TIMEOUT_SECONDS,
   ON_EMPTY_IRRELEVANT_RULE_TYPES,
   parseValueList,
+  percentSamplingSupported,
   RULE_TYPE_GROUPS,
   RULE_TYPES_BY_META_TYPE,
   resolveExpectedColumnNullability,
   ruleToForm,
+  SAMPLEABLE_RULE_TYPES,
+  samplingMethodsFor,
   scheduleMinutes,
   scheduleToDuration,
   suggestedDimension,
@@ -1554,5 +1565,315 @@ describe("threshold suggestions", () => {
     expect(applied).not.toBe(form);
     expect(form.config.failThreshold).toBe("1");
     expect(applied.config.failThreshold).toBe("5");
+  });
+});
+
+describe("execution settings", () => {
+  it("offers a percentage only where the engine and target can express it", () => {
+    for (const engine of [Engine.POSTGRES, Engine.MSSQL]) {
+      expect(
+        samplingMethodsFor(engine, MetaType.TABLE),
+        String(engine)
+      ).toEqual(["none", "percent", "maxRows"]);
+      expect(percentSamplingSupported(engine, MetaType.TABLE)).toBe(true);
+    }
+    for (const engine of [
+      Engine.MYSQL,
+      Engine.TIDB,
+      Engine.MARIADB,
+      Engine.OCEANBASE,
+      Engine.STARROCKS,
+      Engine.DORIS,
+      Engine.ENGINE_UNSPECIFIED,
+    ]) {
+      expect(
+        samplingMethodsFor(engine, MetaType.TABLE),
+        String(engine)
+      ).toEqual(["none", "maxRows"]);
+      expect(percentSamplingSupported(engine, MetaType.TABLE)).toBe(false);
+    }
+    for (const metaType of [
+      MetaType.VIEW,
+      MetaType.MATERIALIZED_VIEW,
+      MetaType.EXTERNAL_TABLE,
+      MetaType.COLUMN,
+    ]) {
+      expect(
+        samplingMethodsFor(Engine.POSTGRES, metaType),
+        String(metaType)
+      ).toEqual(["none", "maxRows"]);
+      expect(percentSamplingSupported(Engine.POSTGRES, metaType)).toBe(false);
+    }
+    // An engine or type that has not loaded yet is not a refusal: a stored
+    // method must not disappear because the instance cache is still empty.
+    expect(samplingMethodsFor(undefined, undefined)).toEqual([
+      "none",
+      "percent",
+      "maxRows",
+    ]);
+    expect(percentSamplingSupported(undefined, MetaType.TABLE)).toBe(true);
+    expect(percentSamplingSupported(Engine.POSTGRES, undefined)).toBe(true);
+  });
+
+  it("converts a timeout and a row limit to the config message", () => {
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.config.timeoutSeconds = "120";
+    form.config.sampleMethod = "maxRows";
+    form.config.sampleMaxRows = "1000";
+
+    const rule = formToRule(form, { target: TARGET });
+    expect(rule.config?.timeoutSeconds).toBe(120);
+    expect(rule.config?.sampling?.method.case).toBe("maxRows");
+    expect(rule.config?.sampling?.method.value).toBe(1000n);
+
+    const back = ruleToForm(rule);
+    expect(back.config.timeoutSeconds).toBe("120");
+    expect(back.config.sampleMethod).toBe("maxRows");
+    expect(back.config.sampleMaxRows).toBe("1000");
+    expect(back.config.samplePercent).toBe("");
+  });
+
+  it("converts a percentage to the config message", () => {
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.config.sampleMethod = "percent";
+    form.config.samplePercent = "12.5";
+
+    const rule = formToRule(form, { target: TARGET });
+    expect(rule.config?.timeoutSeconds).toBe(0);
+    expect(rule.config?.sampling?.method.case).toBe("percent");
+    expect(rule.config?.sampling?.method.value).toBe(12.5);
+
+    const back = ruleToForm(rule);
+    expect(back.config.sampleMethod).toBe("percent");
+    expect(back.config.samplePercent).toBe("12.5");
+    expect(back.config.sampleMaxRows).toBe("");
+  });
+
+  it("keeps no sampling and the default timeout out of the message", () => {
+    const rule = formToRule(validForm(QualityRuleType.UNIQUE), {
+      target: TARGET,
+    });
+    expect(rule.config?.timeoutSeconds).toBe(0);
+    expect(rule.config?.sampling).toBeUndefined();
+
+    const back = ruleToForm(rule);
+    expect(back.config.sampleMethod).toBe("none");
+    expect(back.config.timeoutSeconds).toBe("");
+  });
+
+  it("builds no sample for a chosen method with no usable amount", () => {
+    const percent = validForm(QualityRuleType.UNIQUE);
+    percent.config.sampleMethod = "percent";
+    expect(
+      formToRule(percent, { target: TARGET }).config?.sampling
+    ).toBeUndefined();
+    const maxRows = validForm(QualityRuleType.UNIQUE);
+    maxRows.config.sampleMethod = "maxRows";
+    expect(
+      formToRule(maxRows, { target: TARGET }).config?.sampling
+    ).toBeUndefined();
+  });
+
+  it("never turns a stored percentage into a row limit", () => {
+    // Even on a target the server will refuse, the client sends the intent it
+    // was given; the verdict about availability belongs to the save.
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.config.sampleMethod = "percent";
+    form.config.samplePercent = "25";
+    const rule = formToRule(form, { target: TARGET });
+    expect(rule.config?.sampling?.method.case).toBe("percent");
+    expect(rule.config?.sampling?.method.value).toBe(25);
+  });
+
+  it("notices a timeout, a method or an amount change in the update mask", () => {
+    function snapshot(): {
+      form: RuleFormState;
+      target: TargetSelection | undefined;
+    } {
+      return { form: validForm(QualityRuleType.UNIQUE), target: { ...TARGET } };
+    }
+    function changed(mutate: (form: RuleFormState) => void) {
+      const next = snapshot();
+      mutate(next.form);
+      return computeUpdateMask(snapshot(), next);
+    }
+
+    expect(
+      changed((form) => {
+        form.config.timeoutSeconds = String(MIN_TIMEOUT_SECONDS);
+      })
+    ).toEqual(["config"]);
+    expect(
+      changed((form) => {
+        form.config.sampleMethod = "maxRows";
+        form.config.sampleMaxRows = "10";
+      })
+    ).toEqual(["config"]);
+    expect(
+      changed((form) => {
+        form.config.sampleMethod = "percent";
+        form.config.samplePercent = "10";
+      })
+    ).toEqual(["config"]);
+    // Whitespace around a value is not a change; a new amount is.
+    expect(
+      changed((form) => {
+        form.config.timeoutSeconds = "  ";
+      })
+    ).toEqual([]);
+    const base = snapshot();
+    base.form.config.sampleMethod = "maxRows";
+    base.form.config.sampleMaxRows = "10";
+    const next = {
+      form: validForm(QualityRuleType.UNIQUE),
+      target: { ...TARGET } as TargetSelection | undefined,
+    };
+    next.form.config.sampleMethod = "maxRows";
+    next.form.config.sampleMaxRows = "20";
+    expect(computeUpdateMask(base, next)).toEqual(["config"]);
+  });
+
+  it("keeps the timeout on 1-300 or blank", () => {
+    const cases: Array<[string, boolean]> = [
+      ["", false],
+      [String(MIN_TIMEOUT_SECONDS), false],
+      [String(MAX_TIMEOUT_SECONDS), false],
+      ["0", true],
+      [String(MAX_TIMEOUT_SECONDS + 1), true],
+      ["1.5", true],
+      ["soon", true],
+    ];
+    for (const [value, invalid] of cases) {
+      const form = validForm(QualityRuleType.UNIQUE);
+      form.config.timeoutSeconds = value;
+      const keys = validateRuleForm(form, TARGET).map((issue) => issue.key);
+      expect(keys.includes(`${VALIDATION_PREFIX}timeoutInvalid`), value).toBe(
+        invalid
+      );
+    }
+  });
+
+  it("keeps the percentage on 1-99 with an integer or decimal value", () => {
+    const cases: Array<[string, boolean]> = [
+      ["", true],
+      [String(MIN_SAMPLE_PERCENT), false],
+      ["50.5", false],
+      [String(MAX_SAMPLE_PERCENT), false],
+      ["0", true],
+      [String(MAX_SAMPLE_PERCENT + 1), true],
+      ["some", true],
+    ];
+    for (const [value, invalid] of cases) {
+      const form = validForm(QualityRuleType.UNIQUE);
+      form.config.sampleMethod = "percent";
+      form.config.samplePercent = value;
+      const keys = validateRuleForm(form, TARGET).map((issue) => issue.key);
+      expect(
+        keys.includes(`${VALIDATION_PREFIX}samplePercentInvalid`),
+        value
+      ).toBe(invalid);
+      expect(keys).not.toContain(
+        `${VALIDATION_PREFIX}samplePercentUnsupported`
+      );
+    }
+  });
+
+  it("refuses a percentage the target cannot express", () => {
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.config.sampleMethod = "percent";
+    form.config.samplePercent = "10";
+
+    for (const engine of [Engine.MYSQL, Engine.STARROCKS]) {
+      expect(
+        validateRuleForm(form, TARGET, [], engine).map((issue) => issue.key)
+      ).toContain(`${VALIDATION_PREFIX}samplePercentUnsupported`);
+    }
+    const view: TargetSelection = { ...TARGET, metaType: MetaType.VIEW };
+    expect(
+      validateRuleForm(form, view, [], Engine.POSTGRES).map(
+        (issue) => issue.key
+      )
+    ).toContain(`${VALIDATION_PREFIX}samplePercentUnsupported`);
+    expect(
+      validateRuleForm(form, TARGET, [], Engine.POSTGRES).map(
+        (issue) => issue.key
+      )
+    ).not.toContain(`${VALIDATION_PREFIX}samplePercentUnsupported`);
+  });
+
+  it("keeps the row limit on 1-10,000,000", () => {
+    const cases: Array<[string, boolean]> = [
+      ["", true],
+      [String(MIN_SAMPLE_MAX_ROWS), false],
+      [String(MAX_SAMPLE_MAX_ROWS), false],
+      ["0", true],
+      [String(MAX_SAMPLE_MAX_ROWS + 1), true],
+      ["1.5", true],
+      ["many", true],
+    ];
+    for (const [value, invalid] of cases) {
+      const form = validForm(QualityRuleType.UNIQUE);
+      form.config.sampleMethod = "maxRows";
+      form.config.sampleMaxRows = value;
+      const issue = validateRuleForm(form, TARGET).find(
+        (candidate) =>
+          candidate.key === `${VALIDATION_PREFIX}sampleMaxRowsInvalid`
+      );
+      expect(Boolean(issue), value).toBe(invalid);
+    }
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.config.sampleMethod = "maxRows";
+    form.config.sampleMaxRows = "0";
+    expect(
+      validateRuleForm(form, TARGET).find(
+        (candidate) =>
+          candidate.key === `${VALIDATION_PREFIX}sampleMaxRowsInvalid`
+      )?.params
+    ).toEqual({ max: MAX_SAMPLE_MAX_ROWS });
+  });
+});
+
+describe("execution semantics sampling gating", () => {
+  it("refuses a sampling method the rule type cannot use", () => {
+    const rowCount = validForm(QualityRuleType.ROW_COUNT);
+    rowCount.config.sampleMethod = "maxRows";
+    rowCount.config.sampleMaxRows = "100";
+    expect(
+      validateRuleForm(rowCount, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}samplingUnsupportedRuleType`);
+
+    // The same method on a type that can be sampled raises no such issue.
+    const unique = validForm(QualityRuleType.UNIQUE);
+    unique.config.sampleMethod = "maxRows";
+    unique.config.sampleMaxRows = "100";
+    expect(
+      validateRuleForm(unique, TARGET).map((issue) => issue.key)
+    ).not.toContain(`${VALIDATION_PREFIX}samplingUnsupportedRuleType`);
+  });
+
+  it("keeps the sampleable rule types in step with the server contract", () => {
+    // Mirrors ruleTypeSpecs[].Sampling in backend/component/dataquality.
+    expect(SAMPLEABLE_RULE_TYPES).toEqual([
+      QualityRuleType.NULL_PERCENT,
+      QualityRuleType.UNIQUE,
+      QualityRuleType.UNIQUE_COMBINATION,
+      QualityRuleType.ACCEPTED_VALUES,
+      QualityRuleType.RANGE,
+      QualityRuleType.REGEX,
+      QualityRuleType.STRING_LENGTH,
+      QualityRuleType.CROSS_COLUMN,
+      QualityRuleType.GROUP_CHECK,
+      QualityRuleType.AGGREGATE,
+    ]);
+    expect(canSampleRuleType(QualityRuleType.AGGREGATE)).toBe(true);
+    expect(canSampleRuleType(QualityRuleType.ROW_COUNT)).toBe(false);
+    expect(canSampleRuleType(QualityRuleType.FRESHNESS)).toBe(false);
+    expect(canSampleRuleType(QualityRuleType.CUSTOM_SQL)).toBe(false);
+    expect(canSampleRuleType(QualityRuleType.SCHEMA_DRIFT)).toBe(false);
+    expect(canSampleRuleType(QualityRuleType.CEL_EXPRESSION)).toBe(false);
+    expect(canSampleRuleType(QualityRuleType.REFERENTIAL_INTEGRITY)).toBe(
+      false
+    );
+    expect(canSampleRuleType(QualityRuleType.CROSS_TABLE)).toBe(false);
   });
 });

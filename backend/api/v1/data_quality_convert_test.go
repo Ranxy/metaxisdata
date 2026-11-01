@@ -991,3 +991,75 @@ func TestConvertQualityTargetSchedule(t *testing.T) {
 
 	require.Nil(t, convertQualityTargetSchedule(nil))
 }
+
+// The execution semantics are shared config fields, so every arm carries them
+// through the API conversion unchanged; an unset sampling stays unset rather than
+// turning into an empty message the server would refuse.
+func TestConvertQualityRuleConfigExecutionSemantics(t *testing.T) {
+	t.Parallel()
+
+	rowCount := func() *storepb.QualityRuleConfig {
+		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+			RowCount: &storepb.RowCountConfig{MinRows: qualityTestPtr(int64(1))},
+		}}
+	}
+	tests := []struct {
+		name   string
+		config *storepb.QualityRuleConfig
+	}{
+		{name: "unset", config: rowCount()},
+		{
+			name: "timeout and row limit",
+			config: func() *storepb.QualityRuleConfig {
+				config := rowCount()
+				config.TimeoutSeconds = 300
+				config.Sampling = &storepb.QualityRuleSampling{Method: &storepb.QualityRuleSampling_MaxRows{MaxRows: 1_000_000}}
+				return config
+			}(),
+		},
+		{
+			name: "percentage",
+			config: func() *storepb.QualityRuleConfig {
+				config := rowCount()
+				config.Sampling = &storepb.QualityRuleSampling{Method: &storepb.QualityRuleSampling_Percent{Percent: 12.5}}
+				return config
+			}(),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			roundTripped := convertQualityRuleConfigFromV1(convertQualityRuleConfigToV1(test.config))
+			require.True(t, proto.Equal(test.config, roundTripped), "round trip changed the config: %v", roundTripped)
+		})
+	}
+
+	// An empty sampling message has no method and must not survive as one.
+	empty := rowCount()
+	empty.Sampling = &storepb.QualityRuleSampling{}
+	require.Nil(t, convertQualityRuleConfigToV1(empty).GetSampling())
+}
+
+// The check time zone reaches the effective settings the API returns, and an
+// unknown stored name reads back as UTC.
+func TestConvertDataQualitySettingTimeZone(t *testing.T) {
+	t.Parallel()
+
+	stored := &storepb.DataQualitySetting{TimeZone: "Asia/Shanghai"}
+	require.Equal(t, "Asia/Shanghai", convertDataQualitySetting(stored).GetTimeZone())
+
+	resolved := resolveDataQualitySetting(&storepb.WorkspaceProfileSetting{
+		DataQuality: &storepb.DataQualitySetting{TimeZone: "Asia/Shanghai"},
+	})
+	converted := convertDataQualitySetting(resolved)
+	require.Equal(t, "Asia/Shanghai", converted.GetTimeZone())
+	require.Equal(t, dataquality.DefaultTimeZone, resolvedTimeZoneFallback(t))
+}
+
+// resolvedTimeZoneFallback is the resolved zone of a workspace that never saved
+// the setting: UTC, never empty.
+func resolvedTimeZoneFallback(t *testing.T) string {
+	t.Helper()
+	resolved := resolveDataQualitySetting(&storepb.WorkspaceProfileSetting{})
+	return convertDataQualitySetting(resolved).GetTimeZone()
+}

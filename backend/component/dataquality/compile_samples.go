@@ -135,11 +135,7 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -159,7 +155,7 @@ func sampleNullPercent(input CompileInput, limit int) (CompiledQuery, error) {
 	}
 	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+relation+
 			compileAppendWhere(where, "("+condition+")"),
 		args.values, columns, limit), nil
 }
@@ -173,11 +169,7 @@ func sampleAcceptedValues(input CompileInput, limit int) (CompiledQuery, error) 
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -197,7 +189,7 @@ func sampleAcceptedValues(input CompileInput, limit int) (CompiledQuery, error) 
 	}
 	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+relation+
 			compileAppendWhere(where, "("+condition+")"),
 		args.values, columns, limit), nil
 }
@@ -209,11 +201,7 @@ func sampleRange(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -244,7 +232,7 @@ func sampleRange(input CompileInput, limit int) (CompiledQuery, error) {
 	}
 	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+relation+
 			compileAppendWhere(where, "("+strings.Join(conditions, " OR ")+")"),
 		args.values, columns, limit), nil
 }
@@ -261,11 +249,7 @@ func sampleRegex(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -274,7 +258,7 @@ func sampleRegex(input CompileInput, limit int) (CompiledQuery, error) {
 	condition := qualified + " IS NULL OR " + qualified + " " + operator + " " + args.add(strings.TrimSpace(config.GetPattern()))
 	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+relation+
 			compileAppendWhere(where, "("+condition+")"),
 		args.values, columns, limit), nil
 }
@@ -286,11 +270,7 @@ func sampleStringLength(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -305,7 +285,7 @@ func sampleStringLength(input CompileInput, limit int) (CompiledQuery, error) {
 	}
 	columns := sampleColumns(input.Target, column.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+relation+
 			compileAppendWhere(where, "("+strings.Join(conditions, " OR ")+")"),
 		args.values, columns, limit), nil
 }
@@ -362,11 +342,7 @@ func sampleCrossColumn(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -387,7 +363,7 @@ func sampleCrossColumn(input CompileInput, limit int) (CompiledQuery, error) {
 	}
 	columns := sampleColumns(input.Target, left.Name, right.Name)
 	return sampleQuery(input,
-		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+table+
+		"SELECT "+sampleSelect(input.Dialect, columns)+" FROM "+relation+
 			compileAppendWhere(where, "("+condition+")"),
 		args.values, columns, limit), nil
 }
@@ -432,11 +408,7 @@ func sampleUnique(input CompileInput, limit int) (CompiledQuery, error) {
 	for _, name := range names {
 		quoted = append(quoted, qualify(input.Dialect, name))
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -448,7 +420,7 @@ func sampleUnique(input CompileInput, limit int) (CompiledQuery, error) {
 	}
 	selectList := strings.Join(quoted, ", ")
 	return sampleQuery(input,
-		"SELECT "+selectList+" FROM "+table+innerWhere+
+		"SELECT "+selectList+" FROM "+relation+innerWhere+
 			" GROUP BY "+selectList+" HAVING COUNT(*) > 1",
 		filterArgs, names, limit), nil
 }
@@ -460,9 +432,15 @@ func sampleCustomSQL(input CompileInput, limit int) (CompiledQuery, error) {
 	userSQL := strings.TrimSpace(input.Config.GetCustomSql().GetSql())
 	userSQL = strings.TrimRight(userSQL, "; \t\r\n")
 	// The result columns of an arbitrary query are not known before it runs, so
-	// the sample keeps whatever the user's SELECT returns.
+	// the sample keeps whatever the user's SELECT returns. The time variables
+	// resolve to the same values the aggregate used: both are compiled from one
+	// execution's start instant.
+	rendered, err := RenderCustomSQLVariables(userSQL, input.Variables)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
 	return sampleQuery(input,
-		"SELECT * FROM ("+userSQL+") dq", nil, nil, limit), nil
+		"SELECT * FROM ("+rendered+") dq", nil, nil, limit), nil
 }
 
 // sampleGroupCheck selects the groups whose row count is outside the bounds,
@@ -485,11 +463,7 @@ func sampleGroupCheck(input CompileInput, limit int) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	table, err := compileTable(input.Dialect, input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
-	}
-	where, filterArgs, err := whereClause(input)
+	relation, where, filterArgs, err := scanRelation(input)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -504,7 +478,7 @@ func sampleGroupCheck(input CompileInput, limit int) (CompiledQuery, error) {
 	}
 	groupList := qualifyColumns(input.Dialect, columns)
 	query := "SELECT " + groupList + ", group_rows FROM (SELECT " + groupList +
-		", COUNT(*) AS group_rows FROM " + table + where + " GROUP BY " + groupList +
+		", COUNT(*) AS group_rows FROM " + relation + where + " GROUP BY " + groupList +
 		") dq WHERE " + strings.Join(conditions, " OR ") +
 		" ORDER BY group_rows DESC, " + groupList + " " + input.Dialect.LimitClause(limit)
 	resultColumns := make([]string, 0, len(columns)+1)

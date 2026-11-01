@@ -48,6 +48,10 @@ type ExecOptions struct {
 	// StoreSamples asks for the failed-row sample. When false no second query is
 	// issued, which is what the workspace setting controls.
 	StoreSamples bool
+	// Variables is the instant and zone the rule's time variables resolve in. The
+	// runner sets it from the execution's start time; the zero value is fine for a
+	// rule that uses none.
+	Variables TimeVariables
 }
 
 // Execution is everything one execution measured: the observation the evaluator
@@ -60,8 +64,9 @@ type Execution struct {
 	// ExecutedSQL is the aggregate statement, truncated for storage.
 	ExecutedSQL string
 	// Sampled reports that the observation was made over a sample of the rows
-	// rather than the whole filtered table. Only a CEL rule can be sampled today:
-	// it reads a bounded number of rows and evaluates the predicate in process.
+	// rather than the whole filtered table. A CEL rule samples by construction (it
+	// reads a bounded number of rows); any other rule does so only when its config
+	// names a sampling method.
 	Sampled bool
 	// Truncated reports that the aggregate or the sample was cut off by a limit.
 	Truncated bool

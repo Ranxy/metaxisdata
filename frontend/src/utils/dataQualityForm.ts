@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import type { Duration } from "@bufbuild/protobuf/wkt";
 import { DurationSchema } from "@bufbuild/protobuf/wkt";
+import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   AcceptedValuesConfigSchema,
   AggregateConfigSchema,
@@ -22,6 +23,8 @@ import {
   type QualityRule,
   type QualityRuleConfig,
   QualityRuleConfigSchema,
+  type QualityRuleSampling,
+  QualityRuleSamplingSchema,
   QualityRuleSchema,
   QualityRuleState,
   QualityRuleType,
@@ -70,6 +73,32 @@ export const MAX_ACCEPTED_VALUES = 200;
 export const MAX_NULL_VALUES = 20;
 /** A grouped row-count rule groups by at most five columns. */
 export const MAX_GROUP_COLUMNS = 5;
+/**
+ * One check's execution: a query timeout and, optionally, how much of the
+ * target it reads. Blank/0 timeout means the server default (60s).
+ */
+export const DEFAULT_TIMEOUT_SECONDS = 60;
+export const MIN_TIMEOUT_SECONDS = 1;
+export const MAX_TIMEOUT_SECONDS = 300;
+/** Percentage sampling: 1-99% of the relation. */
+export const MIN_SAMPLE_PERCENT = 1;
+export const MAX_SAMPLE_PERCENT = 99;
+/** Row-limit sampling: a whole row count, bounded at ten million. */
+export const MIN_SAMPLE_MAX_ROWS = 1;
+export const MAX_SAMPLE_MAX_ROWS = 10_000_000;
+
+/**
+ * The engines whose own sampling clause can express a share of the rows.
+ * Mirrors the server's availability rule: MySQL/TiDB/MariaDB/OceanBase have no
+ * query-level sampling clause at all, and Doris/StarRocks sample tablets — Doris
+ * reads every row while tablet statistics are missing — so those engines only ever
+ * offer a row limit.
+ */
+export const PERCENT_SAMPLING_ENGINES: readonly Engine[] = [
+  Engine.POSTGRES,
+  Engine.MSSQL,
+];
+
 /** CEL expressions are capped at 4 KiB, 20 referenced columns and 100k rows. */
 export const MAX_CEL_EXPRESSION_BYTES = 4096;
 export const MAX_CEL_COLUMNS = 20;
@@ -227,6 +256,69 @@ export function allowedRuleTypes(
 }
 
 /**
+ * Whether a percentage sample is expressible for this target. A share of the
+ * relation needs an engine-side sampling clause and a physical table to apply it
+ * to, so views, materialized views and the MySQL family are excluded. An unknown
+ * engine or target type is not treated as a refusal: the caller has just not
+ * learned them yet, and hiding the method then would drop a stored choice.
+ */
+export function percentSamplingSupported(
+  engine: Engine | undefined,
+  metaType: MetaType | undefined
+): boolean {
+  if (engine !== undefined && !PERCENT_SAMPLING_ENGINES.includes(engine)) {
+    return false;
+  }
+  if (metaType !== undefined && metaType !== MetaType.TABLE) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The sampling methods the editor offers for a target, in display order. Every
+ * target can bound a read by row count; only some engines and table targets can
+ * sample a share of the rows.
+ */
+export function samplingMethodsFor(
+  engine: Engine | undefined,
+  metaType: MetaType | undefined
+): SampleMethod[] {
+  const methods: SampleMethod[] = ["none"];
+  if (percentSamplingSupported(engine, metaType)) {
+    methods.push("percent");
+  }
+  methods.push("maxRows");
+  return methods;
+}
+
+/**
+ * The rule types whose verdict can be judged from a sample, mirroring the
+ * server's `ruleTypeSpecs[].Sampling`. A row count, a row count change and a
+ * freshness lag describe the relation as a whole; a referential or cross-table
+ * check reads two relations; custom SQL is never rewritten, schema drift reads
+ * metadata, and a CEL expression carries its own row limit — none of them can be
+ * sampled, so the editor does not offer the control for them.
+ */
+export const SAMPLEABLE_RULE_TYPES: readonly QualityRuleType[] = [
+  QualityRuleType.NULL_PERCENT,
+  QualityRuleType.UNIQUE,
+  QualityRuleType.UNIQUE_COMBINATION,
+  QualityRuleType.ACCEPTED_VALUES,
+  QualityRuleType.RANGE,
+  QualityRuleType.REGEX,
+  QualityRuleType.STRING_LENGTH,
+  QualityRuleType.CROSS_COLUMN,
+  QualityRuleType.GROUP_CHECK,
+  QualityRuleType.AGGREGATE,
+];
+
+/** Whether the rule type can be judged from a sample of the target. */
+export function canSampleRuleType(ruleType: QualityRuleType): boolean {
+  return SAMPLEABLE_RULE_TYPES.includes(ruleType);
+}
+
+/**
  * The rule types where on_empty never changes the verdict: row_count always
  * returns one row, schema_drift reads metadata, and a custom SQL rule with no
  * returned rows has no failing rows. The editor hides the select there.
@@ -284,6 +376,8 @@ const DIMENSION_BY_RULE_TYPE: Partial<
 
 export type ScheduleUnit = "minutes" | "hours" | "days";
 export type NullMetric = "count" | "percent";
+/** How much of the target one execution reads. */
+export type SampleMethod = "none" | "percent" | "maxRows";
 
 /** One clause of the rule's AND filter, with values kept as typed text. */
 export interface FilterClauseForm {
@@ -377,6 +471,14 @@ export interface RuleConfigForm {
   leftAggColumn?: string;
   rightAggFunction?: QualityAggregateFunction;
   rightAggColumn?: string;
+  // execution: shared by every rule type
+  /** Whole seconds; blank means the server default (60). */
+  timeoutSeconds?: string;
+  sampleMethod?: SampleMethod;
+  /** A whole row count; read only when sampleMethod is "maxRows". */
+  sampleMaxRows?: string;
+  /** A percentage; read only when sampleMethod is "percent". */
+  samplePercent?: string;
 }
 
 /** One expected column of a schema-drift snapshot. */
@@ -540,6 +642,10 @@ export function emptyConfig(): RuleConfigForm {
     leftAggColumn: "",
     rightAggFunction: QualityAggregateFunction.COUNT,
     rightAggColumn: "",
+    timeoutSeconds: "",
+    sampleMethod: "none",
+    sampleMaxRows: "",
+    samplePercent: "",
   };
 }
 
@@ -858,9 +964,12 @@ export function ruleTypeForConfigCase(
 /** The typed config message for the selected rule type. */
 export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
   const c = form.config;
+  const sampling = samplingFromForm(c);
   const shared = {
     thresholdMetric: form.thresholdMetric,
     onEmpty: form.onEmpty,
+    timeoutSeconds: optionalIntegerValue(c.timeoutSeconds) ?? 0,
+    ...(sampling ? { sampling } : {}),
     ...(form.filter.some((clause) => clause.column.trim())
       ? { filter: buildFilter(form.filter) }
       : {}),
@@ -1106,6 +1215,34 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
   return create(QualityRuleConfigSchema, { config: configArm, ...shared });
 }
 
+/**
+ * The sampling message for the form's chosen method, or undefined for "no
+ * sampling". A chosen method with no usable amount is left off rather than
+ * converted to the other method: validation refuses the save, so the rule never
+ * silently degrades to a different sample.
+ */
+function samplingFromForm(
+  config: RuleConfigForm
+): QualityRuleSampling | undefined {
+  if (config.sampleMethod === "maxRows") {
+    const rows = optionalIntegerValue(config.sampleMaxRows);
+    return rows === undefined
+      ? undefined
+      : create(QualityRuleSamplingSchema, {
+          method: { case: "maxRows", value: BigInt(rows) },
+        });
+  }
+  if (config.sampleMethod === "percent") {
+    const percent = optionalNumberValue(config.samplePercent);
+    return percent === undefined
+      ? undefined
+      : create(QualityRuleSamplingSchema, {
+          method: { case: "percent", value: percent },
+        });
+  }
+  return undefined;
+}
+
 /** The AND filter message for the given clauses. */
 export function buildFilter(clauses: FilterClauseForm[]) {
   return create(QualityFilterSchema, {
@@ -1153,7 +1290,27 @@ export function ruleToForm(rule: QualityRule): RuleFormState {
   form.onEmpty = rule.config?.onEmpty ?? form.onEmpty;
   form.filter = filterToForm(rule.config?.filter?.clauses ?? []);
   form.config = configToForm(rule);
+  applyExecutionToForm(form.config, rule.config);
   return form;
+}
+
+/** The execution fields every rule type shares, read off a stored config. */
+function applyExecutionToForm(
+  form: RuleConfigForm,
+  config: QualityRuleConfig | undefined
+): void {
+  form.timeoutSeconds =
+    config !== undefined && config.timeoutSeconds > 0
+      ? String(config.timeoutSeconds)
+      : "";
+  const method = config?.sampling?.method;
+  if (method?.case === "maxRows") {
+    form.sampleMethod = "maxRows";
+    form.sampleMaxRows = String(method.value);
+  } else if (method?.case === "percent") {
+    form.sampleMethod = "percent";
+    form.samplePercent = String(method.value);
+  }
 }
 
 function filterToForm(
@@ -1631,7 +1788,8 @@ function tagsKey(tags: string): string {
 export function validateRuleForm(
   form: RuleFormState,
   target: TargetSelection | undefined,
-  knownColumns: readonly string[] = []
+  knownColumns: readonly string[] = [],
+  engine: Engine | undefined = undefined
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const invalid = () =>
@@ -1681,6 +1839,10 @@ export function validateRuleForm(
     if (invalidNumber(value)) {
       invalid();
     }
+  }
+  validateExecutionFields(c, engine, target?.metaType, issues);
+  if (!canSampleRuleType(form.ruleType) && c.sampleMethod !== "none") {
+    issues.push({ key: VALIDATION_PREFIX + "samplingUnsupportedRuleType" });
   }
   switch (form.ruleType) {
     case QualityRuleType.ROW_COUNT:
@@ -1971,6 +2133,54 @@ export function validateRuleForm(
     }
   }
   return issues;
+}
+
+/**
+ * The checks on the execution fields every rule type shares: the query timeout
+ * and the chosen sampling method's amount. A percentage is refused when the
+ * target cannot express it, so a stored method is never converted silently.
+ */
+function validateExecutionFields(
+  config: RuleConfigForm,
+  engine: Engine | undefined,
+  metaType: MetaType | undefined,
+  issues: ValidationIssue[]
+): void {
+  const timeout = optionalIntegerValue(config.timeoutSeconds);
+  if (
+    trimmed(config.timeoutSeconds) !== "" &&
+    (timeout === undefined ||
+      timeout < MIN_TIMEOUT_SECONDS ||
+      timeout > MAX_TIMEOUT_SECONDS)
+  ) {
+    issues.push({ key: VALIDATION_PREFIX + "timeoutInvalid" });
+  }
+  if (config.sampleMethod === "percent") {
+    if (!percentSamplingSupported(engine, metaType)) {
+      issues.push({ key: VALIDATION_PREFIX + "samplePercentUnsupported" });
+      return;
+    }
+    const percent = optionalNumberValue(config.samplePercent);
+    if (
+      percent === undefined ||
+      percent < MIN_SAMPLE_PERCENT ||
+      percent > MAX_SAMPLE_PERCENT
+    ) {
+      issues.push({ key: VALIDATION_PREFIX + "samplePercentInvalid" });
+    }
+  } else if (config.sampleMethod === "maxRows") {
+    const rows = optionalIntegerValue(config.sampleMaxRows);
+    if (
+      rows === undefined ||
+      rows < MIN_SAMPLE_MAX_ROWS ||
+      rows > MAX_SAMPLE_MAX_ROWS
+    ) {
+      issues.push({
+        key: VALIDATION_PREFIX + "sampleMaxRowsInvalid",
+        params: { max: MAX_SAMPLE_MAX_ROWS },
+      });
+    }
+  }
 }
 
 /** Every validation key lives under this prefix (see DYNAMIC_PREFIXES). */

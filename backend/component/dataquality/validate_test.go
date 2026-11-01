@@ -685,12 +685,12 @@ func TestValidateCELExpressionIsSupported(t *testing.T) {
 func TestValidateRuleRejectsMissingInputs(t *testing.T) {
 	t.Parallel()
 
-	_, err := ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, nil, nil, nil)
+	_, err := ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, nil, nil, nil, TimeVariables{})
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 
 	config := validationRowCountConfig(&storepb.RowCountConfig{MinRows: validationPtr(int64(1))})
-	_, err = ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, config, nil, nil)
+	_, err = ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, "inst1;app;orders", storepb.MetaType_TABLE, config, nil, nil, TimeVariables{})
 	require.Error(t, err)
 	// Resolving a target without a store is a server-side fault, not a bad rule.
 	require.Equal(t, common.Internal, common.ErrorCode(err))
@@ -706,7 +706,7 @@ func TestValidateRuleRefusesAMalformedContractFilter(t *testing.T) {
 	config := validationRowCountConfig(&storepb.RowCountConfig{MinRows: validationPtr(int64(1))})
 	_, err := ValidateRule(t.Context(), nil, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		"inst1;app;orders", storepb.MetaType_TABLE, config, nil,
-		&storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{{Column: "status"}}})
+		&storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{{Column: "status"}}}, TimeVariables{})
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 }

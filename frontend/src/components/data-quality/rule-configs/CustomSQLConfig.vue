@@ -25,6 +25,9 @@
     >
       {{ t("dataQuality.editor.sqlHint") }}
     </p>
+    <p class="text-sm text-muted-foreground">
+      {{ t("dataQuality.editor.sqlVariablesHint") }}
+    </p>
   </div>
 </template>
 

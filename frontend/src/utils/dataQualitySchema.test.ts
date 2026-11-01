@@ -159,6 +159,24 @@ describe("rule field schema", () => {
     ]);
   });
 
+  it("reports the chosen sampling method's amount", () => {
+    const percent = completeForm(QualityRuleType.UNIQUE);
+    percent.config.sampleMethod = "percent";
+    expect(missingRequiredFields(percent, TARGET)).toEqual([
+      { field: "samplePercent", labelKey: "dataQuality.editor.samplePercent" },
+    ]);
+    percent.config.samplePercent = "10";
+    expect(missingRequiredFields(percent, TARGET)).toEqual([]);
+
+    const maxRows = completeForm(QualityRuleType.UNIQUE);
+    maxRows.config.sampleMethod = "maxRows";
+    expect(missingRequiredFields(maxRows, TARGET)).toEqual([
+      { field: "sampleMaxRows", labelKey: "dataQuality.editor.sampleMaxRows" },
+    ]);
+    maxRows.config.sampleMaxRows = "1000";
+    expect(missingRequiredFields(maxRows, TARGET)).toEqual([]);
+  });
+
   it("follows the null metric and cross-table aggregate arms", () => {
     const nullForm = completeForm(QualityRuleType.NULL_PERCENT);
     nullForm.config.nullMetric = "count";
