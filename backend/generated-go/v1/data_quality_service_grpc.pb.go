@@ -59,6 +59,7 @@ const (
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
 	DataQualityService_ExportQualityTargets_FullMethodName               = "/metaxisdata.v1.DataQualityService/ExportQualityTargets"
 	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	DataQualityService_AcknowledgeQualityTargetSchema_FullMethodName     = "/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema"
 	DataQualityService_ExportQualityReport_FullMethodName                = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
 	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
 	DataQualityService_GetQualityTargetSchedule_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityTargetSchedule"
@@ -243,6 +244,14 @@ type DataQualityServiceClient interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
+	// Acknowledge that a target's structure changed and re-baseline its checks.
+	// Every non-archived check whose saved structure snapshot differs from the
+	// target's current fingerprint gets the current fingerprint, which clears the
+	// schema-changed signal. The checks themselves are untouched: re-baselining is
+	// a fact about which shape the checks were reviewed against, not a change to
+	// their definition, so it does not write a rule revision. Idempotent: a second
+	// call with nothing to do returns zero.
+	AcknowledgeQualityTargetSchema(ctx context.Context, in *AcknowledgeQualityTargetSchemaRequest, opts ...grpc.CallOption) (*AcknowledgeQualityTargetSchemaResponse, error)
 	// Render one target's quality report as a self-contained HTML document: the
 	// current state, the recent trend, the checks, the unresolved problems, a
 	// capped sample summary and the monitoring basis. The document carries its own
@@ -719,6 +728,16 @@ func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, in *Get
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) AcknowledgeQualityTargetSchema(ctx context.Context, in *AcknowledgeQualityTargetSchemaRequest, opts ...grpc.CallOption) (*AcknowledgeQualityTargetSchemaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AcknowledgeQualityTargetSchemaResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_AcknowledgeQualityTargetSchema_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ExportQualityReport(ctx context.Context, in *ExportQualityReportRequest, opts ...grpc.CallOption) (*ExportQualityReportResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExportQualityReportResponse)
@@ -982,6 +1001,14 @@ type DataQualityServiceServer interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
+	// Acknowledge that a target's structure changed and re-baseline its checks.
+	// Every non-archived check whose saved structure snapshot differs from the
+	// target's current fingerprint gets the current fingerprint, which clears the
+	// schema-changed signal. The checks themselves are untouched: re-baselining is
+	// a fact about which shape the checks were reviewed against, not a change to
+	// their definition, so it does not write a rule revision. Idempotent: a second
+	// call with nothing to do returns zero.
+	AcknowledgeQualityTargetSchema(context.Context, *AcknowledgeQualityTargetSchemaRequest) (*AcknowledgeQualityTargetSchemaResponse, error)
 	// Render one target's quality report as a self-contained HTML document: the
 	// current state, the recent trend, the checks, the unresolved problems, a
 	// capped sample summary and the monitoring basis. The document carries its own
@@ -1148,6 +1175,9 @@ func (UnimplementedDataQualityServiceServer) ExportQualityTargets(*ExportQuality
 }
 func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityTarget not implemented")
+}
+func (UnimplementedDataQualityServiceServer) AcknowledgeQualityTargetSchema(context.Context, *AcknowledgeQualityTargetSchemaRequest) (*AcknowledgeQualityTargetSchemaResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AcknowledgeQualityTargetSchema not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ExportQualityReport(context.Context, *ExportQualityReportRequest) (*ExportQualityReportResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExportQualityReport not implemented")
@@ -1871,6 +1901,24 @@ func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_AcknowledgeQualityTargetSchema_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcknowledgeQualityTargetSchemaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).AcknowledgeQualityTargetSchema(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_AcknowledgeQualityTargetSchema_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).AcknowledgeQualityTargetSchema(ctx, req.(*AcknowledgeQualityTargetSchemaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ExportQualityReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ExportQualityReportRequest)
 	if err := dec(in); err != nil {
@@ -2179,6 +2227,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityTarget",
 			Handler:    _DataQualityService_GetQualityTarget_Handler,
+		},
+		{
+			MethodName: "AcknowledgeQualityTargetSchema",
+			Handler:    _DataQualityService_AcknowledgeQualityTargetSchema_Handler,
 		},
 		{
 			MethodName: "ExportQualityReport",

@@ -6931,6 +6931,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:acknowledgeSchemaChange:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Acknowledge that a target's structure changed and re-baseline its checks.
+                 Every non-archived check whose saved structure snapshot differs from the
+                 target's current fingerprint gets the current fingerprint, which clears the
+                 schema-changed signal. The checks themselves are untouched: re-baselining is
+                 a fact about which shape the checks were reviewed against, not a change to
+                 their definition, so it does not write a rule revision. Idempotent: a second
+                 call with nothing to do returns zero.
+            operationId: DataQualityService_AcknowledgeQualityTargetSchema
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AcknowledgeQualityTargetSchemaRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AcknowledgeQualityTargetSchemaResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityTargets:exportReport:
         get:
             tags:
@@ -7224,6 +7263,48 @@ components:
                     type: number
                     format: double
             description: AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+        AcknowledgeQualityTargetSchemaRequest:
+            required:
+                - parent
+                - targetGuid
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                    description: The target's metadata GUID. Required.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    description: 'The target''s object type. Optional when the target has rules: they carry it.'
+                    format: enum
+        AcknowledgeQualityTargetSchemaResponse:
+            type: object
+            properties:
+                baselinedRuleCount:
+                    type: integer
+                    description: How many checks were re-baselined. Zero means they were already current.
+                    format: int32
         AggregateConfig:
             type: object
             properties:
@@ -8561,6 +8642,7 @@ components:
                         - DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED
                         - DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED
                         - DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY
+                        - DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED
                     type: string
                     format: enum
                 rule:
@@ -12815,8 +12897,9 @@ components:
                     readOnly: true
                     type: boolean
                     description: |-
-                        True when the target's current metadata hash differs from the hash recorded
-                         when the rule was saved, i.e. the target's schema changed underneath it.
+                        True when the target's current structure fingerprint differs from the one
+                         recorded when the rule was saved, i.e. the target's schema changed underneath
+                         it.
                 createTime:
                     readOnly: true
                     type: string
@@ -13544,8 +13627,8 @@ components:
                 schemaChanged:
                     type: boolean
                     description: |-
-                        Whether at least one rule was saved against a different target schema hash
-                         than the registry currently records.
+                        Whether at least one rule was saved against a different target structure
+                         fingerprint than the registry currently records.
                 orphaned:
                     type: boolean
                     description: |-

@@ -200,6 +200,21 @@ func qualityTargetWorstRankCaseAt(statusExpr string, firstPlaceholder int) strin
 		firstPlaceholder+5, QualityTargetStatusRank(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED))
 }
 
+// qualityTargetSchemaChangedSQL is the directory aggregate's structure-change
+// predicate, the SQL twin of qualitySchemaChangedSince in the API layer: a rule's
+// saved snapshot is current when it equals the target's fingerprint, and also when
+// it equals the legacy DDL hash a pre-fingerprint rule stored. The latter branch
+// is what keeps an upgrade from reporting every existing StarRocks/Doris rule as
+// changed.
+func qualityTargetSchemaChangedSQL() string {
+	return `BOOL_OR(
+			l.target_meta_hash IS NOT NULL
+			AND f.fingerprint IS NOT NULL
+			AND l.target_meta_hash <> f.fingerprint
+			AND (s.schema_hash IS NULL OR l.target_meta_hash <> s.schema_hash)
+		)`
+}
+
 // targetWhere renders the predicate over the joined aggregate query. It is a
 // pure function so the filter shape can be unit-tested without a database.
 // `base` is the number of parameters the query has already bound, so the
@@ -389,8 +404,10 @@ func qualityTargetsStatement(find *FindQualityTargetMessage) (string, []any, err
 			(COUNT(*) FILTER (WHERE l.state = $3))::INT AS paused_count,
 			(COUNT(DISTINCT NULLIF(l.target_path->>'column', '')))::INT AS column_count,
 			(ARRAY_AGG(l.target_path ORDER BY l.id DESC))[1] AS target_path,
-			BOOL_OR(l.target_meta_hash IS NOT NULL AND s.schema_hash IS NOT NULL AND l.target_meta_hash <> s.schema_hash) AS schema_changed
+			` + qualityTargetSchemaChangedSQL() + ` AS schema_changed
 		FROM live l
+		LEFT JOIN meta_registry_schema_fingerprint f
+			ON f.guid = l.target_guid AND f.object_type = l.target_type
 		LEFT JOIN meta_registry_resource_schema s
 			ON s.guid = l.target_guid AND s.object_type = l.target_type
 		GROUP BY l.target_guid, l.target_type

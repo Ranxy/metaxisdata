@@ -110,6 +110,7 @@ func TestDataQualityDedupeKeyDistinguishesEveryEvent(t *testing.T) {
 		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED,
 		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED,
 		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY,
+		storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED,
 	}
 	seen := make(map[string]struct{}, len(kinds))
 	for _, kind := range kinds {

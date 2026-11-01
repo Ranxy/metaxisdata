@@ -12,6 +12,7 @@
 | --- | --- | --- | --- |
 | schema 同步操作 | 人工同步 / 建实例后首次同步 / 周期后台同步失败 | 发起人；后台失败给工作区管理员 | `SchemaSyncDetail` |
 | OpenLineage 摄取 | 4xx 拒收、5xx 失败、namespace 未映射 | 工作区管理员（摄取用 API key，无发起用户） | `OpenLineageDetail` |
+| 数据质量 | 问题打开/恢复、执行失败、风暴摘要（`qualityrunner`），以及目标结构变更（`schemasync`） | 规则 owner（无 owner 时管理员）；执行失败与风暴摘要只发管理员；结构变更发给该目标检查的 owner（无 owner 时管理员，未监控目标不发） | `DataQualityDetail`（kind 见 [data-quality.md](data-quality.md) §3.4/§3.13） |
 
 消息正文**不落文本**：服务端只存 `type + severity + 结构化 detail`，前端用 i18n 渲染（`en-US` / `zh-CN`）。这是双语与 proto3 前向兼容（老前端遇新类型降级为通用文案）的前提。
 
@@ -290,7 +291,7 @@
 
 ### 它是什么
 
-一次 `Send` / `SendToWorkspaceAdmins` 调用 = **一个事件**。事件写入 N 条站内信（每个收件人一条），同时按渠道订阅过滤 fan-out 成 0..M 条 `notification_delivery`；每条投递由 dispatcher 渲染、POST、重试。**站内信与投递解耦**：投递失败不回滚、不阻塞站内信写入，也不改变现有 1h 去重与风暴抑制语义。
+一次 `Send` / `SendToWorkspaceAdmins` / `SendToRecipients` 调用 = **一个事件**。事件写入 N 条站内信（每个收件人一条），同时按渠道订阅过滤 fan-out 成 0..M 条 `notification_delivery`；每条投递由 dispatcher 渲染、POST、重试。**站内信与投递解耦**：投递失败不回滚、不阻塞站内信写入，也不改变现有 1h 去重与风暴抑制语义。
 
 | 概念 | 含义 |
 | --- | --- |

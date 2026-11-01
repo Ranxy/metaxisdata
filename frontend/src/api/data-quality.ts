@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import type { Duration, Timestamp } from "@bufbuild/protobuf/wkt";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
 import {
+  AcknowledgeQualityTargetSchemaRequestSchema,
   type BatchCreateQualityRuleResult,
   BatchCreateQualityRulesRequestSchema,
   type BatchUpdateQualitySuggestionResult,
@@ -236,6 +237,27 @@ export async function getQualityTarget(options: {
   return await dataQualityClient.getQualityTarget(request, {
     signal: options.signal,
   });
+}
+
+/**
+ * Re-baseline a target's checks to its current structure, clearing the
+ * schema-changed signal after a review. The checks keep their definitions; only
+ * their saved structure snapshot moves, so no rule revision is written. Returns
+ * how many checks moved (zero when they were already current).
+ */
+export async function acknowledgeQualityTargetSchema(options: {
+  targetGuid: string;
+  /** UNSPECIFIED lets the server derive it from the target's rules. */
+  metaType?: MetaType;
+}): Promise<number> {
+  const request = create(AcknowledgeQualityTargetSchemaRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+  });
+  const response =
+    await dataQualityClient.acknowledgeQualityTargetSchema(request);
+  return response.baselinedRuleCount;
 }
 
 /**

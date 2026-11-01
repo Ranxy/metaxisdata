@@ -15,9 +15,10 @@ import (
 // fakeNotifier captures what a sync operation reports, so the aggregation can be
 // exercised without a store or a database.
 type fakeNotifier struct {
-	sent  []*storepb.Notification
-	admin []*storepb.Notification
-	err   error
+	sent       []*storepb.Notification
+	admin      []*storepb.Notification
+	recipients [][]int32
+	err        error
 }
 
 func (f *fakeNotifier) Send(_ context.Context, message *storepb.Notification) error {
@@ -33,6 +34,15 @@ func (f *fakeNotifier) SendToWorkspaceAdmins(_ context.Context, message *storepb
 		return f.err
 	}
 	f.admin = append(f.admin, message)
+	return nil
+}
+
+func (f *fakeNotifier) SendToRecipients(_ context.Context, message *storepb.Notification, recipientIDs []int32) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.recipients = append(f.recipients, recipientIDs)
+	f.sent = append(f.sent, message)
 	return nil
 }
 

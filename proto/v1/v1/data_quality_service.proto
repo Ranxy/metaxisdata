@@ -420,6 +420,22 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Acknowledge that a target's structure changed and re-baseline its checks.
+  // Every non-archived check whose saved structure snapshot differs from the
+  // target's current fingerprint gets the current fingerprint, which clears the
+  // schema-changed signal. The checks themselves are untouched: re-baselining is
+  // a fact about which shape the checks were reviewed against, not a change to
+  // their definition, so it does not write a rule revision. Idempotent: a second
+  // call with nothing to do returns zero.
+  rpc AcknowledgeQualityTargetSchema(AcknowledgeQualityTargetSchemaRequest) returns (AcknowledgeQualityTargetSchemaResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityTargets:acknowledgeSchemaChange"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
   // Render one target's quality report as a self-contained HTML document: the
   // current state, the recent trend, the checks, the unresolved problems, a
   // capped sample summary and the monitoring basis. The document carries its own
@@ -814,8 +830,9 @@ message QualityRule {
   // revision row.
   int32 revision = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // True when the target's current metadata hash differs from the hash recorded
-  // when the rule was saved, i.e. the target's schema changed underneath it.
+  // True when the target's current structure fingerprint differs from the one
+  // recorded when the rule was saved, i.e. the target's schema changed underneath
+  // it.
   bool target_schema_changed = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   google.protobuf.Timestamp create_time = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -2805,8 +2822,8 @@ message QualityTargetSummary {
   QualityStatus worst_status = 9;
   google.protobuf.Timestamp last_run_time = 10;
 
-  // Whether at least one rule was saved against a different target schema hash
-  // than the registry currently records.
+  // Whether at least one rule was saved against a different target structure
+  // fingerprint than the registry currently records.
   bool schema_changed = 11;
 
   // Whether the target can no longer be resolved (the registry row, instance or
@@ -2933,6 +2950,22 @@ message QualityRuleHistory {
   string rule = 1 [(google.api.resource_reference) = {type: "metaxisdata/QualityRule"}];
   // Newest first. At most 20 are returned.
   repeated QualityExecutionSummary executions = 2;
+}
+
+message AcknowledgeQualityTargetSchemaRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's metadata GUID. Required.
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's object type. Optional when the target has rules: they carry it.
+  MetaType meta_type = 3;
+}
+
+message AcknowledgeQualityTargetSchemaResponse {
+  // How many checks were re-baselined. Zero means they were already current.
+  int32 baselined_rule_count = 1;
 }
 
 // QualityContract is the target-level layer above the rules: defaults, the

@@ -42,6 +42,8 @@ func DataQualityDedupeKey(kind storepb.DataQualityNotificationKind, target strin
 		event = "quality.execution-failed"
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY:
 		event = "quality.storm-summary"
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED:
+		event = "quality.target-schema-changed"
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED:
 		return ""
 	default:

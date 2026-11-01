@@ -1005,6 +1005,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest"><span class="badge">M</span>AcknowledgeQualityTargetSchemaRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse"><span class="badge">M</span>AcknowledgeQualityTargetSchemaResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.AggregateConfig"><span class="badge">M</span>AggregateConfig</a>
                 </li>
               
@@ -12379,6 +12387,68 @@ methods.</p></td>
 
         
       
+        <h3 id="metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest">AcknowledgeQualityTargetSchemaRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s metadata GUID. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Optional when the target has rules: they carry it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse">AcknowledgeQualityTargetSchemaResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>baselined_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many checks were re-baselined. Zero means they were already current. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.AggregateConfig">AggregateConfig</h3>
         <p>AggregateConfig bounds the value one aggregate over one column produces.</p>
 
@@ -17386,8 +17456,9 @@ revision row. </p></td>
                   <td>target_schema_changed</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>True when the target&#39;s current metadata hash differs from the hash recorded
-when the rule was saved, i.e. the target&#39;s schema changed underneath it. </p></td>
+                  <td><p>True when the target&#39;s current structure fingerprint differs from the one
+recorded when the rule was saved, i.e. the target&#39;s schema changed underneath
+it. </p></td>
                 </tr>
               
                 <tr>
@@ -18745,8 +18816,8 @@ more than one whose data failed. </p></td>
                   <td>schema_changed</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>Whether at least one rule was saved against a different target schema hash
-than the registry currently records. </p></td>
+                  <td><p>Whether at least one rule was saved against a different target structure
+fingerprint than the registry currently records. </p></td>
                 </tr>
               
                 <tr>
@@ -22034,6 +22105,19 @@ is named by GUID because a target is not a resource of its own.</p></td>
               </tr>
             
               <tr>
+                <td>AcknowledgeQualityTargetSchema</td>
+                <td><a href="#metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest">AcknowledgeQualityTargetSchemaRequest</a></td>
+                <td><a href="#metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse">AcknowledgeQualityTargetSchemaResponse</a></td>
+                <td><p>Acknowledge that a target&#39;s structure changed and re-baseline its checks.
+Every non-archived check whose saved structure snapshot differs from the
+target&#39;s current fingerprint gets the current fingerprint, which clears the
+schema-changed signal. The checks themselves are untouched: re-baselining is
+a fact about which shape the checks were reviewed against, not a change to
+their definition, so it does not write a rule revision. Idempotent: a second
+call with nothing to do returns zero.</p></td>
+              </tr>
+            
+              <tr>
                 <td>ExportQualityReport</td>
                 <td><a href="#metaxisdata.v1.ExportQualityReportRequest">ExportQualityReportRequest</a></td>
                 <td><a href="#metaxisdata.v1.ExportQualityReportResponse">ExportQualityReportResponse</a></td>
@@ -22483,6 +22567,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityTargets:get</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>AcknowledgeQualityTargetSchema</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityTargets:acknowledgeSchemaChange</td>
+                <td>*</td>
               </tr>
               
             
@@ -28183,6 +28277,15 @@ default. The client ignores it. </p></td>
                 <td>DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY</td>
                 <td>4</td>
                 <td><p>One run failed so many rules that the individual messages were merged.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED</td>
+                <td>5</td>
+                <td><p>A monitored target&#39;s structure changed since its checks were saved. It is a
+registry fact, not a data failure: the checks were written against a shape that
+has moved, so they are worth reviewing. The detail names the target and no rule,
+because one change is one event for every check on the target.</p></td>
               </tr>
             
           </tbody>

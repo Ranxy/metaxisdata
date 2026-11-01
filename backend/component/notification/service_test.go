@@ -547,3 +547,56 @@ func TestMessagesWrittenTogetherDeliverTheirCountsInOrder(t *testing.T) {
 	require.Equal(t, int32(1), requireEvent(t, events).UnreadCount)
 	require.Equal(t, int32(2), requireEvent(t, events).UnreadCount)
 }
+
+// One event addressed to several people is one event: every recipient gets an
+// inbox row with their own read state, the suppression key is claimed once for
+// all of them, and a channel is queued once with the whole audience.
+func TestSendToRecipientsFansOutOneEvent(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{
+		workspaceID: "ws-1",
+		channels:    []*store.NotificationChannelMessage{testChannel(1, enabledWebhookChannel())},
+	}
+	service := newServiceWithStore(fake)
+
+	message := newOpenLineageMessage()
+	message.DedupeKey = DedupeKey("quality.target-schema-changed", "inst-1;app;;orders", time.Now(), QualityNotificationWindow)
+	// 7 is named twice: one inbox row, not two.
+	require.NoError(t, service.SendToRecipients(context.Background(), message, []int32{7, 9, 7}))
+
+	require.Len(t, fake.created, 2)
+	require.Equal(t, int32(7), fake.created[0].GetRecipientId())
+	require.Equal(t, int32(9), fake.created[1].GetRecipientId())
+	for _, created := range fake.created {
+		require.Equal(t, "workspaces/ws-1", created.GetParent())
+		require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE, created.GetType())
+		require.Empty(t, created.GetId())
+	}
+	// The second recipient must not be suppressed by the first one's write: that
+	// is what claiming the key once, outside the loop, is for.
+	require.Len(t, fake.deliveries, 1, "a channel receives the event once")
+	require.ElementsMatch(t, []int32{7, 9}, fake.deliveries[0].Payload.GetAudienceUserIds())
+
+	// A repeat inside the window reaches nobody and queues nothing.
+	require.NoError(t, service.SendToRecipients(context.Background(), message, []int32{7, 9}))
+	require.Len(t, fake.created, 2)
+	require.Len(t, fake.deliveries, 1)
+}
+
+// A failed write must not consume the window: the retry may try again.
+func TestSendToRecipientsReleasesTheWindowOnFailure(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("the notification store is down")
+	fake := &fakeStore{workspaceID: "ws-1", failNext: writeErr}
+	service := newServiceWithStore(fake)
+
+	message := newOpenLineageMessage()
+	message.DedupeKey = DedupeKey("quality.target-schema-changed", "inst-1;app;;orders", time.Now(), QualityNotificationWindow)
+	require.ErrorIs(t, service.SendToRecipients(context.Background(), message, []int32{7}), writeErr)
+	require.Empty(t, fake.created)
+
+	require.NoError(t, service.SendToRecipients(context.Background(), message, []int32{7}))
+	require.Len(t, fake.created, 1)
+}

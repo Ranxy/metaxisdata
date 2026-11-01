@@ -3515,6 +3515,7 @@ DataQualityNotificationKind is the event a data quality notification reports.
 | DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
 | DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
 | DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One dispatch batch failed so many rules that the individual messages were merged. |
+| DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED | 5 | A monitored target&#39;s structure changed since its checks were saved. It is a registry fact, not a data failure: the checks were written against a shape that has moved, so they are worth reviewing. The detail names the target and no rule, because one change is one event for every check on the target. |
 
 
 

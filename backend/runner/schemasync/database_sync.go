@@ -239,6 +239,15 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to diff metadata for database %q", database.DatabaseName)
 	}
 
+	// The structure fingerprint of every table and view comes from the same
+	// snapshot, so it costs one indexed read and no driver round trip. It is what
+	// tells a data-quality check that the shape it was written against moved, on
+	// every engine — not only the two whose DDL is captured below.
+	fingerprints, err := prepareSchemaFingerprints(ctx, s.store, bmc.guidList)
+	if err != nil {
+		return errors.Wrapf(err, "failed to compute schema fingerprints for database %q", database.DatabaseName)
+	}
+
 	// deadlineCtx is used for the driver round trips so a hung target cannot
 	// outlive the sync deadline. Engines without the capability are skipped.
 	//
@@ -278,6 +287,10 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 		return errors.Wrapf(err, "failed to sync object definitions for database %q", database.DatabaseName)
 	}
 
+	if err := fingerprints.write(ctx, s.store, tx); err != nil {
+		return errors.Wrapf(err, "failed to sync schema fingerprints for database %q", database.DatabaseName)
+	}
+
 	// Clean lineage rows for every deleted object, not only views: a dropped
 	// table or column leaves edges whose endpoint GUID no longer exists, and a
 	// dropped view also stops being the producer of its edges. One statement
@@ -308,6 +321,11 @@ func (s *Syncer) SyncDatabaseSchema(ctx context.Context, database *store.Databas
 	// what was committed: logging before the commit reported deletions that a
 	// rollback erased.
 	logSchemaSyncDeletion(common.FormatDatabase(database.InstanceID, database.DatabaseName), bmc.deletes, s.metrics)
+
+	// The owners of the checks watching a changed object hear about it here, after
+	// the commit, so a rolled-back sync pages nobody. Delivery is best effort: the
+	// sync's own result never depends on a notification write.
+	s.reportSchemaFingerprintChanges(ctx, fingerprints)
 
 	// The statistics refresh is deliberately outside the metadata transaction: it is
 	// a derived estimate for the UI, so a failed estimate write must not roll back

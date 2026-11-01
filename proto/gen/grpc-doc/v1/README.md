@@ -218,6 +218,8 @@
   
 - [v1/data_quality_service.proto](#v1_data_quality_service-proto)
     - [AcceptedValuesConfig](#metaxisdata-v1-AcceptedValuesConfig)
+    - [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest)
+    - [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse)
     - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
     - [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult)
     - [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest)
@@ -4085,6 +4087,38 @@ AcceptedValuesConfig counts rows whose column value is outside a fixed set.
 
 
 
+<a name="metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest"></a>
+
+### AcknowledgeQualityTargetSchemaRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when the target has rules: they carry it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse"></a>
+
+### AcknowledgeQualityTargetSchemaResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| baselined_rule_count | [int32](#int32) |  | How many checks were re-baselined. Zero means they were already current. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-AggregateConfig"></a>
 
 ### AggregateConfig
@@ -5882,7 +5916,7 @@ QualityRule is one data quality check.
 | state | [QualityRuleState](#metaxisdata-v1-QualityRuleState) |  |  |
 | owner | [string](#string) |  | Format: users/{user}. Empty when the rule has no owner. |
 | revision | [int32](#int32) |  | The current revision. Every semantic edit increments it and appends a revision row. |
-| target_schema_changed | [bool](#bool) |  | True when the target&#39;s current metadata hash differs from the hash recorded when the rule was saved, i.e. the target&#39;s schema changed underneath it. |
+| target_schema_changed | [bool](#bool) |  | True when the target&#39;s current structure fingerprint differs from the one recorded when the rule was saved, i.e. the target&#39;s schema changed underneath it. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | last_result | [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary) |  | The most recent execution, for the list view. It is not part of the rule and is only populated by reads, never persisted on write. |
@@ -6304,7 +6338,7 @@ plus the counts and health the row and the workspace header render.
 | pending_label_count | [int32](#int32) |  |  |
 | worst_status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  | The worst latest result across the target&#39;s rules; UNSPECIFIED when no rule has run yet. ERROR outranks FAIL: a check that could not run needs attention more than one whose data failed. |
 | last_run_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-| schema_changed | [bool](#bool) |  | Whether at least one rule was saved against a different target schema hash than the registry currently records. |
+| schema_changed | [bool](#bool) |  | Whether at least one rule was saved against a different target structure fingerprint than the registry currently records. |
 | orphaned | [bool](#bool) |  | Whether the target can no longer be resolved (the registry row, instance or database is gone). The rows stay readable because their target path is a snapshot, but runs are skipped. |
 | latest_run | [QualityRun](#metaxisdata-v1-QualityRun) |  | The target&#39;s most recent run. A run belongs to one target, so it is the per-target batch summary the directory and the workspace show; unset when the target has never run. |
 | run_count | [int32](#int32) |  | How many dispatch batches belong to this target. |
@@ -7457,6 +7491,7 @@ Rows are read page by page, so the file is not a consistent snapshot: a row writ
 
 No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
+| AcknowledgeQualityTargetSchema | [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest) | [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse) | Acknowledge that a target&#39;s structure changed and re-baseline its checks. Every non-archived check whose saved structure snapshot differs from the target&#39;s current fingerprint gets the current fingerprint, which clears the schema-changed signal. The checks themselves are untouched: re-baselining is a fact about which shape the checks were reviewed against, not a change to their definition, so it does not write a rule revision. Idempotent: a second call with nothing to do returns zero. |
 | ExportQualityReport | [ExportQualityReportRequest](#metaxisdata-v1-ExportQualityReportRequest) | [ExportQualityReportResponse](#metaxisdata-v1-ExportQualityReportResponse) | Render one target&#39;s quality report as a self-contained HTML document: the current state, the recent trend, the checks, the unresolved problems, a capped sample summary and the monitoring basis. The document carries its own styles and chart and loads nothing external, so it can be forwarded as a file. The export is audited because it is a bulk read of quality evidence.
 
 The report includes real sample values from failed checks (capped), so it is a wider disclosure than the rules.list permission usually implies; the document itself warns about forwarding it. Its HTML body never enters the audit ledger (see ExportQualityReportResponse.html_content). |
@@ -9758,6 +9793,7 @@ DataQualityNotificationKind is the event a data quality notification reports.
 | DATA_QUALITY_NOTIFICATION_KIND_ISSUE_RECOVERED | 2 | A previously failing rule passes again: its issue resolved itself. |
 | DATA_QUALITY_NOTIFICATION_KIND_EXECUTION_FAILED | 3 | A rule could not be executed at all. This is not a data failure. |
 | DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY | 4 | One run failed so many rules that the individual messages were merged. |
+| DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED | 5 | A monitored target&#39;s structure changed since its checks were saved. It is a registry fact, not a data failure: the checks were written against a shape that has moved, so they are worth reviewing. The detail names the target and no rule, because one change is one event for every check on the target. |
 
 
 
