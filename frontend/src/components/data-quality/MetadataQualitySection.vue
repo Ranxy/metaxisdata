@@ -861,7 +861,9 @@ async function loadLlmSetting() {
     const profile = await getWorkspaceProfileSetting();
     llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
   } catch {
-    llmEnabled.value = false;
+    // A failed read is not evidence that the model is off. Keep the label action
+    // available; the server refuses it with an actionable error if the switch is off.
+    llmEnabled.value = true;
   }
 }
 
