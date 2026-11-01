@@ -312,17 +312,21 @@ materialized-view page:
   last run: *covered 4/9 columns · 2 hours ago*. The asset page repeats the same
   signal in its header, and its Data Quality tab opens with the summary
   (status, quality score, recent pass rate, column coverage, last run).
-- **A table with no check is marked "not monitored"** and links to the target
-  workspace to add one. It is never green and never reads as 100%: nothing is
-  known about it, so nothing is claimed.
+- **A table with no check is marked "not monitored"**. It is never green and
+  never reads as 100%: nothing is known about it, so nothing is claimed. The
+  list column itself is text only (a link would swallow the row click); the
+  asset header badge and the Data Quality tab offer "Start monitoring" into the
+  target workspace.
 - **Column coverage is per object**: how many of the table's current columns at
   least one enabled check reads, out of the columns the registry currently holds.
   A check that names no column (row count, freshness on the table itself, custom
   SQL), a paused check and a column that schema sync dropped cover nothing. The
   number never exceeds the total because the numerator and the denominator come
   from the same registry read.
-- **The score is the same number as on Data Quality → Overview**; when no enabled
-  check has a judged result it shows a dash, not 0 and not 100.
+- **The score is the same target score as on Data Quality → Targets and in the
+  target workspace header** (same weighted formula as the workspace score on
+  Data Quality → Overview, but a target aggregate rather than a workspace one);
+  when no enabled check has a judged result it shows a dash, not 0 and not 100.
 - These signals are read-only. Viewing a metadata page writes nothing, audits
   nothing and sends no notification; a member's read baseline already covers
   them, while a custom role without the data-quality read permission does not see
