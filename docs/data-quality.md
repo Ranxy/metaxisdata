@@ -77,6 +77,19 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   stay unjudged until the check is saved again. Use *Fill from target* to record
   the current definition.
 
+Checks can also start from a proposal instead of a blank form. **Recommend
+checks** reads the columns' stored profiles and drafts the checks that follow
+from them — a volume floor, a freshness bound on the relation's event-time
+column, a null-rate bound on a column that has nulls, an enumeration for a
+low-cardinality column, uniqueness on a column whose values are all distinct, an
+observed range on a numeric column. It needs no model and no provider, so it
+works with model analysis switched off; the drafts land in the same review queue
+as every other proposal, and nothing runs until a person creates the check. The
+observed threshold is a starting point: the draft's reason states the
+observation and the arithmetic, and the check dialog can change it. On the target
+workspace the entry is in the copilot panel's quick strip; on a table's Data
+Quality tab it sits beside **Target workspace**.
+
 Checks can also start from a model draft: draft in the target workspace's AI
 copilot, or open **Data Quality → Suggestions** and use **Draft with AI** to pick
 one or more tables and describe the check once. A queued draft appears inline in
@@ -422,9 +435,10 @@ look at — delivered to the outbound notification channels, not to the bell ico
 The table detail page has a **Data Quality** tab: how many checks watch the table,
 their recent executions, its open issues, and per-column profiles and semantic
 labels. *Profile columns* computes null counts, distinct counts, extremes,
-lengths, frequent values and value shapes with two queries; *Suggest labels*
+lengths, frequent values and value shapes with two queries; *AI label fields*
 asks the model to name each column's semantic type and proposes check drafts from
-a fixed mapping. Both only produce suggestions — nothing becomes a check until a
+a fixed mapping; *Recommend checks* derives check drafts from the profile itself
+and needs no model. Both only produce suggestions — nothing becomes a check until a
 person creates the check. When the table has proposals waiting, the tab also
 shows a **Suggestions awaiting review** card (it stays hidden otherwise): each
 row names the column, or the check draft's title, with the proposed semantic
@@ -438,7 +452,8 @@ its actions need the `.suggest` permission, so members without it never see it;
 opening a draft in the dialog additionally needs the check-creation permission, so
 a reviewer without it can still reject the draft.
 
-The **Suggestions** page is the review center. Suggestions arrive from two places:
+The **Suggestions** page is the review center. Suggestions arrive from three
+places:
 
 - **Draft with AI** on the Suggestions page: pick one or more tables (a single
   target can also limit its columns), describe in your own words what must hold,
@@ -452,10 +467,15 @@ The **Suggestions** page is the review center. Suggestions arrive from two place
   prompt size, and a **correlation ID** to quote in a support request. When runtime
   LLM debug was enabled, *View raw request/response* shows the exact prompt and
   model response (the debug log is kept seven days).
-- **Suggest labels** on a table's Data Quality tab: profile the columns first,
-  then let the model name their semantic types and propose the deterministic check
-  types those labels imply. The pass reports what it did, and its proposals appear in
-  that tab's review card immediately.
+- **Recommend checks** on a target workspace or a table's Data Quality tab: profile
+  the columns first, then derive checks and starting thresholds from those
+  profiles. It uses no model and no provider, so it is available with model analysis
+  off, and it is the only pass that proposes an observed threshold. The same button
+  re-runs the pass on a later day, so a drifted profile refreshes its pending drafts.
+- **AI label fields** on a table's Data Quality tab (and in each field's section on
+  the target workspace): let the model name each column's semantic type and propose
+  the deterministic check types those labels imply. The label action needs model
+  analysis on; without it the button is not offered.
 
 The queue groups suggestions by target table and filters by status, kind, source
 and target scope. Suggestions produced by a finished drafting job appear like any
@@ -471,6 +491,33 @@ the current page to work in bulk (up to 200 per submit):
 - **Column labels** — *Accept labels* writes the semantic labels immediately;
   *Reject labels* discards them. Accepting a label does not touch data.
 
+### What a recommendation reads, and what it will not propose
+
+A recommendation is only as good as the profile behind it. The pass refuses a
+column whose profile is missing or older than seven days, so *Recommend checks*
+runs the profile step first when the reader may; the queue then holds drafts whose
+reason cites the observation ("0.42% NULL across 12,345 rows; the proposed bound
+is 0.63%, 1.5× the observation"). The tolerances are fixed and conservative: half
+of the observed row count as a volume floor, twice the observed freshness lag
+(never under an hour; a table whose newest value is more than fifteen days old
+gets no freshness draft, because the bound would then be less than twice what we
+observed), 1.5× the observed null rate up to 50% (a column that is at least half
+NULL gets none), a tenth of the observed numeric span on each side, a fifth above
+the observed longest text value. A text-length draft is only proposed for a column
+already labeled free text, because a short code's length today says nothing about
+the length it should have. An enumeration is only proposed when the profile could
+list every value without cutting one for display, so a draft never contains a
+shortened spelling of a value the column holds.
+
+It deliberately proposes nothing where a static threshold would be a guess:
+custom SQL, CEL expressions, cross-table reconciliation, grouped checks and
+aggregate checks are not derived, and a primary key gets no uniqueness draft
+(the engine already enforces it, so the check could never fail). It also proposes
+nothing for a column whose profile cannot support the check — a mostly-NULL
+column, an estimated distinct count, a value set the sample could not enumerate
+completely. Those columns are reported as skipped rather than filled with a
+made-up bound.
+
 ### The queue does not accumulate duplicates
 
 Suggestions are proposals about a fact, and the queue keeps **one pending proposal
@@ -480,7 +527,7 @@ again therefore never adds a second copy: a check-draft proposal that is still
 pending is **refreshed** in place (the row keeps its identity, and its *refreshed*
 time moves), while a column that already has a pending label proposal is skipped
 before the model is called. The result toast reports what happened — created,
-refreshed, skipped — and names the columns it left out (up to six, with a count
+refreshed, skipped — and names the columns it derived no proposal for (up to six, with a count
 for the rest).
 
 A generation pass also reconciles proposals with reality:
@@ -492,6 +539,14 @@ A generation pass also reconciles proposals with reality:
 - Proposals you already accepted or rejected are not proposed again. *Regenerate*
   (on the table's Data Quality tab and in the drafting workbench) re-analyzes those
   columns and checks; it still refreshes rather than duplicates.
+- A pending proposal belongs to the pass that produced it. Running a different
+  pass does not overwrite it: **AI label fields** will not put its default
+  parameters back over a recommendation's observed ones, and *Draft with AI* is not
+  overwritten by a derived pass either. The one exception is deliberate — a
+  recommendation may replace a pending label-pass draft, whose parameters are the
+  fixed defaults, with the thresholds it observed. *Regenerate* overrides this for
+  the pass you are running. The queue write enforces this itself, so two passes
+  running at the same moment cannot override each other.
 - Submitting the same drafting job twice while the first one is still pending or
   running returns the first job instead of starting a second analysis.
 
@@ -564,6 +619,9 @@ pruned.
 | An AI analysis is rejected as over quota | Settings → Data Quality → Today's AI usage shows used/limit and concurrency. Raise **Daily AI analyses** (L1+L2, max 1,000,000) or **Concurrent LLM calls** (1–64); the change applies to the next analysis without a restart. |
 | A model rejects the output budget | The provider profile's **Max output tokens** is above what that model accepts. The server first retries that request once at 4,096 tokens; if it is still rejected, lower the profile budget (Settings → LLM providers) or use a model with a larger output cap. The failure shows a provider-status diagnostic. |
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
+| *Recommend checks* proposes nothing, or far fewer checks than expected | The columns were never profiled (the server refuses to recommend without a profile fresher than seven days), every check the profile supports is already a saved check, or the proposals were already accepted/rejected. Rejecting a recommendation keeps it out of later passes until you use *Regenerate*. A column can also be listed as skipped because its profile cannot support a check (for example a mostly-NULL column, a value set the sample could not enumerate completely, or a value the profile had to shorten for display). |
+| *Recommend checks* proposed a threshold that looks too loose or too tight | The bound is the observation plus a fixed tolerance and is a starting point, not a verdict: edit it in the check dialog before saving, or lower the tolerance by making the check stricter. A range check will legitimately fail when the data moves past today's extremes; widen it or replace it with an aggregate check once the shape is understood. |
+| Running *AI label fields* changed the recommendation thresholds | It should not: a pending recommendation is not overwritten by a label-pass draft. If a draft shows the default parameters instead, the recommendation was rejected/decided first, or *Regenerate* was used on the label pass. |
 | A CSV export stops early | The selection is capped at 100,000 rows; the app warns when the file was cut. Narrow the filters (especially the time window) and export again. |
 | "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |
 | The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |

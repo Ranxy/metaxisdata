@@ -45,6 +45,28 @@ In this mode the harness still performs the normal readiness checks, PostgreSQL 
 
 This mode is intended for CI systems that provide database services directly. Setting only part of the four required variables (the two hosts and the two ports) fails fast instead of silently mixing external services with `testcontainers`.
 
+### Real model runs (opt-in)
+
+One scenario drives a real OpenAI-compatible provider so the model-assisted label pass
+and the deterministic recommendation pass can be proven against each other end to end.
+It is skipped unless an API key is present:
+
+```bash
+export METAXISDATA_INTEGRATION_LLM_API_KEY=...                                # required
+export METAXISDATA_INTEGRATION_LLM_BASE_URL=https://api.deepseek.com          # default
+export METAXISDATA_INTEGRATION_LLM_MODEL=deepseek-flash                       # default
+export METAXISDATA_INTEGRATION_LLM_PROVIDER_TYPE=LLM_PROVIDER_TYPE_DEEPSEEK   # default
+
+go test -v -count=1 -tags=integration \
+  -run '^TestDataQualityLLMRecommendationPrecedenceRealServerIntegration$' \
+  ./backend/test/integration/runner
+```
+
+The scenario creates a temporary provider profile and enables the workspace model switch,
+then removes the profile and restores the switch. It never runs by default, so the other
+suites stay free and hermetic. The credential is read from the environment only; the
+scenario never writes it to the repository or its output.
+
 ### Docker-less runs
 
 Without external services, the harness probes the container runtime before starting anything. When no Docker-compatible daemon is reachable the suite prints `skipping integration tests: docker is unavailable` and exits 0, so `make test-integration-smoke`, `make test-integration` and `make test-integration-mysql` are safe to run on machines without Docker.

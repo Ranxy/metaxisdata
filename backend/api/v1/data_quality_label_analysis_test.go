@@ -45,17 +45,17 @@ func TestQualityLabelStaleProfileColumns(t *testing.T) {
 	now := time.Date(2026, time.October, 19, 12, 0, 0, 0, time.UTC)
 	profiles := map[string]*store.ColumnProfileMessage{
 		"fresh":       {ColumnName: "fresh", Profile: &storepb.ColumnProfile{}, ProfiledAt: now.Add(-time.Hour)},
-		"exactly-old": {ColumnName: "exactly-old", Profile: &storepb.ColumnProfile{}, ProfiledAt: now.Add(-qualityLabelProfileMaxAge)},
+		"exactly-old": {ColumnName: "exactly-old", Profile: &storepb.ColumnProfile{}, ProfiledAt: now.Add(-qualityProfileMaxAge)},
 		"stale":       {ColumnName: "stale", Profile: &storepb.ColumnProfile{}, ProfiledAt: now.Add(-8 * 24 * time.Hour)},
 		"empty":       {ColumnName: "empty", Profile: nil, ProfiledAt: now},
 		"nil-message": nil,
 	}
 	columns := []string{"fresh", "exactly-old", "stale", "empty", "nil-message", "missing"}
 	require.Equal(t, []string{"stale", "empty", "nil-message", "missing"},
-		qualityLabelStaleProfileColumns(profiles, columns, now))
+		qualityAnalysisStaleProfileColumns(profiles, columns, now))
 
-	require.Empty(t, qualityLabelStaleProfileColumns(profiles, []string{"fresh", "exactly-old"}, now))
-	require.Empty(t, qualityLabelStaleProfileColumns(nil, nil, now))
+	require.Empty(t, qualityAnalysisStaleProfileColumns(profiles, []string{"fresh", "exactly-old"}, now))
+	require.Empty(t, qualityAnalysisStaleProfileColumns(nil, nil, now))
 }
 
 // TestQualityLabelLabelMap pins the prompt's existing-label map: an unset label is

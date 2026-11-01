@@ -52,6 +52,7 @@ const (
 	DataQualityService_ProfileColumns_FullMethodName                     = "/metaxisdata.v1.DataQualityService/ProfileColumns"
 	DataQualityService_SuggestQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
 	DataQualityService_SuggestColumnLabels_FullMethodName                = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	DataQualityService_RecommendQualityChecks_FullMethodName             = "/metaxisdata.v1.DataQualityService/RecommendQualityChecks"
 	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
@@ -195,6 +196,12 @@ type DataQualityServiceClient interface {
 	SuggestQualityRule(ctx context.Context, in *SuggestQualityRuleRequest, opts ...grpc.CallOption) (*SuggestQualityRuleResponse, error)
 	// Propose semantic labels for up to 50 columns of one table.
 	SuggestColumnLabels(ctx context.Context, in *SuggestColumnLabelsRequest, opts ...grpc.CallOption) (*SuggestColumnLabelsResponse, error)
+	// Recommend checks for one table from its stored column profiles. The pass is
+	// deterministic: it needs no model, no provider configuration and no connection
+	// to the target database. Like every other generation pass it queues PENDING
+	// rule drafts only; a reviewer still decides which drafts become checks. The
+	// request refuses columns without a fresh profile, pointing at ProfileColumns.
+	RecommendQualityChecks(ctx context.Context, in *RecommendQualityChecksRequest, opts ...grpc.CallOption) (*RecommendQualityChecksResponse, error)
 	// Explain one failed execution as a stream of hypotheses.
 	//
 	// No (google.api.http) annotation: this is a server-streaming method, and the
@@ -614,6 +621,16 @@ func (c *dataQualityServiceClient) SuggestColumnLabels(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) RecommendQualityChecks(ctx context.Context, in *RecommendQualityChecksRequest, opts ...grpc.CallOption) (*RecommendQualityChecksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecommendQualityChecksResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_RecommendQualityChecks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ExplainQualityExecution(ctx context.Context, in *ExplainQualityExecutionRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExplainQualityExecutionResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &DataQualityService_ServiceDesc.Streams[2], DataQualityService_ExplainQualityExecution_FullMethodName, cOpts...)
@@ -899,6 +916,12 @@ type DataQualityServiceServer interface {
 	SuggestQualityRule(context.Context, *SuggestQualityRuleRequest) (*SuggestQualityRuleResponse, error)
 	// Propose semantic labels for up to 50 columns of one table.
 	SuggestColumnLabels(context.Context, *SuggestColumnLabelsRequest) (*SuggestColumnLabelsResponse, error)
+	// Recommend checks for one table from its stored column profiles. The pass is
+	// deterministic: it needs no model, no provider configuration and no connection
+	// to the target database. Like every other generation pass it queues PENDING
+	// rule drafts only; a reviewer still decides which drafts become checks. The
+	// request refuses columns without a fresh profile, pointing at ProfileColumns.
+	RecommendQualityChecks(context.Context, *RecommendQualityChecksRequest) (*RecommendQualityChecksResponse, error)
 	// Explain one failed execution as a stream of hypotheses.
 	//
 	// No (google.api.http) annotation: this is a server-streaming method, and the
@@ -1075,6 +1098,9 @@ func (UnimplementedDataQualityServiceServer) SuggestQualityRule(context.Context,
 }
 func (UnimplementedDataQualityServiceServer) SuggestColumnLabels(context.Context, *SuggestColumnLabelsRequest) (*SuggestColumnLabelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SuggestColumnLabels not implemented")
+}
+func (UnimplementedDataQualityServiceServer) RecommendQualityChecks(context.Context, *RecommendQualityChecksRequest) (*RecommendQualityChecksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecommendQualityChecks not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ExplainQualityExecution(*ExplainQualityExecutionRequest, grpc.ServerStreamingServer[ExplainQualityExecutionResponse]) error {
 	return status.Error(codes.Unimplemented, "method ExplainQualityExecution not implemented")
@@ -1701,6 +1727,24 @@ func _DataQualityService_SuggestColumnLabels_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_RecommendQualityChecks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecommendQualityChecksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).RecommendQualityChecks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_RecommendQualityChecks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).RecommendQualityChecks(ctx, req.(*RecommendQualityChecksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ExplainQualityExecution_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ExplainQualityExecutionRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -2065,6 +2109,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SuggestColumnLabels",
 			Handler:    _DataQualityService_SuggestColumnLabels_Handler,
+		},
+		{
+			MethodName: "RecommendQualityChecks",
+			Handler:    _DataQualityService_RecommendQualityChecks_Handler,
 		},
 		{
 			MethodName: "GetQualityOverview",

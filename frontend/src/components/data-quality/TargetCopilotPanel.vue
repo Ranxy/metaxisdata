@@ -17,9 +17,9 @@
         {{ disabledReason }}
       </p>
 
-      <!-- The intent path needs words; this one does not. A label pass is a
-           different output from a check draft, so it sits apart from the
-           drafting form and hands its result to the page's suggestion queue. -->
+      <!-- The intent path needs words; this one does not. Recommendation is
+           deterministic and belongs to the monitoring context, so it sits apart
+           from the drafting form and hands its result to the page's queue. -->
       <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2.5">
         <div class="min-w-0 space-y-0.5">
           <p class="text-xs font-medium">
@@ -29,23 +29,23 @@
             {{ t("dataQuality.copilot.quickHint") }}
           </p>
         </div>
-        <SuggestLabelsButton
+        <RecommendChecksButton
           :target-guid="targetGuid"
           :meta-type="metaType"
-          :columns="labelColumns"
+          :columns="recommendColumns"
           :can-profile="canProfile"
           size="sm"
           :disabled="!!disabledReason"
-          @started="labelsError = ''"
-          @suggested="onLabelsSuggested"
-          @failed="labelsError = $event"
+          @started="recommendError = ''"
+          @suggested="onRecommended"
+          @failed="recommendError = $event"
         />
       </div>
       <p
-        v-if="labelsError"
+        v-if="recommendError"
         class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive break-words"
       >
-        {{ labelsError }}
+        {{ recommendError }}
       </p>
 
       <!-- An example fills the box; it does not submit, so the reader can edit
@@ -157,7 +157,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink } from "vue-router";
 import { suggestQualityRule } from "@/api/data-quality";
-import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
+import RecommendChecksButton from "@/components/data-quality/RecommendChecksButton.vue";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -183,6 +183,8 @@ import { connectErrorCode } from "@/utils/dataQualityLlm";
  * inline beside the rules they would become, and a failed call keeps the intent
  * so the reader can retry without retyping. The synchronous call is the same one
  * the rule editor's workbench uses; the page owns where the returned drafts go.
+ * The quick strip above the intent is the deterministic recommendation path,
+ * which needs no model and therefore works with the copilot switched off.
  */
 
 const props = withDefaults(
@@ -190,14 +192,14 @@ const props = withDefaults(
     targetGuid: string;
     metaType: MetaType;
     canSuggest: boolean;
-    /** The columns a one-click label pass may propose labels for. */
-    labelColumns?: string[];
-    /** Whether the reader may profile columns before labeling them. */
+    /** The columns a one-click recommendation may derive checks for. */
+    recommendColumns?: string[];
+    /** Whether the reader may profile columns before recommending checks. */
     canProfile?: boolean;
     /** Why drafting is unavailable right now; unset when it is available. */
     disabledReason?: string;
   }>(),
-  { labelColumns: () => [], canProfile: false }
+  { recommendColumns: () => [], canProfile: false }
 );
 
 const emit = defineEmits<{
@@ -206,8 +208,8 @@ const emit = defineEmits<{
     summary: QualitySuggestionQueueSummary | undefined,
     newNames: string[],
   ];
-  /** The label pass is done; the page re-reads the pending queue. */
-  labelsSuggested: [];
+  /** The recommendation pass is done; the page re-reads the pending queue. */
+  recommended: [];
 }>();
 
 type CopilotErrorKind = "" | "needLlm" | "quota" | "permission" | "failed";
@@ -222,8 +224,8 @@ const { summaryText } = useSuggestionSummary();
 const intent = ref("");
 const generating = ref(false);
 const generated = ref(false);
-/** The one-click label pass reports its own failure beside its button. */
-const labelsError = ref("");
+/** The one-click recommendation reports its own failure beside its button. */
+const recommendError = ref("");
 const errorKind = ref<CopilotErrorKind>("");
 const errorDetail = ref("");
 const lastCount = ref(0);
@@ -330,9 +332,9 @@ async function submit() {
   }
 }
 
-/** The label pass queued proposals; the page owns reading the queue back. */
-function onLabelsSuggested() {
-  emit("labelsSuggested");
+/** The recommendation pass queued proposals; the page owns reading the queue back. */
+function onRecommended() {
+  emit("recommended");
 }
 
 defineExpose({ focus });

@@ -238,6 +238,14 @@
             >
               {{ t("dataQuality.workspace.draftsLoadFailed") }}
             </p>
+            <!-- A field's label pass reports its failure here, above the sections
+                 it would have queued proposals into. -->
+            <p
+              v-if="labelError"
+              class="text-sm text-danger"
+            >
+              {{ labelError }}
+            </p>
             <div
               v-if="pendingLabelSuggestions.length > 0"
               class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2"
@@ -307,26 +315,44 @@
                     {{ sectionHint(section) }}
                   </CardDescription>
                 </div>
-                <Button
-                  v-if="canCreate && section.kind === 'dataset'"
-                  variant="ghost"
-                  size="sm"
-                  class="shrink-0"
-                  @click="openAddCheck({ scope: 'dataset' })"
-                >
-                  <Plus class="mr-1 h-4 w-4" />
-                  {{ t("dataQuality.workspace.addDatasetCheck") }}
-                </Button>
-                <Button
-                  v-if="canCreate && section.kind === 'column'"
-                  variant="ghost"
-                  size="sm"
-                  class="shrink-0"
-                  @click="openAddCheck({ scope: 'column', column: section.column })"
-                >
-                  <Plus class="mr-1 h-4 w-4" />
-                  {{ t("dataQuality.workspace.addColumnCheck") }}
-                </Button>
+                <div class="flex shrink-0 items-center gap-1">
+                  <!-- Labeling is a field action, so it sits with the field's own
+                       checks; recommendation lives with the monitoring actions in
+                       the copilot panel, never beside it. -->
+                  <SuggestLabelsButton
+                    v-if="canLabel && section.kind === 'column'"
+                    compact
+                    :target-guid="targetGuid"
+                    :meta-type="effectiveMetaType"
+                    :columns="[section.column]"
+                    :can-profile="canProfile"
+                    :disabled="orphaned"
+                    size="sm"
+                    @started="labelError = ''"
+                    @suggested="onDraftsSuggested"
+                    @failed="onLabelsFailed"
+                  />
+                  <Button
+                    v-if="canCreate && section.kind === 'dataset'"
+                    variant="ghost"
+                    size="sm"
+                    class="shrink-0"
+                    @click="openAddCheck({ scope: 'dataset' })"
+                  >
+                    <Plus class="mr-1 h-4 w-4" />
+                    {{ t("dataQuality.workspace.addDatasetCheck") }}
+                  </Button>
+                  <Button
+                    v-if="canCreate && section.kind === 'column'"
+                    variant="ghost"
+                    size="sm"
+                    class="shrink-0"
+                    @click="openAddCheck({ scope: 'column', column: section.column })"
+                  >
+                    <Plus class="mr-1 h-4 w-4" />
+                    {{ t("dataQuality.workspace.addColumnCheck") }}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent class="p-0">
                 <div
@@ -380,11 +406,11 @@
               :target-guid="targetGuid"
               :meta-type="effectiveMetaType"
               :can-suggest="canSuggest"
-              :label-columns="labelSuggestionsColumns"
+              :recommend-columns="recommendColumns"
               :can-profile="canProfile"
               :disabled-reason="orphaned ? t('dataQuality.copilot.unavailable') : undefined"
               @drafted="onDrafted"
-              @labels-suggested="onLabelsSuggested"
+              @recommended="onDraftsSuggested"
             />
 
             <Card v-if="canListIssues">
@@ -613,9 +639,11 @@ import {
   listQualitySuggestions,
   runQualityRules,
 } from "@/api/data-quality";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
+import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
@@ -750,6 +778,11 @@ const contractError = ref("");
 const loading = ref(true);
 const error = ref("");
 const draftsFailed = ref(false);
+/** The field label pass's failure, shown above the field sections. */
+const labelError = ref("");
+/** The workspace's model switch; the label action needs it, recommendation does not. */
+const llmEnabled = ref(false);
+const canLabel = computed(() => canSuggest.value && llmEnabled.value);
 const runningAll = ref(false);
 const runningRule = ref("");
 /** One report download at a time; the server renders the whole document. */
@@ -896,8 +929,8 @@ const pendingLabelSuggestions = computed(() =>
   suggestions.value.filter(isLabelSuggestion)
 );
 
-/** Label passes read at most 50 columns per request, like the asset tab. */
-const labelSuggestionsColumns = computed(() =>
+/** Generation passes read at most 50 columns per request, like the asset tab. */
+const recommendColumns = computed(() =>
   targetColumns.value.slice(0, 50).map((column) => column.name)
 );
 
@@ -1161,11 +1194,17 @@ function onDrafted(
 }
 
 /**
- * A one-click label pass reconciles the target's pending queue server-side, so
- * the page reads it back rather than trusting the response: the strip and the
+ * A generation pass reconciles the target's pending queue server-side, so the
+ * page reads it back rather than trusting the response: the strip and the
  * centre's counts must agree with what is actually pending.
  */
-function onLabelsSuggested() {
+function onDraftsSuggested() {
+  void loadDrafts();
+}
+
+/** A field's label pass reports its own failure; the queue is re-read either way. */
+function onLabelsFailed(message: string) {
+  labelError.value = message;
   void loadDrafts();
 }
 
@@ -1375,7 +1414,22 @@ async function runRule(rule: QualityRule) {
   }
 }
 
-onMounted(load);
+/** Only read the workspace switch; the settings page owns changing it. */
+async function loadLlmSetting() {
+  try {
+    const profile = await getWorkspaceProfileSetting();
+    llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
+  } catch {
+    // A failed read is not evidence that the model is off. Keep the label action
+    // available; the server refuses it with an actionable error if the switch is off.
+    llmEnabled.value = true;
+  }
+}
+
+onMounted(() => {
+  void load();
+  void loadLlmSetting();
+});
 
 // Navigating from one target's workspace to another reuses this component, so
 // the whole workspace reloads with the GUID.

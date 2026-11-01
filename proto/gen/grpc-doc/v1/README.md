@@ -328,6 +328,8 @@
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
     - [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint)
     - [RangeConfig](#metaxisdata-v1-RangeConfig)
+    - [RecommendQualityChecksRequest](#metaxisdata-v1-RecommendQualityChecksRequest)
+    - [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
@@ -6113,7 +6115,7 @@ proposals; these counts let the client explain the result.
 | skipped_existing_fact | [int32](#int32) |  | Skipped because the fact already exists: the column has a label, or a rule with the same identity exists. |
 | skipped_pending | [int32](#int32) |  | Skipped because an equivalent proposal is already pending; the default mode leaves it untouched instead of spending another analysis. |
 | skipped_decided | [int32](#int32) |  | Skipped because the same proposal was already accepted or rejected and the request did not force regeneration. |
-| skipped_columns | [string](#string) | repeated | The columns a label pass left out, so the client can name them. |
+| skipped_columns | [string](#string) | repeated | The columns a generation pass derived no proposal for, so the client can name them. A label pass lists columns it left out because they already had a label or a live proposal; a deterministic recommendation lists columns no check could be derived for. A column whose candidate lost the pass&#39;s per-type budget is not listed, because a proposal for it was derived. |
 
 
 
@@ -6308,6 +6310,42 @@ the values are strings parsed with the column&#39;s type.
 | inclusive | [bool](#bool) |  | Whether both bounds are inclusive. Default false, i.e. the interval is open on both ends. |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RecommendQualityChecksRequest"></a>
+
+### RecommendQualityChecksRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| table_guid | [string](#string) |  | The globally unique metadata GUID of the table. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| columns | [string](#string) | repeated | The columns to consider for column-level checks; empty means every column of the table. At most 50. Table-level checks (row count, freshness) describe the relation as a whole, so they are considered regardless of this list. |
+| language | [string](#string) |  | The language the draft titles and rationales are written in, e.g. &#34;en&#34; or &#34;zh-CN&#34;. |
+| force_regenerate | [bool](#bool) |  | Regenerate proposals that already have a pending proposal, or were already decided. Regeneration still never duplicates: it refreshes the one pending proposal per identity. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RecommendQualityChecksResponse"></a>
+
+### RecommendQualityChecksResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_suggestions | [QualitySuggestion](#metaxisdata-v1-QualitySuggestion) | repeated | The rule drafts this pass queued, created or refreshed. |
+| summary | [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary) |  | What the pass did to the queue, including the columns no check was derived for. |
 
 
 
@@ -7142,11 +7180,18 @@ QualitySuggestionKind is what a suggestion proposes.
 ### QualitySuggestionSource
 QualitySuggestionSource is what produced a suggestion.
 
+PROFILE is the model-assisted label pass, which reads profiles and asks the
+model for semantic types; RECOMMENDATION is the deterministic pass that derives
+checks and thresholds from the profile alone. They are separate values because a
+generation pass may only refresh a pending proposal it produced itself (unless
+it is forced), and because the review queue shows the source to the reviewer.
+
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | QUALITY_SUGGESTION_SOURCE_UNSPECIFIED | 0 |  |
 | QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE | 1 |  |
 | QUALITY_SUGGESTION_SOURCE_PROFILE | 2 |  |
+| QUALITY_SUGGESTION_SOURCE_RECOMMENDATION | 3 |  |
 
 
 
@@ -7260,6 +7305,7 @@ No (google.api.http) annotation, for the same reason as ExportQualityExecutions.
 | ProfileColumns | [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest) | [ProfileColumnsResponse](#metaxisdata-v1-ProfileColumnsResponse) | Measure the deterministic statistics of up to 50 columns of one table. |
 | SuggestQualityRule | [SuggestQualityRuleRequest](#metaxisdata-v1-SuggestQualityRuleRequest) | [SuggestQualityRuleResponse](#metaxisdata-v1-SuggestQualityRuleResponse) | Turn a natural-language intent into queued rule drafts. |
 | SuggestColumnLabels | [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest) | [SuggestColumnLabelsResponse](#metaxisdata-v1-SuggestColumnLabelsResponse) | Propose semantic labels for up to 50 columns of one table. |
+| RecommendQualityChecks | [RecommendQualityChecksRequest](#metaxisdata-v1-RecommendQualityChecksRequest) | [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse) | Recommend checks for one table from its stored column profiles. The pass is deterministic: it needs no model, no provider configuration and no connection to the target database. Like every other generation pass it queues PENDING rule drafts only; a reviewer still decides which drafts become checks. The request refuses columns without a fresh profile, pointing at ProfileColumns. |
 | ExplainQualityExecution | [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest) | [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse) stream | Explain one failed execution as a stream of hypotheses.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |

@@ -687,12 +687,17 @@ optional and must not exceed the fail threshold.
 
 ### ProfileValue
 ProfileValue is one frequent value of a low-cardinality column.
+ProfileValue is one frequent value of a low-cardinality column. The value is
+bounded by the display limit, so a consumer that needs the exact value (an
+accepted-values set, say) must consult truncated: a truncated spelling is not a
+value the column holds.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | value | [string](#string) |  |  |
 | count | [int64](#int64) |  |  |
+| truncated | [bool](#bool) |  | True when the observed value was longer than the display bound and was cut for storage. A consumer that turns the value into a rule parameter must skip it. |
 
 
 
@@ -993,7 +998,7 @@ user what changed without listing every row.
 | skipped_existing_fact | [int32](#int32) |  | Skipped because the fact already exists: the column has a label, or a rule with the same identity exists. |
 | skipped_pending | [int32](#int32) |  | Skipped because an equivalent proposal is already pending; the default generation mode leaves it untouched instead of spending a model call. |
 | skipped_decided | [int32](#int32) |  | Skipped because the same proposal was already accepted or rejected and the caller did not force regeneration. |
-| skipped_columns | [string](#string) | repeated | The columns a label pass left out, so a caller can name them. |
+| skipped_columns | [string](#string) | repeated | The columns a generation pass derived no proposal for, so a caller can name them. A label pass lists columns it left out because they already had a label or a live proposal; a deterministic recommendation lists columns no check could be derived for. A column whose candidate lost the pass&#39;s per-type budget is not listed, because a proposal for it was derived. |
 
 
 
@@ -1669,11 +1674,18 @@ QualitySuggestionKind is what a suggestion proposes.
 ### QualitySuggestionSource
 QualitySuggestionSource is what produced a suggestion.
 
+PROFILE is the model-assisted label pass, which reads profiles and asks the
+model for semantic types; RECOMMENDATION is the deterministic pass that derives
+checks and thresholds from the profile alone. They are separate values because a
+generation pass may only refresh a pending proposal it produced itself (unless
+it is forced), and because the review queue shows the source to the reviewer.
+
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | QUALITY_SUGGESTION_SOURCE_UNSPECIFIED | 0 |  |
 | QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE | 1 |  |
 | QUALITY_SUGGESTION_SOURCE_PROFILE | 2 |  |
+| QUALITY_SUGGESTION_SOURCE_RECOMMENDATION | 3 |  |
 
 
 

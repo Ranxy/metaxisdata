@@ -738,6 +738,10 @@ const sourceOptions = [
     value: QualitySuggestionSource.PROFILE,
     key: "dataQuality.suggestionSource.profile",
   },
+  {
+    value: QualitySuggestionSource.RECOMMENDATION,
+    key: "dataQuality.suggestionSource.recommendation",
+  },
 ];
 
 /** Every member each filter accepts, UNSPECIFIED included as "any". */

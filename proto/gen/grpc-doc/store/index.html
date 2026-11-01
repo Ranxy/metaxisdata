@@ -2227,7 +2227,7 @@ converted with the column&#39;s type; at most 20. </p></td>
         
       
         <h3 id="metaxisdata.store.ProfileValue">ProfileValue</h3>
-        <p>ProfileValue is one frequent value of a low-cardinality column.</p>
+        <p>ProfileValue is one frequent value of a low-cardinality column.</p><p>ProfileValue is one frequent value of a low-cardinality column. The value is</p><p>bounded by the display limit, so a consumer that needs the exact value (an</p><p>accepted-values set, say) must consult truncated: a truncated spelling is not a</p><p>value the column holds.</p>
 
         
           <table class="field-table">
@@ -2248,6 +2248,14 @@ converted with the column&#39;s type; at most 20. </p></td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the observed value was longer than the display bound and was cut for
+storage. A consumer that turns the value into a rule parameter must skip it. </p></td>
                 </tr>
               
             </tbody>
@@ -3074,7 +3082,11 @@ caller did not force regeneration. </p></td>
                   <td>skipped_columns</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>The columns a label pass left out, so a caller can name them. </p></td>
+                  <td><p>The columns a generation pass derived no proposal for, so a caller can name
+them. A label pass lists columns it left out because they already had a label or
+a live proposal; a deterministic recommendation lists columns no check could be
+derived for. A column whose candidate lost the pass&#39;s per-type budget is not
+listed, because a proposal for it was derived. </p></td>
                 </tr>
               
             </tbody>
@@ -4913,7 +4925,7 @@ the same instance and database.</p></td>
         </table>
       
         <h3 id="metaxisdata.store.QualitySuggestionSource">QualitySuggestionSource</h3>
-        <p>QualitySuggestionSource is what produced a suggestion.</p>
+        <p>QualitySuggestionSource is what produced a suggestion.</p><p>PROFILE is the model-assisted label pass, which reads profiles and asks the</p><p>model for semantic types; RECOMMENDATION is the deterministic pass that derives</p><p>checks and thresholds from the profile alone. They are separate values because a</p><p>generation pass may only refresh a pending proposal it produced itself (unless</p><p>it is forced), and because the review queue shows the source to the reviewer.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -4935,6 +4947,12 @@ the same instance and database.</p></td>
               <tr>
                 <td>QUALITY_SUGGESTION_SOURCE_PROFILE</td>
                 <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_SOURCE_RECOMMENDATION</td>
+                <td>3</td>
                 <td><p></p></td>
               </tr>
             

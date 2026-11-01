@@ -81,7 +81,7 @@ describe("useSuggestionSummary", () => {
         "label"
       )
     ).toBe(
-      "Nothing new: 2 column(s) already have a label. · Skipped columns: email, phone"
+      "Nothing new: 2 column(s) already have a label. · Columns with no proposal: email, phone"
     );
   });
 
@@ -97,7 +97,7 @@ describe("useSuggestionSummary", () => {
         "label"
       )
     ).toBe(
-      "Nothing new: 8 matching proposal(s) are already waiting for review. · Skipped columns: a, b, c, d, e, f and 2 more"
+      "Nothing new: 8 matching proposal(s) are already waiting for review. · Columns with no proposal: a, b, c, d, e, f and 2 more"
     );
   });
 

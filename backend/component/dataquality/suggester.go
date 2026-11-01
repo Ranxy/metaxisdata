@@ -306,6 +306,12 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 		if err != nil {
 			return nil, summary, nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to queue a rule suggestion"))
 		}
+		if suggestion == nil {
+			// The live proposal for this identity belongs to another generation pass and
+			// the database refused the refresh (D-79). Nothing was written.
+			summary.SkippedPending++
+			continue
+		}
 		if created {
 			summary.Created++
 		} else {
@@ -315,8 +321,8 @@ func (s *Suggester) Draft(ctx context.Context, config llm.ResolvedConfig, limits
 	}
 	if len(queued) == 0 {
 		// Every draft was either refused by the rule pipeline, already covered by a
-		// rule, or already decided. An empty queue change is honest: the intent did
-		// not produce a new proposal.
+		// rule, already pending from another pass, or already decided. An empty queue
+		// change is honest: the intent did not produce a new proposal.
 		slog.Warn("no rule draft was queued",
 			slog.String("table_guid", targetGUID),
 			slog.Int("drafts", len(drafts)),

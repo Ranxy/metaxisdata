@@ -1,5 +1,20 @@
 <template>
-  <div class="flex">
+  <Button
+    v-if="compact"
+    variant="ghost"
+    :size="size"
+    :disabled="busy || disabled"
+    :aria-busy="busy"
+    :title="t('dataQuality.suggest.labelsHint')"
+    @click="suggest(false)"
+  >
+    <Sparkles :class="iconClass" />
+    {{ actionLabel }}
+  </Button>
+  <div
+    v-else
+    class="flex"
+  >
     <Button
       variant="outline"
       :size="size"
@@ -82,6 +97,11 @@ import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
  * that a separate "Analyze columns" step, but the target workspace has no such
  * button, so the control checks the stored profiles first and profiles only the
  * missing or stale columns before asking the model.
+ *
+ * `compact` renders the primary action alone, for a field section header where
+ * the split "regenerate" menu would be noise; the label pass is a field-level
+ * action, so it lives beside the fields it labels rather than beside the
+ * monitoring actions.
  */
 
 const props = withDefaults(
@@ -94,8 +114,16 @@ const props = withDefaults(
     canProfile?: boolean;
     size?: "sm" | "default";
     disabled?: boolean;
+    /** Render the primary action only, without the split regenerate menu. */
+    compact?: boolean;
   }>(),
-  { columns: () => [], canProfile: false, size: "default", disabled: false }
+  {
+    columns: () => [],
+    canProfile: false,
+    size: "default",
+    disabled: false,
+    compact: false,
+  }
 );
 
 const emit = defineEmits<{

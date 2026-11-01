@@ -22,16 +22,16 @@
             {{ t("dataQuality.asset.openWorkspace") }}
           </RouterLink>
         </Button>
-        <SuggestLabelsButton
+        <RecommendChecksButton
           v-if="canSuggest"
           :target-guid="tableGuid"
           :meta-type="metaType"
           :columns="sampleColumns()"
           :can-profile="canProfile"
           size="sm"
-          @started="onLabelsStarted"
-          @suggested="onLabelsSuggested"
-          @failed="onLabelsFailed"
+          @started="onPassStarted"
+          @suggested="onPassSuggested"
+          @failed="onPassFailed"
         />
         <Button
           v-if="canProfile"
@@ -357,13 +357,30 @@
     </Card>
 
     <Card>
-      <CardHeader class="border-b">
-        <CardTitle class="text-base">
-          {{ t("dataQuality.asset.columnsTitle") }}
-        </CardTitle>
-        <CardDescription>
-          {{ t("dataQuality.asset.columnsDescription") }}
-        </CardDescription>
+      <CardHeader class="flex flex-row items-start justify-between gap-3 border-b">
+        <div class="min-w-0 space-y-1">
+          <CardTitle class="text-base">
+            {{ t("dataQuality.asset.columnsTitle") }}
+          </CardTitle>
+          <CardDescription>
+            {{ t("dataQuality.asset.columnsDescription") }}
+          </CardDescription>
+        </div>
+        <!-- Labeling is a field action, so it sits with the fields it labels
+             instead of beside the monitoring actions above. It needs the model
+             switch on; a workspace with the model off does not offer it. -->
+        <SuggestLabelsButton
+          v-if="canLabel"
+          :target-guid="tableGuid"
+          :meta-type="metaType"
+          :columns="sampleColumns()"
+          :can-profile="canProfile"
+          size="sm"
+          class="shrink-0"
+          @started="onPassStarted"
+          @suggested="onPassSuggested"
+          @failed="onPassFailed"
+        />
       </CardHeader>
       <CardContent class="pt-4">
         <Table>
@@ -461,8 +478,10 @@ import {
   updateColumnLabel,
   updateQualitySuggestion,
 } from "@/api/data-quality";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import QualitySignalDot from "@/components/data-quality/QualitySignalDot.vue";
+import RecommendChecksButton from "@/components/data-quality/RecommendChecksButton.vue";
 import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -565,6 +584,10 @@ const canSuggest = computed(() =>
 const canUpdateLabels = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.labels.update")
 );
+
+/** The workspace's model switch; the label pass needs it, recommendation does not. */
+const llmEnabled = ref(false);
+const canLabel = computed(() => canSuggest.value && llmEnabled.value);
 
 const rules = ref<QualityRule[]>([]);
 const executions = ref<QualityExecution[]>([]);
@@ -828,7 +851,20 @@ async function loadAll() {
     loadLabels(),
     loadProfiles(),
     loadSuggestions(),
+    loadLlmSetting(),
   ]);
+}
+
+/** Only read the workspace switch; the settings page owns changing it. */
+async function loadLlmSetting() {
+  try {
+    const profile = await getWorkspaceProfileSetting();
+    llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
+  } catch {
+    // A failed read is not evidence that the model is off. Keep the label action
+    // available; the server refuses it with an actionable error if the switch is off.
+    llmEnabled.value = true;
+  }
 }
 
 /** The first columns profiled/suggested in one action, keeping the request small. */
@@ -860,20 +896,20 @@ async function analyzeColumns() {
 }
 
 /**
- * The label pass is shared with the target workspace; here its result only has
- * to refresh this tab's pending-proposal card. A failure keeps its message in
- * the section and reads the queue back too: a pass that fails part way keeps
+ * A generation pass is shared with the target workspace; here its result only
+ * has to refresh this tab's pending-proposal card. A failure keeps its message
+ * in the section and reads the queue back too: a pass that fails part way keeps
  * the proposals earlier batches queued.
  */
-function onLabelsStarted() {
+function onPassStarted() {
   actionError.value = "";
 }
 
-function onLabelsSuggested() {
+function onPassSuggested() {
   void loadSuggestions();
 }
 
-function onLabelsFailed(message: string) {
+function onPassFailed(message: string) {
   actionError.value = message;
   void loadSuggestions();
 }

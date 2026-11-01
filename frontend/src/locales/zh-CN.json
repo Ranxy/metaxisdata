@@ -301,7 +301,7 @@
       "noRules": "这张表还没有检查。",
       "openIssueCount": "未关闭问题",
       "openWorkspace": "目标工作台",
-      "pendingSuggestionsDescription": "模型为这张表排队的检查草稿与语义标注建议：接受标注即写入字段；草稿可在所属目标的工作台中接受或调整。",
+      "pendingSuggestionsDescription": "为这张表排队的检查草稿与语义标注建议——按字段画像推荐或由模型起草：接受标注即写入字段；草稿可在所属目标的工作台中接受或调整。",
       "pendingSuggestionsLoadFailed": "无法加载这张表的待审建议，请前往建议中心查看。",
       "pendingSuggestionsMore": "另有 {count} 条，前往建议中心查看。",
       "pendingSuggestionsTitle": "待审核的建议",
@@ -410,8 +410,8 @@
       "noPermission": "你没有使用 AI 起草的权限。",
       "openSettings": "打开设置",
       "placeholder": "例如：确保数据集在使用前不为空",
-      "quickHint": "无需输入，直接为字段生成标注建议，在建议中心审阅。",
-      "quickTitle": "快捷建议",
+      "quickHint": "无需输入，按当前字段画像推荐检查与初始阈值。",
+      "quickTitle": "按数据推荐",
       "quotaExceeded": "已达到每日 AI 分析上限，请在额度重置后重试。",
       "title": "AI 助手",
       "unavailable": "该目标当前无法使用 AI 起草。"
@@ -912,6 +912,16 @@
     },
     "recentExecutions": "最近执行",
     "recentResultWindow": "最近 {count} 次执行",
+    "recommend": {
+      "failed": "推荐检查失败。",
+      "label": "推荐检查",
+      "labelHint": "按当前数据分布推荐检查与初始阈值，不需要开启大模型。",
+      "profileFailed": "字段分析失败，未能推荐检查。",
+      "profileRequired": "推荐检查需要每个字段的最新画像。请先在元数据页执行“分析字段”，或让有该权限的成员操作。",
+      "profiling": "正在分析字段…",
+      "regenerate": "重新推荐",
+      "regenerateHint": "同时重新推荐已审核过的检查。已有待审核草稿会就地刷新，不会重复创建。"
+    },
     "resolutionNote": "备注",
     "resolutionNotePlaceholder": "做了什么，或为什么这个失败是预期的。",
     "resolutionReason": {
@@ -1057,11 +1067,11 @@
       "warn": "警告"
     },
     "suggest": {
-      "failed": "排队标注建议失败。",
-      "labels": "建议标注",
-      "labelsHint": "跳过已有标注或已有待审核建议的字段。",
+      "failed": "排队 AI 标注建议失败。",
+      "labels": "AI 标注字段",
+      "labelsHint": "用模型判断字段语义，同时起草检查草稿；需要开启模型辅助。已有标注或已有待审核建议的字段会跳过。",
       "profileFailed": "字段分析失败，未能生成标注建议。",
-      "profileRequired": "建议标注需要每个字段的最新画像。请先在元数据页执行“分析字段”，或让有该权限的成员操作。",
+      "profileRequired": "AI 标注字段需要每个字段的最新画像。请先在元数据页执行“分析字段”，或让有该权限的成员操作。",
       "profiling": "正在分析字段…",
       "regenerate": "重新生成建议",
       "regenerateHint": "同时重新分析已有标注的字段，以及已排队或已审核的建议。已有待审核建议会就地刷新，不会重复创建。",
@@ -1090,7 +1100,8 @@
     },
     "suggestionSource": {
       "naturalLanguage": "自然语言",
-      "profile": "字段画像",
+      "profile": "AI 语义标注",
+      "recommendation": "数据推荐",
       "unspecified": "未指定"
     },
     "suggestionStatus": {
@@ -1111,8 +1122,8 @@
       "queued": "已加入 {count} 条建议",
       "refreshed": "刷新 {count} 条",
       "skipped": "已跳过 {count} 条",
-      "skippedColumns": "已跳过列：{columns}",
-      "skippedColumnsOverflow": "已跳过列：{columns} 等 {count} 列",
+      "skippedColumns": "未生成建议的列：{columns}",
+      "skippedColumnsOverflow": "未生成建议的列：{columns} 等 {count} 列",
       "superseded": "{count} 条已失效"
     },
     "suggestions": {
@@ -1171,7 +1182,7 @@
       "decideError": "更新建议失败。",
       "decidedAt": "时间",
       "decidedBy": "处理人",
-      "description": "等待评审的模型检查草稿与字段标注建议。",
+      "description": "等待评审的检查草稿与字段标注建议：部分按字段画像推荐，部分由模型起草。",
       "detailTitle": "建议",
       "diagnostic": {
         "code": {
@@ -1224,7 +1235,7 @@
         "syncTruncatedHint": "模型达到输出 token 上限，草稿已丢弃。请缩小意图范围或减少字段后重试。",
         "viewPayload": "查看原始请求/响应"
       },
-      "emptyDescription": "模型起草的检查草稿和字段标注建议会出现在这里；可以从「用 AI 起草」开始，或在表详情页分析字段。",
+      "emptyDescription": "按字段画像和模型生成的检查草稿与字段标注建议会出现在这里；可以从「推荐检查」「用 AI 起草」开始，或在表详情页分析字段。",
       "emptyTitle": "还没有建议",
       "evidence": "依据",
       "expandGroup": "展开本组",
@@ -1267,7 +1278,7 @@
       "openCenter": "去建议中心",
       "openInEditor": "在目标中打开",
       "parameters": "参数",
-      "pendingEmptyDescription": "模型起草的检查和语义标注会在这里排队等待评审；可以从「用 AI 起草」开始。",
+      "pendingEmptyDescription": "按字段画像推荐的检查草稿与语义标注，以及模型起草的建议，会在这里排队等待评审；可以从「推荐检查」或「用 AI 起草」开始。",
       "pendingEmptyTitle": "没有待评审的建议",
       "promptVersion": "提示词版本",
       "provider": "模型",

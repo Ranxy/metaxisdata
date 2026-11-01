@@ -1162,12 +1162,19 @@ func (QualitySuggestionStatus) EnumDescriptor() ([]byte, []int) {
 }
 
 // QualitySuggestionSource is what produced a suggestion.
+//
+// PROFILE is the model-assisted label pass, which reads profiles and asks the
+// model for semantic types; RECOMMENDATION is the deterministic pass that derives
+// checks and thresholds from the profile alone. They are separate values because a
+// generation pass may only refresh a pending proposal it produced itself (unless
+// it is forced), and because the review queue shows the source to the reviewer.
 type QualitySuggestionSource int32
 
 const (
 	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_UNSPECIFIED      QualitySuggestionSource = 0
 	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE QualitySuggestionSource = 1
 	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE          QualitySuggestionSource = 2
+	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION   QualitySuggestionSource = 3
 )
 
 // Enum value maps for QualitySuggestionSource.
@@ -1176,11 +1183,13 @@ var (
 		0: "QUALITY_SUGGESTION_SOURCE_UNSPECIFIED",
 		1: "QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE",
 		2: "QUALITY_SUGGESTION_SOURCE_PROFILE",
+		3: "QUALITY_SUGGESTION_SOURCE_RECOMMENDATION",
 	}
 	QualitySuggestionSource_value = map[string]int32{
 		"QUALITY_SUGGESTION_SOURCE_UNSPECIFIED":      0,
 		"QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE": 1,
 		"QUALITY_SUGGESTION_SOURCE_PROFILE":          2,
+		"QUALITY_SUGGESTION_SOURCE_RECOMMENDATION":   3,
 	}
 )
 
@@ -2157,10 +2166,17 @@ func (x *ColumnProfile) GetPatterns() []string {
 }
 
 // ProfileValue is one frequent value of a low-cardinality column.
+// ProfileValue is one frequent value of a low-cardinality column. The value is
+// bounded by the display limit, so a consumer that needs the exact value (an
+// accepted-values set, say) must consult truncated: a truncated spelling is not a
+// value the column holds.
 type ProfileValue struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
-	Count         int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Value string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	Count int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	// True when the observed value was longer than the display bound and was cut for
+	// storage. A consumer that turns the value into a rule parameter must skip it.
+	Truncated     bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2207,6 +2223,13 @@ func (x *ProfileValue) GetCount() int64 {
 		return x.Count
 	}
 	return 0
+}
+
+func (x *ProfileValue) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
 }
 
 // SemanticLabelEvidence is why a label was assigned. It cites the inputs the
@@ -2387,7 +2410,11 @@ type QualitySuggestionQueueSummary struct {
 	// Skipped because the same proposal was already accepted or rejected and the
 	// caller did not force regeneration.
 	SkippedDecided int32 `protobuf:"varint,6,opt,name=skipped_decided,json=skippedDecided,proto3" json:"skipped_decided,omitempty"`
-	// The columns a label pass left out, so a caller can name them.
+	// The columns a generation pass derived no proposal for, so a caller can name
+	// them. A label pass lists columns it left out because they already had a label or
+	// a live proposal; a deterministic recommendation lists columns no check could be
+	// derived for. A column whose candidate lost the pass's per-type budget is not
+	// listed, because a proposal for it was derived.
 	SkippedColumns []string `protobuf:"bytes,7,rep,name=skipped_columns,json=skippedColumns,proto3" json:"skipped_columns,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -5444,10 +5471,11 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\bpatterns\x18\n" +
 	" \x03(\tR\bpatternsB\r\n" +
 	"\v_min_lengthB\r\n" +
-	"\v_max_length\":\n" +
+	"\v_max_length\"X\n" +
 	"\fProfileValue\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\tR\x05value\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x03R\x05count\"\x83\x01\n" +
+	"\x05count\x18\x02 \x01(\x03R\x05count\x12\x1c\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"\x83\x01\n" +
 	"\x15SemanticLabelEvidence\x12\x18\n" +
 	"\acolumns\x18\x01 \x03(\tR\acolumns\x12\x18\n" +
 	"\ametrics\x18\x02 \x03(\tR\ametrics\x12\x18\n" +
@@ -5918,11 +5946,12 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"!QUALITY_SUGGESTION_STATUS_PENDING\x10\x01\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_ACCEPTED\x10\x02\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_REJECTED\x10\x03\x12(\n" +
-	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04*\x9b\x01\n" +
+	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04*\xc9\x01\n" +
 	"\x17QualitySuggestionSource\x12)\n" +
 	"%QUALITY_SUGGESTION_SOURCE_UNSPECIFIED\x10\x00\x12.\n" +
 	"*QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE\x10\x01\x12%\n" +
-	"!QUALITY_SUGGESTION_SOURCE_PROFILE\x10\x02*y\n" +
+	"!QUALITY_SUGGESTION_SOURCE_PROFILE\x10\x02\x12,\n" +
+	"(QUALITY_SUGGESTION_SOURCE_RECOMMENDATION\x10\x03*y\n" +
 	"\x12QualityLabelSource\x12$\n" +
 	" QUALITY_LABEL_SOURCE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_LABEL_SOURCE_MANUAL\x10\x01\x12\x1c\n" +

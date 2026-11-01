@@ -130,6 +130,9 @@ const (
 	// DataQualityServiceSuggestColumnLabelsProcedure is the fully-qualified name of the
 	// DataQualityService's SuggestColumnLabels RPC.
 	DataQualityServiceSuggestColumnLabelsProcedure = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	// DataQualityServiceRecommendQualityChecksProcedure is the fully-qualified name of the
+	// DataQualityService's RecommendQualityChecks RPC.
+	DataQualityServiceRecommendQualityChecksProcedure = "/metaxisdata.v1.DataQualityService/RecommendQualityChecks"
 	// DataQualityServiceExplainQualityExecutionProcedure is the fully-qualified name of the
 	// DataQualityService's ExplainQualityExecution RPC.
 	DataQualityServiceExplainQualityExecutionProcedure = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
@@ -288,6 +291,12 @@ type DataQualityServiceClient interface {
 	SuggestQualityRule(context.Context, *connect.Request[v1.SuggestQualityRuleRequest]) (*connect.Response[v1.SuggestQualityRuleResponse], error)
 	// Propose semantic labels for up to 50 columns of one table.
 	SuggestColumnLabels(context.Context, *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error)
+	// Recommend checks for one table from its stored column profiles. The pass is
+	// deterministic: it needs no model, no provider configuration and no connection
+	// to the target database. Like every other generation pass it queues PENDING
+	// rule drafts only; a reviewer still decides which drafts become checks. The
+	// request refuses columns without a fresh profile, pointing at ProfileColumns.
+	RecommendQualityChecks(context.Context, *connect.Request[v1.RecommendQualityChecksRequest]) (*connect.Response[v1.RecommendQualityChecksResponse], error)
 	// Explain one failed execution as a stream of hypotheses.
 	//
 	// No (google.api.http) annotation: this is a server-streaming method, and the
@@ -564,6 +573,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("SuggestColumnLabels")),
 			connect.WithClientOptions(opts...),
 		),
+		recommendQualityChecks: connect.NewClient[v1.RecommendQualityChecksRequest, v1.RecommendQualityChecksResponse](
+			httpClient,
+			baseURL+DataQualityServiceRecommendQualityChecksProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("RecommendQualityChecks")),
+			connect.WithClientOptions(opts...),
+		),
 		explainQualityExecution: connect.NewClient[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse](
 			httpClient,
 			baseURL+DataQualityServiceExplainQualityExecutionProcedure,
@@ -685,6 +700,7 @@ type dataQualityServiceClient struct {
 	profileColumns                     *connect.Client[v1.ProfileColumnsRequest, v1.ProfileColumnsResponse]
 	suggestQualityRule                 *connect.Client[v1.SuggestQualityRuleRequest, v1.SuggestQualityRuleResponse]
 	suggestColumnLabels                *connect.Client[v1.SuggestColumnLabelsRequest, v1.SuggestColumnLabelsResponse]
+	recommendQualityChecks             *connect.Client[v1.RecommendQualityChecksRequest, v1.RecommendQualityChecksResponse]
 	explainQualityExecution            *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
 	getQualityOverview                 *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
 	listQualityTargets                 *connect.Client[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse]
@@ -861,6 +877,11 @@ func (c *dataQualityServiceClient) SuggestQualityRule(ctx context.Context, req *
 // SuggestColumnLabels calls metaxisdata.v1.DataQualityService.SuggestColumnLabels.
 func (c *dataQualityServiceClient) SuggestColumnLabels(ctx context.Context, req *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error) {
 	return c.suggestColumnLabels.CallUnary(ctx, req)
+}
+
+// RecommendQualityChecks calls metaxisdata.v1.DataQualityService.RecommendQualityChecks.
+func (c *dataQualityServiceClient) RecommendQualityChecks(ctx context.Context, req *connect.Request[v1.RecommendQualityChecksRequest]) (*connect.Response[v1.RecommendQualityChecksResponse], error) {
+	return c.recommendQualityChecks.CallUnary(ctx, req)
 }
 
 // ExplainQualityExecution calls metaxisdata.v1.DataQualityService.ExplainQualityExecution.
@@ -1048,6 +1069,12 @@ type DataQualityServiceHandler interface {
 	SuggestQualityRule(context.Context, *connect.Request[v1.SuggestQualityRuleRequest]) (*connect.Response[v1.SuggestQualityRuleResponse], error)
 	// Propose semantic labels for up to 50 columns of one table.
 	SuggestColumnLabels(context.Context, *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error)
+	// Recommend checks for one table from its stored column profiles. The pass is
+	// deterministic: it needs no model, no provider configuration and no connection
+	// to the target database. Like every other generation pass it queues PENDING
+	// rule drafts only; a reviewer still decides which drafts become checks. The
+	// request refuses columns without a fresh profile, pointing at ProfileColumns.
+	RecommendQualityChecks(context.Context, *connect.Request[v1.RecommendQualityChecksRequest]) (*connect.Response[v1.RecommendQualityChecksResponse], error)
 	// Explain one failed execution as a stream of hypotheses.
 	//
 	// No (google.api.http) annotation: this is a server-streaming method, and the
@@ -1320,6 +1347,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("SuggestColumnLabels")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceRecommendQualityChecksHandler := connect.NewUnaryHandler(
+		DataQualityServiceRecommendQualityChecksProcedure,
+		svc.RecommendQualityChecks,
+		connect.WithSchema(dataQualityServiceMethods.ByName("RecommendQualityChecks")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceExplainQualityExecutionHandler := connect.NewServerStreamHandler(
 		DataQualityServiceExplainQualityExecutionProcedure,
 		svc.ExplainQualityExecution,
@@ -1470,6 +1503,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceSuggestQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceSuggestColumnLabelsProcedure:
 			dataQualityServiceSuggestColumnLabelsHandler.ServeHTTP(w, r)
+		case DataQualityServiceRecommendQualityChecksProcedure:
+			dataQualityServiceRecommendQualityChecksHandler.ServeHTTP(w, r)
 		case DataQualityServiceExplainQualityExecutionProcedure:
 			dataQualityServiceExplainQualityExecutionHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityOverviewProcedure:
@@ -1633,6 +1668,10 @@ func (UnimplementedDataQualityServiceHandler) SuggestQualityRule(context.Context
 
 func (UnimplementedDataQualityServiceHandler) SuggestColumnLabels(context.Context, *connect.Request[v1.SuggestColumnLabelsRequest]) (*connect.Response[v1.SuggestColumnLabelsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.SuggestColumnLabels is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) RecommendQualityChecks(context.Context, *connect.Request[v1.RecommendQualityChecksRequest]) (*connect.Response[v1.RecommendQualityChecksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.RecommendQualityChecks is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ExplainQualityExecution(context.Context, *connect.Request[v1.ExplainQualityExecutionRequest], *connect.ServerStream[v1.ExplainQualityExecutionResponse]) error {

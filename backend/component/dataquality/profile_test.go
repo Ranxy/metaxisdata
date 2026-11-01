@@ -1059,3 +1059,18 @@ func TestProfileEstimatedDistinctSignals(t *testing.T) {
 	require.Equal(t, int64(0), payload.GetDistinctCount())
 	require.True(t, payload.GetDistinctEstimated())
 }
+
+// TestProfileTopValuesMarksTruncation pins the marker a consumer of the profile uses to
+// tell a stored spelling from the value the column holds: the display bound is 64 bytes,
+// so a longer value is cut and must be flagged.
+func TestProfileTopValuesMarksTruncation(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("值", 40) // 120 bytes, past the 64-byte display bound
+	top := profileTopValues([]any{long, long, "short"}, false)
+	require.Len(t, top, 2)
+	require.Equal(t, "short", top[1].GetValue())
+	require.False(t, top[1].GetTruncated())
+	require.True(t, top[0].GetTruncated())
+	require.LessOrEqual(t, len(top[0].GetValue()), profileMaxValueBytes)
+}

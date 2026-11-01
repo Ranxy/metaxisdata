@@ -400,11 +400,25 @@ func TestDecideQualitySuggestionQueryGuardsThePendingState(t *testing.T) {
 	require.Contains(t, queueQualitySuggestionQuery, "DO UPDATE SET")
 	require.Contains(t, queueQualitySuggestionQuery, "refreshed_at = EXCLUDED.created_at")
 	requirePlaceholdersMatchArgs(t, queueQualitySuggestionQuery,
-		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), "label|x", int32(1), "", "", "", nil, time.Now()})
+		[]any{"r", int32(1), int32(2), "g", int32(4), []byte("{}"), "label|x", int32(1), "", "", "", nil, time.Now(),
+			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION),
+			int32(storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE)})
 
 	// Reopening is the rollback of a claim: it only ever moves an ACCEPTED row back
 	// to PENDING, so it cannot resurrect a rejected or superseded proposal.
 	require.Contains(t, reopenQualitySuggestionQuery, "SET status = 1")
 	require.Contains(t, reopenQualitySuggestionQuery, "WHERE resource_id = $1 AND status = 2")
 	requirePlaceholdersMatchArgs(t, reopenQualitySuggestionQuery, []any{"suggestions/abc"})
+}
+
+// TestQualitySuggestionQueriesPinTheContractualPredicates guards the two SQL shapes this
+// file's callers depend on: the upsert refuses a cross-pass refresh in the database
+// (D-79), and the signature-state read reports which pass produced the live proposal.
+func TestQualitySuggestionQueriesPinTheContractualPredicates(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, queueQualitySuggestionQuery, "quality_suggestion.source = EXCLUDED.source")
+	require.Contains(t, queueQualitySuggestionQuery, "EXCLUDED.source = $14")
+	require.Contains(t, queueQualitySuggestionQuery, "quality_suggestion.source = $15")
+	require.Contains(t, qualitySuggestionSignatureStatesQuery, "(array_agg(source) FILTER (WHERE status = $1))[1]")
 }
