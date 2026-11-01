@@ -151,6 +151,9 @@ const (
 	// DataQualityServiceGetQualityTargetProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityTarget RPC.
 	DataQualityServiceGetQualityTargetProcedure = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	// DataQualityServiceAcknowledgeQualityTargetSchemaProcedure is the fully-qualified name of the
+	// DataQualityService's AcknowledgeQualityTargetSchema RPC.
+	DataQualityServiceAcknowledgeQualityTargetSchemaProcedure = "/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema"
 	// DataQualityServiceExportQualityReportProcedure is the fully-qualified name of the
 	// DataQualityService's ExportQualityReport RPC.
 	DataQualityServiceExportQualityReportProcedure = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
@@ -340,6 +343,14 @@ type DataQualityServiceClient interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
+	// Acknowledge that a target's structure changed and re-baseline its checks.
+	// Every non-archived check whose saved structure snapshot differs from the
+	// target's current fingerprint gets the current fingerprint, which clears the
+	// schema-changed signal. The checks themselves are untouched: re-baselining is
+	// a fact about which shape the checks were reviewed against, not a change to
+	// their definition, so it does not write a rule revision. Idempotent: a second
+	// call with nothing to do returns zero.
+	AcknowledgeQualityTargetSchema(context.Context, *connect.Request[v1.AcknowledgeQualityTargetSchemaRequest]) (*connect.Response[v1.AcknowledgeQualityTargetSchemaResponse], error)
 	// Render one target's quality report as a self-contained HTML document: the
 	// current state, the recent trend, the checks, the unresolved problems, a
 	// capped sample summary and the monitoring basis. The document carries its own
@@ -627,6 +638,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
 			connect.WithClientOptions(opts...),
 		),
+		acknowledgeQualityTargetSchema: connect.NewClient[v1.AcknowledgeQualityTargetSchemaRequest, v1.AcknowledgeQualityTargetSchemaResponse](
+			httpClient,
+			baseURL+DataQualityServiceAcknowledgeQualityTargetSchemaProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("AcknowledgeQualityTargetSchema")),
+			connect.WithClientOptions(opts...),
+		),
 		exportQualityReport: connect.NewClient[v1.ExportQualityReportRequest, v1.ExportQualityReportResponse](
 			httpClient,
 			baseURL+DataQualityServiceExportQualityReportProcedure,
@@ -725,6 +742,7 @@ type dataQualityServiceClient struct {
 	listQualityTargets                 *connect.Client[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse]
 	exportQualityTargets               *connect.Client[v1.ExportQualityTargetsRequest, v1.ExportQualityDataChunk]
 	getQualityTarget                   *connect.Client[v1.GetQualityTargetRequest, v1.GetQualityTargetResponse]
+	acknowledgeQualityTargetSchema     *connect.Client[v1.AcknowledgeQualityTargetSchemaRequest, v1.AcknowledgeQualityTargetSchemaResponse]
 	exportQualityReport                *connect.Client[v1.ExportQualityReportRequest, v1.ExportQualityReportResponse]
 	updateQualityTargetSchedule        *connect.Client[v1.UpdateQualityTargetScheduleRequest, v1.QualityTargetSchedule]
 	getQualityTargetSchedule           *connect.Client[v1.GetQualityTargetScheduleRequest, v1.QualityTargetSchedule]
@@ -933,6 +951,12 @@ func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, req *co
 	return c.getQualityTarget.CallUnary(ctx, req)
 }
 
+// AcknowledgeQualityTargetSchema calls
+// metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema.
+func (c *dataQualityServiceClient) AcknowledgeQualityTargetSchema(ctx context.Context, req *connect.Request[v1.AcknowledgeQualityTargetSchemaRequest]) (*connect.Response[v1.AcknowledgeQualityTargetSchemaResponse], error) {
+	return c.acknowledgeQualityTargetSchema.CallUnary(ctx, req)
+}
+
 // ExportQualityReport calls metaxisdata.v1.DataQualityService.ExportQualityReport.
 func (c *dataQualityServiceClient) ExportQualityReport(ctx context.Context, req *connect.Request[v1.ExportQualityReportRequest]) (*connect.Response[v1.ExportQualityReportResponse], error) {
 	return c.exportQualityReport.CallUnary(ctx, req)
@@ -1139,6 +1163,14 @@ type DataQualityServiceHandler interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
+	// Acknowledge that a target's structure changed and re-baseline its checks.
+	// Every non-archived check whose saved structure snapshot differs from the
+	// target's current fingerprint gets the current fingerprint, which clears the
+	// schema-changed signal. The checks themselves are untouched: re-baselining is
+	// a fact about which shape the checks were reviewed against, not a change to
+	// their definition, so it does not write a rule revision. Idempotent: a second
+	// call with nothing to do returns zero.
+	AcknowledgeQualityTargetSchema(context.Context, *connect.Request[v1.AcknowledgeQualityTargetSchemaRequest]) (*connect.Response[v1.AcknowledgeQualityTargetSchemaResponse], error)
 	// Render one target's quality report as a self-contained HTML document: the
 	// current state, the recent trend, the checks, the unresolved problems, a
 	// capped sample summary and the monitoring basis. The document carries its own
@@ -1422,6 +1454,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceAcknowledgeQualityTargetSchemaHandler := connect.NewUnaryHandler(
+		DataQualityServiceAcknowledgeQualityTargetSchemaProcedure,
+		svc.AcknowledgeQualityTargetSchema,
+		connect.WithSchema(dataQualityServiceMethods.ByName("AcknowledgeQualityTargetSchema")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceExportQualityReportHandler := connect.NewUnaryHandler(
 		DataQualityServiceExportQualityReportProcedure,
 		svc.ExportQualityReport,
@@ -1556,6 +1594,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceExportQualityTargetsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityTargetProcedure:
 			dataQualityServiceGetQualityTargetHandler.ServeHTTP(w, r)
+		case DataQualityServiceAcknowledgeQualityTargetSchemaProcedure:
+			dataQualityServiceAcknowledgeQualityTargetSchemaHandler.ServeHTTP(w, r)
 		case DataQualityServiceExportQualityReportProcedure:
 			dataQualityServiceExportQualityReportHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityTargetScheduleProcedure:
@@ -1737,6 +1777,10 @@ func (UnimplementedDataQualityServiceHandler) ExportQualityTargets(context.Conte
 
 func (UnimplementedDataQualityServiceHandler) GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityTarget is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) AcknowledgeQualityTargetSchema(context.Context, *connect.Request[v1.AcknowledgeQualityTargetSchemaRequest]) (*connect.Response[v1.AcknowledgeQualityTargetSchemaResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ExportQualityReport(context.Context, *connect.Request[v1.ExportQualityReportRequest]) (*connect.Response[v1.ExportQualityReportResponse], error) {

@@ -9,8 +9,9 @@ is always on. The outbound side is opt-in and starts empty.
 
 The bell at the bottom of the sidebar collects the messages the deployment sends
 to you: the outcome of a schema sync you asked for, OpenLineage ingestion
-failures, and data quality issues — opened, recovered, or a check that could not
-run. Opening the inbox clears its badge; individual messages are marked read when
+failures, and data quality events — an issue opened or recovered, a check that
+could not run, a scan that failed many checks at once, or a watched table's
+schema changing. Opening the inbox clears its badge; individual messages are marked read when
 you click them. Messages are kept forever and are personal to their recipient.
 
 ## Outbound channels

@@ -1412,9 +1412,10 @@ func dedupeInt64(ids []int64) []int64 {
 	return deduped
 }
 
-// targetSchemaChanges reports, per rule id, whether the target's stored DDL hash
-// differs from the hash snapshotted when the rule was saved. Rules without a
-// snapshot, or whose target has no stored schema, are absent from the map.
+// targetSchemaChanges reports, per rule id, whether the target's current
+// structure differs from the snapshot taken when the rule was saved. A rule
+// without a snapshot is absent from the map; a target without a fingerprint
+// reports false rather than a change.
 func (s *DataQualityService) targetSchemaChanges(ctx context.Context, rules []*store.QualityRuleMessage) (map[int64]bool, error) {
 	changed := make(map[int64]bool, len(rules))
 	snapshots := make(map[int64][]byte, len(rules))
@@ -1434,20 +1435,35 @@ func (s *DataQualityService) targetSchemaChanges(ctx context.Context, rules []*s
 	if len(keys) == 0 {
 		return changed, nil
 	}
-	hashes, err := s.store.ListMetaRegistrySchemaHashes(ctx, keys)
+	signals, err := s.store.ListMetaRegistrySchemaSignals(ctx, keys)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the targets' current schema hashes")
+		return nil, errors.Wrap(err, "failed to read the targets' current schema signals")
 	}
 	for key, ruleIDs := range index {
-		current, ok := hashes[key]
+		signal, ok := signals[key]
 		if !ok {
 			continue
 		}
 		for _, ruleID := range ruleIDs {
-			changed[ruleID] = !bytes.Equal(current, snapshots[ruleID])
+			changed[ruleID] = qualitySchemaChangedSince(snapshots[ruleID], signal)
 		}
 	}
 	return changed, nil
+}
+
+// qualitySchemaChangedSince reports whether a rule's saved structure snapshot is
+// stale against the target's current signal. The legacy branch accepts the DDL
+// hash as a match: a rule saved before structure fingerprints existed stored that
+// hash, and on upgrade it must not read as a change. qualityTargetSchemaChangedSQL
+// in the store implements the same predicate for the directory aggregate.
+func qualitySchemaChangedSince(snapshot []byte, signal store.MetaRegistrySchemaSignal) bool {
+	if len(snapshot) == 0 || len(signal.Fingerprint) == 0 {
+		return false
+	}
+	if bytes.Equal(snapshot, signal.Fingerprint) {
+		return false
+	}
+	return len(signal.LegacyDDLHash) == 0 || !bytes.Equal(snapshot, signal.LegacyDDLHash)
 }
 
 // targetOrphanReasons reports, per rule id, why the rule's target can no longer
@@ -1616,14 +1632,18 @@ func ruleTargetDatabaseName(rule *store.QualityRuleMessage) string {
 	return segments[1]
 }
 
-// targetSchemaHash reads the target's current DDL hash for the rule snapshot.
+// targetSchemaHash returns the fingerprint of the target's current structure, to
+// be stored beside a rule as the shape it was authored against. It is empty when
+// the target has no fingerprint yet (a database the syncer has not reached since
+// the fingerprint table landed), which leaves the rule without a snapshot: the
+// schema-changed signal then stays quiet instead of claiming a change.
 func (s *DataQualityService) targetSchemaHash(ctx context.Context, target dataquality.ResolvedTarget) ([]byte, error) {
 	key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.MetaType}
-	hashes, err := s.store.ListMetaRegistrySchemaHashes(ctx, []store.MetaGUIDKey{key})
+	fingerprints, err := s.store.ListMetaRegistrySchemaFingerprints(ctx, []store.MetaGUIDKey{key})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the target's schema hash")
+		return nil, errors.Wrap(err, "failed to read the target's schema fingerprint")
 	}
-	return hashes[key], nil
+	return fingerprints[key], nil
 }
 
 // protoTimeOrNil converts an optional protobuf timestamp to the store's optional

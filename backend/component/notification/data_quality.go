@@ -28,9 +28,10 @@ func DataQualityMessage(severity storepb.NotificationSeverity, detail *storepb.D
 
 // DataQualityDedupeKey builds the suppression key of one data-quality event.
 // target names the event's scope: an issue for a problem transition, a rule for
-// an execution failure, and the internal dispatch batch (an opaque id, not a
-// resource name) for a storm summary. An unspecified kind has no defined event
-// and therefore no key: it is never suppressed.
+// an execution failure, the internal dispatch batch (an opaque id, not a resource
+// name) for a storm summary, and the target GUID for a structure change. An
+// unspecified kind has no defined event and therefore no key: it is never
+// suppressed.
 func DataQualityDedupeKey(kind storepb.DataQualityNotificationKind, target string, now time.Time) string {
 	event := ""
 	switch kind {
@@ -42,6 +43,8 @@ func DataQualityDedupeKey(kind storepb.DataQualityNotificationKind, target strin
 		event = "quality.execution-failed"
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY:
 		event = "quality.storm-summary"
+	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED:
+		event = "quality.target-schema-changed"
 	case storepb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_UNSPECIFIED:
 		return ""
 	default:

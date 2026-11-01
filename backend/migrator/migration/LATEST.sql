@@ -246,6 +246,22 @@ CREATE TABLE meta_registry_resource_schema (
     PRIMARY KEY (guid, object_type)
 );
 
+-- meta_registry_schema_fingerprint holds the engine-independent structure
+-- fingerprint of a table or view: its ordered columns (name, type, nullability),
+-- its primary key, and a view's SQL body. Unlike meta_registry_resource_schema it
+-- is written for every engine, because it is derived from the metadata snapshot
+-- instead of the engine's DDL. Data quality compares it with the snapshot a check
+-- was saved with, so "the shape you were written against has moved" is available
+-- on every engine. It is keyed like the metadata row and deleted in the same
+-- transaction as it.
+CREATE TABLE meta_registry_schema_fingerprint (
+    guid TEXT COLLATE "C" NOT NULL,
+    object_type INT2 NOT NULL,
+    fingerprint BYTEA NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (guid, object_type)
+);
+
 
 -- manual_sql stores user-maintained SQL definitions and their execution context.
 CREATE TABLE manual_sql (
@@ -914,8 +930,9 @@ CREATE TABLE IF NOT EXISTS quality_rule (
     target_guid TEXT COLLATE "C" NOT NULL,
     target_type INT2 NOT NULL,
     target_path JSONB NOT NULL DEFAULT '{}',
-    -- The target's meta_hash when the rule was saved. A different current hash
-    -- means the target's schema changed and the rule may need review.
+    -- The target's structure fingerprint when the rule was saved (see
+    -- meta_registry_schema_fingerprint). A different current fingerprint means the
+    -- target's schema changed and the rule may need review.
     target_meta_hash BYTEA,
     config JSONB NOT NULL DEFAULT '{}',
     severity INT2 NOT NULL,

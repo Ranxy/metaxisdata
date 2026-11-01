@@ -10254,6 +10254,15 @@ list is capped; the counts below carry the whole picture. </p></td>
 merged.</p></td>
               </tr>
             
+              <tr>
+                <td>DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED</td>
+                <td>5</td>
+                <td><p>A monitored target&#39;s structure changed since its checks were saved. It is a
+registry fact, not a data failure: the checks were written against a shape that
+has moved, so they are worth reviewing. The detail names the target and no rule,
+because one change is one event for every check on the target.</p></td>
+              </tr>
+            
           </tbody>
         </table>
       

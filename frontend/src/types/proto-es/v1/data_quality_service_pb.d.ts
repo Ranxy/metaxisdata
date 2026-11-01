@@ -84,8 +84,9 @@ export declare type QualityRule = Message<"metaxisdata.v1.QualityRule"> & {
   revision: number;
 
   /**
-   * True when the target's current metadata hash differs from the hash recorded
-   * when the rule was saved, i.e. the target's schema changed underneath it.
+   * True when the target's current structure fingerprint differs from the one
+   * recorded when the rule was saved, i.e. the target's schema changed underneath
+   * it.
    *
    * @generated from field: bool target_schema_changed = 13;
    */
@@ -5494,8 +5495,8 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
   lastRunTime?: Timestamp;
 
   /**
-   * Whether at least one rule was saved against a different target schema hash
-   * than the registry currently records.
+   * Whether at least one rule was saved against a different target structure
+   * fingerprint than the registry currently records.
    *
    * @generated from field: bool schema_changed = 11;
    */
@@ -5812,6 +5813,56 @@ export declare type QualityRuleHistory = Message<"metaxisdata.v1.QualityRuleHist
  * Use `create(QualityRuleHistorySchema)` to create a new message.
  */
 export declare const QualityRuleHistorySchema: GenMessage<QualityRuleHistory>;
+
+/**
+ * @generated from message metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
+ */
+export declare type AcknowledgeQualityTargetSchemaRequest = Message<"metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The target's metadata GUID. Required.
+   *
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Optional when the target has rules: they carry it.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest.
+ * Use `create(AcknowledgeQualityTargetSchemaRequestSchema)` to create a new message.
+ */
+export declare const AcknowledgeQualityTargetSchemaRequestSchema: GenMessage<AcknowledgeQualityTargetSchemaRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
+ */
+export declare type AcknowledgeQualityTargetSchemaResponse = Message<"metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse"> & {
+  /**
+   * How many checks were re-baselined. Zero means they were already current.
+   *
+   * @generated from field: int32 baselined_rule_count = 1;
+   */
+  baselinedRuleCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse.
+ * Use `create(AcknowledgeQualityTargetSchemaResponseSchema)` to create a new message.
+ */
+export declare const AcknowledgeQualityTargetSchemaResponseSchema: GenMessage<AcknowledgeQualityTargetSchemaResponse>;
 
 /**
  * QualityContract is the target-level layer above the rules: defaults, the
@@ -8477,6 +8528,22 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityTargetRequestSchema;
     output: typeof GetQualityTargetResponseSchema;
+  },
+  /**
+   * Acknowledge that a target's structure changed and re-baseline its checks.
+   * Every non-archived check whose saved structure snapshot differs from the
+   * target's current fingerprint gets the current fingerprint, which clears the
+   * schema-changed signal. The checks themselves are untouched: re-baselining is
+   * a fact about which shape the checks were reviewed against, not a change to
+   * their definition, so it does not write a rule revision. Idempotent: a second
+   * call with nothing to do returns zero.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema
+   */
+  acknowledgeQualityTargetSchema: {
+    methodKind: "unary";
+    input: typeof AcknowledgeQualityTargetSchemaRequestSchema;
+    output: typeof AcknowledgeQualityTargetSchemaResponseSchema;
   },
   /**
    * Render one target's quality report as a self-contained HTML document: the

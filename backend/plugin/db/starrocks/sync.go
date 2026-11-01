@@ -232,35 +232,30 @@ func (d *Driver) SyncDBSchema(ctx context.Context) (metadata *storepb.DatabaseSc
 	}
 	defer columnRows.Close()
 	for columnRows.Next() {
-		column := &storepb.ColumnMetadata{}
-		var tableName, nullable, extra string
-		var defaultStr sql.NullString
+		var (
+			tableName, name, nullable, columnType, characterSet, collation, comment, extra string
+			position                                                                       int32
+			defaultStr                                                                     sql.NullString
+		)
 		if err := columnRows.Scan(
 			&tableName,
-			&column.Name,
-			&column.Position,
+			&name,
+			&position,
 			&defaultStr,
 			&nullable,
-			&column.Type,
-			&column.CharacterSet,
-			&column.Collation,
-			&column.Comment,
+			&columnType,
+			&characterSet,
+			&collation,
+			&comment,
 			&extra,
 		); err != nil {
 			return nil, err
 		}
-		tableName = sanitizeCatalogString(tableName)
-		column.Name = sanitizeCatalogString(column.Name)
-		column.Type = sanitizeCatalogString(column.Type)
-		column.CharacterSet = sanitizeCatalogString(column.CharacterSet)
-		column.Collation = sanitizeCatalogString(column.Collation)
-		column.Comment = sanitizeCatalogString(column.Comment)
-		isNullBool, err := util.ConvertYesNo(nullable)
+		column, err := newColumnMetadata(name, position, defaultStr, nullable, columnType, characterSet, collation, comment, extra)
 		if err != nil {
 			return nil, err
 		}
-		setColumnMetadataDefault(column, defaultStr, isNullBool, extra)
-		key := db.TableKey{Schema: "", Table: tableName}
+		key := db.TableKey{Schema: "", Table: sanitizeCatalogString(tableName)}
 		columnMap[key] = append(columnMap[key], column)
 	}
 	if err := columnRows.Err(); err != nil {
@@ -431,6 +426,28 @@ func sanitizeCatalogString(s string) string {
 		return s
 	}
 	return strings.ReplaceAll(s, "\x00", "")
+}
+
+// newColumnMetadata builds one column from an information_schema.columns row. It
+// is a function of the row rather than inline code so the field mapping — in
+// particular the nullability the structure fingerprint and schema-drift rules
+// read from the stored metadata — is testable without a database.
+func newColumnMetadata(name string, position int32, defaultStr sql.NullString, nullable, columnType, characterSet, collation, comment, extra string) (*storepb.ColumnMetadata, error) {
+	column := &storepb.ColumnMetadata{
+		Name:         sanitizeCatalogString(name),
+		Position:     position,
+		Type:         sanitizeCatalogString(columnType),
+		CharacterSet: sanitizeCatalogString(characterSet),
+		Collation:    sanitizeCatalogString(collation),
+		Comment:      sanitizeCatalogString(comment),
+	}
+	isNullBool, err := util.ConvertYesNo(nullable)
+	if err != nil {
+		return nil, err
+	}
+	column.Nullable = isNullBool
+	setColumnMetadataDefault(column, defaultStr, isNullBool, extra)
+	return column, nil
 }
 
 // setColumnMetadataDefault derives the stored default for a StarRocks/Doris

@@ -34,6 +34,20 @@
         >
           {{ t("dataQuality.targetChanged") }}
         </Badge>
+        <Button
+          v-if="summary.schemaChanged && canUpdate"
+          variant="outline"
+          size="sm"
+          :disabled="acknowledgingSchema"
+          :title="t('dataQuality.workspace.acknowledgeSchemaChangeHint')"
+          @click="acknowledgeSchemaChange"
+        >
+          <Loader2
+            v-if="acknowledgingSchema"
+            class="mr-2 h-4 w-4 animate-spin"
+          />
+          {{ t("dataQuality.workspace.acknowledgeSchemaChange") }}
+        </Button>
       </template>
 
       <template #description>
@@ -632,6 +646,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
+  acknowledgeQualityTargetSchema,
   exportQualityReport,
   getQualityContract,
   getQualityTarget,
@@ -777,6 +792,8 @@ const contractLoading = ref(true);
 const contractError = ref("");
 const loading = ref(true);
 const error = ref("");
+/** True while the target's checks are re-baselined to the current structure. */
+const acknowledgingSchema = ref(false);
 const draftsFailed = ref(false);
 /** The field label pass's failure, shown above the field sections. */
 const labelError = ref("");
@@ -1365,6 +1382,40 @@ async function runAll() {
     notify.error(formatError(cause, "dataQuality.workspace.runAllFailed"));
   } finally {
     runningAll.value = false;
+  }
+}
+
+/**
+ * Record that the target's checks were reviewed against its new structure. The
+ * server moves only the saved structure snapshot, so the checks keep their
+ * definitions and no revision is written; the summary's flag clears in place and
+ * the next read confirms it.
+ */
+async function acknowledgeSchemaChange() {
+  if (acknowledgingSchema.value) {
+    return;
+  }
+  acknowledgingSchema.value = true;
+  try {
+    const count = await acknowledgeQualityTargetSchema({
+      targetGuid: targetGuid.value,
+      metaType: effectiveMetaType.value,
+    });
+    // The server moved every check's snapshot, so both the target's badge and the
+    // per-check flags in the list (and the open drawer) are stale now.
+    summary.value.schemaChanged = false;
+    for (const rule of rules.value) {
+      rule.targetSchemaChanged = false;
+    }
+    notify.success(
+      t("dataQuality.workspace.acknowledgeSchemaChangeSuccess", { count })
+    );
+  } catch (cause: unknown) {
+    notify.error(
+      formatError(cause, "dataQuality.workspace.acknowledgeSchemaChangeFailed")
+    );
+  } finally {
+    acknowledgingSchema.value = false;
   }
 }
 

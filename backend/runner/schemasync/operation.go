@@ -35,6 +35,7 @@ var ErrOperationAbandoned = errors.New("the sync operation ended before reportin
 type Notifier interface {
 	Send(ctx context.Context, message *storepb.Notification) error
 	SendToWorkspaceAdmins(ctx context.Context, message *storepb.Notification) error
+	SendToRecipients(ctx context.Context, message *storepb.Notification, recipientIDs []int32) error
 }
 
 // SyncOperation is one user-visible sync operation: the instance metadata step

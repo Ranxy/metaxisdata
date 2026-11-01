@@ -11,6 +11,7 @@ import {
   SyncTrigger,
 } from "@/types/proto-es/v1/notification_service_pb";
 import { formatObservedValue as formatDataQualityValue } from "@/utils/dataQuality";
+import { guidToRouteParams } from "@/utils/guid";
 
 /**
  * Everything the UI needs to render one message, as i18n keys and parameters
@@ -133,6 +134,19 @@ function qualityResourceHref(
   return name ? `${DATA_QUALITY_PATH}/${resource}/${name}` : undefined;
 }
 
+/**
+ * The target workspace path of a registry GUID: the same repeated-param encoding
+ * every other target link uses (`guidToRouteParams`), so a target link reads the
+ * same wherever it is built.
+ */
+function qualityTargetHref(guid: string): string | undefined {
+  const params = guidToRouteParams(guid);
+  if (params.length < 3) {
+    return undefined;
+  }
+  return `${DATA_QUALITY_PATH}/targets/${params.map(encodeURIComponent).join("/")}`;
+}
+
 /** The unit a data quality detail recorded, mapped to the observed-value kind. */
 function observedKindFromUnit(unit: string): QualityObservedKind {
   switch (unit) {
@@ -208,6 +222,16 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
         href: execution ?? executionsPage,
       };
     }
+    case DataQualityNotificationKind.TARGET_SCHEMA_CHANGED:
+      // One event for a whole target, so the message names the target and links
+      // to its workspace; there is no single rule or execution to point at.
+      return {
+        titleKey: "notifications.dataQualityTargetSchemaChangedTitle",
+        titleParams: { target },
+        messageKey: "notifications.dataQualityTargetSchemaChangedMessage",
+        messageParams: { target },
+        href: qualityTargetHref(detail.targetGuid),
+      };
     default:
       return {
         titleKey: "notifications.dataQualityUnknownTitle",

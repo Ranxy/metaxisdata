@@ -1737,6 +1737,16 @@ export enum DataQualityNotificationKind {
    * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_STORM_SUMMARY = 4;
    */
   STORM_SUMMARY = 4,
+
+  /**
+   * A monitored target's structure changed since its checks were saved. It is a
+   * registry fact, not a data failure: the checks were written against a shape that
+   * has moved, so they are worth reviewing. The detail names the target and no rule,
+   * because one change is one event for every check on the target.
+   *
+   * @generated from enum value: DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED = 5;
+   */
+  TARGET_SCHEMA_CHANGED = 5,
 }
 
 /**

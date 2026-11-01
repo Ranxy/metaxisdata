@@ -89,6 +89,7 @@ const mocks = vi.hoisted(() => ({
   listColumnProfiles: vi.fn(),
   profileColumns: vi.fn(),
   exportQualityReport: vi.fn(),
+  acknowledgeQualityTargetSchema: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
 }));
 
@@ -113,6 +114,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   listColumnProfiles: mocks.listColumnProfiles,
   profileColumns: mocks.profileColumns,
   exportQualityReport: mocks.exportQualityReport,
+  acknowledgeQualityTargetSchema: mocks.acknowledgeQualityTargetSchema,
 }));
 
 // jsdom has no object-URL download path; the download itself is covered by the
@@ -178,6 +180,7 @@ function ruleFixture(options: {
   column?: string;
   config?: QualityRule["config"];
   status?: QualityStatus;
+  targetSchemaChanged?: boolean;
 }) {
   return create(QualityRuleSchema, {
     name: options.name,
@@ -187,6 +190,7 @@ function ruleFixture(options: {
     config: options.config,
     severity: QualitySeverity.ERROR,
     state: QualityRuleState.ENABLED,
+    targetSchemaChanged: options.targetSchemaChanged ?? false,
     lastResult:
       options.status === undefined
         ? undefined
@@ -727,6 +731,7 @@ describe("DataQualityTargetPage", () => {
         htmlContent: "<html><body>orders</body></html>",
       })
     );
+    mocks.acknowledgeQualityTargetSchema.mockResolvedValue(0);
   });
 
   it("downloads the target's report in the language the page is reading", async () => {
@@ -1332,6 +1337,84 @@ describe("DataQualityTargetPage", () => {
     expect(text).toContain(label("dataQuality.targetChanged"));
     expect(text).toContain(label("dataQuality.workspace.targetMissingTitle"));
     expect(text).toContain(label("dataQuality.workspace.targetMissingHint"));
+    wrapper.unmount();
+  });
+
+  it("acknowledges a structure change and clears the badge", async () => {
+    const success = vi.spyOn(notify, "success");
+    const rules = rulesFixture();
+    rules[0].targetSchemaChanged = true;
+    mocks.getQualityTarget.mockResolvedValue(
+      response({
+        summary: summaryFixture({ schemaChanged: true }),
+        rules,
+      })
+    );
+    mocks.acknowledgeQualityTargetSchema.mockResolvedValue(3);
+    const { wrapper } = await mountPage();
+
+    // The target's badge and the check's own flag are both stale.
+    expect(
+      wrapper.text().split(label("dataQuality.targetChanged")).length - 1
+    ).toBe(2);
+    const acknowledge = buttonByText(
+      label("dataQuality.workspace.acknowledgeSchemaChange")
+    );
+    expect(acknowledge).toBeDefined();
+    acknowledge?.click();
+    await flushPromises();
+
+    expect(mocks.acknowledgeQualityTargetSchema).toHaveBeenCalledWith({
+      targetGuid: TARGET,
+      metaType: MetaType.TABLE,
+    });
+    // The server moved the snapshots, so no stale warning is left on screen.
+    expect(wrapper.text()).not.toContain(label("dataQuality.targetChanged"));
+    expect(success).toHaveBeenCalledWith(
+      label("dataQuality.workspace.acknowledgeSchemaChangeSuccess", {
+        count: 3,
+      })
+    );
+    wrapper.unmount();
+  });
+
+  it("reports a failed acknowledgement and keeps the badge", async () => {
+    const error = vi.spyOn(notify, "error");
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ schemaChanged: true }) })
+    );
+    mocks.acknowledgeQualityTargetSchema.mockRejectedValueOnce(
+      new Error("fingerprint missing")
+    );
+    const { wrapper } = await mountPage();
+
+    buttonByText(
+      label("dataQuality.workspace.acknowledgeSchemaChange")
+    )?.click();
+    await flushPromises();
+
+    expect(error).toHaveBeenCalledWith(
+      label("dataQuality.workspace.acknowledgeSchemaChangeFailed")
+    );
+    expect(wrapper.text()).toContain(label("dataQuality.targetChanged"));
+    wrapper.unmount();
+  });
+
+  it("hides the acknowledge action without the update permission", async () => {
+    mocks.getQualityTarget.mockResolvedValue(
+      response({ summary: summaryFixture({ schemaChanged: true }) })
+    );
+    const { wrapper } = await mountPage(
+      `/data-quality/targets/${TARGET.split(";").join("/")}`,
+      PERMISSIONS.filter(
+        (permission) => permission !== "metaxisdata.dataQuality.rules.update"
+      )
+    );
+
+    expect(wrapper.text()).toContain(label("dataQuality.targetChanged"));
+    expect(
+      buttonByText(label("dataQuality.workspace.acknowledgeSchemaChange"))
+    ).toBeUndefined();
     wrapper.unmount();
   });
 

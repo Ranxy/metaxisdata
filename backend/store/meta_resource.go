@@ -518,9 +518,13 @@ func (s *Store) BatchDeleteMetaRegistryAt(ctx context.Context, tx *sql.Tx, list 
 	}
 
 	// This is the only path that deletes current meta registry rows, so deleting
-	// the matching DDL rows here keeps meta_registry_resource_schema a strict
-	// subset of meta_registry_resource for every caller.
+	// the matching derived rows here keeps meta_registry_resource_schema and
+	// meta_registry_schema_fingerprint strict subsets of meta_registry_resource
+	// for every caller.
 	if err := s.BatchDeleteMetaRegistrySchema(ctx, tx, keys); err != nil {
+		return err
+	}
+	if err := s.BatchDeleteMetaRegistrySchemaFingerprints(ctx, tx, keys); err != nil {
 		return err
 	}
 

@@ -796,3 +796,48 @@ func timeToProtoTimestampPtr(value *time.Time) *timestamppb.Timestamp {
 	}
 	return timestamppb.New(value.UTC())
 }
+
+// AcknowledgeQualityTargetSchema re-baselines a target's checks to its current
+// structure after a reviewer accepted the change. It clears the schema-changed
+// signal without touching the checks: what moved is the shape they were reviewed
+// against, not their definition, so no revision is written. The update is
+// idempotent and reports how many checks moved; the audit ledger records who
+// accepted the change.
+func (s *DataQualityService) AcknowledgeQualityTargetSchema(ctx context.Context, req *connect.Request[v1pb.AcknowledgeQualityTargetSchemaRequest]) (*connect.Response[v1pb.AcknowledgeQualityTargetSchemaResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
+	if targetGUID == "" {
+		return nil, connectErrorInvalid("target_guid is required")
+	}
+	metaType, err := s.resolveQualityTargetMetaType(ctx, targetGUID, storepb.MetaType(req.Msg.GetMetaType()))
+	if err != nil {
+		return nil, err
+	}
+	if metaType == storepb.MetaType_UNSPECIFIED {
+		return nil, connectErrorInvalid("meta_type is required when the target has no rules")
+	}
+
+	key := store.MetaGUIDKey{GUID: targetGUID, ObjectType: metaType}
+	fingerprints, err := s.store.ListMetaRegistrySchemaFingerprints(ctx, []store.MetaGUIDKey{key})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's schema fingerprint")
+	}
+	fingerprint := fingerprints[key]
+	if len(fingerprint) == 0 {
+		// Without a fingerprint there is nothing to re-baseline against. The target
+		// is either gone from the registry or its database has not been synced
+		// since structure fingerprints landed; both are "wait for the syncer", not
+		// a client bug the reader can fix by editing a check.
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+			"target %q has no structure fingerprint yet; wait for the next schema sync", targetGUID))
+	}
+	updated, err := s.store.BaselineQualityRulesToSchemaHash(ctx, targetGUID, metaType, fingerprint)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to re-baseline the target's quality rules")
+	}
+	return connect.NewResponse(&v1pb.AcknowledgeQualityTargetSchemaResponse{
+		BaselinedRuleCount: int32(updated),
+	}), nil
+}

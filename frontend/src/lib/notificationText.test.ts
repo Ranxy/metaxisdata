@@ -323,6 +323,36 @@ describe("describeNotification", () => {
     expect(text.href).toBe("/data-quality/executions");
   });
 
+  it("names the target of a structure change and links to its workspace", () => {
+    const text = describeNotification(
+      dataQuality(DataQualityNotificationKind.TARGET_SCHEMA_CHANGED, {
+        targetGuid: "inst1;shop;public;orders",
+        targetPath: "prod.shop.public.orders",
+      })
+    );
+    expect(text.titleKey).toBe(
+      "notifications.dataQualityTargetSchemaChangedTitle"
+    );
+    expect(text.messageKey).toBe(
+      "notifications.dataQualityTargetSchemaChangedMessage"
+    );
+    expect(text.titleParams).toEqual({ target: "prod.shop.public.orders" });
+    // One event for the whole target: it links to the target's workspace, not to
+    // a rule or an execution.
+    expect(text.href).toBe("/data-quality/targets/inst1/shop/public/orders");
+  });
+
+  it("links a structure change to the target even without a display path", () => {
+    const text = describeNotification(
+      dataQuality(DataQualityNotificationKind.TARGET_SCHEMA_CHANGED, {
+        targetGuid: "inst1;shop;;orders",
+      })
+    );
+    // The GUID is the fallback label, and an empty segment travels as `~`.
+    expect(text.messageParams).toEqual({ target: "inst1;shop;;orders" });
+    expect(text.href).toBe("/data-quality/targets/inst1/shop/~/orders");
+  });
+
   it("degrades a kind this build does not know", () => {
     const text = describeNotification(
       dataQuality(99 as DataQualityNotificationKind)
@@ -398,6 +428,7 @@ describe("describeNotification", () => {
         ruleTitle: "x",
       }),
       dataQuality(DataQualityNotificationKind.STORM_SUMMARY),
+      dataQuality(DataQualityNotificationKind.TARGET_SCHEMA_CHANGED),
       dataQuality(99 as DataQualityNotificationKind),
       create(NotificationSchema, { type: 99 as NotificationType }),
     ];

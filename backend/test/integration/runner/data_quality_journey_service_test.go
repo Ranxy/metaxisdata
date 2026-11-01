@@ -239,8 +239,10 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 	// operational failure is announced to the administrators.
 	assertJourneyMissingReadOnlySource(t, fixture, ruleNames["row_count"])
 
-	// P8b: a DDL change underneath a saved rule is caught by the metadata rule.
-	assertJourneySchemaDriftAfterDDLChange(t, fixture, ruleNames["schema_drift"])
+	// P8b: a DDL change underneath saved rules is caught both by the metadata rule
+	// and by the target's structure fingerprint; the owners are told once and can
+	// acknowledge the new shape.
+	assertJourneySchemaDriftAfterDDLChange(t, fixture, ruleNames["schema_drift"], source.orders)
 
 	// P8c: a dropped target is SKIPPED(ORPHANED) at runtime and explained on the
 	// rule read path.
@@ -1261,12 +1263,14 @@ func assertJourneyMissingReadOnlySource(t *testing.T, fixture *qualityFixture, r
 	require.NoError(t, err, "restore a read-only source")
 }
 
-// assertJourneySchemaDriftAfterDDLChange changes the table's schema after the rule
-// was saved and expects the metadata rule to report the drift. MySQL does not
-// implement db.ObjectDefinitionReader, so this engine stores no DDL hash and
-// target_schema_changed is always false; the registry column snapshot the drift
-// rule compares is what makes the change visible here.
-func assertJourneySchemaDriftAfterDDLChange(t *testing.T, fixture *qualityFixture, driftRuleName string) {
+// assertJourneySchemaDriftAfterDDLChange changes the table's schema after the rules
+// were saved and expects both signals to react. The metadata rule reports the
+// drift from its saved column list; independently, the target's saved structure
+// fingerprint no longer matches, so target_schema_changed becomes true on MySQL —
+// an engine whose DDL the syncer never captures — and the checks' owners hear
+// about the change once. Acknowledging it re-baselines the checks, clears the
+// signal, and is a no-op when repeated.
+func assertJourneySchemaDriftAfterDDLChange(t *testing.T, fixture *qualityFixture, driftRuleName, targetGUID string) {
 	t.Helper()
 
 	require.NoError(t, fixture.env.ExecMySQL(fixture.ctx, fmt.Sprintf(
@@ -1279,6 +1283,120 @@ func assertJourneySchemaDriftAfterDDLChange(t *testing.T, fixture *qualityFixtur
 	require.GreaterOrEqual(t, drifted.GetFailedRows(), int64(1))
 	require.NotEmpty(t, drifted.GetSamples(), "the drift items are the evidence")
 	require.Empty(t, drifted.GetExecutedSql(), "a metadata rule runs no SQL")
+
+	readRule := func() *v1pb.QualityRule {
+		read, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityRuleRequest{
+			Name: driftRuleName,
+		}))
+		require.NoError(t, err, "read the drift rule")
+		return read.Msg
+	}
+	require.True(t, readRule().GetTargetSchemaChanged(),
+		"the target's structure fingerprint changed on MySQL too")
+
+	// The directory aggregates the flag in SQL, so reading it proves the SQL
+	// predicate agrees with the per-rule Go one.
+	directory := func() bool {
+		listed, err := fixture.dataQuality.ListQualityTargets(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+			Parent: "workspaces/-",
+			Targets: []*v1pb.QualityTargetKey{{
+				TargetGuid: targetGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+			}},
+		}))
+		require.NoError(t, err, "read the target from the directory")
+		require.Len(t, listed.Msg.GetQualityTargets(), 1)
+		return listed.Msg.GetQualityTargets()[0].GetSchemaChanged()
+	}
+	require.True(t, directory(), "the directory's SQL predicate sees the change too")
+
+	message := waitForJourneyTargetSchemaChangeNotification(t, fixture, targetGUID)
+	require.Equal(t, targetGUID, message.GetDataQuality().GetTargetGuid())
+	require.Equal(t, v1pb.NotificationSeverity_NOTIFICATION_SEVERITY_WARNING, message.GetSeverity())
+	require.Equal(t, 1, journeyTargetSchemaChangeNotificationCount(t, fixture, targetGUID),
+		"one structure change is one message for the target")
+
+	// The rules were created without an owner, so the message went to the
+	// administrators; the acknowledgement is the administrator's review decision.
+	acknowledged, err := fixture.dataQuality.AcknowledgeQualityTargetSchema(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.AcknowledgeQualityTargetSchemaRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: targetGUID,
+		MetaType:   v1pb.MetaType_TABLE,
+	}))
+	require.NoError(t, err, "acknowledge the structure change")
+	require.Greater(t, acknowledged.Msg.GetBaselinedRuleCount(), int32(0))
+	require.False(t, readRule().GetTargetSchemaChanged(), "the acknowledgement clears the signal")
+	require.False(t, directory(), "the directory agrees that the signal is cleared")
+
+	again, err := fixture.dataQuality.AcknowledgeQualityTargetSchema(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.AcknowledgeQualityTargetSchemaRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: targetGUID,
+		MetaType:   v1pb.MetaType_TABLE,
+	}))
+	require.NoError(t, err, "acknowledge again")
+	require.Equal(t, int32(0), again.Msg.GetBaselinedRuleCount(), "a second acknowledgement is a no-op")
+}
+
+// waitForJourneyTargetSchemaChangeNotification waits for the one message a
+// structure change addresses to a target. It is separate from the rule-scoped
+// helper because a target event names no rule.
+func waitForJourneyTargetSchemaChangeNotification(t *testing.T, fixture *qualityFixture, targetGUID string) *v1pb.Notification {
+	t.Helper()
+
+	var message *v1pb.Notification
+	require.Eventually(t, func() bool {
+		for _, candidate := range fixture.listNotifications(t) {
+			detail := candidate.GetDataQuality()
+			if candidate.GetType() == v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY &&
+				detail.GetKind() == v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED &&
+				detail.GetTargetGuid() == targetGUID {
+				message = candidate
+				return true
+			}
+		}
+		return false
+	}, 30*time.Second, 200*time.Millisecond, "the structure-change notification for %s never arrived: %s", targetGUID, fixture.env.ServerLogs())
+	return message
+}
+
+// journeyTargetSchemaChangeNotificationCount counts a target's structure-change
+// messages, so a repeated sync of the same change can be proven not to page twice.
+func journeyTargetSchemaChangeNotificationCount(t *testing.T, fixture *qualityFixture, targetGUID string) int {
+	t.Helper()
+
+	count := 0
+	for _, message := range fixture.listNotifications(t) {
+		detail := message.GetDataQuality()
+		if message.GetType() == v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY &&
+			detail.GetKind() == v1pb.DataQualityNotificationKind_DATA_QUALITY_NOTIFICATION_KIND_TARGET_SCHEMA_CHANGED &&
+			detail.GetTargetGuid() == targetGUID {
+			count++
+		}
+	}
+	return count
+}
+
+// listNotifications pages the administrator's whole inbox.
+func (f *qualityFixture) listNotifications(t *testing.T) []*v1pb.Notification {
+	t.Helper()
+
+	seen := make([]*v1pb.Notification, 0, 100)
+	pageToken := ""
+	for range 10 {
+		resp, err := f.notifications.ListNotifications(f.ctx, withToken(f.env.AdminToken(), &v1pb.ListNotificationsRequest{
+			Parent:    "workspaces/-",
+			PageSize:  1000,
+			PageToken: pageToken,
+		}))
+		require.NoError(t, err)
+		seen = append(seen, resp.Msg.GetNotifications()...)
+		pageToken = resp.Msg.GetNextPageToken()
+		if pageToken == "" {
+			return seen
+		}
+	}
+	t.Fatal("the inbox did not finish paging")
+	return nil
 }
 
 // assertJourneyOrphanedTarget drops the table a rule watches: the execution is

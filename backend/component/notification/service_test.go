@@ -22,6 +22,9 @@ import (
 type fakeStore struct {
 	workspaceID string
 	policy      *storepb.IamPolicy
+	// policyReads counts the IAM policy resolutions, so a test can prove a
+	// suppressed repeat does not pay for the audience lookup.
+	policyReads int
 	groups      map[string]*store.GroupMessage
 	users       map[int]*store.UserMessage
 
@@ -123,6 +126,7 @@ func (f *fakeStore) GetWorkspaceID(context.Context) (string, error) {
 }
 
 func (f *fakeStore) GetWorkspaceIamPolicy(context.Context) (*store.IamPolicyMessage, error) {
+	f.policyReads++
 	return &store.IamPolicyMessage{Policy: f.policy}, nil
 }
 
@@ -282,6 +286,32 @@ func TestSendToWorkspaceAdminsExpandsGroupsAndSkipsTheBot(t *testing.T) {
 	// The second occurrence inside the window reaches nobody.
 	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), message))
 	require.Len(t, fake.created, 2)
+}
+
+// The suppression gate runs before the audience is resolved: a repeat inside the
+// window must not pay for the IAM policy read and group expansion.
+func TestSendToWorkspaceAdminsClaimsBeforeResolvingTheAudience(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{
+		workspaceID: "ws-1",
+		policy: &storepb.IamPolicy{Bindings: []*storepb.Binding{
+			{Role: common.FormatRole(common.WorkspaceMember), Members: []string{common.AllUsers}},
+			{Role: common.FormatRole(common.WorkspaceAdmin), Members: []string{"users/2"}},
+		}},
+		users: map[int]*store.UserMessage{2: {ID: 2, Name: "alice"}},
+	}
+	service := newServiceWithStore(fake)
+
+	message := newOpenLineageMessage()
+	message.DedupeKey = DedupeKey("openlineage", "ns-1:INVALID_EVENT", time.Now(), BackgroundFailureWindow)
+	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), message))
+	require.Equal(t, 1, fake.policyReads)
+	require.Len(t, fake.created, 1)
+
+	require.NoError(t, service.SendToWorkspaceAdmins(context.Background(), message))
+	require.Equal(t, 1, fake.policyReads, "a suppressed repeat must not resolve the audience")
+	require.Len(t, fake.created, 1)
 }
 
 // A deployment whose only administrator is the allUsers baseline has nobody to
@@ -546,4 +576,57 @@ func TestMessagesWrittenTogetherDeliverTheirCountsInOrder(t *testing.T) {
 
 	require.Equal(t, int32(1), requireEvent(t, events).UnreadCount)
 	require.Equal(t, int32(2), requireEvent(t, events).UnreadCount)
+}
+
+// One event addressed to several people is one event: every recipient gets an
+// inbox row with their own read state, the suppression key is claimed once for
+// all of them, and a channel is queued once with the whole audience.
+func TestSendToRecipientsFansOutOneEvent(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{
+		workspaceID: "ws-1",
+		channels:    []*store.NotificationChannelMessage{testChannel(1, enabledWebhookChannel())},
+	}
+	service := newServiceWithStore(fake)
+
+	message := newOpenLineageMessage()
+	message.DedupeKey = DedupeKey("quality.target-schema-changed", "inst-1;app;;orders", time.Now(), QualityNotificationWindow)
+	// 7 is named twice: one inbox row, not two.
+	require.NoError(t, service.SendToRecipients(context.Background(), message, []int32{7, 9, 7}))
+
+	require.Len(t, fake.created, 2)
+	require.Equal(t, int32(7), fake.created[0].GetRecipientId())
+	require.Equal(t, int32(9), fake.created[1].GetRecipientId())
+	for _, created := range fake.created {
+		require.Equal(t, "workspaces/ws-1", created.GetParent())
+		require.Equal(t, storepb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE, created.GetType())
+		require.Empty(t, created.GetId())
+	}
+	// The second recipient must not be suppressed by the first one's write: that
+	// is what claiming the key once, outside the loop, is for.
+	require.Len(t, fake.deliveries, 1, "a channel receives the event once")
+	require.ElementsMatch(t, []int32{7, 9}, fake.deliveries[0].Payload.GetAudienceUserIds())
+
+	// A repeat inside the window reaches nobody and queues nothing.
+	require.NoError(t, service.SendToRecipients(context.Background(), message, []int32{7, 9}))
+	require.Len(t, fake.created, 2)
+	require.Len(t, fake.deliveries, 1)
+}
+
+// A failed write must not consume the window: the retry may try again.
+func TestSendToRecipientsReleasesTheWindowOnFailure(t *testing.T) {
+	t.Parallel()
+
+	writeErr := errors.New("the notification store is down")
+	fake := &fakeStore{workspaceID: "ws-1", failNext: writeErr}
+	service := newServiceWithStore(fake)
+
+	message := newOpenLineageMessage()
+	message.DedupeKey = DedupeKey("quality.target-schema-changed", "inst-1;app;;orders", time.Now(), QualityNotificationWindow)
+	require.ErrorIs(t, service.SendToRecipients(context.Background(), message, []int32{7}), writeErr)
+	require.Empty(t, fake.created)
+
+	require.NoError(t, service.SendToRecipients(context.Background(), message, []int32{7}))
+	require.Len(t, fake.created, 1)
 }
