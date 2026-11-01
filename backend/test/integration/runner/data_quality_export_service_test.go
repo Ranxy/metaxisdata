@@ -113,7 +113,7 @@ func TestDataQualityExportMySQLRealServerIntegration(t *testing.T) {
 		"rule_count", "enabled_rule_count", "paused_rule_count", "column_count",
 		"open_issue_count", "pending_draft_count", "worst_status",
 		"last_run_time", "schema_changed", "orphaned",
-		"schedule_interval_seconds", "next_run_time",
+		"schedule_interval_seconds", "next_run_time", "schedule_cron", "schedule_timezone",
 	}, targetRecords[0])
 	targetRows := make(map[string][]string, len(targetRecords)-1)
 	for _, record := range targetRecords[1:] {
@@ -128,6 +128,8 @@ func TestDataQualityExportMySQLRealServerIntegration(t *testing.T) {
 		require.Equal(t, "1", record[3], "target %s carries one rule", guid)
 		require.Equal(t, "1", record[4], "target %s carries one enabled rule", guid)
 		require.NotEmpty(t, record[10], "target %s ran and carries its last run time", guid)
+		require.Empty(t, record[15], "target %s runs on an interval, so it has no cron expression", guid)
+		require.Empty(t, record[16], "target %s runs on an interval, so it has no cron zone", guid)
 	}
 
 	// P2b: failing_only is the directory's "failing" switch: it selects the FAIL
