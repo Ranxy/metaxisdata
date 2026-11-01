@@ -34,9 +34,12 @@ const (
 	// but a bounded input keeps a malformed request from being echoed back at
 	// request-body size.
 	maxCronBytes = 256
-	// repeatedWallClockProbes bounds how many repeated wall-clock occurrences Next
-	// skips before giving up. A fall-back repeats an hour once.
-	repeatedWallClockProbes = 4
+	// repeatedWallClockProbes bounds how many duplicated wall clocks Next may skip
+	// before giving up. A fall-back repeats at most the widest fold (two hours in
+	// Antarctica/Troll) at the finest cron granularity (one minute), so 120 is the
+	// theoretical maximum; a valid schedule is limited to 15-minute spacing and
+	// skips at most nine.
+	repeatedWallClockProbes = 128
 )
 
 // repeatedWallClockDeltas are the offsets a daylight-saving fall-back can repeat a
@@ -174,6 +177,11 @@ func (s Spec) nextOccurrence(parsed cron.Schedule, after time.Time) time.Time {
 		if !isRepeatedWallClock(candidate, zone) {
 			return candidate.UTC()
 		}
+		// This candidate is the second copy of a wall clock. Skip it one occurrence
+		// at a time rather than jumping: a long fold (two hours in a zone such as
+		// Antarctica/Troll) repeats an entire evening of wall clocks, and a jump wide
+		// enough to leave it would also step over the first legitimate occurrence
+		// after the fold (the wall clock the transition lands on).
 		candidate = parsed.Next(candidate)
 	}
 	if candidate.IsZero() {

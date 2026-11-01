@@ -221,3 +221,35 @@ func TestCronLengthIsBounded(t *testing.T) {
 	_, err := Parse(0, "0 2 * * * "+strings.Repeat("x", 500), "UTC", "")
 	require.ErrorContains(t, err, "longer than 256 bytes")
 }
+
+// A two-hour fold (Antarctica/Troll, the only such zone today) repeats a whole
+// evening of wall clocks; the schedule must still fire once per wall clock rather
+// than leak the second pass after a few skips.
+func TestNextCronTwoHourFoldFiresOncePerWallClock(t *testing.T) {
+	location, err := time.LoadLocation("Antarctica/Troll")
+	require.NoError(t, err)
+	spec := Spec{Cron: "*/15 * * * *", TimeZone: "Antarctica/Troll"}
+
+	probe := time.Date(2025, time.October, 25, 22, 0, 0, 0, time.UTC)
+	seen := map[string]struct{}{}
+	fires := make([]time.Time, 0, 12)
+	for range 12 {
+		next := spec.Next(probe)
+		require.False(t, next.IsZero())
+		key := next.In(location).Format("2006-01-02 15:04")
+		_, duplicate := seen[key]
+		require.False(t, duplicate, "local wall clock %s fired twice", key)
+		seen[key] = struct{}{}
+		fires = append(fires, next)
+		probe = next
+	}
+
+	// From 00:15 local, 11 fifteen-minute occurrences reach 02:45 local on the first
+	// pass (indices 0..10); the second pass over 01:00..02:45 is skipped, so the next
+	// one is the first wall clock after the fold: 03:00 local. (Skipping one occurrence
+	// at a time, rather than jumping past the fold, is what keeps that boundary run.)
+	require.Equal(t, 11, len(fires)-1)
+	require.Equal(t, time.Date(2025, time.October, 26, 3, 0, 0, 0, time.UTC), fires[11])
+	require.Equal(t, 3, fires[11].In(location).Hour())
+	require.Equal(t, 0, fires[11].In(location).Minute())
+}
