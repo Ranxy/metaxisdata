@@ -51,9 +51,13 @@ type FindQualityTargetMessage struct {
 	HasOpenIssue bool
 	// HasPendingDraft keeps only targets with at least one pending AI draft.
 	HasPendingDraft bool
-	Order           QualityTargetOrder
-	Limit           *int
-	Offset          *int
+	// TargetKeys keeps only these exact targets. It is an exact selection, not a
+	// prefix filter, and it is how the metadata browser reads one page's trust
+	// signals in a single call. An empty slice means no selection.
+	TargetKeys []MetaGUIDKey
+	Order      QualityTargetOrder
+	Limit      *int
+	Offset     *int
 }
 
 // QualityTargetMessage is one row of the target directory: the target identity
@@ -110,6 +114,14 @@ type QualityTargetMessage struct {
 	// ListQualityTargetExecutionTallies.
 	RecentPassRate       *float64
 	RecentExecutionCount int32
+
+	// CoveredColumnCount and TotalColumnCount are the target's column coverage:
+	// how many of its current registry columns at least one enabled rule reads, and
+	// how many columns the registry currently records for it. Both are filled by
+	// the API from one registry read, so the numerator can never exceed the
+	// denominator; a target that no longer resolves reports 0/0.
+	CoveredColumnCount int32
+	TotalColumnCount   int32
 }
 
 // qualityTargetStatusRank maps a quality status onto the ordering used to pick a
@@ -240,6 +252,20 @@ func targetWhere(find *FindQualityTargetMessage, base int) ([]string, []any, err
 	}
 	if find.HasPendingDraft {
 		where = append(where, "COALESCE(d.pending_draft_count, 0) > 0")
+	}
+	if len(find.TargetKeys) > 0 {
+		// An exact selection, keyed by the same pair the aggregate groups on. The
+		// unnest form keeps it one parameter pair regardless of the page size.
+		guids := make([]string, 0, len(find.TargetKeys))
+		objectTypes := make([]int16, 0, len(find.TargetKeys))
+		for _, key := range find.TargetKeys {
+			guids = append(guids, key.GUID)
+			objectTypes = append(objectTypes, int16(key.ObjectType))
+		}
+		args = append(args, pq.Array(guids), pq.Array(objectTypes))
+		where = append(where, fmt.Sprintf(
+			"(t.target_guid, t.target_type) IN (SELECT * FROM unnest($%d::text[], $%d::int2[]))",
+			base+len(args)-1, base+len(args)))
 	}
 	return where, args, nil
 }

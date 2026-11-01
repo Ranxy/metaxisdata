@@ -457,7 +457,10 @@ func TestStreamQualityCSVFlagsTruncationOnlyWhenRowsRemain(t *testing.T) {
 func TestQualityExportFiltersMirrorTheListFilters(t *testing.T) {
 	t.Parallel()
 
-	paging := map[protoreflect.Name]bool{"page_size": true, "page_token": true}
+	// These list fields are not filters: page_size/page_token page the list, and
+	// targets is an exact selection (a batch read for the objects on screen), not a
+	// predicate over the directory a file download would want to apply.
+	listOnly := map[protoreflect.Name]bool{"page_size": true, "page_token": true, "targets": true}
 	tests := []struct {
 		name       string
 		export     protoreflect.MessageDescriptor
@@ -494,7 +497,7 @@ func TestQualityExportFiltersMirrorTheListFilters(t *testing.T) {
 				listFields[field.Name()] = field
 			}
 			for name, listField := range listFields {
-				if paging[name] {
+				if listOnly[name] {
 					continue
 				}
 				exportField := tt.export.Fields().ByName(name)

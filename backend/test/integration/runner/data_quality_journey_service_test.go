@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -102,12 +103,15 @@ UPDATE dq_orders SET shipped_quantity = 6 WHERE id = 6;
 INSERT INTO dq_heartbeat (id, updated_at) VALUES (3, NOW());
 `
 
-// journeySource holds the registry GUIDs of the journey's tables.
+// journeySource holds the registry GUIDs of the journey's tables. reference is the
+// one table no rule watches; it is how the trust-signal selection proves an
+// unmonitored object is absent rather than reported as failing.
 type journeySource struct {
 	orders    string
 	heartbeat string
 	empty     string
 	orphan    string
+	reference string
 }
 
 // journeyRuleSpec is one rule in the suite. label keys the rule in the test's
@@ -163,6 +167,7 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 	}
 	require.Positive(t, ordersScored)
 	assertJourneyTargetHealth(t, fixture, source.orders, int32(ordersScored), float64(ordersPassing)/float64(ordersScored))
+	assertJourneyTargetSelection(t, fixture, source)
 
 	// P3: each FAIL opens exactly one issue; the passing, warning and unevaluated
 	// verdicts open none; each opened issue produces one inbox message.
@@ -274,6 +279,7 @@ func seedJourneySource(t *testing.T, fixture *qualityFixture) journeySource {
 		heartbeat: waitForMetaGUIDByName(fixture.ctx, t, fixture.env, prefix, storepb.MetaType_TABLE, "dq_heartbeat"),
 		empty:     waitForMetaGUIDByName(fixture.ctx, t, fixture.env, prefix, storepb.MetaType_TABLE, "dq_empty"),
 		orphan:    waitForMetaGUIDByName(fixture.ctx, t, fixture.env, prefix, storepb.MetaType_TABLE, "dq_orphan_target"),
+		reference: waitForMetaGUIDByName(fixture.ctx, t, fixture.env, prefix, storepb.MetaType_TABLE, "dq_reference_customers"),
 	}
 }
 
@@ -948,6 +954,14 @@ func assertJourneyTargetHealth(t *testing.T, fixture *qualityFixture, targetGUID
 	require.NotNil(t, summary.RecentPassRate, "the first batch judged every enabled rule")
 	require.InDelta(t, wantPassRate, summary.GetRecentPassRate(), 1e-9)
 	require.Equal(t, wantScored, summary.GetRecentExecutionCount(), "the first batch completed one execution per rule")
+	// Column coverage is one registry read: dq_orders has ten columns and six of
+	// them are named by an enabled check (customer_email, external_ref, status,
+	// amount, product_code, customer_id). Unique_combination, cross_column,
+	// group_check, cel and the table-level checks name no single checked column, so
+	// they cover none; the covered count can never exceed the denominator.
+	require.Equal(t, int32(10), summary.GetTotalColumnCount())
+	require.Equal(t, int32(6), summary.GetCoveredColumnCount())
+	require.LessOrEqual(t, summary.GetCoveredColumnCount(), summary.GetTotalColumnCount())
 
 	target, err := fixture.dataQuality.GetQualityTarget(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
 		Parent:     "workspaces/-",
@@ -959,6 +973,73 @@ func assertJourneyTargetHealth(t *testing.T, fixture *qualityFixture, targetGUID
 	require.Equal(t, summary.GetScoredRuleCount(), target.Msg.GetSummary().GetScoredRuleCount())
 	require.InDelta(t, summary.GetRecentPassRate(), target.Msg.GetSummary().GetRecentPassRate(), 1e-9)
 	require.Equal(t, summary.GetRecentExecutionCount(), target.Msg.GetSummary().GetRecentExecutionCount())
+	require.Equal(t, summary.GetCoveredColumnCount(), target.Msg.GetSummary().GetCoveredColumnCount(),
+		"the workspace header and the directory read the same coverage")
+	require.Equal(t, summary.GetTotalColumnCount(), target.Msg.GetSummary().GetTotalColumnCount())
+}
+
+// assertJourneyTargetSelection pins the exact-target selection the metadata browser
+// uses to read one page's trust signals: one call answers the requested objects in
+// request order, ignores paging, collapses duplicate keys and omits a target that
+// has no rule — an unmonitored object is absent, not a failure.
+func assertJourneyTargetSelection(t *testing.T, fixture *qualityFixture, source journeySource) {
+	t.Helper()
+
+	// Page size 1 proves a selection is not a page: both monitored targets come back
+	// even though a paged list would have stopped at one row.
+	selected, err := fixture.dataQuality.ListQualityTargets(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 1,
+		Targets: []*v1pb.QualityTargetKey{
+			{TargetGuid: source.orders, MetaType: v1pb.MetaType_TABLE},
+			{TargetGuid: source.reference, MetaType: v1pb.MetaType_TABLE},
+			{TargetGuid: source.heartbeat, MetaType: v1pb.MetaType_TABLE},
+			{TargetGuid: source.orders, MetaType: v1pb.MetaType_TABLE},
+		},
+	}))
+	require.NoError(t, err)
+	require.Empty(t, selected.Msg.GetNextPageToken(), "a selection is not paged")
+	require.Len(t, selected.Msg.GetQualityTargets(), 2,
+		"the unmonitored table is absent and the duplicate key collapses")
+	require.Equal(t, source.orders, selected.Msg.GetQualityTargets()[0].GetTarget().GetMetaGuid(),
+		"the answer keeps the request order")
+	require.Equal(t, source.heartbeat, selected.Msg.GetQualityTargets()[1].GetTarget().GetMetaGuid())
+
+	orders := selected.Msg.GetQualityTargets()[0]
+	require.Equal(t, int32(10), orders.GetTotalColumnCount())
+	require.Equal(t, int32(6), orders.GetCoveredColumnCount())
+	// dq_heartbeat has two columns and one freshness check on updated_at.
+	heartbeat := selected.Msg.GetQualityTargets()[1]
+	require.Equal(t, int32(2), heartbeat.GetTotalColumnCount())
+	require.Equal(t, int32(1), heartbeat.GetCoveredColumnCount())
+
+	// The selection is the same read the asset page's workspace header uses, so the
+	// signal cannot differ between the directory, the badge and the workspace.
+	target, err := fixture.dataQuality.GetQualityTarget(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+		Parent:     "workspaces/-",
+		TargetGuid: source.orders,
+	}))
+	require.NoError(t, err)
+	workspace := target.Msg.GetSummary()
+	require.Equal(t, workspace.GetWorstStatus(), orders.GetWorstStatus())
+	require.InDelta(t, workspace.GetQualityScore(), orders.GetQualityScore(), 1e-9)
+	require.InDelta(t, workspace.GetRecentPassRate(), orders.GetRecentPassRate(), 1e-9)
+	require.Equal(t, workspace.GetRecentExecutionCount(), orders.GetRecentExecutionCount())
+	require.Equal(t, workspace.GetOpenIssueCount(), orders.GetOpenIssueCount())
+	require.Equal(t, workspace.GetCoveredColumnCount(), orders.GetCoveredColumnCount())
+	require.Equal(t, workspace.GetTotalColumnCount(), orders.GetTotalColumnCount())
+	require.NotNil(t, orders.GetLastRunTime())
+	require.Equal(t, workspace.GetLastRunTime().AsTime(), orders.GetLastRunTime().AsTime())
+
+	// A key without a GUID or without a real object type is a client bug, not an
+	// empty answer.
+	_, err = fixture.dataQuality.ListQualityTargets(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 10,
+		Targets:  []*v1pb.QualityTargetKey{{TargetGuid: source.orders}},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 // assertJourneyRecentWindowCap pins the recent pass-rate window on a target with

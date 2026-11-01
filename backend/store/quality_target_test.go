@@ -205,3 +205,39 @@ func TestTargetWhereWorstStatuses(t *testing.T) {
 	require.Equal(t, []any{int32(5)}, args)
 	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = $14")
 }
+
+// An exact-target selection is one predicate keyed by the aggregate's grouping
+// pair, and it binds one parameter pair however many targets it names. An empty
+// selection is no filter at all, so the directory keeps its full behaviour.
+func TestTargetWhereTargetKeys(t *testing.T) {
+	t.Parallel()
+
+	where, args, err := targetWhere(&FindQualityTargetMessage{
+		TargetKeys: []MetaGUIDKey{
+			{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE},
+			{GUID: "instance-1;shop;;orders_view", ObjectType: storepb.MetaType_VIEW},
+		},
+	}, 13)
+	require.NoError(t, err)
+	require.Contains(t, where, "(t.target_guid, t.target_type) IN (SELECT * FROM unnest($14::text[], $15::int2[]))")
+	require.Equal(t, []any{
+		pq.Array([]string{"instance-1;shop;;orders", "instance-1;shop;;orders_view"}),
+		pq.Array([]int16{int16(storepb.MetaType_TABLE), int16(storepb.MetaType_VIEW)}),
+	}, args)
+
+	// The same target's two object types are two keys, so a GUID that a table and a
+	// view could share cannot be resolved by accident.
+	_, args, err = targetWhere(&FindQualityTargetMessage{
+		TargetKeys: []MetaGUIDKey{{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_VIEW}},
+	}, 13)
+	require.NoError(t, err)
+	require.Equal(t, []any{
+		pq.Array([]string{"instance-1;shop;;orders"}),
+		pq.Array([]int16{int16(storepb.MetaType_VIEW)}),
+	}, args)
+
+	where, args, err = targetWhere(&FindQualityTargetMessage{TargetKeys: []MetaGUIDKey{}}, 13)
+	require.NoError(t, err)
+	require.Equal(t, []string{"TRUE"}, where)
+	require.Empty(t, args)
+}

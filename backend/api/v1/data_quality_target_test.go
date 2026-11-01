@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -282,4 +283,139 @@ func TestQualityRecentPassRate(t *testing.T) {
 	rate, judgedCount = qualityRecentPassRate(store.QualityTargetExecutionTally{})
 	require.Nil(t, rate, "no judged execution means no pass rate")
 	require.Zero(t, judgedCount)
+}
+
+// The exact-target selection is the metadata browser's batch read. It accepts only
+// keys a rule could name, deduplicates them and keeps the request order, because
+// the client zips the answer back onto the rows it is showing.
+func TestQualityTargetSelectionFromV1(t *testing.T) {
+	t.Parallel()
+
+	selection, err := qualityTargetSelectionFromV1([]*v1pb.QualityTargetKey{
+		{TargetGuid: "instance-1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+		{TargetGuid: "  instance-1;shop;;order_items  ", MetaType: v1pb.MetaType_VIEW},
+		// A duplicate key is one target, not two rows.
+		{TargetGuid: "instance-1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []store.MetaGUIDKey{
+		{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE},
+		{GUID: "instance-1;shop;;order_items", ObjectType: storepb.MetaType_VIEW},
+	}, selection, "duplicates collapse and the request order is kept")
+
+	// A GUID alone does not identify the registry row, so the type is required.
+	_, err = qualityTargetSelectionFromV1([]*v1pb.QualityTargetKey{
+		{TargetGuid: "instance-1;shop;;orders"},
+	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = qualityTargetSelectionFromV1([]*v1pb.QualityTargetKey{
+		{TargetGuid: "  ", MetaType: v1pb.MetaType_TABLE},
+	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// Only the four object types a rule can watch carry a signal; a database or
+	// column selection is a client bug, not an empty answer.
+	_, err = qualityTargetSelectionFromV1([]*v1pb.QualityTargetKey{
+		{TargetGuid: "instance-1;shop", MetaType: v1pb.MetaType_DATABASE},
+	})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// The selection is bounded: one request cannot ask for the whole registry.
+func TestQualityTargetSelectionFromV1Limit(t *testing.T) {
+	t.Parallel()
+
+	keys := make([]*v1pb.QualityTargetKey, 0, qualityTargetSelectionLimit+1)
+	for i := 0; i <= qualityTargetSelectionLimit; i++ {
+		keys = append(keys, &v1pb.QualityTargetKey{
+			TargetGuid: "instance-1;shop;;orders" + strconv.Itoa(i),
+			MetaType:   v1pb.MetaType_TABLE,
+		})
+	}
+	_, err := qualityTargetSelectionFromV1(keys)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// Exactly at the bound is allowed, so a page of 200 still answers in one call.
+	selection, err := qualityTargetSelectionFromV1(keys[:qualityTargetSelectionLimit])
+	require.NoError(t, err)
+	require.Len(t, selection, qualityTargetSelectionLimit)
+}
+
+// The answer is reordered onto the request so the caller can zip each signal back
+// onto its row. A selected target with no live rule produces no row: it is not
+// monitored, not "failed to load".
+func TestOrderQualityTargetSelection(t *testing.T) {
+	t.Parallel()
+
+	selection := []store.MetaGUIDKey{
+		{GUID: "a", ObjectType: storepb.MetaType_TABLE},
+		{GUID: "unmonitored", ObjectType: storepb.MetaType_TABLE},
+		{GUID: "b", ObjectType: storepb.MetaType_VIEW},
+	}
+	ordered := orderQualityTargetSelection([]*store.QualityTargetMessage{
+		{GUID: "b", Type: storepb.MetaType_VIEW},
+		{GUID: "a", Type: storepb.MetaType_TABLE},
+	}, selection)
+	require.Len(t, ordered, 2)
+	require.Equal(t, "a", ordered[0].GUID)
+	require.Equal(t, "b", ordered[1].GUID)
+
+	require.Empty(t, orderQualityTargetSelection(nil, selection))
+}
+
+// Column coverage counts from one registry read: the denominator is every column
+// the registry holds for the target, the numerator only the enabled checks' columns
+// that still exist there. A dropped or renamed column therefore covers nothing, so
+// the numerator can never exceed the denominator.
+func TestQualityTargetColumnCoverage(t *testing.T) {
+	t.Parallel()
+
+	registry := map[string]struct{}{"id": {}, "email": {}, "created_at": {}}
+	checked := map[string]struct{}{"id": {}, "email": {}}
+	covered, total := qualityTargetColumnCoverage(registry, checked)
+	require.Equal(t, int32(2), covered)
+	require.Equal(t, int32(3), total)
+
+	// A check that still names a column the schema sync dropped covers nothing.
+	covered, total = qualityTargetColumnCoverage(registry, map[string]struct{}{"dropped": {}})
+	require.Equal(t, int32(0), covered)
+	require.Equal(t, int32(3), total)
+
+	// No registry row (an orphaned target) is 0/0, not 0/100.
+	covered, total = qualityTargetColumnCoverage(nil, checked)
+	require.Zero(t, covered)
+	require.Zero(t, total)
+
+	// A target with columns but no column-level check is covered 0 of N.
+	covered, total = qualityTargetColumnCoverage(registry, nil)
+	require.Zero(t, covered)
+	require.Equal(t, int32(3), total)
+}
+
+// The conversion carries the coverage pair through to the API message, so the
+// directory cell and the asset badge read the same two numbers.
+func TestConvertQualityTargetSummaryColumnCoverage(t *testing.T) {
+	t.Parallel()
+
+	summary := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
+		GUID:               "instance-1;shop;;orders",
+		Type:               storepb.MetaType_TABLE,
+		CoveredColumnCount: 2,
+		TotalColumnCount:   7,
+	})
+	require.Equal(t, int32(2), summary.GetCoveredColumnCount())
+	require.Equal(t, int32(7), summary.GetTotalColumnCount())
+
+	// A target that never resolved reports 0/0 rather than a full denominator.
+	orphan := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
+		GUID: "instance-1;shop;;orders",
+		Type: storepb.MetaType_TABLE,
+	})
+	require.Zero(t, orphan.GetCoveredColumnCount())
+	require.Zero(t, orphan.GetTotalColumnCount())
 }
