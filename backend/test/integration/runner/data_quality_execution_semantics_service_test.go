@@ -84,6 +84,53 @@ func TestDataQualityExecutionSemanticsMySQLRealServerIntegration(t *testing.T) {
 	require.Contains(t, execution.ExecutedSql, "`created_at` >=")
 	require.NotContains(t, execution.ExecutedSql, "${", "the executed statement carries the rendered value")
 
+	// A custom SQL check keeps its token on the rule but executes a generated date
+	// literal; the compiled statement is the same statement the save path parsed.
+	customConfig := &v1pb.QualityRuleConfig{
+		Config: &v1pb.QualityRuleConfig_CustomSql{CustomSql: &v1pb.CustomSQLConfig{
+			Sql: "SELECT id FROM dq_semantics WHERE created_at >= ${today-7d}",
+		}},
+	}
+	customPreview, err := fixture.dataQuality.PreviewQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.PreviewQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+			Target:    &v1pb.QualityTarget{MetaGuid: guid, MetaType: v1pb.MetaType_TABLE},
+			Config:    customConfig,
+		},
+	}))
+	require.NoError(t, err, "preview a custom SQL check with a time variable")
+	require.Regexp(t, `created_at >= '[0-9]{4}-[0-9]{2}-[0-9]{2}'`, customPreview.Msg.GetCompiledSql())
+	customRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING, guid, customConfig)
+	customExecution := fixture.runToCompletion(t, customRule.Name)
+	require.Regexp(t, `created_at >= '[0-9]{4}-[0-9]{2}-[0-9]{2}'`, customExecution.ExecutedSql,
+		"the executed statement carries the rendered date, not the token")
+	require.NotContains(t, customExecution.ExecutedSql, "${")
+
+	// The single-pass duplicate rewrite keeps NULL keys out of the duplicate count
+	// while still counting them in the total: four rows, two of them NULL, one
+	// duplicate pair of NULLs only when count_nulls asks for it.
+	uniqueConfig := &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_Unique{
+		Unique: &v1pb.UniqueConfig{Column: "email"},
+	}}
+	uniqueRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		v1pb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING, guid, uniqueConfig)
+	uniqueExecution := fixture.runToCompletion(t, uniqueRule.Name)
+	require.Equal(t, int64(0), uniqueExecution.FailedRows, "NULL keys are not duplicates")
+	require.Equal(t, int64(4), uniqueExecution.TotalRows, "NULL rows still count in the total")
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, uniqueExecution.Outcome)
+
+	countNullsConfig := &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_Unique{
+		Unique: &v1pb.UniqueConfig{Column: "email", CountNulls: true},
+	}}
+	countNullsRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		v1pb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING, guid, countNullsConfig)
+	countNullsExecution := fixture.runToCompletion(t, countNullsRule.Name)
+	require.Equal(t, int64(1), countNullsExecution.FailedRows, "the second NULL is the duplicate")
+	require.Equal(t, int64(4), countNullsExecution.TotalRows)
+
 	// A row limit reads a bounded relation and records the sample. Three of the
 	// four rows are recent, so the row count filter alone would pass; the sampled
 	// accepted-values check fails on every row it reads.
@@ -91,6 +138,13 @@ func TestDataQualityExecutionSemanticsMySQLRealServerIntegration(t *testing.T) {
 		Config: &v1pb.QualityRuleConfig_AcceptedValues{AcceptedValues: &v1pb.AcceptedValuesConfig{
 			Column: "email", Values: []string{"never@example.com"},
 		}},
+		// A sampled and filtered rule at once: the filter binds inside the bounded
+		// relation, which is the arg-order path that only a real execution proves.
+		Filter: &v1pb.QualityFilter{Clauses: []*v1pb.QualityFilterClause{{
+			Column: "created_at",
+			Op:     v1pb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_GTE,
+			Values: []string{"${today-7d}"},
+		}}},
 		Sampling: &v1pb.QualityRuleSampling{Method: &v1pb.QualityRuleSampling_MaxRows{MaxRows: 2}},
 	}
 	sampledRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
@@ -102,6 +156,7 @@ func TestDataQualityExecutionSemanticsMySQLRealServerIntegration(t *testing.T) {
 	require.Equal(t, int64(2), sampledExecution.SampleRows)
 	require.Equal(t, int64(2), sampledExecution.TotalRows)
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, sampledExecution.Outcome)
+	require.Contains(t, sampledExecution.ExecutedSql, "`created_at` >=")
 	require.Contains(t, sampledExecution.ExecutedSql, "LIMIT 2")
 
 	// Sampling a rule type whose verdict describes the whole relation is refused at
