@@ -1346,6 +1346,7 @@
       "columnResult": "最近结果",
       "columnRules": "检查",
       "columnTarget": "目标",
+      "coverageNoColumns": "无法读取字段列表：目标当前没有字段。",
       "coverageUnresolved": "无法读取字段列表：目标已不存在。",
       "description": "每张有检查的表或视图占一行；打开目标即可整体查看和编辑它的全部检查。",
       "emptyDescription": "创建检查时选择一张表或视图，它就会作为目标出现在这里。",

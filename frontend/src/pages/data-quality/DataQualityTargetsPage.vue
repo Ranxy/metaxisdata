@@ -679,12 +679,18 @@ function columnCoverage(summary: QualityTargetSummary): string {
 /** The coverage cell's tooltip: the share, or why it has no denominator. */
 function columnCoverageTitle(summary: QualityTargetSummary): string {
   const coverage = qualitySignalCoverage(summary);
-  return coverage === null
+  if (coverage !== null) {
+    return t("dataQuality.coverage.coveredSummary", {
+      covered: coverage.covered,
+      total: coverage.total,
+    });
+  }
+  // 0/0 has two causes, and only one of them is an orphan: a resolvable object
+  // whose registry record carries no columns is not gone, it just has nothing to
+  // cover.
+  return summary.orphaned
     ? t("dataQuality.targets.coverageUnresolved")
-    : t("dataQuality.coverage.coveredSummary", {
-        covered: coverage.covered,
-        total: coverage.total,
-      });
+    : t("dataQuality.targets.coverageNoColumns");
 }
 
 /**

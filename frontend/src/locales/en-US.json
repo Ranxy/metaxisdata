@@ -1346,6 +1346,7 @@
       "columnResult": "Latest result",
       "columnRules": "Checks",
       "columnTarget": "Target",
+      "coverageNoColumns": "No column list: the target currently exposes no columns.",
       "coverageUnresolved": "No column list: the target no longer resolves.",
       "description": "Every table or view with checks, one row per target. Open a target to see and edit all of its checks together.",
       "emptyDescription": "Pick a table or view when creating a check; its target then appears here.",

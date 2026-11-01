@@ -121,7 +121,13 @@ export function useQualitySignalText() {
     if (coverage) {
       parts.push(coverage);
     }
-    parts.push(t("dataQuality.signal.lastRun", { time: lastRunText(signal) }));
+    // The status word already says "Never run" when nothing has run; repeating it
+    // as "Last run Never run" reads like a bug.
+    if (signal.lastRunTime) {
+      parts.push(
+        t("dataQuality.signal.lastRun", { time: lastRunText(signal) })
+      );
+    }
     return parts.join(" · ");
   }
 

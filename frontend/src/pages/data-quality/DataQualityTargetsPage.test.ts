@@ -337,7 +337,29 @@ describe("DataQualityTargetsPage directory", () => {
         total: 2,
       })
     );
+    // A 0/0 pair on a target that still resolves is an empty column list, not an
+    // orphan; the orphan case has its own test below.
     expect(customersCells[2]?.attributes("title")).toBe(
+      i18n.global.t("dataQuality.targets.coverageNoColumns")
+    );
+  });
+
+  it("tells an orphaned target's missing column list from an empty one", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        summary({
+          guid: TARGET_CUSTOMERS,
+          object: "customers",
+          ruleCount: 1,
+          orphaned: true,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+    const cells = rows(wrapper)[0]?.findAll("td") ?? [];
+    expect(cells[2]?.text()).toBe("-");
+    expect(cells[2]?.attributes("title")).toBe(
       i18n.global.t("dataQuality.targets.coverageUnresolved")
     );
   });
