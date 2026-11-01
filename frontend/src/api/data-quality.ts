@@ -81,6 +81,8 @@ import {
   QualityTargetOrder,
   type QualityTargetSchedule,
   type QualityTargetSummary,
+  RecommendQualityChecksRequestSchema,
+  type RecommendQualityChecksResponse,
   RunQualityRulesRequestSchema,
   SuggestColumnLabelsRequestSchema,
   type SuggestColumnLabelsResponse,
@@ -1096,6 +1098,34 @@ export async function suggestColumnLabels(options: {
     forceRegenerate: options.forceRegenerate ?? false,
   });
   return await dataQualityClient.suggestColumnLabels(request, {
+    signal: options.signal,
+  });
+}
+
+/**
+ * Derive checks and starting thresholds from the stored column profiles. The
+ * deterministic counterpart to the label pass: no model is involved, but every
+ * requested column must carry a fresh profile. The response carries the queue
+ * summary, including the columns no check was derived for.
+ */
+export async function recommendQualityChecks(options: {
+  tableGuid: string;
+  metaType: MetaType;
+  columns?: string[];
+  language?: string;
+  /** Re-propose checks already decided; pending ones are refreshed in place. */
+  forceRegenerate?: boolean;
+  signal?: AbortSignal;
+}): Promise<RecommendQualityChecksResponse> {
+  const request = create(RecommendQualityChecksRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    tableGuid: options.tableGuid,
+    metaType: options.metaType,
+    columns: options.columns ?? [],
+    language: options.language ?? "",
+    forceRegenerate: options.forceRegenerate ?? false,
+  });
+  return await dataQualityClient.recommendQualityChecks(request, {
     signal: options.signal,
   });
 }

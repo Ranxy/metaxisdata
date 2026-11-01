@@ -139,6 +139,9 @@ describe("suggestion vocabulary", () => {
     expect(suggestionSourceKey(QualitySuggestionSource.PROFILE)).toBe(
       "dataQuality.suggestionSource.profile"
     );
+    expect(suggestionSourceKey(QualitySuggestionSource.RECOMMENDATION)).toBe(
+      "dataQuality.suggestionSource.recommendation"
+    );
     expect(suggestionSourceKey(QualitySuggestionSource.UNSPECIFIED)).toBe(
       "dataQuality.suggestionSource.unspecified"
     );

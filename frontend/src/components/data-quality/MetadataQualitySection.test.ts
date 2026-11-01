@@ -46,9 +46,11 @@ const mocks = vi.hoisted(() => ({
   listColumnProfiles: vi.fn(),
   listQualitySuggestions: vi.fn(),
   profileColumns: vi.fn(),
+  recommendQualityChecks: vi.fn(),
   suggestColumnLabels: vi.fn(),
   updateColumnLabel: vi.fn(),
   updateQualitySuggestion: vi.fn(),
+  getWorkspaceProfileSetting: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -59,9 +61,14 @@ vi.mock("@/api/data-quality", () => ({
   listColumnProfiles: mocks.listColumnProfiles,
   listQualitySuggestions: mocks.listQualitySuggestions,
   profileColumns: mocks.profileColumns,
+  recommendQualityChecks: mocks.recommendQualityChecks,
   suggestColumnLabels: mocks.suggestColumnLabels,
   updateColumnLabel: mocks.updateColumnLabel,
   updateQualitySuggestion: mocks.updateQualitySuggestion,
+}));
+
+vi.mock("@/api/setting", () => ({
+  getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 
 const TABLE = "inst1;db1;public;orders";
@@ -304,6 +311,13 @@ describe("MetadataQualitySection", () => {
       qualitySuggestions: [],
       summary: create(QualitySuggestionQueueSummarySchema, { created: 2 }),
     });
+    mocks.recommendQualityChecks.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: create(QualitySuggestionQueueSummarySchema, { created: 1 }),
+    });
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: true },
+    });
     mocks.listQualitySuggestions.mockResolvedValue({
       items: [],
       nextPageToken: "",
@@ -346,6 +360,9 @@ describe("MetadataQualitySection", () => {
     const wrapper = await mountSection(SUGGEST_PERMISSIONS);
 
     expect(wrapper.text()).toContain(label("dataQuality.asset.analyzeColumns"));
+    // Recommendation belongs to the monitoring header; labeling sits with the
+    // field table, in a different area of the tab.
+    expect(wrapper.text()).toContain(label("dataQuality.recommend.label"));
     expect(wrapper.text()).toContain(label("dataQuality.suggest.labels"));
     expect(wrapper.find('[aria-label="Clear label"]').exists()).toBe(true);
     // Authoring lives in the target workspace only: no inline create entrance,
@@ -355,6 +372,32 @@ describe("MetadataQualitySection", () => {
     );
     expect(wrapper.find('a[href*="/rules/new"]').exists()).toBe(false);
     expect(wrapper.find('a[href*="suggestion="]').exists()).toBe(false);
+  });
+
+  it("recommends checks with the model off, and offers no field labeling", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: false },
+    });
+    const wrapper = await mountSection(SUGGEST_PERMISSIONS);
+
+    // The deterministic pass does not need the model switch; labeling does.
+    expect(wrapper.text()).not.toContain(label("dataQuality.suggest.labels"));
+    await wrapper
+      .findAll("button")
+      .find((item) =>
+        item.text().includes(label("dataQuality.recommend.label"))
+      )
+      ?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.recommendQualityChecks).toHaveBeenCalledWith({
+      tableGuid: TABLE,
+      metaType: MetaType.TABLE,
+      columns: ["id", "email"],
+      language: "en-US",
+      forceRegenerate: false,
+    });
+    wrapper.unmount();
   });
 
   it("links the preview and every check row to the target workspace", async () => {

@@ -73,6 +73,8 @@ export function suggestionSourceKey(source: QualitySuggestionSource): string {
       return "dataQuality.suggestionSource.naturalLanguage";
     case QualitySuggestionSource.PROFILE:
       return "dataQuality.suggestionSource.profile";
+    case QualitySuggestionSource.RECOMMENDATION:
+      return "dataQuality.suggestionSource.recommendation";
     default:
       return "dataQuality.suggestionSource.unspecified";
   }

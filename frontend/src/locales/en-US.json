@@ -301,7 +301,7 @@
       "noRules": "No checks for this table yet.",
       "openIssueCount": "Open issues",
       "openWorkspace": "Target workspace",
-      "pendingSuggestionsDescription": "Check drafts and semantic labels the model queued for this table. A label is written when accepted; a draft can be accepted or adjusted in its target's workspace.",
+      "pendingSuggestionsDescription": "Check drafts and semantic labels queued for this table — recommended from its profiles or drafted by the model. A label is written when accepted; a draft can be accepted or adjusted in its target's workspace.",
       "pendingSuggestionsLoadFailed": "Could not load this table's pending suggestions. Open the suggestion center to review them.",
       "pendingSuggestionsMore": "And {count} more in the suggestion center.",
       "pendingSuggestionsTitle": "Suggestions awaiting review",
@@ -410,8 +410,8 @@
       "noPermission": "You do not have permission to draft with AI.",
       "openSettings": "Open settings",
       "placeholder": "e.g. ensure the dataset is not empty before use",
-      "quickHint": "No prompt needed: label the fields, then review the proposals in the suggestion center.",
-      "quickTitle": "Quick suggestions",
+      "quickHint": "No prompt needed: recommend checks and starting thresholds from the current column profiles.",
+      "quickTitle": "Recommend from data",
       "quotaExceeded": "The daily AI analysis limit is reached; try again after it resets.",
       "title": "AI copilot",
       "unavailable": "This target cannot be drafted for right now."
@@ -912,6 +912,16 @@
     },
     "recentExecutions": "Recent executions",
     "recentResultWindow": "Last {count} execution | Last {count} executions",
+    "recommend": {
+      "failed": "Failed to recommend checks.",
+      "label": "Recommend checks",
+      "labelHint": "Suggest checks and starting thresholds from the current data — no model required.",
+      "profileFailed": "Could not analyze the columns, so no checks were recommended.",
+      "profileRequired": "Recommend checks need a recent profile of each column. Analyze the columns on the metadata page first, or ask a member with that permission.",
+      "profiling": "Analyzing columns...",
+      "regenerate": "Regenerate recommendations",
+      "regenerateHint": "Also re-proposes checks already reviewed. An existing pending draft is refreshed in place, never duplicated."
+    },
     "resolutionNote": "Note",
     "resolutionNotePlaceholder": "What was done, or why the failure is expected.",
     "resolutionReason": {
@@ -1057,11 +1067,11 @@
       "warn": "Warn"
     },
     "suggest": {
-      "failed": "Failed to queue label suggestions.",
-      "labels": "Suggest labels",
-      "labelsHint": "Skips columns that already have a label or a proposal waiting for review.",
+      "failed": "Failed to queue AI label suggestions.",
+      "labels": "AI label fields",
+      "labelsHint": "Names each field's meaning with the model, and also drafts checks. Needs model assistance enabled; skips fields that already have a label or a proposal waiting for review.",
       "profileFailed": "Could not analyze the columns, so no label suggestions were generated.",
-      "profileRequired": "Label suggestions need a recent profile of each column. Analyze the columns on the metadata page first, or ask a member with that permission.",
+      "profileRequired": "AI label fields need a recent profile of each column. Analyze the columns on the metadata page first, or ask a member with that permission.",
       "profiling": "Analyzing columns...",
       "regenerate": "Regenerate suggestions",
       "regenerateHint": "Also re-analyzes labeled columns and proposals already queued or decided. An existing pending proposal is refreshed in place, never duplicated.",
@@ -1090,7 +1100,8 @@
     },
     "suggestionSource": {
       "naturalLanguage": "Natural language",
-      "profile": "Column profile",
+      "profile": "AI label analysis",
+      "recommendation": "Data recommendation",
       "unspecified": "Unspecified"
     },
     "suggestionStatus": {
@@ -1171,7 +1182,7 @@
       "decideError": "Failed to update the suggestion.",
       "decidedAt": "at",
       "decidedBy": "Decided by",
-      "description": "Model drafts and column labels waiting for review.",
+      "description": "Check drafts and column labels waiting for review; some are recommended from profiles, some drafted by the model.",
       "detailTitle": "Suggestion",
       "diagnostic": {
         "code": {
@@ -1224,7 +1235,7 @@
         "syncTruncatedHint": "The model stopped at the output-token limit, so the draft was discarded. Retry with a narrower intent or fewer columns.",
         "viewPayload": "View raw request/response"
       },
-      "emptyDescription": "Check drafts and column label suggestions from the model appear here; start with Draft with AI, or analyze columns on a table's page.",
+      "emptyDescription": "Check drafts and column labels from profiles and the model appear here; start with Recommend checks, Draft with AI, or analyze columns on a table's page.",
       "emptyTitle": "No suggestions yet",
       "evidence": "Evidence",
       "expandGroup": "Expand group",
@@ -1267,7 +1278,7 @@
       "openCenter": "Open the suggestion center",
       "openInEditor": "Open in target",
       "parameters": "Parameters",
-      "pendingEmptyDescription": "Check drafts and semantic labels the model proposes queue here for review; start with Draft with AI.",
+      "pendingEmptyDescription": "Check drafts and semantic labels recommended from profiles or drafted by the model queue here for review; start with Recommend checks or Draft with AI.",
       "pendingEmptyTitle": "No suggestions waiting for review",
       "promptVersion": "Prompt version",
       "provider": "Model",

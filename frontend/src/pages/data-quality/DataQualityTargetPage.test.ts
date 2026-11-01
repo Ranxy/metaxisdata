@@ -85,9 +85,11 @@ const mocks = vi.hoisted(() => ({
   updateQualitySuggestion: vi.fn(),
   suggestQualityRule: vi.fn(),
   suggestColumnLabels: vi.fn(),
+  recommendQualityChecks: vi.fn(),
   listColumnProfiles: vi.fn(),
   profileColumns: vi.fn(),
   exportQualityReport: vi.fn(),
+  getWorkspaceProfileSetting: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -107,6 +109,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   updateQualitySuggestion: mocks.updateQualitySuggestion,
   suggestQualityRule: mocks.suggestQualityRule,
   suggestColumnLabels: mocks.suggestColumnLabels,
+  recommendQualityChecks: mocks.recommendQualityChecks,
   listColumnProfiles: mocks.listColumnProfiles,
   profileColumns: mocks.profileColumns,
   exportQualityReport: mocks.exportQualityReport,
@@ -125,6 +128,11 @@ vi.mock("@/utils/csv", async (importOriginal) => ({
 vi.mock("@/api/database", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/database")>()),
   listAllMetadata: mocks.listAllMetadata,
+}));
+
+// The page reads only the workspace model switch, to gate field labeling.
+vi.mock("@/api/setting", () => ({
+  getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 
 const TARGET = "inst1;db1;public;orders";
@@ -701,6 +709,13 @@ describe("DataQualityTargetPage", () => {
       qualitySuggestions: [],
       summary: undefined,
     });
+    mocks.recommendQualityChecks.mockResolvedValue({
+      qualitySuggestions: [],
+      summary: undefined,
+    });
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: true },
+    });
     mocks.listColumnProfiles.mockResolvedValue([
       freshProfile("email"),
       freshProfile("amount"),
@@ -970,7 +985,7 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("runs a one-click label pass from the AI panel and surfaces the pending proposals", async () => {
+  it("runs a field label pass from the field section and surfaces the pending proposals", async () => {
     // The first read is the page load; the second is the queue read after the
     // pass, which must show what the pass queued.
     let queueReads = 0;
@@ -991,12 +1006,12 @@ describe("DataQualityTargetPage", () => {
     buttonByText(label("dataQuality.suggest.labels"))?.click();
     await flushPromises();
 
-    // The header action labels the target's columns without an intent, in the
-    // reader's language, and without forcing already-proposed columns.
+    // The field action labels just that field, without an intent, in the
+    // reader's language, and without forcing already-proposed fields.
     expect(mocks.suggestColumnLabels).toHaveBeenCalledWith({
       tableGuid: TARGET,
       metaType: MetaType.TABLE,
-      columns: ["email", "amount"],
+      columns: ["email"],
       language: "en-US",
       forceRegenerate: false,
     });
@@ -1009,7 +1024,7 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("hides the one-click label pass without the suggest permission", async () => {
+  it("hides the field label action without the suggest permission", async () => {
     const { wrapper } = await mountPage(
       `/data-quality/targets/${TARGET.split(";").join("/")}`,
       PERMISSIONS.filter(
@@ -1021,11 +1036,20 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("profiles stale columns before asking the model for labels", async () => {
-    mocks.listColumnProfiles.mockResolvedValue([
-      freshProfile("email"),
-      freshProfile("amount", 8),
-    ]);
+  it("hides the field label action when model assistance is off", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: false },
+    });
+    const { wrapper } = await mountPage();
+
+    expect(buttonByText(label("dataQuality.suggest.labels"))).toBeUndefined();
+    // The deterministic recommendation still works with the model off.
+    expect(buttonByText(label("dataQuality.recommend.label"))).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it("profiles a stale field before asking the model for its label", async () => {
+    mocks.listColumnProfiles.mockResolvedValue([freshProfile("email", 8)]);
     mocks.suggestColumnLabels.mockResolvedValue({
       qualitySuggestions: [],
       summary: undefined,
@@ -1035,15 +1059,53 @@ describe("DataQualityTargetPage", () => {
     buttonByText(label("dataQuality.suggest.labels"))?.click();
     await flushPromises();
 
-    // Only the stale column is measured again, and the analysis finishes before
+    // Only the stale field is measured again, and the analysis finishes before
     // the label request leaves.
     expect(mocks.profileColumns).toHaveBeenCalledWith({
       tableGuid: TARGET,
       metaType: MetaType.TABLE,
-      columns: ["amount"],
+      columns: ["email"],
     });
     expect(mocks.profileColumns.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.suggestColumnLabels.mock.invocationCallOrder[0] ?? 0
+    );
+    wrapper.unmount();
+  });
+
+  it("recommends checks from the copilot's quick action without the model", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: false },
+    });
+    const drafted = draftSuggestion(
+      DRAFT_AMOUNT,
+      "Amounts stay in range",
+      "amount",
+      "rowCount"
+    );
+    let queueReads = 0;
+    mocks.listQualitySuggestions.mockImplementation(async () => {
+      queueReads += 1;
+      return queueReads === 1 ? draftPage([]) : draftPage([drafted]);
+    });
+    mocks.recommendQualityChecks.mockResolvedValue({
+      qualitySuggestions: [drafted],
+      summary: create(QualitySuggestionQueueSummarySchema, { created: 1 }),
+    });
+    const { wrapper } = await mountPage();
+
+    buttonByText(label("dataQuality.recommend.label"))?.click();
+    await flushPromises();
+
+    expect(mocks.recommendQualityChecks).toHaveBeenCalledWith({
+      tableGuid: TARGET,
+      metaType: MetaType.TABLE,
+      columns: ["email", "amount"],
+      language: "en-US",
+      forceRegenerate: false,
+    });
+    // The page reads the queue back, so the strip shows what the pass queued.
+    expect(wrapper.text()).toContain(
+      label("dataQuality.workspace.draftsTitle")
     );
     wrapper.unmount();
   });
