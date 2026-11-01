@@ -144,6 +144,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | connected app | 已连接应用 | Integration | An MCP client a user authorized to act on their behalf; one record per user and client authorization. Not a browser session. | connectedApps., menu. | when en-US ~ `/\bconnected apps?\b/i`; zh-CN: `已连接的应用`, `关联应用`, `连接的应用`, `第三方应用` |
 | external URL | 外部地址 | Integration | The address this deployment is reached at, which MCP tokens are bound to. | generalSettings., openlineageSettings. | zh-CN: `external URL`, `external url` |
 | environment | 环境 | Platform | A catalogue label instances can be assigned to. | all keys | — |
+| time zone | 时区 | Platform | The IANA zone a stored clock time is interpreted in; empty means UTC. | dataQuality., dataQualitySettings., notificationSettings. | en-US: `/\btimezone\b/i` |
 | sync | 同步 | Platform | Pulling a source's schema into the registry. | all keys | — |
 | LLM provider | LLM 提供商 | Platform | A configured model endpoint that Explain SQL can call. | all keys | — |
 | Explain SQL | 解释 SQL | Platform | The LLM-assisted SQL explanation feature. | all keys | — |
@@ -179,6 +180,9 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | cross-table reconciliation | 跨表对账 | Data Quality | The rule that compares one aggregate of the target table with one of another table and bounds their difference. | dataQuality. | zh-CN: `跨表校验`, `跨表比较` |
 | dry run | 干跑 | Data Quality | Compiling and probing a rule without saving it or creating an execution. | dataQuality. | — |
 | sampled | 采样 | Data Quality | Judged from a sample of rows rather than every row. | dataQuality. | zh-CN: `抽样` |
+| sampling | 采样 | Data Quality | Reading part of a target in one execution — a share of the rows or a bounded row count — instead of every row the filter selects. | dataQuality. | zh-CN: `抽样` |
+| time variable | 时间变量 | Data Quality | A placeholder such as ${today} in a filter value or custom SQL that the server resolves per execution in the workspace's check time zone; the browser never resolves it. | dataQuality., dataQualitySettings. | when en-US ~ `/\btime variables?\b/i` |
+| timeout | 超时 | Data Quality | How long one check's query may run, in seconds; zero or blank means the server default. | dataQuality. | — |
 | suggestion | 建议 | Data Quality | A model-proposed rule draft or column label waiting for a person to accept or reject it. | dataQuality., menu. | zh-CN: `提议`, `意见` |
 | semantic label | 语义标注 | Data Quality | The accepted meaning of a column, such as email address or business key, chosen from the semantic type catalog. | dataQuality. | zh-CN: `语义标签`, `语意标注` |
 | column profile | 字段画像 | Data Quality | The measured facts about a column's values — null rate, distinct count, extremes, lengths — without reading the rows. | dataQuality. | zh-CN: `列画像`, `字段剖析` |

@@ -252,6 +252,13 @@
                   :columns="columns"
                 />
 
+                <RuleExecutionFields
+                  v-model="form.config"
+                  :rule-type="form.ruleType"
+                  :engine="engine"
+                  :meta-type="target?.metaType"
+                />
+
                 <UserSelect
                   id="dq-composer-owner"
                   v-model="form.owner"
@@ -346,6 +353,7 @@ import { listAllMetadata } from "@/api/database";
 import UserSelect from "@/components/common/UserSelect.vue";
 import QualityThresholdSuggestion from "@/components/data-quality/QualityThresholdSuggestion.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
+import RuleExecutionFields from "@/components/data-quality/RuleExecutionFields.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -369,6 +377,8 @@ import {
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
+import { useInstanceStore } from "@/store/modules/instance";
+import type { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   QualityDimension,
   QualityEmptyBehavior,
@@ -405,6 +415,7 @@ import {
   type TargetSelection,
   targetFromQuery,
   targetSelectionFromRule,
+  trimmed,
   type ValidationIssue,
   validateRuleForm,
 } from "@/utils/dataQualityForm";
@@ -573,6 +584,13 @@ const target = computed<TargetSelection | undefined>(() => {
 const columnGuid = computed(() => target.value?.guid ?? props.targetGuid);
 
 const form = ref<RuleFormState>(emptyRuleForm());
+/**
+ * The target engine, which decides whether a percentage sample is offered. The
+ * instance cache serves every page; a failed read leaves it unknown rather than
+ * hiding a stored method, and validation only refuses what it can prove.
+ */
+const engine = ref<Engine | undefined>();
+const instanceStore = useInstanceStore();
 /** The check-type catalogue pane, focused on the selected type when the dialog opens. */
 const catalogue = ref<HTMLElement | null>(null);
 const columns = ref<TargetColumnDetail[]>([]);
@@ -717,7 +735,13 @@ function currentSingleColumn(): string {
 
 /** True when the details section already carries something worth showing. */
 function hasDetails(form: RuleFormState): boolean {
-  return form.owner !== "" || form.tags !== "" || form.filter.length > 0;
+  return (
+    form.owner !== "" ||
+    form.tags !== "" ||
+    form.filter.length > 0 ||
+    form.config.sampleMethod !== "none" ||
+    trimmed(form.config.timeoutSeconds) !== ""
+  );
 }
 
 /**
@@ -843,6 +867,32 @@ async function loadColumns() {
   }
 }
 
+/**
+ * Resolve the engine of the target's instance. It is a cache read after the
+ * first dialog opens, and a superseded load (the target changed while the list
+ * was in flight) is dropped so the control never describes the wrong engine.
+ */
+watch(
+  () => target.value?.path.instance.trim() ?? "",
+  async (instance) => {
+    if (instance === "") {
+      engine.value = undefined;
+      return;
+    }
+    try {
+      await instanceStore.ensureLoaded();
+    } catch {
+      // The engine stays unknown; the sampling control keeps the methods it
+      // cannot rule out, and the server remains the authority on the save.
+    }
+    if (target.value?.path.instance.trim() !== instance) {
+      return;
+    }
+    engine.value = instanceStore.byName(`instances/${instance}`)?.engine;
+  },
+  { immediate: true }
+);
+
 watch(
   () => [props.open, props.rule?.name, props.suggestion?.name] as const,
   ([isOpen]) => {
@@ -932,7 +982,12 @@ async function save() {
     return;
   }
   saveError.value = "";
-  issues.value = validateRuleForm(form.value, target.value, columnNames.value);
+  issues.value = validateRuleForm(
+    form.value,
+    target.value,
+    columnNames.value,
+    engine.value
+  );
   if (issues.value.length > 0 || !target.value) {
     return;
   }

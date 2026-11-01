@@ -363,6 +363,24 @@ export declare type QualityRuleConfig = Message<"metaxisdata.v1.QualityRuleConfi
    * @generated from field: metaxisdata.v1.QualityEmptyBehavior on_empty = 30;
    */
   onEmpty: QualityEmptyBehavior;
+
+  /**
+   * How long one query of this check may run, in seconds. Zero means the server
+   * default (60); the accepted range is 1-300. A scheduled check still ends with
+   * its batch, so a long limit can be cut short by the batch's own deadline.
+   *
+   * @generated from field: int32 timeout_seconds = 31;
+   */
+  timeoutSeconds: number;
+
+  /**
+   * How much of the target the check reads. Absent means every row the filter
+   * selects. This is the only sampling knob: which SQL mechanism implements a
+   * method depends on the target engine.
+   *
+   * @generated from field: metaxisdata.v1.QualityRuleSampling sampling = 32;
+   */
+  sampling?: QualityRuleSampling;
 };
 
 /**
@@ -370,6 +388,48 @@ export declare type QualityRuleConfig = Message<"metaxisdata.v1.QualityRuleConfi
  * Use `create(QualityRuleConfigSchema)` to create a new message.
  */
 export declare const QualityRuleConfigSchema: GenMessage<QualityRuleConfig>;
+
+/**
+ * QualityRuleSampling bounds how much of the target one execution reads. The two
+ * methods are user intents: "read a share of the rows" and "read at most this
+ * many rows". The editor only offers the methods the target engine can express,
+ * and the server refuses one it cannot, so a check never silently degrades to a
+ * different sample.
+ *
+ * @generated from message metaxisdata.v1.QualityRuleSampling
+ */
+export declare type QualityRuleSampling = Message<"metaxisdata.v1.QualityRuleSampling"> & {
+  /**
+   * @generated from oneof metaxisdata.v1.QualityRuleSampling.method
+   */
+  method: {
+    /**
+     * Read at most this many rows of the filtered relation. Every engine can
+     * express it, and the read cost is bounded; the rows are an arbitrary
+     * prefix, so the sample is not random.
+     *
+     * @generated from field: int64 max_rows = 1;
+     */
+    value: bigint;
+    case: "maxRows";
+  } | {
+    /**
+     * Read approximately this percent (1-99) of the relation. The engine's own
+     * sampling clause decides the exact behavior; it is approximately random,
+     * and its cost depends on the engine.
+     *
+     * @generated from field: double percent = 2;
+     */
+    value: number;
+    case: "percent";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRuleSampling.
+ * Use `create(QualityRuleSamplingSchema)` to create a new message.
+ */
+export declare const QualityRuleSamplingSchema: GenMessage<QualityRuleSampling>;
 
 /**
  * RowCountConfig bounds the number of rows. At least one bound is required; a

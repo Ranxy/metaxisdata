@@ -37,6 +37,7 @@ function baseForm(
     llmConcurrencyLimit: "",
     maxColumnsPerAnalysis: "",
     sendSampleValuesToLlm: false,
+    checkTimeZone: "",
     weeklyDigest: {
       enabled: false,
       dayOfWeek: DayOfWeek.MONDAY,
@@ -69,6 +70,7 @@ describe("settingsToForm", () => {
         llmConcurrencyLimit: 12,
         maxColumnsPerAnalysis: 50,
         sendSampleValuesToLlm: true,
+        timeZone: "Asia/Shanghai",
       })
     );
     expect(form).toEqual({
@@ -83,6 +85,7 @@ describe("settingsToForm", () => {
       llmConcurrencyLimit: "12",
       maxColumnsPerAnalysis: "50",
       sendSampleValuesToLlm: true,
+      checkTimeZone: "Asia/Shanghai",
       // No digest stored yet: show the schedule the server resolves instead.
       weeklyDigest: {
         enabled: false,
@@ -144,6 +147,7 @@ describe("formToSetting", () => {
       llmConcurrencyLimit: 12,
       maxColumnsPerAnalysis: 50,
       sendSampleValuesToLlm: true,
+      timeZone: "Europe/Berlin",
       weeklyDigest: create(QualityDigestSettingSchema, {
         enabled: true,
         dayOfWeek: DayOfWeek.FRIDAY,
@@ -183,6 +187,13 @@ describe("formToSetting", () => {
 
     expect(setting.weeklyDigest?.time).toBe("07:05");
     expect(setting.weeklyDigest?.timezone).toBe("Europe/Berlin");
+  });
+
+  it("trims the check time zone and keeps blank as UTC", () => {
+    expect(
+      formToSetting(baseForm({ checkTimeZone: "  Asia/Tokyo  " })).timeZone
+    ).toBe("Asia/Tokyo");
+    expect(formToSetting(baseForm()).timeZone).toBe("");
   });
 
   it("treats blank numbers as the server default and trims the profile", () => {
@@ -372,6 +383,18 @@ describe("validateSettingsForm", () => {
         })
       )
     ).toEqual([]);
+  });
+
+  it("allows a blank check time zone and rejects an unknown one", () => {
+    expect(validateSettingsForm(baseForm({ checkTimeZone: "" }))).toEqual([]);
+    expect(
+      validateSettingsForm(baseForm({ checkTimeZone: "Asia/Shanghai" }))
+    ).toEqual([]);
+    expect(
+      validateSettingsForm(baseForm({ checkTimeZone: "Mars/Olympus" })).map(
+        (issue) => issue.key
+      )
+    ).toContain(`${SETTINGS_VALIDATION_PREFIX}checkTimeZoneInvalid`);
   });
 
   it("rejects a malformed digest time and an unknown zone", () => {

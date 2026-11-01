@@ -6,6 +6,9 @@
         <p class="text-sm text-muted-foreground">
           {{ t("dataQuality.editor.filterHint") }}
         </p>
+        <p class="text-sm text-muted-foreground">
+          {{ t("dataQuality.editor.filterVariablesHint") }}
+        </p>
       </div>
       <Button
         variant="outline"

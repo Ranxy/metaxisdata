@@ -268,6 +268,18 @@
                 :hint="t('dataQualitySettings.maxColumnsPerAnalysisHint')"
               />
             </div>
+
+            <!-- The zone the time variables resolve in; it does not affect a
+                 check's schedule, which belongs to the target. -->
+            <FormField
+              id="dq-setting-check-timezone"
+              v-model="form.checkTimeZone"
+              class="max-w-xs"
+              :disabled="!canUpdate"
+              :label="t('dataQualitySettings.checkTimeZone')"
+              :hint="t('dataQualitySettings.checkTimeZoneHint')"
+              placeholder="Asia/Shanghai"
+            />
           </CardContent>
         </Card>
 
