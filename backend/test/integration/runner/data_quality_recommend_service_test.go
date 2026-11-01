@@ -259,7 +259,11 @@ func findRecommendation(suggestions []*v1pb.QualitySuggestion, ruleType v1pb.Qua
 
 // recommendationRuleType names the rule a draft proposes from its config arm.
 func recommendationRuleType(suggestion *v1pb.QualitySuggestion) v1pb.QualityRuleType {
-	config := suggestion.GetPayload().GetRule().GetConfig()
+	return qualityRuleTypeForConfig(suggestion.GetPayload().GetRule().GetConfig())
+}
+
+// qualityRuleTypeForConfig names the rule a v1 config arm carries.
+func qualityRuleTypeForConfig(config *v1pb.QualityRuleConfig) v1pb.QualityRuleType {
 	switch {
 	case config == nil:
 		return v1pb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED
