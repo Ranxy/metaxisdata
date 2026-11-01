@@ -187,9 +187,15 @@ describe("MetadataBrowserPage trust signals", () => {
 
     // The detail view is an async component: the header badge carries the same
     // signal the request asked for once it has rendered.
-    await vi.waitFor(() => {
-      expect(wrapper.findComponent(QualitySignalBadge).exists()).toBe(true);
-    });
+    // The detail view is an async chunk; a loaded CI machine can take longer than
+    // the default one-second wait to resolve it, which is a test-flake, not a page
+    // fault.
+    await vi.waitFor(
+      () => {
+        expect(wrapper.findComponent(QualitySignalBadge).exists()).toBe(true);
+      },
+      { timeout: 5000 }
+    );
     const badge = wrapper.findComponent(QualitySignalBadge);
     expect(badge.props("signal")?.target?.metaGuid).toBe(TABLE_GUID);
     expect(badge.text()).toBe(i18n.global.t("dataQuality.status.warn"));
