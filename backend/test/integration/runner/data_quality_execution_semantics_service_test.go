@@ -38,6 +38,8 @@ INSERT INTO dq_semantics (id, email, created_at) VALUES
 `
 
 func TestDataQualityExecutionSemanticsMySQLRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
 	fixture := setupQualityMySQLFixture(t, true)
 	require.NoError(t, fixture.env.ExecMySQL(fixture.ctx,
 		"USE "+quoteMySQLIdentifier(fixture.sourceDatabase)+";"+executionSemanticsSeedDDL), "seed the execution-semantics source")
