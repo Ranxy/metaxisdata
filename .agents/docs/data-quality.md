@@ -446,7 +446,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 - **API/proto**：`qualityScheduleSpecFromV1`（`schedule.Parse` + 工作区检查时区缺省）、`convertQualityTargetSchedule`、`UpdateQualityTargetSchedule`/`GetQualityTargetSchedule`；`qualityFrequencyTierFromV1`、`parseQualityRuleUpdate` 的 `"frequency_tier"`、创建路径写入档位；v1 `QualityTargetSchedule.cron/.timezone`、`UpdateQualityTargetScheduleRequest.cron/.timezone`、`QualityRule.frequency_tier` 与 `QualityFrequencyTier` 枚举（v1 与 store 两份）。目录聚合（`quality_target.go`）与 `convertQualityTargetSummary` 带 cron/timezone，`schedule_interval` 永远有值。报告 basis（`qualityreport.scheduleText`）渲染 `cron %s (%s)`（时区缺失的旧值退化为 `cron %s`）；目标 CSV 追加 `schedule_cron`/`schedule_timezone` 两列（§4.6）。
 - **维护窗口**：DQ **没有自己的维护窗口设置**；Settings → Notifications 的工作区静默窗口（周期 quiet hours 与一次性 maintenance window，[notifications.md](notifications.md) 的 O-15/O-16/O-17）就是数据质量的维护窗口：检查照常执行、判定与站内信照常写入，只有**出站投递**在窗口内被 `DeferNotificationDelivery` 推迟到窗口结束（`bypass_quiet_hours` 的值班渠道照常投递）。它不暂停目标、不跳过检查、不改变判定或问题台账。
 - **前端**：调度弹窗与页头显示见 §3.7；检查 Dialog 的 **Run cadence**、检查行/抽屉的档位徽标同见 §3.7。`utils/dataQualityForm.ts` 的 `isValidCronExpression`（5 字段白名单字符）只是客户端提示，服务端是权威。
-- **测试**：`backend/common/schedule/schedule_test.go`（形态互斥、descriptor/密度/时区拒绝、跨 DST 的 `Next`、名义间隔与夹取）；`backend/store/quality_target_schedule_test.go`（行扫描、名义节奏、频率 gate 在两处语句中一致、due 语句有界）；`backend/api/v1/data_quality_target_test.go`/`data_quality_convert_test.go`（spec 转换、summary 带 cron、档位枚举、未知值拒绝）；`backend/component/qualityreport/report_test.go`（cron basis 中英、interval 不变）；前端 `useTargetScheduleEditor.test.ts`、`dataQualityForm.test.ts`、`TargetRuleComposer.test.ts`、`DataQualityTargetPage.test.ts`、`QualityCheckDrawer.test.ts`。
+- **测试**：`backend/common/schedule/schedule_test.go`（形态互斥、descriptor/密度/时区与 256B 长度拒绝、严格 after、跨春/秋 DST 的 `Next`、秋季重复墙钟只触发一次（含 1h 与 2h fold）、名义间隔与夹取）；`backend/store/quality_target_schedule_test.go`（行扫描、名义节奏、频率 gate 在两处语句中一致、due 语句有界）；`backend/api/v1/data_quality_target_test.go`/`data_quality_convert_test.go`（spec 转换、summary 带 cron、档位枚举、未知值拒绝）；`backend/component/qualityreport/report_test.go`（cron basis 中英、interval 不变）；集成场景 `TestDataQualityScheduleTiersRealServerIntegration`（cron 往返/档位 gate/cron 槽）、`TestDataQualityIntervalCadenceSlotsRealServerIntegration`（真实推进语义下的 interval 节奏）、`TestDataQualityTargetWithoutScheduleRowRealServerIntegration`（缺 schedule 行）；前端 `useTargetScheduleEditor.test.ts`、`dataQualityForm.test.ts`、`TargetRuleComposer.test.ts`、`DataQualityTargetPage.test.ts`、`QualityCheckDrawer.test.ts`。
 
 ## 4. 配置映射
 
@@ -538,7 +538,7 @@ JSONB 一律 `protojson.Marshal`，反序列化用 `common.ProtojsonUnmarshaler`
 | `quality_rule.frequency_tier` | `INT2 NOT NULL DEFAULT 0` | 0=跟随目标，1=至多每小时，2=至多每天，3=至多每周；只约束定时执行 | 建规则 / 更新 mask `frequency_tier`；head-only，不写 revision |
 | `quality_execution.scheduled_at` | `TIMESTAMPTZ`，可空 | 定时执行所属的**目标 due slot**（规划时取目标 `next_run_at`）；手动执行为 NULL。只被频率档 gate 读取，不对外暴露 | runner 规划定时执行时写（`plannedExecution`）；索引 `idx_quality_execution_rule_slot (rule_id, scheduled_at)` |
 
-这些列只影响调度与批次组成，不进入判定、问题与通知语义；`frequency_tier` 也不进契约 fingerprint（发布 diff 看不到档位变化）。迁移 `0039` 只加 `scheduled_at` 与 `idx_quality_execution_rule_slot`，旧执行行的该列为 NULL（不参与 gate，也不影响其判定/证据）。
+这些列只影响调度与批次组成，不进入判定、问题与通知语义；`frequency_tier` 也不进契约 fingerprint（发布 diff 看不到档位变化）。迁移 `0039` 只加 `scheduled_at` 与 `idx_quality_execution_rule_slot`；升级前已有的执行行该列为 NULL，不参与 gate，因此一个已有档位的检查在升级后的第一个周期可能多跑一次，下一次定时执行记录 slot 后即恢复正常（一次性、良性，不影响判定/证据）。
 
 ## 5. 不变量
 
