@@ -210,11 +210,18 @@ func profileResultIndexes(columns, expected []string) (map[string]int, error) {
 // (which rejects invalid UTF-8), and a validity check alone would let the bytes
 // "0xfffe" and the two bytes ff fe render identically.
 func profileValueString(value any, binary bool) string {
+	return common.TruncateUTF8Bytes(profileValueFullText(value, binary), profileMaxValueBytes)
+}
+
+// profileValueFullText renders one observed value for display without the storage
+// bound. The difference from the stored spelling is exactly whether the value was
+// truncated, which a consumer turning a profile value into a rule parameter must know.
+func profileValueFullText(value any, binary bool) string {
 	text := profileValueText(value)
 	if binary || !utf8.ValidString(text) {
 		text = "0x" + hex.EncodeToString([]byte(text))
 	}
-	return common.TruncateUTF8Bytes(text, profileMaxValueBytes)
+	return text
 }
 
 // profileValueText renders one observed value without truncation. It is the full
@@ -388,9 +395,12 @@ func profileLooksLikeAlpha(text string) bool {
 // by descending frequency and then by value so the profile is deterministic. Each
 // value is truncated before counting, so two long values that differ only past the
 // display bound merge into one entry instead of producing two indistinguishable
-// rows. The counts are sample frequencies, not table frequencies.
+// rows; that entry is marked truncated when the cut changed the spelling, so a
+// consumer that needs the exact value does not mistake it for one the column holds.
+// The counts are sample frequencies, not table frequencies.
 func profileTopValues(values []any, binary bool) []*storepb.ProfileValue {
 	counts := make(map[string]int64, len(values))
+	truncated := make(map[string]bool, len(values))
 	for _, value := range values {
 		if value == nil {
 			continue
@@ -400,18 +410,22 @@ func profileTopValues(values []any, binary bool) []*storepb.ProfileValue {
 			continue
 		}
 		counts[text]++
+		if text != profileValueFullText(value, binary) {
+			truncated[text] = true
+		}
 	}
 	if len(counts) == 0 {
 		return nil
 	}
 
 	type countedValue struct {
-		value string
-		count int64
+		value     string
+		count     int64
+		truncated bool
 	}
 	entries := make([]countedValue, 0, len(counts))
 	for value, count := range counts {
-		entries = append(entries, countedValue{value: value, count: count})
+		entries = append(entries, countedValue{value: value, count: count, truncated: truncated[value]})
 	}
 	slices.SortFunc(entries, func(left, right countedValue) int {
 		if left.count != right.count {
@@ -425,7 +439,9 @@ func profileTopValues(values []any, binary bool) []*storepb.ProfileValue {
 
 	result := make([]*storepb.ProfileValue, 0, len(entries))
 	for _, entry := range entries {
-		result = append(result, &storepb.ProfileValue{Value: entry.value, Count: entry.count})
+		result = append(result, &storepb.ProfileValue{
+			Value: entry.value, Count: entry.count, Truncated: entry.truncated,
+		})
 	}
 	return result
 }

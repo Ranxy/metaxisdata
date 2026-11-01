@@ -292,6 +292,12 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 		if err != nil {
 			return nil, err
 		}
+		if queuedSuggestion == nil {
+			// A concurrent pass queued its own proposal for this identity after the state
+			// read; the database refused the refresh. Nothing was written.
+			summary.SkippedPending++
+			continue
+		}
 		if created {
 			summary.Created++
 		} else {

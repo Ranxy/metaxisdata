@@ -50,7 +50,10 @@ const (
 	// single new NULL would fail.
 	recommendNullRateFactor = 1.5
 	recommendNullRateDelta  = 0.1
-	recommendMaxNullRate    = 50.0
+	// recommendMaxNullRate is the largest observed null rate a null-rate check is
+	// proposed for. A mostly-NULL column says more about the table than about its
+	// quality, and at the cap the widened bound would equal the observation.
+	recommendMaxNullRate = 50.0
 	// recommendUniqueMinRows is the smallest table a candidate-key uniqueness check is
 	// proposed for; below it "every value is distinct" says nothing.
 	recommendUniqueMinRows = 100
@@ -169,7 +172,7 @@ func RecommendChecks(input RecommendInput) RecommendationResult {
 	if input.Target.MetaType == storepb.MetaType_TABLE ||
 		input.Target.MetaType == storepb.MetaType_EXTERNAL_TABLE {
 		builder.addColumnChecks(columns)
-		builder.addReferentialChecks(input.Metadata)
+		builder.addReferentialChecks(columns, input.Metadata)
 	}
 
 	// Skipped columns are the ones no candidate was derived for at all. Coverage is
@@ -338,6 +341,12 @@ func (b *recommendBuilder) addTableChecks(columns []recommendColumn) {
 	if freshness == nil {
 		return
 	}
+	// A bound below twice the observation would fail on data as fresh as what the
+	// profile just measured, so a lag whose double exceeds the largest bound we are
+	// willing to propose gets no freshness check at all.
+	if recommendFreshnessFactor*freshness.lag > recommendFreshnessMaxLag {
+		return
+	}
 	bound := recommendFreshnessBound(max(recommendFreshnessFactor*freshness.lag, recommendFreshnessMinLag))
 	b.add(storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 		&storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Freshness{Freshness: &storepb.FreshnessConfig{
@@ -383,11 +392,11 @@ func (b *recommendBuilder) addNullRate(column recommendColumn) {
 	if !column.info.Nullable || profile == nil || profile.GetTotalRows() <= 0 || profile.GetNullCount() <= 0 {
 		return
 	}
-	if column.caps.noNullTest || !column.caps.comparison {
+	if column.caps.noNullTest {
 		return
 	}
 	rate := float64(profile.GetNullCount()) / float64(profile.GetTotalRows()) * 100
-	if rate > recommendMaxNullRate {
+	if rate >= recommendMaxNullRate {
 		return
 	}
 	threshold := rate * recommendNullRateFactor
@@ -413,7 +422,8 @@ func (b *recommendBuilder) addNullRate(column recommendColumn) {
 // fits the profile's frequent-value list. The exact distinct count is what makes the
 // enumeration trustworthy: the profile keeps every distinct value it enumerated only
 // when it saw exactly that many, so a mismatch means the list is incomplete and the
-// candidate is dropped.
+// candidate is dropped. A value the profile had to truncate for storage is likewise
+// not the value the column holds, so one truncated spelling drops the candidate.
 func (b *recommendBuilder) addAcceptedValues(column recommendColumn) {
 	profile := column.profile
 	if profile == nil || profile.GetDistinctEstimated() || profile.GetTotalRows() <= 0 {
@@ -423,7 +433,9 @@ func (b *recommendBuilder) addAcceptedValues(column recommendColumn) {
 		column.info.Kind == ColumnKindUnknown {
 		return
 	}
-	if !column.caps.comparison || !column.caps.valueComparison {
+	// A binary column displays as hex, and a scalar literal does not round-trip to
+	// those bytes; the enumeration would be wrong on every row.
+	if !column.caps.comparison || !column.caps.valueComparison || column.caps.binary {
 		return
 	}
 	distinct := profile.GetDistinctCount()
@@ -435,12 +447,14 @@ func (b *recommendBuilder) addAcceptedValues(column recommendColumn) {
 		// string / an over-long value was dropped: the set is not the whole story.
 		return
 	}
-	if profile.MaxLength != nil && profile.GetMaxLength() > int64(profileMaxValueBytes) {
-		return
-	}
 	values := make([]string, 0, len(profile.GetTopValues()))
 	for _, value := range profile.GetTopValues() {
 		if value == nil || strings.TrimSpace(value.GetValue()) == "" {
+			return
+		}
+		// The stored spelling is bounded; a truncated one is not a value the column
+		// holds, so it cannot be an accepted value.
+		if value.GetTruncated() {
 			return
 		}
 		values = append(values, value.GetValue())
@@ -592,9 +606,15 @@ func (b *recommendBuilder) addStringLength(column recommendColumn) {
 // column would assert something the schema does not promise. The parent must live in
 // the target's schema (or, on the MySQL family, its database), which is the same
 // bound the rule compiler enforces.
-func (b *recommendBuilder) addReferentialChecks(metadata *storepb.StoredMetadata) {
+func (b *recommendBuilder) addReferentialChecks(columns []recommendColumn, metadata *storepb.StoredMetadata) {
 	if metadata == nil || b.target.MetaType != storepb.MetaType_TABLE {
 		return
+	}
+	// A child column outside the requested scope is out of scope, the same way it is
+	// for the column-level candidates.
+	inScope := make(map[string]struct{}, len(columns))
+	for _, column := range columns {
+		inScope[column.info.Name] = struct{}{}
 	}
 	table := metadata.GetTableMetadata()
 	if table == nil {
@@ -608,6 +628,9 @@ func (b *recommendBuilder) addReferentialChecks(metadata *storepb.StoredMetadata
 		parentColumn := strings.TrimSpace(foreignKey.GetReferencedColumns()[0])
 		parentTable := strings.TrimSpace(foreignKey.GetReferencedTable())
 		if child == "" || parentColumn == "" || parentTable == "" {
+			continue
+		}
+		if _, ok := inScope[child]; !ok {
 			continue
 		}
 		childInfo, ok := b.target.Column(child)
@@ -909,7 +932,7 @@ var recommendRationaleEN = map[storepb.QualityRuleType]func(recommendFacts) stri
 		return fmt.Sprintf("The longest observed value is %d characters; the proposed bound is %d, a fifth longer.", facts.maxLength, facts.thresholdLength)
 	},
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS: func(facts recommendFacts) string {
-		return fmt.Sprintf("The newest value is %s (about %s ago); the proposed bound is %s, twice the observed lag.", facts.newest, recommendDurationTextEN(facts.lag), recommendDurationTextEN(facts.bound))
+		return fmt.Sprintf("The newest value is %s (about %s ago); the proposed bound is %s, twice the observed lag rounded up.", facts.newest, recommendDurationTextEN(facts.lag), recommendDurationTextEN(facts.bound))
 	},
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: func(facts recommendFacts) string {
 		return fmt.Sprintf("The foreign key on %s references %s(%s); the check reports child rows with no matching parent.", facts.column, facts.parentTable, facts.parentColumn)
@@ -943,7 +966,7 @@ var recommendRationaleZH = map[storepb.QualityRuleType]func(recommendFacts) stri
 		return fmt.Sprintf("观测到最长取值 %d 个字符；建议上限 %d，放宽两成。", facts.maxLength, facts.thresholdLength)
 	},
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS: func(facts recommendFacts) string {
-		return fmt.Sprintf("最新取值为 %s（约 %s 前）；建议上限 %s，为观测延迟的两倍。", facts.newest, recommendDurationTextZH(facts.lag), recommendDurationTextZH(facts.bound))
+		return fmt.Sprintf("最新取值为 %s（约 %s 前）；建议上限 %s，为观测延迟的两倍并向上取整。", facts.newest, recommendDurationTextZH(facts.lag), recommendDurationTextZH(facts.bound))
 	},
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: func(facts recommendFacts) string {
 		return fmt.Sprintf("字段 %s 的外键引用 %s(%s)；检查会报告找不到父行的子行。", facts.column, facts.parentTable, facts.parentColumn)

@@ -477,3 +477,147 @@ func TestRecommendChecksSkippedColumns(t *testing.T) {
 	require.Equal(t, []string{"id", "note"}, result.SkippedColumns)
 	require.NotEmpty(t, result.Recommendations, "the email column still yields a check")
 }
+
+// TestRecommendChecksFreshnessBoundKeepsHeadroom pins the freshness rule: the proposed
+// bound is never below twice the observation, and a table whose observation is too old
+// for that gets no freshness check at all.
+func TestRecommendChecksFreshnessBoundKeepsHeadroom(t *testing.T) {
+	t.Parallel()
+
+	target := recommendTestTarget(
+		ColumnInfo{Name: "event_time", Type: "timestamp", Kind: ColumnKindTemporal},
+	)
+	input := func(age time.Duration) RecommendInput {
+		profiles := map[string]*storepb.ColumnProfile{
+			"event_time": {
+				TotalRows: recommendTestRows,
+				MinValue:  recommendTestNow.Add(-age - time.Hour).UTC().Format(time.RFC3339),
+				MaxValue:  recommendTestNow.Add(-age).UTC().Format(time.RFC3339),
+			},
+		}
+		return recommendTestInput(target, profiles)
+	}
+
+	// Two weeks old: twice the lag (fourteen days) is a readable unit.
+	fresh := recommendFind(recommendChecksForTest(t, input(7*24*time.Hour)), storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS)
+	require.NotNil(t, fresh)
+	require.Equal(t, int32((14 * 24 * time.Hour).Seconds()), fresh.Config.GetFreshness().GetMaxLagSeconds())
+	require.Contains(t, fresh.Rationale, "rounded up")
+
+	// Ten days old: twice the lag (twenty days) is rounded up to the next unit, which is
+	// thirty days, still above the observation.
+	tenDays := recommendFind(recommendChecksForTest(t, input(10*24*time.Hour)), storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS)
+	require.NotNil(t, tenDays)
+	require.Equal(t, int32((30 * 24 * time.Hour).Seconds()), tenDays.Config.GetFreshness().GetMaxLagSeconds())
+
+	// Twenty days old: twice the lag exceeds the largest bound the pass proposes, so it
+	// proposes none rather than a bound tighter than the observation.
+	require.Nil(t, recommendFind(recommendChecksForTest(t, input(20*24*time.Hour)), storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS))
+}
+
+// TestRecommendChecksNullRateCap pins the cap: a column that is at least half NULL gets
+// no null-rate check, because the widened bound would equal the observation.
+func TestRecommendChecksNullRateCap(t *testing.T) {
+	t.Parallel()
+
+	target := recommendTestTarget(
+		ColumnInfo{Name: "note", Type: "varchar(16)", Kind: ColumnKindString, Nullable: true},
+	)
+	half := recommendChecksForTest(t, recommendTestInput(target, map[string]*storepb.ColumnProfile{
+		"note": {TotalRows: 1000, NullCount: 500, DistinctCount: 100},
+	}))
+	require.Nil(t, recommendFind(half, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT))
+
+	nearlyHalf := recommendChecksForTest(t, recommendTestInput(target, map[string]*storepb.ColumnProfile{
+		"note": {TotalRows: 1000, NullCount: 499, DistinctCount: 100},
+	}))
+	nullRate := recommendFind(nearlyHalf, storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT)
+	require.NotNil(t, nullRate)
+	require.Equal(t, recommendMaxNullRate, nullRate.Config.GetNullPercent().GetMaxNullPct())
+}
+
+// TestRecommendChecksAcceptedValuesSkipsUnsafeSpellings pins the two ways an enumeration
+// stops being the exact set the column holds: a stored spelling the profile truncated,
+// and a binary column whose display form is hex rather than the value.
+func TestRecommendChecksAcceptedValuesSkipsUnsafeSpellings(t *testing.T) {
+	t.Parallel()
+
+	complete := func(count int64, truncated bool) []*storepb.ProfileValue {
+		return []*storepb.ProfileValue{
+			{Value: "paid", Count: count},
+			{Value: "open", Count: count, Truncated: truncated},
+		}
+	}
+
+	truncatedTarget := recommendTestTarget(ColumnInfo{Name: "status", Type: "varchar(64)", Kind: ColumnKindString})
+	truncated := recommendChecksForTest(t, recommendTestInput(truncatedTarget, map[string]*storepb.ColumnProfile{
+		"status": {TotalRows: 1000, DistinctCount: 2, TopValues: complete(500, true)},
+	}))
+	require.Nil(t, recommendFind(truncated, storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES))
+
+	binaryTarget := recommendTestTarget(ColumnInfo{Name: "status", Type: "blob", Kind: ColumnKindString})
+	binary := recommendChecksForTest(t, recommendTestInput(binaryTarget, map[string]*storepb.ColumnProfile{
+		"status": {TotalRows: 1000, DistinctCount: 2, TopValues: complete(500, false)},
+	}))
+	require.Nil(t, recommendFind(binary, storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES))
+
+	plain := recommendChecksForTest(t, recommendTestInput(truncatedTarget, map[string]*storepb.ColumnProfile{
+		"status": {TotalRows: 1000, DistinctCount: 2, MaxLength: proto.Int64(4), TopValues: complete(500, false)},
+	}))
+	require.NotNil(t, recommendFind(plain, storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES))
+}
+
+// TestRecommendChecksReferentialScope pins the column scope: a foreign key whose child
+// column was not requested is not proposed.
+func TestRecommendChecksReferentialScope(t *testing.T) {
+	t.Parallel()
+
+	target := recommendTestTarget(
+		ColumnInfo{Name: "id", Type: "bigint", Kind: ColumnKindNumeric},
+		ColumnInfo{Name: "customer_id", Type: "bigint", Kind: ColumnKindNumeric},
+	)
+	target.KeyColumns = []string{"id"}
+	metadata := &storepb.StoredMetadata{
+		Type: &storepb.StoredMetadata_TableMetadata{TableMetadata: &storepb.TableMetadata{
+			ForeignKeys: []*storepb.ForeignKeyMetadata{{
+				Columns: []string{"customer_id"}, ReferencedTable: "customers", ReferencedColumns: []string{"id"},
+			}},
+		}},
+	}
+	profiles := map[string]*storepb.ColumnProfile{
+		"id":          recommendTestProfile(0, 1000),
+		"customer_id": recommendTestProfile(0, 300),
+	}
+
+	narrow := recommendTestInput(target, profiles)
+	narrow.Columns = []string{"id"}
+	narrow.Metadata = metadata
+	require.Nil(t, recommendFind(recommendChecksForTest(t, narrow), storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY))
+
+	wide := recommendTestInput(target, profiles)
+	wide.Metadata = metadata
+	require.NotNil(t, recommendFind(recommendChecksForTest(t, wide), storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY))
+}
+
+// TestRecommendChecksSkippedColumnsExcludesBudgetCut pins the summary's meaning: a
+// column whose candidate lost the per-type budget is not reported as skipped.
+func TestRecommendChecksSkippedColumnsExcludesBudgetCut(t *testing.T) {
+	t.Parallel()
+
+	columns := make([]ColumnInfo, 0, 5)
+	profiles := make(map[string]*storepb.ColumnProfile, 5)
+	for index := 0; index < 5; index++ {
+		name := "enum_" + string(rune('a'+index))
+		columns = append(columns, ColumnInfo{Name: name, Type: "varchar(8)", Kind: ColumnKindString})
+		profiles[name] = &storepb.ColumnProfile{
+			TotalRows: recommendTestRows, DistinctCount: 2, MaxLength: proto.Int64(4),
+			TopValues: []*storepb.ProfileValue{{Value: "a", Count: 500}, {Value: "b", Count: 500}},
+		}
+	}
+	target := recommendTestTarget(columns...)
+	result := RecommendChecks(recommendTestInput(target, profiles))
+	require.Empty(t, result.SkippedColumns)
+	// The per-type budget selected three of the five enumerations; the other two were
+	// derived, so their columns are not "skipped".
+	require.Equal(t, 3, recommendCount(result.Recommendations, storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES))
+}

@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -89,4 +90,44 @@ func recommendCandidateBySignature(candidates []dataquality.Recommendation, sign
 		}
 	}
 	return dataquality.Recommendation{}
+}
+
+// TestValidRecommendedChecksDropsRefusedCandidates pins the second gate: a candidate
+// the target or the rule pipeline refuses is dropped (and logged) rather than queued, and
+// the surviving candidates are still offered.
+func TestValidRecommendedChecksDropsRefusedCandidates(t *testing.T) {
+	t.Parallel()
+
+	target := dataquality.ResolvedTarget{
+		Target:   dataquality.Target{GUID: "it;db;;orders", MetaType: storepb.MetaType_TABLE},
+		Engine:   storepb.Engine_MSSQL,
+		Database: "db",
+		Table:    "orders",
+		Columns:  []dataquality.ColumnInfo{{Name: "code", Type: "nvarchar(16)", Kind: dataquality.ColumnKindString}},
+	}
+	regexConfig := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{
+		Regex: &storepb.RegexConfig{Column: "code", Pattern: "^[A-Z]+$"},
+	}}
+	rowCountConfig := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+		RowCount: &storepb.RowCountConfig{MinRows: proto.Int64(1)},
+	}}
+	// A column the target does not have is refused by the config validator.
+	unknownColumn := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{
+		Unique: &storepb.UniqueConfig{Column: "missing"},
+	}}
+	candidates := []dataquality.Recommendation{
+		{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, Config: regexConfig,
+			Signature: dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, regexConfig)},
+		{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Config: rowCountConfig,
+			Signature: dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rowCountConfig)},
+		{RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, Config: unknownColumn,
+			Signature: dataquality.RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, unknownColumn)},
+	}
+
+	// The store is only consulted for a referential check, so a service without one is
+	// enough to exercise the target and config gates.
+	service := &DataQualityService{}
+	valid := service.validRecommendedChecks(context.Background(), &dataquality.Resolution{Target: target}, candidates)
+	require.Len(t, valid, 1, "only the runnable candidate survives")
+	require.Equal(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, valid[0].RuleType)
 }
