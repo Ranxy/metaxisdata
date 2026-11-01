@@ -77,12 +77,49 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   write a custom-SQL check when the condition needs more. A target-level filter
   from the contract is ANDed on top.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
-  source: it proves syntax and permission without scanning the table.
+  source: it proves syntax and permission without scanning the table. The
+  statement and the parameter list below it show the values the filter (and any
+  time variable) resolves to right now.
 - **Schema drift** compares each column's type and nullability — plus, if you ask
   for it, order and extra columns — with the snapshot saved when the check was
   created. Columns recorded by an older snapshot that did not store nullability
   stay unjudged until the check is saved again. Use *Fill from target* to record
   the current definition.
+
+### Scoping and limiting a check
+
+A check does not have to read everything on a partitioned or append-only table.
+Three settings in the dialog's **Details** section bound what one execution
+reads and how long it may run:
+
+- **Partition window**: add a filter condition whose value is a time variable —
+  `${today}`, `${yesterday}` or `${now}`, optionally shifted, for example
+  `${today-7d}` (units `m`, `h`, `d`). The variable is resolved when the check
+  runs, in the workspace's check time zone (Settings → Data Quality → **Check
+  time zone**, UTC by default), so `created_at >= ${today-7d}` keeps meaning "the
+  last seven days" as the schedule moves. Variables work in filter values and in
+  custom-SQL text, and are refused anywhere else. A filter value is either a
+  literal or one whole variable; write `created_at >= ${today-7d}`, not
+  `'${today-7d}'` and not `prefix-${today}`.
+- **Sampling**: *No sampling* (the default), *By row limit* ("read at most N rows
+  of the filtered relation"), or *By percentage* ("read approximately P% of the
+  table"). The choice is an intent, not a query hint: the engine's own mechanism
+  implements it. *By percentage* is offered for PostgreSQL, SQL Server and Doris
+  tables only; MySQL/TiDB/MariaDB/OceanBase and StarRocks tables offer the row
+  limit only, and views never offer percentage sampling. The dialog only offers
+  what the target can express, and a sampled execution is marked as such — its
+  verdict is judged on the sample.
+- **Query timeout**: how long one query of this check may run, 1–300 seconds;
+  empty means the 60-second default. A target's scan batch still ends after 15
+  minutes, so a long timeout can be cut short by the batch.
+
+Sampling is not available for a check whose verdict describes the table as a
+whole (row count, row count change, freshness), for a check that reads two
+relations (referential integrity, cross-table reconciliation), or for custom SQL,
+schema drift and CEL checks: custom SQL is never rewritten, schema drift reads
+metadata rather than rows, and a CEL expression has its own row limit. The
+dialog explains the reason when a saved check's sampling no longer applies — for
+example after moving it to an engine that has no percentage sampling.
 
 Once a check has been judged at least five times, its edit dialog offers
 **Suggested thresholds** derived from the check's own history: for a check that
@@ -629,7 +666,9 @@ creating the check, and the model never sees raw sample rows.
 ## Settings
 
 Settings → Data Quality controls: the model-analysis switch and provider,
-whether failure samples are stored and how many, the default schedule a target
+whether failure samples are stored and how many, the **check time zone** (IANA
+name, empty = UTC) used to resolve time variables in filters and custom SQL, the
+default schedule a target
 starts with when it gets its first check, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
 default 10,000)**, the daily column-analysis ceiling, the **concurrent LLM calls
 (default 8, range 1–64)**, the columns per analysis, whether raw sample
@@ -689,6 +728,12 @@ pruned.
 | "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |
 | The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |
 | The digest email has no recipients | The digest has no per-person audience: an email channel must carry fixed addresses; "include the audience" cannot resolve anyone for it. |
+| A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample. Remove the sampling or pick another check type. |
+| *By percentage* is unavailable | The target is a view, or its engine has no table sampling clause (MySQL, TiDB, MariaDB, OceanBase, StarRocks). Use *By row limit*. |
+| A sampled check returned no failure sample | The failed rows are read from the same sample as the counts. If the sample held no failing row the evidence is empty while the verdict still stands — the counts decide it, not the evidence rows. |
+| A filter value with a time variable is rejected | A filter value must be one whole variable (`${today-7d}`); quoting it or mixing it with text is refused. Check the name (`now`/`today`/`yesterday`), the unit (`m`/`h`/`d`) and the size (at most 366 days). A date variable cannot be compared with a numeric column. |
+| The partition window looks a day off | Time variables resolve in the workspace's check time zone (Settings → Data Quality; empty means UTC). An integer partition column (`20261101`) is not a date to the engine — use a custom SQL check with an explicit cast. |
+| A long timeout still ended abandoned | The 15-minute batch deadline is the hard limit for one target's scan; a per-check timeout only bounds that check's own query. |
 
 The API surface, resource names, data model and invariants are documented for
 maintainers in [.agents/docs/data-quality.md](../.agents/docs/data-quality.md).
