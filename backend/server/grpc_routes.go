@@ -389,6 +389,7 @@ func configureGrpcRouters(
 		Databases:         databaseService,
 		Lineage:           lineageService,
 		Principals:        userService,
+		Quality:           dataQualityService,
 		Checker:           iamManager,
 		CallLimiter:       stateCfg.MCPCallLimiter,
 		SourceCallLimiter: stateCfg.MCPSourceCallLimiter,

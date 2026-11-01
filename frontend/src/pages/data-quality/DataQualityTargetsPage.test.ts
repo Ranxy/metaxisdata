@@ -63,6 +63,8 @@ function summary(options: {
   enabledRuleCount?: number;
   pausedRuleCount?: number;
   columnCount?: number;
+  coveredColumnCount?: number;
+  totalColumnCount?: number;
   openIssueCount?: number;
   pendingDraftCount?: number;
   worstStatus?: QualityStatus;
@@ -89,6 +91,8 @@ function summary(options: {
     enabledRuleCount: options.enabledRuleCount ?? options.ruleCount ?? 1,
     pausedRuleCount: options.pausedRuleCount ?? 0,
     columnCount: options.columnCount ?? 0,
+    coveredColumnCount: options.coveredColumnCount ?? 0,
+    totalColumnCount: options.totalColumnCount ?? 0,
     openIssueCount: options.openIssueCount ?? 0,
     pendingDraftCount: options.pendingDraftCount ?? 0,
     worstStatus: options.worstStatus ?? QualityStatus.UNSPECIFIED,
@@ -126,6 +130,8 @@ function directoryRows() {
       enabledRuleCount: 1,
       pausedRuleCount: 1,
       columnCount: 2,
+      coveredColumnCount: 1,
+      totalColumnCount: 2,
       openIssueCount: 1,
       worstStatus: QualityStatus.PASS,
       qualityScore: 92.5,
@@ -305,14 +311,15 @@ describe("DataQualityTargetsPage directory", () => {
     expect(all[1]?.text()).toContain(i18n.global.t("metadataBrowser.tables"));
   });
 
-  it("reads its counts and column count from the summary", async () => {
+  it("reads its counts and column coverage from the summary", async () => {
     const { wrapper } = await mountPage();
     const [customers, orders] = rows(wrapper);
 
     const customersCells = customers?.findAll("td") ?? [];
     const ordersCells = orders?.findAll("td") ?? [];
-    // Columns: target, rules, columns, latest result, open issues, drafts, actions.
-    expect(ordersCells[2]?.text()).toBe("2");
+    // Columns: target, rules, column coverage, latest result, open issues,
+    // drafts, actions.
+    expect(ordersCells[2]?.text()).toBe("1/2");
     expect(customersCells[2]?.text()).toBe("-");
     expect(ordersCells[4]?.text()).toBe("1");
     expect(customersCells[4]?.text()).toBe("-");
@@ -321,6 +328,94 @@ describe("DataQualityTargetsPage directory", () => {
 
     // The paused rule narrows the enabled/total hint without hiding the row.
     expect(ordersCells[1]?.text()).toContain("1 / 2");
+
+    // The share is the cell's tooltip; a row with no denominator says so rather
+    // than claiming none of its columns are watched.
+    expect(ordersCells[2]?.attributes("title")).toBe(
+      i18n.global.t("dataQuality.coverage.coveredSummary", {
+        covered: 1,
+        total: 2,
+      })
+    );
+    // A 0/0 pair on a target that still resolves is an empty column list, not an
+    // orphan; the orphan case has its own test below.
+    expect(customersCells[2]?.attributes("title")).toBe(
+      i18n.global.t("dataQuality.targets.coverageNoColumns")
+    );
+  });
+
+  it("tells an orphaned target's missing column list from an empty one", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        summary({
+          guid: TARGET_CUSTOMERS,
+          object: "customers",
+          ruleCount: 1,
+          orphaned: true,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+    const cells = rows(wrapper)[0]?.findAll("td") ?? [];
+    expect(cells[2]?.text()).toBe("-");
+    expect(cells[2]?.attributes("title")).toBe(
+      i18n.global.t("dataQuality.targets.coverageUnresolved")
+    );
+  });
+
+  it("shows an all-paused target as a state, not as a health verdict", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      items: [
+        summary({
+          guid: TARGET_ORDERS,
+          object: "orders",
+          ruleCount: 2,
+          enabledRuleCount: 0,
+          pausedRuleCount: 2,
+          worstStatus: QualityStatus.PASS,
+          qualityScore: 99,
+          scoredRuleCount: 2,
+          recentPassRate: 1,
+          recentExecutionCount: 20,
+        }),
+        // Paused and never run: the paused state still wins over "Never run",
+        // because that is what explains why nothing is being verified.
+        summary({
+          guid: TARGET_CUSTOMERS,
+          object: "customers",
+          enabledRuleCount: 0,
+          pausedRuleCount: 1,
+          lastRunTime: false,
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+    const [orders, customers] = rows(wrapper);
+
+    const resultCell = orders?.findAll("td")[3];
+    expect(resultCell?.text()).toContain(
+      i18n.global.t("dataQuality.signal.allPaused")
+    );
+    // Paused is neutral and shows no aggregates from before it was paused.
+    expect(resultCell?.text()).not.toContain(
+      i18n.global.t("dataQuality.status.pass")
+    );
+    expect(resultCell?.text()).not.toContain(
+      i18n.global.t("dataQuality.targets.scoreLine", {
+        score: "99.0",
+        passRate: "100.0%",
+      })
+    );
+
+    const pausedNeverRun = customers?.findAll("td")[3];
+    expect(pausedNeverRun?.text()).toContain(
+      i18n.global.t("dataQuality.signal.allPaused")
+    );
+    expect(pausedNeverRun?.text()).not.toContain(
+      i18n.global.t("dataQuality.targets.neverRun")
+    );
   });
 
   it("shows the quality score and recent pass rate beside the latest result", async () => {

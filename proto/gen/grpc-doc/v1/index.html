@@ -1417,6 +1417,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityTargetKey"><span class="badge">M</span>QualityTargetKey</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityTargetPath"><span class="badge">M</span>QualityTargetPath</a>
                 </li>
               
@@ -15564,6 +15568,18 @@ every target, including those whose rules have not run yet. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>targets</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetKey">QualityTargetKey</a></td>
+                  <td>repeated</td>
+                  <td><p>The exact targets to return, in addition to the filters above. It is how the
+metadata browser reads the trust signals of the objects it lists in one call.
+At most 200 keys are accepted. A selection is not paged: page_size, page_token
+and order_by are ignored, the response keeps the request order, and a key with
+no non-archived check is absent — that target is not monitored. A target whose
+checks are all paused is still returned, with enabled_rule_count = 0. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -18288,6 +18304,38 @@ the config is authoritative; validation requires them to agree. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityTargetKey">QualityTargetKey</h3>
+        <p>QualityTargetKey names one target by the only pair that identifies it: the</p><p>metadata GUID and the object type. It is an address, not a snapshot — the</p><p>metadata browser sends the objects it is showing so one call returns their</p><p>trust signals.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s metadata GUID. Required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s object type. Required, because a GUID alone does not identify a
+registry row across object types. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityTargetPath">QualityTargetPath</h3>
         <p>QualityTargetPath is the display snapshot of where a target lived when the</p><p>rule was saved.</p>
 
@@ -18527,6 +18575,27 @@ recent_execution_count is how many were. </p></td>
               
                 <tr>
                   <td>recent_execution_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>covered_column_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Column coverage: how many of the target&#39;s current registry columns at least
+one ENABLED check reads, and the target&#39;s current registry column count. A
+check that names no column, a paused check and a column that no longer exists
+in the registry cover nothing, so covered_column_count never exceeds
+total_column_count; both come from one registry read, which is what keeps that
+true while schema sync is rewriting the column list. A target whose registry
+row no longer resolves reports 0/0. The formula is the workspace coverage&#39;s;
+see docs/data-quality.md. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_column_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>

@@ -2500,6 +2500,19 @@ enum QualityTargetOrder {
   QUALITY_TARGET_ORDER_LAST_RUN = 4;
 }
 
+// QualityTargetKey names one target by the only pair that identifies it: the
+// metadata GUID and the object type. It is an address, not a snapshot — the
+// metadata browser sends the objects it is showing so one call returns their
+// trust signals.
+message QualityTargetKey {
+  // The target's metadata GUID. Required.
+  string target_guid = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target's object type. Required, because a GUID alone does not identify a
+  // registry row across object types.
+  MetaType meta_type = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 message ListQualityTargetsRequest {
   // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
@@ -2532,6 +2545,14 @@ message ListQualityTargetsRequest {
   bool has_pending_draft = 11;
 
   QualityTargetOrder order_by = 12;
+
+  // The exact targets to return, in addition to the filters above. It is how the
+  // metadata browser reads the trust signals of the objects it lists in one call.
+  // At most 200 keys are accepted. A selection is not paged: page_size, page_token
+  // and order_by are ignored, the response keeps the request order, and a key with
+  // no non-archived check is absent — that target is not monitored. A target whose
+  // checks are all paused is still returned, with enabled_rule_count = 0.
+  repeated QualityTargetKey targets = 13;
 }
 
 message ListQualityTargetsResponse {
@@ -2610,6 +2631,17 @@ message QualityTargetSummary {
   // recent_execution_count is how many were.
   optional double recent_pass_rate = 18;
   int32 recent_execution_count = 19;
+
+  // Column coverage: how many of the target's current registry columns at least
+  // one ENABLED check reads, and the target's current registry column count. A
+  // check that names no column, a paused check and a column that no longer exists
+  // in the registry cover nothing, so covered_column_count never exceeds
+  // total_column_count; both come from one registry read, which is what keeps that
+  // true while schema sync is rewriting the column list. A target whose registry
+  // row no longer resolves reports 0/0. The formula is the workspace coverage's;
+  // see docs/data-quality.md.
+  int32 covered_column_count = 20;
+  int32 total_column_count = 21;
 }
 
 message UpdateQualityTargetScheduleRequest {

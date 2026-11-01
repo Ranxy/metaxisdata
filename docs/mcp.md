@@ -1,9 +1,9 @@
 # Connecting an MCP client
 
-Metaxisdata can serve its metadata registry and lineage to a Model Context
-Protocol client as a set of read-only tools. The endpoint is `/mcp`, and the same
-server acts as the OAuth 2.1 authorization server those clients register and
-authorize against. Nothing here writes.
+Metaxisdata can serve its metadata registry, its lineage and its data-quality
+signals to a Model Context Protocol client as a set of read-only tools. The
+endpoint is `/mcp`, and the same server acts as the OAuth 2.1 authorization server
+those clients register and authorize against. Nothing here writes.
 
 ## Before it will answer
 
@@ -87,9 +87,21 @@ browser flow again.
 | `list_metadata` | what is directly under an object (schemas, tables, views, columns) |
 | `get_metadata` | one object's full shape: columns, indexes, keys, partitions |
 | `get_ddl` | the object's definition as its source engine reports it |
+| `get_quality_signal` | whether an object is watched by data quality checks, and how healthy it is |
 | `analyze_sql` | what one SQL statement reads and writes, column by column |
 | `get_lineage_graph` | the multi-level lineage around an object |
 | `whoami` | who the caller is and what they may read |
+
+`get_quality_signal` answers "is this table healthy, should I trust it". A table
+with no quality check at all is **not monitored**, and the tool says so with
+`monitored: false` rather than failing: the object exists, nothing watches it. A
+table whose checks are all paused answers with `allPaused: true` and
+`enabledRuleCount: 0`, and its verdict is omitted: the checks are history, and
+nothing is being verified until one is resumed. For a monitored object it reports
+`worstStatus`, `lastRunTime`, `qualityScore`,
+`recentPassRate` with `recentExecutionCount`, `coveredColumnCount` with
+`totalColumnCount`, `openIssueCount`, `enabledRuleCount`, `schemaChanged` and
+`orphaned`; the judged fields are absent until a check has produced a verdict.
 
 Three rules decide whether a call works:
 

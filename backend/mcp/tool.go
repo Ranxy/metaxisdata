@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -108,6 +109,17 @@ func (s *Server) toolDefinitions() []toolDefinition {
 				"meta_type": stringProperty("the object's type, when the reference is a bare guid"),
 			}, "object"),
 			Run: s.runGetDDL,
+		},
+		{
+			Name:        "get_quality_signal",
+			Description: "Report whether one object is watched by data quality checks and how healthy it is: worst latest result, last run, quality score, recent pass rate, column coverage and open issues. This answers \"is this table healthy / should I trust it\". A table with no check at all is not monitored, which the answer reports as monitored: false rather than failing; a table whose checks are all paused reports allPaused: true with enabledRuleCount: 0 and no verdict, because nothing is being verified until a check is resumed.",
+			RPC:         "metaxisdata.v1.DataQualityService.ListQualityTargets",
+			Permission:  permission.DataQualityRulesList,
+			Schema: objectSchema(map[string]any{
+				"object":    objectRefSchema("the object to read; give a guid, or {instance, database, schema?, name}"),
+				"meta_type": stringProperty("the object's type, when the reference is a bare guid"),
+			}, "object"),
+			Run: s.runGetQualitySignal,
 		},
 		{
 			Name:        "analyze_sql",
@@ -550,6 +562,181 @@ func (s *Server) runGetDDL(ctx context.Context, _ *store.UserMessage, raw json.R
 		return nil, toolErrorFromRPC(err)
 	}
 	return getDDLResult{GUID: object.GUID, Schema: response.Msg.GetSchema()}, nil
+}
+
+// --- get_quality_signal ---
+
+type getQualitySignalArgs struct {
+	Object   objectRef `json:"object"`
+	MetaType string    `json:"meta_type"`
+}
+
+// qualitySignalResult is the answer for a monitored object: every trust signal
+// the metadata browser shows, in one object.
+type qualitySignalResult struct {
+	GUID      string `json:"guid"`
+	MetaType  string `json:"metaType"`
+	Name      string `json:"name,omitempty"`
+	Monitored bool   `json:"monitored"`
+	// AllPaused says every check on the object is paused: the checks exist but
+	// nothing is being verified. The counters still describe the target, while the
+	// verdict fields are omitted — a paused check's last result is history, not a
+	// current health claim.
+	AllPaused            bool     `json:"allPaused"`
+	WorstStatus          string   `json:"worstStatus,omitempty"`
+	LastRunTime          string   `json:"lastRunTime,omitempty"`
+	QualityScore         *float64 `json:"qualityScore,omitempty"`
+	RecentPassRate       *float64 `json:"recentPassRate,omitempty"`
+	RecentExecutionCount int32    `json:"recentExecutionCount"`
+	CoveredColumnCount   int32    `json:"coveredColumnCount"`
+	TotalColumnCount     int32    `json:"totalColumnCount"`
+	OpenIssueCount       int32    `json:"openIssueCount"`
+	EnabledRuleCount     int32    `json:"enabledRuleCount"`
+	SchemaChanged        bool     `json:"schemaChanged"`
+	Orphaned             bool     `json:"orphaned"`
+}
+
+// qualitySignalUnmonitoredResult is the answer for an object with no live rule.
+// It is deliberately not an error: the object exists and simply has no checks, so
+// its signal is empty rather than unknown.
+type qualitySignalUnmonitoredResult struct {
+	GUID      string `json:"guid"`
+	MetaType  string `json:"metaType"`
+	Name      string `json:"name,omitempty"`
+	Monitored bool   `json:"monitored"`
+}
+
+// runGetQualitySignal reads one object's trust signal. The quality API takes an
+// exact-target selection for this: a selection is unpaged, keeps the request
+// order, and omits a target with no live rule, which is how "not monitored" is
+// told apart from "no such object".
+func (s *Server) runGetQualitySignal(ctx context.Context, _ *store.UserMessage, raw json.RawMessage) (any, error) {
+	var args getQualitySignalArgs
+	if err := decodeArguments(raw, &args); err != nil {
+		return nil, err
+	}
+	metaType, err := parseMetaType(args.MetaType)
+	if err != nil {
+		return nil, err
+	}
+	if metaType == v1pb.MetaType_UNSPECIFIED && args.Object.GUID != "" {
+		return nil, newToolError(codeInvalidArgument, "meta_type is required when the reference is a bare guid",
+			"list_metadata and search_metadata return metaType with every object, or address the object by name instead")
+	}
+	object, err := s.resolveObject(ctx, args.Object, metaType)
+	if err != nil {
+		return nil, err
+	}
+	if !qualitySignalMetaTypes[object.MetaType] {
+		// A rule can only watch a table or view. Any other object therefore has no
+		// signal to read, and the quality RPC would refuse the key: "nothing watches
+		// this" is the truthful answer.
+		return qualitySignalNotMonitored(object), nil
+	}
+	response, err := s.config.Quality.ListQualityTargets(ctx, connect.NewRequest(&v1pb.ListQualityTargetsRequest{
+		// "workspaces/-" is the current workspace, the way every quality RPC names it.
+		Parent: "workspaces/-",
+		Targets: []*v1pb.QualityTargetKey{{
+			TargetGuid: object.GUID,
+			MetaType:   object.MetaType,
+		}},
+	}))
+	if err != nil {
+		return nil, toolErrorFromRPC(err)
+	}
+	summary := qualityTargetSummaryOf(response.Msg.GetQualityTargets(), object.GUID, object.MetaType)
+	if summary == nil {
+		// A selection omits a key with no live rule. The object exists; nothing
+		// watches it, which is an answer rather than a failure.
+		return qualitySignalNotMonitored(object), nil
+	}
+	// The aggregate counts paused checks too, so an all-paused target still carries
+	// its paused checks' last verdict. That is history, not a current health claim:
+	// report the state and omit the verdict rather than let a model call a paused
+	// table healthy.
+	allPaused := summary.GetEnabledRuleCount() <= 0
+	result := qualitySignalResult{
+		GUID:                 object.GUID,
+		MetaType:             object.MetaType.String(),
+		Name:                 qualitySignalName(object.Name, summary),
+		Monitored:            true,
+		AllPaused:            allPaused,
+		LastRunTime:          qualitySignalTime(summary.GetLastRunTime()),
+		QualityScore:         summary.QualityScore,
+		RecentPassRate:       summary.RecentPassRate,
+		RecentExecutionCount: summary.GetRecentExecutionCount(),
+		CoveredColumnCount:   summary.GetCoveredColumnCount(),
+		TotalColumnCount:     summary.GetTotalColumnCount(),
+		OpenIssueCount:       summary.GetOpenIssueCount(),
+		EnabledRuleCount:     summary.GetEnabledRuleCount(),
+		SchemaChanged:        summary.GetSchemaChanged(),
+		Orphaned:             summary.GetOrphaned(),
+	}
+	if !allPaused {
+		result.WorstStatus = qualitySignalStatus(summary.GetWorstStatus())
+	}
+	return result, nil
+}
+
+// qualitySignalMetaTypes are the object types a quality rule can watch; any other
+// object has no signal to read.
+var qualitySignalMetaTypes = map[v1pb.MetaType]bool{
+	v1pb.MetaType_TABLE:             true,
+	v1pb.MetaType_EXTERNAL_TABLE:    true,
+	v1pb.MetaType_VIEW:              true,
+	v1pb.MetaType_MATERIALIZED_VIEW: true,
+}
+
+// qualitySignalNotMonitored answers that nothing watches the object.
+func qualitySignalNotMonitored(object resolvedObject) qualitySignalUnmonitoredResult {
+	return qualitySignalUnmonitoredResult{
+		GUID:      object.GUID,
+		MetaType:  object.MetaType.String(),
+		Name:      object.Name,
+		Monitored: false,
+	}
+}
+
+// qualityTargetSummaryOf finds the one summary a single-key selection answered
+// with. A selection omits the keys it has no live rule for, so an empty answer is
+// the only legitimate miss; anything else is not this object's signal and is
+// treated as such rather than reported as a different table's health.
+func qualityTargetSummaryOf(summaries []*v1pb.QualityTargetSummary, guid string, metaType v1pb.MetaType) *v1pb.QualityTargetSummary {
+	for _, summary := range summaries {
+		if summary.GetTarget().GetMetaGuid() == guid && summary.GetTarget().GetMetaType() == metaType {
+			return summary
+		}
+	}
+	return nil
+}
+
+// qualitySignalName prefers the name the caller's reference resolved to, and
+// falls back to the path snapshot stored with the target, which is what answers
+// when the caller addressed the object by GUID.
+func qualitySignalName(resolved string, summary *v1pb.QualityTargetSummary) string {
+	if resolved != "" {
+		return resolved
+	}
+	return summary.GetTarget().GetPath().GetObject()
+}
+
+// qualitySignalStatus renders the worst latest result. UNSPECIFIED means no check
+// of the target has run yet, and it is omitted rather than reported as a status a
+// model would have to learn to ignore.
+func qualitySignalStatus(status v1pb.QualityStatus) string {
+	if status == v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
+		return ""
+	}
+	return status.String()
+}
+
+// qualitySignalTime renders a timestamp the way the rest of this surface does; an
+// unset one is omitted.
+func qualitySignalTime(timestamp *timestamppb.Timestamp) string {
+	if timestamp == nil || timestamp.AsTime().Unix() <= 0 {
+		return ""
+	}
+	return timestamp.AsTime().UTC().Format(time.RFC3339)
 }
 
 // --- analyze_sql ---

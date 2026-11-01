@@ -3,6 +3,7 @@
     v-if="listComponent"
     :is="listComponent"
     :items="items"
+    v-bind="qualityProps"
     @select="(item: StoredMetadata) => emit('select', item, metaType)"
     @refresh="emit('refresh')"
   />
@@ -22,10 +23,13 @@ import { SearchX } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
+import type { QualitySignalState } from "@/composables/useQualitySignals";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   MetaType,
   type StoredMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import { isQualitySignalMetaType } from "@/utils/dataQualitySignal";
 import ApplicationSQLList from "./ApplicationSQLList.vue";
 import ColumnList from "./ColumnList.vue";
 import DatabaseList from "./DatabaseList.vue";
@@ -42,6 +46,10 @@ import ViewList from "./ViewList.vue";
 const props = defineProps<{
   metaType: MetaType;
   items: StoredMetadata[];
+  /** Trust signals of the listed objects, keyed by GUID + meta type. */
+  qualitySignals?: Map<string, QualityTargetSummary>;
+  /** Whether the signal read has answered; see `QualitySignalState`. */
+  qualityState?: QualitySignalState;
 }>();
 
 const emit = defineEmits<{
@@ -50,6 +58,19 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/**
+ * Only the four object types with quality columns take the signal props. The
+ * other lists would otherwise receive undeclared props as DOM attributes.
+ */
+const qualityProps = computed(() =>
+  isQualitySignalMetaType(props.metaType) && props.qualitySignals !== undefined
+    ? {
+        qualitySignals: props.qualitySignals,
+        qualityState: props.qualityState ?? "ready",
+      }
+    : {}
+);
 
 const listComponent = computed(() => {
   switch (props.metaType) {

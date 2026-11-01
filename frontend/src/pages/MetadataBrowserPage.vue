@@ -85,6 +85,13 @@
             class="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors flex items-center gap-3"
             @click="handleSelectSearchResult(result)"
           >
+            <!-- The quality point only means something for the object types a
+                 check can target; every other result keeps its plain type badge. -->
+            <QualitySignalDot
+              v-if="showSearchSignal(result)"
+              :tone="qualityTone(searchSignal(result))"
+              :label="qualityStatusText(searchSignal(result))"
+            />
             <Badge
               variant="outline"
               class="shrink-0 text-xs"
@@ -180,6 +187,8 @@
               :instance-engine="currentInstanceEngine"
               :guid="currentGuid"
               :selected-column-name="selectedColumnName"
+              :quality-signal="qualitySignalFor(currentGuid, MetaType.TABLE)"
+              :quality-state="qualityState"
             />
           </CardContent>
         </template>
@@ -189,6 +198,8 @@
             <ExternalTableMetadataDetail
               :table="leaf.table"
               :guid="currentGuid"
+              :quality-signal="qualitySignalFor(currentGuid, MetaType.EXTERNAL_TABLE)"
+              :quality-state="qualityState"
             />
           </CardContent>
         </template>
@@ -198,6 +209,8 @@
             <ViewMetadataDetail
               :view="leaf.view"
               :guid="currentGuid"
+              :quality-signal="qualitySignalFor(currentGuid, MetaType.VIEW)"
+              :quality-state="qualityState"
             />
           </CardContent>
         </template>
@@ -207,6 +220,8 @@
             <MaterializedViewMetadataDetail
               :view="leaf.view"
               :guid="currentGuid"
+              :quality-signal="qualitySignalFor(currentGuid, MetaType.MATERIALIZED_VIEW)"
+              :quality-state="qualityState"
             />
           </CardContent>
         </template>
@@ -274,6 +289,8 @@
               v-if="activeGroup"
               :meta-type="activeGroup.metaType"
               :items="activeGroup.items"
+              :quality-signals="qualityCanView ? qualitySignals : undefined"
+              :quality-state="qualityState"
               @select="handleSelectMetadata"
               @refresh="reload"
             />
@@ -317,6 +334,7 @@ import { getMetadata, listMetadata } from "@/api/database";
 import { getInstance } from "@/api/instance";
 import AppLoading from "@/components/common/AppLoading.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
+import QualitySignalDot from "@/components/data-quality/QualitySignalDot.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import InstanceList from "@/components/metadata/InstanceList.vue";
 import MetadataBreadcrumb from "@/components/metadata/MetadataBreadcrumb.vue";
@@ -370,8 +388,14 @@ import {
   type MetadataChild,
   useMetadataChildren,
 } from "@/composables/useMetadataChildren";
+import {
+  type QualitySignalTarget,
+  useQualitySignals,
+} from "@/composables/useQualitySignals";
+import { useQualitySignalText } from "@/composables/useQualitySignalText";
 import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   type ApplicationSQLMetadata,
   type ExternalTableMetadata,
@@ -386,6 +410,7 @@ import {
   type ViewMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
+import { isQualitySignalMetaType } from "@/utils/dataQualitySignal";
 import { errorCode } from "@/utils/error";
 import { guidSegmentsToRouteParams, routeParamToGuid } from "@/utils/guid";
 import { lineageAssetView } from "@/utils/lineageAsset";
@@ -911,6 +936,60 @@ const activeGroup = computed(() => {
     ) ?? null
   );
 });
+
+/**
+ * The objects the current screen shows, as trust-signal targets: the listed
+ * rows of one tab, or the leaf a detail route resolved to.
+ */
+const qualityTargets = computed<QualitySignalTarget[]>(() => {
+  if (leaf.value) {
+    return [{ guid: currentGuid.value, metaType: leaf.value.metaType }];
+  }
+  const group = activeGroup.value;
+  if (!group) {
+    return [];
+  }
+  return group.items.map((item) => ({
+    guid: item.guid,
+    metaType: group.metaType,
+  }));
+});
+
+const {
+  signals: qualitySignals,
+  state: qualityState,
+  canView: qualityCanView,
+  signalFor: qualitySignalFor,
+} = useQualitySignals(() => qualityTargets.value);
+
+/** A closed dropdown needs no signals, so its rows are read only while open. */
+const searchQualityTargets = computed<QualitySignalTarget[]>(() =>
+  showSearchResults.value && searchQuery.value.trim()
+    ? search.items.value.map((item) => ({
+        guid: item.guid,
+        metaType: item.metaType,
+      }))
+    : []
+);
+
+const { state: searchQualityState, signalFor: searchQualitySignalFor } =
+  useQualitySignals(() => searchQualityTargets.value);
+
+const { statusText: qualityStatusText, tone: qualityTone } =
+  useQualitySignalText();
+
+/** One search row's answer, or undefined while unanswered / not monitored. */
+function searchSignal(result: MetadataChild): QualityTargetSummary | undefined {
+  return searchQualitySignalFor(result.guid, result.metaType);
+}
+
+/** Whether the row's point may be drawn: a supported type, and an answer. */
+function showSearchSignal(result: MetadataChild): boolean {
+  return (
+    isQualitySignalMetaType(result.metaType) &&
+    (searchQualityState.value === "ready" || searchSignal(result) !== undefined)
+  );
+}
 
 function getEffectiveParentGuidForListing(): string {
   // MySQL-family special case: objects are under an "empty schema".

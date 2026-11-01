@@ -1533,6 +1533,42 @@
           "分发规则"
         ]
       }
+    },
+    {
+      "id": "not-monitored",
+      "category": "Data Quality",
+      "definition": "The state of a registry object that no live check watches. It is not a health verdict: it never renders as green or as 100%.",
+      "translations": {
+        "en-US": "not monitored",
+        "zh-CN": "未监控"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "all-paused",
+      "category": "Data Quality",
+      "definition": "The state of a target whose checks all exist but none is enabled. Nothing is verified, so it is not a health verdict.",
+      "translations": {
+        "en-US": "all checks paused",
+        "zh-CN": "检查已全部暂停"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "last-run",
+      "category": "Data Quality",
+      "definition": "When a target's checks last produced a verdict, rendered as a relative time and never as a raw timestamp in a list.",
+      "translations": {
+        "en-US": "last run",
+        "zh-CN": "最近运行"
+      },
+      "scope": [
+        "dataQuality."
+      ]
     }
   ]
 }

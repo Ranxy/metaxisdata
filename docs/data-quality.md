@@ -301,6 +301,40 @@ figure over that check's own recent executions.)
   completed executions remain in the Executions directory, but they no longer
   occupy one of the target's 20 slots.
 
+### Trust signals in the metadata browser
+
+The metadata browser carries the same answer where a consumer actually looks —
+Data → browse, the global search and every table/view/external-table/
+materialized-view page:
+
+- **One column per object** shows a status point and a word (pass, warning,
+  failing, error, not run), with a second line naming column coverage and the
+  last run: *covered 4/9 columns · 2 hours ago*. The asset page repeats the same
+  signal in its header, and its Data Quality tab opens with the summary
+  (status, quality score, recent pass rate, column coverage, last run).
+- **A table with no check is marked "not monitored"**. It is never green and
+  never reads as 100%: nothing is known about it, so nothing is claimed. The
+  list column itself is text only (a link would swallow the row click); the
+  asset header badge and the Data Quality tab offer "Start monitoring" into the
+  target workspace.
+- **Column coverage is per object**: how many of the table's current columns at
+  least one enabled check reads, out of the columns the registry currently holds.
+  A check that names no column (row count, freshness on the table itself, custom
+  SQL), a paused check and a column that schema sync dropped cover nothing. The
+  number never exceeds the total because the numerator and the denominator come
+  from the same registry read.
+- **The score is the same target score as on Data Quality → Targets and in the
+  target workspace header** (same weighted formula as the workspace score on
+  Data Quality → Overview, but a target aggregate rather than a workspace one);
+  when no enabled check has a judged result it shows a dash, not 0 and not 100.
+- These signals are read-only. Viewing a metadata page writes nothing, audits
+  nothing and sends no notification; a member's read baseline already covers
+  them, while a custom role without the data-quality read permission does not see
+  the column or the badge.
+- Integrations that read the registry over MCP get the same fields from the
+  `get_quality_signal` tool, which answers `monitored: false` for an object no
+  check watches.
+
 ## Problems and notifications
 
 A check that starts failing opens an **issue**; it is the same issue until it

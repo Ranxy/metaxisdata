@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import type { QualitySignalState } from "@/composables/useQualitySignals";
 import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
@@ -28,6 +29,8 @@ import {
   QualitySuggestionSchema,
   QualitySuggestionStatus,
   QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
   RowCountConfigSchema,
   SemanticLabelSuggestionSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -183,7 +186,13 @@ function checkRowLinks(wrapper: Mounted) {
     .filter((link) => queryOf(link.attributes("href") ?? "").has("check"));
 }
 
-async function mountSection(permissions: string[]) {
+async function mountSection(
+  permissions: string[],
+  options: {
+    signal?: QualityTargetSummary;
+    signalState?: QualitySignalState;
+  } = {}
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -209,6 +218,8 @@ async function mountSection(permissions: string[]) {
     props: {
       tableGuid: TABLE,
       metaType: MetaType.TABLE,
+      signal: options.signal,
+      signalState: options.signalState,
       columns: [
         {
           name: "id",
@@ -369,6 +380,99 @@ describe("MetadataQualitySection", () => {
     const query = queryOf(row.attributes("href") ?? "");
     expect(query.get("check")).toBe(RULE);
     expect(query.get("metaType")).toBe(String(MetaType.TABLE));
+  });
+
+  it("opens with a summary strip that states the verdict and its facts", async () => {
+    const signal = create(QualityTargetSummarySchema, {
+      target: create(QualityTargetSchema, {
+        metaGuid: TABLE,
+        metaType: MetaType.TABLE,
+      }),
+      worstStatus: QualityStatus.FAIL,
+      enabledRuleCount: 1,
+      coveredColumnCount: 2,
+      totalColumnCount: 4,
+      qualityScore: 40,
+      recentPassRate: 0.25,
+      lastRunTime: timestampFromDate(BASE_TIME),
+    });
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"], {
+      signal,
+      signalState: "ready",
+    });
+
+    expect(wrapper.text()).toContain(label("dataQuality.status.fail"));
+    expect(wrapper.text()).toContain(label("dataQuality.signal.scoreLabel"));
+    expect(wrapper.text()).toContain("40.0");
+    expect(wrapper.text()).toContain(label("dataQuality.signal.passRateLabel"));
+    expect(wrapper.text()).toContain("25.0%");
+    expect(wrapper.text()).toContain(label("dataQuality.signal.coverageLabel"));
+    expect(wrapper.text()).toContain(
+      label("dataQuality.signal.coverage", { covered: 2, total: 4 })
+    );
+    expect(wrapper.text()).toContain(label("dataQuality.signal.lastRunLabel"));
+    // The rest of the tab is untouched by the strip.
+    expect(wrapper.text()).toContain(label("dataQuality.asset.ruleCount"));
+    wrapper.unmount();
+  });
+
+  it("states an unmonitored target and opens the composer", async () => {
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"], {
+      signalState: "ready",
+    });
+
+    expect(wrapper.text()).toContain(label("dataQuality.signal.notMonitored"));
+    const composer = wrapper
+      .findAll("a")
+      .find((link) =>
+        link.text().includes(label("dataQuality.targets.startMonitoring"))
+      );
+    expect(composer).toBeDefined();
+    expect(composer!.attributes("href")).toContain("add=1");
+    // The workspace entrance carries the same next step.
+    const workspace = wrapper
+      .findAll("a")
+      .find((link) =>
+        link.text().includes(label("dataQuality.asset.openWorkspace"))
+      );
+    expect(workspace!.attributes("href")).toContain("add=1");
+    wrapper.unmount();
+  });
+
+  it("states a fully paused target as paused, without health numbers", async () => {
+    const signal = create(QualityTargetSummarySchema, {
+      target: create(QualityTargetSchema, {
+        metaGuid: TABLE,
+        metaType: MetaType.TABLE,
+      }),
+      worstStatus: QualityStatus.PASS,
+      enabledRuleCount: 0,
+      qualityScore: 99,
+      lastRunTime: timestampFromDate(BASE_TIME),
+    });
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"], {
+      signal,
+      signalState: "ready",
+    });
+
+    expect(wrapper.text()).toContain(label("dataQuality.signal.allPaused"));
+    expect(wrapper.text()).toContain(label("dataQuality.signal.allPausedHint"));
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.signal.scoreLabel")
+    );
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.signal.notMonitored")
+    );
+    wrapper.unmount();
+  });
+
+  it("shows no summary strip until the page reads the signal", async () => {
+    const wrapper = await mountSection(["metaxisdata.dataQuality.rules.list"]);
+
+    expect(wrapper.text()).not.toContain(
+      label("dataQuality.signal.notMonitored")
+    );
+    wrapper.unmount();
   });
 
   it("stays out of the page for a caller without rules.list", async () => {

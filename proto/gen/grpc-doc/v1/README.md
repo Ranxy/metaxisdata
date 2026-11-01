@@ -321,6 +321,7 @@
     - [QualitySuggestionQueueSummary](#metaxisdata-v1-QualitySuggestionQueueSummary)
     - [QualityTarget](#metaxisdata-v1-QualityTarget)
     - [QualityTargetColumn](#metaxisdata-v1-QualityTargetColumn)
+    - [QualityTargetKey](#metaxisdata-v1-QualityTargetKey)
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
     - [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule)
     - [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary)
@@ -5289,6 +5290,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | has_open_issue | [bool](#bool) |  | Only targets with at least one unresolved issue. |
 | has_pending_draft | [bool](#bool) |  | Only targets with at least one pending AI draft. |
 | order_by | [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder) |  |  |
+| targets | [QualityTargetKey](#metaxisdata-v1-QualityTargetKey) | repeated | The exact targets to return, in addition to the filters above. It is how the metadata browser reads the trust signals of the objects it lists in one call. At most 200 keys are accepted. A selection is not paged: page_size, page_token and order_by are ignored, the response keeps the request order, and a key with no non-archived check is absent — that target is not monitored. A target whose checks are all paused is still returned, with enabled_rule_count = 0. |
 
 
 
@@ -6153,6 +6155,25 @@ QualityTargetColumn is one column of a resolved target.
 
 
 
+<a name="metaxisdata-v1-QualityTargetKey"></a>
+
+### QualityTargetKey
+QualityTargetKey names one target by the only pair that identifies it: the
+metadata GUID and the object type. It is an address, not a snapshot — the
+metadata browser sends the objects it is showing so one call returns their
+trust signals.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Required, because a GUID alone does not identify a registry row across object types. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityTargetPath"></a>
 
 ### QualityTargetPath
@@ -6219,6 +6240,8 @@ plus the counts and health the row and the workspace header render.
 | scored_rule_count | [int32](#int32) |  |  |
 | recent_pass_rate | [double](#double) | optional | The pass share of the target&#39;s most recent completed executions (at most 20): PASS / (PASS &#43; WARN &#43; FAIL). ERROR, SKIPPED and NOT_EVALUATED are excluded because they are not verdicts. Unset when none of them is judged; recent_execution_count is how many were. |
 | recent_execution_count | [int32](#int32) |  |  |
+| covered_column_count | [int32](#int32) |  | Column coverage: how many of the target&#39;s current registry columns at least one ENABLED check reads, and the target&#39;s current registry column count. A check that names no column, a paused check and a column that no longer exists in the registry cover nothing, so covered_column_count never exceeds total_column_count; both come from one registry read, which is what keeps that true while schema sync is rewriting the column list. A target whose registry row no longer resolves reports 0/0. The formula is the workspace coverage&#39;s; see docs/data-quality.md. |
+| total_column_count | [int32](#int32) |  |  |
 
 
 

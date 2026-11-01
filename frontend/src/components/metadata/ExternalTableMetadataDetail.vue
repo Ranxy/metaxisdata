@@ -5,6 +5,13 @@
         <h1 class="text-2xl font-semibold tracking-tight wrap-break-word">
           {{ table.name }}
         </h1>
+        <QualitySignalBadge
+          v-if="guid"
+          :signal="qualitySignal"
+          :state="qualityState"
+          :guid="guid"
+          :meta-type="MetaType.EXTERNAL_TABLE"
+        />
         <Badge
           v-if="table.externalServerName"
           variant="outline"
@@ -36,6 +43,8 @@
       :table-guid="guid"
       :meta-type="MetaType.EXTERNAL_TABLE"
       :columns="table.columns"
+      :signal="qualitySignal"
+      :signal-state="qualityState"
     />
 
     <template v-if="!guid || activeTab === 'details'">
@@ -62,21 +71,30 @@ import { Plug } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import MetadataQualitySection from "@/components/data-quality/MetadataQualitySection.vue";
+import QualitySignalBadge from "@/components/data-quality/QualitySignalBadge.vue";
 import MetadataColumnsSection from "@/components/metadata/MetadataColumnsSection.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
+import type { QualitySignalState } from "@/composables/useQualitySignals";
 import { useAuthStore } from "@/store/modules/auth";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   type ExternalTableMetadata,
   MetaType,
 } from "@/types/proto-es/v1/database_service_pb";
 
-const props = defineProps<{
-  table: ExternalTableMetadata;
-  guid?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    table: ExternalTableMetadata;
+    guid?: string;
+    /** The target's trust signal, read by the metadata browser page. */
+    qualitySignal?: QualityTargetSummary;
+    qualityState?: QualitySignalState;
+  }>(),
+  { qualitySignal: undefined, qualityState: "idle" }
+);
 
 const { t } = useI18n();
 const authStore = useAuthStore();

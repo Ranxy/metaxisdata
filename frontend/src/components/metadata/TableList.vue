@@ -19,6 +19,7 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.tableName") }}</TableHead>
+          <TableHead v-if="qualitySignals !== undefined" class="hidden md:table-cell">{{ t("dataQuality.signal.column") }}</TableHead>
           <TableHead v-if="hasEngine" class="hidden md:table-cell">{{ t("metadataBrowser.engine") }}</TableHead>
           <TableHead>{{ t("metadataBrowser.rowCount") }}</TableHead>
           <TableHead>{{ t("metadataBrowser.dataSize") }}</TableHead>
@@ -43,6 +44,15 @@
               <Table2 class="h-4 w-4 text-muted-foreground" />
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
+          </TableCell>
+          <TableCell
+            v-if="qualitySignals !== undefined"
+            class="hidden md:table-cell"
+          >
+            <QualitySignalCell
+              :signal="qualitySignalOf(row.stored.guid)"
+              :state="qualityState"
+            />
           </TableCell>
           <TableCell v-if="hasEngine" class="hidden text-muted-foreground md:table-cell">
             {{ row.value.engine || "-" }}
@@ -81,6 +91,7 @@ import { RefreshCw, Table2 } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
+import QualitySignalCell from "@/components/data-quality/QualitySignalCell.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,16 +102,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type {
-  StoredMetadata,
-  TableMetadata,
+import type { QualitySignalState } from "@/composables/useQualitySignals";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  MetaType,
+  type StoredMetadata,
+  type TableMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import { qualitySignalKey } from "@/utils/dataQualitySignal";
 import { formatBytes, formatNumber } from "@/utils/format";
 import ExpandableText from "./ExpandableText.vue";
 
-const props = defineProps<{
-  items: StoredMetadata[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    items: StoredMetadata[];
+    qualitySignals?: Map<string, QualityTargetSummary>;
+    qualityState?: QualitySignalState;
+  }>(),
+  { qualitySignals: undefined, qualityState: "idle" }
+);
 
 defineEmits<{
   select: [item: StoredMetadata];
@@ -108,6 +128,10 @@ defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+function qualitySignalOf(guid: string): QualityTargetSummary | undefined {
+  return props.qualitySignals?.get(qualitySignalKey(guid, MetaType.TABLE));
+}
 
 const tableRows = computed(() => {
   const rows: Array<{ stored: StoredMetadata; value: TableMetadata }> = [];

@@ -665,6 +665,40 @@ export function qualityTargetMetadataRoute(
   };
 }
 
+/** Where a target's contract workspace lives, shaped for a RouterLink `to`. */
+export type QualityTargetWorkspaceRoute = {
+  name: "DataQualityTarget";
+  params: { targetGuid: string[] };
+  query: Record<string, string>;
+};
+
+/**
+ * The target workspace a quality signal links to. `add` opens the check
+ * composer, which is the next step for an object nothing watches yet.
+ *
+ * Returns null when the object has no GUID or no meta type, so a caller falls
+ * back to plain text instead of rendering a link that cannot open a workspace.
+ */
+export function qualityTargetWorkspaceRoute(
+  guid: string,
+  metaType: MetaType,
+  options: { add?: boolean } = {}
+): QualityTargetWorkspaceRoute | null {
+  const trimmed = guid.trim();
+  if (!trimmed || metaType === MetaType.UNSPECIFIED) {
+    return null;
+  }
+  const query: Record<string, string> = { metaType: String(metaType) };
+  if (options.add) {
+    query.add = "1";
+  }
+  return {
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(trimmed) },
+    query,
+  };
+}
+
 // ---- formatting ----
 
 /** A whole number in the reader's locale, e.g. 1,204. */

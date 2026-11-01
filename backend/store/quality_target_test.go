@@ -205,3 +205,54 @@ func TestTargetWhereWorstStatuses(t *testing.T) {
 	require.Equal(t, []any{int32(5)}, args)
 	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = $14")
 }
+
+// A selection must restrict the query's scans, not just its result: the rule
+// aggregation, the per-rule execution probe and the issue/draft tallies all
+// carry the key predicate, so a metadata page never aggregates the workspace's
+// whole rule set and retained execution history. The outer predicate stays as a
+// safety net around the answer.
+func TestQualityTargetsStatementPushesSelection(t *testing.T) {
+	t.Parallel()
+
+	keys := []MetaGUIDKey{
+		{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE},
+		{GUID: "instance-1;shop;;orders_view", ObjectType: storepb.MetaType_VIEW},
+	}
+	query, args, err := qualityTargetsStatement(&FindQualityTargetMessage{TargetKeys: keys})
+	require.NoError(t, err)
+
+	selected := "(SELECT * FROM unnest($14::text[], $15::int2[]))"
+	require.Contains(t, query, "AND (r.target_guid, r.target_type) IN "+selected, "the rule scan is restricted")
+	require.Contains(t, query, "AND (i.target_guid, i.target_type) IN "+selected, "the issue tally is restricted")
+	require.Contains(t, query, "AND (target_guid, target_type) IN "+selected, "the draft tally is restricted")
+	require.Contains(t, query, "(t.target_guid, t.target_type) IN "+selected, "the answer keeps a safety net")
+	require.Equal(t, pq.Array([]string{"instance-1;shop;;orders", "instance-1;shop;;orders_view"}), args[13])
+	require.Equal(t, pq.Array([]int16{int16(storepb.MetaType_TABLE), int16(storepb.MetaType_VIEW)}), args[14])
+
+	// The execution read is one index-ordered row per live rule, not a sort over
+	// the workspace's retained executions.
+	require.Contains(t, query, "JOIN LATERAL (")
+	require.Contains(t, query, "ORDER BY e.started_at DESC, e.id DESC")
+	require.Contains(t, query, "LIMIT 1")
+
+	// A directory page selects nothing: no selection predicate, no selection
+	// arguments, and the placeholders keep their original positions.
+	query, args, err = qualityTargetsStatement(&FindQualityTargetMessage{})
+	require.NoError(t, err)
+	require.NotContains(t, query, "unnest(")
+	require.Len(t, args, 13)
+
+	// Filters and the row bound continue after the selection's parameter pair.
+	limit := 5
+	query, args, err = qualityTargetsStatement(&FindQualityTargetMessage{
+		TargetKeys:  keys,
+		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		Limit:       &limit,
+	})
+	require.NoError(t, err)
+	require.Contains(t, query, "COALESCE(r.worst_rank, 0) = $16")
+	require.Contains(t, query, "LIMIT $17")
+	require.Equal(t, pq.Array([]string{"instance-1;shop;;orders", "instance-1;shop;;orders_view"}), args[13])
+	require.Equal(t, int32(5), args[15])
+	require.Equal(t, 5, args[16])
+}

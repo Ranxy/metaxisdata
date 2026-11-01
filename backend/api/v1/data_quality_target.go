@@ -29,9 +29,18 @@ const qualityTargetRuleHistoryLimit = 20
 // executions the recent pass rate covers.
 const qualityTargetRecentExecutionLimit = 20
 
+// qualityTargetSelectionLimit caps the exact-target selection one request may
+// name. The metadata browser asks for one page at a time, so the bound is well
+// above a page and far below the registry.
+const qualityTargetSelectionLimit = 200
+
 // ListQualityTargets lists the targets that carry quality rules, one row per
 // table or view. The aggregation happens in the store, so the directory costs one
 // query rather than paging through every rule.
+//
+// An exact selection (req.targets) is the metadata browser's batch read: it
+// answers the trust signals of the objects on screen in one call, in request order
+// and without paging.
 func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connect.Request[v1pb.ListQualityTargetsRequest]) (*connect.Response[v1pb.ListQualityTargetsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -41,104 +50,60 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
-	offset, err := parseLimitAndOffset(&pageSize{
-		token:        req.Msg.GetPageToken(),
-		limit:        int(req.Msg.GetPageSize()),
-		maximum:      qualityListMaximum,
-		defaultLimit: qualityDefaultPageSize,
-	})
+	selection, err := qualityTargetSelectionFromV1(req.Msg.GetTargets())
 	if err != nil {
 		return nil, err
 	}
-	limitPlusOne := offset.limit + 1
 
 	find := &store.FindQualityTargetMessage{
-		Limit:           &limitPlusOne,
-		Offset:          &offset.offset,
 		WorstStatus:     worstStatus,
 		HasOpenIssue:    req.Msg.GetHasOpenIssue(),
 		HasPendingDraft: req.Msg.GetHasPendingDraft(),
 		Order:           qualityTargetOrderFromV1(req.Msg.GetOrderBy()),
 	}
 	applyQualityTargetListFilters(find, req.Msg)
-	targets, err := s.store.ListQualityTargets(ctx, find)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list the quality targets")
-	}
-	targets, nextPageToken, err := paginate(targets, offset)
-	if err != nil {
-		return nil, err
-	}
 
-	// The aggregate query cannot extract the checked column from every config arm
-	// without duplicating that mapping in SQL, so the page's rules are read once and
-	// the column count is filled in Go from the authoritative config. The same
-	// batch answers "does this target still resolve", which the aggregate query
-	// cannot know because it only reads DQ tables.
-	if len(targets) > 0 {
-		keys := make([]store.MetaGUIDKey, 0, len(targets))
-		for _, target := range targets {
-			keys = append(keys, store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type})
-		}
-		pageRules, err := s.store.ListQualityRulesByTargets(ctx, keys)
+	var (
+		targets       []*store.QualityTargetMessage
+		nextPageToken string
+	)
+	if len(selection) > 0 {
+		// A selection is not a page: the caller named the targets it needs, so
+		// paging and ordering are ignored and the answer keeps the request order. A
+		// selected key with no live rule is simply absent — that target is not
+		// monitored.
+		find.TargetKeys = selection
+		targets, err = s.store.ListQualityTargets(ctx, find)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read the targets' rules")
+			return nil, errors.Wrap(err, "failed to list the selected quality targets")
 		}
-		columns := make(map[store.MetaGUIDKey]map[string]struct{}, len(targets))
-		for _, rule := range pageRules {
-			column := dataquality.ConfigColumn(rule.Config)
-			if column == "" {
-				continue
-			}
-			key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
-			if columns[key] == nil {
-				columns[key] = map[string]struct{}{}
-			}
-			columns[key][column] = struct{}{}
+		if err := s.assembleQualityTargetPage(ctx, targets); err != nil {
+			return nil, err
 		}
-		orphanReasons, err := s.targetOrphanReasons(ctx, pageRules)
+		targets = orderQualityTargetSelection(targets, selection)
+	} else {
+		offset, err := parseLimitAndOffset(&pageSize{
+			token:        req.Msg.GetPageToken(),
+			limit:        int(req.Msg.GetPageSize()),
+			maximum:      qualityListMaximum,
+			defaultLimit: qualityDefaultPageSize,
+		})
 		if err != nil {
 			return nil, err
 		}
-		orphaned := make(map[store.MetaGUIDKey]bool, len(targets))
-		for _, rule := range pageRules {
-			if orphanReasons[rule.ID] != "" {
-				orphaned[store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}] = true
-			}
-		}
-		runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, keys)
+		limitPlusOne := offset.limit + 1
+		find.Limit = &limitPlusOne
+		find.Offset = &offset.offset
+		targets, err = s.store.ListQualityTargets(ctx, find)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read the targets' latest runs")
+			return nil, errors.Wrap(err, "failed to list the quality targets")
 		}
-		// Only enabled rules contribute to the score; a paused rule is not part of
-		// what the target currently promises.
-		enabledRules := make([]*store.QualityRuleMessage, 0, len(pageRules))
-		for _, rule := range pageRules {
-			if rule.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
-				enabledRules = append(enabledRules, rule)
-			}
-		}
-		latest, err := s.latestQualityExecutions(ctx, enabledRules)
+		targets, nextPageToken, err = paginate(targets, offset)
 		if err != nil {
 			return nil, err
 		}
-		scores := qualityTargetScores(pageRules, latest)
-		tallies, err := s.store.ListQualityTargetExecutionTallies(ctx, keys, qualityTargetRecentExecutionLimit)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read the targets' recent execution tallies")
-		}
-		for _, target := range targets {
-			key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}
-			target.ColumnCount = int32(len(columns[key]))
-			target.Orphaned = orphaned[key]
-			if summary := runSummaries[key]; summary != nil {
-				target.LatestRun = summary
-				target.RunCount = summary.RunCount
-			}
-			score := scores[key]
-			target.QualityScore = score.score
-			target.ScoredRuleCount = score.scored
-			target.RecentPassRate, target.RecentExecutionCount = qualityRecentPassRate(tallies[key])
+		if err := s.assembleQualityTargetPage(ctx, targets); err != nil {
+			return nil, err
 		}
 	}
 
@@ -147,6 +112,177 @@ func (s *DataQualityService) ListQualityTargets(ctx context.Context, req *connec
 		response.QualityTargets = append(response.QualityTargets, convertQualityTargetSummary(workspaceID, target))
 	}
 	return connect.NewResponse(response), nil
+}
+
+// qualityTargetSelectionFromV1 validates and normalises the exact-target
+// selection: at most qualityTargetSelectionLimit keys, each naming a GUID and one
+// of the four object types a rule can watch, deduplicated in request order.
+func qualityTargetSelectionFromV1(requested []*v1pb.QualityTargetKey) ([]store.MetaGUIDKey, error) {
+	if len(requested) > qualityTargetSelectionLimit {
+		return nil, connectErrorInvalid("at most %d targets may be selected", qualityTargetSelectionLimit)
+	}
+	selection := make([]store.MetaGUIDKey, 0, len(requested))
+	seen := make(map[store.MetaGUIDKey]struct{}, len(requested))
+	for _, key := range requested {
+		guid := strings.TrimSpace(key.GetTargetGuid())
+		if guid == "" {
+			return nil, connectErrorInvalid("targets[].target_guid is required")
+		}
+		switch key.GetMetaType() {
+		case v1pb.MetaType_TABLE,
+			v1pb.MetaType_EXTERNAL_TABLE,
+			v1pb.MetaType_VIEW,
+			v1pb.MetaType_MATERIALIZED_VIEW:
+		default:
+			// Only these four types can carry a rule, so only they have a signal.
+			return nil, connectErrorInvalid("targets[].meta_type must be a table, external table, view or materialized view")
+		}
+		storeKey := store.MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(key.GetMetaType())}
+		if _, ok := seen[storeKey]; ok {
+			continue
+		}
+		seen[storeKey] = struct{}{}
+		selection = append(selection, storeKey)
+	}
+	return selection, nil
+}
+
+// orderQualityTargetSelection returns the rows in the selection's order, so the
+// caller can put each signal back on the row it asked about. Keys with no live
+// rule are absent from both sides: they are not monitored.
+func orderQualityTargetSelection(targets []*store.QualityTargetMessage, selection []store.MetaGUIDKey) []*store.QualityTargetMessage {
+	if len(targets) == 0 {
+		return targets
+	}
+	byKey := make(map[store.MetaGUIDKey]*store.QualityTargetMessage, len(targets))
+	for _, target := range targets {
+		byKey[store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}] = target
+	}
+	ordered := make([]*store.QualityTargetMessage, 0, len(targets))
+	for _, key := range selection {
+		target, ok := byKey[key]
+		if !ok {
+			continue
+		}
+		ordered = append(ordered, target)
+		delete(byKey, key)
+	}
+	return ordered
+}
+
+// assembleQualityTargetPage fills the fields the aggregate query cannot compute
+// for a page of targets: the rule-derived column count, the orphan state, the
+// latest run, the quality score, the recent pass rate and column coverage. The
+// directory, an exact-target selection and the workspace header all read these
+// numbers through this one function, so a target never reports two different
+// values on two surfaces.
+func (s *DataQualityService) assembleQualityTargetPage(ctx context.Context, targets []*store.QualityTargetMessage) error {
+	if len(targets) == 0 {
+		return nil
+	}
+	keys := make([]store.MetaGUIDKey, 0, len(targets))
+	for _, target := range targets {
+		keys = append(keys, store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type})
+	}
+	// The aggregate query cannot extract the checked column from every config arm
+	// without duplicating that mapping in SQL, so the page's rules are read once and
+	// filled in Go from the authoritative config. The same batch answers "does this
+	// target still resolve", which the aggregate query cannot know because it only
+	// reads DQ tables.
+	pageRules, err := s.store.ListQualityRulesByTargets(ctx, keys)
+	if err != nil {
+		return errors.Wrap(err, "failed to read the targets' rules")
+	}
+	columns := make(map[store.MetaGUIDKey]map[string]struct{}, len(targets))
+	// checkedColumns is the coverage numerator's set: the columns of ENABLED rules.
+	// A paused rule no longer watches data, so it covers nothing.
+	checkedColumns := make(map[store.MetaGUIDKey]map[string]struct{}, len(targets))
+	for _, rule := range pageRules {
+		column := dataquality.ConfigColumn(rule.Config)
+		if column == "" {
+			continue
+		}
+		key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
+		if columns[key] == nil {
+			columns[key] = map[string]struct{}{}
+		}
+		columns[key][column] = struct{}{}
+		if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+			continue
+		}
+		if checkedColumns[key] == nil {
+			checkedColumns[key] = map[string]struct{}{}
+		}
+		checkedColumns[key][column] = struct{}{}
+	}
+	orphanReasons, err := s.targetOrphanReasons(ctx, pageRules)
+	if err != nil {
+		return err
+	}
+	orphaned := make(map[store.MetaGUIDKey]bool, len(targets))
+	for _, rule := range pageRules {
+		if orphanReasons[rule.ID] != "" {
+			orphaned[store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}] = true
+		}
+	}
+	runSummaries, err := s.store.ListQualityTargetRunSummaries(ctx, keys)
+	if err != nil {
+		return errors.Wrap(err, "failed to read the targets' latest runs")
+	}
+	// Only enabled rules contribute to the score; a paused rule is not part of what
+	// the target currently promises.
+	enabledRules := make([]*store.QualityRuleMessage, 0, len(pageRules))
+	for _, rule := range pageRules {
+		if rule.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+			enabledRules = append(enabledRules, rule)
+		}
+	}
+	latest, err := s.latestQualityExecutions(ctx, enabledRules)
+	if err != nil {
+		return err
+	}
+	scores := qualityTargetScores(pageRules, latest)
+	tallies, err := s.store.ListQualityTargetExecutionTallies(ctx, keys, qualityTargetRecentExecutionLimit)
+	if err != nil {
+		return errors.Wrap(err, "failed to read the targets' recent execution tallies")
+	}
+	// The column denominator and the numerator's guard come from one registry read,
+	// so covered can never exceed total even while schema sync is rewriting a
+	// target's column list.
+	registryColumns, err := s.store.ListMetaRegistryTargetColumns(ctx, keys)
+	if err != nil {
+		return errors.Wrap(err, "failed to read the targets' registry columns")
+	}
+	for _, target := range targets {
+		key := store.MetaGUIDKey{GUID: target.GUID, ObjectType: target.Type}
+		target.ColumnCount = int32(len(columns[key]))
+		target.Orphaned = orphaned[key]
+		if summary := runSummaries[key]; summary != nil {
+			target.LatestRun = summary
+			target.RunCount = summary.RunCount
+		}
+		score := scores[key]
+		target.QualityScore = score.score
+		target.ScoredRuleCount = score.scored
+		target.RecentPassRate, target.RecentExecutionCount = qualityRecentPassRate(tallies[key])
+		target.CoveredColumnCount, target.TotalColumnCount = qualityTargetColumnCoverage(registryColumns[key], checkedColumns[key])
+	}
+	return nil
+}
+
+// qualityTargetColumnCoverage counts a target's column coverage from the registry
+// column names of one read: the denominator is every column the registry records
+// for it, the numerator only the enabled checks' columns that still exist there. A
+// check that names no column, a paused check and a column the registry no longer
+// holds cover nothing, which is what keeps covered <= total.
+func qualityTargetColumnCoverage(registryColumns, checkedColumns map[string]struct{}) (int32, int32) {
+	covered := int32(0)
+	for column := range checkedColumns {
+		if _, ok := registryColumns[column]; ok {
+			covered++
+		}
+	}
+	return covered, int32(len(registryColumns))
 }
 
 // UpdateQualityTargetSchedule replaces one target's schedule: every enabled
@@ -411,6 +547,8 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		Orphaned:          workspace.orphanedReason != "",
 	}
 	columns := make(map[string]struct{}, len(workspace.rules))
+	// checkedColumns is the coverage numerator: only an enabled rule watches data.
+	checkedColumns := make(map[string]struct{}, len(workspace.rules))
 	for _, rule := range workspace.rules {
 		summary.RuleCount++
 		switch rule.State {
@@ -424,6 +562,9 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 		}
 		if column := dataquality.ConfigColumn(rule.Config); column != "" {
 			columns[column] = struct{}{}
+			if rule.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+				checkedColumns[column] = struct{}{}
+			}
 		}
 		if workspace.schemaChanged[rule.ID] {
 			summary.SchemaChanged = true
@@ -432,6 +573,13 @@ func (s *DataQualityService) GetQualityTarget(ctx context.Context, req *connect.
 	summary.ColumnCount = int32(len(columns))
 	summary.Schedule = convertQualityTargetSchedule(workspace.schedule)
 	runKey := store.MetaGUIDKey{GUID: targetGUID, ObjectType: workspace.metaType}
+	// Column coverage comes from the same registry read the directory and the
+	// metadata browser use, so the workspace header cannot disagree with either.
+	registryColumns, err := s.store.ListMetaRegistryTargetColumns(ctx, []store.MetaGUIDKey{runKey})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's registry columns")
+	}
+	summary.CoveredColumnCount, summary.TotalColumnCount = qualityTargetColumnCoverage(registryColumns[runKey], checkedColumns)
 	if entry := workspace.runSummaries[runKey]; entry != nil {
 		summary.LatestRun = convertQualityRun(workspaceID, entry.Run)
 		summary.RunCount = entry.RunCount
@@ -615,6 +763,8 @@ func convertQualityTargetSummary(workspaceID string, target *store.QualityTarget
 		ScoredRuleCount:      target.ScoredRuleCount,
 		RecentPassRate:       target.RecentPassRate,
 		RecentExecutionCount: target.RecentExecutionCount,
+		CoveredColumnCount:   target.CoveredColumnCount,
+		TotalColumnCount:     target.TotalColumnCount,
 	}
 	if target.ScheduleInterval > 0 {
 		summary.Schedule = &v1pb.QualityTargetSchedule{

@@ -77,6 +77,7 @@ import {
   QualitySuggestionSource,
   QualitySuggestionStatus,
   type QualityTarget,
+  QualityTargetKeySchema,
   QualityTargetOrder,
   type QualityTargetSchedule,
   type QualityTargetSummary,
@@ -168,6 +169,13 @@ export async function listQualityTargets(options: {
   table?: string;
   /** A case-insensitive substring over the target's path and GUID. */
   search?: string;
+  /**
+   * The exact targets to answer, in request order. A selection is not a page:
+   * the server ignores `pageSize`, `pageToken` and `orderBy`, caps one request
+   * at 200 keys, and omits a key with no live rule — that target is simply not
+   * monitored.
+   */
+  targets?: ReadonlyArray<{ targetGuid: string; metaType: MetaType }>;
   /** Only targets whose worst latest result is this status. */
   worstStatus?: QualityStatus;
   hasOpenIssue?: boolean;
@@ -184,6 +192,12 @@ export async function listQualityTargets(options: {
     schema: options.schema ?? "",
     table: options.table ?? "",
     search: options.search ?? "",
+    targets: (options.targets ?? []).map((target) =>
+      create(QualityTargetKeySchema, {
+        targetGuid: target.targetGuid,
+        metaType: target.metaType,
+      })
+    ),
     worstStatus: options.worstStatus ?? QualityStatus.UNSPECIFIED,
     hasOpenIssue: options.hasOpenIssue ?? false,
     hasPendingDraft: options.hasPendingDraft ?? false,

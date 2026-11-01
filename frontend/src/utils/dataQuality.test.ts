@@ -58,6 +58,7 @@ import {
   qualityStatusKey,
   qualityStatusVariant,
   qualityTargetMetadataRoute,
+  qualityTargetWorkspaceRoute,
   qualityThresholdMetricKey,
   targetScopeLabel,
 } from "./dataQuality";
@@ -672,6 +673,37 @@ describe("qualityTargetMetadataRoute", () => {
           metaType: MetaType.UNSPECIFIED,
         })
       )
+    ).toBeNull();
+  });
+});
+
+describe("qualityTargetWorkspaceRoute", () => {
+  it("carries the GUID and the meta type", () => {
+    expect(
+      qualityTargetWorkspaceRoute("inst;db;public;orders", MetaType.TABLE)
+    ).toEqual({
+      name: "DataQualityTarget",
+      params: { targetGuid: ["inst", "db", "public", "orders"] },
+      query: { metaType: String(MetaType.TABLE) },
+    });
+  });
+
+  it("asks the workspace to open its check composer when told to", () => {
+    expect(
+      qualityTargetWorkspaceRoute("inst;db;public;orders", MetaType.VIEW, {
+        add: true,
+      })
+    ).toEqual({
+      name: "DataQualityTarget",
+      params: { targetGuid: ["inst", "db", "public", "orders"] },
+      query: { metaType: String(MetaType.VIEW), add: "1" },
+    });
+  });
+
+  it("has no route without a GUID or a meta type", () => {
+    expect(qualityTargetWorkspaceRoute("", MetaType.TABLE)).toBeNull();
+    expect(
+      qualityTargetWorkspaceRoute("inst;db;public;orders", MetaType.UNSPECIFIED)
     ).toBeNull();
   });
 });

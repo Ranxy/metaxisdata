@@ -51,9 +51,16 @@ type FindQualityTargetMessage struct {
 	HasOpenIssue bool
 	// HasPendingDraft keeps only targets with at least one pending AI draft.
 	HasPendingDraft bool
-	Order           QualityTargetOrder
-	Limit           *int
-	Offset          *int
+	// TargetKeys keeps only these exact targets. It is an exact selection, not a
+	// prefix filter, and it is how the metadata browser reads one page's trust
+	// signals in a single call. The aggregate query binds it into the rule scan,
+	// the per-rule execution probe and the issue/draft tallies, so a selection
+	// costs its own targets rather than the workspace's whole history. An empty
+	// slice means no selection.
+	TargetKeys []MetaGUIDKey
+	Order      QualityTargetOrder
+	Limit      *int
+	Offset     *int
 }
 
 // QualityTargetMessage is one row of the target directory: the target identity
@@ -110,6 +117,14 @@ type QualityTargetMessage struct {
 	// ListQualityTargetExecutionTallies.
 	RecentPassRate       *float64
 	RecentExecutionCount int32
+
+	// CoveredColumnCount and TotalColumnCount are the target's column coverage:
+	// how many of its current registry columns at least one enabled rule reads, and
+	// how many columns the registry currently records for it. Both are filled by
+	// the API from one registry read, so the numerator can never exceed the
+	// denominator; a target that no longer resolves reports 0/0.
+	CoveredColumnCount int32
+	TotalColumnCount   int32
 }
 
 // qualityTargetStatusRank maps a quality status onto the ordering used to pick a
@@ -248,102 +263,16 @@ func targetWhere(find *FindQualityTargetMessage, base int) ([]string, []any, err
 // returns the page: the per-target counts, the worst latest result, the last run
 // and the issue/draft tallies, so the directory never reads every rule row to
 // build its rows.
+//
+// An exact-target selection is pushed into the query rather than applied to its
+// result: the rule scan, the per-rule latest-execution probe and the issue/draft
+// tallies all run for the selected targets alone, so a metadata page costs its
+// own objects and not the workspace's retained execution history.
 func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetMessage) ([]*QualityTargetMessage, error) {
-	if find == nil {
-		find = &FindQualityTargetMessage{}
-	}
-	args := []any{
-		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED),
-		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
-		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED),
-		int16(storepb.QualityStatus_QUALITY_STATUS_ERROR),
-		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
-		int16(storepb.QualityStatus_QUALITY_STATUS_WARN),
-		int16(storepb.QualityStatus_QUALITY_STATUS_PASS),
-		int16(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
-		int16(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
-		int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED),
-		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT),
-		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL),
-		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
-	}
-	filter, filterArgs, err := targetWhere(find, len(args))
+	query, args, err := qualityTargetsStatement(find)
 	if err != nil {
 		return nil, err
 	}
-	query := `WITH live AS (
-		SELECT r.id, r.target_guid, r.target_type, r.target_path, r.state, r.target_meta_hash
-		FROM quality_rule r
-		WHERE r.deleted = FALSE AND r.state <> $1
-	),
-	targets AS (
-		SELECT l.target_guid, l.target_type,
-			(COUNT(*))::INT AS rule_count,
-			(COUNT(*) FILTER (WHERE l.state = $2))::INT AS enabled_count,
-			(COUNT(*) FILTER (WHERE l.state = $3))::INT AS paused_count,
-			(COUNT(DISTINCT NULLIF(l.target_path->>'column', '')))::INT AS column_count,
-			(ARRAY_AGG(l.target_path ORDER BY l.id DESC))[1] AS target_path,
-			BOOL_OR(l.target_meta_hash IS NOT NULL AND s.schema_hash IS NOT NULL AND l.target_meta_hash <> s.schema_hash) AS schema_changed
-		FROM live l
-		LEFT JOIN meta_registry_resource_schema s
-			ON s.guid = l.target_guid AND s.object_type = l.target_type
-		GROUP BY l.target_guid, l.target_type
-	),
-	latest AS (
-		SELECT DISTINCT ON (e.rule_id) e.rule_id, e.status, e.finished_at
-		FROM quality_execution e
-		JOIN live l ON l.id = e.rule_id
-		WHERE e.status <> 0
-		ORDER BY e.rule_id, e.started_at DESC, e.id DESC
-	),
-	results AS (
-		SELECT l.target_guid, l.target_type,
-			MAX(` + qualityTargetWorstRankCase() + `)::INT AS worst_rank,
-			MAX(latest.finished_at) AS last_run_time
-		FROM latest
-		JOIN live l ON l.id = latest.rule_id
-		GROUP BY l.target_guid, l.target_type
-	),
-	issues AS (
-		SELECT i.target_guid, i.target_type, (COUNT(*))::INT AS open_issue_count
-		FROM quality_issue i
-		JOIN quality_rule r ON r.id = i.rule_id
-		WHERE i.status <> $10 AND r.deleted = FALSE AND r.state <> $1
-		GROUP BY i.target_guid, i.target_type
-	),
-	drafts AS (
-		SELECT target_guid, target_type,
-			(COUNT(*) FILTER (WHERE kind = $11))::INT AS pending_draft_count,
-			(COUNT(*) FILTER (WHERE kind = $12))::INT AS pending_label_count
-		FROM quality_suggestion
-		WHERE status = $13
-		GROUP BY target_guid, target_type
-	)
-	SELECT t.target_guid, t.target_type, t.target_path, t.rule_count, t.enabled_count,
-		t.paused_count, t.column_count, COALESCE(r.worst_rank, 0), r.last_run_time,
-		COALESCE(i.open_issue_count, 0), COALESCE(d.pending_draft_count, 0),
-		COALESCE(d.pending_label_count, 0), COALESCE(t.schema_changed, FALSE),
-		sch.schedule_interval_seconds, sch.next_run_at
-	FROM targets t
-	LEFT JOIN results r ON r.target_guid = t.target_guid AND r.target_type = t.target_type
-	LEFT JOIN issues i ON i.target_guid = t.target_guid AND i.target_type = t.target_type
-	LEFT JOIN drafts d ON d.target_guid = t.target_guid AND d.target_type = t.target_type
-	LEFT JOIN quality_target_schedule sch
-		ON sch.target_guid = t.target_guid AND sch.target_type = t.target_type
-	WHERE ` + strings.Join(filter, " AND ") + `
-	ORDER BY ` + qualityTargetOrderClause(find.Order)
-	args = append(args, filterArgs...)
-	// Limit and offset are optional, like the other list stores: omitting them
-	// must mean "no bound", not LIMIT 0.
-	if find.Limit != nil {
-		args = append(args, max(*find.Limit, 0))
-		query += fmt.Sprintf(" LIMIT $%d", len(args))
-	}
-	if find.Offset != nil {
-		args = append(args, max(*find.Offset, 0))
-		query += fmt.Sprintf(" OFFSET $%d", len(args))
-	}
-
 	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality targets")
@@ -363,14 +292,15 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 			scheduleSeconds sql.NullInt32
 			scheduleNext    sql.NullTime
 		)
-		if err := rows.Scan(
+		scanErr := rows.Scan(
 			&targetGUID, &targetType, &targetPath,
 			&message.RuleCount, &message.EnabledCount, &message.PausedCount, &message.ColumnCount,
 			&worstRank, &lastRunTime,
 			&message.OpenIssueCount, &message.PendingDraftCount, &message.PendingLabelCount,
 			&schemaChange, &scheduleSeconds, &scheduleNext,
-		); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a quality target")
+		)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a quality target")
 		}
 		message.GUID = targetGUID
 		message.Type = storepb.MetaType(targetType)
@@ -396,6 +326,133 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 		return nil, errors.Wrap(err, "failed to iterate the quality targets")
 	}
 	return targets, nil
+}
+
+// qualityTargetsStatement renders the aggregate query and its arguments. It is a
+// pure function so the pushed-down selection, the bounded execution probe and the
+// placeholder layout can be pinned without a database.
+func qualityTargetsStatement(find *FindQualityTargetMessage) (string, []any, error) {
+	if find == nil {
+		find = &FindQualityTargetMessage{}
+	}
+	args := []any{
+		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ARCHIVED),
+		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
+		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED),
+		int16(storepb.QualityStatus_QUALITY_STATUS_ERROR),
+		int16(storepb.QualityStatus_QUALITY_STATUS_FAIL),
+		int16(storepb.QualityStatus_QUALITY_STATUS_WARN),
+		int16(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		int16(storepb.QualityStatus_QUALITY_STATUS_SKIPPED),
+		int16(storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED),
+		int16(storepb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED),
+		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT),
+		int16(storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_LABEL),
+		int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING),
+	}
+	// The selection has to restrict the scans themselves. Applied only to the
+	// outer SELECT it would leave the rule aggregation and the execution probe
+	// reading the whole workspace — the exact whole-history scan a metadata page
+	// must not pay. The outer predicate stays as a safety net around the result.
+	liveSelection, issuesSelection, draftsSelection, outerSelection := "", "", "", ""
+	if len(find.TargetKeys) > 0 {
+		guids := make([]string, 0, len(find.TargetKeys))
+		objectTypes := make([]int16, 0, len(find.TargetKeys))
+		for _, key := range find.TargetKeys {
+			guids = append(guids, key.GUID)
+			objectTypes = append(objectTypes, int16(key.ObjectType))
+		}
+		args = append(args, pq.Array(guids), pq.Array(objectTypes))
+		selected := fmt.Sprintf("(SELECT * FROM unnest($%d::text[], $%d::int2[]))", len(args)-1, len(args))
+		liveSelection = " AND (r.target_guid, r.target_type) IN " + selected
+		issuesSelection = " AND (i.target_guid, i.target_type) IN " + selected
+		draftsSelection = " AND (target_guid, target_type) IN " + selected
+		outerSelection = "(t.target_guid, t.target_type) IN " + selected
+	}
+	filter, filterArgs, err := targetWhere(find, len(args))
+	if err != nil {
+		return "", nil, err
+	}
+	if outerSelection != "" {
+		filter = append(filter, outerSelection)
+	}
+	args = append(args, filterArgs...)
+	query := `WITH live AS (
+		SELECT r.id, r.target_guid, r.target_type, r.target_path, r.state, r.target_meta_hash
+		FROM quality_rule r
+		WHERE r.deleted = FALSE AND r.state <> $1` + liveSelection + `
+	),
+	targets AS (
+		SELECT l.target_guid, l.target_type,
+			(COUNT(*))::INT AS rule_count,
+			(COUNT(*) FILTER (WHERE l.state = $2))::INT AS enabled_count,
+			(COUNT(*) FILTER (WHERE l.state = $3))::INT AS paused_count,
+			(COUNT(DISTINCT NULLIF(l.target_path->>'column', '')))::INT AS column_count,
+			(ARRAY_AGG(l.target_path ORDER BY l.id DESC))[1] AS target_path,
+			BOOL_OR(l.target_meta_hash IS NOT NULL AND s.schema_hash IS NOT NULL AND l.target_meta_hash <> s.schema_hash) AS schema_changed
+		FROM live l
+		LEFT JOIN meta_registry_resource_schema s
+			ON s.guid = l.target_guid AND s.object_type = l.target_type
+		GROUP BY l.target_guid, l.target_type
+	),
+	latest AS (
+		SELECT l.id AS rule_id, e.status, e.finished_at
+		FROM live l
+		JOIN LATERAL (
+			SELECT e.status, e.finished_at
+			FROM quality_execution e
+			WHERE e.rule_id = l.id AND e.status <> 0
+			ORDER BY e.started_at DESC, e.id DESC
+			LIMIT 1
+		) e ON TRUE
+	),
+	results AS (
+		SELECT l.target_guid, l.target_type,
+			MAX(` + qualityTargetWorstRankCase() + `)::INT AS worst_rank,
+			MAX(latest.finished_at) AS last_run_time
+		FROM latest
+		JOIN live l ON l.id = latest.rule_id
+		GROUP BY l.target_guid, l.target_type
+	),
+	issues AS (
+		SELECT i.target_guid, i.target_type, (COUNT(*))::INT AS open_issue_count
+		FROM quality_issue i
+		JOIN quality_rule r ON r.id = i.rule_id
+		WHERE i.status <> $10 AND r.deleted = FALSE AND r.state <> $1` + issuesSelection + `
+		GROUP BY i.target_guid, i.target_type
+	),
+	drafts AS (
+		SELECT target_guid, target_type,
+			(COUNT(*) FILTER (WHERE kind = $11))::INT AS pending_draft_count,
+			(COUNT(*) FILTER (WHERE kind = $12))::INT AS pending_label_count
+		FROM quality_suggestion
+		WHERE status = $13` + draftsSelection + `
+		GROUP BY target_guid, target_type
+	)
+	SELECT t.target_guid, t.target_type, t.target_path, t.rule_count, t.enabled_count,
+		t.paused_count, t.column_count, COALESCE(r.worst_rank, 0), r.last_run_time,
+		COALESCE(i.open_issue_count, 0), COALESCE(d.pending_draft_count, 0),
+		COALESCE(d.pending_label_count, 0), COALESCE(t.schema_changed, FALSE),
+		sch.schedule_interval_seconds, sch.next_run_at
+	FROM targets t
+	LEFT JOIN results r ON r.target_guid = t.target_guid AND r.target_type = t.target_type
+	LEFT JOIN issues i ON i.target_guid = t.target_guid AND i.target_type = t.target_type
+	LEFT JOIN drafts d ON d.target_guid = t.target_guid AND d.target_type = t.target_type
+	LEFT JOIN quality_target_schedule sch
+		ON sch.target_guid = t.target_guid AND sch.target_type = t.target_type
+	WHERE ` + strings.Join(filter, " AND ") + `
+	ORDER BY ` + qualityTargetOrderClause(find.Order)
+	// Limit and offset are optional, like the other list stores: omitting them
+	// must mean "no bound", not LIMIT 0.
+	if find.Limit != nil {
+		args = append(args, max(*find.Limit, 0))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	if find.Offset != nil {
+		args = append(args, max(*find.Offset, 0))
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
+	}
+	return query, args, nil
 }
 
 // qualityTargetOrderClause is the ORDER BY for one directory order. Every order

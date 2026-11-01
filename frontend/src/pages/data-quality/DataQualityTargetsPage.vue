@@ -247,10 +247,10 @@
                     {{ t("dataQuality.targets.rulesCount", { count: summary.ruleCount }) }}
                   </span>
                   <Badge
-                    v-if="summary.worstStatus !== QualityStatus.UNSPECIFIED"
-                    :variant="qualityStatusVariant(summary.worstStatus)"
+                    v-if="hasResultBadge(summary)"
+                    :variant="resultBadgeVariant(summary)"
                   >
-                    {{ t(qualityStatusKey(summary.worstStatus)) }}
+                    {{ resultBadgeText(summary) }}
                   </Badge>
                   <span
                     v-if="summary.lastRunTime"
@@ -260,9 +260,12 @@
                     {{ formatRelativeTime(summary.lastRunTime, locale) }}
                   </span>
                   <span v-else>{{ t("dataQuality.targets.neverRun") }}</span>
-                  <span v-if="summary.columnCount > 0">
+                  <span
+                    v-if="qualitySignalCoverage(summary)"
+                    :title="columnCoverageTitle(summary)"
+                  >
                     {{ t("dataQuality.targets.columnColumns") }}
-                    {{ summary.columnCount }}
+                    {{ columnCoverage(summary) }}
                   </span>
                   <span v-if="summary.openIssueCount > 0">
                     {{ t("dataQuality.targets.columnIssues") }}
@@ -271,7 +274,10 @@
                   <span v-if="summary.pendingDraftCount > 0">
                     {{ t("dataQuality.targets.pendingDraftsCount", { count: summary.pendingDraftCount }) }}
                   </span>
-                  <span class="tabular-nums">
+                  <span
+                    v-if="!qualitySignalAllPaused(summary)"
+                    class="tabular-nums"
+                  >
                     {{ scoreLine(summary) }}
                   </span>
                 </div>
@@ -291,18 +297,22 @@
                   {{ summary.enabledRuleCount }} / {{ summary.ruleCount }}
                 </div>
               </TableCell>
-              <TableCell class="hidden tabular-nums lg:table-cell">
-                {{ summary.columnCount > 0 ? summary.columnCount : "-" }}
+              <TableCell
+                class="hidden tabular-nums lg:table-cell"
+                :title="columnCoverageTitle(summary)"
+              >
+                {{ columnCoverage(summary) }}
               </TableCell>
               <TableCell class="hidden md:table-cell">
-                <template v-if="summary.lastRunTime">
+                <template v-if="hasResultBadge(summary) || summary.lastRunTime">
                   <Badge
-                    v-if="summary.worstStatus !== QualityStatus.UNSPECIFIED"
-                    :variant="qualityStatusVariant(summary.worstStatus)"
+                    v-if="hasResultBadge(summary)"
+                    :variant="resultBadgeVariant(summary)"
                   >
-                    {{ t(qualityStatusKey(summary.worstStatus)) }}
+                    {{ resultBadgeText(summary) }}
                   </Badge>
                   <div
+                    v-if="summary.lastRunTime && !qualitySignalAllPaused(summary)"
                     class="mt-1 whitespace-nowrap text-xs text-muted-foreground"
                     :title="formatDateTime(summary.lastRunTime, locale)"
                   >
@@ -317,8 +327,10 @@
                 </span>
                 <!-- The score and pass rate are target aggregates like the
                      latest result above them, so they ride in that cell instead
-                     of widening the table. -->
+                     of widening the table. A paused target has no current
+                     verdict, so it shows its state and no aggregate. -->
                 <div
+                  v-if="!qualitySignalAllPaused(summary)"
                   class="mt-1 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
                   :title="
                     summary.recentExecutionCount > 0
@@ -425,12 +437,20 @@ import {
   type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
-import { qualityStatusKey, qualityStatusVariant } from "@/utils/dataQuality";
+import {
+  type QualityBadgeVariant,
+  qualityStatusKey,
+  qualityStatusVariant,
+} from "@/utils/dataQuality";
 import type { TargetSelection } from "@/utils/dataQualityForm";
 import {
   formatPassRate,
   formatQualityScore,
 } from "@/utils/dataQualityOverview";
+import {
+  qualitySignalAllPaused,
+  qualitySignalCoverage,
+} from "@/utils/dataQualitySignal";
 import {
   targetDisplayName,
   targetFullPath,
@@ -645,6 +665,60 @@ const hasActiveFilters = computed(
  * must not be confused in the tooltip.
  */
 const RECENT_PASS_RATE_WINDOW = 20;
+
+/**
+ * The row's column coverage as `covered/total`: how many of the target's current
+ * columns an enabled check reads. "-" means there is no denominator — the target
+ * no longer resolves — which is not the same as "0 of its columns are watched".
+ */
+function columnCoverage(summary: QualityTargetSummary): string {
+  const coverage = qualitySignalCoverage(summary);
+  return coverage === null ? "-" : `${coverage.covered}/${coverage.total}`;
+}
+
+/** The coverage cell's tooltip: the share, or why it has no denominator. */
+function columnCoverageTitle(summary: QualityTargetSummary): string {
+  const coverage = qualitySignalCoverage(summary);
+  if (coverage !== null) {
+    return t("dataQuality.coverage.coveredSummary", {
+      covered: coverage.covered,
+      total: coverage.total,
+    });
+  }
+  // 0/0 has two causes, and only one of them is an orphan: a resolvable object
+  // whose registry record carries no columns is not gone, it just has nothing to
+  // cover.
+  return summary.orphaned
+    ? t("dataQuality.targets.coverageUnresolved")
+    : t("dataQuality.targets.coverageNoColumns");
+}
+
+/**
+ * Whether the result cell has a badge to draw: a verdict, or the neutral state
+ * of a target whose checks are all paused. Paused is not a verdict.
+ */
+function hasResultBadge(summary: QualityTargetSummary): boolean {
+  return (
+    qualitySignalAllPaused(summary) ||
+    summary.worstStatus !== QualityStatus.UNSPECIFIED
+  );
+}
+
+/** The result badge's word. */
+function resultBadgeText(summary: QualityTargetSummary): string {
+  return qualitySignalAllPaused(summary)
+    ? t("dataQuality.signal.allPaused")
+    : t(qualityStatusKey(summary.worstStatus));
+}
+
+/** The result badge's tone; a paused target is never a health colour. */
+function resultBadgeVariant(
+  summary: QualityTargetSummary
+): QualityBadgeVariant {
+  return qualitySignalAllPaused(summary)
+    ? "neutral"
+    : qualityStatusVariant(summary.worstStatus);
+}
 
 /**
  * The row's aggregate health under the latest result: the quality score over

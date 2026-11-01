@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import { Engine } from "@/types/proto-es/v1/common_pb";
+import { QualityOverviewSchema } from "@/types/proto-es/v1/data_quality_service_pb";
 import { DatabaseSchema } from "@/types/proto-es/v1/database_service_pb";
 import { EnvironmentSchema } from "@/types/proto-es/v1/environment_service_pb";
 import {
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   listOpenLineageDatasets: vi.fn(),
   listOpenLineageRuns: vi.fn(),
   listAllEnvironments: vi.fn(),
+  getQualityOverview: vi.fn(),
 }));
 
 vi.mock("@/api/instance", () => ({ listInstances: mocks.listInstances }));
@@ -35,6 +37,9 @@ vi.mock("@/api/openlineage", () => ({
   listOpenLineageTasks: mocks.listOpenLineageTasks,
   listOpenLineageDatasets: mocks.listOpenLineageDatasets,
   listOpenLineageRuns: mocks.listOpenLineageRuns,
+}));
+vi.mock("@/api/data-quality", () => ({
+  getQualityOverview: mocks.getQualityOverview,
 }));
 vi.mock("@/api/environment", () => ({
   // The dashboard reads environments through the shared store, so the store's
@@ -58,6 +63,7 @@ const PERMISSIONS = [
   "metaxisdata.llm.profiles.list",
   "metaxisdata.users.list",
   "metaxisdata.auditLogs.search",
+  "metaxisdata.dataQuality.rules.list",
 ];
 
 const Dummy = { template: "<div />" };
@@ -105,6 +111,11 @@ async function mountHome() {
         name: "OpenLineageRunDetail",
         component: Dummy,
       },
+      {
+        path: "/data-quality",
+        name: "DataQualityOverview",
+        component: Dummy,
+      },
     ],
   });
   await router.push("/");
@@ -145,6 +156,9 @@ describe("HomePage", () => {
       runs: [],
       nextPageToken: "",
     });
+    mocks.getQualityOverview.mockResolvedValue(
+      create(QualityOverviewSchema, {})
+    );
   });
 
   it("guides a fresh workspace instead of showing empty tables", async () => {
@@ -250,6 +264,48 @@ describe("HomePage", () => {
     expect(wrapper.text()).toContain("Part of the overview failed to load");
     // The sections that did load are still rendered.
     expect(wrapper.text()).toContain("Quick actions");
+    consoleError.mockRestore();
+  });
+
+  it("summarizes data-quality coverage without costing the trend read", async () => {
+    mocks.getQualityOverview.mockResolvedValue(
+      create(QualityOverviewSchema, {
+        monitoredTableCount: 1,
+        totalTableCount: 4,
+        qualityScore: 82.5,
+        openWarningCount: 2,
+        openErrorCount: 1,
+      })
+    );
+    const wrapper = await mountHome();
+
+    expect(mocks.getQualityOverview).toHaveBeenCalledWith({ trendDays: 1 });
+    const text = wrapper.text();
+    expect(text).toContain(i18n.global.t("home.statDataQuality"));
+    expect(text).toContain("25.0%");
+    expect(text).toContain(
+      i18n.global.t("home.statDataQualityHint", {
+        score: "82.5",
+        count: 3,
+      })
+    );
+    // The card jumps into the data-quality section.
+    expect(wrapper.find('a[href="/data-quality"]').exists()).toBe(true);
+  });
+
+  it("keeps the rest of the page when the quality summary fails", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    mocks.getQualityOverview.mockRejectedValue(new Error("offline"));
+    const wrapper = await mountHome();
+
+    const text = wrapper.text();
+    expect(text).toContain(i18n.global.t("home.loadErrorTitle"));
+    expect(text).toContain(i18n.global.t("home.loadErrorDataQuality"));
+    // The rest of the dashboard rendered normally.
+    expect(text).toContain(i18n.global.t("home.instancesTitle"));
+    expect(text).not.toContain(i18n.global.t("home.statDataQuality"));
     consoleError.mockRestore();
   });
 });
