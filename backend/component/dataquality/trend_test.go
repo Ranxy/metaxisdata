@@ -228,6 +228,42 @@ func TestBuildTrendDropsAnEarlierRuleType(t *testing.T) {
 	require.Equal(t, int64(2), result.Points[0].ExecutionID)
 }
 
+// TestBuildTrendStopsAtTheNewestTypeChange pins the truncation on a type change
+// away and back: the series is the newest run of the current type, not the union
+// of every run that type ever judged, because stitching across the excluded run
+// would draw one line over two unrelated kinds of measurement.
+func TestBuildTrendStopsAtTheNewestTypeChange(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_Unique{Unique: &storepb.UniqueConfig{Column: "uid"}},
+	}
+	oldConfig := &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: validationPtr(int64(1))}},
+	}
+	newest := trendExecution(3, 1, 1, 100)
+	newest.Revision = 3
+	middle := trendExecution(2, 1000, 0, 1000)
+	middle.Revision = 2
+	oldest := trendExecution(1, 2, 2, 100)
+	oldest.Revision = 1
+
+	result := BuildTrend(TrendInput{
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		Revision:   3,
+		Config:     config,
+		Executions: []TrendExecution{newest, middle, oldest},
+		Revisions: []TrendRevision{
+			{Revision: 1, RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, Config: config},
+			{Revision: 2, RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Config: oldConfig},
+			{Revision: 3, RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, Config: config},
+		},
+	})
+	require.True(t, result.HistoryRestarted)
+	require.Len(t, result.Points, 1, "the older same-type run is on the far side of the type change")
+	require.Equal(t, int64(3), result.Points[0].ExecutionID)
+}
+
 // A revision the caller did not carry proves nothing, so its point stays instead of
 // disappearing from a chart that already shows it.
 func TestBuildTrendKeepsAPointWhoseRevisionIsUnknown(t *testing.T) {

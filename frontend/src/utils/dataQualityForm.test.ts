@@ -1442,6 +1442,58 @@ describe("threshold suggestions", () => {
     }
   });
 
+  it("clears a warning bound the suggestion does not carry", () => {
+    // A flat history suggests fail=0 and no warning zone; keeping the old warn=5
+    // would make the form invalid (warn above fail) and the server would reject
+    // the save.
+    const form = formFor(QualityRuleType.UNIQUE);
+    form.config.failThreshold = "10";
+    form.config.warnThreshold = "5";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 0 })
+    );
+    expect(applied.config.failThreshold).toBe("0");
+    expect(applied.config.warnThreshold).toBe("");
+  });
+
+  it("clears a freshness warning lag the suggestion does not carry", () => {
+    const form = formFor(QualityRuleType.FRESHNESS);
+    form.config.maxLagSeconds = "3600";
+    form.config.warnLagSeconds = "1800";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 900 })
+    );
+    expect(applied.config.maxLagSeconds).toBe("900");
+    expect(applied.config.warnLagSeconds).toBe("");
+  });
+
+  it("clears a null check's warning bound in the unit it measures in", () => {
+    const form = formFor(QualityRuleType.NULL_PERCENT);
+    form.config.nullMetric = "percent";
+    form.config.maxNullPct = "5";
+    form.config.warnNullPct = "2";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 1 })
+    );
+    expect(applied.config.maxNullPct).toBe("1");
+    expect(applied.config.warnNullPct).toBe("");
+  });
+
+  it("clears a row count's warning bound when only the failure bound is suggested", () => {
+    const form = formFor(QualityRuleType.ROW_COUNT);
+    form.config.minRows = "5";
+    form.config.warnMinRows = "8";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 10 })
+    );
+    expect(applied.config.minRows).toBe("10");
+    expect(applied.config.warnMinRows).toBe("");
+  });
+
   it("writes a null check's suggestion into the unit it measures in", () => {
     const countForm = formFor(QualityRuleType.NULL_PERCENT);
     countForm.config.nullMetric = "count";

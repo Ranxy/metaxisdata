@@ -1193,9 +1193,6 @@ func assertJourneyTrend(t *testing.T, fixture *qualityFixture, ruleNames map[str
 	require.Equal(t, float64(1), suggested.GetSuggestion().GetThresholds().GetFailValue())
 }
 
-// assertJourneyMissingReadOnlySource removes the instance's READ_ONLY source after
-// the rule was saved: the execution is ERROR, not FAIL, and the operational failure
-// is announced to the administrators.
 // assertJourneyDefaultOnEmptyBaseline proves the baseline fallback without a
 // configuration opt-in: a row_count_change check left at the default
 // NOT_EVALUATED judges nothing on its first run, but the row count that run

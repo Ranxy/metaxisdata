@@ -1384,34 +1384,73 @@ export function applyThresholdSuggestion(
       (config as Record<string, string | undefined>)[field] = value;
     }
   };
+  /** Clear a field the suggestion does not carry; see `setSingleBounds`. */
+  const clear = (field: keyof RuleConfigForm) => {
+    (config as Record<string, string | undefined>)[field] = "";
+  };
+  // The suggestion is the whole bound for the fields it covers: a warning zone it
+  // does not carry is cleared rather than left at the form's previous value, which
+  // may now be stricter than the suggested failure bound (the server rejects a
+  // warning threshold above the failure threshold).
   const setSingleBounds = () => {
+    if (fail === undefined) {
+      return;
+    }
     set("failThreshold", fail);
-    set("warnThreshold", warn);
+    if (warn === undefined) {
+      clear("warnThreshold");
+    } else {
+      set("warnThreshold", warn);
+    }
   };
 
   switch (form.ruleType) {
-    case QualityRuleType.ROW_COUNT:
-      set("minRows", integerText(thresholds.failValue));
-      set("maxRows", integerText(thresholds.failValueUpper));
-      set("warnMinRows", integerText(thresholds.warnValue));
-      set("warnMaxRows", integerText(thresholds.warnValueUpper));
+    case QualityRuleType.ROW_COUNT: {
+      // Each side is written only when the suggestion carries its failure bound,
+      // and its warning bound is part of that side: a missing warn bound is
+      // cleared so the pair stays inside the suggested failure bound.
+      const minRows = integerText(thresholds.failValue);
+      if (minRows !== undefined) {
+        set("minRows", minRows);
+        set("warnMinRows", integerText(thresholds.warnValue) ?? "");
+      }
+      const maxRows = integerText(thresholds.failValueUpper);
+      if (maxRows !== undefined) {
+        set("maxRows", maxRows);
+        set("warnMaxRows", integerText(thresholds.warnValueUpper) ?? "");
+      }
       break;
+    }
     case QualityRuleType.NULL_PERCENT:
       // A null check owns its count/percent switch instead of the shared
       // threshold metric; writing the suggestion into the other unit would
-      // turn "5 rows" into "5%".
+      // turn "5 rows" into "5%". The warn bound is cleared when it is absent,
+      // for the same reason as the shared threshold pair.
       if (form.config.nullMetric === "count") {
-        set("maxNullCount", integerText(thresholds.failValue));
-        set("warnNullCount", integerText(thresholds.warnValue));
-      } else {
+        const maxNullCount = integerText(thresholds.failValue);
+        if (maxNullCount !== undefined) {
+          set("maxNullCount", maxNullCount);
+          set("warnNullCount", integerText(thresholds.warnValue) ?? "");
+        }
+      } else if (fail !== undefined) {
         set("maxNullPct", fail);
-        set("warnNullPct", warn);
+        if (warn === undefined) {
+          clear("warnNullPct");
+        } else {
+          set("warnNullPct", warn);
+        }
       }
       break;
     case QualityRuleType.FRESHNESS:
       // A lag is measured in whole seconds; a fractional suggestion is rounded.
-      set("maxLagSeconds", integerText(thresholds.failValue));
-      set("warnLagSeconds", integerText(thresholds.warnValue));
+      if (thresholds.failValue !== undefined) {
+        set("maxLagSeconds", integerText(thresholds.failValue));
+        if (thresholds.warnValue === undefined) {
+          clear("warnLagSeconds");
+        } else {
+          set("warnLagSeconds", integerText(thresholds.warnValue));
+        }
+      }
       break;
     case QualityRuleType.UNIQUE:
     case QualityRuleType.UNIQUE_COMBINATION:

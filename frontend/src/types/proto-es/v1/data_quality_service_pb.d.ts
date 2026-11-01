@@ -1531,7 +1531,8 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
   /**
    * The row count a row_count_change check compared against. Unset for every
    * other type, and for a first observation that had no recent baseline to
-   * compare with (the verdict is then NOT_EVALUATED, driven by on_empty).
+   * compare with; the verdict then follows on_empty, which a new count-change
+   * check defaults to PASS so the first run only records the baseline.
    *
    * @generated from field: optional double baseline_value = 28;
    */

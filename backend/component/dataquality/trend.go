@@ -239,9 +239,12 @@ func BuildTrend(input TrendInput) TrendResult {
 		revision, known := revisions[execution.Revision]
 		if known && revision.RuleType != input.RuleType {
 			// The check was a different kind of check when this execution was judged;
-			// its measurement is not on this series' scale.
+			// its measurement is not on this series' scale. Executions are newest
+			// first, so everything older than this one is on the far side of the type
+			// change too: the series is truncated here rather than stitched across a
+			// type the reader cannot see.
 			result.HistoryRestarted = true
-			continue
+			break
 		}
 		value, ok := trendPointValue(input.RuleType, shape.Unit, input.Config, revision, known, execution)
 		if !ok {

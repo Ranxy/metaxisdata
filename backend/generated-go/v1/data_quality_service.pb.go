@@ -4424,7 +4424,8 @@ type QualityExecution struct {
 	Attempt int32 `protobuf:"varint,27,opt,name=attempt,proto3" json:"attempt,omitempty"`
 	// The row count a row_count_change check compared against. Unset for every
 	// other type, and for a first observation that had no recent baseline to
-	// compare with (the verdict is then NOT_EVALUATED, driven by on_empty).
+	// compare with; the verdict then follows on_empty, which a new count-change
+	// check defaults to PASS so the first run only records the baseline.
 	BaselineValue *float64 `protobuf:"fixed64,28,opt,name=baseline_value,json=baselineValue,proto3,oneof" json:"baseline_value,omitempty"`
 	// When that baseline was measured. Unset whenever baseline_value is.
 	BaselineTime  *timestamppb.Timestamp `protobuf:"bytes,29,opt,name=baseline_time,json=baselineTime,proto3" json:"baseline_time,omitempty"`

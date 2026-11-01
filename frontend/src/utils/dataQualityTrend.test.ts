@@ -130,9 +130,11 @@ describe("threshold bounds", () => {
       { key: "fail", bound: "lower", value: 10 },
       { key: "fail", bound: "upper", value: 20 },
     ]);
+    // A lone value is the upper bound a count rule writes; a range without a
+    // comparison is still read as a range above.
     const oneSided = create(QualityThresholdsSchema, { failValue: 5 });
     expect(trendThresholdBounds(oneSided)).toEqual([
-      { key: "fail", bound: "lower", value: 5 },
+      { key: "fail", bound: "upper", value: 5 },
     ]);
     // A non-finite value cannot be drawn and is dropped rather than crashing.
     expect(

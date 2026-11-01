@@ -85,9 +85,10 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   the current definition.
 
 Once a check has been judged at least five times, its edit dialog offers
-**Suggested thresholds** derived from the check's own history: for a count or
-freshness check, warning at the 95th percentile and failure at the 99th
-(rounded up to the check's unit); for a row count check, the observed range
+**Suggested thresholds** derived from the check's own history: for a check that
+counts failing rows, measures a lag, or reconciles a table-to-table difference,
+warning at the 95th percentile and failure at the 99th (rounded up to the
+check's unit); for a row count check, the observed range
 widened by 10%, and only for the bounds the check already sets. Using them only
 fills the form — the check changes when you save it. The suggestion is
 unavailable for aggregate, row count change and schema drift checks, and while
@@ -234,7 +235,9 @@ change is plotted as rows, without a band, because its thresholds bound a
 percentage change against a baseline rather than the count; a sampled check
 marks its sample points. Click a point to open that execution. The series stops
 at a rule-type change and says so, because values measured by a different kind
-of check are not comparable.
+of check are not comparable. Editing the check's filter changes which rows it
+measures: the line still spans both regimes, so read across a filter change
+with care.
 
 ## Coverage and quality score
 

@@ -166,12 +166,22 @@ export function trendThresholdBounds(
       pushBound(out, "warn", "upper", thresholds.warnValueUpper);
       break;
     default:
-      // A snapshot recorded before the comparison existed carries only values.
-      // An upper pair is the shape a count rule writes, so it is the safe read.
-      pushBound(out, "fail", "lower", thresholds.failValue);
-      pushBound(out, "warn", "lower", thresholds.warnValue);
-      pushBound(out, "fail", "upper", thresholds.failValueUpper);
-      pushBound(out, "warn", "upper", thresholds.warnValueUpper);
+      // A snapshot recorded before the comparison existed cannot be read with
+      // certainty. A lone value is the upper bound a count rule writes; a pair is
+      // the range a row-count or aggregate rule writes (those snapshots always
+      // carry a comparison, so this is a legacy fallback, not a live path).
+      if (
+        thresholds.failValueUpper !== undefined ||
+        thresholds.warnValueUpper !== undefined
+      ) {
+        pushBound(out, "fail", "lower", thresholds.failValue);
+        pushBound(out, "fail", "upper", thresholds.failValueUpper);
+        pushBound(out, "warn", "lower", thresholds.warnValue);
+        pushBound(out, "warn", "upper", thresholds.warnValueUpper);
+      } else {
+        pushBound(out, "fail", "upper", thresholds.failValue);
+        pushBound(out, "warn", "upper", thresholds.warnValue);
+      }
       break;
   }
   return out;

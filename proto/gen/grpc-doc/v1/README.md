@@ -5656,7 +5656,7 @@ the same row.
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the execution is PENDING or RUNNING. |
 | run | [string](#string) |  | The dispatch batch that planned this execution, so the execution directory can group checks by the run that produced them. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
 | attempt | [int32](#int32) |  | The scheduled attempt number in the target&#39;s current due cycle: 1 for the first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions always use 1. A retry is planned only while the attempt budget lasts. |
-| baseline_value | [double](#double) | optional | The row count a row_count_change check compared against. Unset for every other type, and for a first observation that had no recent baseline to compare with (the verdict is then NOT_EVALUATED, driven by on_empty). |
+| baseline_value | [double](#double) | optional | The row count a row_count_change check compared against. Unset for every other type, and for a first observation that had no recent baseline to compare with; the verdict then follows on_empty, which a new count-change check defaults to PASS so the first run only records the baseline. |
 | baseline_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When that baseline was measured. Unset whenever baseline_value is. |
 
 
