@@ -17,14 +17,19 @@ import (
 // rule renders a different window on every run.
 //
 // Exactly two places resolve them: a filter clause value that consists of a single
-// token, and custom SQL text. Everything is rendered as a bound argument — never
-// concatenated into the statement — so a variable can change which rows a
-// statement reads but never its shape.
+// token, and custom SQL text. A filter value stays a bound argument like any other
+// value. In custom SQL the rendered value is written as a server-generated ISO
+// literal (digits, spaces, dashes and colons only), never user text: a token there
+// may sit inside a comment or a quoted string, where a bound placeholder would
+// either be inert while still consuming an argument or collide with a $1/@p1 the
+// user wrote, so the generated literal is the only rendering that stays correct in
+// every position.
 
 const (
-	// maxVariableOffset bounds one offset, so a typo cannot produce an instant far
-	// outside any table's range.
-	maxVariableOffset = 366 * 24 * time.Hour
+	// maxVariableOffsetDays bounds one offset, so a typo cannot produce an instant
+	// far outside any table's range. It is checked before a unit is scaled, which is
+	// also what keeps a huge digit string from wrapping.
+	maxVariableOffsetDays = 366
 	// dateLayout and timestampLayout are the two renderings. A variable that lands
 	// on local midnight renders as a date (that is what ${today} means to a
 	// reader); anything else renders as a timestamp. Every supported engine casts
@@ -105,11 +110,21 @@ func renderTimeVariable(name, offset string, vars TimeVariables) (string, error)
 		return "", invalidConfig("%q is not a supported time variable; supported names are now, today and yesterday", "${"+name+"}")
 	}
 	if offset != "" {
-		delta, err := parseVariableOffset(offset)
+		amount, unit, err := parseVariableOffset(offset)
 		if err != nil {
 			return "", err
 		}
-		at = at.Add(delta)
+		switch unit {
+		case 'd':
+			at = at.AddDate(0, 0, amount)
+		case 'h':
+			at = at.Add(time.Duration(amount) * time.Hour)
+		case 'm':
+			at = at.Add(time.Duration(amount) * time.Minute)
+		default:
+			// parseVariableOffset refuses any other unit before it gets here.
+			return "", invalidConfig("time variable offset %q must end in m, h or d", offset)
+		}
 	}
 	if at.Hour() == 0 && at.Minute() == 0 && at.Second() == 0 && at.Nanosecond() == 0 {
 		return at.Format(dateLayout), nil
@@ -117,11 +132,13 @@ func renderTimeVariable(name, offset string, vars TimeVariables) (string, error)
 	return at.Format(timestampLayout), nil
 }
 
-// parseVariableOffset parses the "+N unit" tail of a token. Units are minutes,
-// hours and days; longer offsets have no use here and are bounded so a typo cannot
-// reach an absurd instant.
-func parseVariableOffset(offset string) (time.Duration, error) {
-	sign := time.Duration(1)
+// parseVariableOffset parses the "+N unit" tail of a token and returns its signed
+// amount and unit. A day offset moves the calendar (AddDate) while an hour or
+// minute offset moves the instant, so "${today-1d}" and "${yesterday}" agree even on
+// a daylight-saving transition. The amount is bounded in day-equivalents before it
+// is scaled, which both rejects a typo and keeps the arithmetic from overflowing.
+func parseVariableOffset(offset string) (int, byte, error) {
+	sign := 1
 	if strings.HasPrefix(offset, "-") {
 		sign = -1
 	}
@@ -129,24 +146,23 @@ func parseVariableOffset(offset string) (time.Duration, error) {
 	unit := body[len(body)-1]
 	amount, err := strconv.Atoi(body[:len(body)-1])
 	if err != nil || amount < 0 {
-		return 0, invalidConfig("time variable offset %q is not a whole number of minutes, hours or days", offset)
+		return 0, 0, invalidConfig("time variable offset %q is not a whole number of minutes, hours or days", offset)
 	}
-	var delta time.Duration
+	var days int
 	switch unit {
-	case 'm':
-		delta = time.Duration(amount) * time.Minute
-	case 'h':
-		delta = time.Duration(amount) * time.Hour
 	case 'd':
-		delta = time.Duration(amount) * 24 * time.Hour
+		days = amount
+	case 'h':
+		days = (amount + 23) / 24
+	case 'm':
+		days = (amount + 1439) / 1440
 	default:
-		return 0, invalidConfig("time variable offset %q must end in m, h or d", offset)
+		return 0, 0, invalidConfig("time variable offset %q must end in m, h or d", offset)
 	}
-	delta *= sign
-	if delta > maxVariableOffset || delta < -maxVariableOffset {
-		return 0, invalidConfig("time variable offset %q is larger than the 366-day limit", offset)
+	if days > maxVariableOffsetDays {
+		return 0, 0, invalidConfig("time variable offset %q is larger than the %d-day limit", offset, maxVariableOffsetDays)
 	}
-	return delta, nil
+	return sign * amount, unit, nil
 }
 
 // ResolveFilterVariables replaces each clause value that is a single time variable
@@ -181,26 +197,20 @@ func ResolveFilterVariables(filter Filter, vars TimeVariables) (Filter, error) {
 	return resolved, nil
 }
 
-// RenderCustomSQLVariables replaces every token in custom SQL with a bound
-// argument, in the order the tokens appear. The statement is never rewritten with
-// literal text: a variable reaches the engine as a parameter like any other value.
-func RenderCustomSQLVariables(statement string, vars TimeVariables, dialect Dialect) (string, []any, error) {
-	if !ContainsTimeVariable(statement) {
-		return statement, nil, nil
-	}
-	var args []any
-	rendered, err := replaceTimeVariables(statement, func(token string) (string, error) {
+// RenderCustomSQLVariables replaces every token in custom SQL with a quoted,
+// server-generated ISO literal. The value is built here from a timestamp layout
+// (digits, dashes, colons and one space), never from user text, so it cannot alter
+// the statement; and being inert text it stays harmless inside a comment or a
+// quoted string and cannot collide with a $1/@p1 the user wrote. A filter value in
+// the same rule is still bound as a parameter like any other value.
+func RenderCustomSQLVariables(statement string, vars TimeVariables) (string, error) {
+	return replaceTimeVariables(statement, func(token string) (string, error) {
 		value, err := ResolveTimeVariable(token, vars)
 		if err != nil {
 			return "", err
 		}
-		args = append(args, value)
-		return dialect.Placeholder(len(args)), nil
+		return "'" + value + "'", nil
 	})
-	if err != nil {
-		return "", nil, err
-	}
-	return rendered, args, nil
 }
 
 // replaceTimeVariables rewrites every token in text with render's replacement and
@@ -231,17 +241,12 @@ func replaceTimeVariables(text string, render func(token string) (string, error)
 }
 
 // customSQLForParsing renders the time variables of a stored custom SQL statement
-// as quoted literals so the engine's parser can check the statement's shape. The
-// result is only ever parsed, never executed; a token inside a quoted literal
-// therefore fails to parse, which is the intended refusal.
+// for the engine's parser. It uses the same rendering the execution will use, so a
+// statement the save path accepts is the statement the executor runs. A token
+// written inside a single-quoted literal still fails to parse (the literal becomes
+// two adjacent quotes), which is the intended refusal.
 func customSQLForParsing(statement string) (string, error) {
-	return replaceTimeVariables(statement, func(token string) (string, error) {
-		value, err := ResolveTimeVariable(token, referenceTimeVariables())
-		if err != nil {
-			return "", err
-		}
-		return "'" + value + "'", nil
-	})
+	return RenderCustomSQLVariables(statement, referenceTimeVariables())
 }
 
 // namedText is one config text field, for the refusal below.

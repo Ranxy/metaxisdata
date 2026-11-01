@@ -20,6 +20,11 @@ const (
 	// maxSampledRows bounds max_rows. A larger bound is a full scan with extra
 	// steps, and an operator who really wants it can raise the limit deliberately.
 	maxSampledRows = 10_000_000
+	// minSamplePercent and maxSamplePercent bound a percentage sample. They are the
+	// same bounds the proto documents and the editor enforces, so a rule saved
+	// through any client is editable in the dialog afterwards.
+	minSamplePercent = 1
+	maxSamplePercent = 99
 )
 
 // samplingConfigured reports whether the config asks for a sample at all.
@@ -49,8 +54,8 @@ func validateSampling(target ResolvedTarget, ruleType storepb.QualityRuleType, s
 		}
 		return nil
 	case *storepb.QualityRuleSampling_Percent:
-		if math.IsNaN(method.Percent) || method.Percent <= 0 || method.Percent >= 100 {
-			return invalidConfig("sampling percent must be greater than 0 and less than 100, got %v", method.Percent)
+		if math.IsNaN(method.Percent) || method.Percent < minSamplePercent || method.Percent > maxSamplePercent {
+			return invalidConfig("sampling percent must be between %d and %d, got %v", minSamplePercent, maxSamplePercent, method.Percent)
 		}
 		if target.MetaType != storepb.MetaType_TABLE {
 			// PostgreSQL can sample a materialized view, SQL Server and Doris cannot
@@ -97,4 +102,11 @@ func samplingUnsupported(ruleType storepb.QualityRuleType) error {
 	default:
 		return invalidConfig("%s cannot be sampled", ruleType)
 	}
+}
+
+// sampleRowsFromTotal reports whether an observation's total is a row count that
+// can stand in for the sample size. group_check totals groups, not rows, so a
+// sampled group check records no row count rather than a misleading one.
+func sampleRowsFromTotal(ruleType storepb.QualityRuleType) bool {
+	return ruleType != storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK
 }

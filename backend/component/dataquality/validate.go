@@ -68,6 +68,12 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 		effective = cloned
 	}
 
+	if err := validateCheckTimeout(effective.GetTimeoutSeconds()); err != nil {
+		// The strict range belongs to the save/preview path: the runner applies
+		// ValidateConfig to stored rows, where an out-of-range budget is clamped
+		// rather than turning the whole check into ERROR(UNSUPPORTED).
+		return nil, err
+	}
 	filter, err := ParseFilter(effective.GetFilter())
 	if err != nil {
 		return nil, err
@@ -156,9 +162,6 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 		return err
 	}
 	if err := validateSampling(target, ruleType, config.GetSampling()); err != nil {
-		return err
-	}
-	if err := validateCheckTimeout(config.GetTimeoutSeconds()); err != nil {
 		return err
 	}
 
@@ -1319,9 +1322,11 @@ func validateCrossTableConfig(target ResolvedTarget, config *storepb.QualityRule
 	return validateCountThresholds(config, cross.FailThreshold, cross.WarnThreshold)
 }
 
-// validateCheckTimeout checks a per-check query timeout. Zero means the server
-// default; anything else must stay inside the range the runner clamps to, so a
-// stored rule and its evidence agree about the budget.
+// validateCheckTimeout checks a per-check query timeout on the save/preview path.
+// Zero means the server default; anything else must stay inside the documented
+// range. The runner deliberately does not apply this to stored rows: an
+// out-of-range value written out of band is clamped by CheckTimeout instead of
+// failing the check.
 func validateCheckTimeout(seconds int32) error {
 	if seconds == 0 {
 		return nil

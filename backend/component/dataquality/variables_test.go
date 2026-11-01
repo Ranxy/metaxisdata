@@ -61,6 +61,7 @@ func TestResolveTimeVariableRefusals(t *testing.T) {
 		{name: "unknown unit", token: "${today-7w}", code: common.Invalid},
 		{name: "missing amount", token: "${today-d}", code: common.Invalid},
 		{name: "offset above the cap", token: "${today-999d}", code: common.Invalid},
+		{name: "offset that would overflow", token: "${today-999999999999999999999d}", code: common.Invalid},
 		{name: "no token at all", token: "today", code: common.Invalid},
 	}
 	for _, test := range tests {
@@ -76,6 +77,25 @@ func TestResolveTimeVariableRefusals(t *testing.T) {
 	_, err := ResolveTimeVariable("${today}", TimeVariables{})
 	require.Error(t, err)
 	require.Equal(t, common.Internal, common.ErrorCode(err))
+}
+
+// A day offset moves the calendar, so "${today-1d}" is exactly "${yesterday}" even
+// on a daylight-saving transition, where subtracting a fixed 24 hours would land on
+// the day before yesterday (or slip an hour and render a timestamp).
+func TestResolveTimeVariableDayOffsetsCrossDST(t *testing.T) {
+	t.Parallel()
+
+	location, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	// 2026-03-08 is the spring-forward day; midnight still exists, so this is the
+	// case where a 24h subtraction would cross into the previous date.
+	afterTransition := NewTimeVariables(time.Date(2026, 3, 8, 12, 0, 0, 0, location), location)
+	yesterday, err := ResolveTimeVariable("${yesterday}", afterTransition)
+	require.NoError(t, err)
+	oneDayBack, err := ResolveTimeVariable("${today-1d}", afterTransition)
+	require.NoError(t, err)
+	require.Equal(t, yesterday, oneDayBack)
+	require.Equal(t, "2026-03-07", oneDayBack)
 }
 
 func TestResolveFilterVariables(t *testing.T) {
@@ -118,54 +138,53 @@ func TestResolveFilterVariablesRefusals(t *testing.T) {
 	}
 }
 
+// The contract filter is part of the compiled predicate, so its time variables
+// resolve the same way a rule filter's do.
+func TestCompileContractFilterResolvesTimeVariables(t *testing.T) {
+	t.Parallel()
+
+	dialect, err := DialectFor(storepb.Engine_POSTGRES)
+	require.NoError(t, err)
+	query, err := Compile(CompileInput{
+		Dialect: dialect,
+		Target:  compileTestTarget(storepb.Engine_POSTGRES),
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		Config:  &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: validationPtr(int64(1))}}},
+		ContractFilter: Filter{Clauses: []FilterClause{
+			{Column: "created_at", Op: FilterGTE, Values: []string{"${yesterday}"}},
+		}},
+		Variables: utcVariables(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, `SELECT COUNT(*) AS total_rows FROM "public"."orders" WHERE "created_at" >= $1`, query.SQL)
+	require.Equal(t, []any{"2026-10-31"}, query.Args)
+}
+
 func TestRenderCustomSQLVariables(t *testing.T) {
 	t.Parallel()
 
+	// The rendering is a server-generated ISO literal, so it is the same text for
+	// every engine and never consumes an argument.
 	statement := "SELECT id FROM orders WHERE created_at >= ${today-7d} AND updated_at < ${now-1h}"
-	tests := []struct {
-		engine   storepb.Engine
-		wantSQL  string
-		wantArgs []any
-	}{
-		{
-			engine:   storepb.Engine_MYSQL,
-			wantSQL:  "SELECT id FROM orders WHERE created_at >= ? AND updated_at < ?",
-			wantArgs: []any{"2026-10-25", "2026-11-01 16:12:49"},
-		},
-		{
-			engine:   storepb.Engine_POSTGRES,
-			wantSQL:  "SELECT id FROM orders WHERE created_at >= $1 AND updated_at < $2",
-			wantArgs: []any{"2026-10-25", "2026-11-01 16:12:49"},
-		},
-		{
-			engine:   storepb.Engine_MSSQL,
-			wantSQL:  "SELECT id FROM orders WHERE created_at >= @p1 AND updated_at < @p2",
-			wantArgs: []any{"2026-10-25", "2026-11-01 16:12:49"},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.engine.String(), func(t *testing.T) {
-			t.Parallel()
-			dialect, err := DialectFor(test.engine)
-			require.NoError(t, err)
-			rendered, args, err := RenderCustomSQLVariables(statement, utcVariables(), dialect)
-			require.NoError(t, err)
-			require.Equal(t, test.wantSQL, rendered)
-			require.Equal(t, test.wantArgs, args)
-		})
-	}
+	rendered, err := RenderCustomSQLVariables(statement, utcVariables())
+	require.NoError(t, err)
+	require.Equal(t, "SELECT id FROM orders WHERE created_at >= '2026-10-25' AND updated_at < '2026-11-01 16:12:49'", rendered)
+
+	// A token in a comment or inside a quoted string stays inert text: it neither
+	// consumes an argument nor breaks a statement the user wrote.
+	comment := "SELECT id FROM orders -- refresh ${today}"
+	rendered, err = RenderCustomSQLVariables(comment, utcVariables())
+	require.NoError(t, err)
+	require.Equal(t, "SELECT id FROM orders -- refresh '2026-11-01'", rendered)
 }
 
 func TestRenderCustomSQLVariablesWithoutTokens(t *testing.T) {
 	t.Parallel()
 
-	dialect, err := DialectFor(storepb.Engine_MYSQL)
-	require.NoError(t, err)
 	statement := "SELECT id FROM orders WHERE status = 'paid'"
-	rendered, args, err := RenderCustomSQLVariables(statement, utcVariables(), dialect)
+	rendered, err := RenderCustomSQLVariables(statement, utcVariables())
 	require.NoError(t, err)
 	require.Equal(t, statement, rendered)
-	require.Empty(t, args)
 }
 
 // A stored custom-SQL rule keeps the token; the compiler renders it as a bound
@@ -185,8 +204,8 @@ func TestCompileCustomSQLRendersTimeVariables(t *testing.T) {
 		Variables: utcVariables(),
 	})
 	require.NoError(t, err)
-	require.Equal(t, `SELECT COUNT(*) AS failed_rows FROM (SELECT id FROM orders WHERE created_at >= $1) dq`, query.SQL)
-	require.Equal(t, []any{"2026-10-25"}, query.Args)
+	require.Equal(t, "SELECT COUNT(*) AS failed_rows FROM (SELECT id FROM orders WHERE created_at >= '2026-10-25') dq", query.SQL)
+	require.Empty(t, query.Args)
 }
 
 // A filter value may be one whole time variable; the compiled statement binds its
@@ -209,6 +228,27 @@ func TestCompileFilterRendersTimeVariables(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `SELECT COUNT(*) AS total_rows FROM "public"."orders" WHERE "created_at" >= $1`, query.SQL)
 	require.Equal(t, []any{"2026-10-25"}, query.Args)
+}
+
+// A user-written placeholder in custom SQL is left exactly as it is: the variable
+// rendering adds no bound argument, so the two can never collide.
+func TestCompileCustomSQLKeepsUserPlaceholders(t *testing.T) {
+	t.Parallel()
+
+	dialect, err := DialectFor(storepb.Engine_POSTGRES)
+	require.NoError(t, err)
+	query, err := Compile(CompileInput{
+		Dialect: dialect,
+		Target:  compileTestTarget(storepb.Engine_POSTGRES),
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{
+			CustomSql: &storepb.CustomSQLConfig{Sql: "SELECT id FROM orders WHERE created_at = $1 AND updated_at >= ${now-1h}"},
+		}},
+		Variables: utcVariables(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "SELECT COUNT(*) AS failed_rows FROM (SELECT id FROM orders WHERE created_at = $1 AND updated_at >= '2026-11-01 16:12:49') dq", query.SQL)
+	require.Empty(t, query.Args)
 }
 
 // A rule that uses a variable but is compiled without an execution instant is a
@@ -242,9 +282,15 @@ func TestValidateCustomSQLAcceptsTimeVariables(t *testing.T) {
 	require.NoError(t, ValidateCustomSQL(storepb.Engine_POSTGRES,
 		"WITH recent AS (SELECT id FROM orders WHERE created_at >= ${today-7d}) SELECT id FROM recent"))
 
+	// A token inside a single-quoted literal would become two adjacent quotes: refused.
 	err := ValidateCustomSQL(storepb.Engine_MYSQL, "SELECT id FROM orders WHERE created_at >= '${today}'")
 	require.Error(t, err)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
+
+	// A token inside a comment or a dollar-quoted string stays inert text and is
+	// rendered as such, so the statement the save path accepts is the one that runs.
+	require.NoError(t, ValidateCustomSQL(storepb.Engine_MYSQL, "SELECT id FROM orders -- refresh ${today}"))
+	require.NoError(t, ValidateCustomSQL(storepb.Engine_POSTGRES, "SELECT $$ ${today} $$"))
 
 	err = ValidateCustomSQL(storepb.Engine_MYSQL, "SELECT id FROM orders WHERE created_at >= ${week}")
 	require.Error(t, err)

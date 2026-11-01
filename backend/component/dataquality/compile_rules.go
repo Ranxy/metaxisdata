@@ -1,6 +1,7 @@
 package dataquality
 
 import (
+	"strconv"
 	"strings"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -194,13 +195,16 @@ func compileUniqueQuery(input CompileInput, columns []string, countNulls bool) (
 	failure := "cnt > 1"
 	if !countNulls {
 		// A duplicate of NULL is not a duplicate in SQL uniqueness, so a group whose
-		// key holds a NULL is flagged and only fully-keyed groups count.
+		// key holds a NULL is flagged and only fully-keyed groups count. The flag's
+		// alias must not collide with a real column of the target, which would make
+		// the outer reference ambiguous (and would also break all_columns).
+		keyedAlias := uniqueKeyedAlias(input.Target)
 		keyed := make([]string, 0, len(quoted))
 		for _, column := range quoted {
 			keyed = append(keyed, column+" IS NOT NULL")
 		}
-		innerList += ", CASE WHEN " + strings.Join(keyed, " AND ") + " THEN 1 ELSE 0 END AS keyed"
-		failure = "cnt > 1 AND keyed = 1"
+		innerList += ", CASE WHEN " + strings.Join(keyed, " AND ") + " THEN 1 ELSE 0 END AS " + keyedAlias
+		failure = "cnt > 1 AND " + keyedAlias + " = 1"
 	}
 	query := "SELECT COALESCE(SUM(CASE WHEN " + failure + " THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, " +
 		"COUNT(CASE WHEN " + failure + " THEN 1 END) AS duplicate_groups, " +
@@ -586,15 +590,14 @@ func compileCustomSQL(input CompileInput) (CompiledQuery, error) {
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
 	}
-	// A time variable becomes a bound argument here like any other value, so the
-	// statement's shape is the same whatever it renders to.
-	rendered, args, err := RenderCustomSQLVariables(userSQL, input.Variables, input.Dialect)
+	// A time variable renders as a generated ISO literal, so the statement the save
+	// path parsed is the statement that runs.
+	rendered, err := RenderCustomSQLVariables(userSQL, input.Variables)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
 	return CompiledQuery{
 		SQL:     "SELECT COUNT(*) AS failed_rows FROM (" + rendered + ") dq",
-		Args:    args,
 		Kind:    QueryAggregate,
 		Columns: []string{"failed_rows"},
 	}, nil
@@ -787,4 +790,31 @@ func crossTableExpression(dialect Dialect, function storepb.QualityAggregateFunc
 		column = resolved.Name
 	}
 	return aggregateExpression(dialect, function, qualify(dialect, column), "")
+}
+
+// uniqueKeyedAlias picks the alias of the derived "this group has no NULL key"
+// flag. A target column may be spelled like the obvious alias, and all_columns
+// puts every column beside it in the same derived relation, so the name is chosen
+// outside the target's column list (case-insensitively, because an unquoted
+// PostgreSQL identifier folds).
+func uniqueKeyedAlias(target ResolvedTarget) string {
+	const base = "__dq_keyed"
+	alias := base
+	for suffix := 2; ; suffix++ {
+		if !targetHasColumnFold(target, alias) {
+			return alias
+		}
+		alias = base + "_" + strconv.Itoa(suffix)
+	}
+}
+
+// targetHasColumnFold reports whether any column of the target matches name
+// ignoring case.
+func targetHasColumnFold(target ResolvedTarget, name string) bool {
+	for _, column := range target.Columns {
+		if strings.EqualFold(column.Name, name) {
+			return true
+		}
+	}
+	return false
 }

@@ -126,20 +126,20 @@ func compileRuleGoldens() []compileGolden {
 			}},
 			wantColumns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 			wantKind:    QueryAggregate,
-			mysqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
-				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, " +
+			mysqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
 				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT `email`, COUNT(*) AS cnt, " +
-				"CASE WHEN `email` IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM `shop`.`orders` " +
+				"CASE WHEN `email` IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM `shop`.`orders` " +
 				"GROUP BY `email`) dq",
-			postgresSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
-				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, ` +
+			postgresSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
+				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, ` +
 				`COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "email", COUNT(*) AS cnt, ` +
-				`CASE WHEN "email" IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM "public"."orders" ` +
+				`CASE WHEN "email" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM "public"."orders" ` +
 				`GROUP BY "email") dq`,
-			mssqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
-				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, " +
+			mssqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
 				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT [email], COUNT(*) AS cnt, " +
-				"CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM [public].[orders] " +
+				"CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM [public].[orders] " +
 				"GROUP BY [email]) dq",
 		},
 		{
@@ -150,20 +150,20 @@ func compileRuleGoldens() []compileGolden {
 			}},
 			wantColumns: []string{"failed_rows", "duplicate_groups", "total_rows"},
 			wantKind:    QueryAggregate,
-			mysqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
-				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, " +
+			mysqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
 				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT `amount`, `status`, COUNT(*) AS cnt, " +
-				"CASE WHEN `amount` IS NOT NULL AND `status` IS NOT NULL THEN 1 ELSE 0 END AS keyed " +
+				"CASE WHEN `amount` IS NOT NULL AND `status` IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed " +
 				"FROM `shop`.`orders` GROUP BY `amount`, `status`) dq",
-			postgresSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
-				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, ` +
+			postgresSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
+				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, ` +
 				`COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "amount", "status", COUNT(*) AS cnt, ` +
-				`CASE WHEN "amount" IS NOT NULL AND "status" IS NOT NULL THEN 1 ELSE 0 END AS keyed ` +
+				`CASE WHEN "amount" IS NOT NULL AND "status" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed ` +
 				`FROM "public"."orders" GROUP BY "amount", "status") dq`,
-			mssqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
-				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, " +
+			mssqlSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
 				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT [amount], [status], COUNT(*) AS cnt, " +
-				"CASE WHEN [amount] IS NOT NULL AND [status] IS NOT NULL THEN 1 ELSE 0 END AS keyed " +
+				"CASE WHEN [amount] IS NOT NULL AND [status] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed " +
 				"FROM [public].[orders] GROUP BY [amount], [status]) dq",
 		},
 		{
@@ -1013,7 +1013,7 @@ func TestCompileAllColumnUniqueUsesEveryColumn(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name", COUNT(*) AS cnt, CASE WHEN "id" IS NOT NULL AND "email" IS NOT NULL AND "amount" IS NOT NULL AND "created_at" IS NOT NULL AND "status" IS NOT NULL AND "qty" IS NOT NULL AND "price" IS NOT NULL AND "updated_at" IS NOT NULL AND "name" IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM "public"."orders" GROUP BY "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name") dq`, query.SQL)
+	require.Equal(t, `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name", COUNT(*) AS cnt, CASE WHEN "id" IS NOT NULL AND "email" IS NOT NULL AND "amount" IS NOT NULL AND "created_at" IS NOT NULL AND "status" IS NOT NULL AND "qty" IS NOT NULL AND "price" IS NOT NULL AND "updated_at" IS NOT NULL AND "name" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM "public"."orders" GROUP BY "id", "email", "amount", "created_at", "status", "qty", "price", "updated_at", "name") dq`, query.SQL)
 }
 
 // TestCompileCountNullsKeepsNullKeys pins the count_nulls opt-in: only then is a
@@ -1059,28 +1059,28 @@ func TestCompileUniqueFilterArgsBindOnce(t *testing.T) {
 	}{
 		{
 			engine: storepb.Engine_MYSQL,
-			wantSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
-				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, " +
+			wantSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
 				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT `email`, COUNT(*) AS cnt, " +
-				"CASE WHEN `email` IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM `shop`.`orders` " +
+				"CASE WHEN `email` IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM `shop`.`orders` " +
 				"WHERE `status` = ? AND `qty` >= ? GROUP BY `email`) dq",
 			wantArgs: []any{"paid", int64(3)},
 		},
 		{
 			engine: storepb.Engine_POSTGRES,
-			wantSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
-				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, ` +
+			wantSQL: `SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) ` +
+				`AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, ` +
 				`COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT "email", COUNT(*) AS cnt, ` +
-				`CASE WHEN "email" IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM "public"."orders" ` +
+				`CASE WHEN "email" IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM "public"."orders" ` +
 				`WHERE "status" = $1 AND "qty" >= $2 GROUP BY "email") dq`,
 			wantArgs: []any{"paid", int64(3)},
 		},
 		{
 			engine: storepb.Engine_MSSQL,
-			wantSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
-				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, " +
+			wantSQL: "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) " +
+				"AS failed_rows, COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, " +
 				"COALESCE(SUM(cnt), 0) AS total_rows FROM (SELECT [email], COUNT(*) AS cnt, " +
-				"CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS keyed FROM [public].[orders] " +
+				"CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed FROM [public].[orders] " +
 				"WHERE [status] = @p1 AND [qty] >= @p2 GROUP BY [email]) dq",
 			wantArgs: []any{"paid", int64(3)},
 		},

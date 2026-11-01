@@ -48,8 +48,10 @@ func TestValidateCheckTimeout(t *testing.T) {
 	}
 }
 
-// The config gate refuses an out-of-range override before the rule is saved.
-func TestValidateConfigRefusesAnOutOfRangeTimeout(t *testing.T) {
+// The runner applies ValidateConfig to stored rows, where an out-of-range budget is
+// clamped by CheckTimeout instead of failing the check; the strict range is enforced
+// on the save/preview path (see the integration scenario and validateCheckTimeout).
+func TestValidateConfigAcceptsAnOutOfRangeTimeoutForClamping(t *testing.T) {
 	t.Parallel()
 
 	target := compileTestTarget(storepb.Engine_MYSQL)
@@ -57,7 +59,6 @@ func TestValidateConfigRefusesAnOutOfRangeTimeout(t *testing.T) {
 		Config:         &storepb.QualityRuleConfig_RowCount{RowCount: &storepb.RowCountConfig{MinRows: ptrInt64(1)}},
 		TimeoutSeconds: 301,
 	}
-	err := ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, config)
-	require.Error(t, err)
-	require.Equal(t, common.Invalid, common.ErrorCode(err))
+	require.NoError(t, ValidateConfig(target, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, config))
+	require.Equal(t, 300*time.Second, CheckTimeout(config))
 }

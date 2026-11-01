@@ -55,11 +55,13 @@ func TestDialectSamplingRelations(t *testing.T) {
 			wantSample: true,
 		},
 		{
+			// Doris' TABLESAMPLE samples tablets and reads every row while tablet
+			// statistics are missing (right after a load), so it is not offered.
 			engine:     storepb.Engine_DORIS,
 			table:      "`shop`.`orders`",
 			maxRows:    "(SELECT * FROM `shop`.`orders` LIMIT 1000) dq",
-			percent:    "`shop`.`orders` TABLESAMPLE (10.5 PERCENT)",
-			wantSample: true,
+			wantSample: false,
+			percentErr: "has no table sampling clause",
 		},
 		{
 			engine:     storepb.Engine_STARROCKS,
@@ -151,18 +153,24 @@ func TestValidateSampling(t *testing.T) {
 			sampling: percentSampling(10),
 		},
 		{
-			name:     "percent below 0",
+			name:     "percent below 1",
 			target:   postgres,
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-			sampling: percentSampling(-1),
-			wantErr:  "greater than 0 and less than 100",
+			sampling: percentSampling(0.5),
+			wantErr:  "must be between 1 and 99",
 		},
 		{
-			name:     "percent at 100",
+			name:     "percent above 99",
 			target:   postgres,
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-			sampling: percentSampling(100),
-			wantErr:  "greater than 0 and less than 100",
+			sampling: percentSampling(99.5),
+			wantErr:  "must be between 1 and 99",
+		},
+		{
+			name:     "percent at the upper bound",
+			target:   postgres,
+			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+			sampling: percentSampling(99),
 		},
 		{
 			name:     "percent on an engine without a sampling clause",
@@ -179,10 +187,11 @@ func TestValidateSampling(t *testing.T) {
 			wantErr:  "applies to tables only",
 		},
 		{
-			name:     "percent on Doris",
+			name:     "percent on Doris is refused",
 			target:   doris,
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
 			sampling: percentSampling(10),
+			wantErr:  "use a row limit instead",
 		},
 		{
 			name:     "row count cannot be sampled",
@@ -302,9 +311,9 @@ func TestCompileSampledUnique(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND keyed = 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, "+
-		"COUNT(CASE WHEN cnt > 1 AND keyed = 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows "+
-		"FROM (SELECT [email], COUNT(*) AS cnt, CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS keyed "+
+	require.Equal(t, "SELECT COALESCE(SUM(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN cnt - 1 ELSE 0 END), 0) AS failed_rows, "+
+		"COUNT(CASE WHEN cnt > 1 AND __dq_keyed = 1 THEN 1 END) AS duplicate_groups, COALESCE(SUM(cnt), 0) AS total_rows "+
+		"FROM (SELECT [email], COUNT(*) AS cnt, CASE WHEN [email] IS NOT NULL THEN 1 ELSE 0 END AS __dq_keyed "+
 		"FROM [public].[orders] TABLESAMPLE (10 PERCENT) GROUP BY [email]) dq", query.SQL)
 }
 
@@ -376,3 +385,58 @@ func TestSampledExecutionMarksObservation(t *testing.T) {
 func ptrInt64(value int64) *int64 { return &value }
 
 func ptrFloat(value float64) *float64 { return &value }
+
+// A sampled group check totals groups, not rows, so it records that the verdict came
+// from a sample but no row count.
+func TestSampledGroupCheckRecordsNoRowCount(t *testing.T) {
+	t.Parallel()
+
+	queryer := &execFakeQueryer{results: []*db.QueryResult{
+		aggregateRow([]string{"total_groups", "failed_groups"}, int64(3), int64(1)),
+	}}
+	rule := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK, &storepb.QualityRuleConfig{
+		Config: &storepb.QualityRuleConfig_GroupCheck{GroupCheck: &storepb.GroupCheckConfig{
+			Columns:         []string{"status"},
+			MinRowsPerGroup: ptrInt64(1),
+		}},
+		Sampling: maxRowSampling(100),
+	})
+	execution, err := NewExecutor().Execute(t.Context(), queryer, execTestResolution(storepb.Engine_MYSQL), rule, ExecOptions{})
+	require.NoError(t, err)
+	require.True(t, execution.Observation.Sampled)
+	require.Zero(t, execution.Observation.SampleRows, "a group count is not a row count")
+}
+
+// The derived flag alias steps aside for a target that really has a column of the
+// same name, so all_columns cannot make the outer reference ambiguous. A target
+// column literally named "keyed" (the obvious alias) is already harmless.
+func TestCompileUniqueAliasAvoidsAColumnNamedLikeIt(t *testing.T) {
+	t.Parallel()
+
+	dialect, err := DialectFor(storepb.Engine_POSTGRES)
+	require.NoError(t, err)
+	compile := func(columns ...string) CompiledQuery {
+		target := compileTestTarget(storepb.Engine_POSTGRES)
+		for _, name := range columns {
+			target.Columns = append(target.Columns, ColumnInfo{Name: name, Type: "int", Kind: ColumnKindNumeric})
+		}
+		query, err := Compile(CompileInput{
+			Dialect: dialect,
+			Target:  target,
+			Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+			Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{
+				UniqueCombination: &storepb.UniqueCombinationConfig{AllColumns: true},
+			}},
+		})
+		require.NoError(t, err)
+		return query
+	}
+
+	plain := compile("keyed")
+	require.Contains(t, plain.SQL, "AS __dq_keyed ")
+	require.Contains(t, plain.SQL, " AND __dq_keyed = 1")
+
+	shadowed := compile("__dq_keyed")
+	require.Contains(t, shadowed.SQL, "AS __dq_keyed_2")
+	require.Contains(t, shadowed.SQL, " AND __dq_keyed_2 = 1")
+}

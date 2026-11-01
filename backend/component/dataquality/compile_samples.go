@@ -435,12 +435,12 @@ func sampleCustomSQL(input CompileInput, limit int) (CompiledQuery, error) {
 	// the sample keeps whatever the user's SELECT returns. The time variables
 	// resolve to the same values the aggregate used: both are compiled from one
 	// execution's start instant.
-	rendered, args, err := RenderCustomSQLVariables(userSQL, input.Variables, input.Dialect)
+	rendered, err := RenderCustomSQLVariables(userSQL, input.Variables)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
 	return sampleQuery(input,
-		"SELECT * FROM ("+rendered+") dq", args, nil, limit), nil
+		"SELECT * FROM ("+rendered+") dq", nil, nil, limit), nil
 }
 
 // sampleGroupCheck selects the groups whose row count is outside the bounds,

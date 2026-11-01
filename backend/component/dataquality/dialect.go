@@ -196,18 +196,20 @@ func (mysqlDialect) BoundedRelation(table, where string, maxRows int64) (string,
 	return "(SELECT * FROM " + table + where + " LIMIT " + strconv.FormatInt(maxRows, 10) + ") dq", nil
 }
 
-// SampledRelation uses Doris' TABLESAMPLE clause. The other MySQL-wire engines this
-// build serves (MySQL, TiDB, MariaDB, OceanBase, StarRocks) have no query-level
-// sampling clause, so they refuse a percentage sample at save time.
-func (d mysqlDialect) SampledRelation(table string, percent float64) (string, error) {
-	if d.engine != storepb.Engine_DORIS {
-		return "", errors.Errorf("engine %s has no table sampling clause", d.Name())
-	}
-	return table + " TABLESAMPLE (" + formatSamplePercent(percent) + " PERCENT)", nil
+// SampledRelation refuses every MySQL-wire engine. MySQL, TiDB, MariaDB and
+// OceanBase have no query-level sampling clause at all. Doris and StarRocks do
+// have TABLESAMPLE, but it samples tablets: while tablet row-count statistics are
+// missing (right after a load, which is exactly when a partition window is
+// interesting) Doris reads every row and still reports the statement as a sample,
+// and its statement cache can keep serving that full scan for a byte-stable rule
+// query. A rule that silently reads everything while recording sampled=true would
+// break the one promise sampling makes, so none of them offers a percentage.
+func (d mysqlDialect) SampledRelation(_ string, _ float64) (string, error) {
+	return "", errors.Errorf("engine %s has no table sampling clause", d.Name())
 }
 
-// SupportsTableSample is true only for Doris in the MySQL-wire family.
-func (d mysqlDialect) SupportsTableSample() bool { return d.engine == storepb.Engine_DORIS }
+// SupportsTableSample is false for every MySQL-wire engine this build serves.
+func (mysqlDialect) SupportsTableSample() bool { return false }
 
 // BoundedRelation renders a bounded derived relation; PostgreSQL takes LIMIT in
 // the derived SELECT.

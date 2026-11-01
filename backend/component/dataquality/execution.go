@@ -64,8 +64,9 @@ type Execution struct {
 	// ExecutedSQL is the aggregate statement, truncated for storage.
 	ExecutedSQL string
 	// Sampled reports that the observation was made over a sample of the rows
-	// rather than the whole filtered table. Only a CEL rule can be sampled today:
-	// it reads a bounded number of rows and evaluates the predicate in process.
+	// rather than the whole filtered table. A CEL rule samples by construction (it
+	// reads a bounded number of rows); any other rule does so only when its config
+	// names a sampling method.
 	Sampled bool
 	// Truncated reports that the aggregate or the sample was cut off by a limit.
 	Truncated bool

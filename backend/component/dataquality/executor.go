@@ -32,8 +32,9 @@ func NewExecutor() *Executor {
 // Execute compiles the rule, runs its aggregate statement through the read-only
 // queryer, and interprets the result columns into an Observation. A CEL rule is
 // the exception: its statement returns a sample of rows and the predicate runs in
-// this process. It optionally runs one more bounded query for the failed-row
-// sample.
+// this process. A rule whose config names a sampling method compiles to a statement
+// bounded by that method; it optionally runs one more bounded query for the
+// failed-row sample.
 //
 // The rule's config must already be valid: validation is the save/dry-run path's
 // job, so a config that fails validation here is a defect rather than a user
@@ -135,7 +136,7 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	if samplingConfigured(rule.Config.GetSampling()) {
 		execution.Sampled = true
 		execution.Observation.Sampled = true
-		if execution.Observation.TotalRows > 0 {
+		if sampleRowsFromTotal(rule.Type) && execution.Observation.TotalRows > 0 {
 			execution.Observation.SampleRows = execution.Observation.TotalRows
 		}
 	}
