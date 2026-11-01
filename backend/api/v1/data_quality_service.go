@@ -2063,7 +2063,8 @@ func applyQualitySuggestionListFilters(find *store.FindQualitySuggestionMessage,
 	switch source := storepb.QualitySuggestionSource(request.GetSource()); source {
 	case storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_UNSPECIFIED:
 	case storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE,
-		storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE:
+		storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE,
+		storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION:
 		find.Sources = []storepb.QualitySuggestionSource{source}
 	default:
 		return connectErrorInvalid("unknown quality suggestion source %d", source)

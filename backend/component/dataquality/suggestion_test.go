@@ -274,3 +274,36 @@ func TestRuleSignatureIncludesSemanticConfigValues(t *testing.T) {
 		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, drift("a", "c")),
 		"a different expected schema is a different rule")
 }
+
+// TestSuggestionPassMayRefreshPending pins the cross-pass rule: a pass refreshes the
+// proposal it produced, leaves another pass's proposal alone, and the deterministic
+// recommendation may replace a label pass's default-parameter draft but not the
+// other way round.
+func TestSuggestionPassMayRefreshPending(t *testing.T) {
+	t.Parallel()
+
+	const (
+		naturalLanguage = storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE
+		profile         = storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE
+		recommendation  = storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION
+	)
+	pending := func(source storepb.QualitySuggestionSource) store.QualitySuggestionSignatureState {
+		return store.QualitySuggestionSignatureState{Pending: true, PendingSource: source}
+	}
+
+	require.True(t, SuggestionPassMayRefreshPending(store.QualitySuggestionSignatureState{}, recommendation, false),
+		"nothing is pending, so the pass may queue its proposal")
+	require.True(t, SuggestionPassMayRefreshPending(pending(recommendation), recommendation, false),
+		"a pass refreshes its own proposal")
+	require.True(t, SuggestionPassMayRefreshPending(pending(naturalLanguage), naturalLanguage, false))
+	require.True(t, SuggestionPassMayRefreshPending(pending(profile), profile, false))
+	require.True(t, SuggestionPassMayRefreshPending(pending(profile), recommendation, false),
+		"the recommendation may replace a default-parameter label draft with observed thresholds")
+	require.False(t, SuggestionPassMayRefreshPending(pending(recommendation), profile, false),
+		"the label pass must not put a default threshold back over an observed one")
+	require.False(t, SuggestionPassMayRefreshPending(pending(naturalLanguage), recommendation, false),
+		"an explicit intent draft is not overwritten by a derived one")
+	require.True(t, SuggestionPassMayRefreshPending(pending(recommendation), profile, true),
+		"force regeneration overrides the cross-pass rule")
+	require.True(t, SuggestionPassMayRefreshPending(pending(naturalLanguage), recommendation, true))
+}

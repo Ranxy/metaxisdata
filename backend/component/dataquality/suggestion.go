@@ -246,3 +246,24 @@ func SuggestionDecisionSuppressesLabel(decision storepb.QualitySuggestionStatus)
 		return false
 	}
 }
+
+// SuggestionPassMayRefreshPending reports whether the generation pass that is
+// running may refresh a live proposal another pass produced.
+//
+// One proposal identity holds at most one PENDING row, so two passes that derive the
+// same rule share it. The pass that produced the live proposal refreshes it; a
+// different pass leaves it alone unless the caller forces regeneration, with one
+// deliberate exception: the deterministic recommendation may replace a label-pass
+// draft, whose parameters are fixed defaults, with the values it observed. The
+// reverse does not hold, so running the label pass after a recommendation cannot
+// silently put a default threshold back over an observed one.
+func SuggestionPassMayRefreshPending(state store.QualitySuggestionSignatureState, pass storepb.QualitySuggestionSource, force bool) bool {
+	if !state.Pending {
+		return true
+	}
+	if force || state.PendingSource == pass {
+		return true
+	}
+	return pass == storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION &&
+		state.PendingSource == storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE
+}

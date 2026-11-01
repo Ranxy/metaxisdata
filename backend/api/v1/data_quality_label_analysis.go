@@ -31,11 +31,11 @@ const (
 	// qualityLabelMaxBatches bounds the model calls one request may make. With the
 	// per-request column cap, three batches cover every accepted request.
 	qualityLabelMaxBatches = 3
-	// qualityLabelProfileMaxAgeDays is the age after which a cached profile is not
-	// trusted for labeling. Label evidence must describe the current data.
-	qualityLabelProfileMaxAgeDays = 7
-	// qualityLabelProfileMaxAge is the same bound as a duration.
-	qualityLabelProfileMaxAge = qualityLabelProfileMaxAgeDays * 24 * time.Hour
+	// qualityProfileMaxAgeDays is the age after which a cached profile is not
+	// trusted as evidence for an analysis. A proposal must describe the current data.
+	qualityProfileMaxAgeDays = 7
+	// qualityProfileMaxAge is the same bound as a duration.
+	qualityProfileMaxAge = qualityProfileMaxAgeDays * 24 * time.Hour
 )
 
 // SuggestColumnLabels profiles the requested columns, asks the model for their
@@ -108,7 +108,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	// Decide what still needs a proposal before spending quota. The queue state for
 	// every requested column is read once, because it decides both the analysis set
 	// and which stale proposals this pass should close.
-	existingLabels, err := s.qualityLabelExistingLabels(ctx, resolution.Target, requestedColumns)
+	existingLabels, err := s.qualityColumnLabels(ctx, resolution.Target, requestedColumns)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 	}
 	defer release()
 
-	profiles, err := s.qualityLabelProfiles(ctx, resolution.Target, columns)
+	profiles, err := s.qualityAnalysisProfiles(ctx, resolution.Target, columns)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +277,14 @@ func (s *DataQualityService) SuggestColumnLabels(ctx context.Context, req *conne
 			summary.SkippedDecided++
 			continue
 		}
+		// A pending draft from another pass is that pass's proposal. This pass leaves it
+		// alone: its own draft parameters are the fixed defaults, and replacing an
+		// observed recommendation with them would be a silent downgrade.
+		if !dataquality.SuggestionPassMayRefreshPending(state,
+			storepb.QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE, force) {
+			summary.SkippedPending++
+			continue
+		}
 		queuedSuggestion, created, err := s.queueQualityLabelSuggestion(ctx,
 			storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT, candidate.signature,
 			&storepb.QualitySuggestionPayload{Payload: &storepb.QualitySuggestionPayload_Rule{Rule: candidate.draft}},
@@ -386,10 +394,10 @@ func planQualityLabelPass(requestedColumns []string, existingLabels map[string]s
 	return plan
 }
 
-// qualityLabelProfiles reads the cached profiles the prompt cites, and refuses
-// the request when any column has no profile younger than qualityLabelProfileMaxAge.
-// A stale profile would let the model label today's column with yesterday's shape.
-func (s *DataQualityService) qualityLabelProfiles(ctx context.Context, target dataquality.ResolvedTarget, columns []string) (map[string]*storepb.ColumnProfile, error) {
+// qualityAnalysisProfiles reads the cached profiles an analysis cites, and refuses
+// the request when any column has no profile younger than qualityProfileMaxAge. A stale
+// profile would let a proposal describe yesterday's shape as today's.
+func (s *DataQualityService) qualityAnalysisProfiles(ctx context.Context, target dataquality.ResolvedTarget, columns []string) (map[string]*storepb.ColumnProfile, error) {
 	guid, metaType := target.GUID, target.MetaType
 	rows, err := s.store.ListColumnProfiles(ctx, &store.FindColumnProfileMessage{
 		TableGUID:   &guid,
@@ -406,10 +414,10 @@ func (s *DataQualityService) qualityLabelProfiles(ctx context.Context, target da
 		}
 		stored[row.ColumnName] = row
 	}
-	if stale := qualityLabelStaleProfileColumns(stored, columns, time.Now().UTC()); len(stale) > 0 {
+	if stale := qualityAnalysisStaleProfileColumns(stored, columns, time.Now().UTC()); len(stale) > 0 {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
 			"columns %s have no profile newer than %d days; profile the table first with ProfileColumns, or use \"Analyze columns\" on the asset page",
-			strings.Join(stale, ", "), qualityLabelProfileMaxAgeDays))
+			strings.Join(stale, ", "), qualityProfileMaxAgeDays))
 	}
 	profiles := make(map[string]*storepb.ColumnProfile, len(stored))
 	for name, row := range stored {
@@ -418,9 +426,9 @@ func (s *DataQualityService) qualityLabelProfiles(ctx context.Context, target da
 	return profiles, nil
 }
 
-// qualityLabelExistingLabels reads the labels already asserted on the requested
+// qualityColumnLabels reads the labels already asserted on the requested
 // columns, which the prompt shows so the model does not relabel them blindly.
-func (s *DataQualityService) qualityLabelExistingLabels(ctx context.Context, target dataquality.ResolvedTarget, columns []string) (map[string]storepb.QualitySemanticType, error) {
+func (s *DataQualityService) qualityColumnLabels(ctx context.Context, target dataquality.ResolvedTarget, columns []string) (map[string]storepb.QualitySemanticType, error) {
 	guid, metaType := target.GUID, target.MetaType
 	labels, err := s.store.ListColumnSemanticLabels(ctx, &store.FindColumnSemanticLabelMessage{
 		TableGUID:   &guid,
@@ -433,14 +441,14 @@ func (s *DataQualityService) qualityLabelExistingLabels(ctx context.Context, tar
 	return qualityLabelLabelMap(labels), nil
 }
 
-// qualityLabelStaleProfileColumns returns the requested columns whose profile is
-// missing, empty or older than qualityLabelProfileMaxAge, in request order. It is
+// qualityAnalysisStaleProfileColumns returns the requested columns whose profile is
+// missing, empty or older than qualityProfileMaxAge, in request order. It is
 // pure so the freshness rule is testable without a store.
-func qualityLabelStaleProfileColumns(profiles map[string]*store.ColumnProfileMessage, columns []string, now time.Time) []string {
+func qualityAnalysisStaleProfileColumns(profiles map[string]*store.ColumnProfileMessage, columns []string, now time.Time) []string {
 	var stale []string
 	for _, column := range columns {
 		profile, ok := profiles[column]
-		if !ok || profile == nil || profile.Profile == nil || now.Sub(profile.ProfiledAt) > qualityLabelProfileMaxAge {
+		if !ok || profile == nil || profile.Profile == nil || now.Sub(profile.ProfiledAt) > qualityProfileMaxAge {
 			stale = append(stale, column)
 		}
 	}

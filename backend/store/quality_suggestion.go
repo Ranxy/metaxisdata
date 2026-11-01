@@ -498,12 +498,14 @@ func (s *Store) SupersedePendingQualitySuggestions(ctx context.Context, targetGU
 }
 
 // QualitySuggestionSignatureState is what the queue knows about one proposal
-// identity on a target: whether a live proposal is waiting, and what a reviewer
-// last decided about it. Generation uses it to avoid re-proposing a decided
-// proposal and to skip spending a model call on one that is already pending.
+// identity on a target: whether a live proposal is waiting, which generation pass
+// produced it, and what a reviewer last decided about it. Generation uses it to
+// avoid re-proposing a decided proposal, to skip spending a model call on one that is
+// already pending, and to leave a live proposal another pass produced alone.
 type QualitySuggestionSignatureState struct {
-	Pending      bool
-	LastDecision storepb.QualitySuggestionStatus
+	Pending       bool
+	PendingSource storepb.QualitySuggestionSource
+	LastDecision  storepb.QualitySuggestionStatus
 }
 
 // QualitySuggestionSignatureStates folds the queue into one state per signature.
@@ -517,9 +519,13 @@ func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID
 	pending := int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING)
 	accepted := int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED)
 	rejected := int16(storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_REJECTED)
+	// The partial unique index allows one PENDING row per identity, so the filtered
+	// source array holds at most one element; the decision array is ordered so [1] is
+	// the latest decision.
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT signature,
 			COALESCE(bool_or(status = $1), FALSE),
+			(array_agg(source) FILTER (WHERE status = $1))[1],
 			(array_agg(status ORDER BY decided_at DESC NULLS LAST, id DESC)
 				FILTER (WHERE status IN ($2, $3)))[1]
 		FROM quality_suggestion
@@ -534,12 +540,16 @@ func (s *Store) QualitySuggestionSignatureStates(ctx context.Context, targetGUID
 		var (
 			signature string
 			isPending bool
+			source    sql.NullInt16
 			last      sql.NullInt16
 		)
-		if err := rows.Scan(&signature, &isPending, &last); err != nil {
+		if err := rows.Scan(&signature, &isPending, &source, &last); err != nil {
 			return nil, errors.Wrap(err, "failed to scan a quality suggestion signature state")
 		}
 		state := QualitySuggestionSignatureState{Pending: isPending}
+		if source.Valid {
+			state.PendingSource = storepb.QualitySuggestionSource(source.Int16)
+		}
 		if last.Valid {
 			state.LastDecision = storepb.QualitySuggestionStatus(last.Int16)
 		}
