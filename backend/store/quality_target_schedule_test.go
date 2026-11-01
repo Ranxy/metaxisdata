@@ -106,12 +106,10 @@ func TestQualityFrequencyGate(t *testing.T) {
 	require.Equal(t, time.Duration(0), qualityFrequencyTierPeriod(storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED))
 
 	gate := qualityFrequencyGateSQL(4, 5)
-	require.Contains(t, gate, "gate.started_at > s.next_run_at - MAKE_INTERVAL(secs => GREATEST(0,")
-	// The tier is quantized to the target's own cycle: a run's started_at follows its
-	// cycle's due instant, so a plain "period - cycle" window would skip every other
-	// cycle for a tier equal to the cadence.
-	require.Contains(t, gate, "CEIL(")
-	require.Contains(t, gate, "* s.schedule_interval_seconds")
+	// The gate compares the previous run's due slot with the current slot. A run
+	// starts a few seconds after its slot, so comparing started_at would make a tier
+	// equal to the target's own cadence skip every other cycle.
+	require.Contains(t, gate, "gate.scheduled_at > s.next_run_at - MAKE_INTERVAL(secs =>")
 	require.Contains(t, gate, "gate.trigger = $5")
 	require.Contains(t, gate, "gate.state = $4")
 	require.Contains(t, dueQualityTargetRulesStatement, qualityFrequencyGateSQL(4, 5),

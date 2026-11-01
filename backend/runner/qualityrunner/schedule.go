@@ -261,7 +261,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) boo
 
 	planned := make([]*store.QualityExecutionMessage, 0, len(rules))
 	for _, rule := range rules {
-		planned = append(planned, plannedExecution(batch.ID, plan.instanceResourceID, rule, now))
+		planned = append(planned, plannedExecution(batch.ID, plan.instanceResourceID, rule, plan.target.NextRunAt, now))
 	}
 	if err := r.stores.PlanQualityExecutions(ctx, planned); err != nil {
 		slog.Error("failed to plan a scheduled quality batch's executions",

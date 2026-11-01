@@ -148,7 +148,9 @@ func (s Spec) Next(after time.Time) time.Time {
 // NominalInterval is the cadence a caller should assume where it needs a duration
 // rather than an instant: the interval itself, or the gap between the next two
 // cron occurrences. It never returns zero. A cron schedule with no second
-// occurrence reports MaxInterval.
+// occurrence reports MaxInterval. The run cadence gate does not use it — it
+// compares due slots — so a daylight-saving transition shifting one gap does not
+// change what a cadence means.
 func (s Spec) NominalInterval(after time.Time) time.Duration {
 	if !s.IsCron() {
 		return s.intervalFloor()

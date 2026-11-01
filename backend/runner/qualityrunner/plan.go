@@ -14,7 +14,7 @@ import (
 // rule. The revision, target snapshot and instance are the due scan's view; the
 // runner may execute a newer revision and FinishQualityExecution then records the
 // revision it really judged.
-func plannedExecution(batchID int64, instanceResourceID string, dueRule *store.DueQualityRule, at time.Time) *store.QualityExecutionMessage {
+func plannedExecution(batchID int64, instanceResourceID string, dueRule *store.DueQualityRule, slot, at time.Time) *store.QualityExecutionMessage {
 	rule := dueRule.Rule
 	return &store.QualityExecutionMessage{
 		RunID:              batchID,
@@ -29,6 +29,7 @@ func plannedExecution(batchID int64, instanceResourceID string, dueRule *store.D
 		Trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
 		Attempt:            dueRule.Attempt,
 		StartedAt:          at,
+		ScheduledAt:        &slot,
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -3271,18 +3272,44 @@ func TestDataQualityScheduleTiersRealServerIntegration(t *testing.T) {
 		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), name)
 	}
 
+	// The scheduler stamps every scheduled execution with the target due slot the
+	// cycle belongs to, and the cadence gate compares slots instead of start times,
+	// so a tier equal to the target's own cadence stays exact.
+	firstSlot := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx,
+		fixture.usersGUID, storepb.MetaType_TABLE, firstSlot),
+		"make the target due for its first cycle")
+	forcedSlot := qualityTargetNextRunSlot(t, fixture, fixture.usersGUID)
+	require.WithinDuration(t, firstSlot, forcedSlot, time.Microsecond,
+		"the forced due slot is the one the scheduler reads")
+
 	// The frequency gate: one forced target cycle runs both checks, and a second
 	// forced cycle right after the first settled plans only the default-tier check.
 	// The weekly check already completed inside its window, and the target settles
 	// instead of staying due, so the scheduler cannot loop on it.
-	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx,
-		fixture.usersGUID, storepb.MetaType_TABLE, time.Now().Add(-time.Minute)),
-		"make the target due for its first cycle")
 	require.Len(t, waitForScheduledQualityExecutions(t, fixture, defaultRule.GetName(), 1), 1,
 		"the first target cycle runs the default-tier check")
 	require.Len(t, waitForScheduledQualityExecutions(t, fixture, weeklyRule.GetName(), 1), 1,
 		"the first target cycle also runs the weekly-tier check: nothing completed inside its window yet")
+	firstCycleExecutions := qualityScheduledExecutionsForTarget(t, fixture, fixture.usersGUID)
+	require.Len(t, firstCycleExecutions, 2, "the first cycle plans one execution per check")
+	for _, execution := range firstCycleExecutions {
+		require.NotNil(t, execution.ScheduledAt, "a scheduled execution carries the slot it belongs to")
+		require.True(t, execution.ScheduledAt.Equal(forcedSlot),
+			"execution %d belongs to slot %s, want %s", execution.ID, execution.ScheduledAt, forcedSlot)
+	}
 	waitForQualityTargetSettled(t, fixture, fixture.usersGUID, storepb.MetaType_TABLE)
+
+	// A manual run carries no due slot, which is what keeps it outside the cadence
+	// gate in both directions: it neither blocks a later scheduled cycle nor is
+	// blocked by a previous one.
+	manualPlanned := fixture.runRules(t, defaultRule.GetName())[0]
+	manualExecution := fixture.waitForCompletedExecution(t, manualPlanned.GetName())
+	manualRow, err := fixture.env.Store.GetQualityExecution(fixture.ctx,
+		qualityExecutionRowID(t, manualExecution.GetName()))
+	require.NoError(t, err)
+	require.NotNil(t, manualRow)
+	require.Nil(t, manualRow.ScheduledAt, "a manual execution has no due slot")
 
 	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx,
 		fixture.usersGUID, storepb.MetaType_TABLE, time.Now()),
@@ -3310,4 +3337,42 @@ func TestDataQualityScheduleTiersRealServerIntegration(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(2*time.Hour),
 		intervalSchedule.Msg.GetNextRunTime().AsTime(), 2*time.Minute,
 		"a schedule edit reschedules from now")
+}
+
+// qualityTargetNextRunSlot reads the due slot the scheduler will use for the
+// target. The API does not expose it, so the scenario reads the store directly.
+func qualityTargetNextRunSlot(t *testing.T, fixture *qualityFixture, guid string) time.Time {
+	t.Helper()
+
+	schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, guid, storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.NotNil(t, schedule)
+	require.NotNil(t, schedule.NextRunAt, "the target must be due")
+	return *schedule.NextRunAt
+}
+
+// qualityScheduledExecutionsForTarget lists the target's completed scheduled
+// executions through the store, the only place the due slot is readable.
+func qualityScheduledExecutionsForTarget(t *testing.T, fixture *qualityFixture, guid string) []*store.QualityExecutionMessage {
+	t.Helper()
+
+	trigger := storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED
+	limit := 50
+	executions, err := fixture.env.Store.ListQualityExecutions(fixture.ctx, &store.FindQualityExecutionMessage{
+		TargetGUID: &guid,
+		Trigger:    &trigger,
+		States:     []storepb.QualityExecutionState{storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED},
+		Limit:      &limit,
+	})
+	require.NoError(t, err, "list the target's scheduled executions")
+	return executions
+}
+
+// qualityExecutionRowID parses the numeric row id off an execution resource name.
+func qualityExecutionRowID(t *testing.T, name string) int64 {
+	t.Helper()
+
+	id, err := strconv.ParseInt(name[strings.LastIndex(name, "/")+1:], 10, 64)
+	require.NoError(t, err, "the execution name %q carries a row id", name)
+	return id
 }

@@ -32,35 +32,36 @@ func qualityFrequencyTierPeriod(tier storepb.QualityFrequencyTier) time.Duration
 }
 
 // qualityFrequencyGateSQL renders the predicate a rule must satisfy to run in the
-// current target cycle: no completed scheduled execution may have started after
-// the gate boundary. A tiered check runs at most once per its period, and the
-// target's own tick stays the floor. Because a run's started_at is a few seconds
-// after its cycle's due instant, the gate cannot compare against "the current due
-// instant minus the tier period" directly: a daily check on a daily target would
-// then skip every other day. Instead the tier is quantized to the target's own
-// cadence: it covers ceil(period / cycle) cycles, and the boundary is one cycle
-// short of that. So a tier equal to the target's cadence (daily on daily) never
-// trips the gate, hourly on a 15-minute target skips three of four cycles, and a
-// 35-minute target with an hourly tier runs every second cycle rather than every
-// cycle (which would be denser than the tier). A tier denser than the target
-// covers one cycle, so it never blocks.
+// current target cycle: no completed scheduled execution may have its due slot
+// less than one tier period before the current slot. Comparing slots rather than
+// actual start times is what makes a tier equal to the target's own cadence exact:
+// a run starts on the scheduler tick after its slot, so a start-time comparison
+// would put the previous run just inside "one period ago" and a daily check on a
+// daily target would skip every other day. Manual executions carry no slot and
+// therefore never satisfy the subquery.
+//
+// The period is zero for UNSPECIFIED (follow the target), so the gate never blocks
+// a check that runs every cycle; the current cycle's own completed attempt is
+// handled by the attempts tally of the calling query.
 //
 // completedArg and scheduledArg are the 1-based placeholder numbers the calling
 // query uses for the COMPLETED state and the SCHEDULED trigger, so the due-rules
 // read and the pending-count read share one predicate instead of drifting.
 func qualityFrequencyGateSQL(completedArg, scheduledArg int) string {
+	// The tier period is rendered from the same helper the callers and tests read,
+	// so the SQL mapping cannot drift from the Go one.
 	tierSeconds := fmt.Sprintf(`CASE r.frequency_tier
 				WHEN %d THEN %d
 				WHEN %d THEN %d
 				WHEN %d THEN %d
 				ELSE 0 END`,
-		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY, int(hourlyFrequencyTier/time.Second),
-		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY, int(dailyFrequencyTier/time.Second),
-		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY, int(weeklyFrequencyTier/time.Second),
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY,
+		int(qualityFrequencyTierPeriod(storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY)/time.Second),
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY,
+		int(qualityFrequencyTierPeriod(storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY)/time.Second),
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY,
+		int(qualityFrequencyTierPeriod(storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY)/time.Second),
 	)
-	window := fmt.Sprintf(`MAKE_INTERVAL(secs => GREATEST(0,
-			(GREATEST(1, CEIL((%s)::numeric / NULLIF(s.schedule_interval_seconds, 0)))::int - 1)
-				* s.schedule_interval_seconds))`, tierSeconds)
 	return fmt.Sprintf(`NOT EXISTS (
 			SELECT 1 FROM quality_execution gate
 			WHERE gate.rule_id = r.id
@@ -68,7 +69,7 @@ func qualityFrequencyGateSQL(completedArg, scheduledArg int) string {
 				AND gate.target_type = r.target_type
 				AND gate.trigger = $%d
 				AND gate.state = $%d
-				AND gate.started_at > s.next_run_at - %s
+				AND gate.scheduled_at > s.next_run_at - MAKE_INTERVAL(secs => %s)
 		)`,
-		scheduledArg, completedArg, window)
+		scheduledArg, completedArg, tierSeconds)
 }

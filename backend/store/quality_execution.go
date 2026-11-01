@@ -16,7 +16,7 @@ import (
 
 // qualityExecutionColumns is the projection every quality_execution query
 // returns, in the order scanQualityExecution reads it.
-const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at, baseline_value, baseline_time`
+const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at, baseline_value, baseline_time, scheduled_at`
 
 // QualityExecutionMessage is one rule checked once: the durable, user-facing
 // unit of the data quality engine. Its public resource name is built from ID,
@@ -83,6 +83,10 @@ type QualityExecutionMessage struct {
 	// the verdict carries the evidence it used instead of leaving a reader to guess.
 	BaselineValue *float64
 	BaselineTime  *time.Time
+	// ScheduledAt is the target due slot a scheduled execution belongs to; nil for
+	// a manual execution. The run cadence gate compares slots instead of start
+	// times, because a run starts a few seconds after its own slot.
+	ScheduledAt *time.Time
 }
 
 // FindQualityExecutionMessage is the query filter for quality executions.
@@ -196,6 +200,7 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 		finished      sql.NullTime
 		baselineValue sql.NullFloat64
 		baselineTime  sql.NullTime
+		scheduledAt   sql.NullTime
 	)
 	err := scanner.Scan(
 		&msg.ID,
@@ -229,6 +234,7 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 		&finished,
 		&baselineValue,
 		&baselineTime,
+		&scheduledAt,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to scan quality execution")
@@ -261,7 +267,19 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 	if baselineTime.Valid {
 		msg.BaselineTime = &baselineTime.Time
 	}
+	if scheduledAt.Valid {
+		msg.ScheduledAt = &scheduledAt.Time
+	}
 	return &msg, nil
+}
+
+// qualityExecutionScheduledAt renders the optional due slot as a nullable
+// timestamp. A manual execution has none.
+func qualityExecutionScheduledAt(scheduledAt *time.Time) sql.NullTime {
+	if scheduledAt == nil || scheduledAt.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: *scheduledAt, Valid: true}
 }
 
 // qualityExecutionPlanStatement inserts one planned execution and returns its
@@ -271,9 +289,10 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 const qualityExecutionPlanStatement = `
 	INSERT INTO quality_execution (
 		run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type,
-		target_path, instance_resource_id, trigger, attempt, initiator_id, state, started_at
+		target_path, instance_resource_id, trigger, attempt, initiator_id, state,
+		started_at, scheduled_at
 	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 	)
 	RETURNING id
 `
@@ -348,6 +367,7 @@ func (s *Store) PlanQualityExecutions(ctx context.Context, executions []*Quality
 			initiator,
 			int32(state),
 			startedAt,
+			qualityExecutionScheduledAt(execution.ScheduledAt),
 		).Scan(&execution.ID); err != nil {
 			return errors.Wrapf(err, "failed to plan quality execution %d", i)
 		}

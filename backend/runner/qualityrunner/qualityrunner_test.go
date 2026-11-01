@@ -334,7 +334,7 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 		TargetPath: path,
 	}
 	dueRule := &store.DueQualityRule{Rule: rule, Attempt: 2}
-	planned := plannedExecution(11, "inst1", dueRule, now)
+	planned := plannedExecution(11, "inst1", dueRule, now, now)
 
 	require.Equal(t, int64(11), planned.RunID)
 	require.Equal(t, int64(7), planned.RuleID)
@@ -348,6 +348,9 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, planned.Trigger)
 	require.Equal(t, int32(2), planned.Attempt)
 	require.Equal(t, now, planned.StartedAt)
+	// The due slot is what a run cadence compares; it is not the planning time.
+	require.NotNil(t, planned.ScheduledAt)
+	require.Equal(t, now, *planned.ScheduledAt)
 }
 
 // A batch holds one lease for its whole life, so a second batch on the same

@@ -1095,6 +1095,10 @@ CREATE TABLE IF NOT EXISTS quality_execution (
     duration_ms INT4 NOT NULL DEFAULT 0,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMPTZ,
+    -- The target due slot a scheduled execution belongs to; NULL for a manual
+    -- execution. A check's run cadence compares slots, not start times, so a tier
+    -- equal to the target's own period never skips a cycle.
+    scheduled_at TIMESTAMPTZ,
     -- The row count a row_count_change check compared against, and when that
     -- count was measured. NULL for every other rule type and for a first
     -- observation that had no recent baseline to compare with.
@@ -1103,6 +1107,7 @@ CREATE TABLE IF NOT EXISTS quality_execution (
 );
 CREATE INDEX IF NOT EXISTS idx_quality_execution_run ON quality_execution(run_id);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_rule_time ON quality_execution(rule_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_rule_slot ON quality_execution(rule_id, scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_target_time ON quality_execution(target_guid, target_type, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_started_at ON quality_execution(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_state ON quality_execution(state);

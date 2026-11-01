@@ -52,11 +52,12 @@ type qualityExecutionScannerStub struct {
 	finishedAt         sql.NullTime
 	baselineValue      sql.NullFloat64
 	baselineTime       sql.NullTime
+	scheduledAt        sql.NullTime
 }
 
 func (s qualityExecutionScannerStub) Scan(dest ...any) error {
-	if len(dest) != 31 {
-		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 31", len(dest))
+	if len(dest) != 32 {
+		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 32", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*int64)) = s.runID
@@ -89,6 +90,7 @@ func (s qualityExecutionScannerStub) Scan(dest ...any) error {
 	*(dest[28].(*sql.NullTime)) = s.finishedAt
 	*(dest[29].(*sql.NullFloat64)) = s.baselineValue
 	*(dest[30].(*sql.NullTime)) = s.baselineTime
+	*(dest[31].(*sql.NullTime)) = s.scheduledAt
 	return nil
 }
 
@@ -130,6 +132,7 @@ func TestQualityExecutionColumnsMatchTheScan(t *testing.T) {
 		"finished_at",
 		"baseline_value",
 		"baseline_time",
+		"scheduled_at",
 	}, columns)
 	require.NotContains(t, qualityExecutionColumns, "*")
 }
