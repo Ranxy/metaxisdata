@@ -99,10 +99,14 @@ type QualityTargetMessage struct {
 	LatestRun *QualityTargetRunSummaryMessage
 	RunCount  int32
 
-	// ScheduleInterval and NextRunAt are the target's own schedule: every enabled
-	// check on the target runs together on this cadence. NextRunAt is nil while
-	// the target has no enabled rule.
+	// ScheduleInterval, ScheduleCron and ScheduleTimeZone are the target's own
+	// schedule: every enabled check on the target runs together on this cadence.
+	// ScheduleInterval is the nominal cadence either way; ScheduleCron is set only
+	// for a target that runs on a cron expression, in ScheduleTimeZone. NextRunAt
+	// is nil while the target has no enabled rule.
 	ScheduleInterval time.Duration
+	ScheduleCron     string
+	ScheduleTimeZone string
 	NextRunAt        *time.Time
 
 	// QualityScore is the target's 0-100 weighted score over its enabled rules'
@@ -305,6 +309,8 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 			lastRunTime     sql.NullTime
 			schemaChange    bool
 			scheduleSeconds sql.NullInt32
+			scheduleCron    string
+			scheduleZone    string
 			scheduleNext    sql.NullTime
 		)
 		scanErr := rows.Scan(
@@ -312,7 +318,8 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 			&message.RuleCount, &message.EnabledCount, &message.PausedCount, &message.ColumnCount,
 			&worstRank, &lastRunTime,
 			&message.OpenIssueCount, &message.PendingDraftCount, &message.PendingLabelCount,
-			&schemaChange, &scheduleSeconds, &scheduleNext,
+			&schemaChange, &scheduleSeconds, &scheduleCron, &scheduleZone,
+			&scheduleNext,
 		)
 		if scanErr != nil {
 			return nil, errors.Wrap(scanErr, "failed to scan a quality target")
@@ -322,6 +329,8 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 		message.WorstStatus = QualityTargetStatusFromRank(worstRank)
 		message.SchemaChanged = schemaChange
 		message.ScheduleInterval = time.Duration(scheduleSeconds.Int32) * time.Second
+		message.ScheduleCron = scheduleCron
+		message.ScheduleTimeZone = scheduleZone
 		if scheduleNext.Valid {
 			message.NextRunAt = &scheduleNext.Time
 		}
@@ -450,7 +459,8 @@ func qualityTargetsStatement(find *FindQualityTargetMessage) (string, []any, err
 		t.paused_count, t.column_count, COALESCE(r.worst_rank, 0), r.last_run_time,
 		COALESCE(i.open_issue_count, 0), COALESCE(d.pending_draft_count, 0),
 		COALESCE(d.pending_label_count, 0), COALESCE(t.schema_changed, FALSE),
-		sch.schedule_interval_seconds, sch.next_run_at
+		sch.schedule_interval_seconds, sch.schedule_cron, sch.schedule_timezone,
+		sch.next_run_at
 	FROM targets t
 	LEFT JOIN results r ON r.target_guid = t.target_guid AND r.target_type = t.target_type
 	LEFT JOIN issues i ON i.target_guid = t.target_guid AND i.target_type = t.target_type

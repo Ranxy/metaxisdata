@@ -699,7 +699,7 @@ func qualityTargetExportHeader() []string {
 		"rule_count", "enabled_rule_count", "paused_rule_count", "column_count",
 		"open_issue_count", "pending_draft_count", "worst_status",
 		"last_run_time", "schema_changed", "orphaned",
-		"schedule_interval_seconds", "next_run_time",
+		"schedule_interval_seconds", "next_run_time", "schedule_cron", "schedule_timezone",
 	}
 }
 
@@ -727,6 +727,8 @@ func qualityTargetExportRecord(target *store.QualityTargetMessage) []string {
 		strconv.FormatBool(target.Orphaned),
 		interval,
 		qualityExportTimePtr(target.NextRunAt),
+		qualityExportText(target.ScheduleCron),
+		qualityExportText(target.ScheduleTimeZone),
 	}
 }
 

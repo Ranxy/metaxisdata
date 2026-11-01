@@ -17,6 +17,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
@@ -440,8 +441,12 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	// Scheduling belongs to the target. The workspace default seeds the target's
 	// schedule the first time the target gets a rule; an existing target keeps its
 	// cadence and the new check joins the next run.
-	interval := settings.DefaultScheduleInterval
-	if err := validateQualityScheduleInterval(interval); err != nil {
+	targetSchedule, err := schedule.Parse(settings.DefaultScheduleInterval, "", "", settings.TimeZone)
+	if err != nil {
+		return nil, connectErrorInvalid("%v", err)
+	}
+	frequencyTier, err := qualityFrequencyTierFromV1(rule.GetFrequencyTier())
+	if err != nil {
 		return nil, err
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
@@ -503,12 +508,13 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		Config:         config,
 		Severity:       storepb.QualitySeverity(rule.GetSeverity()),
 		State:          storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		FrequencyTier:  frequencyTier,
 		OwnerID:        ownerID,
 		Tags:           append([]string(nil), rule.GetTags()...),
 		MuteUntil:      protoTimeOrNil(rule.GetMuteUntil()),
 		CreatedBy:      callerID,
 		UpdatedBy:      callerID,
-	}, interval)
+	}, targetSchedule)
 	if err != nil {
 		// The rule was not written, so the claim must not stand: put the draft back
 		// in the queue for a retry. Best effort, like the decision itself.
@@ -766,7 +772,10 @@ func (s *DataQualityService) syncQualityTargetScheduleAfterRuleUpdate(ctx contex
 		if err != nil {
 			return errLoadQualitySettings(err)
 		}
-		if _, err := s.store.EnsureQualityTargetSchedule(ctx, updated.TargetGUID, updated.TargetType, settings.DefaultScheduleInterval, now); err != nil {
+		// A moved rule seeds the new target's schedule the way a new rule does: with
+		// the workspace default. An existing schedule keeps its own cadence.
+		targetSchedule := schedule.Spec{Interval: settings.DefaultScheduleInterval}
+		if _, err := s.store.EnsureQualityTargetSchedule(ctx, updated.TargetGUID, updated.TargetType, targetSchedule, now); err != nil {
 			return err
 		}
 		if err := s.store.SyncQualityTargetSchedule(ctx, updated.TargetGUID, updated.TargetType, now); err != nil {

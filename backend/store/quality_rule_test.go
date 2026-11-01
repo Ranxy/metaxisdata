@@ -30,6 +30,7 @@ type qualityRuleRowStub struct {
 	config         []byte
 	severity       storepb.QualitySeverity
 	state          storepb.QualityRuleState
+	frequencyTier  storepb.QualityFrequencyTier
 	ownerID        sql.NullInt32
 	tags           pq.StringArray
 	muteUntil      sql.NullTime
@@ -42,8 +43,8 @@ type qualityRuleRowStub struct {
 }
 
 func (s qualityRuleRowStub) Scan(dest ...any) error {
-	if len(dest) != 22 {
-		return fmt.Errorf("quality rule stub got %d destinations, want 22", len(dest))
+	if len(dest) != 23 {
+		return fmt.Errorf("quality rule stub got %d destinations, want 23", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*string)) = s.resourceID
@@ -58,15 +59,16 @@ func (s qualityRuleRowStub) Scan(dest ...any) error {
 	*(dest[10].(*[]byte)) = s.config
 	*(dest[11].(*storepb.QualitySeverity)) = s.severity
 	*(dest[12].(*storepb.QualityRuleState)) = s.state
-	*(dest[13].(*sql.NullInt32)) = s.ownerID
-	*(dest[14].(*pq.StringArray)) = s.tags
-	*(dest[15].(*sql.NullTime)) = s.muteUntil
-	*(dest[16].(*int32)) = s.revision
-	*(dest[17].(*sql.NullInt32)) = s.createdBy
-	*(dest[18].(*sql.NullInt32)) = s.updatedBy
-	*(dest[19].(*time.Time)) = s.createdAt
-	*(dest[20].(*time.Time)) = s.updatedAt
-	*(dest[21].(*bool)) = s.deleted
+	*(dest[13].(*storepb.QualityFrequencyTier)) = s.frequencyTier
+	*(dest[14].(*sql.NullInt32)) = s.ownerID
+	*(dest[15].(*pq.StringArray)) = s.tags
+	*(dest[16].(*sql.NullTime)) = s.muteUntil
+	*(dest[17].(*int32)) = s.revision
+	*(dest[18].(*sql.NullInt32)) = s.createdBy
+	*(dest[19].(*sql.NullInt32)) = s.updatedBy
+	*(dest[20].(*time.Time)) = s.createdAt
+	*(dest[21].(*time.Time)) = s.updatedAt
+	*(dest[22].(*bool)) = s.deleted
 	return nil
 }
 

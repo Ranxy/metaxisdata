@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -27,11 +28,6 @@ const (
 	qualityExecutionPrefix = "qualityExecutions/"
 	qualityRunPrefix       = "qualityRuns/"
 	qualityIssuePrefix     = "qualityIssues/"
-
-	// A rule that is scheduled must say how often. The bounds are the design's
-	// accepted range; zero is rejected because pausing is how scheduling stops.
-	minQualityScheduleInterval = 15 * time.Minute
-	maxQualityScheduleInterval = 7 * 24 * time.Hour
 )
 
 // parseQualityRuleName splits workspaces/{workspace}/qualityRules/{quality_rule}.
@@ -187,15 +183,32 @@ func errLoadQualitySettings(err error) error {
 	return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to load the data quality settings"))
 }
 
-// validateQualityScheduleInterval enforces the accepted scheduling range.
-func validateQualityScheduleInterval(interval time.Duration) error {
-	if interval == 0 {
-		return connectErrorInvalid("schedule_interval is required: a target runs its checks between 15m and 7d apart")
+// qualityScheduleSpecFromV1 validates and resolves the schedule an update request
+// names. Exactly one of schedule_interval and cron is accepted; an empty time zone
+// resolves to the workspace's check time zone, and the resolved name is what the
+// target stores, so a later read is self-contained.
+func qualityScheduleSpecFromV1(request *v1pb.UpdateQualityTargetScheduleRequest, defaultTimeZone string) (schedule.Spec, error) {
+	spec, err := schedule.Parse(request.GetScheduleInterval().AsDuration(), request.GetCron(), request.GetTimezone(), defaultTimeZone)
+	if err != nil {
+		return schedule.Spec{}, connectErrorInvalid("%v", err)
 	}
-	if interval < minQualityScheduleInterval || interval > maxQualityScheduleInterval {
-		return connectErrorInvalid("schedule_interval %s is outside the accepted range 15m–7d", interval)
+	return spec, nil
+}
+
+// qualityFrequencyTierFromV1 validates the run-cadence tier a request names. The
+// zero value is a real choice — follow the target's own schedule — so only a value
+// outside the enum is refused.
+func qualityFrequencyTierFromV1(tier v1pb.QualityFrequencyTier) (storepb.QualityFrequencyTier, error) {
+	switch tier {
+	case v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY:
+		return storepb.QualityFrequencyTier(tier), nil
+	default:
+		return storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED,
+			connectErrorInvalid("unknown quality frequency tier %d", tier)
 	}
-	return nil
 }
 
 // convertQualityFilterToV1 converts the store filter into its public shape.
@@ -313,15 +326,20 @@ func convertQualityTargetPathToV1(path *storepb.QualityTargetPath) *v1pb.Quality
 	}
 }
 
-// convertQualityTargetSchedule converts one target's schedule row. The next run
-// is read-only and stays unset while the target has no enabled rule.
-func convertQualityTargetSchedule(schedule *store.QualityTargetScheduleMessage) *v1pb.QualityTargetSchedule {
-	if schedule == nil {
+// convertQualityTargetSchedule converts one target's schedule row. The interval is
+// always set: for a cron target it is the nominal cadence the store derived from
+// the expression, which is also the value the editor falls back to in interval
+// mode. The next run is read-only and stays unset while the target has no enabled
+// rule.
+func convertQualityTargetSchedule(targetSchedule *store.QualityTargetScheduleMessage) *v1pb.QualityTargetSchedule {
+	if targetSchedule == nil {
 		return nil
 	}
 	return &v1pb.QualityTargetSchedule{
-		ScheduleInterval: durationpb.New(schedule.ScheduleInterval),
-		NextRunTime:      timeToProtoTimestampPtr(schedule.NextRunAt),
+		ScheduleInterval: durationpb.New(targetSchedule.ScheduleInterval),
+		NextRunTime:      timeToProtoTimestampPtr(targetSchedule.NextRunAt),
+		Cron:             targetSchedule.Cron,
+		Timezone:         targetSchedule.TimeZone,
 	}
 }
 
@@ -347,21 +365,22 @@ func convertQualityRule(workspaceID string, rule *store.QualityRuleMessage) *v1p
 		return nil
 	}
 	return &v1pb.QualityRule{
-		Name:        formatQualityRuleName(workspaceID, rule.ResourceID),
-		Title:       rule.Title,
-		Description: rule.Description,
-		Dimension:   v1pb.QualityDimension(rule.Dimension),
-		RuleType:    v1pb.QualityRuleType(rule.RuleType),
-		Target:      convertQualityTargetFromRule(rule),
-		Config:      convertQualityRuleConfigToV1(rule.Config),
-		Severity:    v1pb.QualitySeverity(rule.Severity),
-		State:       v1pb.QualityRuleState(rule.State),
-		Owner:       formatQualityOwner(rule.OwnerID),
-		Revision:    rule.Revision,
-		CreateTime:  timestamppb.New(rule.CreatedAt),
-		UpdateTime:  timestamppb.New(rule.UpdatedAt),
-		MuteUntil:   timestampOrNil(rule.MuteUntil),
-		Tags:        append([]string(nil), rule.Tags...),
+		Name:          formatQualityRuleName(workspaceID, rule.ResourceID),
+		Title:         rule.Title,
+		Description:   rule.Description,
+		Dimension:     v1pb.QualityDimension(rule.Dimension),
+		RuleType:      v1pb.QualityRuleType(rule.RuleType),
+		Target:        convertQualityTargetFromRule(rule),
+		Config:        convertQualityRuleConfigToV1(rule.Config),
+		Severity:      v1pb.QualitySeverity(rule.Severity),
+		State:         v1pb.QualityRuleState(rule.State),
+		FrequencyTier: v1pb.QualityFrequencyTier(rule.FrequencyTier),
+		Owner:         formatQualityOwner(rule.OwnerID),
+		Revision:      rule.Revision,
+		CreateTime:    timestamppb.New(rule.CreatedAt),
+		UpdateTime:    timestamppb.New(rule.UpdatedAt),
+		MuteUntil:     timestampOrNil(rule.MuteUntil),
+		Tags:          append([]string(nil), rule.Tags...),
 	}
 }
 
@@ -588,6 +607,12 @@ func parseQualityRuleUpdate(rule *v1pb.QualityRule, paths []string) (*qualityRul
 				return nil, connectErrorInvalid("severity is required")
 			}
 			update.Patch.Severity = &severity
+		case "frequency_tier":
+			tier, err := qualityFrequencyTierFromV1(rule.GetFrequencyTier())
+			if err != nil {
+				return nil, err
+			}
+			update.Patch.FrequencyTier = &tier
 		case "state":
 			state := storepb.QualityRuleState(rule.GetState())
 			if state != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED &&

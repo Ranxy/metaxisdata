@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
@@ -33,10 +34,10 @@ func dueTargetStub(targetGUID string, ruleIDs ...int64) *store.DueQualityTarget 
 		rules = append(rules, &store.DueQualityRule{Rule: qualityRuleStub(id, targetGUID), Attempt: 1})
 	}
 	return &store.DueQualityTarget{
-		TargetGUID:       targetGUID,
-		TargetType:       storepb.MetaType_TABLE,
-		ScheduleInterval: time.Hour,
-		Rules:            rules,
+		TargetGUID: targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Schedule:   schedule.Spec{Interval: time.Hour},
+		Rules:      rules,
 	}
 }
 
@@ -1271,4 +1272,16 @@ func TestLoadBatchContractFilterWithoutAStoreIsNoFilter(t *testing.T) {
 	filter, err := r.loadBatchContractFilter()(context.Background(), "users", storepb.MetaType_TABLE)
 	require.NoError(t, err)
 	require.Nil(t, filter)
+}
+
+// nextTargetRun follows a cron target's next occurrence and advances an interval
+// target one interval from now; the spec floors a malformed row.
+func TestNextTargetRun(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.November, 1, 8, 30, 0, 0, time.UTC)
+	require.Equal(t, now.Add(2*time.Hour), nextTargetRun(now, schedule.Spec{Interval: 2 * time.Hour}))
+	require.Equal(t, time.Date(2026, time.November, 2, 2, 0, 0, 0, time.UTC),
+		nextTargetRun(now, schedule.Spec{Cron: "0 2 * * *", TimeZone: "UTC"}))
+	require.Equal(t, now.Add(minRuleScheduleInterval), nextTargetRun(now, schedule.Spec{}))
 }

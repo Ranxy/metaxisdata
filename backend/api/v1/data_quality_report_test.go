@@ -138,6 +138,26 @@ func TestBuildQualityReport(t *testing.T) {
 	require.Equal(t, int32(3), report.Basis.TargetColumnCount)
 }
 
+// A cron target records its expression and resolved zone in the report basis, so a
+// forwarded document still says how the checks are scheduled.
+func TestQualityReportBasisCronSchedule(t *testing.T) {
+	t.Parallel()
+
+	nextRun := time.Date(2026, time.October, 31, 18, 0, 0, 0, time.UTC)
+	workspace := qualityReportWorkspaceFixture()
+	workspace.schedule = &store.QualityTargetScheduleMessage{
+		TargetGUID: "instance-1;shop;;orders", TargetType: storepb.MetaType_TABLE,
+		ScheduleInterval: 24 * time.Hour, Cron: "0 2 * * *", TimeZone: "Asia/Shanghai",
+		NextRunAt: &nextRun,
+	}
+	basis := qualityReportBasis(workspace)
+	require.Equal(t, "0 2 * * *", basis.Cron)
+	require.Equal(t, "Asia/Shanghai", basis.TimeZone)
+	require.Equal(t, 24*time.Hour, basis.ScheduleInterval, "the nominal cadence is still recorded")
+	require.NotNil(t, basis.NextRunTime)
+	require.Equal(t, nextRun, *basis.NextRunTime)
+}
+
 // The omitted-count denominator is the larger of the trend tally and the fetched
 // list: a failure that completed between the two queries must never make the
 // report claim to show more checks than its own total.

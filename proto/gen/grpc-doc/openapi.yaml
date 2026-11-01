@@ -12936,6 +12936,19 @@ components:
                     type: array
                     items:
                         type: string
+                frequencyTier:
+                    enum:
+                        - QUALITY_FREQUENCY_TIER_UNSPECIFIED
+                        - QUALITY_FREQUENCY_TIER_HOURLY
+                        - QUALITY_FREQUENCY_TIER_DAILY
+                        - QUALITY_FREQUENCY_TIER_WEEKLY
+                    type: string
+                    description: |-
+                        How often this check needs to run inside the target's schedule. The target
+                         tick is the floor, so a tier denser than the target is a no-op; a manual run
+                         is not affected. It is scheduling metadata, not part of the rule definition:
+                         editing it does not append a revision.
+                    format: enum
             description: QualityRule is one data quality check.
         QualityRuleConfig:
             type: object
@@ -13603,7 +13616,11 @@ components:
                 scheduleInterval:
                     pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
                     type: string
-                    description: How often the target's enabled checks run, between 15 minutes and 7 days.
+                    description: |-
+                        How often the target's enabled checks run, between 15 minutes and 7 days. A
+                         cron target keeps the expression's nominal gap here as the cadence it falls
+                         back to when the expression is cleared, so the editor can seed interval mode
+                         from it; cron decides the actual occurrence.
                 nextRunTime:
                     readOnly: true
                     type: string
@@ -13611,10 +13628,24 @@ components:
                         When the scheduler next considers the target due. Unset while the target has
                          no enabled check.
                     format: date-time
+                cron:
+                    type: string
+                    description: |-
+                        A standard five-field cron expression evaluated in timezone, for example
+                         "0 2 * * *" for every day at 02:00. Empty when the target runs on
+                         schedule_interval instead.
+                timezone:
+                    type: string
+                    description: |-
+                        The IANA time zone the cron expression is evaluated in, for example
+                         "Asia/Shanghai". Empty for an interval schedule. When a request leaves it
+                         empty, the server resolves it to the workspace's check time zone at save
+                         time and stores the resolved zone.
             description: |-
                 QualityTargetSchedule is a target's one schedule: the cadence every enabled
                  check of the target runs at, and when the target next comes due. Scheduling is
-                 per target, so all of its checks are planned and executed together.
+                 per target, so all of its checks are planned and executed together. A target
+                 runs either on a fixed interval or on a cron expression, never both.
         QualityTargetSummary:
             type: object
             properties:
@@ -15353,7 +15384,6 @@ components:
             required:
                 - parent
                 - targetGuid
-                - scheduleInterval
             type: object
             properties:
                 parent:
@@ -15390,7 +15420,23 @@ components:
                 scheduleInterval:
                     pattern: ^-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,9})?s$
                     type: string
-                    description: How often the target's enabled checks run, between 15 minutes and 7 days.
+                    description: |-
+                        How often the target's enabled checks run. Exactly one of schedule_interval
+                         and cron is set: a fixed interval between 15 minutes and 7 days, or a cron
+                         expression.
+                cron:
+                    type: string
+                    description: |-
+                        A standard five-field cron expression ("minute hour day-of-month month
+                         day-of-week") evaluated in timezone, for example "0 2 * * *" for every day at
+                         02:00. The gap between two of its occurrences must be at least 15 minutes;
+                         there is no upper bound.
+                timezone:
+                    type: string
+                    description: |-
+                        The IANA time zone the cron expression is evaluated in, for example
+                         "Asia/Shanghai". Empty resolves to the workspace's check time zone, and the
+                         resolved zone is what the target stores and what reads return.
         User:
             type: object
             properties:

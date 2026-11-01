@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -27,9 +28,10 @@ const (
 	// its first rule.
 	DefaultScheduleInterval = time.Hour
 	// MinScheduleInterval and MaxScheduleInterval bound the schedule interval a
-	// workspace may configure.
-	MinScheduleInterval = 15 * time.Minute
-	MaxScheduleInterval = 7 * 24 * time.Hour
+	// workspace may configure. They are the schedule package's own bounds, shared
+	// with cron expression validation so the two forms cannot drift apart.
+	MinScheduleInterval = schedule.MinInterval
+	MaxScheduleInterval = schedule.MaxInterval
 
 	// DefaultDailyExecutionLimit is the workspace's daily run ceiling.
 	DefaultDailyExecutionLimit = 10000

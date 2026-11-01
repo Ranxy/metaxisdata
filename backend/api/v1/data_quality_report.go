@@ -269,6 +269,8 @@ func qualityReportBasis(workspace *qualityTargetWorkspace) qualityreport.Basis {
 	basis := qualityreport.Basis{}
 	if workspace.schedule != nil {
 		basis.ScheduleInterval = workspace.schedule.ScheduleInterval
+		basis.Cron = workspace.schedule.Cron
+		basis.TimeZone = workspace.schedule.TimeZone
 		basis.NextRunTime = workspace.schedule.NextRunAt
 	}
 	if len(workspace.rules) > 0 {

@@ -442,6 +442,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityFrequencyTier"><span class="badge">E</span>QualityFrequencyTier</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityIssueStatus"><span class="badge">E</span>QualityIssueStatus</a>
                 </li>
               
@@ -4285,6 +4289,41 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_FILTER_OPERATOR_IS_NOT_NULL</td>
                 <td>10</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityFrequencyTier">QualityFrequencyTier</h3>
+        <p>QualityFrequencyTier is how often one check needs to run inside its target's</p><p>schedule. The target's own cadence is the floor. The store keeps it as a rule</p><p>column, not as part of the definition, so editing it does not append a rule</p><p>revision.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_HOURLY</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_DAILY</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_WEEKLY</td>
+                <td>3</td>
                 <td><p></p></td>
               </tr>
             

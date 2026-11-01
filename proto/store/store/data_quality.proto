@@ -128,6 +128,17 @@ enum QualityRuleState {
   QUALITY_RULE_STATE_ARCHIVED = 3;
 }
 
+// QualityFrequencyTier is how often one check needs to run inside its target's
+// schedule. The target's own cadence is the floor. The store keeps it as a rule
+// column, not as part of the definition, so editing it does not append a rule
+// revision.
+enum QualityFrequencyTier {
+  QUALITY_FREQUENCY_TIER_UNSPECIFIED = 0;
+  QUALITY_FREQUENCY_TIER_HOURLY = 1;
+  QUALITY_FREQUENCY_TIER_DAILY = 2;
+  QUALITY_FREQUENCY_TIER_WEEKLY = 3;
+}
+
 // QualityObservedKind is the unit of the observed value a result records.
 enum QualityObservedKind {
   QUALITY_OBSERVED_KIND_UNSPECIFIED = 0;

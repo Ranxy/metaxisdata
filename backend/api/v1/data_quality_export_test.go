@@ -366,8 +366,29 @@ func TestQualityTargetExportRecord(t *testing.T) {
 	require.Equal(t, []string{
 		"inst;db;public;orders", "TABLE", "inst.db.public.orders",
 		"5", "3", "2", "1", "4", "2", "FAIL",
-		"2026-10-31T08:00:00Z", "true", "false", "3600", "2026-10-31T09:00:00Z",
-	}, record)
+		"2026-10-31T08:00:00Z", "true", "false", "3600", "2026-10-31T09:00:00Z", "", "",
+	}, record, "an interval target leaves the cron columns empty")
+}
+
+// The target CSV carries the schedule's cron expression and zone next to the
+// interval, so a cron target's cadence survives the export.
+func TestQualityTargetExportRecordCronSchedule(t *testing.T) {
+	t.Parallel()
+
+	nextRun := time.Date(2026, 11, 1, 2, 0, 0, 0, time.UTC)
+	record := qualityTargetExportRecord(&store.QualityTargetMessage{
+		GUID:             "inst;db;public;orders",
+		Type:             storepb.MetaType_TABLE,
+		ScheduleInterval: 24 * time.Hour,
+		ScheduleCron:     "0 2 * * *",
+		ScheduleTimeZone: "Asia/Shanghai",
+		NextRunAt:        &nextRun,
+	})
+	require.Len(t, record, len(qualityTargetExportHeader()))
+	require.Equal(t, "86400", record[13], "a cron target still exports the nominal interval")
+	require.Equal(t, "2026-11-01T02:00:00Z", record[14])
+	require.Equal(t, "0 2 * * *", record[15])
+	require.Equal(t, "Asia/Shanghai", record[16])
 }
 
 // A target that never ran and has no schedule renders empty cells instead of
@@ -380,6 +401,8 @@ func TestQualityTargetExportRecordLeavesUnsetValuesEmpty(t *testing.T) {
 	require.Equal(t, "", record[10], "a target that never ran has no last run time")
 	require.Equal(t, "", record[13], "an unscheduled target has no interval")
 	require.Equal(t, "", record[14], "an unscheduled target has no next run")
+	require.Equal(t, "", record[15], "an unscheduled target has no cron expression")
+	require.Equal(t, "", record[16], "an unscheduled target has no cron zone")
 }
 
 func TestValidateQualityTargetExportFilters(t *testing.T) {

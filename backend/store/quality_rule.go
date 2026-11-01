@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -21,7 +22,7 @@ import (
 // order scanQualityRule consumes it.
 const qualityRuleColumns = `id, resource_id, title, description, dimension, rule_type,
 	target_guid, target_type, target_path, target_meta_hash, config, severity, state,
-	owner_id, tags, mute_until, revision,
+	frequency_tier, owner_id, tags, mute_until, revision,
 	created_by, updated_by, created_at, updated_at, deleted`
 
 // qualifyQualityRuleColumns prefixes qualityRuleColumns with a table alias. A
@@ -59,6 +60,10 @@ type QualityRuleMessage struct {
 	Config         *storepb.QualityRuleConfig
 	Severity       storepb.QualitySeverity
 	State          storepb.QualityRuleState
+	// FrequencyTier is how often the check needs to run inside the target's
+	// schedule. It is scheduling metadata, not part of the definition, so it does
+	// not appear in a revision.
+	FrequencyTier storepb.QualityFrequencyTier
 	// OwnerID is the principal id of the rule's owner; nil means unassigned.
 	OwnerID *int32
 	Tags    []string
@@ -146,6 +151,9 @@ type UpdateQualityRuleMessage struct {
 	Config         *storepb.QualityRuleConfig
 	Severity       *storepb.QualitySeverity
 	State          *storepb.QualityRuleState
+	// FrequencyTier is a head-only scheduling edit: changing it does not bump the
+	// revision.
+	FrequencyTier *storepb.QualityFrequencyTier
 	// OwnerID uses 0 to clear the owner (NULL); principals have ids above 0.
 	OwnerID *int32
 	Tags    *[]string
@@ -193,6 +201,7 @@ func scanQualityRule(row qualityRuleScanner) (*QualityRuleMessage, error) {
 		&configJSON,
 		&msg.Severity,
 		&msg.State,
+		&msg.FrequencyTier,
 		&ownerID,
 		&tags,
 		&muteUntil,
@@ -478,11 +487,10 @@ func qualityRuleSemanticChanged(current *QualityRuleMessage, patch *UpdateQualit
 // CreateQualityRule inserts a rule head and its first revision row in one
 // transaction. The caller provides the public resource id: it names the API
 // resource and is never reused, so the store must not derive it from the row id.
-// targetScheduleInterval seeds the target's schedule row when the target has no
-// schedule yet; an existing target keeps its cadence. The returned message is the
-// stored row, not the input, so database defaults (timestamps, state) are
-// reflected.
-func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage, targetScheduleInterval time.Duration) (*QualityRuleMessage, error) {
+// targetSchedule seeds the target's schedule row when the target has no schedule
+// yet; an existing target keeps its cadence. The returned message is the stored
+// row, not the input, so database defaults (timestamps, state) are reflected.
+func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage, targetSchedule schedule.Spec) (*QualityRuleMessage, error) {
 	if rule == nil {
 		return nil, common.Errorf(common.Invalid, "a quality rule is required")
 	}
@@ -505,8 +513,8 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage,
 	if rule.TargetType == storepb.MetaType_UNSPECIFIED {
 		return nil, common.Errorf(common.Invalid, "quality rule target type is required")
 	}
-	if targetScheduleInterval <= 0 {
-		return nil, common.Errorf(common.Invalid, "a target schedule interval is required")
+	if targetSchedule.Interval <= 0 && !targetSchedule.IsCron() {
+		return nil, common.Errorf(common.Invalid, "a target schedule is required")
 	}
 	state := rule.State
 	if state == storepb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED {
@@ -547,10 +555,11 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage,
 		INSERT INTO quality_rule (
 			resource_id, title, description, dimension, rule_type, target_guid,
 			target_type, target_path, target_meta_hash, config, severity, state,
-			owner_id, tags, mute_until, revision, created_by, updated_by
+			frequency_tier, owner_id, tags, mute_until, revision, created_by,
+			updated_by
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-			$16, $17, $18
+			$16, $17, $18, $19
 		) RETURNING `+qualityRuleColumns,
 		resourceID,
 		strings.TrimSpace(rule.Title),
@@ -564,6 +573,7 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage,
 		configJSON,
 		rule.Severity,
 		state,
+		rule.FrequencyTier,
 		qualityRuleWriteInt32(rule.OwnerID),
 		pq.Array(tags),
 		qualityRuleWriteTime(rule.MuteUntil),
@@ -596,7 +606,7 @@ func (s *Store) CreateQualityRule(ctx context.Context, rule *QualityRuleMessage,
 	// it as enabled and starts its timer when the target had none. An existing
 	// target keeps its next slot: a new check joins the next run, it does not
 	// schedule one of its own.
-	if _, err := ensureQualityTargetSchedule(ctx, tx, created.TargetGUID, created.TargetType, targetScheduleInterval, time.Now().UTC()); err != nil {
+	if _, err := ensureQualityTargetSchedule(ctx, tx, created.TargetGUID, created.TargetType, targetSchedule, time.Now().UTC()); err != nil {
 		return nil, err
 	}
 
@@ -783,6 +793,10 @@ func (s *Store) UpdateQualityRule(ctx context.Context, resourceID string, patch 
 	if v := patch.State; v != nil {
 		args = append(args, *v)
 		sets = append(sets, fmt.Sprintf("state = $%d", len(args)))
+	}
+	if v := patch.FrequencyTier; v != nil {
+		args = append(args, *v)
+		sets = append(sets, fmt.Sprintf("frequency_tier = $%d", len(args)))
 	}
 	if v := patch.OwnerID; v != nil {
 		args = append(args, qualityRuleWriteInt32(v))
