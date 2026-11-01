@@ -778,11 +778,19 @@ function changeRuleType(ruleType: QualityRuleType) {
     return;
   }
   // A new type is a new config arm: the old values belong to controls that are
-  // no longer rendered, so they are cleared rather than sent along. The column
-  // the workspace named (or the one already typed) follows the reader.
+  // no longer rendered, so they are cleared rather than sent along. The execution
+  // settings are type-independent, so they follow the reader across the change.
+  // The column the workspace named (or the one already typed) follows too.
   const column = currentSingleColumn() || prefillColumn.value;
+  const previous = form.value.config;
   form.value.ruleType = ruleType;
-  form.value.config = emptyConfig();
+  form.value.config = {
+    ...emptyConfig(),
+    timeoutSeconds: previous.timeoutSeconds,
+    sampleMethod: previous.sampleMethod,
+    sampleMaxRows: previous.sampleMaxRows,
+    samplePercent: previous.samplePercent,
+  };
   form.value.dimension = suggestedDimension(ruleType);
   if (!isThresholdMetricType(ruleType)) {
     form.value.thresholdMetric = QualityThresholdMetric.COUNT;

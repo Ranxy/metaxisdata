@@ -205,23 +205,30 @@ describe("RuleExecutionFields", () => {
     wrapper.unmount();
   });
 
-  it("hides sampling for a check that reads the registry", () => {
+  it("hides the whole execution group for a check that reads the registry", () => {
+    // A metadata check runs no target query and has nothing to sample, so the
+    // group would only promise limits that do not exist.
     const schemaDrift = mountFields({
       ruleType: QualityRuleType.SCHEMA_DRIFT,
       config: { sampleMethod: "none" },
     });
-    expect(schemaDrift.wrapper.text()).not.toContain(
-      label("dataQuality.editor.samplingNone")
+    expect(schemaDrift.wrapper.find("#dq-config-sampling").exists()).toBe(
+      false
     );
-    // The timeout still applies to whatever the check reads.
-    expect(schemaDrift.wrapper.find("#dq-config-timeout").exists()).toBe(true);
+    expect(schemaDrift.wrapper.find("#dq-config-timeout").exists()).toBe(false);
+    expect(schemaDrift.wrapper.text()).not.toContain(
+      label("dataQuality.editor.executionTitle")
+    );
     schemaDrift.wrapper.unmount();
 
+    // A stored method stays visible so it can be inspected or cleared, but the
+    // query budget still does not exist for this check.
     const stored = mountFields({
       ruleType: QualityRuleType.SCHEMA_DRIFT,
       config: { sampleMethod: "maxRows", sampleMaxRows: "10" },
     });
     expect(stored.wrapper.find("#dq-config-sampling").exists()).toBe(true);
+    expect(stored.wrapper.find("#dq-config-timeout").exists()).toBe(false);
     stored.wrapper.unmount();
   });
 

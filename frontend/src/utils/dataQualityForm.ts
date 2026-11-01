@@ -89,13 +89,14 @@ export const MAX_SAMPLE_MAX_ROWS = 10_000_000;
 
 /**
  * The engines whose own sampling clause can express a share of the rows.
- * Mirrors the server's availability rule: MySQL/TiDB/MariaDB/OceanBase/
- * StarRocks have no such clause, so they only ever offer a row limit.
+ * Mirrors the server's availability rule: MySQL/TiDB/MariaDB/OceanBase have no
+ * query-level sampling clause at all, and Doris/StarRocks sample tablets — Doris
+ * reads every row while tablet statistics are missing — so those engines only ever
+ * offer a row limit.
  */
 export const PERCENT_SAMPLING_ENGINES: readonly Engine[] = [
   Engine.POSTGRES,
   Engine.MSSQL,
-  Engine.DORIS,
 ];
 
 /** CEL expressions are capped at 4 KiB, 20 referenced columns and 100k rows. */

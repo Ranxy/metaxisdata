@@ -1570,7 +1570,7 @@ describe("threshold suggestions", () => {
 
 describe("execution settings", () => {
   it("offers a percentage only where the engine and target can express it", () => {
-    for (const engine of [Engine.POSTGRES, Engine.MSSQL, Engine.DORIS]) {
+    for (const engine of [Engine.POSTGRES, Engine.MSSQL]) {
       expect(
         samplingMethodsFor(engine, MetaType.TABLE),
         String(engine)
@@ -1583,6 +1583,7 @@ describe("execution settings", () => {
       Engine.MARIADB,
       Engine.OCEANBASE,
       Engine.STARROCKS,
+      Engine.DORIS,
       Engine.ENGINE_UNSPECIFIED,
     ]) {
       expect(

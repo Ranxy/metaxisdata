@@ -1,5 +1,8 @@
 <template>
-  <div class="space-y-3">
+  <div
+    v-if="showsTimeout || showsSampling"
+    class="space-y-3"
+  >
     <div class="space-y-1">
       <h3 class="text-base font-medium">
         {{ t("dataQuality.editor.executionTitle") }}
@@ -9,7 +12,10 @@
       </p>
     </div>
 
+    <!-- A metadata check (schema drift) runs no target query, so it has no query
+         budget and the field would promise a limit that does not exist. -->
     <FormField
+      v-if="showsTimeout"
       id="dq-config-timeout"
       v-model="config.timeoutSeconds"
       type="number"
@@ -207,6 +213,11 @@ const renderedOptions = computed(() => {
  */
 const showsSampling = computed(
   () => canSampleRuleType(props.ruleType) || selectedMethod.value !== "none"
+);
+
+/** Metadata checks read the registry, so they have no query to time out. */
+const showsTimeout = computed(
+  () => props.ruleType !== QualityRuleType.SCHEMA_DRIFT
 );
 
 function setMethod(value: unknown) {

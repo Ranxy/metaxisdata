@@ -87,7 +87,10 @@ export interface DataQualitySettingsForm {
   /** Blank/0 means the server default (50); the form caps at 200. */
   maxColumnsPerAnalysis: string;
   sendSampleValuesToLlm: boolean;
-  /** The IANA zone the time variables resolve in; blank means UTC. */
+  /**
+   * The IANA zone the time variables resolve in; blank means UTC. The server
+   * returns the resolved value, so a workspace that never chose one shows "UTC".
+   */
   checkTimeZone: string;
   weeklyDigest: WeeklyDigestForm;
 }
