@@ -13382,6 +13382,21 @@ components:
                 recentExecutionCount:
                     type: integer
                     format: int32
+                coveredColumnCount:
+                    type: integer
+                    description: |-
+                        Column coverage: how many of the target's current registry columns at least
+                         one ENABLED check reads, and the target's current registry column count. A
+                         check that names no column, a paused check and a column that no longer exists
+                         in the registry cover nothing, so covered_column_count never exceeds
+                         total_column_count; both come from one registry read, which is what keeps that
+                         true while schema sync is rewriting the column list. A target whose registry
+                         row no longer resolves reports 0/0. The formula is the workspace coverage's;
+                         see docs/data-quality.md.
+                    format: int32
+                totalColumnCount:
+                    type: integer
+                    format: int32
             description: |-
                 QualityTargetSummary is one row of the target directory: the target identity
                  plus the counts and health the row and the workspace header render.

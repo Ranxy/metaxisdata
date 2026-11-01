@@ -4941,6 +4941,37 @@ export declare type QualityTrendPoint = Message<"metaxisdata.v1.QualityTrendPoin
 export declare const QualityTrendPointSchema: GenMessage<QualityTrendPoint>;
 
 /**
+ * QualityTargetKey names one target by the only pair that identifies it: the
+ * metadata GUID and the object type. It is an address, not a snapshot — the
+ * metadata browser sends the objects it is showing so one call returns their
+ * trust signals.
+ *
+ * @generated from message metaxisdata.v1.QualityTargetKey
+ */
+export declare type QualityTargetKey = Message<"metaxisdata.v1.QualityTargetKey"> & {
+  /**
+   * The target's metadata GUID. Required.
+   *
+   * @generated from field: string target_guid = 1;
+   */
+  targetGuid: string;
+
+  /**
+   * The target's object type. Required, because a GUID alone does not identify a
+   * registry row across object types.
+   *
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityTargetKey.
+ * Use `create(QualityTargetKeySchema)` to create a new message.
+ */
+export declare const QualityTargetKeySchema: GenMessage<QualityTargetKey>;
+
+/**
  * @generated from message metaxisdata.v1.ListQualityTargetsRequest
  */
 export declare type ListQualityTargetsRequest = Message<"metaxisdata.v1.ListQualityTargetsRequest"> & {
@@ -5022,6 +5053,17 @@ export declare type ListQualityTargetsRequest = Message<"metaxisdata.v1.ListQual
    * @generated from field: metaxisdata.v1.QualityTargetOrder order_by = 12;
    */
   orderBy: QualityTargetOrder;
+
+  /**
+   * The exact targets to return, in addition to the filters above. It is how the
+   * metadata browser reads the trust signals of the objects it lists in one call.
+   * At most 200 keys are accepted. A selection is not paged: page_size, page_token
+   * and order_by are ignored, the response keeps the request order, and a key with
+   * no live rule is absent — that target is not monitored.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityTargetKey targets = 13;
+   */
+  targets: QualityTargetKey[];
 };
 
 /**
@@ -5219,6 +5261,25 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
    * @generated from field: int32 recent_execution_count = 19;
    */
   recentExecutionCount: number;
+
+  /**
+   * Column coverage: how many of the target's current registry columns at least
+   * one ENABLED check reads, and the target's current registry column count. A
+   * check that names no column, a paused check and a column that no longer exists
+   * in the registry cover nothing, so covered_column_count never exceeds
+   * total_column_count; both come from one registry read, which is what keeps that
+   * true while schema sync is rewriting the column list. A target whose registry
+   * row no longer resolves reports 0/0. The formula is the workspace coverage's;
+   * see docs/data-quality.md.
+   *
+   * @generated from field: int32 covered_column_count = 20;
+   */
+  coveredColumnCount: number;
+
+  /**
+   * @generated from field: int32 total_column_count = 21;
+   */
+  totalColumnCount: number;
 };
 
 /**
