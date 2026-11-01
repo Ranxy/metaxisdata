@@ -2987,8 +2987,14 @@ type QualityRuleConfig struct {
 	ThresholdMetric QualityThresholdMetric     `protobuf:"varint,28,opt,name=threshold_metric,json=thresholdMetric,proto3,enum=metaxisdata.store.QualityThresholdMetric" json:"threshold_metric,omitempty"`
 	Filter          *QualityFilter             `protobuf:"bytes,29,opt,name=filter,proto3" json:"filter,omitempty"`
 	OnEmpty         QualityEmptyBehavior       `protobuf:"varint,30,opt,name=on_empty,json=onEmpty,proto3,enum=metaxisdata.store.QualityEmptyBehavior" json:"on_empty,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// How long one query of this rule may run, in seconds. 0 means the server
+	// default (60); the accepted range is 1-300.
+	TimeoutSeconds int32 `protobuf:"varint,31,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	// How much of the target relation the rule reads. Absent means every row the
+	// filter selects.
+	Sampling      *QualityRuleSampling `protobuf:"bytes,32,opt,name=sampling,proto3" json:"sampling,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QualityRuleConfig) Reset() {
@@ -3211,6 +3217,20 @@ func (x *QualityRuleConfig) GetOnEmpty() QualityEmptyBehavior {
 	return QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_UNSPECIFIED
 }
 
+func (x *QualityRuleConfig) GetTimeoutSeconds() int32 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
+}
+
+func (x *QualityRuleConfig) GetSampling() *QualityRuleSampling {
+	if x != nil {
+		return x.Sampling
+	}
+	return nil
+}
+
 type isQualityRuleConfig_Config interface {
 	isQualityRuleConfig_Config()
 }
@@ -3326,6 +3346,97 @@ func (*QualityRuleConfig_Aggregate) isQualityRuleConfig_Config() {}
 
 func (*QualityRuleConfig_CrossTable) isQualityRuleConfig_Config() {}
 
+// QualityRuleSampling bounds how much of the target relation one execution
+// reads. The two methods are user intents, not SQL mechanisms: which clause, or
+// which bounded derived relation, implements one is the engine dialect's
+// business, and an engine that cannot express the chosen method refuses the rule
+// at save time.
+type QualityRuleSampling struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Method:
+	//
+	//	*QualityRuleSampling_MaxRows
+	//	*QualityRuleSampling_Percent
+	Method        isQualityRuleSampling_Method `protobuf_oneof:"method"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityRuleSampling) Reset() {
+	*x = QualityRuleSampling{}
+	mi := &file_store_data_quality_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityRuleSampling) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityRuleSampling) ProtoMessage() {}
+
+func (x *QualityRuleSampling) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityRuleSampling.ProtoReflect.Descriptor instead.
+func (*QualityRuleSampling) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *QualityRuleSampling) GetMethod() isQualityRuleSampling_Method {
+	if x != nil {
+		return x.Method
+	}
+	return nil
+}
+
+func (x *QualityRuleSampling) GetMaxRows() int64 {
+	if x != nil {
+		if x, ok := x.Method.(*QualityRuleSampling_MaxRows); ok {
+			return x.MaxRows
+		}
+	}
+	return 0
+}
+
+func (x *QualityRuleSampling) GetPercent() float64 {
+	if x != nil {
+		if x, ok := x.Method.(*QualityRuleSampling_Percent); ok {
+			return x.Percent
+		}
+	}
+	return 0
+}
+
+type isQualityRuleSampling_Method interface {
+	isQualityRuleSampling_Method()
+}
+
+type QualityRuleSampling_MaxRows struct {
+	// Read at most this many rows of the filtered relation. Every engine can
+	// express it; the rows are an arbitrary prefix, not a random sample.
+	MaxRows int64 `protobuf:"varint,1,opt,name=max_rows,json=maxRows,proto3,oneof"`
+}
+
+type QualityRuleSampling_Percent struct {
+	// Read approximately this percent (1-99) of the relation with the engine's
+	// own sampling clause. Only some engines have one; the rest refuse it.
+	Percent float64 `protobuf:"fixed64,2,opt,name=percent,proto3,oneof"`
+}
+
+func (*QualityRuleSampling_MaxRows) isQualityRuleSampling_Method() {}
+
+func (*QualityRuleSampling_Percent) isQualityRuleSampling_Method() {}
+
 // RowCountConfig bounds the number of rows. At least one bound is required; a
 // warn bound makes the rule report WARN before it reports FAIL.
 type RowCountConfig struct {
@@ -3342,7 +3453,7 @@ type RowCountConfig struct {
 
 func (x *RowCountConfig) Reset() {
 	*x = RowCountConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[20]
+	mi := &file_store_data_quality_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3354,7 +3465,7 @@ func (x *RowCountConfig) String() string {
 func (*RowCountConfig) ProtoMessage() {}
 
 func (x *RowCountConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[20]
+	mi := &file_store_data_quality_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3367,7 +3478,7 @@ func (x *RowCountConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RowCountConfig.ProtoReflect.Descriptor instead.
 func (*RowCountConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{20}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RowCountConfig) GetMinRows() int64 {
@@ -3419,7 +3530,7 @@ type RowCountChangeConfig struct {
 
 func (x *RowCountChangeConfig) Reset() {
 	*x = RowCountChangeConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[21]
+	mi := &file_store_data_quality_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3431,7 +3542,7 @@ func (x *RowCountChangeConfig) String() string {
 func (*RowCountChangeConfig) ProtoMessage() {}
 
 func (x *RowCountChangeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[21]
+	mi := &file_store_data_quality_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3444,7 +3555,7 @@ func (x *RowCountChangeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RowCountChangeConfig.ProtoReflect.Descriptor instead.
 func (*RowCountChangeConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{21}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RowCountChangeConfig) GetMaxIncreasePct() float64 {
@@ -3494,7 +3605,7 @@ type NullPercentConfig struct {
 
 func (x *NullPercentConfig) Reset() {
 	*x = NullPercentConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[22]
+	mi := &file_store_data_quality_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3506,7 +3617,7 @@ func (x *NullPercentConfig) String() string {
 func (*NullPercentConfig) ProtoMessage() {}
 
 func (x *NullPercentConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[22]
+	mi := &file_store_data_quality_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3519,7 +3630,7 @@ func (x *NullPercentConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NullPercentConfig.ProtoReflect.Descriptor instead.
 func (*NullPercentConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{22}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *NullPercentConfig) GetColumn() string {
@@ -3580,7 +3691,7 @@ type UniqueConfig struct {
 
 func (x *UniqueConfig) Reset() {
 	*x = UniqueConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[23]
+	mi := &file_store_data_quality_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3592,7 +3703,7 @@ func (x *UniqueConfig) String() string {
 func (*UniqueConfig) ProtoMessage() {}
 
 func (x *UniqueConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[23]
+	mi := &file_store_data_quality_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3605,7 +3716,7 @@ func (x *UniqueConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UniqueConfig.ProtoReflect.Descriptor instead.
 func (*UniqueConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{23}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *UniqueConfig) GetColumn() string {
@@ -3653,7 +3764,7 @@ type UniqueCombinationConfig struct {
 
 func (x *UniqueCombinationConfig) Reset() {
 	*x = UniqueCombinationConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[24]
+	mi := &file_store_data_quality_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3665,7 +3776,7 @@ func (x *UniqueCombinationConfig) String() string {
 func (*UniqueCombinationConfig) ProtoMessage() {}
 
 func (x *UniqueCombinationConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[24]
+	mi := &file_store_data_quality_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3678,7 +3789,7 @@ func (x *UniqueCombinationConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UniqueCombinationConfig.ProtoReflect.Descriptor instead.
 func (*UniqueCombinationConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{24}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *UniqueCombinationConfig) GetColumns() []string {
@@ -3732,7 +3843,7 @@ type AcceptedValuesConfig struct {
 
 func (x *AcceptedValuesConfig) Reset() {
 	*x = AcceptedValuesConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[25]
+	mi := &file_store_data_quality_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3744,7 +3855,7 @@ func (x *AcceptedValuesConfig) String() string {
 func (*AcceptedValuesConfig) ProtoMessage() {}
 
 func (x *AcceptedValuesConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[25]
+	mi := &file_store_data_quality_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3757,7 +3868,7 @@ func (x *AcceptedValuesConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptedValuesConfig.ProtoReflect.Descriptor instead.
 func (*AcceptedValuesConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{25}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *AcceptedValuesConfig) GetColumn() string {
@@ -3813,7 +3924,7 @@ type RangeConfig struct {
 
 func (x *RangeConfig) Reset() {
 	*x = RangeConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[26]
+	mi := &file_store_data_quality_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3825,7 +3936,7 @@ func (x *RangeConfig) String() string {
 func (*RangeConfig) ProtoMessage() {}
 
 func (x *RangeConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[26]
+	mi := &file_store_data_quality_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3838,7 +3949,7 @@ func (x *RangeConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RangeConfig.ProtoReflect.Descriptor instead.
 func (*RangeConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{26}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *RangeConfig) GetColumn() string {
@@ -3898,7 +4009,7 @@ type RegexConfig struct {
 
 func (x *RegexConfig) Reset() {
 	*x = RegexConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[27]
+	mi := &file_store_data_quality_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3910,7 +4021,7 @@ func (x *RegexConfig) String() string {
 func (*RegexConfig) ProtoMessage() {}
 
 func (x *RegexConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[27]
+	mi := &file_store_data_quality_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3923,7 +4034,7 @@ func (x *RegexConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegexConfig.ProtoReflect.Descriptor instead.
 func (*RegexConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{27}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *RegexConfig) GetColumn() string {
@@ -3968,7 +4079,7 @@ type StringLengthConfig struct {
 
 func (x *StringLengthConfig) Reset() {
 	*x = StringLengthConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[28]
+	mi := &file_store_data_quality_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3980,7 +4091,7 @@ func (x *StringLengthConfig) String() string {
 func (*StringLengthConfig) ProtoMessage() {}
 
 func (x *StringLengthConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[28]
+	mi := &file_store_data_quality_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3993,7 +4104,7 @@ func (x *StringLengthConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StringLengthConfig.ProtoReflect.Descriptor instead.
 func (*StringLengthConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{28}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *StringLengthConfig) GetColumn() string {
@@ -4049,7 +4160,7 @@ type ReferentialIntegrityConfig struct {
 
 func (x *ReferentialIntegrityConfig) Reset() {
 	*x = ReferentialIntegrityConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[29]
+	mi := &file_store_data_quality_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4061,7 +4172,7 @@ func (x *ReferentialIntegrityConfig) String() string {
 func (*ReferentialIntegrityConfig) ProtoMessage() {}
 
 func (x *ReferentialIntegrityConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[29]
+	mi := &file_store_data_quality_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4074,7 +4185,7 @@ func (x *ReferentialIntegrityConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReferentialIntegrityConfig.ProtoReflect.Descriptor instead.
 func (*ReferentialIntegrityConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{29}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ReferentialIntegrityConfig) GetChildColumn() string {
@@ -4137,7 +4248,7 @@ type CrossColumnConfig struct {
 
 func (x *CrossColumnConfig) Reset() {
 	*x = CrossColumnConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[30]
+	mi := &file_store_data_quality_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4149,7 +4260,7 @@ func (x *CrossColumnConfig) String() string {
 func (*CrossColumnConfig) ProtoMessage() {}
 
 func (x *CrossColumnConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[30]
+	mi := &file_store_data_quality_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4162,7 +4273,7 @@ func (x *CrossColumnConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrossColumnConfig.ProtoReflect.Descriptor instead.
 func (*CrossColumnConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{30}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CrossColumnConfig) GetLeftColumn() string {
@@ -4220,7 +4331,7 @@ type FreshnessConfig struct {
 
 func (x *FreshnessConfig) Reset() {
 	*x = FreshnessConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[31]
+	mi := &file_store_data_quality_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4232,7 +4343,7 @@ func (x *FreshnessConfig) String() string {
 func (*FreshnessConfig) ProtoMessage() {}
 
 func (x *FreshnessConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[31]
+	mi := &file_store_data_quality_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4245,7 +4356,7 @@ func (x *FreshnessConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FreshnessConfig.ProtoReflect.Descriptor instead.
 func (*FreshnessConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{31}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *FreshnessConfig) GetTimestampColumn() string {
@@ -4282,7 +4393,7 @@ type CustomSQLConfig struct {
 
 func (x *CustomSQLConfig) Reset() {
 	*x = CustomSQLConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[32]
+	mi := &file_store_data_quality_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4294,7 +4405,7 @@ func (x *CustomSQLConfig) String() string {
 func (*CustomSQLConfig) ProtoMessage() {}
 
 func (x *CustomSQLConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[32]
+	mi := &file_store_data_quality_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4307,7 +4418,7 @@ func (x *CustomSQLConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CustomSQLConfig.ProtoReflect.Descriptor instead.
 func (*CustomSQLConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{32}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *CustomSQLConfig) GetSql() string {
@@ -4347,7 +4458,7 @@ type CelExpressionConfig struct {
 
 func (x *CelExpressionConfig) Reset() {
 	*x = CelExpressionConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[33]
+	mi := &file_store_data_quality_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4359,7 +4470,7 @@ func (x *CelExpressionConfig) String() string {
 func (*CelExpressionConfig) ProtoMessage() {}
 
 func (x *CelExpressionConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[33]
+	mi := &file_store_data_quality_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4372,7 +4483,7 @@ func (x *CelExpressionConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CelExpressionConfig.ProtoReflect.Descriptor instead.
 func (*CelExpressionConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{33}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CelExpressionConfig) GetExpression() string {
@@ -4426,7 +4537,7 @@ type SchemaDriftColumn struct {
 
 func (x *SchemaDriftColumn) Reset() {
 	*x = SchemaDriftColumn{}
-	mi := &file_store_data_quality_proto_msgTypes[34]
+	mi := &file_store_data_quality_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4438,7 +4549,7 @@ func (x *SchemaDriftColumn) String() string {
 func (*SchemaDriftColumn) ProtoMessage() {}
 
 func (x *SchemaDriftColumn) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[34]
+	mi := &file_store_data_quality_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4451,7 +4562,7 @@ func (x *SchemaDriftColumn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchemaDriftColumn.ProtoReflect.Descriptor instead.
 func (*SchemaDriftColumn) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{34}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SchemaDriftColumn) GetName() string {
@@ -4499,7 +4610,7 @@ type SchemaDriftConfig struct {
 
 func (x *SchemaDriftConfig) Reset() {
 	*x = SchemaDriftConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[35]
+	mi := &file_store_data_quality_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4511,7 +4622,7 @@ func (x *SchemaDriftConfig) String() string {
 func (*SchemaDriftConfig) ProtoMessage() {}
 
 func (x *SchemaDriftConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[35]
+	mi := &file_store_data_quality_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4524,7 +4635,7 @@ func (x *SchemaDriftConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchemaDriftConfig.ProtoReflect.Descriptor instead.
 func (*SchemaDriftConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{35}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SchemaDriftConfig) GetExpectedColumns() []*SchemaDriftColumn {
@@ -4586,7 +4697,7 @@ type GroupCheckConfig struct {
 
 func (x *GroupCheckConfig) Reset() {
 	*x = GroupCheckConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[36]
+	mi := &file_store_data_quality_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4598,7 +4709,7 @@ func (x *GroupCheckConfig) String() string {
 func (*GroupCheckConfig) ProtoMessage() {}
 
 func (x *GroupCheckConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[36]
+	mi := &file_store_data_quality_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4611,7 +4722,7 @@ func (x *GroupCheckConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupCheckConfig.ProtoReflect.Descriptor instead.
 func (*GroupCheckConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{36}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GroupCheckConfig) GetColumns() []string {
@@ -4670,7 +4781,7 @@ type AggregateConfig struct {
 
 func (x *AggregateConfig) Reset() {
 	*x = AggregateConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[37]
+	mi := &file_store_data_quality_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4682,7 +4793,7 @@ func (x *AggregateConfig) String() string {
 func (*AggregateConfig) ProtoMessage() {}
 
 func (x *AggregateConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[37]
+	mi := &file_store_data_quality_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4695,7 +4806,7 @@ func (x *AggregateConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregateConfig.ProtoReflect.Descriptor instead.
 func (*AggregateConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{37}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AggregateConfig) GetColumn() string {
@@ -4780,7 +4891,7 @@ type CrossTableConfig struct {
 
 func (x *CrossTableConfig) Reset() {
 	*x = CrossTableConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[38]
+	mi := &file_store_data_quality_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4792,7 +4903,7 @@ func (x *CrossTableConfig) String() string {
 func (*CrossTableConfig) ProtoMessage() {}
 
 func (x *CrossTableConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[38]
+	mi := &file_store_data_quality_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4805,7 +4916,7 @@ func (x *CrossTableConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrossTableConfig.ProtoReflect.Descriptor instead.
 func (*CrossTableConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{38}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CrossTableConfig) GetRightTable() string {
@@ -4897,7 +5008,7 @@ type QualityLLMDiagnostic struct {
 
 func (x *QualityLLMDiagnostic) Reset() {
 	*x = QualityLLMDiagnostic{}
-	mi := &file_store_data_quality_proto_msgTypes[39]
+	mi := &file_store_data_quality_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4909,7 +5020,7 @@ func (x *QualityLLMDiagnostic) String() string {
 func (*QualityLLMDiagnostic) ProtoMessage() {}
 
 func (x *QualityLLMDiagnostic) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[39]
+	mi := &file_store_data_quality_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4922,7 +5033,7 @@ func (x *QualityLLMDiagnostic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityLLMDiagnostic.ProtoReflect.Descriptor instead.
 func (*QualityLLMDiagnostic) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{39}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *QualityLLMDiagnostic) GetErrorCode() string {
@@ -5039,7 +5150,7 @@ type QualitySuggestionJobTarget struct {
 
 func (x *QualitySuggestionJobTarget) Reset() {
 	*x = QualitySuggestionJobTarget{}
-	mi := &file_store_data_quality_proto_msgTypes[40]
+	mi := &file_store_data_quality_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5051,7 +5162,7 @@ func (x *QualitySuggestionJobTarget) String() string {
 func (*QualitySuggestionJobTarget) ProtoMessage() {}
 
 func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[40]
+	mi := &file_store_data_quality_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5064,7 +5175,7 @@ func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualitySuggestionJobTarget.ProtoReflect.Descriptor instead.
 func (*QualitySuggestionJobTarget) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{40}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *QualitySuggestionJobTarget) GetTargetGuid() string {
@@ -5155,7 +5266,7 @@ type QualitySuggestionJobTargets struct {
 
 func (x *QualitySuggestionJobTargets) Reset() {
 	*x = QualitySuggestionJobTargets{}
-	mi := &file_store_data_quality_proto_msgTypes[41]
+	mi := &file_store_data_quality_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5167,7 +5278,7 @@ func (x *QualitySuggestionJobTargets) String() string {
 func (*QualitySuggestionJobTargets) ProtoMessage() {}
 
 func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[41]
+	mi := &file_store_data_quality_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5180,7 +5291,7 @@ func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualitySuggestionJobTargets.ProtoReflect.Descriptor instead.
 func (*QualitySuggestionJobTargets) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{41}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *QualitySuggestionJobTargets) GetTargets() []*QualitySuggestionJobTarget {
@@ -5207,7 +5318,7 @@ type QualityContractSettings struct {
 
 func (x *QualityContractSettings) Reset() {
 	*x = QualityContractSettings{}
-	mi := &file_store_data_quality_proto_msgTypes[42]
+	mi := &file_store_data_quality_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5219,7 +5330,7 @@ func (x *QualityContractSettings) String() string {
 func (*QualityContractSettings) ProtoMessage() {}
 
 func (x *QualityContractSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[42]
+	mi := &file_store_data_quality_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5232,7 +5343,7 @@ func (x *QualityContractSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractSettings.ProtoReflect.Descriptor instead.
 func (*QualityContractSettings) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{42}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *QualityContractSettings) GetFilter() *QualityFilter {
@@ -5266,7 +5377,7 @@ type QualityContractSnapshot struct {
 
 func (x *QualityContractSnapshot) Reset() {
 	*x = QualityContractSnapshot{}
-	mi := &file_store_data_quality_proto_msgTypes[43]
+	mi := &file_store_data_quality_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5278,7 +5389,7 @@ func (x *QualityContractSnapshot) String() string {
 func (*QualityContractSnapshot) ProtoMessage() {}
 
 func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[43]
+	mi := &file_store_data_quality_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5291,7 +5402,7 @@ func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractSnapshot.ProtoReflect.Descriptor instead.
 func (*QualityContractSnapshot) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{43}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *QualityContractSnapshot) GetSettings() *QualityContractSettings {
@@ -5333,7 +5444,7 @@ type QualityContractCheck struct {
 
 func (x *QualityContractCheck) Reset() {
 	*x = QualityContractCheck{}
-	mi := &file_store_data_quality_proto_msgTypes[44]
+	mi := &file_store_data_quality_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5345,7 +5456,7 @@ func (x *QualityContractCheck) String() string {
 func (*QualityContractCheck) ProtoMessage() {}
 
 func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[44]
+	mi := &file_store_data_quality_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5358,7 +5469,7 @@ func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractCheck.ProtoReflect.Descriptor instead.
 func (*QualityContractCheck) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{44}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *QualityContractCheck) GetRuleResourceId() string {
@@ -5535,7 +5646,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x15ExplanationHypothesis\x12\x14\n" +
 	"\x05cause\x18\x01 \x01(\tR\x05cause\x12\x1a\n" +
 	"\bevidence\x18\x02 \x03(\tR\bevidence\x12\x1b\n" +
-	"\tnext_step\x18\x03 \x01(\tR\bnextStep\"\xad\f\n" +
+	"\tnext_step\x18\x03 \x01(\tR\bnextStep\"\x9a\r\n" +
 	"\x11QualityRuleConfig\x12@\n" +
 	"\trow_count\x18\x01 \x01(\v2!.metaxisdata.store.RowCountConfigH\x00R\browCount\x12S\n" +
 	"\x10row_count_change\x18\x02 \x01(\v2'.metaxisdata.store.RowCountChangeConfigH\x00R\x0erowCountChange\x12I\n" +
@@ -5561,8 +5672,14 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"crossTable\x12T\n" +
 	"\x10threshold_metric\x18\x1c \x01(\x0e2).metaxisdata.store.QualityThresholdMetricR\x0fthresholdMetric\x128\n" +
 	"\x06filter\x18\x1d \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12B\n" +
-	"\bon_empty\x18\x1e \x01(\x0e2'.metaxisdata.store.QualityEmptyBehaviorR\aonEmptyB\b\n" +
-	"\x06configJ\x04\b\x13\x10\x1c\"\x93\x02\n" +
+	"\bon_empty\x18\x1e \x01(\x0e2'.metaxisdata.store.QualityEmptyBehaviorR\aonEmpty\x12'\n" +
+	"\x0ftimeout_seconds\x18\x1f \x01(\x05R\x0etimeoutSeconds\x12B\n" +
+	"\bsampling\x18  \x01(\v2&.metaxisdata.store.QualityRuleSamplingR\bsamplingB\b\n" +
+	"\x06configJ\x04\b\x13\x10\x1c\"X\n" +
+	"\x13QualityRuleSampling\x12\x1b\n" +
+	"\bmax_rows\x18\x01 \x01(\x03H\x00R\amaxRows\x12\x1a\n" +
+	"\apercent\x18\x02 \x01(\x01H\x00R\apercentB\b\n" +
+	"\x06method\"\x93\x02\n" +
 	"\x0eRowCountConfig\x12\x1e\n" +
 	"\bmin_rows\x18\x01 \x01(\x03H\x00R\aminRows\x88\x01\x01\x12\x1e\n" +
 	"\bmax_rows\x18\x02 \x01(\x03H\x01R\amaxRows\x88\x01\x01\x12\"\n" +
@@ -5998,7 +6115,7 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 }
 
 var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 24)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),                  // 0: metaxisdata.store.QualityRuleType
 	(QualityDimension)(0),                 // 1: metaxisdata.store.QualityDimension
@@ -6044,31 +6161,32 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*ExplanationResult)(nil),             // 41: metaxisdata.store.ExplanationResult
 	(*ExplanationHypothesis)(nil),         // 42: metaxisdata.store.ExplanationHypothesis
 	(*QualityRuleConfig)(nil),             // 43: metaxisdata.store.QualityRuleConfig
-	(*RowCountConfig)(nil),                // 44: metaxisdata.store.RowCountConfig
-	(*RowCountChangeConfig)(nil),          // 45: metaxisdata.store.RowCountChangeConfig
-	(*NullPercentConfig)(nil),             // 46: metaxisdata.store.NullPercentConfig
-	(*UniqueConfig)(nil),                  // 47: metaxisdata.store.UniqueConfig
-	(*UniqueCombinationConfig)(nil),       // 48: metaxisdata.store.UniqueCombinationConfig
-	(*AcceptedValuesConfig)(nil),          // 49: metaxisdata.store.AcceptedValuesConfig
-	(*RangeConfig)(nil),                   // 50: metaxisdata.store.RangeConfig
-	(*RegexConfig)(nil),                   // 51: metaxisdata.store.RegexConfig
-	(*StringLengthConfig)(nil),            // 52: metaxisdata.store.StringLengthConfig
-	(*ReferentialIntegrityConfig)(nil),    // 53: metaxisdata.store.ReferentialIntegrityConfig
-	(*CrossColumnConfig)(nil),             // 54: metaxisdata.store.CrossColumnConfig
-	(*FreshnessConfig)(nil),               // 55: metaxisdata.store.FreshnessConfig
-	(*CustomSQLConfig)(nil),               // 56: metaxisdata.store.CustomSQLConfig
-	(*CelExpressionConfig)(nil),           // 57: metaxisdata.store.CelExpressionConfig
-	(*SchemaDriftColumn)(nil),             // 58: metaxisdata.store.SchemaDriftColumn
-	(*SchemaDriftConfig)(nil),             // 59: metaxisdata.store.SchemaDriftConfig
-	(*GroupCheckConfig)(nil),              // 60: metaxisdata.store.GroupCheckConfig
-	(*AggregateConfig)(nil),               // 61: metaxisdata.store.AggregateConfig
-	(*CrossTableConfig)(nil),              // 62: metaxisdata.store.CrossTableConfig
-	(*QualityLLMDiagnostic)(nil),          // 63: metaxisdata.store.QualityLLMDiagnostic
-	(*QualitySuggestionJobTarget)(nil),    // 64: metaxisdata.store.QualitySuggestionJobTarget
-	(*QualitySuggestionJobTargets)(nil),   // 65: metaxisdata.store.QualitySuggestionJobTargets
-	(*QualityContractSettings)(nil),       // 66: metaxisdata.store.QualityContractSettings
-	(*QualityContractSnapshot)(nil),       // 67: metaxisdata.store.QualityContractSnapshot
-	(*QualityContractCheck)(nil),          // 68: metaxisdata.store.QualityContractCheck
+	(*QualityRuleSampling)(nil),           // 44: metaxisdata.store.QualityRuleSampling
+	(*RowCountConfig)(nil),                // 45: metaxisdata.store.RowCountConfig
+	(*RowCountChangeConfig)(nil),          // 46: metaxisdata.store.RowCountChangeConfig
+	(*NullPercentConfig)(nil),             // 47: metaxisdata.store.NullPercentConfig
+	(*UniqueConfig)(nil),                  // 48: metaxisdata.store.UniqueConfig
+	(*UniqueCombinationConfig)(nil),       // 49: metaxisdata.store.UniqueCombinationConfig
+	(*AcceptedValuesConfig)(nil),          // 50: metaxisdata.store.AcceptedValuesConfig
+	(*RangeConfig)(nil),                   // 51: metaxisdata.store.RangeConfig
+	(*RegexConfig)(nil),                   // 52: metaxisdata.store.RegexConfig
+	(*StringLengthConfig)(nil),            // 53: metaxisdata.store.StringLengthConfig
+	(*ReferentialIntegrityConfig)(nil),    // 54: metaxisdata.store.ReferentialIntegrityConfig
+	(*CrossColumnConfig)(nil),             // 55: metaxisdata.store.CrossColumnConfig
+	(*FreshnessConfig)(nil),               // 56: metaxisdata.store.FreshnessConfig
+	(*CustomSQLConfig)(nil),               // 57: metaxisdata.store.CustomSQLConfig
+	(*CelExpressionConfig)(nil),           // 58: metaxisdata.store.CelExpressionConfig
+	(*SchemaDriftColumn)(nil),             // 59: metaxisdata.store.SchemaDriftColumn
+	(*SchemaDriftConfig)(nil),             // 60: metaxisdata.store.SchemaDriftConfig
+	(*GroupCheckConfig)(nil),              // 61: metaxisdata.store.GroupCheckConfig
+	(*AggregateConfig)(nil),               // 62: metaxisdata.store.AggregateConfig
+	(*CrossTableConfig)(nil),              // 63: metaxisdata.store.CrossTableConfig
+	(*QualityLLMDiagnostic)(nil),          // 64: metaxisdata.store.QualityLLMDiagnostic
+	(*QualitySuggestionJobTarget)(nil),    // 65: metaxisdata.store.QualitySuggestionJobTarget
+	(*QualitySuggestionJobTargets)(nil),   // 66: metaxisdata.store.QualitySuggestionJobTargets
+	(*QualityContractSettings)(nil),       // 67: metaxisdata.store.QualityContractSettings
+	(*QualityContractSnapshot)(nil),       // 68: metaxisdata.store.QualityContractSnapshot
+	(*QualityContractCheck)(nil),          // 69: metaxisdata.store.QualityContractCheck
 }
 var file_store_data_quality_proto_depIdxs = []int32{
 	26, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
@@ -6089,48 +6207,49 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	41, // 15: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
 	37, // 16: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
 	42, // 17: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
-	44, // 18: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
-	45, // 19: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
-	46, // 20: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
-	47, // 21: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
-	48, // 22: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
-	49, // 23: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
-	50, // 24: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
-	51, // 25: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
-	52, // 26: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
-	53, // 27: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
-	54, // 28: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
-	55, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
-	56, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
-	57, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
-	59, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
-	60, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
-	61, // 34: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
-	62, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
+	45, // 18: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
+	46, // 19: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
+	47, // 20: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
+	48, // 21: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
+	49, // 22: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
+	50, // 23: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
+	51, // 24: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
+	52, // 25: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
+	53, // 26: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
+	54, // 27: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
+	55, // 28: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
+	56, // 29: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
+	57, // 30: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
+	58, // 31: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
+	60, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
+	61, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
+	62, // 34: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
+	63, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
 	10, // 36: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
 	25, // 37: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
 	11, // 38: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	14, // 39: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
-	58, // 40: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
-	21, // 41: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
-	21, // 42: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
-	21, // 43: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
-	24, // 44: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
-	23, // 45: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
-	63, // 46: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
-	36, // 47: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
-	64, // 48: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
-	25, // 49: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
-	2,  // 50: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
-	66, // 51: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
-	68, // 52: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
-	0,  // 53: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
-	2,  // 54: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
-	55, // [55:55] is the sub-list for method output_type
-	55, // [55:55] is the sub-list for method input_type
-	55, // [55:55] is the sub-list for extension type_name
-	55, // [55:55] is the sub-list for extension extendee
-	0,  // [0:55] is the sub-list for field type_name
+	44, // 39: metaxisdata.store.QualityRuleConfig.sampling:type_name -> metaxisdata.store.QualityRuleSampling
+	14, // 40: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
+	59, // 41: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
+	21, // 42: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
+	21, // 43: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
+	21, // 44: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
+	24, // 45: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
+	23, // 46: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
+	64, // 47: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
+	36, // 48: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
+	65, // 49: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
+	25, // 50: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
+	2,  // 51: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
+	67, // 52: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
+	69, // 53: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
+	0,  // 54: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
+	2,  // 55: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
+	56, // [56:56] is the sub-list for method output_type
+	56, // [56:56] is the sub-list for method input_type
+	56, // [56:56] is the sub-list for extension type_name
+	56, // [56:56] is the sub-list for extension extendee
+	0,  // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -6169,7 +6288,10 @@ func file_store_data_quality_proto_init() {
 		(*QualityRuleConfig_Aggregate)(nil),
 		(*QualityRuleConfig_CrossTable)(nil),
 	}
-	file_store_data_quality_proto_msgTypes[20].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[20].OneofWrappers = []any{
+		(*QualityRuleSampling_MaxRows)(nil),
+		(*QualityRuleSampling_Percent)(nil),
+	}
 	file_store_data_quality_proto_msgTypes[21].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[22].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[23].OneofWrappers = []any{}
@@ -6188,13 +6310,14 @@ func file_store_data_quality_proto_init() {
 	file_store_data_quality_proto_msgTypes[36].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[37].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[38].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[39].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
 			NumEnums:      24,
-			NumMessages:   45,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

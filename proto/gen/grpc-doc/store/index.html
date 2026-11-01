@@ -325,6 +325,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityRuleSampling"><span class="badge">M</span>QualityRuleSampling</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityStatusCounts"><span class="badge">M</span>QualityStatusCounts</a>
                 </li>
               
@@ -2749,6 +2753,22 @@ failure (runtime debug mode was on and the write was attempted). </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>timeout_seconds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How long one query of this rule may run, in seconds. 0 means the server
+default (60); the accepted range is 1-300. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sampling</td>
+                  <td><a href="#metaxisdata.store.QualityRuleSampling">QualityRuleSampling</a></td>
+                  <td></td>
+                  <td><p>How much of the target relation the rule reads. Absent means every row the
+filter selects. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -2799,6 +2819,39 @@ failure (runtime debug mode was on and the write was attempted). </p></td>
                   <td><a href="#double">double</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityRuleSampling">QualityRuleSampling</h3>
+        <p>QualityRuleSampling bounds how much of the target relation one execution</p><p>reads. The two methods are user intents, not SQL mechanisms: which clause, or</p><p>which bounded derived relation, implements one is the engine dialect's</p><p>business, and an engine that cannot express the chosen method refuses the rule</p><p>at save time.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>max_rows</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Read at most this many rows of the filtered relation. Every engine can
+express it; the rows are an arbitrary prefix, not a random sample. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>percent</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p>Read approximately this percent (1-99) of the relation with the engine&#39;s
+own sampling clause. Only some engines have one; the rest refuse it. </p></td>
                 </tr>
               
             </tbody>
@@ -10853,6 +10906,14 @@ A binding binds one or more members or groups to a single role. </p></td>
                   <td><a href="#metaxisdata.store.QualityDigestSetting">QualityDigestSetting</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>time_zone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>IANA time zone the time variables of check filters and custom SQL are
+resolved in, for example &#34;Asia/Shanghai&#34;. Empty means UTC. </p></td>
                 </tr>
               
             </tbody>

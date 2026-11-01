@@ -61,6 +61,17 @@ const (
 	// DefaultDigestTimezone is the zone a digest schedule without one is
 	// evaluated in.
 	DefaultDigestTimezone = "UTC"
+
+	// DefaultTimeZone is the zone a check's time variables are resolved in when
+	// the workspace does not name one.
+	DefaultTimeZone = "UTC"
+
+	// DefaultCheckTimeout is how long one check's query may run when its config
+	// does not say.
+	DefaultCheckTimeout = 60 * time.Second
+	// MaxCheckTimeout is the ceiling a per-check override may name. A batch still
+	// ends with its own deadline, so this bounds one query, not one target's run.
+	MaxCheckTimeout = 300 * time.Second
 )
 
 // DigestSchedule is the resolved weekly digest schedule. Disabled means the
@@ -91,6 +102,9 @@ type Settings struct {
 	MaxColumnsPerAnalysis    int
 	SendSampleValuesToLLM    bool
 	Digest                   DigestSchedule
+	// TimeZone is the IANA name the time variables of a check's filter and custom
+	// SQL are resolved in. Always populated: DefaultTimeZone when unset.
+	TimeZone string
 }
 
 // DefaultSettings returns the settings of a workspace that never saved any.
@@ -108,6 +122,7 @@ func DefaultSettings() Settings {
 		MaxColumnsPerAnalysis:    DefaultMaxColumnsPerAnalysis,
 		SendSampleValuesToLLM:    false,
 		Digest:                   defaultDigestSchedule(),
+		TimeZone:                 DefaultTimeZone,
 	}
 }
 
@@ -139,6 +154,7 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.LLMConcurrencyLimit = boundedLimit(int(dataQuality.GetLlmConcurrencyLimit()), DefaultLLMConcurrencyLimit, MaxLLMConcurrencyLimit)
 	settings.MaxColumnsPerAnalysis = positiveOrDefault(dataQuality.GetMaxColumnsPerAnalysis(), DefaultMaxColumnsPerAnalysis)
 	settings.Digest = DigestScheduleFromStore(dataQuality.GetWeeklyDigest())
+	settings.TimeZone = timeZoneFromStore(dataQuality.GetTimeZone())
 	return settings
 }
 
@@ -284,6 +300,41 @@ func ValidateDigestSetting(setting *storepb.QualityDigestSetting) error {
 		return errors.New(`weekly_digest.timezone is required while the digest is enabled, for example "Asia/Shanghai"`)
 	}
 	return nil
+}
+
+// timeZoneFromStore resolves the stored check time zone leniently: this reads
+// whatever a previous version or an out-of-band writer left behind, so an
+// unknown name falls back to UTC instead of making an execution fail.
+func timeZoneFromStore(zone string) string {
+	if zone = strings.TrimSpace(zone); zone != "" {
+		if _, err := time.LoadLocation(zone); err == nil {
+			return zone
+		}
+	}
+	return DefaultTimeZone
+}
+
+// ValidateTimeZone validates the check time zone the settings API is about to
+// store. An empty name is valid and means UTC.
+func ValidateTimeZone(zone string) error {
+	if zone = strings.TrimSpace(zone); zone != "" {
+		if _, err := time.LoadLocation(zone); err != nil {
+			return errors.Errorf("time_zone %q is not a valid IANA time zone", zone)
+		}
+	}
+	return nil
+}
+
+// TimeZoneLocation resolves the check time zone a rule's time variables are
+// rendered in. It never returns nil: an empty or unresolvable setting reads as
+// UTC.
+func (s Settings) TimeZoneLocation() *time.Location {
+	if zone := strings.TrimSpace(s.TimeZone); zone != "" {
+		if location, err := time.LoadLocation(zone); err == nil {
+			return location
+		}
+	}
+	return time.UTC
 }
 
 // digestWeekday maps the proto's ISO 8601 weekday (Monday 1 .. Sunday 7) to the

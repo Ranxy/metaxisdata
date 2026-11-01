@@ -27,6 +27,7 @@ func TestDefaultSettings(t *testing.T) {
 	require.Equal(t, 8, settings.LLMConcurrencyLimit)
 	require.Equal(t, 50, settings.MaxColumnsPerAnalysis)
 	require.False(t, settings.SendSampleValuesToLLM)
+	require.Equal(t, DefaultTimeZone, settings.TimeZone, "check time variables default to UTC")
 }
 
 func TestSettingsFromProfileDefaultsWhenUnset(t *testing.T) {
@@ -58,6 +59,7 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 				Time:      "07:45",
 				Timezone:  "Asia/Shanghai",
 			},
+			TimeZone: "Asia/Shanghai",
 		},
 	}
 
@@ -80,6 +82,7 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			Minute:   45,
 			Timezone: "Asia/Shanghai",
 		},
+		TimeZone: "Asia/Shanghai",
 	}, SettingsFromProfile(profile))
 }
 

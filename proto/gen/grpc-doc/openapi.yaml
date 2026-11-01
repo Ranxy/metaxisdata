@@ -8754,6 +8754,11 @@ components:
                     format: int32
                 weeklyDigest:
                     $ref: '#/components/schemas/QualityDigestSetting'
+                timeZone:
+                    type: string
+                    description: |-
+                        IANA time zone the time variables of check filters and custom SQL are
+                         resolved in, for example "Asia/Shanghai". Empty means UTC.
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -12994,6 +12999,20 @@ components:
                         - QUALITY_EMPTY_BEHAVIOR_FAIL
                     type: string
                     format: enum
+                timeoutSeconds:
+                    type: integer
+                    description: |-
+                        How long one query of this check may run, in seconds. Zero means the server
+                         default (60); the accepted range is 1-300. A scheduled check still ends with
+                         its batch, so a long limit can be cut short by the batch's own deadline.
+                    format: int32
+                sampling:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityRuleSampling'
+                    description: |-
+                        How much of the target the check reads. Absent means every row the filter
+                         selects. This is the only sampling knob: which SQL mechanism implements a
+                         method depends on the target engine.
             description: |-
                 QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the
                  oneof is set, and it must correspond to the rule's type; the filter, the empty
@@ -13033,6 +13052,28 @@ components:
                         $ref: '#/components/schemas/QualityExecutionSummary'
                     description: Newest first. At most 20 are returned.
             description: QualityRuleHistory is one rule's recent completed executions.
+        QualityRuleSampling:
+            type: object
+            properties:
+                maxRows:
+                    type: string
+                    description: |-
+                        Read at most this many rows of the filtered relation. Every engine can
+                         express it, and the read cost is bounded; the rows are an arbitrary
+                         prefix, so the sample is not random.
+                percent:
+                    type: number
+                    description: |-
+                        Read approximately this percent (1-99) of the relation. The engine's own
+                         sampling clause decides the exact behavior; it is approximately random,
+                         and its cost depends on the engine.
+                    format: double
+            description: |-
+                QualityRuleSampling bounds how much of the target one execution reads. The two
+                 methods are user intents: "read a share of the rows" and "read at most this
+                 many rows". The editor only offers the methods the target engine can express,
+                 and the server refuses one it cannot, so a check never silently degrades to a
+                 different sample.
         QualityRuleTrend:
             type: object
             properties:

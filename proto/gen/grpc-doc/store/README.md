@@ -41,6 +41,7 @@
     - [QualityLLMDiagnostic](#metaxisdata-store-QualityLLMDiagnostic)
     - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
+    - [QualityRuleSampling](#metaxisdata-store-QualityRuleSampling)
     - [QualityStatusCounts](#metaxisdata-store-QualityStatusCounts)
     - [QualitySuggestionJobTarget](#metaxisdata-store-QualitySuggestionJobTarget)
     - [QualitySuggestionJobTargets](#metaxisdata-store-QualitySuggestionJobTargets)
@@ -876,6 +877,8 @@ behavior and the count/percent metric are shared by every type.
 | threshold_metric | [QualityThresholdMetric](#metaxisdata-store-QualityThresholdMetric) |  |  |
 | filter | [QualityFilter](#metaxisdata-store-QualityFilter) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior) |  |  |
+| timeout_seconds | [int32](#int32) |  | How long one query of this rule may run, in seconds. 0 means the server default (60); the accepted range is 1-300. |
+| sampling | [QualityRuleSampling](#metaxisdata-store-QualityRuleSampling) |  | How much of the target relation the rule reads. Absent means every row the filter selects. |
 
 
 
@@ -896,6 +899,26 @@ typed config. It is never executed without a human saving it as a rule.
 | title | [string](#string) |  |  |
 | rationale | [string](#string) |  |  |
 | confidence | [double](#double) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityRuleSampling"></a>
+
+### QualityRuleSampling
+QualityRuleSampling bounds how much of the target relation one execution
+reads. The two methods are user intents, not SQL mechanisms: which clause, or
+which bounded derived relation, implements one is the engine dialect&#39;s
+business, and an engine that cannot express the chosen method refuses the rule
+at save time.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| max_rows | [int64](#int64) |  | Read at most this many rows of the filtered relation. Every engine can express it; the rows are an arbitrary prefix, not a random sample. |
+| percent | [double](#double) |  | Read approximately this percent (1-99) of the relation with the engine&#39;s own sampling clause. Only some engines have one; the rest refuse it. |
 
 
 
@@ -3783,6 +3806,7 @@ metaxisdata.v1.DataQualitySetting.
 | daily_llm_analysis_limit | [int32](#int32) |  |  |
 | llm_concurrency_limit | [int32](#int32) |  |  |
 | weekly_digest | [QualityDigestSetting](#metaxisdata-store-QualityDigestSetting) |  |  |
+| time_zone | [string](#string) |  | IANA time zone the time variables of check filters and custom SQL are resolved in, for example &#34;Asia/Shanghai&#34;. Empty means UTC. |
 
 
 

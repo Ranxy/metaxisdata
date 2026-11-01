@@ -1393,6 +1393,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityRuleSampling"><span class="badge">M</span>QualityRuleSampling</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityRuleTrend"><span class="badge">M</span>QualityRuleTrend</a>
                 </li>
               
@@ -17670,6 +17674,24 @@ and results are still recorded. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>timeout_seconds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How long one query of this check may run, in seconds. Zero means the server
+default (60); the accepted range is 1-300. A scheduled check still ends with
+its batch, so a long limit can be cut short by the batch&#39;s own deadline. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sampling</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleSampling">QualityRuleSampling</a></td>
+                  <td></td>
+                  <td><p>How much of the target the check reads. Absent means every row the filter
+selects. This is the only sampling knob: which SQL mechanism implements a
+method depends on the target engine. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17751,6 +17773,41 @@ and results are still recorded. </p></td>
                   <td><a href="#metaxisdata.v1.QualityExecutionSummary">QualityExecutionSummary</a></td>
                   <td>repeated</td>
                   <td><p>Newest first. At most 20 are returned. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityRuleSampling">QualityRuleSampling</h3>
+        <p>QualityRuleSampling bounds how much of the target one execution reads. The two</p><p>methods are user intents: "read a share of the rows" and "read at most this</p><p>many rows". The editor only offers the methods the target engine can express,</p><p>and the server refuses one it cannot, so a check never silently degrades to a</p><p>different sample.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>max_rows</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Read at most this many rows of the filtered relation. Every engine can
+express it, and the read cost is bounded; the rows are an arbitrary
+prefix, so the sample is not random. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>percent</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p>Read approximately this percent (1-99) of the relation. The engine&#39;s own
+sampling clause decides the exact behavior; it is approximately random,
+and its cost depends on the engine. </p></td>
                 </tr>
               
             </tbody>
@@ -31670,6 +31727,16 @@ NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient
 inbox copy. A data_quality update that omits this nested message keeps the
 stored schedule (so a client that predates the digest cannot clear it);
 sending the message explicitly replaces it, including with enabled=false. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>time_zone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of
+check filters and custom SQL are resolved in: ${today}, ${yesterday} and
+the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule,
+which belongs to the target. </p></td>
                 </tr>
               
             </tbody>
