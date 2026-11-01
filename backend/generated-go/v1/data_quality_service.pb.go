@@ -10831,7 +10831,8 @@ type ListQualityTargetsRequest struct {
 	// metadata browser reads the trust signals of the objects it lists in one call.
 	// At most 200 keys are accepted. A selection is not paged: page_size, page_token
 	// and order_by are ignored, the response keeps the request order, and a key with
-	// no live rule is absent — that target is not monitored.
+	// no non-archived check is absent — that target is not monitored. A target whose
+	// checks are all paused is still returned, with enabled_rule_count = 0.
 	Targets       []*QualityTargetKey `protobuf:"bytes,13,rep,name=targets,proto3" json:"targets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

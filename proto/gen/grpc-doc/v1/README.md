@@ -5290,7 +5290,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | has_open_issue | [bool](#bool) |  | Only targets with at least one unresolved issue. |
 | has_pending_draft | [bool](#bool) |  | Only targets with at least one pending AI draft. |
 | order_by | [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder) |  |  |
-| targets | [QualityTargetKey](#metaxisdata-v1-QualityTargetKey) | repeated | The exact targets to return, in addition to the filters above. It is how the metadata browser reads the trust signals of the objects it lists in one call. At most 200 keys are accepted. A selection is not paged: page_size, page_token and order_by are ignored, the response keeps the request order, and a key with no live rule is absent — that target is not monitored. |
+| targets | [QualityTargetKey](#metaxisdata-v1-QualityTargetKey) | repeated | The exact targets to return, in addition to the filters above. It is how the metadata browser reads the trust signals of the objects it lists in one call. At most 200 keys are accepted. A selection is not paged: page_size, page_token and order_by are ignored, the response keeps the request order, and a key with no non-archived check is absent — that target is not monitored. A target whose checks are all paused is still returned, with enabled_rule_count = 0. |
 
 
 

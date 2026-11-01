@@ -206,38 +206,53 @@ func TestTargetWhereWorstStatuses(t *testing.T) {
 	require.Contains(t, where, "COALESCE(r.worst_rank, 0) = $14")
 }
 
-// An exact-target selection is one predicate keyed by the aggregate's grouping
-// pair, and it binds one parameter pair however many targets it names. An empty
-// selection is no filter at all, so the directory keeps its full behaviour.
-func TestTargetWhereTargetKeys(t *testing.T) {
+// A selection must restrict the query's scans, not just its result: the rule
+// aggregation, the per-rule execution probe and the issue/draft tallies all
+// carry the key predicate, so a metadata page never aggregates the workspace's
+// whole rule set and retained execution history. The outer predicate stays as a
+// safety net around the answer.
+func TestQualityTargetsStatementPushesSelection(t *testing.T) {
 	t.Parallel()
 
-	where, args, err := targetWhere(&FindQualityTargetMessage{
-		TargetKeys: []MetaGUIDKey{
-			{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE},
-			{GUID: "instance-1;shop;;orders_view", ObjectType: storepb.MetaType_VIEW},
-		},
-	}, 13)
+	keys := []MetaGUIDKey{
+		{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_TABLE},
+		{GUID: "instance-1;shop;;orders_view", ObjectType: storepb.MetaType_VIEW},
+	}
+	query, args, err := qualityTargetsStatement(&FindQualityTargetMessage{TargetKeys: keys})
 	require.NoError(t, err)
-	require.Contains(t, where, "(t.target_guid, t.target_type) IN (SELECT * FROM unnest($14::text[], $15::int2[]))")
-	require.Equal(t, []any{
-		pq.Array([]string{"instance-1;shop;;orders", "instance-1;shop;;orders_view"}),
-		pq.Array([]int16{int16(storepb.MetaType_TABLE), int16(storepb.MetaType_VIEW)}),
-	}, args)
 
-	// The same target's two object types are two keys, so a GUID that a table and a
-	// view could share cannot be resolved by accident.
-	_, args, err = targetWhere(&FindQualityTargetMessage{
-		TargetKeys: []MetaGUIDKey{{GUID: "instance-1;shop;;orders", ObjectType: storepb.MetaType_VIEW}},
-	}, 13)
-	require.NoError(t, err)
-	require.Equal(t, []any{
-		pq.Array([]string{"instance-1;shop;;orders"}),
-		pq.Array([]int16{int16(storepb.MetaType_VIEW)}),
-	}, args)
+	selected := "(SELECT * FROM unnest($14::text[], $15::int2[]))"
+	require.Contains(t, query, "AND (r.target_guid, r.target_type) IN "+selected, "the rule scan is restricted")
+	require.Contains(t, query, "AND (i.target_guid, i.target_type) IN "+selected, "the issue tally is restricted")
+	require.Contains(t, query, "AND (target_guid, target_type) IN "+selected, "the draft tally is restricted")
+	require.Contains(t, query, "(t.target_guid, t.target_type) IN "+selected, "the answer keeps a safety net")
+	require.Equal(t, pq.Array([]string{"instance-1;shop;;orders", "instance-1;shop;;orders_view"}), args[13])
+	require.Equal(t, pq.Array([]int16{int16(storepb.MetaType_TABLE), int16(storepb.MetaType_VIEW)}), args[14])
 
-	where, args, err = targetWhere(&FindQualityTargetMessage{TargetKeys: []MetaGUIDKey{}}, 13)
+	// The execution read is one index-ordered row per live rule, not a sort over
+	// the workspace's retained executions.
+	require.Contains(t, query, "JOIN LATERAL (")
+	require.Contains(t, query, "ORDER BY e.started_at DESC, e.id DESC")
+	require.Contains(t, query, "LIMIT 1")
+
+	// A directory page selects nothing: no selection predicate, no selection
+	// arguments, and the placeholders keep their original positions.
+	query, args, err = qualityTargetsStatement(&FindQualityTargetMessage{})
 	require.NoError(t, err)
-	require.Equal(t, []string{"TRUE"}, where)
-	require.Empty(t, args)
+	require.NotContains(t, query, "unnest(")
+	require.Len(t, args, 13)
+
+	// Filters and the row bound continue after the selection's parameter pair.
+	limit := 5
+	query, args, err = qualityTargetsStatement(&FindQualityTargetMessage{
+		TargetKeys:  keys,
+		WorstStatus: storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		Limit:       &limit,
+	})
+	require.NoError(t, err)
+	require.Contains(t, query, "COALESCE(r.worst_rank, 0) = $16")
+	require.Contains(t, query, "LIMIT $17")
+	require.Equal(t, pq.Array([]string{"instance-1;shop;;orders", "instance-1;shop;;orders_view"}), args[13])
+	require.Equal(t, int32(5), args[15])
+	require.Equal(t, 5, args[16])
 }
