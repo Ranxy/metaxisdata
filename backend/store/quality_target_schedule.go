@@ -179,12 +179,12 @@ func fillQualityTargetNextRun(ctx context.Context, tx *sql.Tx, message *QualityT
 		return err
 	}
 	next := message.Spec().Next(now)
-	if _, err := tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		UPDATE quality_target_schedule
 		SET next_run_at = $3, updated_at = NOW()
 		WHERE target_guid = $1 AND target_type = $2 AND next_run_at IS NULL`,
-		message.TargetGUID, int16(message.TargetType), next,
-	); err != nil {
+		message.TargetGUID, int16(message.TargetType), next)
+	if err != nil {
 		return errors.Wrap(err, "failed to schedule the quality target")
 	}
 	message.NextRunAt = &next
@@ -195,7 +195,7 @@ func fillQualityTargetNextRun(ctx context.Context, tx *sql.Tx, message *QualityT
 // scheduler may run.
 func qualityTargetHasEnabledRule(ctx context.Context, tx *sql.Tx, targetGUID string, targetType storepb.MetaType) (bool, error) {
 	var enabled bool
-	if err := tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM quality_rule r
 			WHERE r.target_guid = $1 AND r.target_type = $2
@@ -204,7 +204,8 @@ func qualityTargetHasEnabledRule(ctx context.Context, tx *sql.Tx, targetGUID str
 		targetGUID,
 		int16(targetType),
 		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-	).Scan(&enabled); err != nil {
+	).Scan(&enabled)
+	if err != nil {
 		return false, errors.Wrap(err, "failed to read the target's enabled quality rules")
 	}
 	return enabled, nil
@@ -339,11 +340,12 @@ func (s *Store) SyncQualityTargetSchedule(ctx context.Context, targetGUID string
 		return err
 	}
 	if !enabled {
-		if _, err := tx.ExecContext(ctx, `
+		_, err := tx.ExecContext(ctx, `
 			UPDATE quality_target_schedule
 			SET next_run_at = NULL, updated_at = NOW()
 			WHERE target_guid = $1 AND target_type = $2`,
-			targetGUID, int16(targetType)); err != nil {
+			targetGUID, int16(targetType))
+		if err != nil {
 			return errors.Wrap(err, "failed to pause the quality target schedule")
 		}
 	} else if err := fillQualityTargetNextRun(ctx, tx, message, now); err != nil {
@@ -617,9 +619,10 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 			cron            string
 			timeZone        string
 		)
-		if err := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &cron,
-			&timeZone, &target.firstDue, &target.ruleCount); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a due quality target schedule")
+		scanErr := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &cron,
+			&timeZone, &target.firstDue, &target.ruleCount)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a due quality target schedule")
 		}
 		target.metaType = storepb.MetaType(targetType)
 		target.schedule = schedule.Spec{

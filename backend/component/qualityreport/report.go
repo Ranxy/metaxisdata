@@ -229,8 +229,9 @@ type SampleCell struct {
 // Basis is the monitoring basis the report records: what the target state, the
 // schedule and the rule revisions were when the document was produced.
 type Basis struct {
-	// ScheduleInterval is the target's fixed interval; it is zero for a cron
-	// target, which schedules from Cron and TimeZone instead.
+	// ScheduleInterval is the target's nominal cadence: the interval of an interval
+	// target, or the expression's nominal gap for a cron target, which schedules
+	// from Cron and TimeZone instead.
 	ScheduleInterval time.Duration
 	// Cron is the five-field cron expression of a cron target, empty for an
 	// interval target.

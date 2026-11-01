@@ -762,9 +762,10 @@ func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context
 
 // syncQualityTargetScheduleAfterRuleUpdate reconciles the target schedule with a
 // rule edit: pausing the target's last enabled check clears its next run, and
-// enabling the first check schedules the target one interval out instead of
-// firing immediately. Moving a rule between targets reconciles both the new and
-// the old target, because each now owns a different set of checks.
+// enabling the first check schedules the target one occurrence out — one interval,
+// or the next cron occurrence — instead of firing immediately. Moving a rule
+// between targets reconciles both the new and the old target, because each now
+// owns a different set of checks.
 func (s *DataQualityService) syncQualityTargetScheduleAfterRuleUpdate(ctx context.Context, update *qualityRuleUpdate, current, updated *store.QualityRuleMessage) error {
 	now := time.Now().UTC()
 	if update.TargetMoved {

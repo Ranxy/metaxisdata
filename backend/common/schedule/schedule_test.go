@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -146,4 +147,77 @@ func TestNominalInterval(t *testing.T) {
 	require.Equal(t, 2*time.Hour, Spec{Interval: 2 * time.Hour, Cron: "bogus"}.NominalInterval(now))
 	// A schedule with no second occurrence reports the maximum.
 	require.Equal(t, MaxInterval, Spec{Cron: "0 0 30 2 *", TimeZone: "UTC"}.NominalInterval(now))
+}
+
+// A wall-clock time that a fall-back repeats must fire once. robfig returns both
+// copies (01:30 EDT and 01:30 EST); the schedule must skip the second.
+func TestNextCronFallBackFiresOnce(t *testing.T) {
+	location, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	spec := Spec{Cron: "30 1 * * *", TimeZone: "America/New_York"}
+
+	before := time.Date(2025, time.November, 1, 12, 0, 0, 0, location)
+	first := spec.Next(before)
+	require.Equal(t, time.Date(2025, time.November, 2, 5, 30, 0, 0, time.UTC), first,
+		"the first 01:30 is the EDT copy")
+	local := first.In(location)
+	require.Equal(t, 2, local.Day())
+	require.Equal(t, 1, local.Hour())
+	require.Equal(t, 30, local.Minute())
+
+	second := spec.Next(first)
+	require.Equal(t, time.Date(2025, time.November, 3, 6, 30, 0, 0, time.UTC), second,
+		"the repeated 01:30 EST copy on the same day must be skipped")
+	require.Equal(t, 3, second.In(location).Day())
+
+	// The schedule's nominal cadence stays about a day; the repeated pair must not
+	// look like an hourly expression.
+	require.GreaterOrEqual(t, spec.NominalInterval(before), 24*time.Hour)
+}
+
+// Every occurrence inside a repeated hour fires once: the second pass over the
+// same wall clocks is skipped, and the schedule resumes the next day.
+func TestNextCronRepeatedHourFiresOncePerWallClock(t *testing.T) {
+	location, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	spec := Spec{Cron: "*/15 1 * * *", TimeZone: "America/New_York"}
+
+	// Start before the first 01:00 EDT; collect every occurrence in the repeated
+	// hour (four wall clocks, each fired once).
+	probe := time.Date(2025, time.November, 2, 0, 30, 0, 0, location)
+	seen := make([]time.Time, 0, 4)
+	for range 4 {
+		next := spec.Next(probe)
+		seen = append(seen, next)
+		probe = next
+	}
+	for i, occurrence := range seen {
+		local := occurrence.In(location)
+		require.Equal(t, 2, local.Day(), "step %d is still on the fall-back day", i)
+		require.Equal(t, 1, local.Hour())
+	}
+	require.Equal(t, []int{0, 15, 30, 45}, []int{
+		seen[0].In(location).Minute(), seen[1].In(location).Minute(),
+		seen[2].In(location).Minute(), seen[3].In(location).Minute(),
+	})
+	// The next occurrence after the first pass is the next day, not the repeated
+	// second pass over 01:00-01:45 EST.
+	next := spec.Next(seen[3])
+	require.Equal(t, 3, next.In(location).Day())
+	require.Equal(t, 1, next.In(location).Hour())
+	require.Equal(t, 0, next.In(location).Minute())
+}
+
+func TestValidateTimeZoneName(t *testing.T) {
+	for _, name := range []string{"UTC", "Asia/Shanghai", "America/New_York", "Europe/Berlin"} {
+		require.NoError(t, ValidateTimeZoneName(name), name)
+	}
+	for _, name := range []string{"", "Local", "EST", "MST", "GMT", "Not/AZone"} {
+		require.Error(t, ValidateTimeZoneName(name), name)
+	}
+}
+
+func TestCronLengthIsBounded(t *testing.T) {
+	_, err := Parse(0, "0 2 * * * "+strings.Repeat("x", 500), "UTC", "")
+	require.ErrorContains(t, err, "longer than 256 bytes")
 }

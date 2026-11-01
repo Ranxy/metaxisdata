@@ -30,7 +30,19 @@ const (
 	// the minimum gap. Any expression denser than MinInterval shows a short gap
 	// among the first two.
 	cronGapProbe = 16
+	// maxCronBytes bounds a cron expression. It is far above any real expression,
+	// but a bounded input keeps a malformed request from being echoed back at
+	// request-body size.
+	maxCronBytes = 256
+	// repeatedWallClockProbes bounds how many repeated wall-clock occurrences Next
+	// skips before giving up. A fall-back repeats an hour once.
+	repeatedWallClockProbes = 4
 )
+
+// repeatedWallClockDeltas are the offsets a daylight-saving fall-back can repeat a
+// wall clock at. One hour covers nearly every zone; 30 minutes (Lord Howe) and the
+// historical two-hour shifts are included so a stored schedule cannot fire twice.
+var repeatedWallClockDeltas = [...]time.Duration{30 * time.Minute, time.Hour, 90 * time.Minute, 2 * time.Hour}
 
 // Spec is a target's schedule: Interval for an interval target, Cron plus
 // TimeZone for a cron target. The two forms are exclusive.
@@ -66,6 +78,9 @@ func (s Spec) Zone() *time.Location {
 // stored schedule is self-contained.
 func Parse(interval time.Duration, expression, timeZone, defaultTimeZone string) (Spec, error) {
 	expression = strings.TrimSpace(expression)
+	if len(expression) > maxCronBytes {
+		return Spec{}, fmt.Errorf("cron expression is longer than %d bytes", maxCronBytes)
+	}
 	switch {
 	case interval > 0 && expression != "":
 		return Spec{}, errors.New("a target schedule is either a schedule interval or a cron expression, not both")
@@ -84,42 +99,102 @@ func Parse(interval time.Duration, expression, timeZone, defaultTimeZone string)
 	if timeZone == "" {
 		timeZone = "UTC"
 	}
-	location, err := time.LoadLocation(timeZone)
-	if err != nil {
-		return Spec{}, fmt.Errorf("timezone %q is not a valid IANA time zone", timeZone)
-	}
-	if err := validateCron(expression, location, time.Now()); err != nil {
+	if err := ValidateTimeZoneName(timeZone); err != nil {
 		return Spec{}, err
 	}
-	return Spec{Cron: expression, TimeZone: timeZone}, nil
+	spec := Spec{Cron: expression, TimeZone: timeZone}
+	if err := spec.validateCron(time.Now()); err != nil {
+		return Spec{}, err
+	}
+	return spec, nil
+}
+
+// ValidateTimeZoneName reports whether name is an IANA time zone a schedule may
+// store: "UTC", or an Area/Location name such as "Asia/Shanghai". Fixed-offset
+// abbreviations ("EST", "MST") and the process-local "Local" are refused: they are
+// not IANA names, and a stored schedule must not depend on the deployment host's
+// zone or silently mean a fixed offset.
+func ValidateTimeZoneName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("a time zone is required")
+	}
+	if name == "UTC" {
+		return nil
+	}
+	if !strings.Contains(name, "/") {
+		return fmt.Errorf("timezone %q is not an IANA time zone: use Area/Location, for example Asia/Shanghai", name)
+	}
+	if _, err := time.LoadLocation(name); err != nil {
+		return fmt.Errorf("timezone %q is not a valid IANA time zone", name)
+	}
+	return nil
 }
 
 // validateCron checks the expression's shape and its occurrence gap. The
 // expression is a standard five-field form, so descriptors such as "@daily" are
 // refused: they are another vocabulary and would not round-trip through the
 // editor.
-func validateCron(expression string, location *time.Location, now time.Time) error {
-	if len(strings.Fields(expression)) != 5 {
-		return fmt.Errorf("cron %q must be a standard five-field expression (minute hour day-of-month month day-of-week)", expression)
+func (s Spec) validateCron(now time.Time) error {
+	if len(strings.Fields(s.Cron)) != 5 {
+		return fmt.Errorf("cron %q must be a standard five-field expression (minute hour day-of-month month day-of-week)", s.Cron)
 	}
-	parsed, err := cron.ParseStandard(expression)
+	parsed, err := cron.ParseStandard(s.Cron)
 	if err != nil {
-		return fmt.Errorf("cron %q is not a valid expression: %v", expression, err)
+		return fmt.Errorf("cron %q is not a valid expression: %v", s.Cron, err)
 	}
-	probe := now.In(location)
+	probe := now.In(s.Zone())
 	var previous time.Time
 	for range cronGapProbe {
-		next := parsed.Next(probe)
+		next := s.nextOccurrence(parsed, probe)
 		if next.IsZero() {
-			return fmt.Errorf("cron %q never fires: no occurrence within five years", expression)
+			return fmt.Errorf("cron %q never fires: no occurrence within five years", s.Cron)
 		}
 		if !previous.IsZero() && next.Sub(previous) < MinInterval {
-			return fmt.Errorf("cron %q runs more often than every %s", expression, MinInterval)
+			return fmt.Errorf("cron %q runs more often than every %s", s.Cron, MinInterval)
 		}
 		previous = next
 		probe = next
 	}
 	return nil
+}
+
+// nextOccurrence returns the first occurrence strictly after the given instant,
+// skipping the second copy of a wall-clock time that a daylight-saving fall-back
+// repeats: a schedule fires once per wall-clock occurrence, so a target must not
+// run twice in the repeated hour. It returns the zero time when the expression has
+// no further occurrence.
+func (s Spec) nextOccurrence(parsed cron.Schedule, after time.Time) time.Time {
+	zone := s.Zone()
+	candidate := parsed.Next(after.In(zone))
+	for range repeatedWallClockProbes {
+		if candidate.IsZero() {
+			return time.Time{}
+		}
+		if !isRepeatedWallClock(candidate, zone) {
+			return candidate.UTC()
+		}
+		candidate = parsed.Next(candidate)
+	}
+	if candidate.IsZero() {
+		return time.Time{}
+	}
+	return candidate.UTC()
+}
+
+// isRepeatedWallClock reports whether the candidate's local wall clock already
+// happened at an earlier instant, which is exactly what a fall-back hour does.
+func isRepeatedWallClock(candidate time.Time, zone *time.Location) bool {
+	local := candidate.In(zone)
+	for _, delta := range repeatedWallClockDeltas {
+		earlier := candidate.Add(-delta).In(zone)
+		if earlier.Year() == local.Year() && earlier.YearDay() == local.YearDay() &&
+			earlier.Hour() == local.Hour() && earlier.Minute() == local.Minute() &&
+			earlier.Second() == local.Second() {
+			return true
+		}
+	}
+	return false
 }
 
 // Next returns the first instant at which the target becomes due, given that the
@@ -138,11 +213,11 @@ func (s Spec) Next(after time.Time) time.Time {
 	if err != nil {
 		return after.Add(s.intervalFloor())
 	}
-	next := parsed.Next(after.In(s.Zone()))
+	next := s.nextOccurrence(parsed, after)
 	if next.IsZero() {
 		return after.Add(s.intervalFloor())
 	}
-	return next.UTC()
+	return next
 }
 
 // NominalInterval is the cadence a caller should assume where it needs a duration
@@ -159,11 +234,11 @@ func (s Spec) NominalInterval(after time.Time) time.Duration {
 	if err != nil {
 		return s.intervalFloor()
 	}
-	first := parsed.Next(after.In(s.Zone()))
+	first := s.nextOccurrence(parsed, after)
 	if first.IsZero() {
 		return MaxInterval
 	}
-	second := parsed.Next(first)
+	second := s.nextOccurrence(parsed, first)
 	if second.IsZero() {
 		return MaxInterval
 	}

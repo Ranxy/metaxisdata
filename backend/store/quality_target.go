@@ -309,8 +309,8 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 			lastRunTime     sql.NullTime
 			schemaChange    bool
 			scheduleSeconds sql.NullInt32
-			scheduleCron    string
-			scheduleZone    string
+			scheduleCron    sql.NullString
+			scheduleZone    sql.NullString
 			scheduleNext    sql.NullTime
 		)
 		scanErr := rows.Scan(
@@ -329,8 +329,10 @@ func (s *Store) ListQualityTargets(ctx context.Context, find *FindQualityTargetM
 		message.WorstStatus = QualityTargetStatusFromRank(worstRank)
 		message.SchemaChanged = schemaChange
 		message.ScheduleInterval = time.Duration(scheduleSeconds.Int32) * time.Second
-		message.ScheduleCron = scheduleCron
-		message.ScheduleTimeZone = scheduleZone
+		// A rule can predate the target-level schedule, so the LEFT JOIN yields NULL
+		// columns for a target without a schedule row; the target is still listed.
+		message.ScheduleCron = scheduleCron.String
+		message.ScheduleTimeZone = scheduleZone.String
 		if scheduleNext.Valid {
 			message.NextRunAt = &scheduleNext.Time
 		}

@@ -337,3 +337,14 @@ func TestValidateDigestSetting(t *testing.T) {
 		require.Errorf(t, ValidateDigestSetting(setting), "case %q must be rejected", name)
 	}
 }
+
+func TestValidateTimeZone(t *testing.T) {
+	t.Parallel()
+
+	for _, zone := range []string{"", "UTC", "Asia/Shanghai", "America/New_York"} {
+		require.NoError(t, ValidateTimeZone(zone), zone)
+	}
+	for _, zone := range []string{"Local", "EST", "MST", "Mars/Base", "Asia/Shanghai/Nowhere"} {
+		require.Error(t, ValidateTimeZone(zone), zone)
+	}
+}

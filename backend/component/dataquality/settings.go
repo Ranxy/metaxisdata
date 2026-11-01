@@ -317,14 +317,15 @@ func timeZoneFromStore(zone string) string {
 }
 
 // ValidateTimeZone validates the check time zone the settings API is about to
-// store. An empty name is valid and means UTC.
+// store. An empty name is valid and means UTC. The name must be UTC or an
+// Area/Location IANA zone, the same rule a cron schedule applies, so neither a
+// stored zone nor a cron schedule silently depends on the deployment host's zone
+// or on a fixed-offset abbreviation.
 func ValidateTimeZone(zone string) error {
-	if zone = strings.TrimSpace(zone); zone != "" {
-		if _, err := time.LoadLocation(zone); err != nil {
-			return errors.Errorf("time_zone %q is not a valid IANA time zone", zone)
-		}
+	if strings.TrimSpace(zone) == "" {
+		return nil
 	}
-	return nil
+	return schedule.ValidateTimeZoneName(zone)
 }
 
 // TimeZoneLocation resolves the check time zone a rule's time variables are

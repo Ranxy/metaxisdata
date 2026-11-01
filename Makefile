@@ -91,11 +91,13 @@ test-integration-smoke:
 test-integration-mysql:
 	go test -v -count=1 -tags=integration -run 'MySQL.*RealServerIntegration' ./backend/test/integration/runner
 
-# The data-quality end-to-end journey: the whole module against the real server.
+# The data-quality end-to-end journey plus the scheduling scenarios: the whole
+# module against the real server. A new DQ scenario belongs here; the per-area
+# gates are what a developer runs before sending a change.
 # The regex anchor needs a doubled dollar: make would otherwise read `$'` as a
 # one-character variable and hand the shell an unterminated quote.
 test-integration-data-quality:
-	go test -v -count=1 -tags=integration -run '^TestDataQualityJourneyMySQLRealServerIntegration$$' ./backend/test/integration/runner
+	go test -v -count=1 -tags=integration -run '^(TestDataQualityJourneyMySQLRealServerIntegration|TestDataQualityScheduleTiersRealServerIntegration|TestDataQualityIntervalCadenceSlotsRealServerIntegration|TestDataQualityTargetWithoutScheduleRowRealServerIntegration)$$' ./backend/test/integration/runner
 
 # The integration gate: every real-server scenario in this package plus the
 # migrator paths. Selection is by package, not by test-name substring: a test
