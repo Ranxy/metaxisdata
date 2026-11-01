@@ -321,3 +321,134 @@ selection and the reference understates the cost; the fix is local to
 `ListQualityTargets` and testable. m-1/m-2/m-4/m-5/m-6 are documentation accuracy,
 m-3 is an MCP honesty gap worth fixing while the surface is new, m-7 is test
 coverage, and the nits are copy.
+
+## Post-fix verification (75cbb0c..3b7378e)
+
+Reviewed the five commits on top of the reviewed tree: `7a3af9b`
+(`fix(data-quality): bound the trust-signal read to the selected targets`),
+`69030a1` (`fix(mcp): stop reporting a paused target's last verdict as its
+health`), `b5aeedc` (`test(frontend): cover the metadata page's trust-signal
+wiring`), `f5770db` (`docs(data-quality): correct the trust-signal cost and
+surface claims`) and `3b7378e` (this review). Read the whole
+`git diff 75cbb0c..HEAD` (20 files) and the new tests. No product code changed
+as part of this verification; the temporary probes below were removed and the
+worktree contains only this document's edit.
+
+### What was re-exercised
+
+- Gates: `go build ./...`; `go test ./backend/store ./backend/api/v1
+  ./backend/mcp`; `gofmt -l backend/` clean; `golangci-lint run
+  --new-from-rev=6cff8b4 --allow-parallel-runners ./backend/...` — 0 issues;
+  `buf format -d`, `buf lint`, `buf generate` then `git status --porcelain`
+  clean; `pnpm type-check`; `pnpm test run` — 165 files / 1683 tests pass on an
+  idle machine (see r-1); `biome:check` clean; `i18n` all checks pass (110
+  terms / 94 rules); `make test-integration-data-quality` — PASS in 36.1 s
+  against real PostgreSQL 16 + MySQL 8.4.
+- **M-1 EXPLAIN probe, same fixture as the review**: production schema from
+  `LATEST.sql`, 1,000 rules (the workspace cap) over 250 targets, 180,000
+  retained executions (90-day retention), a 20-key selection. I rendered the
+  *actual* new statement through `qualityTargetsStatement` into literal-argument
+  SQL (temporary store test, removed) and reconstructed the pre-fix statement
+  for the same fixture, then ran `EXPLAIN (ANALYZE, BUFFERS)`:
+
+  | Query | Execution time | Execution buffers | Plan |
+  | --- | --- | --- | --- |
+  | selection, pre-fix | 182.0 ms | 181,044 shared hits | index scan `rows=180000` over every retained execution, then incremental sort |
+  | selection, post-fix | **3.62 ms** | **438 shared hits** (max) | hash semi-join of the 20 keys into 1,000 live rules, then per-rule `JOIN LATERAL (… LIMIT 1)`: `Index Scan idx_quality_execution_rule_time … loops=80, rows≈2`; 20 rows returned |
+  | directory, pre-fix | 178.2 ms | 181,044 shared hits | scan over every retained execution |
+  | directory, post-fix | **13.0 ms** | **5,042 shared hits** | 1,000 per-rule index probes; no execution-history scan |
+
+  The original baseline was 201.5 ms; the same-fixture pre-fix rerun is
+  182.0 ms, so the comparison is conservative. The plan confirms the selection
+  is pushed into `live` (hash semi join), `issues`, `drafts` and the outer
+  safety net, and that the execution read is one bounded probe per selected
+  rule rather than a scan of the workspace history. The directory path keeps
+  its semantics and gets faster as a side effect.
+- **Coverage/state drift probe, re-run** (temporary integration test, removed):
+  the exact selection, the directory read and `GetQualityTarget` still agree at
+  every stage on a real MySQL fixture — 2/3 initially (the table-level rule
+  covers no column), 1/2 after `DROP COLUMN`, 0/2 after pausing the remaining
+  column check, the all-paused target still returned with
+  `enabled_rule_count = 0` and the directory agreeing, 2 total / 1 covered for
+  a VIEW target, and 0/0 with `orphaned=true` after `DROP TABLE`. No
+  behavioral regression from the query rewrite.
+- **MV/external column arms** of `qualityTargetColumnQuery` (the per-page read
+  P0-4 calls) exercised directly against the production schema with synthesized
+  `MATERIALIZED_VIEW`, `EXTERNAL_TABLE`, `VIEW` and `TABLE` registry rows: each
+  returns its own metadata array's columns, and a missing key is absent (0/0).
+  The automated gap remains (r-3).
+- Re-read the changed docs, proto comments, MCP guide and both data-quality
+  docs against the code, and read the new store/MCP/page tests.
+
+### Per-finding status
+
+| Finding | Status | Evidence |
+| --- | --- | --- |
+| **M-1** unbounded selection read | **fixed** | `qualityTargetsStatement` (`backend/store/quality_target.go:334`) pushes the key pair into `live` (`:383`), `issues`, `drafts` and the outer safety net (`:357-370`), and `latest` is a per-rule `LATERAL … LIMIT 1` (`:401`). `TestQualityTargetsStatementPushesSelection` (`backend/store/quality_target_test.go:214`) pins the four predicates, the LATERAL/LIMIT and the `$14/$15 → $16/$17` layout; probe above: 182.0 → 3.62 ms, 181,044 → 438 buffer hits. §3.11 (`:388`) and §7 #26 (`:611`) now describe the real cost. |
+| **m-1** "one assembly path" docs | **fixed**, one stale row left (r-2) | D-77 (`:111`) and §3.11 (`:383`) now say directory + selection share `assembleQualityTargetPage` while `GetQualityTarget` reuses the coverage/score/pass-rate helpers and is pinned by the journey — matches the code. |
+| **m-2** absent = "no enabled rule" | **partially fixed** (r-2) | Proto comment (`proto/v1/v1/data_quality_service.proto:2551-2555`) and the §3.6 bullet (`.agents/docs/data-quality.md:272`) fixed; `:369` still says "缺席就表示该目标没有启用规则". |
+| **m-3** MCP paused verdict | **fixed** | `backend/mcp/tool.go:581-585, 657-676` adds `allPaused` and omits `worstStatus` when `enabledRuleCount <= 0`; `TestGetQualitySignalReportsAllPaused`; `docs/mcp.md:96-102` and `backend/mcp/guide.md:88-96` updated. A paused target whose last run passed now answers `allPaused: true`, `enabledRuleCount: 0` and no verdict. |
+| **m-4** list "not monitored" link | **fixed** | `docs/data-quality.md:315-319` rewrites the bullet: text-only list cell, Start-monitoring CTA on the badge and tab. |
+| **m-5** score vs Overview | **fixed** | `docs/data-quality.md:324-327` now compares the target score with Targets/workspace header and only the formula with Overview. |
+| **m-6** CTA claim | **fixed** | `.agents/docs/data-quality.md:292` and `:384` name the surfaces and keep the list cell text-only. |
+| **m-7(a)** page wiring test | **fixed**, new timing risk r-1 | `frontend/src/pages/MetadataBrowserPage.test.ts` mounts a TABLE leaf, a VIEW leaf, a list level and a no-permission page and asserts the `guid#metaType` selection keys, the rendered verdict, the unmonitored row and the no-request case. |
+| **m-7(b)** MV/external coverage test | **residual accepted** (r-3) | SQL arms directly verified (above); no MV-capable engine in the harness and the query is the shared P0-3 workspace-coverage read, so deferring is acceptable. |
+| **n-1** "Last run Never run" | **fixed** | `frontend/src/composables/useQualitySignalText.ts:126-131` omits the clause when `lastRunTime` is unset. |
+| **n-2** enum names in guide | **fixed** | `backend/mcp/guide.md:95-99` names the full `QUALITY_STATUS_*` values. |
+| **n-3** 0/0 tooltip | **fixed** | `frontend/src/pages/data-quality/DataQualityTargetsPage.vue:679-693` splits orphan vs empty column list with a new key, and the page test covers both. |
+| **n-4** cap before dedupe | **rejected (conscious)** | The cap applies to the request list and is documented in the proto comment; acceptable. |
+
+### Residual findings
+
+**r-1 (Minor, test reliability) — the new leaf page test is timing-sensitive
+under load.**
+`frontend/src/pages/MetadataBrowserPage.test.ts:190` waits for the badge inside
+a `defineAsyncComponent` (`TableMetadataDetail` is `defineAsyncComponent`,
+`frontend/src/pages/MetadataBrowserPage.vue:371`) using `vi.waitFor`'s default
+1 s timeout. It passes isolated (3/3, ~0.7-0.9 s) and the whole suite passes on
+an idle machine, but two consecutive `pnpm test run` invocations failed exactly
+this assertion while the DQ integration containers and the PostgreSQL probe were
+running in parallel (1 failed / 1683 on both). This is not a product defect, but
+on a loaded CI worker it will intermittently red the frontend gate. **Fix:** pass
+an explicit timeout — `await vi.waitFor(..., { timeout: 5000, interval: 50 })`
+— or await the page's load state before mounting.
+
+**r-2 (Minor, doc accuracy) — two stale claims the m-1/m-2 fixes missed.**
+`.agents/docs/data-quality.md:624` still calls
+`assembleQualityTargetPage`/`qualityTargetColumnCoverage` "目录行、精确选择与
+工作台页头的唯一装配路径", contradicting the corrected D-77 (`:111`) and §3.11
+(`:383`): the workbench header has its own assembly and shares only the helpers.
+`.agents/docs/data-quality.md:369` still says a missing selection key means
+"该目标没有启用规则"; a paused-only target is returned with
+`enabled_rule_count = 0` (reconfirmed by the drift probe), so it must say
+"没有任何非归档规则" and name the all-paused returned case, as D-77 (`:111`),
+`:272` and the proto comment now do. Both are one-line wording edits.
+
+**r-3 (residual, accepted) — no automated MV/external-table coverage test.**
+`backend/store/quality_overview.go:88-107` reads the MV/external column arrays,
+but the integration journey still asserts only a TABLE (plus the VIEW probe I
+ran by hand). The SQL arms are verified and the query is unchanged from the
+P0-3 shared workspace coverage (whose g-4 note listed the same gap), so
+deferring is acceptable; fold it into the engine-matrix follow-up when a
+MV-capable engine enters CI.
+
+No other regression found: the selection contract (unpaged, request order,
+dedupe, 200 cap, absent = not monitored, paused present with
+`enabled_rule_count = 0`), the coverage invariants (paused/dropped/renamed
+column excluded, 0/0 for an unresolved target, one registry read, three
+surfaces agreeing), the three neutral UI states, the permission/no-request
+behavior, and the MCP absence/unwatchable/all-paused answers all still hold, and
+the generated proto/frontend/grpc-doc output is current.
+
+### Verdict
+
+**M-1 is fixed and verified**: the metadata-page selection now costs its own
+targets — 182.0 → 3.62 ms and 181,044 → 438 execution buffer hits on the
+1,000-rule / 180k-execution fixture, with the plan bounded to 80 per-rule
+probes for 20 keys and no workspace execution scan; the directory read also
+improves (178 → 13 ms) instead of regressing. m-1/m-3/m-4/m-5/m-6/n-1/n-2/n-3
+are fixed, m-7(a) is covered and n-4 is a conscious choice; the drift probe and
+the journey show no behavioral regression. Only two one-line documentation
+corrections (r-2) and a test-timeout hardening (r-1) remain, neither touching
+product behavior. **Recommendation: approve the branch for merge once r-1 and
+r-2 are applied; m-7(b)/n-4 are accepted residuals.**
