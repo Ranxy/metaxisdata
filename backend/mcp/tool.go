@@ -112,7 +112,7 @@ func (s *Server) toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        "get_quality_signal",
-			Description: "Report whether one object is watched by data quality checks and how healthy it is: worst latest result, last run, quality score, recent pass rate, column coverage and open issues. This answers \"is this table healthy / should I trust it\". A table with no check at all is not monitored, which the answer reports as monitored: false rather than failing; a table whose checks are all paused still answers, with enabledRuleCount: 0, because nothing watches its data until one is resumed.",
+			Description: "Report whether one object is watched by data quality checks and how healthy it is: worst latest result, last run, quality score, recent pass rate, column coverage and open issues. This answers \"is this table healthy / should I trust it\". A table with no check at all is not monitored, which the answer reports as monitored: false rather than failing; a table whose checks are all paused reports allPaused: true with enabledRuleCount: 0 and no verdict, because nothing is being verified until a check is resumed.",
 			RPC:         "metaxisdata.v1.DataQualityService.ListQualityTargets",
 			Permission:  permission.DataQualityRulesList,
 			Schema: objectSchema(map[string]any{
@@ -574,10 +574,15 @@ type getQualitySignalArgs struct {
 // qualitySignalResult is the answer for a monitored object: every trust signal
 // the metadata browser shows, in one object.
 type qualitySignalResult struct {
-	GUID                 string   `json:"guid"`
-	MetaType             string   `json:"metaType"`
-	Name                 string   `json:"name,omitempty"`
-	Monitored            bool     `json:"monitored"`
+	GUID      string `json:"guid"`
+	MetaType  string `json:"metaType"`
+	Name      string `json:"name,omitempty"`
+	Monitored bool   `json:"monitored"`
+	// AllPaused says every check on the object is paused: the checks exist but
+	// nothing is being verified. The counters still describe the target, while the
+	// verdict fields are omitted — a paused check's last result is history, not a
+	// current health claim.
+	AllPaused            bool     `json:"allPaused"`
 	WorstStatus          string   `json:"worstStatus,omitempty"`
 	LastRunTime          string   `json:"lastRunTime,omitempty"`
 	QualityScore         *float64 `json:"qualityScore,omitempty"`
@@ -645,12 +650,17 @@ func (s *Server) runGetQualitySignal(ctx context.Context, _ *store.UserMessage, 
 		// watches it, which is an answer rather than a failure.
 		return qualitySignalNotMonitored(object), nil
 	}
-	return qualitySignalResult{
+	// The aggregate counts paused checks too, so an all-paused target still carries
+	// its paused checks' last verdict. That is history, not a current health claim:
+	// report the state and omit the verdict rather than let a model call a paused
+	// table healthy.
+	allPaused := summary.GetEnabledRuleCount() <= 0
+	result := qualitySignalResult{
 		GUID:                 object.GUID,
 		MetaType:             object.MetaType.String(),
 		Name:                 qualitySignalName(object.Name, summary),
 		Monitored:            true,
-		WorstStatus:          qualitySignalStatus(summary.GetWorstStatus()),
+		AllPaused:            allPaused,
 		LastRunTime:          qualitySignalTime(summary.GetLastRunTime()),
 		QualityScore:         summary.QualityScore,
 		RecentPassRate:       summary.RecentPassRate,
@@ -661,7 +671,11 @@ func (s *Server) runGetQualitySignal(ctx context.Context, _ *store.UserMessage, 
 		EnabledRuleCount:     summary.GetEnabledRuleCount(),
 		SchemaChanged:        summary.GetSchemaChanged(),
 		Orphaned:             summary.GetOrphaned(),
-	}, nil
+	}
+	if !allPaused {
+		result.WorstStatus = qualitySignalStatus(summary.GetWorstStatus())
+	}
+	return result, nil
 }
 
 // qualitySignalMetaTypes are the object types a quality rule can watch; any other

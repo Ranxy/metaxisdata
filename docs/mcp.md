@@ -95,9 +95,10 @@ browser flow again.
 `get_quality_signal` answers "is this table healthy, should I trust it". A table
 with no quality check at all is **not monitored**, and the tool says so with
 `monitored: false` rather than failing: the object exists, nothing watches it. A
-table whose checks are all paused still answers, with `enabledRuleCount: 0`: the
-checks exist, but nothing watches its data until one is resumed. For a monitored
-object it reports `worstStatus`, `lastRunTime`, `qualityScore`,
+table whose checks are all paused answers with `allPaused: true` and
+`enabledRuleCount: 0`, and its verdict is omitted: the checks are history, and
+nothing is being verified until one is resumed. For a monitored object it reports
+`worstStatus`, `lastRunTime`, `qualityScore`,
 `recentPassRate` with `recentExecutionCount`, `coveredColumnCount` with
 `totalColumnCount`, `openIssueCount`, `enabledRuleCount`, `schemaChanged` and
 `orphaned`; the judged fields are absent until a check has produced a verdict.

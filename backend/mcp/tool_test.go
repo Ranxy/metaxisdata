@@ -786,6 +786,42 @@ func TestGetQualitySignalNeedsAMetaTypeForABareGUID(t *testing.T) {
 	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
 }
 
+// TestGetQualitySignalReportsAllPaused covers a target whose checks all exist but
+// are paused. The aggregate still carries the paused checks' last verdict, which is
+// history rather than a health claim: the answer names the state and omits the
+// verdict, so a model cannot read the paused table as healthy.
+func TestGetQualitySignalReportsAllPaused(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		listQualityTargets: func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			return &v1pb.ListQualityTargetsResponse{QualityTargets: []*v1pb.QualityTargetSummary{{
+				Target:           &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+				EnabledRuleCount: 0,
+				PausedRuleCount:  2,
+				// The last verdict of the paused checks; still not a current claim.
+				WorstStatus:        v1pb.QualityStatus_QUALITY_STATUS_PASS,
+				CoveredColumnCount: 0,
+				TotalColumnCount:   3,
+			}}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_signal", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, true, payload["monitored"])
+	require.Equal(t, true, payload["allPaused"])
+	require.Equal(t, float64(0), payload["enabledRuleCount"])
+	require.NotContains(t, payload, "worstStatus", "a paused check's last verdict is not a current health claim")
+	require.Equal(t, float64(3), payload["totalColumnCount"])
+	require.Equal(t, float64(0), payload["coveredColumnCount"], "a paused check covers no column")
+}
+
 // TestGetQualitySignalAnswersUnmonitoredForAnUnwatchableType covers the object
 // types no rule can watch: the quality RPC refuses such a key, so the tool answers
 // the truthful signal — nothing monitors it — instead of asking.

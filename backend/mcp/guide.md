@@ -89,11 +89,14 @@ table healthy / should I trust it".
 
 A table with no check at all is **not monitored**: the answer is `monitored: false`,
 not a failure, because the object exists and nothing watches it. A table whose
-checks all exist but are paused still answers, with `enabledRuleCount: 0` — nothing
-is watching its data until one is resumed. A monitored object reports:
+checks all exist but are paused answers with `allPaused: true` and
+`enabledRuleCount: 0`, and its verdict fields are omitted: the checks are history,
+and nothing is being verified until one is resumed. A monitored object reports:
 
-- `worstStatus` — the worst latest result across its checks (`PASS`, `WARN`,
-  `FAIL`, `ERROR`, `SKIPPED` or `NOT_EVALUATED`), omitted before any check has run;
+- `worstStatus` — the worst latest result across its checks, as the enum name
+  (`QUALITY_STATUS_PASS`, `QUALITY_STATUS_WARN`, `QUALITY_STATUS_FAIL`,
+  `QUALITY_STATUS_ERROR`, `QUALITY_STATUS_SKIPPED` or
+  `QUALITY_STATUS_NOT_EVALUATED`), omitted before any check has run;
 - `lastRunTime` — when its checks last ran;
 - `qualityScore` — 0–100 over its enabled checks' judged results, omitted until one
   is judged;
