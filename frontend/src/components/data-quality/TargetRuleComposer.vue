@@ -199,6 +199,32 @@
                   </Select>
                 </div>
 
+                <div class="flex flex-col gap-1.5">
+                  <Label for="dq-composer-frequency-tier">
+                    {{ t("dataQuality.frequencyTierLabel") }}
+                  </Label>
+                  <Select
+                    :model-value="String(form.frequencyTier)"
+                    @update:model-value="setFrequencyTier"
+                  >
+                    <SelectTrigger id="dq-composer-frequency-tier">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        v-for="option in QUALITY_FREQUENCY_TIER_OPTIONS"
+                        :key="option.value"
+                        :value="String(option.value)"
+                      >
+                        {{ t(option.labelKey) }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p class="text-sm text-muted-foreground">
+                    {{ t("dataQuality.frequencyTierHint") }}
+                  </p>
+                </div>
+
                 <p class="text-sm text-muted-foreground sm:col-span-2">
                   {{ t("dataQuality.composer.targetScheduleHint") }}
                 </p>
@@ -382,6 +408,7 @@ import type { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   QualityDimension,
   QualityEmptyBehavior,
+  QualityFrequencyTier,
   type QualityRule,
   QualityRuleState,
   QualityRuleType,
@@ -392,6 +419,7 @@ import {
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
+  QUALITY_FREQUENCY_TIER_OPTIONS,
   qualityDimensionKey,
   qualityEmptyBehaviorKey,
   qualityRuleTypeDescriptionKey,
@@ -812,6 +840,14 @@ function setDimension(value: unknown) {
 
 function setSeverity(value: unknown) {
   form.value.severity = Number(value) as QualitySeverity;
+}
+
+/**
+ * The check's run cadence. It is scheduling metadata, not part of the rule
+ * definition: the server records it without appending a revision.
+ */
+function setFrequencyTier(value: unknown) {
+  form.value.frequencyTier = Number(value) as QualityFrequencyTier;
 }
 
 function setOnEmpty(value: unknown) {

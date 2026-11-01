@@ -17,30 +17,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-func TestValidateQualityScheduleInterval(t *testing.T) {
-	t.Parallel()
-
-	accepted := []time.Duration{
-		15 * time.Minute,
-		time.Hour,
-		7 * 24 * time.Hour,
-	}
-	for _, interval := range accepted {
-		require.NoError(t, validateQualityScheduleInterval(interval), "interval %s", interval)
-	}
-	rejected := []time.Duration{
-		0,
-		14*time.Minute + 59*time.Second,
-		-15 * time.Minute,
-		7*24*time.Hour + time.Second,
-	}
-	for _, interval := range rejected {
-		err := validateQualityScheduleInterval(interval)
-		require.Error(t, err, "interval %s", interval)
-		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-	}
-}
-
 func TestQualityOwnerID(t *testing.T) {
 	t.Parallel()
 
@@ -66,22 +42,23 @@ func TestParseQualityRuleUpdateFieldMapping(t *testing.T) {
 
 	mutedUntil := time.Date(2026, time.October, 10, 0, 0, 0, 0, time.UTC)
 	rule := &v1pb.QualityRule{
-		Title:       "new title",
-		Description: "new description",
-		Dimension:   v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
-		RuleType:    v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		Target:      &v1pb.QualityTarget{MetaGuid: "instance_1;shop;public;orders", MetaType: v1pb.MetaType_TABLE},
-		Config:      &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{Column: "email", MaxNullPct: qualityTestPtr(0.5)}}},
-		Severity:    v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
-		State:       v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
-		Owner:       "users/7",
-		Tags:        []string{"pii"},
-		MuteUntil:   timestamppb.New(mutedUntil),
+		Title:         "new title",
+		Description:   "new description",
+		Dimension:     v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		RuleType:      v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Target:        &v1pb.QualityTarget{MetaGuid: "instance_1;shop;public;orders", MetaType: v1pb.MetaType_TABLE},
+		Config:        &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{Column: "email", MaxNullPct: qualityTestPtr(0.5)}}},
+		Severity:      v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+		State:         v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+		FrequencyTier: v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY,
+		Owner:         "users/7",
+		Tags:          []string{"pii"},
+		MuteUntil:     timestamppb.New(mutedUntil),
 	}
 
 	update, err := parseQualityRuleUpdate(rule, []string{
 		"title", "description", "dimension", "rule_type", "target", "config",
-		"severity", "state", "owner", "tags", "mute_until",
+		"severity", "state", "frequency_tier", "owner", "tags", "mute_until",
 	})
 	require.NoError(t, err)
 	require.True(t, update.DefinitionChanged)
@@ -98,9 +75,37 @@ func TestParseQualityRuleUpdateFieldMapping(t *testing.T) {
 	require.Equal(t, "email", update.Patch.Config.GetNullPercent().GetColumn())
 	require.Equal(t, storepb.QualitySeverity_QUALITY_SEVERITY_ERROR, *update.Patch.Severity)
 	require.Equal(t, storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED, *update.Patch.State)
+	require.Equal(t, storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY, *update.Patch.FrequencyTier)
 	require.Equal(t, int32(7), *update.Patch.OwnerID)
 	require.Equal(t, []string{"pii"}, *update.Patch.Tags)
 	require.Equal(t, mutedUntil, *update.Patch.MuteUntil)
+}
+
+// A run-cadence edit is head-only scheduling metadata: it patches the tier without
+// flagging a definition change, so the store does not append a rule revision.
+func TestParseQualityRuleUpdateFrequencyTierIsHeadOnly(t *testing.T) {
+	t.Parallel()
+
+	update, err := parseQualityRuleUpdate(&v1pb.QualityRule{
+		FrequencyTier: v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY,
+	}, []string{"frequency_tier"})
+	require.NoError(t, err)
+	require.NotNil(t, update.Patch.FrequencyTier)
+	require.Equal(t, storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY, *update.Patch.FrequencyTier)
+	require.False(t, update.DefinitionChanged, "the tier is not part of the definition")
+	require.False(t, update.StateChanged)
+	require.False(t, update.TargetMoved)
+
+	// UNSPECIFIED is valid: it returns the check to the target's own schedule.
+	update, err = parseQualityRuleUpdate(&v1pb.QualityRule{}, []string{"frequency_tier"})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED, *update.Patch.FrequencyTier)
+
+	_, err = parseQualityRuleUpdate(&v1pb.QualityRule{
+		FrequencyTier: v1pb.QualityFrequencyTier(99),
+	}, []string{"frequency_tier"})
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 func TestParseQualityRuleUpdateEmptyMaskChangesNothing(t *testing.T) {

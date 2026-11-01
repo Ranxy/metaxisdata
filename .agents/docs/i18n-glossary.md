@@ -202,4 +202,6 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | last run | 最近运行 | Data Quality | When a target's checks last produced a verdict, rendered as a relative time and never as a raw timestamp in a list. | dataQuality. | — |
 | trend | 趋势 | Data Quality | A check's judged values over its recent executions, plotted oldest to newest. | dataQuality. | zh-CN: `走势` |
 | baseline | 基线 | Data Quality | The previous measurement a row-count-change check compares its current count with. | dataQuality. | — |
+| cron expression | cron 表达式 | Data Quality | A standard five-field expression (minute hour day-of-month month day-of-week) a target's schedule can run on instead of a fixed interval, evaluated in an IANA time zone. | dataQuality. | — |
+| run cadence | 运行频率 | Data Quality | How often one check needs to run inside its target's schedule: follow the target, or at most once an hour, a day or a week. The target's tick is the floor, and a manual run ignores it. | dataQuality. | — |
 <!-- END GENERATED GLOSSARY -->

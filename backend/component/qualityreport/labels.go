@@ -107,16 +107,18 @@ type labels struct {
 	LabelNo            string
 	LabelNullValue     string
 
-	BasisPath     string
-	BasisSchedule string
-	BasisNextRun  string
-	BasisRevision string
-	BasisEngines  string
-	BasisColumns  string
-	ScheduleEvery string
-	ScheduleNone  string
-	RevisionRange string
-	ColumnCount   string
+	BasisPath          string
+	BasisSchedule      string
+	BasisNextRun       string
+	BasisRevision      string
+	BasisEngines       string
+	BasisColumns       string
+	ScheduleEvery      string
+	ScheduleCron       string
+	ScheduleCronNoZone string
+	ScheduleNone       string
+	RevisionRange      string
+	ColumnCount        string
 }
 
 // catalogFor returns the report vocabulary for one normalized language.
@@ -226,16 +228,18 @@ var englishLabels = labels{
 	LabelNo:            "no",
 	LabelNullValue:     "NULL",
 
-	BasisPath:     "Target path snapshot",
-	BasisSchedule: "Schedule",
-	BasisNextRun:  "Next run",
-	BasisRevision: "Rule revisions",
-	BasisEngines:  "Engine versions",
-	BasisColumns:  "Resolved columns",
-	ScheduleEvery: "every %s",
-	ScheduleNone:  "no schedule",
-	RevisionRange: "%d – %d",
-	ColumnCount:   "%d columns",
+	BasisPath:          "Target path snapshot",
+	BasisSchedule:      "Schedule",
+	BasisNextRun:       "Next run",
+	BasisRevision:      "Rule revisions",
+	BasisEngines:       "Engine versions",
+	BasisColumns:       "Resolved columns",
+	ScheduleEvery:      "every %s",
+	ScheduleCron:       "cron %s (%s)",
+	ScheduleCronNoZone: "cron %s",
+	ScheduleNone:       "no schedule",
+	RevisionRange:      "%d – %d",
+	ColumnCount:        "%d columns",
 }
 
 var chineseLabels = labels{
@@ -325,16 +329,18 @@ var chineseLabels = labels{
 	LabelNo:            "否",
 	LabelNullValue:     "空",
 
-	BasisPath:     "目标路径快照",
-	BasisSchedule: "调度",
-	BasisNextRun:  "下次运行",
-	BasisRevision: "规则修订",
-	BasisEngines:  "引擎版本",
-	BasisColumns:  "已解析列数",
-	ScheduleEvery: "每 %s",
-	ScheduleNone:  "无调度",
-	RevisionRange: "%d – %d",
-	ColumnCount:   "%d 列",
+	BasisPath:          "目标路径快照",
+	BasisSchedule:      "调度",
+	BasisNextRun:       "下次运行",
+	BasisRevision:      "规则修订",
+	BasisEngines:       "引擎版本",
+	BasisColumns:       "已解析列数",
+	ScheduleEvery:      "每 %s",
+	ScheduleCron:       "cron %s（%s）",
+	ScheduleCronNoZone: "cron %s",
+	ScheduleNone:       "无调度",
+	RevisionRange:      "%d – %d",
+	ColumnCount:        "%d 列",
 }
 
 // statusLabels is the six-state vocabulary plus the "no verdict yet" case.

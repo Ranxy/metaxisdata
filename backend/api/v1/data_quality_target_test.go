@@ -7,7 +7,9 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -176,6 +178,72 @@ func TestConvertQualityTargetSummary(t *testing.T) {
 	require.Equal(t, int32(0), never.GetRunCount())
 	require.Nil(t, never.GetLatestRun())
 	require.Nil(t, never.GetSchedule(), "a target without a schedule row has no schedule")
+}
+
+// A cron target's directory row carries the expression and its resolved zone, and
+// still names the nominal cadence the store derived from the expression.
+func TestConvertQualityTargetSummaryCronSchedule(t *testing.T) {
+	t.Parallel()
+
+	nextRun := time.Date(2026, time.October, 8, 2, 0, 0, 0, time.UTC)
+	summary := convertQualityTargetSummary("ws1", &store.QualityTargetMessage{
+		GUID:             "instance-1;shop;public;orders",
+		Type:             storepb.MetaType_TABLE,
+		ScheduleInterval: 24 * time.Hour,
+		ScheduleCron:     "0 2 * * *",
+		ScheduleTimeZone: "Asia/Shanghai",
+		NextRunAt:        &nextRun,
+	})
+	scheduleRow := summary.GetSchedule()
+	require.NotNil(t, scheduleRow)
+	require.Equal(t, 24*time.Hour, scheduleRow.GetScheduleInterval().AsDuration())
+	require.Equal(t, "0 2 * * *", scheduleRow.GetCron())
+	require.Equal(t, "Asia/Shanghai", scheduleRow.GetTimezone())
+	require.Equal(t, nextRun, scheduleRow.GetNextRunTime().AsTime())
+}
+
+// A schedule update accepts exactly one of an interval and a cron expression. An
+// empty zone resolves to the workspace's check zone and the resolved name is what
+// gets stored, while a too-frequent expression or an unknown IANA zone is refused.
+func TestQualityScheduleSpecFromV1(t *testing.T) {
+	t.Parallel()
+
+	// The old interval-only request keeps working and needs no zone.
+	spec, err := qualityScheduleSpecFromV1(&v1pb.UpdateQualityTargetScheduleRequest{
+		ScheduleInterval: durationpb.New(2 * time.Hour),
+	}, "Asia/Shanghai")
+	require.NoError(t, err)
+	require.Equal(t, schedule.Spec{Interval: 2 * time.Hour}, spec)
+
+	spec, err = qualityScheduleSpecFromV1(&v1pb.UpdateQualityTargetScheduleRequest{
+		Cron: "0 2 * * *",
+	}, "Asia/Shanghai")
+	require.NoError(t, err)
+	require.Equal(t, schedule.Spec{Cron: "0 2 * * *", TimeZone: "Asia/Shanghai"}, spec,
+		"an empty timezone resolves to the workspace's check zone")
+
+	spec, err = qualityScheduleSpecFromV1(&v1pb.UpdateQualityTargetScheduleRequest{
+		Cron: "0 2 * * *", Timezone: "UTC",
+	}, "Asia/Shanghai")
+	require.NoError(t, err)
+	require.Equal(t, schedule.Spec{Cron: "0 2 * * *", TimeZone: "UTC"}, spec,
+		"an explicit zone wins over the workspace default")
+
+	rejected := map[string]*v1pb.UpdateQualityTargetScheduleRequest{
+		"both modes":         {ScheduleInterval: durationpb.New(2 * time.Hour), Cron: "0 2 * * *"},
+		"neither mode":       {},
+		"interval too short": {ScheduleInterval: durationpb.New(14 * time.Minute)},
+		"interval too long":  {ScheduleInterval: durationpb.New(8 * 24 * time.Hour)},
+		"negative interval":  {ScheduleInterval: durationpb.New(-time.Hour)},
+		"cron too frequent":  {Cron: "* * * * *", Timezone: "UTC"},
+		"cron malformed":     {Cron: "0 2 * *", Timezone: "UTC"},
+		"unknown IANA zone":  {Cron: "0 2 * * *", Timezone: "Mars/Olympus"},
+	}
+	for name, request := range rejected {
+		_, err := qualityScheduleSpecFromV1(request, "Asia/Shanghai")
+		require.Error(t, err, name)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), name)
+	}
 }
 
 // qualityTargetTestRule builds one rule in the given lifecycle state with the

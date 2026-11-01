@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it, vi } from "vitest";
 import {
   ExportQualityDataChunkSchema,
@@ -8,6 +9,7 @@ import {
   QualitySeverity,
   QualityStatus,
   QualityTargetOrder,
+  QualityTargetScheduleSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
@@ -16,6 +18,7 @@ import {
   exportQualityReport,
   exportQualityTargets,
   listQualityTargets,
+  updateQualityTargetSchedule,
 } from "./data-quality";
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   exportQualityTargets: vi.fn(),
   exportQualityReport: vi.fn(),
   listQualityTargets: vi.fn(),
+  updateQualityTargetSchedule: vi.fn(),
 }));
 
 vi.mock("./client", () => ({
@@ -33,6 +37,7 @@ vi.mock("./client", () => ({
     exportQualityTargets: mocks.exportQualityTargets,
     exportQualityReport: mocks.exportQualityReport,
     listQualityTargets: mocks.listQualityTargets,
+    updateQualityTargetSchedule: mocks.updateQualityTargetSchedule,
   },
 }));
 
@@ -228,5 +233,52 @@ describe("report export", () => {
       trendDays: 0,
       language: "zh-CN",
     });
+  });
+});
+
+describe("target schedule wrapper", () => {
+  it("sends the interval form alone", async () => {
+    mocks.updateQualityTargetSchedule.mockResolvedValue(
+      create(QualityTargetScheduleSchema, {})
+    );
+
+    await updateQualityTargetSchedule({
+      targetGuid: "inst1;shop;public;orders",
+      scheduleInterval: create(DurationSchema, { seconds: 3_600n, nanos: 0 }),
+    });
+
+    const request = mocks.updateQualityTargetSchedule.mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(request).toMatchObject({
+      parent: "workspaces/-",
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.UNSPECIFIED,
+      cron: "",
+      timezone: "",
+    });
+    expect(request.scheduleInterval).toMatchObject({ seconds: 3_600n });
+  });
+
+  it("sends the cron form with its zone and no interval", async () => {
+    mocks.updateQualityTargetSchedule.mockResolvedValue(
+      create(QualityTargetScheduleSchema, {})
+    );
+
+    await updateQualityTargetSchedule({
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
+      cron: "0 2 * * *",
+      timezone: "Asia/Shanghai",
+    });
+
+    const request = mocks.updateQualityTargetSchedule.mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(request).toMatchObject({
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
+      cron: "0 2 * * *",
+      timezone: "Asia/Shanghai",
+    });
+    expect(request.scheduleInterval).toBeUndefined();
   });
 });

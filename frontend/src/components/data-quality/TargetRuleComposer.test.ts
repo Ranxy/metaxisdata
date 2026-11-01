@@ -18,6 +18,7 @@ import {
   QualityComparison,
   QualityEmptyBehavior,
   QualityFilterOperator,
+  QualityFrequencyTier,
   type QualityRule,
   QualityRuleConfigSchema,
   QualityRuleSamplingSchema,
@@ -134,6 +135,7 @@ function ruleFixture(
     title?: string;
     ruleType?: QualityRuleType;
     state?: QualityRuleState;
+    frequencyTier?: QualityFrequencyTier;
     owner?: string;
     tags?: string[];
     minRows?: bigint;
@@ -162,6 +164,7 @@ function ruleFixture(
     description: "The fact table should not go empty.",
     ruleType,
     state: options.state ?? QualityRuleState.ENABLED,
+    frequencyTier: options.frequencyTier ?? QualityFrequencyTier.UNSPECIFIED,
     severity: QualitySeverity.ERROR,
     owner: options.owner ?? "",
     tags: options.tags ?? [],
@@ -231,6 +234,24 @@ function suggestionFixture() {
       },
     },
   });
+}
+
+/** Open a Radix select by its trigger id and pick an option by its label. */
+async function selectOption(triggerId: string, optionText: string) {
+  // Radix opens a select on a left-button pointerdown and selects on pointerup.
+  document
+    .querySelector<HTMLElement>(triggerId)
+    ?.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+    );
+  await flushPromises();
+  const option = [
+    ...document.body.querySelectorAll<HTMLElement>('[role="option"]'),
+  ].find((candidate) => candidate.textContent?.trim() === optionText);
+  option?.dispatchEvent(
+    new MouseEvent("pointerup", { bubbles: true, button: 0 })
+  );
+  await flushPromises();
 }
 
 async function mountComposer(
@@ -947,6 +968,48 @@ describe("TargetRuleComposer", () => {
     const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
     expect(rule.config?.config.case).toBe("rowCountChange");
     expect(rule.config?.onEmpty).toBe(QualityEmptyBehavior.PASS);
+    wrapper.unmount();
+  });
+
+  it("creates a check on the chosen run cadence", async () => {
+    const wrapper = await mountComposer();
+
+    setInput("#dq-composer-title", "Orders have rows");
+    setInput("#dq-field-minRows", "1");
+    await selectOption(
+      "#dq-composer-frequency-tier",
+      label("dataQuality.frequencyTier.weekly")
+    );
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    expect(rule.frequencyTier).toBe(QualityFrequencyTier.WEEKLY);
+    wrapper.unmount();
+  });
+
+  it("sends only frequency_tier when the cadence is the only edit", async () => {
+    const original = ruleFixture();
+    mocks.updateQualityRule.mockResolvedValue(
+      ruleFixture({ frequencyTier: QualityFrequencyTier.DAILY })
+    );
+    const wrapper = await mountComposer({ rule: original });
+
+    await selectOption(
+      "#dq-composer-frequency-tier",
+      label("dataQuality.frequencyTier.daily")
+    );
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [rule, mask] = mocks.updateQualityRule.mock.calls[0] as [
+      QualityRule,
+      string[],
+    ];
+    expect(rule.frequencyTier).toBe(QualityFrequencyTier.DAILY);
+    expect(mask).toEqual(["frequency_tier"]);
     wrapper.unmount();
   });
 });

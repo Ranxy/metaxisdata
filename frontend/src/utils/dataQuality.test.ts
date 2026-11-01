@@ -13,6 +13,7 @@ import {
   QualityExecutionState,
   QualityExecutionTrigger,
   QualityFilterOperator,
+  QualityFrequencyTier,
   QualityIssueStatus,
   QualityObservedKind,
   QualityResolutionReason,
@@ -46,6 +47,8 @@ import {
   qualityExecutionStateVariant,
   qualityExecutionTriggerKey,
   qualityFilterOperatorKey,
+  qualityFrequencyTierKey,
+  qualityFrequencyTierVariant,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualityResolutionReasonKey,
@@ -285,6 +288,42 @@ describe("rule state", () => {
       "secondary"
     );
     expect(qualityRuleStateVariant(99 as QualityRuleState)).toBe("secondary");
+  });
+});
+
+describe("qualityFrequencyTierKey / qualityFrequencyTierVariant", () => {
+  it("names every run cadence", () => {
+    expect(qualityFrequencyTierKey(QualityFrequencyTier.UNSPECIFIED)).toBe(
+      "dataQuality.frequencyTier.followTarget"
+    );
+    expect(qualityFrequencyTierKey(QualityFrequencyTier.HOURLY)).toBe(
+      "dataQuality.frequencyTier.hourly"
+    );
+    expect(qualityFrequencyTierKey(QualityFrequencyTier.DAILY)).toBe(
+      "dataQuality.frequencyTier.daily"
+    );
+    expect(qualityFrequencyTierKey(QualityFrequencyTier.WEEKLY)).toBe(
+      "dataQuality.frequencyTier.weekly"
+    );
+    // An unknown value falls back to following the target rather than a raw key.
+    expect(qualityFrequencyTierKey(99 as QualityFrequencyTier)).toBe(
+      "dataQuality.frequencyTier.followTarget"
+    );
+  });
+
+  it("gives every cadence a badge variant", () => {
+    expect(qualityFrequencyTierVariant(QualityFrequencyTier.HOURLY)).toBe(
+      "info"
+    );
+    expect(qualityFrequencyTierVariant(QualityFrequencyTier.DAILY)).toBe(
+      "secondary"
+    );
+    expect(qualityFrequencyTierVariant(QualityFrequencyTier.WEEKLY)).toBe(
+      "outline"
+    );
+    expect(qualityFrequencyTierVariant(QualityFrequencyTier.UNSPECIFIED)).toBe(
+      "secondary"
+    );
   });
 });
 
@@ -1024,6 +1063,9 @@ describe("data quality vocabulary catalogs", () => {
     }
     for (const state of enumValues(QualityRuleState)) {
       keys.push(qualityRuleStateKey(state));
+    }
+    for (const tier of enumValues(QualityFrequencyTier)) {
+      keys.push(qualityFrequencyTierKey(tier));
     }
     for (const state of enumValues(QualityExecutionState)) {
       keys.push(qualityExecutionStateKey(state));

@@ -1614,6 +1614,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityFrequencyTier"><span class="badge">E</span>QualityFrequencyTier</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityIssueStatus"><span class="badge">E</span>QualityIssueStatus</a>
                 </li>
               
@@ -17510,6 +17514,16 @@ and results are still recorded. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>frequency_tier</td>
+                  <td><a href="#metaxisdata.v1.QualityFrequencyTier">QualityFrequencyTier</a></td>
+                  <td></td>
+                  <td><p>How often this check needs to run inside the target&#39;s schedule. The target
+tick is the floor, so a tier denser than the target is a no-op; a manual run
+is not affected. It is scheduling metadata, not part of the rule definition:
+editing it does not append a revision. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -18755,7 +18769,7 @@ populated, and is empty for a table-level rule. </p></td>
         
       
         <h3 id="metaxisdata.v1.QualityTargetSchedule">QualityTargetSchedule</h3>
-        <p>QualityTargetSchedule is a target's one schedule: the cadence every enabled</p><p>check of the target runs at, and when the target next comes due. Scheduling is</p><p>per target, so all of its checks are planned and executed together.</p>
+        <p>QualityTargetSchedule is a target's one schedule: the cadence every enabled</p><p>check of the target runs at, and when the target next comes due. Scheduling is</p><p>per target, so all of its checks are planned and executed together. A target</p><p>runs either on a fixed interval or on a cron expression, never both.</p>
 
         
           <table class="field-table">
@@ -18768,7 +18782,10 @@ populated, and is empty for a table-level rule. </p></td>
                   <td>schedule_interval</td>
                   <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
                   <td></td>
-                  <td><p>How often the target&#39;s enabled checks run, between 15 minutes and 7 days. </p></td>
+                  <td><p>How often the target&#39;s enabled checks run, between 15 minutes and 7 days. A
+cron target keeps the expression&#39;s nominal gap here as the cadence it falls
+back to when the expression is cleared, so the editor can seed interval mode
+from it; cron decides the actual occurrence. </p></td>
                 </tr>
               
                 <tr>
@@ -18777,6 +18794,25 @@ populated, and is empty for a table-level rule. </p></td>
                   <td></td>
                   <td><p>When the scheduler next considers the target due. Unset while the target has
 no enabled check. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cron</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A standard five-field cron expression evaluated in timezone, for example
+&#34;0 2 * * *&#34; for every day at 02:00. Empty when the target runs on
+schedule_interval instead. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The IANA time zone the cron expression is evaluated in, for example
+&#34;Asia/Shanghai&#34;. Empty for an interval schedule. When a request leaves it
+empty, the server resolves it to the workspace&#39;s check time zone at save
+time and stores the resolved zone. </p></td>
                 </tr>
               
             </tbody>
@@ -20403,7 +20439,28 @@ own target carries it. </p></td>
                   <td>schedule_interval</td>
                   <td><a href="#google.protobuf.Duration">google.protobuf.Duration</a></td>
                   <td></td>
-                  <td><p>How often the target&#39;s enabled checks run, between 15 minutes and 7 days. </p></td>
+                  <td><p>How often the target&#39;s enabled checks run. Exactly one of schedule_interval
+and cron is set: a fixed interval between 15 minutes and 7 days, or a cron
+expression. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cron</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A standard five-field cron expression (&#34;minute hour day-of-month month
+day-of-week&#34;) evaluated in timezone, for example &#34;0 2 * * *&#34; for every day at
+02:00. The gap between two of its occurrences must be at least 15 minutes;
+there is no upper bound. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The IANA time zone the cron expression is evaluated in, for example
+&#34;Asia/Shanghai&#34;. Empty resolves to the workspace&#39;s check time zone, and the
+resolved zone is what the target stores and what reads return. </p></td>
                 </tr>
               
             </tbody>
@@ -20830,6 +20887,41 @@ accepted range expressed as a pass band.</p></td>
                 <td>QUALITY_FILTER_OPERATOR_IS_NOT_NULL</td>
                 <td>10</td>
                 <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityFrequencyTier">QualityFrequencyTier</h3>
+        <p>QualityFrequencyTier is how often one check needs to run inside its target's</p><p>schedule. The target's own cadence is the floor: a check never runs more often</p><p>than its target, and a tier denser than the target is a no-op. The tier bounds</p><p>scheduled runs only; a manual run always runs the check.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p>Follow the target: the check runs in every target cycle.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_HOURLY</td>
+                <td>1</td>
+                <td><p>At most once an hour.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_DAILY</td>
+                <td>2</td>
+                <td><p>At most once a day.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_FREQUENCY_TIER_WEEKLY</td>
+                <td>3</td>
+                <td><p>At most once a week.</p></td>
               </tr>
             
           </tbody>

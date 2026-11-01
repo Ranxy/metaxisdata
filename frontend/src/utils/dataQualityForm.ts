@@ -20,6 +20,7 @@ import {
   QualityFilterClauseSchema,
   type QualityFilterOperator,
   QualityFilterSchema,
+  QualityFrequencyTier,
   type QualityRule,
   type QualityRuleConfig,
   QualityRuleConfigSchema,
@@ -500,6 +501,12 @@ export interface RuleFormState {
   ruleType: QualityRuleType;
   severity: QualitySeverity;
   state: QualityRuleState;
+  /**
+   * How often the check needs to run inside the target's schedule. It bounds
+   * scheduled runs only: the target tick is the floor, a denser tier is a no-op,
+   * and a manual run ignores it.
+   */
+  frequencyTier: QualityFrequencyTier;
   /** Format: users/{user}; empty means no owner. */
   owner: string;
   /** Comma-separated. */
@@ -660,6 +667,7 @@ export function emptyRuleForm(
     ruleType,
     severity: QualitySeverity.WARNING,
     state: QualityRuleState.ENABLED,
+    frequencyTier: QualityFrequencyTier.UNSPECIFIED,
     owner: "",
     tags: "",
     thresholdMetric: QualityThresholdMetric.COUNT,
@@ -737,6 +745,24 @@ export function durationToSchedule(duration: Duration | undefined): {
     }
   }
   return { value: String(Math.round(seconds / 60)), unit: "minutes" };
+}
+
+/** The characters one five-field cron expression may use between its spaces. */
+const CRON_FIELD_PATTERN = /^[0-9A-Za-z*?,/-]+$/;
+
+/**
+ * Client-side shape check for a cron expression: five whitespace-separated
+ * fields built from the standard vocabulary (`*`, `?`, digits, names, lists,
+ * ranges and steps). The server parses the expression again and owns the real
+ * verdict (including the minimum gap between occurrences), so this only keeps a
+ * clearly malformed expression from reaching the request.
+ */
+export function isValidCronExpression(expression: string): boolean {
+  const fields = expression.trim().split(/\s+/);
+  return (
+    fields.length === 5 &&
+    fields.every((field) => CRON_FIELD_PATTERN.test(field))
+  );
 }
 
 // ---- target ----
@@ -900,6 +926,7 @@ export function formToRule(
   rule.ruleType = form.ruleType;
   rule.severity = form.severity;
   rule.state = form.state;
+  rule.frequencyTier = form.frequencyTier;
   rule.owner = form.owner.trim();
   rule.tags = uniqueValues(parseValueList(form.tags));
   rule.config = buildRuleConfig(form);
@@ -1276,6 +1303,7 @@ export function ruleToForm(rule: QualityRule): RuleFormState {
   form.ruleType = rule.ruleType;
   form.severity = rule.severity;
   form.state = rule.state;
+  form.frequencyTier = rule.frequencyTier;
   form.owner = rule.owner;
   form.tags = rule.tags.join(", ");
   // UNSPECIFIED means COUNT on the wire; normalize it so the select never opens
@@ -1685,6 +1713,11 @@ export function computeUpdateMask(
   }
   if (before.state !== after.state) {
     mask.push("state");
+  }
+  // Scheduling metadata, not part of the rule definition: the server records it
+  // without appending a revision.
+  if (before.frequencyTier !== after.frequencyTier) {
+    mask.push("frequency_tier");
   }
   if (trimmed(before.owner) !== trimmed(after.owner)) {
     mask.push("owner");

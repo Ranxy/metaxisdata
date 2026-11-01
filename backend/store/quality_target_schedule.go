@@ -9,28 +9,45 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
 // qualityTargetScheduleColumns is the column list every quality_target_schedule
 // read returns, in the order scanQualityTargetSchedule consumes it.
 const qualityTargetScheduleColumns = `target_guid, target_type,
-	schedule_interval_seconds, next_run_at, created_at, updated_at`
+	schedule_interval_seconds, schedule_cron, schedule_timezone, next_run_at,
+	created_at, updated_at`
 
 // QualityTargetScheduleMessage is the store representation of one target's
 // schedule row. Scheduling is per target: every enabled rule of the target runs
-// together when next_run_at comes due, at schedule_interval_seconds apart.
+// together when next_run_at comes due.
 type QualityTargetScheduleMessage struct {
 	TargetGUID string
 	TargetType storepb.MetaType
-	// ScheduleInterval is how often the target's checks run. The column stores
-	// whole seconds.
+	// ScheduleInterval is the target's nominal cadence. The column stores whole
+	// seconds. An interval target runs on it; a cron target keeps the expression's
+	// nominal gap here as the cadence it falls back to when the expression is
+	// cleared. A check's run cadence compares due slots and never reads it.
 	ScheduleInterval time.Duration
+	// Cron is the five-field expression the target runs on instead of its interval;
+	// empty for an interval target.
+	Cron string
+	// TimeZone is the IANA zone Cron is evaluated in; empty for an interval target.
+	TimeZone string
 	// NextRunAt is when the scheduler next considers the target due; nil while the
 	// target has no enabled rule.
 	NextRunAt *time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Spec is the target's schedule in the form the scheduler resolves.
+func (m *QualityTargetScheduleMessage) Spec() schedule.Spec {
+	if m == nil {
+		return schedule.Spec{}
+	}
+	return schedule.Spec{Interval: m.ScheduleInterval, Cron: m.Cron, TimeZone: m.TimeZone}
 }
 
 // scheduleScanner is the row shape scanned from either a *sql.Row or *sql.Rows,
@@ -51,6 +68,8 @@ func scanQualityTargetSchedule(row scheduleScanner) (*QualityTargetScheduleMessa
 		&msg.TargetGUID,
 		&targetType,
 		&intervalSeconds,
+		&msg.Cron,
+		&msg.TimeZone,
 		&nextRunAt,
 		&msg.CreatedAt,
 		&msg.UpdatedAt,
@@ -89,53 +108,39 @@ func (s *Store) GetQualityTargetSchedule(ctx context.Context, targetGUID string,
 	return message, nil
 }
 
-// ensureQualityTargetSchedule writes one target's schedule row inside an
-// existing transaction, creating it with the given interval when absent. The row
-// starts due one interval from now only when the target already has an enabled
-// rule, so a paused rule never schedules its target. When the row already exists,
-// a NULL next_run_at is filled with now plus the row's own interval, not the
-// caller's: a target with a customized cadence keeps that cadence when it is
-// reactivated by a new check.
-func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID string, targetType storepb.MetaType, interval time.Duration, now time.Time) (*QualityTargetScheduleMessage, error) {
-	if targetGUID == "" {
-		return nil, common.Errorf(common.Invalid, "a target GUID is required")
+// ensureQualityTargetSchedule writes one target's schedule row inside an existing
+// transaction, creating it with the given spec when absent. A new row starts due
+// one occurrence from now only when the target already has an enabled rule, so a
+// paused rule never schedules its target. When the row already exists, its spec is
+// kept and a NULL next_run_at is filled from that stored spec, not the caller's: a
+// target with a customized cadence keeps that cadence when it is reactivated by a
+// new check. An existing future next_run_at is never moved, so a new check joins
+// the next slot.
+func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID string, targetType storepb.MetaType, spec schedule.Spec, now time.Time) (*QualityTargetScheduleMessage, error) {
+	if err := requireQualitySchedule(targetGUID, targetType, spec); err != nil {
+		return nil, err
 	}
-	if targetType == storepb.MetaType_UNSPECIFIED {
-		return nil, common.Errorf(common.Invalid, "a target type is required")
-	}
-	if interval < time.Second {
-		return nil, common.Errorf(common.Invalid, "a quality target schedule interval is required")
-	}
+	spec = normalizedQualitySchedule(spec, now)
 
 	message, err := scanQualityTargetSchedule(tx.QueryRowContext(ctx, `
-		INSERT INTO quality_target_schedule (target_guid, target_type, schedule_interval_seconds, next_run_at)
-		SELECT $1::text, $2::int2, $3::int4,
-			CASE WHEN EXISTS (
-				SELECT 1 FROM quality_rule r
-				WHERE r.target_guid = $1 AND r.target_type = $2
-					AND r.state = $4 AND r.deleted = FALSE
-			) THEN $5::timestamptz + MAKE_INTERVAL(secs => $3::int4) ELSE NULL END
+		INSERT INTO quality_target_schedule (
+			target_guid, target_type, schedule_interval_seconds, schedule_cron,
+			schedule_timezone, next_run_at
+		) VALUES ($1::text, $2::int2, $3::int4, $4::text, $5::text, NULL)
 		ON CONFLICT (target_guid, target_type) DO UPDATE
-		SET next_run_at = COALESCE(
-				quality_target_schedule.next_run_at,
-				CASE WHEN EXISTS (
-					SELECT 1 FROM quality_rule r
-					WHERE r.target_guid = quality_target_schedule.target_guid
-						AND r.target_type = quality_target_schedule.target_type
-						AND r.state = $4 AND r.deleted = FALSE
-				) THEN $5::timestamptz + MAKE_INTERVAL(secs => quality_target_schedule.schedule_interval_seconds)
-				ELSE NULL END
-			),
-			updated_at = NOW()
+		SET updated_at = NOW()
 		RETURNING `+qualityTargetScheduleColumns,
 		targetGUID,
 		int16(targetType),
-		int32(interval/time.Second),
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		now,
+		int32(spec.Interval/time.Second),
+		spec.Cron,
+		spec.TimeZone,
 	))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to ensure the quality target schedule")
+	}
+	if err := fillQualityTargetNextRun(ctx, tx, message, now); err != nil {
+		return nil, err
 	}
 	return message, nil
 }
@@ -144,14 +149,14 @@ func ensureQualityTargetSchedule(ctx context.Context, tx *sql.Tx, targetGUID str
 // and schedules a target whose checks are all paused when it gains an enabled
 // rule. An existing future next_run_at is never moved by a new rule: the target
 // keeps its cadence and the new check joins the next slot.
-func (s *Store) EnsureQualityTargetSchedule(ctx context.Context, targetGUID string, targetType storepb.MetaType, interval time.Duration, now time.Time) (*QualityTargetScheduleMessage, error) {
+func (s *Store) EnsureQualityTargetSchedule(ctx context.Context, targetGUID string, targetType storepb.MetaType, spec schedule.Spec, now time.Time) (*QualityTargetScheduleMessage, error) {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to begin the quality target schedule transaction")
 	}
 	defer tx.Rollback()
 
-	message, err := ensureQualityTargetSchedule(ctx, tx, targetGUID, targetType, interval, now)
+	message, err := ensureQualityTargetSchedule(ctx, tx, targetGUID, targetType, spec, now)
 	if err != nil {
 		return nil, err
 	}
@@ -161,52 +166,149 @@ func (s *Store) EnsureQualityTargetSchedule(ctx context.Context, targetGUID stri
 	return message, nil
 }
 
-// UpdateQualityTargetSchedule replaces one target's interval and reschedules it
-// from now. A target with no enabled rule keeps a NULL next_run_at: its interval
-// is remembered until a check is enabled again. The target must already have a
-// schedule row, which every target with rules has.
-func (s *Store) UpdateQualityTargetSchedule(ctx context.Context, targetGUID string, targetType storepb.MetaType, interval time.Duration, now time.Time) (*QualityTargetScheduleMessage, error) {
-	if targetGUID == "" {
-		return nil, common.Errorf(common.Invalid, "a target GUID is required")
+// fillQualityTargetNextRun schedules a target that has no next run yet and at
+// least one enabled rule, computing the occurrence from the row's own stored spec:
+// that is why reactivating a customized target keeps its cadence instead of
+// firing immediately.
+func fillQualityTargetNextRun(ctx context.Context, tx *sql.Tx, message *QualityTargetScheduleMessage, now time.Time) error {
+	if message.NextRunAt != nil {
+		return nil
 	}
-	if targetType == storepb.MetaType_UNSPECIFIED {
-		return nil, common.Errorf(common.Invalid, "a target type is required")
+	enabled, err := qualityTargetHasEnabledRule(ctx, tx, message.TargetGUID, message.TargetType)
+	if err != nil || !enabled {
+		return err
 	}
-	if interval < time.Second {
-		return nil, common.Errorf(common.Invalid, "a quality target schedule interval is required")
+	next := message.Spec().Next(now)
+	_, err = tx.ExecContext(ctx, `
+		UPDATE quality_target_schedule
+		SET next_run_at = $3, updated_at = NOW()
+		WHERE target_guid = $1 AND target_type = $2 AND next_run_at IS NULL`,
+		message.TargetGUID, int16(message.TargetType), next)
+	if err != nil {
+		return errors.Wrap(err, "failed to schedule the quality target")
 	}
+	message.NextRunAt = &next
+	return nil
+}
 
-	message, err := scanQualityTargetSchedule(s.GetDB().QueryRowContext(ctx, `
-		UPDATE quality_target_schedule s
-		SET schedule_interval_seconds = $3::int4,
-			next_run_at = CASE WHEN EXISTS (
-				SELECT 1 FROM quality_rule r
-				WHERE r.target_guid = s.target_guid AND r.target_type = s.target_type
-					AND r.state = $4 AND r.deleted = FALSE
-			) THEN $5::timestamptz ELSE NULL END,
-			updated_at = NOW()
-		WHERE s.target_guid = $1 AND s.target_type = $2
-		RETURNING `+qualityTargetScheduleColumns,
+// qualityTargetHasEnabledRule reports whether the target still has a rule the
+// scheduler may run.
+func qualityTargetHasEnabledRule(ctx context.Context, tx *sql.Tx, targetGUID string, targetType storepb.MetaType) (bool, error) {
+	var enabled bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM quality_rule r
+			WHERE r.target_guid = $1 AND r.target_type = $2
+				AND r.state = $3 AND r.deleted = FALSE
+		)`,
 		targetGUID,
 		int16(targetType),
-		int32(interval/time.Second),
 		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		now.Add(interval),
-	))
+	).Scan(&enabled)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, common.Errorf(common.NotFound, "target %q has no quality schedule", targetGUID)
-		}
+		return false, errors.Wrap(err, "failed to read the target's enabled quality rules")
+	}
+	return enabled, nil
+}
+
+// requireQualitySchedule validates the schedule a caller hands the store. The API
+// resolves the user-facing form; this guard keeps a spec without a form from
+// reaching the columns.
+func requireQualitySchedule(targetGUID string, targetType storepb.MetaType, spec schedule.Spec) error {
+	if targetGUID == "" {
+		return common.Errorf(common.Invalid, "a target GUID is required")
+	}
+	if targetType == storepb.MetaType_UNSPECIFIED {
+		return common.Errorf(common.Invalid, "a target type is required")
+	}
+	if spec.Interval > 0 && spec.IsCron() {
+		return common.Errorf(common.Invalid, "a target schedule is either an interval or a cron expression, not both")
+	}
+	if spec.Interval <= 0 && !spec.IsCron() {
+		return common.Errorf(common.Invalid, "a quality target schedule is required")
+	}
+	return nil
+}
+
+// normalizedQualitySchedule stores the target's nominal cadence in the interval
+// column. For a cron schedule that is the gap between its next two occurrences,
+// clamped to the accepted interval range: it is the cadence a target falls back to
+// when the expression is cleared. A check's run cadence compares due slots and
+// does not read it.
+func normalizedQualitySchedule(spec schedule.Spec, now time.Time) schedule.Spec {
+	if !spec.IsCron() {
+		return spec
+	}
+	nominal := spec.NominalInterval(now)
+	switch {
+	case nominal < schedule.MinInterval:
+		nominal = schedule.MinInterval
+	case nominal > schedule.MaxInterval:
+		nominal = schedule.MaxInterval
+	default:
+	}
+	spec.Interval = nominal
+	return spec
+}
+
+// UpdateQualityTargetSchedule replaces one target's schedule and reschedules it
+// from now. A target with no enabled rule keeps a NULL next_run_at: its schedule
+// is remembered until a check is enabled again. The target must already have a
+// schedule row, which every target with rules has.
+func (s *Store) UpdateQualityTargetSchedule(ctx context.Context, targetGUID string, targetType storepb.MetaType, spec schedule.Spec, now time.Time) (*QualityTargetScheduleMessage, error) {
+	if err := requireQualitySchedule(targetGUID, targetType, spec); err != nil {
+		return nil, err
+	}
+	spec = normalizedQualitySchedule(spec, now)
+
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin the quality target schedule transaction")
+	}
+	defer tx.Rollback()
+
+	// Write the schedule first and drop the old slot: a change reschedules the
+	// target from now, whether or not it currently has an enabled rule.
+	result, err := tx.ExecContext(ctx, `
+		UPDATE quality_target_schedule
+		SET schedule_interval_seconds = $3::int4, schedule_cron = $4::text,
+			schedule_timezone = $5::text, next_run_at = NULL, updated_at = NOW()
+		WHERE target_guid = $1 AND target_type = $2`,
+		targetGUID, int16(targetType), int32(spec.Interval/time.Second), spec.Cron, spec.TimeZone)
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to update the quality target schedule")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get rows affected for the quality target schedule update")
+	}
+	if affected == 0 {
+		return nil, common.Errorf(common.NotFound, "target %q has no quality schedule", targetGUID)
+	}
+
+	message, err := scanQualityTargetSchedule(tx.QueryRowContext(ctx, `
+		SELECT `+qualityTargetScheduleColumns+`
+		FROM quality_target_schedule
+		WHERE target_guid = $1 AND target_type = $2`,
+		targetGUID, int16(targetType)))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the quality target schedule")
+	}
+	if err := fillQualityTargetNextRun(ctx, tx, message, now); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the quality target schedule transaction")
 	}
 	return message, nil
 }
 
 // SyncQualityTargetSchedule reconciles one target's next run with its current
 // enabled rules: a target whose last enabled rule was paused or archived gets a
-// NULL next_run_at, and a target whose first rule is enabled again is scheduled
-// one interval from now instead of firing immediately. A missing schedule row is
-// not an error here: a target can lose its last rule before the row exists.
+// NULL next_run_at, and a target whose first rule is enabled again is scheduled one
+// occurrence from now from its stored cadence instead of firing immediately. A
+// missing schedule row is not an error here: a target can lose its last rule before
+// the row exists.
 func (s *Store) SyncQualityTargetSchedule(ctx context.Context, targetGUID string, targetType storepb.MetaType, now time.Time) error {
 	if targetGUID == "" {
 		return common.Errorf(common.Invalid, "a target GUID is required")
@@ -215,22 +317,42 @@ func (s *Store) SyncQualityTargetSchedule(ctx context.Context, targetGUID string
 		return common.Errorf(common.Invalid, "a target type is required")
 	}
 
-	if _, err := s.GetDB().ExecContext(ctx, `
-		UPDATE quality_target_schedule s
-		SET next_run_at = CASE WHEN EXISTS (
-				SELECT 1 FROM quality_rule r
-				WHERE r.target_guid = s.target_guid AND r.target_type = s.target_type
-					AND r.state = $3 AND r.deleted = FALSE
-			) THEN COALESCE(s.next_run_at, $4::timestamptz + MAKE_INTERVAL(secs => s.schedule_interval_seconds))
-			ELSE NULL END,
-			updated_at = NOW()
-		WHERE s.target_guid = $1 AND s.target_type = $2`,
-		targetGUID,
-		int16(targetType),
-		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-		now,
-	); err != nil {
-		return errors.Wrap(err, "failed to sync the quality target schedule")
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return errors.Wrap(err, "failed to begin the quality target schedule transaction")
+	}
+	defer tx.Rollback()
+
+	message, err := scanQualityTargetSchedule(tx.QueryRowContext(ctx, `
+		SELECT `+qualityTargetScheduleColumns+`
+		FROM quality_target_schedule
+		WHERE target_guid = $1 AND target_type = $2
+		FOR UPDATE`,
+		targetGUID, int16(targetType)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to read the quality target schedule")
+	}
+	enabled, err := qualityTargetHasEnabledRule(ctx, tx, targetGUID, targetType)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		_, err := tx.ExecContext(ctx, `
+			UPDATE quality_target_schedule
+			SET next_run_at = NULL, updated_at = NOW()
+			WHERE target_guid = $1 AND target_type = $2`,
+			targetGUID, int16(targetType))
+		if err != nil {
+			return errors.Wrap(err, "failed to pause the quality target schedule")
+		}
+	} else if err := fillQualityTargetNextRun(ctx, tx, message, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "failed to commit the quality target schedule transaction")
 	}
 	return nil
 }
@@ -267,24 +389,10 @@ func (s *Store) AdvanceQualityTargetNextRun(ctx context.Context, targetGUID stri
 	return nil
 }
 
-// CountPendingQualityTargetRules returns how many enabled rules of the target
-// still need an attempt in its current due cycle. A rule is pending until it has
-// a completed scheduled execution since the cycle started or its abandoned
-// attempts reached maxAttempts. Zero means the cycle is settled and the caller may
-// advance the target's schedule.
-func (s *Store) CountPendingQualityTargetRules(ctx context.Context, targetGUID string, targetType storepb.MetaType, maxAttempts int) (int, error) {
-	if targetGUID == "" {
-		return 0, common.Errorf(common.Invalid, "a target GUID is required")
-	}
-	if targetType == storepb.MetaType_UNSPECIFIED {
-		return 0, common.Errorf(common.Invalid, "a target type is required")
-	}
-	if maxAttempts <= 0 {
-		return 0, common.Errorf(common.Invalid, "a positive scheduled-attempt limit is required")
-	}
-
-	var pending int
-	err := s.GetDB().QueryRowContext(ctx, `
+// pendingQualityTargetRulesStatement counts the rules of one target that still
+// need an attempt in its current cycle. It applies the frequency gate the due read
+// applies, so a check the cycle deliberately skipped never holds the cycle open.
+var pendingQualityTargetRulesStatement = `
 		SELECT (COUNT(*))::INT
 		FROM quality_rule r
 		JOIN quality_target_schedule s
@@ -303,7 +411,27 @@ func (s *Store) CountPendingQualityTargetRules(ctx context.Context, targetGUID s
 			AND s.next_run_at IS NOT NULL
 			AND r.state = $3 AND r.deleted = FALSE
 			AND NOT COALESCE(attempts.completed, FALSE)
-			AND COALESCE(attempts.count, 0) < $4`,
+			AND COALESCE(attempts.count, 0) < $4
+			AND ` + qualityFrequencyGateSQL(5, 6)
+
+// CountPendingQualityTargetRules returns how many enabled rules of the target
+// still need an attempt in its current due cycle. A rule is pending until it has
+// a completed scheduled execution since the cycle started or its abandoned
+// attempts reached maxAttempts. Zero means the cycle is settled and the caller may
+// advance the target's schedule.
+func (s *Store) CountPendingQualityTargetRules(ctx context.Context, targetGUID string, targetType storepb.MetaType, maxAttempts int) (int, error) {
+	if targetGUID == "" {
+		return 0, common.Errorf(common.Invalid, "a target GUID is required")
+	}
+	if targetType == storepb.MetaType_UNSPECIFIED {
+		return 0, common.Errorf(common.Invalid, "a target type is required")
+	}
+	if maxAttempts <= 0 {
+		return 0, common.Errorf(common.Invalid, "a positive scheduled-attempt limit is required")
+	}
+
+	var pending int
+	err := s.GetDB().QueryRowContext(ctx, pendingQualityTargetRulesStatement,
 		targetGUID,
 		int16(targetType),
 		storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
@@ -369,12 +497,15 @@ type DueQualityRule struct {
 // The rules are carried with the target because target-level scheduling runs them
 // together.
 type DueQualityTarget struct {
-	TargetGUID       string
-	TargetType       storepb.MetaType
-	TargetPath       *storepb.QualityTargetPath
-	ScheduleInterval time.Duration
-	NextRunAt        time.Time
-	Rules            []*DueQualityRule
+	TargetGUID string
+	TargetType storepb.MetaType
+	TargetPath *storepb.QualityTargetPath
+	// Schedule is the target's cadence: an interval, or a cron expression in a time
+	// zone. ScheduleInterval is the nominal cadence either way, so a cron target
+	// advances to its next occurrence and an interval target one interval out.
+	Schedule  schedule.Spec
+	NextRunAt time.Time
+	Rules     []*DueQualityRule
 }
 
 // dueQualityTargetRow is one target's due aggregate before its rules are read:
@@ -382,7 +513,7 @@ type DueQualityTarget struct {
 type dueQualityTargetRow struct {
 	guid      string
 	metaType  storepb.MetaType
-	interval  time.Duration
+	schedule  schedule.Spec
 	firstDue  time.Time
 	ruleCount int32
 }
@@ -412,14 +543,15 @@ func selectDueTargets(targets []dueQualityTargetRow, ruleBudget, targetBudget in
 // is what bounds the tick's read work after a backlog: the Go-side budget then
 // trims this prefix further, but it never has to aggregate every due target.
 const dueQualityTargetsStatement = `
-	SELECT s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at,
-		(COUNT(r.id))::INT
+	SELECT s.target_guid, s.target_type, s.schedule_interval_seconds, s.schedule_cron,
+		s.schedule_timezone, s.next_run_at, (COUNT(r.id))::INT
 	FROM quality_target_schedule s
 	JOIN quality_rule r
 		ON r.target_guid = s.target_guid AND r.target_type = s.target_type
 		AND r.state = $1 AND r.deleted = FALSE
 	WHERE s.next_run_at IS NOT NULL AND s.next_run_at <= $2
-	GROUP BY s.target_guid, s.target_type, s.schedule_interval_seconds, s.next_run_at
+	GROUP BY s.target_guid, s.target_type, s.schedule_interval_seconds, s.schedule_cron,
+		s.schedule_timezone, s.next_run_at
 	ORDER BY s.next_run_at ASC, s.target_guid ASC
 	LIMIT $3`
 
@@ -447,6 +579,7 @@ var dueQualityTargetRulesStatement = `
 		AND s.next_run_at <= $7
 		AND NOT COALESCE(attempts.completed, FALSE)
 		AND COALESCE(attempts.count, 0) < $6
+		AND ` + qualityFrequencyGateSQL(4, 5) + `
 	ORDER BY r.target_guid ASC, r.target_type ASC, r.id ASC`
 
 // FindDueQualityTargets returns the scheduled targets whose next_run_at has
@@ -483,12 +616,20 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 		var (
 			targetType      int16
 			intervalSeconds int32
+			cron            string
+			timeZone        string
 		)
-		if err := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &target.firstDue, &target.ruleCount); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a due quality target schedule")
+		scanErr := targetRows.Scan(&target.guid, &targetType, &intervalSeconds, &cron,
+			&timeZone, &target.firstDue, &target.ruleCount)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a due quality target schedule")
 		}
 		target.metaType = storepb.MetaType(targetType)
-		target.interval = time.Duration(intervalSeconds) * time.Second
+		target.schedule = schedule.Spec{
+			Interval: time.Duration(intervalSeconds) * time.Second,
+			Cron:     cron,
+			TimeZone: timeZone,
+		}
 		rows = append(rows, target)
 	}
 	if err := targetRows.Err(); err != nil {
@@ -539,12 +680,12 @@ func (s *Store) FindDueQualityTargets(ctx context.Context, now time.Time, ruleLi
 			path = rules[0].Rule.TargetPath
 		}
 		result = append(result, &DueQualityTarget{
-			TargetGUID:       target.guid,
-			TargetType:       target.metaType,
-			TargetPath:       path,
-			ScheduleInterval: target.interval,
-			NextRunAt:        target.firstDue,
-			Rules:            byTarget[key],
+			TargetGUID: target.guid,
+			TargetType: target.metaType,
+			TargetPath: path,
+			Schedule:   target.schedule,
+			NextRunAt:  target.firstDue,
+			Rules:      byTarget[key],
 		})
 	}
 	return result, nil

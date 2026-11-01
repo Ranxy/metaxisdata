@@ -229,8 +229,17 @@ type SampleCell struct {
 // Basis is the monitoring basis the report records: what the target state, the
 // schedule and the rule revisions were when the document was produced.
 type Basis struct {
+	// ScheduleInterval is the target's nominal cadence: the interval of an interval
+	// target, or the expression's nominal gap for a cron target, which schedules
+	// from Cron and TimeZone instead.
 	ScheduleInterval time.Duration
-	NextRunTime      *time.Time
+	// Cron is the five-field cron expression of a cron target, empty for an
+	// interval target.
+	Cron string
+	// TimeZone is the IANA zone the cron expression is resolved in, as stored
+	// with the target. An empty TimeZone renders the expression without a zone.
+	TimeZone    string
+	NextRunTime *time.Time
 	// HasRevisionRange is false when the target has no rule at all.
 	HasRevisionRange  bool
 	RuleRevisionMin   int32
@@ -823,7 +832,17 @@ func newSampleTableView(samples []FailureSample, cellRunes int, nullLabel string
 
 // basisText helpers.
 
+// scheduleText renders the target's schedule: a cron expression with its
+// resolved IANA time zone, a fixed interval, or no schedule at all. A cron
+// expression wins over an interval because the two modes are exclusive and the
+// expression is the more specific statement.
 func scheduleText(language string, text labels, basis Basis) string {
+	if basis.Cron != "" {
+		if basis.TimeZone == "" {
+			return fmt.Sprintf(text.ScheduleCronNoZone, basis.Cron)
+		}
+		return fmt.Sprintf(text.ScheduleCron, basis.Cron, basis.TimeZone)
+	}
 	if basis.ScheduleInterval <= 0 {
 		return text.ScheduleNone
 	}

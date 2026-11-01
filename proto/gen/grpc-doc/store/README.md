@@ -71,6 +71,7 @@
     - [QualityExecutionState](#metaxisdata-store-QualityExecutionState)
     - [QualityExecutionTrigger](#metaxisdata-store-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-store-QualityFilterOperator)
+    - [QualityFrequencyTier](#metaxisdata-store-QualityFrequencyTier)
     - [QualityIssueStatus](#metaxisdata-store-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-store-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-store-QualityLabelStatus)
@@ -1460,6 +1461,23 @@ QualityFilterOperator is one comparison in a rule&#39;s AND filter.
 | QUALITY_FILTER_OPERATOR_NOT_IN | 8 |  |
 | QUALITY_FILTER_OPERATOR_IS_NULL | 9 |  |
 | QUALITY_FILTER_OPERATOR_IS_NOT_NULL | 10 |  |
+
+
+
+<a name="metaxisdata-store-QualityFrequencyTier"></a>
+
+### QualityFrequencyTier
+QualityFrequencyTier is how often one check needs to run inside its target&#39;s
+schedule. The target&#39;s own cadence is the floor. The store keeps it as a rule
+column, not as part of the definition, so editing it does not append a rule
+revision.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_FREQUENCY_TIER_UNSPECIFIED | 0 |  |
+| QUALITY_FREQUENCY_TIER_HOURLY | 1 |  |
+| QUALITY_FREQUENCY_TIER_DAILY | 2 |  |
+| QUALITY_FREQUENCY_TIER_WEEKLY | 3 |  |
 
 
 

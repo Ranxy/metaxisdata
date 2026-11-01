@@ -106,15 +106,18 @@ The main MySQL real-server scenarios live in:
 
 - [/backend/test/integration/runner/schemasync_lineage_mysql_service_test.go](runner/schemasync_lineage_mysql_service_test.go)
 
-The data-quality end-to-end journey lives in:
+The data-quality end-to-end scenarios live in:
 
-- [/backend/test/integration/runner/data_quality_journey_service_test.go](/home/ran/gocode/metaxisdata/backend/test/integration/runner/data_quality_journey_service_test.go)
+- [data_quality_journey_service_test.go](runner/data_quality_journey_service_test.go) — the whole module
+- [data_quality_service_test.go](runner/data_quality_service_test.go) — the service surface, including the
+  target scheduling scenarios (`TestDataQualityScheduleTiersRealServerIntegration`)
 
-Run just the journey (the shared harness still boots, so it takes the same setup time as any scenario):
+Run them together with `make test-integration-data-quality`; the shared harness still boots for each
+selected scenario, so it takes the same setup time as any other test. To run one scenario directly:
 
 ```bash
 go test -v -count=1 -tags=integration \
-  -run '^TestDataQualityJourneyMySQLRealServerIntegration$' \
+  -run '^TestDataQualityScheduleTiersRealServerIntegration$' \
   ./backend/test/integration/runner
 ```
 

@@ -286,9 +286,10 @@ func qualityTargetColumnCoverage(registryColumns, checkedColumns map[string]stru
 }
 
 // UpdateQualityTargetSchedule replaces one target's schedule: every enabled
-// check on the target runs together on this cadence. A change reschedules the
+// check on the target runs together on this cadence. The target runs on either a
+// fixed interval or a cron expression, never both. A change reschedules the
 // target from now instead of running it immediately; a target with no enabled
-// check keeps the interval but no next run.
+// check keeps the cadence but no next run.
 func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, req *connect.Request[v1pb.UpdateQualityTargetScheduleRequest]) (*connect.Response[v1pb.QualityTargetSchedule], error) {
 	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
 		return nil, err
@@ -297,8 +298,14 @@ func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, re
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
 	}
-	interval := req.Msg.GetScheduleInterval().AsDuration()
-	if err := validateQualityScheduleInterval(interval); err != nil {
+	// The workspace's check time zone is the fallback a cron request may leave
+	// empty; the resolved zone is what gets stored, so reads never need it again.
+	settings, settingsErr := dataquality.LoadSettings(ctx, s.store)
+	if settingsErr != nil {
+		return nil, errLoadQualitySettings(settingsErr)
+	}
+	spec, err := qualityScheduleSpecFromV1(req.Msg, settings.TimeZone)
+	if err != nil {
 		return nil, err
 	}
 	metaType, err := s.resolveQualityTargetMetaType(ctx, targetGUID, storepb.MetaType(req.Msg.GetMetaType()))
@@ -308,14 +315,14 @@ func (s *DataQualityService) UpdateQualityTargetSchedule(ctx context.Context, re
 	now := time.Now().UTC()
 	// A target with rules always has a schedule row; ensuring first keeps the
 	// update working for a target whose row predates this model.
-	if _, err := s.store.EnsureQualityTargetSchedule(ctx, targetGUID, metaType, interval, now); err != nil {
+	if _, err := s.store.EnsureQualityTargetSchedule(ctx, targetGUID, metaType, spec, now); err != nil {
 		return nil, err
 	}
-	schedule, err := s.store.UpdateQualityTargetSchedule(ctx, targetGUID, metaType, interval, now)
+	scheduleRow, err := s.store.UpdateQualityTargetSchedule(ctx, targetGUID, metaType, spec, now)
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(convertQualityTargetSchedule(schedule)), nil
+	return connect.NewResponse(convertQualityTargetSchedule(scheduleRow)), nil
 }
 
 // GetQualityTargetSchedule reads one target's schedule. It exists so the workspace
@@ -766,10 +773,14 @@ func convertQualityTargetSummary(workspaceID string, target *store.QualityTarget
 		CoveredColumnCount:   target.CoveredColumnCount,
 		TotalColumnCount:     target.TotalColumnCount,
 	}
-	if target.ScheduleInterval > 0 {
+	// A cron target still carries the nominal cadence in schedule_interval, so the
+	// summary always names a duration and the editor can seed interval mode from it.
+	if target.ScheduleInterval > 0 || target.ScheduleCron != "" {
 		summary.Schedule = &v1pb.QualityTargetSchedule{
 			ScheduleInterval: durationpb.New(target.ScheduleInterval),
 			NextRunTime:      timeToProtoTimestampPtr(target.NextRunAt),
+			Cron:             target.ScheduleCron,
+			Timezone:         target.ScheduleTimeZone,
 		}
 	}
 	if target.LatestRun != nil {

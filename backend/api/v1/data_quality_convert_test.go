@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -246,14 +247,15 @@ func TestConvertQualityRule(t *testing.T) {
 			TimestampColumn: "updated_at",
 			MaxLagSeconds:   3600,
 		}}},
-		Severity:  storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
-		State:     storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
-		OwnerID:   qualityTestPtr(int32(7)),
-		MuteUntil: &mutedUntil,
-		Revision:  4,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Tags:      []string{"pii", "tier-1"},
+		Severity:      storepb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
+		State:         storepb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+		FrequencyTier: storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY,
+		OwnerID:       qualityTestPtr(int32(7)),
+		MuteUntil:     &mutedUntil,
+		Revision:      4,
+		CreatedAt:     createdAt,
+		UpdatedAt:     updatedAt,
+		Tags:          []string{"pii", "tier-1"},
 	}
 
 	converted := convertQualityRule("ws1", rule)
@@ -265,6 +267,8 @@ func TestConvertQualityRule(t *testing.T) {
 	require.Equal(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, converted.GetRuleType())
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, converted.GetSeverity())
 	require.Equal(t, v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED, converted.GetState())
+	require.Equal(t, v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY, converted.GetFrequencyTier(),
+		"the head-only run cadence crosses the API boundary unchanged")
 	require.Equal(t, "users/7", converted.GetOwner())
 	require.Equal(t, int32(4), converted.GetRevision())
 	require.Equal(t, createdAt, converted.GetCreateTime().AsTime())
@@ -974,8 +978,9 @@ func TestSchemaDriftNullablePresenceRoundTrip(t *testing.T) {
 	require.True(t, stored[2].GetNullable())
 }
 
-// A target's schedule crosses the API boundary with its interval and next run;
-// an absent schedule row converts to nil rather than a zero interval.
+// A target's schedule crosses the API boundary with its interval, its cron
+// expression and zone when it has them, and its next run; an absent schedule row
+// converts to nil rather than a zero interval.
 func TestConvertQualityTargetSchedule(t *testing.T) {
 	t.Parallel()
 
@@ -988,8 +993,46 @@ func TestConvertQualityTargetSchedule(t *testing.T) {
 	})
 	require.Equal(t, 2*time.Hour, converted.GetScheduleInterval().AsDuration())
 	require.Equal(t, nextRun, converted.GetNextRunTime().AsTime())
+	require.Empty(t, converted.GetCron())
+	require.Empty(t, converted.GetTimezone())
+
+	// A cron target keeps the nominal cadence the store derived, so the editor can
+	// seed interval mode and the schedule is never left with no duration at all.
+	cron := convertQualityTargetSchedule(&store.QualityTargetScheduleMessage{
+		TargetGUID:       "instance-1;shop;public;orders",
+		TargetType:       storepb.MetaType_TABLE,
+		ScheduleInterval: 24 * time.Hour,
+		Cron:             "0 2 * * *",
+		TimeZone:         "Asia/Shanghai",
+		NextRunAt:        &nextRun,
+	})
+	require.Equal(t, 24*time.Hour, cron.GetScheduleInterval().AsDuration())
+	require.Equal(t, "0 2 * * *", cron.GetCron())
+	require.Equal(t, "Asia/Shanghai", cron.GetTimezone())
 
 	require.Nil(t, convertQualityTargetSchedule(nil))
+}
+
+// The run-cadence tier is validated against the enum. UNSPECIFIED is a real choice
+// (follow the target), so only a value outside the enum is refused.
+func TestQualityFrequencyTierFromV1(t *testing.T) {
+	t.Parallel()
+
+	accepted := map[v1pb.QualityFrequencyTier]storepb.QualityFrequencyTier{
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED: storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY:      storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY:       storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY:      storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY,
+	}
+	for tier, want := range accepted {
+		mapped, err := qualityFrequencyTierFromV1(tier)
+		require.NoError(t, err, tier.String())
+		require.Equal(t, want, mapped, tier.String())
+	}
+
+	_, err := qualityFrequencyTierFromV1(v1pb.QualityFrequencyTier(99))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
 // The execution semantics are shared config fields, so every arm carries them

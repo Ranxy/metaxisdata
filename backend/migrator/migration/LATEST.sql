@@ -938,6 +938,11 @@ CREATE TABLE IF NOT EXISTS quality_rule (
     severity INT2 NOT NULL,
     -- 1 ENABLED, 2 PAUSED, 3 ARCHIVED. Only ENABLED rules run on the target schedule.
     state INT2 NOT NULL DEFAULT 1,
+    -- How often this check needs to run inside the target's schedule: 0 follows
+    -- the target (every cycle), 1 is at most hourly, 2 at most daily, 3 at most
+    -- weekly. It is scheduling metadata, not part of the definition, so it is
+    -- not revisioned. The target tick stays the floor.
+    frequency_tier INT2 NOT NULL DEFAULT 0,
     owner_id INT4 REFERENCES principal(id) ON DELETE SET NULL,
     tags TEXT[] NOT NULL DEFAULT '{}',
     -- Rule-level mute of issue notifications. A muted rule is still executed and
@@ -964,8 +969,18 @@ CREATE TABLE IF NOT EXISTS quality_target_schedule (
     target_guid TEXT COLLATE "C" NOT NULL,
     target_type INT2 NOT NULL,
     -- 15 minutes..7 days. The API validates the range; the runner keeps a minimum
-    -- backstop for a malformed row.
+    -- backstop for a malformed row. It is also the value a target falls back to
+    -- when it returns from cron to interval mode.
     schedule_interval_seconds INT4 NOT NULL,
+    -- A standard five-field cron expression evaluated in schedule_timezone, e.g.
+    -- "0 2 * * *". Empty means the target runs on schedule_interval_seconds
+    -- instead. When set, the occurrence gap must be at least 15 minutes (no upper
+    -- bound).
+    schedule_cron TEXT NOT NULL DEFAULT '',
+    -- The IANA time zone the cron expression is evaluated in, e.g.
+    -- "Asia/Shanghai". Stored resolved, so a later change of the workspace check
+    -- time zone does not move an existing target's schedule.
+    schedule_timezone TEXT NOT NULL DEFAULT '',
     -- When the scheduler next considers the target due; NULL means its checks are
     -- all paused or archived.
     next_run_at TIMESTAMPTZ,
@@ -1080,6 +1095,10 @@ CREATE TABLE IF NOT EXISTS quality_execution (
     duration_ms INT4 NOT NULL DEFAULT 0,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMPTZ,
+    -- The target due slot a scheduled execution belongs to; NULL for a manual
+    -- execution. A check's run cadence compares slots, not start times, so a tier
+    -- equal to the target's own period never skips a cycle.
+    scheduled_at TIMESTAMPTZ,
     -- The row count a row_count_change check compared against, and when that
     -- count was measured. NULL for every other rule type and for a first
     -- observation that had no recent baseline to compare with.
@@ -1088,6 +1107,7 @@ CREATE TABLE IF NOT EXISTS quality_execution (
 );
 CREATE INDEX IF NOT EXISTS idx_quality_execution_run ON quality_execution(run_id);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_rule_time ON quality_execution(rule_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_quality_execution_rule_slot ON quality_execution(rule_id, scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_target_time ON quality_execution(target_guid, target_type, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_started_at ON quality_execution(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_state ON quality_execution(state);

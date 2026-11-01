@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
@@ -33,10 +34,10 @@ func dueTargetStub(targetGUID string, ruleIDs ...int64) *store.DueQualityTarget 
 		rules = append(rules, &store.DueQualityRule{Rule: qualityRuleStub(id, targetGUID), Attempt: 1})
 	}
 	return &store.DueQualityTarget{
-		TargetGUID:       targetGUID,
-		TargetType:       storepb.MetaType_TABLE,
-		ScheduleInterval: time.Hour,
-		Rules:            rules,
+		TargetGUID: targetGUID,
+		TargetType: storepb.MetaType_TABLE,
+		Schedule:   schedule.Spec{Interval: time.Hour},
+		Rules:      rules,
 	}
 }
 
@@ -333,7 +334,7 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 		TargetPath: path,
 	}
 	dueRule := &store.DueQualityRule{Rule: rule, Attempt: 2}
-	planned := plannedExecution(11, "inst1", dueRule, now)
+	planned := plannedExecution(11, "inst1", dueRule, now, now)
 
 	require.Equal(t, int64(11), planned.RunID)
 	require.Equal(t, int64(7), planned.RuleID)
@@ -347,6 +348,9 @@ func TestPlannedExecutionCarriesTheDueScanSnapshot(t *testing.T) {
 	require.Equal(t, storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, planned.Trigger)
 	require.Equal(t, int32(2), planned.Attempt)
 	require.Equal(t, now, planned.StartedAt)
+	// The due slot is what a run cadence compares; it is not the planning time.
+	require.NotNil(t, planned.ScheduledAt)
+	require.Equal(t, now, *planned.ScheduledAt)
 }
 
 // A batch holds one lease for its whole life, so a second batch on the same
@@ -1271,4 +1275,16 @@ func TestLoadBatchContractFilterWithoutAStoreIsNoFilter(t *testing.T) {
 	filter, err := r.loadBatchContractFilter()(context.Background(), "users", storepb.MetaType_TABLE)
 	require.NoError(t, err)
 	require.Nil(t, filter)
+}
+
+// nextTargetRun follows a cron target's next occurrence and advances an interval
+// target one interval from now; the spec floors a malformed row.
+func TestNextTargetRun(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.November, 1, 8, 30, 0, 0, time.UTC)
+	require.Equal(t, now.Add(2*time.Hour), nextTargetRun(now, schedule.Spec{Interval: 2 * time.Hour}))
+	require.Equal(t, time.Date(2026, time.November, 2, 2, 0, 0, 0, time.UTC),
+		nextTargetRun(now, schedule.Spec{Cron: "0 2 * * *", TimeZone: "UTC"}))
+	require.Equal(t, now.Add(minRuleScheduleInterval), nextTargetRun(now, schedule.Spec{}))
 }

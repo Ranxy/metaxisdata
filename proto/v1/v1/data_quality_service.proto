@@ -621,6 +621,21 @@ enum QualityRuleState {
   QUALITY_RULE_STATE_ARCHIVED = 3;
 }
 
+// QualityFrequencyTier is how often one check needs to run inside its target's
+// schedule. The target's own cadence is the floor: a check never runs more often
+// than its target, and a tier denser than the target is a no-op. The tier bounds
+// scheduled runs only; a manual run always runs the check.
+enum QualityFrequencyTier {
+  // Follow the target: the check runs in every target cycle.
+  QUALITY_FREQUENCY_TIER_UNSPECIFIED = 0;
+  // At most once an hour.
+  QUALITY_FREQUENCY_TIER_HOURLY = 1;
+  // At most once a day.
+  QUALITY_FREQUENCY_TIER_DAILY = 2;
+  // At most once a week.
+  QUALITY_FREQUENCY_TIER_WEEKLY = 3;
+}
+
 // QualityIssueStatus is the lifecycle of a persistent problem behind a rule's
 // failures. RESOLVED is terminal: the next failing run opens a new issue rather
 // than reopening one.
@@ -852,6 +867,12 @@ message QualityRule {
   google.protobuf.Timestamp mute_until = 18;
 
   repeated string tags = 19;
+
+  // How often this check needs to run inside the target's schedule. The target
+  // tick is the floor, so a tier denser than the target is a no-op; a manual run
+  // is not affected. It is scheduling metadata, not part of the rule definition:
+  // editing it does not append a revision.
+  QualityFrequencyTier frequency_tier = 20;
 
   // Scheduling is a property of the target, not of one rule: see
   // QualityTargetSchedule and UpdateQualityTargetSchedule.
@@ -2813,14 +2834,29 @@ message ListQualityTargetsResponse {
 
 // QualityTargetSchedule is a target's one schedule: the cadence every enabled
 // check of the target runs at, and when the target next comes due. Scheduling is
-// per target, so all of its checks are planned and executed together.
+// per target, so all of its checks are planned and executed together. A target
+// runs either on a fixed interval or on a cron expression, never both.
 message QualityTargetSchedule {
-  // How often the target's enabled checks run, between 15 minutes and 7 days.
+  // How often the target's enabled checks run, between 15 minutes and 7 days. A
+  // cron target keeps the expression's nominal gap here as the cadence it falls
+  // back to when the expression is cleared, so the editor can seed interval mode
+  // from it; cron decides the actual occurrence.
   google.protobuf.Duration schedule_interval = 1;
 
   // When the scheduler next considers the target due. Unset while the target has
   // no enabled check.
   google.protobuf.Timestamp next_run_time = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // A standard five-field cron expression evaluated in timezone, for example
+  // "0 2 * * *" for every day at 02:00. Empty when the target runs on
+  // schedule_interval instead.
+  string cron = 3;
+
+  // The IANA time zone the cron expression is evaluated in, for example
+  // "Asia/Shanghai". Empty for an interval schedule. When a request leaves it
+  // empty, the server resolves it to the workspace's check time zone at save
+  // time and stores the resolved zone.
+  string timezone = 4;
 }
 
 // QualityTargetSummary is one row of the target directory: the target identity
@@ -2906,8 +2942,21 @@ message UpdateQualityTargetScheduleRequest {
   // own target carries it.
   MetaType meta_type = 3;
 
-  // How often the target's enabled checks run, between 15 minutes and 7 days.
-  google.protobuf.Duration schedule_interval = 4 [(google.api.field_behavior) = REQUIRED];
+  // How often the target's enabled checks run. Exactly one of schedule_interval
+  // and cron is set: a fixed interval between 15 minutes and 7 days, or a cron
+  // expression.
+  google.protobuf.Duration schedule_interval = 4;
+
+  // A standard five-field cron expression ("minute hour day-of-month month
+  // day-of-week") evaluated in timezone, for example "0 2 * * *" for every day at
+  // 02:00. The gap between two of its occurrences must be at least 15 minutes;
+  // there is no upper bound.
+  string cron = 5;
+
+  // The IANA time zone the cron expression is evaluated in, for example
+  // "Asia/Shanghai". Empty resolves to the workspace's check time zone, and the
+  // resolved zone is what the target stores and what reads return.
+  string timezone = 6;
 }
 
 message GetQualityTargetScheduleRequest {

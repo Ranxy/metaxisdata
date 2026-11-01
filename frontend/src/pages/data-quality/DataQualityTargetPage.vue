@@ -179,7 +179,18 @@
           >
             <Clock class="h-3.5 w-3.5" />
             <span>{{ t("dataQuality.schedule") }}:</span>
-            <span class="tabular-nums">{{ scheduleIntervalLabel }}</span>
+            <template v-if="cronSchedule">
+              <span class="font-mono">{{ cronSchedule.cron }}</span>
+              <span class="text-muted-foreground">{{
+                cronSchedule.timezone
+              }}</span>
+            </template>
+            <span
+              v-else
+              class="tabular-nums"
+            >
+              {{ intervalScheduleLabel }}
+            </span>
             <span aria-hidden="true">·</span>
             <span
               class="tabular-nums"
@@ -532,45 +543,118 @@
           </DialogDescription>
         </DialogHeader>
 
-        <div class="space-y-2">
-          <Label for="dq-target-schedule">
-            {{ t("dataQuality.workspace.scheduleInterval") }}
-          </Label>
-          <div class="flex gap-2">
-            <FormField
-              id="dq-target-schedule"
-              v-model="scheduleValue"
-              type="number"
-              class="min-w-0 flex-1"
-            />
-            <Select
-              :model-value="scheduleUnit"
-              @update:model-value="setScheduleUnit"
+        <div class="space-y-3">
+          <!-- The two exclusive forms: a fixed interval, or a cron expression in
+               a time zone. Exactly one reaches the request. -->
+          <div
+            class="flex w-fit gap-1 rounded-md border p-1"
+            role="group"
+            :aria-label="t('dataQuality.workspace.scheduleMode')"
+          >
+            <Button
+              type="button"
+              size="sm"
+              :variant="scheduleMode === 'interval' ? 'secondary' : 'ghost'"
+              @click="setScheduleMode('interval')"
             >
-              <SelectTrigger
-                id="dq-target-schedule-unit"
-                class="w-32"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="minutes">
-                  {{ t("dataQuality.editor.unitMinutes") }}
-                </SelectItem>
-                <SelectItem value="hours">
-                  {{ t("dataQuality.editor.unitHours") }}
-                </SelectItem>
-                <SelectItem value="days">
-                  {{ t("dataQuality.editor.unitDays") }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+              {{ t("dataQuality.workspace.scheduleInterval") }}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              :variant="scheduleMode === 'cron' ? 'secondary' : 'ghost'"
+              @click="setScheduleMode('cron')"
+            >
+              {{ t("dataQuality.workspace.scheduleCron") }}
+            </Button>
           </div>
+
+          <div
+            v-if="scheduleMode === 'interval'"
+            class="space-y-2"
+          >
+            <div class="flex gap-2">
+              <FormField
+                id="dq-target-schedule"
+                v-model="scheduleValue"
+                type="number"
+                class="min-w-0 flex-1"
+                :aria-label="t('dataQuality.workspace.scheduleInterval')"
+              />
+              <Select
+                :model-value="scheduleUnit"
+                @update:model-value="setScheduleUnit"
+              >
+                <SelectTrigger
+                  id="dq-target-schedule-unit"
+                  class="w-32"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minutes">
+                    {{ t("dataQuality.editor.unitMinutes") }}
+                  </SelectItem>
+                  <SelectItem value="hours">
+                    {{ t("dataQuality.editor.unitHours") }}
+                  </SelectItem>
+                  <SelectItem value="days">
+                    {{ t("dataQuality.editor.unitDays") }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              {{ t("dataQuality.workspace.scheduleDialogHint") }}
+            </p>
+          </div>
+
+          <div
+            v-else
+            class="space-y-3"
+          >
+            <div class="space-y-2">
+              <FormField
+                id="dq-target-schedule-cron"
+                v-model="cronExpression"
+                class="font-mono"
+                :aria-label="t('dataQuality.workspace.scheduleCron')"
+                :placeholder="t('dataQuality.workspace.cronPlaceholder')"
+                :hint="t('dataQuality.workspace.cronHint')"
+              />
+            </div>
+            <div class="space-y-2">
+              <Label for="dq-target-schedule-timezone">
+                {{ t("dataQuality.workspace.scheduleTimezone") }}
+              </Label>
+              <Select
+                :model-value="scheduleTimezone"
+                @update:model-value="setScheduleTimezone"
+              >
+                <SelectTrigger id="dq-target-schedule-timezone">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="zone in timezoneOptions"
+                    :key="zone"
+                    :value="zone"
+                  >
+                    {{ zone }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQuality.workspace.scheduleTimezoneHint") }}
+              </p>
+            </div>
+          </div>
+
           <p
             v-if="scheduleIssueKey"
             class="text-sm text-destructive"
           >
-            {{ t("dataQuality.editor.validation.scheduleInvalid") }}
+            {{ t(scheduleIssueKey) }}
           </p>
           <div
             v-else-if="scheduleError"
@@ -586,9 +670,6 @@
               {{ scheduleError }}
             </p>
           </div>
-          <p class="text-sm text-muted-foreground">
-            {{ t("dataQuality.workspace.scheduleDialogHint") }}
-          </p>
         </div>
 
         <DialogFooter>
@@ -855,13 +936,19 @@ const effectiveMetaType = computed<MetaType>(() => {
 const {
   targetSchedule,
   scheduleOpen,
+  scheduleMode,
   scheduleValue,
   scheduleUnit,
+  cronExpression,
+  scheduleTimezone,
+  timezoneOptions,
   scheduleSaving,
   scheduleError,
   scheduleIssueKey,
   openScheduleEditor,
+  setScheduleMode,
   setScheduleUnit,
+  setScheduleTimezone,
   onScheduleOpenChange,
   saveSchedule,
 } = useTargetScheduleEditor({
@@ -986,6 +1073,20 @@ const lastRunText = computed(() =>
 
 const scheduleIntervalLabel = computed(() =>
   formatScheduleInterval(targetSchedule.value?.scheduleInterval)
+);
+
+/** A cron schedule carries the expression and zone instead of an interval. */
+const cronSchedule = computed(() =>
+  targetSchedule.value?.cron ? targetSchedule.value : undefined
+);
+
+/** An interval cadence reads "every 2h"; a missing schedule keeps its dash. */
+const intervalScheduleLabel = computed(() =>
+  targetSchedule.value?.scheduleInterval
+    ? t("dataQuality.workspace.scheduleEvery", {
+        interval: scheduleIntervalLabel.value,
+      })
+    : scheduleIntervalLabel.value
 );
 
 /** A paused (or empty) target has an interval but no next run. */
@@ -1129,7 +1230,8 @@ async function refreshTargetSchedule() {
     if (ticket !== loadTicket) {
       return;
     }
-    if (schedule.scheduleInterval) {
+    // A cron schedule carries no interval, so either form is a real schedule.
+    if (schedule.scheduleInterval || schedule.cron !== "") {
       summary.value.schedule = schedule;
     }
   } catch {

@@ -1662,6 +1662,30 @@
       "scope": [
         "dataQuality."
       ]
+    },
+    {
+      "id": "cron-expression",
+      "category": "Data Quality",
+      "definition": "A standard five-field expression (minute hour day-of-month month day-of-week) a target's schedule can run on instead of a fixed interval, evaluated in an IANA time zone.",
+      "translations": {
+        "en-US": "cron expression",
+        "zh-CN": "cron 表达式"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "run-cadence",
+      "category": "Data Quality",
+      "definition": "How often one check needs to run inside its target's schedule: follow the target, or at most once an hour, a day or a week. The target's tick is the floor, and a manual run ignores it.",
+      "translations": {
+        "en-US": "run cadence",
+        "zh-CN": "运行频率"
+      },
+      "scope": [
+        "dataQuality."
+      ]
     }
   ]
 }

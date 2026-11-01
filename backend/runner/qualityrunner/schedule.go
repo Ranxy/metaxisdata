@@ -7,6 +7,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -260,7 +261,7 @@ func (r *Runner) startScheduledBatch(ctx context.Context, plan dueBatchPlan) boo
 
 	planned := make([]*store.QualityExecutionMessage, 0, len(rules))
 	for _, rule := range rules {
-		planned = append(planned, plannedExecution(batch.ID, plan.instanceResourceID, rule, now))
+		planned = append(planned, plannedExecution(batch.ID, plan.instanceResourceID, rule, plan.target.NextRunAt, now))
 	}
 	if err := r.stores.PlanQualityExecutions(ctx, planned); err != nil {
 		slog.Error("failed to plan a scheduled quality batch's executions",
@@ -305,7 +306,7 @@ func (r *Runner) advanceSettledTarget(ctx context.Context, target *store.DueQual
 		return
 	}
 	now := time.Now().UTC()
-	next := nextRunAt(now, target.ScheduleInterval)
+	next := nextTargetRun(now, target.Schedule)
 	advanced, err := r.stores.AdvanceDueQualityTargetNextRun(ctx, target.TargetGUID, target.TargetType, next, now)
 	if err != nil {
 		slog.Warn("failed to advance a quality target's next schedule",
@@ -344,7 +345,8 @@ func (r *Runner) advanceTargetIfCycleComplete(ctx context.Context, target *store
 
 // targetScheduleInterval returns the interval a row_count_change baseline must
 // still fit inside. The baseline window follows the target's cadence, because
-// scheduling is per target; a missing schedule falls back to the runner's
+// scheduling is per target: the interval itself, or the gap between the next two
+// occurrences of a cron schedule. A missing schedule falls back to the runner's
 // minimum so a malformed row cannot make every historical execution acceptable.
 func (r *Runner) targetScheduleInterval(ctx context.Context, targetGUID string, metaType storepb.MetaType) time.Duration {
 	schedule, err := r.stores.GetQualityTargetSchedule(ctx, targetGUID, metaType)
@@ -354,8 +356,26 @@ func (r *Runner) targetScheduleInterval(ctx context.Context, targetGUID string, 
 			log.WithError(err))
 		return minRuleScheduleInterval
 	}
-	if schedule == nil || schedule.ScheduleInterval <= 0 {
+	if schedule == nil {
 		return minRuleScheduleInterval
 	}
-	return schedule.ScheduleInterval
+	spec := schedule.Spec()
+	if spec.IsCron() {
+		return spec.NominalInterval(time.Now().UTC())
+	}
+	if spec.Interval <= 0 {
+		return minRuleScheduleInterval
+	}
+	return spec.Interval
+}
+
+// nextTargetRun is when the scheduler considers the target next. A cron target
+// advances to its next occurrence; an interval target advances one interval from
+// now, not from its previous due time, so a late execution never queues catch-up
+// runs. It never returns a zero time, because the spec floors a malformed row.
+func nextTargetRun(now time.Time, spec schedule.Spec) time.Time {
+	if spec.IsCron() {
+		return spec.Next(now)
+	}
+	return nextRunAt(now, spec.Interval)
 }

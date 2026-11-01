@@ -130,6 +130,16 @@ export declare type QualityRule = Message<"metaxisdata.v1.QualityRule"> & {
    * @generated from field: repeated string tags = 19;
    */
   tags: string[];
+
+  /**
+   * How often this check needs to run inside the target's schedule. The target
+   * tick is the floor, so a tier denser than the target is a no-op; a manual run
+   * is not affected. It is scheduling metadata, not part of the rule definition:
+   * editing it does not append a revision.
+   *
+   * @generated from field: metaxisdata.v1.QualityFrequencyTier frequency_tier = 20;
+   */
+  frequencyTier: QualityFrequencyTier;
 };
 
 /**
@@ -5459,13 +5469,17 @@ export declare const ListQualityTargetsResponseSchema: GenMessage<ListQualityTar
 /**
  * QualityTargetSchedule is a target's one schedule: the cadence every enabled
  * check of the target runs at, and when the target next comes due. Scheduling is
- * per target, so all of its checks are planned and executed together.
+ * per target, so all of its checks are planned and executed together. A target
+ * runs either on a fixed interval or on a cron expression, never both.
  *
  * @generated from message metaxisdata.v1.QualityTargetSchedule
  */
 export declare type QualityTargetSchedule = Message<"metaxisdata.v1.QualityTargetSchedule"> & {
   /**
-   * How often the target's enabled checks run, between 15 minutes and 7 days.
+   * How often the target's enabled checks run, between 15 minutes and 7 days. A
+   * cron target keeps the expression's nominal gap here as the cadence it falls
+   * back to when the expression is cleared, so the editor can seed interval mode
+   * from it; cron decides the actual occurrence.
    *
    * @generated from field: google.protobuf.Duration schedule_interval = 1;
    */
@@ -5478,6 +5492,25 @@ export declare type QualityTargetSchedule = Message<"metaxisdata.v1.QualityTarge
    * @generated from field: google.protobuf.Timestamp next_run_time = 2;
    */
   nextRunTime?: Timestamp;
+
+  /**
+   * A standard five-field cron expression evaluated in timezone, for example
+   * "0 2 * * *" for every day at 02:00. Empty when the target runs on
+   * schedule_interval instead.
+   *
+   * @generated from field: string cron = 3;
+   */
+  cron: string;
+
+  /**
+   * The IANA time zone the cron expression is evaluated in, for example
+   * "Asia/Shanghai". Empty for an interval schedule. When a request leaves it
+   * empty, the server resolves it to the workspace's check time zone at save
+   * time and stores the resolved zone.
+   *
+   * @generated from field: string timezone = 4;
+   */
+  timezone: string;
 };
 
 /**
@@ -5678,11 +5711,32 @@ export declare type UpdateQualityTargetScheduleRequest = Message<"metaxisdata.v1
   metaType: MetaType;
 
   /**
-   * How often the target's enabled checks run, between 15 minutes and 7 days.
+   * How often the target's enabled checks run. Exactly one of schedule_interval
+   * and cron is set: a fixed interval between 15 minutes and 7 days, or a cron
+   * expression.
    *
    * @generated from field: google.protobuf.Duration schedule_interval = 4;
    */
   scheduleInterval?: Duration;
+
+  /**
+   * A standard five-field cron expression ("minute hour day-of-month month
+   * day-of-week") evaluated in timezone, for example "0 2 * * *" for every day at
+   * 02:00. The gap between two of its occurrences must be at least 15 minutes;
+   * there is no upper bound.
+   *
+   * @generated from field: string cron = 5;
+   */
+  cron: string;
+
+  /**
+   * The IANA time zone the cron expression is evaluated in, for example
+   * "Asia/Shanghai". Empty resolves to the workspace's check time zone, and the
+   * resolved zone is what the target stores and what reads return.
+   *
+   * @generated from field: string timezone = 6;
+   */
+  timezone: string;
 };
 
 /**
@@ -7131,6 +7185,49 @@ export enum QualityRuleState {
  * Describes the enum metaxisdata.v1.QualityRuleState.
  */
 export declare const QualityRuleStateSchema: GenEnum<QualityRuleState>;
+
+/**
+ * QualityFrequencyTier is how often one check needs to run inside its target's
+ * schedule. The target's own cadence is the floor: a check never runs more often
+ * than its target, and a tier denser than the target is a no-op. The tier bounds
+ * scheduled runs only; a manual run always runs the check.
+ *
+ * @generated from enum metaxisdata.v1.QualityFrequencyTier
+ */
+export enum QualityFrequencyTier {
+  /**
+   * Follow the target: the check runs in every target cycle.
+   *
+   * @generated from enum value: QUALITY_FREQUENCY_TIER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * At most once an hour.
+   *
+   * @generated from enum value: QUALITY_FREQUENCY_TIER_HOURLY = 1;
+   */
+  HOURLY = 1,
+
+  /**
+   * At most once a day.
+   *
+   * @generated from enum value: QUALITY_FREQUENCY_TIER_DAILY = 2;
+   */
+  DAILY = 2,
+
+  /**
+   * At most once a week.
+   *
+   * @generated from enum value: QUALITY_FREQUENCY_TIER_WEEKLY = 3;
+   */
+  WEEKLY = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityFrequencyTier.
+ */
+export declare const QualityFrequencyTierSchema: GenEnum<QualityFrequencyTier>;
 
 /**
  * QualityIssueStatus is the lifecycle of a persistent problem behind a rule's

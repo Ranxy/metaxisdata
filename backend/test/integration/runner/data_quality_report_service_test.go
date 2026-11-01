@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -138,7 +139,7 @@ func TestDataQualityReportOrphanedTargetRealServerIntegration(t *testing.T) {
 		}},
 		Severity: storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		State:    storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-	}, time.Hour)
+	}, schedule.Spec{Interval: time.Hour})
 	require.NoError(t, err)
 	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
 	require.NoError(t, err)

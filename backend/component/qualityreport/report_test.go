@@ -423,3 +423,57 @@ func TestFormatThresholdsAndInterval(t *testing.T) {
 	require.Equal(t, "2小时", formatInterval(LanguageChinese, 2*time.Hour))
 	require.Equal(t, "15m", formatInterval(LanguageEnglish, 15*time.Minute))
 }
+
+// A cron target's monitoring basis names the expression and the IANA time zone
+// it is resolved in; an interval target keeps the interval text, and a target
+// with neither schedule still reads "no schedule".
+func TestBasisScheduleText(t *testing.T) {
+	t.Parallel()
+
+	cron := Basis{Cron: "*/15 * * * *", TimeZone: "Asia/Shanghai"}
+	require.Equal(t, "cron */15 * * * * (Asia/Shanghai)", scheduleText(LanguageEnglish, englishLabels, cron))
+	require.Equal(t, "cron */15 * * * *（Asia/Shanghai）", scheduleText(LanguageChinese, chineseLabels, cron))
+	require.Equal(t, "cron */15 * * * *", scheduleText(LanguageEnglish, englishLabels, Basis{Cron: "*/15 * * * *"}),
+		"a cron basis without a stored zone renders the expression alone")
+	require.Equal(t, "every 2h", scheduleText(LanguageEnglish, englishLabels, Basis{ScheduleInterval: 2 * time.Hour}))
+	require.Equal(t, "每 2小时", scheduleText(LanguageChinese, chineseLabels, Basis{ScheduleInterval: 2 * time.Hour}))
+	require.Equal(t, englishLabels.ScheduleNone, scheduleText(LanguageEnglish, englishLabels, Basis{}))
+	require.Equal(t, chineseLabels.ScheduleNone, scheduleText(LanguageChinese, chineseLabels, Basis{}))
+	require.Equal(t, "cron 0 2 * * * (UTC)", scheduleText(LanguageEnglish, englishLabels, Basis{
+		Cron: "0 2 * * *", TimeZone: "UTC", ScheduleInterval: 2 * time.Hour,
+	}), "a cron expression wins over a leftover interval: the two modes are exclusive")
+}
+
+// The rendered document carries the cron basis and the next run in both
+// languages, while an interval target's basis stays unchanged.
+func TestRenderCronScheduleBasis(t *testing.T) {
+	t.Parallel()
+
+	nextRun := time.Date(2026, time.November, 1, 2, 0, 0, 0, time.UTC)
+	report := reportFixture()
+	report.Basis = Basis{
+		Cron:              "0 2 * * *",
+		TimeZone:          "Asia/Shanghai",
+		NextRunTime:       &nextRun,
+		HasRevisionRange:  true,
+		RuleRevisionMin:   1,
+		RuleRevisionMax:   3,
+		EngineVersions:    []string{"dq.v1"},
+		TargetColumnCount: 4,
+	}
+	document, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, document, "cron 0 2 * * * (Asia/Shanghai)")
+	require.Contains(t, document, "2026-11-01 02:00:00 UTC",
+		"the next run is an absolute instant and renders in UTC like every other time")
+	require.NotContains(t, document, "every 2h")
+
+	chinese, err := Render(LanguageChinese, report)
+	require.NoError(t, err)
+	require.Contains(t, chinese, "cron 0 2 * * *（Asia/Shanghai）")
+
+	interval, err := Render(LanguageEnglish, reportFixture())
+	require.NoError(t, err)
+	require.Contains(t, interval, "every 2h", "an interval target's basis is unchanged")
+	require.NotContains(t, interval, "cron ")
+}

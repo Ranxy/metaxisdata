@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -2534,7 +2536,7 @@ func TestDataQualityTargetDirectoryRealServerIntegration(t *testing.T) {
 		}},
 		Severity: storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		State:    storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
-	}, time.Hour)
+	}, schedule.Spec{Interval: time.Hour})
 	require.NoError(t, err)
 	withOrphan := list(&v1pb.ListQualityTargetsRequest{Parent: "workspaces/-", PageSize: 100})
 	orphanSummary := (*v1pb.QualityTargetSummary)(nil)
@@ -3038,4 +3040,660 @@ func TestDataQualityRunsRealServerIntegration(t *testing.T) {
 		}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// createQualityRuleWithTier creates one row-count check through the public API and
+// asks for the given run cadence inside the target's schedule.
+func (f *qualityFixture) createQualityRuleWithTier(t *testing.T, guid string, tier v1pb.QualityFrequencyTier) *v1pb.QualityRule {
+	t.Helper()
+
+	minRows := int64(0)
+	resp, err := f.dataQuality.CreateQualityRule(f.ctx, withToken(f.env.AdminToken(), &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:       fmt.Sprintf("integration %s cadence rule", tier.String()),
+			Description: "created by the P1-4 schedule integration scenario",
+			Dimension:   v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+			RuleType:    v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+			Target:      &v1pb.QualityTarget{MetaGuid: guid, MetaType: v1pb.MetaType_TABLE},
+			Config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_RowCount{
+				RowCount: &v1pb.RowCountConfig{MinRows: &minRows},
+			}},
+			Severity:      v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			FrequencyTier: tier,
+		},
+	}))
+	require.NoError(t, err, "create a quality rule with the %s tier", tier.String())
+	return resp.Msg
+}
+
+// scheduledQualityExecutions lists one rule's scheduled executions, newest first.
+func (f *qualityFixture) scheduledQualityExecutions(t *testing.T, ruleName string) []*v1pb.QualityExecution {
+	t.Helper()
+
+	resp, err := f.dataQuality.ListQualityExecutions(f.ctx, withToken(f.env.AdminToken(), &v1pb.ListQualityExecutionsRequest{
+		Parent:   "workspaces/-",
+		PageSize: 20,
+		Rule:     ruleName,
+		Trigger:  v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+	}))
+	require.NoError(t, err, "list the scheduled executions of %s", ruleName)
+	return resp.Msg.GetQualityExecutions()
+}
+
+// waitForScheduledQualityExecutions waits until one rule has completed want
+// scheduled executions. A manual run never satisfies it, because the scheduler's
+// frequency gate only looks at scheduled attempts.
+func waitForScheduledQualityExecutions(t *testing.T, fixture *qualityFixture, ruleName string, want int) []*v1pb.QualityExecution {
+	t.Helper()
+
+	var executions []*v1pb.QualityExecution
+	require.Eventually(t, func() bool {
+		executions = fixture.scheduledQualityExecutions(t, ruleName)
+		completed := 0
+		for _, execution := range executions {
+			if execution.GetState() == v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED {
+				completed++
+			}
+		}
+		return completed >= want
+	}, 90*time.Second, 250*time.Millisecond,
+		"the scheduler never completed %d scheduled execution(s) of %s: %s", want, ruleName, fixture.env.ServerLogs())
+	return executions
+}
+
+// waitForQualityTargetSettled waits until the target's next slot is in the future,
+// which is how the runner reports that a due cycle is settled instead of staying
+// due on every tick.
+func waitForQualityTargetSettled(t *testing.T, fixture *qualityFixture, guid string, metaType storepb.MetaType) time.Time {
+	t.Helper()
+
+	var nextRun time.Time
+	require.Eventually(t, func() bool {
+		schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, guid, metaType)
+		if err != nil || schedule == nil || schedule.NextRunAt == nil {
+			return false
+		}
+		nextRun = *schedule.NextRunAt
+		return nextRun.After(time.Now())
+	}, 30*time.Second, 200*time.Millisecond,
+		"the target's next slot never moved into the future: %s", fixture.env.ServerLogs())
+	return nextRun
+}
+
+// A target can run on a five-field cron expression in an IANA time zone instead of
+// an interval, a check can ask for a coarser cadence than its target, and the
+// cadence is head-only metadata: editing it appends no revision. The scenario also
+// proves the frequency gate lets only the default-tier check run in a second forced
+// target cycle and that the target settles afterwards.
+func TestDataQualityScheduleTiersRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+
+	defaultRule := fixture.createQualityRuleWithTier(t, fixture.usersGUID,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED)
+	weeklyRule := fixture.createQualityRuleWithTier(t, fixture.usersGUID,
+		v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY)
+	t.Cleanup(func() {
+		for _, name := range []string{defaultRule.GetName(), weeklyRule.GetName()} {
+			_, err := fixture.dataQuality.DeleteQualityRule(fixture.ctx,
+				withToken(fixture.env.AdminToken(), &v1pb.DeleteQualityRuleRequest{Name: name}))
+			require.NoError(t, err, "delete the scenario's rule %s", name)
+		}
+	})
+
+	// A new check carries the tier it was created with, and the tier is not part of
+	// the definition: editing it leaves both the revision and the revision history
+	// alone.
+	require.Equal(t, v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY, weeklyRule.GetFrequencyTier())
+	resourceID := weeklyRule.GetName()[strings.LastIndex(weeklyRule.GetName(), "/")+1:]
+	stored, err := fixture.env.Store.GetQualityRule(fixture.ctx, &store.FindQualityRuleMessage{ResourceID: &resourceID})
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	revisionsBefore, err := fixture.env.Store.ListQualityRuleRevisions(fixture.ctx, stored.ID, nil, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, revisionsBefore, "a new rule records its first revision")
+
+	updated, err := fixture.dataQuality.UpdateQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityRuleRequest{
+		Rule: &v1pb.QualityRule{
+			Name:          weeklyRule.GetName(),
+			FrequencyTier: v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY,
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"frequency_tier"}},
+	}))
+	require.NoError(t, err, "update the run cadence")
+	require.Equal(t, v1pb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY, updated.Msg.GetFrequencyTier())
+	require.Equal(t, weeklyRule.GetRevision(), updated.Msg.GetRevision(),
+		"the run cadence is scheduling metadata, not part of the definition")
+	revisionsAfter, err := fixture.env.Store.ListQualityRuleRevisions(fixture.ctx, stored.ID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, revisionsAfter, len(revisionsBefore), "editing the cadence appends no revision")
+
+	// Cron round-trip: the expression and its resolved zone come back on the
+	// schedule RPC, the target summary and the monitoring basis, and the next run
+	// is a future occurrence aligned to the expression's 15-minute boundary.
+	cronSchedule, err := fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityTargetScheduleRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Cron:       "*/15 * * * *",
+			Timezone:   "Asia/Shanghai",
+		}))
+	require.NoError(t, err, "schedule the target on cron")
+	require.Equal(t, "*/15 * * * *", cronSchedule.Msg.GetCron())
+	require.Equal(t, "Asia/Shanghai", cronSchedule.Msg.GetTimezone())
+	require.Equal(t, 15*time.Minute, cronSchedule.Msg.GetScheduleInterval().AsDuration(),
+		"a cron target stores the expression's nominal gap as the interval")
+	nextRun := cronSchedule.Msg.GetNextRunTime().AsTime()
+	require.True(t, nextRun.After(time.Now()), "the next cron occurrence is in the future")
+	shanghai, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	local := nextRun.In(shanghai)
+	require.Zero(t, local.Minute()%15, "the next run sits on a 15-minute boundary in the stored zone")
+	require.Zero(t, local.Second())
+	require.Zero(t, local.Nanosecond())
+
+	fetched, err := fixture.dataQuality.GetQualityTargetSchedule(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetScheduleRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, "*/15 * * * *", fetched.Msg.GetCron())
+	require.Equal(t, "Asia/Shanghai", fetched.Msg.GetTimezone())
+
+	detail, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, "*/15 * * * *", detail.Msg.GetSummary().GetSchedule().GetCron())
+	require.Equal(t, "Asia/Shanghai", detail.Msg.GetSummary().GetSchedule().GetTimezone())
+
+	// The report's monitoring basis names the expression and its zone.
+	report, err := fixture.dataQuality.ExportQualityReport(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ExportQualityReportRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			TrendDays:  7,
+			Language:   "en-US",
+		}))
+	require.NoError(t, err, "export the cron target's report")
+	require.Contains(t, report.Msg.GetHtmlContent(), "cron */15 * * * * (Asia/Shanghai)")
+
+	// The targets CSV carries the schedule's cron expression and zone next to the
+	// interval the directory already exported.
+	targetsStream, err := fixture.dataQuality.ExportQualityTargets(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ExportQualityTargetsRequest{
+			Parent:   "workspaces/-",
+			Instance: common.FormatInstance(fixture.instanceID),
+		}))
+	require.NoError(t, err, "open the targets export")
+	targetRecords := readQualityExportDocument(t, collectQualityExportChunks(t, targetsStream))
+	require.Equal(t, []string{"schedule_cron", "schedule_timezone"}, targetRecords[0][15:17],
+		"the new columns are appended after the existing ones")
+	var cronRow []string
+	for _, record := range targetRecords[1:] {
+		if record[0] == fixture.usersGUID {
+			cronRow = record
+		}
+	}
+	require.NotNil(t, cronRow, "the cron target is in the targets export")
+	require.Equal(t, "*/15 * * * *", cronRow[15])
+	require.Equal(t, "Asia/Shanghai", cronRow[16])
+
+	// The API refuses a schedule it cannot resolve: exactly one mode, a five-field
+	// expression whose occurrences are at least 15 minutes apart, a known IANA zone.
+	invalidSchedules := map[string]*v1pb.UpdateQualityTargetScheduleRequest{
+		"both modes": {
+			Parent: "workspaces/-", TargetGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE,
+			ScheduleInterval: durationpb.New(2 * time.Hour), Cron: "0 2 * * *",
+		},
+		"neither mode": {
+			Parent: "workspaces/-", TargetGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE,
+		},
+		"cron too frequent": {
+			Parent: "workspaces/-", TargetGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE,
+			Cron: "* * * * *", Timezone: "UTC",
+		},
+		"unknown IANA zone": {
+			Parent: "workspaces/-", TargetGuid: fixture.usersGUID, MetaType: v1pb.MetaType_TABLE,
+			Cron: "0 2 * * *", Timezone: "Not/AZone",
+		},
+	}
+	for name, request := range invalidSchedules {
+		_, err := fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx,
+			withToken(fixture.env.AdminToken(), request))
+		require.Error(t, err, name)
+		require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err), name)
+	}
+
+	// The scheduler stamps every scheduled execution with the target due slot the
+	// cycle belongs to, and the cadence gate compares slots instead of start times,
+	// so a tier equal to the target's own cadence stays exact.
+	firstSlot := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx,
+		fixture.usersGUID, storepb.MetaType_TABLE, firstSlot),
+		"make the target due for its first cycle")
+	forcedSlot := qualityTargetNextRunSlot(t, fixture, fixture.usersGUID)
+	require.WithinDuration(t, firstSlot, forcedSlot, time.Microsecond,
+		"the forced due slot is the one the scheduler reads")
+
+	// The frequency gate: one forced target cycle runs both checks, and a second
+	// forced cycle right after the first settled plans only the default-tier check.
+	// The weekly check already completed inside its window, and the target settles
+	// instead of staying due, so the scheduler cannot loop on it.
+	require.Len(t, waitForScheduledQualityExecutions(t, fixture, defaultRule.GetName(), 1), 1,
+		"the first target cycle runs the default-tier check")
+	require.Len(t, waitForScheduledQualityExecutions(t, fixture, weeklyRule.GetName(), 1), 1,
+		"the first target cycle also runs the weekly-tier check: nothing completed inside its window yet")
+	firstCycleExecutions := qualityScheduledExecutionsForTarget(t, fixture, fixture.usersGUID)
+	require.Len(t, firstCycleExecutions, 2, "the first cycle plans one execution per check")
+	for _, execution := range firstCycleExecutions {
+		require.NotNil(t, execution.ScheduledAt, "a scheduled execution carries the slot it belongs to")
+		require.True(t, execution.ScheduledAt.Equal(forcedSlot),
+			"execution %d belongs to slot %s, want %s", execution.ID, execution.ScheduledAt, forcedSlot)
+	}
+	waitForQualityTargetSettled(t, fixture, fixture.usersGUID, storepb.MetaType_TABLE)
+
+	// A manual run carries no due slot, which is what keeps it outside the cadence
+	// gate in both directions: it neither blocks a later scheduled cycle nor is
+	// blocked by a previous one.
+	manualPlanned := fixture.runRules(t, defaultRule.GetName())[0]
+	manualExecution := fixture.waitForCompletedExecution(t, manualPlanned.GetName())
+	manualRow, err := fixture.env.Store.GetQualityExecution(fixture.ctx,
+		qualityExecutionRowID(t, manualExecution.GetName()))
+	require.NoError(t, err)
+	require.NotNil(t, manualRow)
+	require.Nil(t, manualRow.ScheduledAt, "a manual execution has no due slot")
+
+	require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx,
+		fixture.usersGUID, storepb.MetaType_TABLE, time.Now()),
+		"make the target due for its second cycle")
+	require.Len(t, waitForScheduledQualityExecutions(t, fixture, defaultRule.GetName(), 2), 2,
+		"the second target cycle runs the default-tier check again")
+	settledAt := waitForQualityTargetSettled(t, fixture, fixture.usersGUID, storepb.MetaType_TABLE)
+	require.True(t, settledAt.After(time.Now()),
+		"the second cycle settles the target instead of leaving it due")
+	require.Len(t, fixture.scheduledQualityExecutions(t, weeklyRule.GetName()), 1,
+		"a weekly-tier check does not run again in a second target cycle")
+
+	// Switching back to interval mode clears the cron mode and reschedules from now.
+	intervalSchedule, err := fixture.dataQuality.UpdateQualityTargetSchedule(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityTargetScheduleRequest{
+			Parent:           "workspaces/-",
+			TargetGuid:       fixture.usersGUID,
+			MetaType:         v1pb.MetaType_TABLE,
+			ScheduleInterval: durationpb.New(2 * time.Hour),
+		}))
+	require.NoError(t, err, "schedule the target on an interval again")
+	require.Empty(t, intervalSchedule.Msg.GetCron(), "interval mode has no cron expression")
+	require.Empty(t, intervalSchedule.Msg.GetTimezone(), "interval mode has no cron zone")
+	require.Equal(t, 2*time.Hour, intervalSchedule.Msg.GetScheduleInterval().AsDuration())
+	require.WithinDuration(t, time.Now().Add(2*time.Hour),
+		intervalSchedule.Msg.GetNextRunTime().AsTime(), 2*time.Minute,
+		"a schedule edit reschedules from now")
+}
+
+// qualityTargetNextRunSlot reads the due slot the scheduler will use for the
+// target. The API does not expose it, so the scenario reads the store directly.
+func qualityTargetNextRunSlot(t *testing.T, fixture *qualityFixture, guid string) time.Time {
+	t.Helper()
+
+	schedule, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, guid, storepb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.NotNil(t, schedule)
+	require.NotNil(t, schedule.NextRunAt, "the target must be due")
+	return *schedule.NextRunAt
+}
+
+// qualityScheduledExecutionsForTarget lists the target's completed scheduled
+// executions through the store, the only place the due slot is readable.
+func qualityScheduledExecutionsForTarget(t *testing.T, fixture *qualityFixture, guid string) []*store.QualityExecutionMessage {
+	t.Helper()
+
+	trigger := storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED
+	limit := 50
+	executions, err := fixture.env.Store.ListQualityExecutions(fixture.ctx, &store.FindQualityExecutionMessage{
+		TargetGUID: &guid,
+		Trigger:    &trigger,
+		States:     []storepb.QualityExecutionState{storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED},
+		Limit:      &limit,
+	})
+	require.NoError(t, err, "list the target's scheduled executions")
+	return executions
+}
+
+// qualityExecutionRowID parses the numeric row id off an execution resource name.
+func qualityExecutionRowID(t *testing.T, name string) int64 {
+	t.Helper()
+
+	id, err := strconv.ParseInt(name[strings.LastIndex(name, "/")+1:], 10, 64)
+	require.NoError(t, err, "the execution name %q carries a row id", name)
+	return id
+}
+
+// qualityCycleStartDrift is how long after its due slot a simulated run starts.
+// The real scheduler plans a due target on the next tick, so a run never starts
+// exactly at its slot; the tests keep that gap so the slot arithmetic matches
+// production.
+const qualityCycleStartDrift = 2 * time.Second
+
+// qualityCycle is one simulated target cycle: the due slot the scheduler used and
+// the rule ids its due scan returned for that slot.
+type qualityCycle struct {
+	slot  time.Time
+	rules []int64
+}
+
+// qualityCycleTargetGUID builds a target GUID this scenario owns, so its rules and
+// executions cannot collide with another scenario's.
+func qualityCycleTargetGUID(t *testing.T, name string) string {
+	t.Helper()
+
+	suffix, err := common.RandomString(8)
+	require.NoError(t, err)
+	return fmt.Sprintf("cycle-%s-%s;cycle-db;;probe", name, suffix)
+}
+
+// createQualityCycleRule creates one enabled row-count check directly through the
+// store, so the cadence scenario needs no API validation or target resolution.
+func createQualityCycleRule(t *testing.T, fixture *qualityFixture, guid string, tier storepb.QualityFrequencyTier, spec schedule.Spec) *store.QualityRuleMessage {
+	t.Helper()
+
+	resourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	rule, err := fixture.env.Store.CreateQualityRule(fixture.ctx, &store.QualityRuleMessage{
+		ResourceID: resourceID,
+		Title:      fmt.Sprintf("cycle probe %s", tier.String()),
+		Dimension:  storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		TargetGUID: guid,
+		TargetType: storepb.MetaType_TABLE,
+		TargetPath: &storepb.QualityTargetPath{Instance: "cycle-instance", Database: "cycle-db", Object: "probe"},
+		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+			RowCount: &storepb.RowCountConfig{},
+		}},
+		Severity:      storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		State:         storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		FrequencyTier: tier,
+	}, spec)
+	require.NoError(t, err, "create a cycle probe rule with the %s tier", tier.String())
+	return rule
+}
+
+// archiveQualityCycleRules removes the scenario's rules when it finishes. The
+// history stays readable; only the live rules are archived.
+func archiveQualityCycleRules(t *testing.T, fixture *qualityFixture, rules ...*store.QualityRuleMessage) {
+	t.Cleanup(func() {
+		for _, rule := range rules {
+			_, err := fixture.env.Store.ArchiveQualityRule(fixture.ctx, rule.ResourceID, 0)
+			require.NoError(t, err, "archive the scenario's rule %s", rule.ResourceID)
+		}
+	})
+}
+
+// insertCompletedScheduledExecution writes the completed scheduled execution the
+// runner would have produced for one rule in one cycle: it belongs to the due
+// slot, starts a couple of seconds later, and carries the revision that ran.
+func insertCompletedScheduledExecution(t *testing.T, fixture *qualityFixture, rule *store.QualityRuleMessage, slot time.Time) {
+	t.Helper()
+
+	startedAt := slot.Add(qualityCycleStartDrift)
+	runResourceID, err := common.RandomString(12)
+	require.NoError(t, err)
+	var runID int64
+	require.NoError(t, fixture.env.Store.GetDB().QueryRowContext(fixture.ctx, `
+		INSERT INTO quality_run (resource_id, target_guid, target_type, trigger, status, outcome, started_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		RETURNING id`,
+		runResourceID,
+		rule.TargetGUID,
+		int16(rule.TargetType),
+		int16(storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED),
+		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
+		int16(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		startedAt,
+	).Scan(&runID))
+
+	_, err = fixture.env.Store.GetDB().ExecContext(fixture.ctx, `
+		INSERT INTO quality_execution
+			(run_id, rule_id, rule_revision, target_guid, target_type, trigger, attempt,
+			 state, status, started_at, finished_at, scheduled_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $9, $10)`,
+		runID,
+		rule.ID,
+		rule.Revision,
+		rule.TargetGUID,
+		int16(rule.TargetType),
+		int16(storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED),
+		int16(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
+		int16(storepb.QualityStatus_QUALITY_STATUS_PASS),
+		startedAt,
+		slot,
+	)
+	require.NoError(t, err, "write the completed scheduled execution for rule %d", rule.ID)
+}
+
+// simulateQualityCycles drives one target through cycles without waiting for the
+// scheduler: for each cycle it reads the due scan, writes the completed scheduled
+// executions the runner would have produced, asserts the cycle settled, and
+// advances the slot the way the runner does (completion + the target's interval).
+func simulateQualityCycles(t *testing.T, fixture *qualityFixture, guid string, metaType storepb.MetaType, cycles int) []qualityCycle {
+	t.Helper()
+
+	result := make([]qualityCycle, 0, cycles)
+	for index := range cycles {
+		scheduleRow, err := fixture.env.Store.GetQualityTargetSchedule(fixture.ctx, guid, metaType)
+		require.NoError(t, err)
+		require.NotNil(t, scheduleRow)
+		require.NotNil(t, scheduleRow.NextRunAt)
+
+		// The scheduler tick runs a couple of seconds after the slot.
+		now := scheduleRow.NextRunAt.Add(qualityCycleStartDrift)
+		dueTargets, err := fixture.env.Store.FindDueQualityTargets(fixture.ctx, now, 1000, 1000, 3)
+		require.NoError(t, err)
+
+		var dueTarget *store.DueQualityTarget
+		for _, candidate := range dueTargets {
+			if candidate.TargetGUID == guid && candidate.TargetType == metaType {
+				dueTarget = candidate
+				break
+			}
+		}
+		require.NotNilf(t, dueTarget, "the target is not due in cycle %d at slot %s", index+1, *scheduleRow.NextRunAt)
+
+		cycle := qualityCycle{slot: dueTarget.NextRunAt}
+		for _, dueRule := range dueTarget.Rules {
+			insertCompletedScheduledExecution(t, fixture, dueRule.Rule, cycle.slot)
+			cycle.rules = append(cycle.rules, dueRule.Rule.ID)
+		}
+
+		// A cycle whose checks either completed or were gated must settle: nothing
+		// may stay pending, or the scheduler would retry the same slot forever.
+		pending, err := fixture.env.Store.CountPendingQualityTargetRules(fixture.ctx, guid, metaType, 3)
+		require.NoError(t, err)
+		require.Zero(t, pending, "cycle %d at slot %s still has pending rules", index+1, cycle.slot)
+
+		nextSlot := now.Add(dueTarget.Schedule.NominalInterval(now))
+		require.NoError(t, fixture.env.Store.AdvanceQualityTargetNextRun(fixture.ctx, guid, metaType, nextSlot))
+		result = append(result, cycle)
+	}
+	return result
+}
+
+// cycleHasRule reports whether the due scan returned one rule in one cycle.
+func cycleHasRule(cycle qualityCycle, ruleID int64) bool {
+	for _, id := range cycle.rules {
+		if id == ruleID {
+			return true
+		}
+	}
+	return false
+}
+
+// ruleCycleNumbers returns the 1-based cycle numbers in which one rule ran.
+func ruleCycleNumbers(cycles []qualityCycle, ruleID int64) []int {
+	numbers := make([]int, 0, len(cycles))
+	for index, cycle := range cycles {
+		if cycleHasRule(cycle, ruleID) {
+			numbers = append(numbers, index+1)
+		}
+	}
+	return numbers
+}
+
+// ruleRunSlots returns the due slots at which one rule ran.
+func ruleRunSlots(cycles []qualityCycle, ruleID int64) []time.Time {
+	slots := make([]time.Time, 0, len(cycles))
+	for _, cycle := range cycles {
+		if cycleHasRule(cycle, ruleID) {
+			slots = append(slots, cycle.slot)
+		}
+	}
+	return slots
+}
+
+// requireCadenceGap asserts consecutive runs of one rule are never closer than the
+// cadence it asked for.
+func requireCadenceGap(t *testing.T, slots []time.Time, minimum time.Duration, label string) {
+	t.Helper()
+
+	require.NotEmpty(t, slots, "%s runs at least once", label)
+	for index := 1; index < len(slots); index++ {
+		gap := slots[index].Sub(slots[index-1])
+		require.GreaterOrEqual(t, gap, minimum,
+			"%s ran at %s and then %s: %s apart, want >= %s", label,
+			slots[index-1], slots[index], gap, minimum)
+	}
+}
+
+// The cadence gate compares due slots, so a check whose tier is coarser than its
+// target's interval skips cycles while the default-tier check runs every cycle.
+// The cycles are simulated: the scenario writes the completed execution each cycle
+// would produce and advances the slot exactly like the runner, which pins the slot
+// arithmetic without waiting for the scheduler.
+func TestDataQualityIntervalCadenceSlotsRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+
+	// A 15-minute target with a default check and an hourly check. Because a run
+	// starts 2s after its slot, the slots drift: the hourly check is eligible in
+	// cycle 1, then again once the 15-minute slots have moved a full hour on
+	// (cycles 5 and 9).
+	fastGUID := qualityCycleTargetGUID(t, "fast")
+	fastInterval := schedule.Spec{Interval: 15 * time.Minute}
+	fastDefault := createQualityCycleRule(t, fixture, fastGUID,
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_UNSPECIFIED, fastInterval)
+	fastHourly := createQualityCycleRule(t, fixture, fastGUID,
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY, fastInterval)
+	archiveQualityCycleRules(t, fixture, fastDefault, fastHourly)
+
+	fastCycles := simulateQualityCycles(t, fixture, fastGUID, storepb.MetaType_TABLE, 9)
+	require.Equal(t, []int{1, 5, 9}, ruleCycleNumbers(fastCycles, fastHourly.ID),
+		"an hourly check on a 15m target runs once the slot is a full hour past its previous run")
+	for index, cycle := range fastCycles {
+		require.True(t, cycleHasRule(cycle, fastDefault.ID),
+			"the default-tier check runs in every cycle, including cycle %d", index+1)
+	}
+	requireCadenceGap(t, ruleRunSlots(fastCycles, fastHourly.ID), time.Hour, "hourly check on a 15m target")
+
+	// A 35-minute target cannot fit an hourly check into every cycle: the second
+	// cycle is still inside the hour, so the check runs every second cycle and the
+	// gaps stay at least an hour.
+	oddGUID := qualityCycleTargetGUID(t, "odd")
+	oddInterval := schedule.Spec{Interval: 35 * time.Minute}
+	oddHourly := createQualityCycleRule(t, fixture, oddGUID,
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_HOURLY, oddInterval)
+	archiveQualityCycleRules(t, fixture, oddHourly)
+
+	oddCycles := simulateQualityCycles(t, fixture, oddGUID, storepb.MetaType_TABLE, 7)
+	require.Equal(t, []int{1, 3, 5, 7}, ruleCycleNumbers(oddCycles, oddHourly.ID),
+		"an hourly check on a 35m target runs every second cycle, not every cycle")
+	requireCadenceGap(t, ruleRunSlots(oddCycles, oddHourly.ID), time.Hour, "hourly check on a 35m target")
+
+	// A 6-hour target proves the daily and weekly tiers too: their gaps follow the
+	// tier periods, not the target's cadence.
+	slowGUID := qualityCycleTargetGUID(t, "slow")
+	slowInterval := schedule.Spec{Interval: 6 * time.Hour}
+	slowDaily := createQualityCycleRule(t, fixture, slowGUID,
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_DAILY, slowInterval)
+	slowWeekly := createQualityCycleRule(t, fixture, slowGUID,
+		storepb.QualityFrequencyTier_QUALITY_FREQUENCY_TIER_WEEKLY, slowInterval)
+	archiveQualityCycleRules(t, fixture, slowDaily, slowWeekly)
+
+	slowCycles := simulateQualityCycles(t, fixture, slowGUID, storepb.MetaType_TABLE, 29)
+	dailySlots := ruleRunSlots(slowCycles, slowDaily.ID)
+	weeklySlots := ruleRunSlots(slowCycles, slowWeekly.ID)
+	require.Len(t, dailySlots, 8, "a daily check on a 6h target runs every fourth cycle")
+	require.Len(t, weeklySlots, 2, "a weekly check on a 6h target runs once a week")
+	requireCadenceGap(t, dailySlots, 24*time.Hour, "daily check")
+	requireCadenceGap(t, weeklySlots, 7*24*time.Hour, "weekly check")
+}
+
+// A target whose rule predates the target-level schedule has no
+// quality_target_schedule row. The target directory and the workspace must still
+// read it: the aggregate's LEFT JOIN yields NULL schedule columns, which the row
+// reports as "no cadence" instead of failing the whole page.
+func TestDataQualityTargetWithoutScheduleRowRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	t.Cleanup(func() {
+		_, err := fixture.dataQuality.DeleteQualityRule(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.DeleteQualityRuleRequest{Name: rule.GetName()}))
+		require.NoError(t, err, "delete the scenario's rule")
+	})
+
+	// Simulate a rule created before the target-level schedule existed: its target
+	// has no schedule row.
+	_, err := fixture.env.Store.GetDB().ExecContext(fixture.ctx, `
+		DELETE FROM quality_target_schedule WHERE target_guid = $1 AND target_type = $2`,
+		fixture.usersGUID, int16(storepb.MetaType_TABLE))
+	require.NoError(t, err, "drop the target's schedule row")
+
+	// The directory reads the row with empty schedule columns instead of failing.
+	listed, err := fixture.dataQuality.ListQualityTargets(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualityTargetsRequest{
+			Parent:   "workspaces/-",
+			Instance: common.FormatInstance(fixture.instanceID),
+			PageSize: 100,
+		}))
+	require.NoError(t, err, "a target without a schedule row must not break the directory")
+	var listedTarget *v1pb.QualityTargetSummary
+	for _, summary := range listed.Msg.GetQualityTargets() {
+		if summary.GetTarget().GetMetaGuid() == fixture.usersGUID {
+			listedTarget = summary
+		}
+	}
+	require.NotNil(t, listedTarget, "the target is still listed")
+	require.Equal(t, int32(1), listedTarget.GetRuleCount())
+	require.Nil(t, listedTarget.GetSchedule(), "a target without a schedule row reports no cadence")
+
+	// The store aggregate itself reads the NULL columns as empty values.
+	stored, err := fixture.env.Store.ListQualityTargets(fixture.ctx, &store.FindQualityTargetMessage{
+		TargetKeys: []store.MetaGUIDKey{{GUID: fixture.usersGUID, ObjectType: storepb.MetaType_TABLE}},
+	})
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	require.Empty(t, stored[0].ScheduleCron)
+	require.Empty(t, stored[0].ScheduleTimeZone)
+	require.Zero(t, stored[0].ScheduleInterval)
+	require.Nil(t, stored[0].NextRunAt)
+
+	// The workspace still reads too: the rules are there and the schedule is simply
+	// absent.
+	detail, err := fixture.dataQuality.GetQualityTarget(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+		}))
+	require.NoError(t, err, "the workspace must still read without a schedule row")
+	require.Len(t, detail.Msg.GetQualityRules(), 1)
+	require.Nil(t, detail.Msg.GetSummary().GetSchedule())
 }

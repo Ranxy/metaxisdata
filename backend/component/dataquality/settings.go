@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/schedule"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -27,9 +28,10 @@ const (
 	// its first rule.
 	DefaultScheduleInterval = time.Hour
 	// MinScheduleInterval and MaxScheduleInterval bound the schedule interval a
-	// workspace may configure.
-	MinScheduleInterval = 15 * time.Minute
-	MaxScheduleInterval = 7 * 24 * time.Hour
+	// workspace may configure. They are the schedule package's own bounds, shared
+	// with cron expression validation so the two forms cannot drift apart.
+	MinScheduleInterval = schedule.MinInterval
+	MaxScheduleInterval = schedule.MaxInterval
 
 	// DefaultDailyExecutionLimit is the workspace's daily run ceiling.
 	DefaultDailyExecutionLimit = 10000
@@ -315,14 +317,15 @@ func timeZoneFromStore(zone string) string {
 }
 
 // ValidateTimeZone validates the check time zone the settings API is about to
-// store. An empty name is valid and means UTC.
+// store. An empty name is valid and means UTC. The name must be UTC or an
+// Area/Location IANA zone, the same rule a cron schedule applies, so neither a
+// stored zone nor a cron schedule silently depends on the deployment host's zone
+// or on a fixed-offset abbreviation.
 func ValidateTimeZone(zone string) error {
-	if zone = strings.TrimSpace(zone); zone != "" {
-		if _, err := time.LoadLocation(zone); err != nil {
-			return errors.Errorf("time_zone %q is not a valid IANA time zone", zone)
-		}
+	if strings.TrimSpace(zone) == "" {
+		return nil
 	}
-	return nil
+	return schedule.ValidateTimeZoneName(zone)
 }
 
 // TimeZoneLocation resolves the check time zone a rule's time variables are

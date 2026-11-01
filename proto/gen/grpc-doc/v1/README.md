@@ -371,6 +371,7 @@
     - [QualityExecutionState](#metaxisdata-v1-QualityExecutionState)
     - [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-v1-QualityFilterOperator)
+    - [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier)
     - [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
@@ -5924,6 +5925,7 @@ QualityRule is one data quality check.
 | orphaned_reason | [string](#string) |  | Why the target can no longer be resolved, e.g. because the table was dropped. Empty while the target is healthy. |
 | mute_until | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Rule-level mute. It only silences issue notifications; executions still run and results are still recorded. |
 | tags | [string](#string) | repeated |  |
+| frequency_tier | [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier) |  | How often this check needs to run inside the target&#39;s schedule. The target tick is the floor, so a tier denser than the target is a no-op; a manual run is not affected. It is scheduling metadata, not part of the rule definition: editing it does not append a revision. |
 
 
 
@@ -6329,13 +6331,16 @@ rule was saved.
 ### QualityTargetSchedule
 QualityTargetSchedule is a target&#39;s one schedule: the cadence every enabled
 check of the target runs at, and when the target next comes due. Scheduling is
-per target, so all of its checks are planned and executed together.
+per target, so all of its checks are planned and executed together. A target
+runs either on a fixed interval or on a cron expression, never both.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | How often the target&#39;s enabled checks run, between 15 minutes and 7 days. |
+| schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | How often the target&#39;s enabled checks run, between 15 minutes and 7 days. A cron target keeps the expression&#39;s nominal gap here as the cadence it falls back to when the expression is cleared, so the editor can seed interval mode from it; cron decides the actual occurrence. |
 | next_run_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the scheduler next considers the target due. Unset while the target has no enabled check. |
+| cron | [string](#string) |  | A standard five-field cron expression evaluated in timezone, for example &#34;0 2 * * *&#34; for every day at 02:00. Empty when the target runs on schedule_interval instead. |
+| timezone | [string](#string) |  | The IANA time zone the cron expression is evaluated in, for example &#34;Asia/Shanghai&#34;. Empty for an interval schedule. When a request leaves it empty, the server resolves it to the workspace&#39;s check time zone at save time and stores the resolved zone. |
 
 
 
@@ -6935,7 +6940,9 @@ measured per threshold_metric; the default fail threshold is zero.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | target_guid | [string](#string) |  | The target&#39;s metadata GUID. Required. |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  | The target&#39;s object type. Optional when rules already exist, because their own target carries it. |
-| schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | How often the target&#39;s enabled checks run, between 15 minutes and 7 days. |
+| schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | How often the target&#39;s enabled checks run. Exactly one of schedule_interval and cron is set: a fixed interval between 15 minutes and 7 days, or a cron expression. |
+| cron | [string](#string) |  | A standard five-field cron expression (&#34;minute hour day-of-month month day-of-week&#34;) evaluated in timezone, for example &#34;0 2 * * *&#34; for every day at 02:00. The gap between two of its occurrences must be at least 15 minutes; there is no upper bound. |
+| timezone | [string](#string) |  | The IANA time zone the cron expression is evaluated in, for example &#34;Asia/Shanghai&#34;. Empty resolves to the workspace&#39;s check time zone, and the resolved zone is what the target stores and what reads return. |
 
 
 
@@ -7091,6 +7098,23 @@ QualityFilterOperator is one comparison in a rule&#39;s AND filter.
 | QUALITY_FILTER_OPERATOR_NOT_IN | 8 |  |
 | QUALITY_FILTER_OPERATOR_IS_NULL | 9 |  |
 | QUALITY_FILTER_OPERATOR_IS_NOT_NULL | 10 |  |
+
+
+
+<a name="metaxisdata-v1-QualityFrequencyTier"></a>
+
+### QualityFrequencyTier
+QualityFrequencyTier is how often one check needs to run inside its target&#39;s
+schedule. The target&#39;s own cadence is the floor: a check never runs more often
+than its target, and a tier denser than the target is a no-op. The tier bounds
+scheduled runs only; a manual run always runs the check.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_FREQUENCY_TIER_UNSPECIFIED | 0 | Follow the target: the check runs in every target cycle. |
+| QUALITY_FREQUENCY_TIER_HOURLY | 1 | At most once an hour. |
+| QUALITY_FREQUENCY_TIER_DAILY | 2 | At most once a day. |
+| QUALITY_FREQUENCY_TIER_WEEKLY | 3 | At most once a week. |
 
 
 

@@ -55,9 +55,11 @@ materialized view only offers table-level checks (row count, row count change,
 freshness, custom SQL, schema drift), because those objects have no column-level
 type authority. Editing a check opens the same dialog from its row or drawer.
 
-- **Schedule**: scheduling belongs to the target, not to one check (see below).
-  All enabled checks on a target run together on the target's schedule, so a new
-  check joins the target's next run; use **Run now** to check it immediately.
+- **Schedule**: scheduling belongs to the target, not to one check. All enabled
+  checks on a target run together on the target's schedule, so a new check joins
+  the target's next run; use **Run now** to check it immediately. The dialog's
+  **Run cadence** select can make one check run *less* often than its target —
+  see [Check run cadence](#check-run-cadence).
 - **Thresholds**: a count-type check compares failed rows (or the failed
   percentage) with a warning and a failure level; an aggregate compares its value
   with a range; freshness compares the lag in seconds. Custom SQL checks always
@@ -68,11 +70,11 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   apply to them.
 - **Row count change**: compares the current row count with the check's most
   recent completed execution that measured a non-zero count — whatever that
-  run's verdict was — within the last seven days and two target intervals. The
-  first run has no baseline and is not judged; a newly created check's dialog
-  defaults *empty data* to pass, so that first observation only records the
-  baseline. The execution detail shows the baseline value and time the
-  comparison used.
+  run's verdict was — within the last seven days and two target intervals (for a
+  cron target, twice the expression's nominal interval). The first run has no
+  baseline and is not judged; a newly created check's dialog defaults *empty
+  data* to pass, so that first observation only records the baseline. The
+  execution detail shows the baseline value and time the comparison used.
 - **Filters** narrow the rows the check reads (structured AND conditions only);
   write a custom-SQL check when the condition needs more. A target-level filter
   from the contract is ANDed on top.
@@ -86,6 +88,47 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   created. Columns recorded by an older snapshot that did not store nullability
   stay unjudged until the check is saved again. Use *Fill from target* to record
   the current definition.
+
+### Check run cadence
+
+Every check runs whenever its target runs, and that is all most checks need; the
+target's own schedule is covered in [The target schedule](#the-target-schedule).
+When one check is more expensive than the rest of the target — a cross-table
+reconciliation, or an aggregate over a large table — open it in the check dialog
+and choose a **Run cadence**:
+
+| Run cadence | How often the check runs |
+| --- | --- |
+| Follow target (default) | in every target cycle, like the rest of the checks |
+| Hourly | at most about once an hour |
+| Daily | at most about once a day |
+| Weekly | at most about once a week |
+
+The target's own schedule is the **floor**: a check never runs more often than
+its target, and a cadence denser than the target's does nothing — *Hourly* on a
+target that runs every two hours still only runs when the target does.
+
+A cadence is measured on the target's own cycles: a check runs in a cycle only
+when the cycle its previous completed scheduled run belonged to is at least the
+cadence period earlier. So *Weekly* on a daily target runs in the 7th following
+cycle, *Hourly* on a 15-minute target in the 4th, and a cadence equal to the
+target's own never skips a cycle when the target's cycles are all the same
+length. The comparison uses the cycle a run belonged to, not when it actually
+executed, so a late run or a skipped cycle cannot shift it — and a skipped cycle
+(the server was down, the instance's connection budget stayed busy, or you
+rescheduled the target) is not made up later. A daylight-saving transition can
+make one cron cycle slightly shorter than the cadence period; that single cycle
+is skipped, the next one runs, and the cadence does not drift.
+
+**Run now** ignores the cadence and always runs the check, and a manual run does
+not count toward the cadence. Changing the cadence only affects future scheduled
+runs: it does not change the check's definition or create a new revision of it,
+so its history and thresholds are untouched. A cadence is not a schedule of its
+own — there is no per-check cron expression. If a check needs a rhythm independent
+of its target, move it to its own target.
+
+The cadence appears as a small badge on the check's row and in its drawer only
+when it is not *Follow target*.
 
 ### Scoping and limiting a check
 
@@ -207,15 +250,42 @@ effect when you press **Apply**.
 ### The target schedule
 
 A target has **one schedule**, shown in its workspace header next to the health
-summary (for example "Schedule: every hour · next in 12 minutes"). It applies to
-every enabled check on the table or view: when it comes due, all of them run in
-one scan batch. Use the pencil next to it to change the cadence (15
-minutes to 7 days); a change reschedules the target from now and never runs it
-immediately. While every check on the target is paused there is no next run, and
-resuming a check schedules the target one interval out. A check you move to a
-different target joins that target's schedule. Editing a single check cannot
-change its cadence — that is deliberate, so one table cannot have checks pulling
-in different directions.
+summary: for a fixed interval, "Schedule: every 2h · next in 12 minutes"; for a
+cron schedule, the expression and the time zone it is evaluated in, plus the next
+run. It applies to every enabled check on the table or view: when it comes due,
+all of them run in one scan batch. Use the pencil next to it to change the
+schedule. The dialog offers two exclusive forms under a **Runs every / Cron
+expression** switch:
+
+- **Runs every** — a fixed interval from 15 minutes to 7 days. This is the
+  default form, and the workspace's Data Quality settings seed the interval a new
+  target starts with.
+- **Cron expression** — a standard five-field expression (minute, hour,
+  day-of-month, month, day-of-week) evaluated in an IANA time zone, for example
+  `0 2 * * *` for every day at 02:00 or `0 9 * * 1` for every Monday at 09:00.
+  Occurrences must be at least 15 minutes apart; there is no upper bound, so a
+  monthly or yearly expression is allowed. Pick the time zone in the dialog from a
+  short list of common zones, your browser's zone and the schedule's current
+  zone. If a request leaves the time zone empty, the server resolves it to the
+  workspace's **check time zone** (Settings → Data Quality) and stores the
+  resolved zone, so changing that setting later does not move an existing
+  target.
+
+A change reschedules the target from now and never runs the checks immediately;
+the header shows the next run. While every check on the target is paused there is
+no next run, and resuming a check schedules the target from its saved schedule
+instead of firing at once. A check you move to a different target joins that
+target's schedule.
+
+A cron expression is local wall-clock time: a time that does not exist on a
+daylight-saving transition day is skipped rather than shifted, and the repeated
+hour on the fall-back day fires once. A run missed while the server was down is
+not caught up — the next run is the next occurrence after the server returns.
+
+Editing a single check cannot change the target's schedule — that is deliberate,
+so one table cannot have checks pulling in different directions. There is also no
+per-check cron expression; a check's **Run cadence** can only make it run *less*
+often than its target (see [Check run cadence](#check-run-cadence)).
 
 A target's **contract** is the target-level layer above its checks: defaults for
 authoring and a record of what has been published. It lives on the same target
@@ -455,6 +525,14 @@ same audience. Execution failures always notify the administrators and cannot be
 muted. When more than ten checks in one target's scan batch fail, one summary
 replaces the per-check messages. An administrator can also forward the same events to a webhook under Settings → Notifications; see [notifications.md](notifications.md).
 
+The workspace **quiet hours** and one-off **maintenance windows** under
+Settings → Notifications are the data quality maintenance window: checks keep
+running and judging, and in-app notifications are still written to the bell list,
+but outbound deliveries to webhook, chat and email channels are held until the
+window ends. A channel marked **Deliver during quiet hours** still sends. Nothing
+is dropped, so an alert raised during the window arrives when it closes; see
+[notifications.md](notifications.md#quiet-hours-and-maintenance-windows).
+
 A **structure change** on a watched table is its own message, sent once when the
 change is synced: to the owners of that target's checks, or to the workspace
 administrators when none of the checks has an owner. Tables nobody checks are not
@@ -672,9 +750,9 @@ creating the check, and the model never sees raw sample rows.
 
 Settings → Data Quality controls: the model-analysis switch and provider,
 whether failure samples are stored and how many, the **check time zone** (IANA
-name, empty = UTC) used to resolve time variables in filters and custom SQL, the
-default schedule a target
-starts with when it gets its first check, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
+name, empty = UTC) used to resolve time variables in filters and custom SQL and
+to resolve a cron schedule saved without a time zone, the default schedule a
+target starts with when it gets its first check, the daily execution ceiling, the **daily AI analysis ceiling (L1+L2,
 default 10,000)**, the daily column-analysis ceiling, the **concurrent LLM calls
 (default 8, range 1–64)**, the columns per analysis, whether raw sample
 values may be sent to the model, and the **weekly digest** schedule (see
@@ -711,7 +789,9 @@ pruned.
 | `ERROR(UNSUPPORTED)` | The check's engine cannot express it (for example regex on SQL Server, or `PERCENTILE` outside PostgreSQL/SQL Server), or a column the check names was dropped. |
 | A dry run fails with a parameter or SQL error | The message shows the compiled SQL and its bound values; check that the filter values and range/aggregate bounds match the column's type (for example a date written as a plain string, or a numeric bound for a text column). |
 | Checks never run | The check is paused or archived, the instance is gone, or the daily execution ceiling was reached (the next day resumes it; **Run now** still works). |
-| I cannot change one check's schedule | Scheduling is per target: all enabled checks on the target run together on the schedule shown in its workspace header, and a check inherits it. Change the cadence there, or pause the check to drop it from the target's runs. |
+| A cron expression is rejected when saving | It must be a standard five-field expression (minute hour day-of-month month day-of-week); shortcuts such as `@daily` are refused. Two occurrences must be at least 15 minutes apart, the expression must fire within five years, and the time zone must be a valid IANA name. A target whose time zone was left empty stores the workspace's check time zone. |
+| A cron target did not run at the expected time | The expression is evaluated in the target's own time zone, shown in the header — not your browser's or the server's. A local time that does not exist on a daylight-saving transition day is skipped, and the repeated hour on the fall-back day fires once. A run missed while the server was down is not caught up: the next run is the next occurrence after the server returns. Occurrences closer than 15 minutes are refused when saving, so `*/5 * * * *` cannot be scheduled. The next-run time in the header is the authority. |
+| I cannot change one check's schedule | Scheduling is per target: all enabled checks on the target run together on the schedule in its workspace header. To make one check run less often, open it and change its **Run cadence** (follow target, hourly, daily, weekly); a cadence can only be coarser than the target, and there is no per-check cron expression. For a rhythm independent of the target, move the check to its own target. **Run now** always runs it regardless of cadence. |
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. A scheduled check is retried on a later tick of the same target cycle (at most three attempts); a manual execution is not retried, so use **Run now** again. |
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in one target's scan batch and a summary was sent instead. |
@@ -727,7 +807,7 @@ pruned.
 | The trend has no threshold band | The check was edited after its last judged run, so its current thresholds never judged the drawn points; the row count change is plotted without a band on purpose, because its thresholds bound a percentage change against a baseline. |
 | Suggested thresholds are unavailable | The check has fewer than five judged executions; aggregate, row count change and schema drift checks have no suggestion; a row count check with an exact row count has nothing to suggest; and if the form's check type or measurement unit was changed, the suggestion describes the saved check and is disabled. |
 | A row count change check reports `NOT_EVALUATED` on its first run | It has no baseline yet: the first completed run records it and the comparison starts with the second. Newly created checks default *empty data* to pass so the first run does not look like a problem; an older check keeps its saved setting, which can be changed under Details. |
-| The row count change baseline seems stale | The baseline is the most recent completed execution with a non-zero measured count within seven days and two target intervals; zero-row and unmeasured executions are skipped, and the check falls back to its empty-data behavior when no baseline qualifies. |
+| The row count change baseline seems stale | The baseline is the most recent completed execution with a non-zero measured count within seven days and two target intervals (for a cron target, the expression's nominal interval); zero-row and unmeasured executions are skipped, and the check falls back to its empty-data behavior when no baseline qualifies. A target that runs less often than once every seven days — a monthly or yearly cron schedule, for example — never has a fresh enough baseline. |
 | Running *AI label fields* changed the recommendation thresholds | It should not: a pending recommendation is not overwritten by a label-pass draft. If a draft shows the default parameters instead, the recommendation was rejected/decided first, or *Regenerate* was used on the label pass. |
 | A CSV export stops early | The selection is capped at 100,000 rows; the app warns when the file was cut. Narrow the filters (especially the time window) and export again. |
 | "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |
