@@ -3,12 +3,19 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
 import {
+  QualityStatus,
+  QualityTargetSchema,
+  QualityTargetSummarySchema,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+import {
   ColumnMetadataSchema,
   ExternalTableMetadataSchema,
+  MetaType,
   type StoredMetadata,
   StoredMetadataSchema,
   TableMetadataSchema,
 } from "@/types/proto-es/v1/database_service_pb";
+import { qualitySignalKey } from "@/utils/dataQualitySignal";
 import ExternalTableList from "./ExternalTableList.vue";
 
 function externalTable(
@@ -77,6 +84,57 @@ describe("ExternalTableList", () => {
     await wrapper.find("tbody tr").trigger("click");
 
     expect(wrapper.emitted("select")?.[0]).toEqual([foreign]);
+  });
+
+  it("shows each external table's trust signal in the quality column", () => {
+    const monitoredGuid = "remote;catalog;public;foreign_users";
+    const monitored = externalTable(
+      "foreign_users",
+      "remote_server",
+      "remote_db",
+      ["user_id"]
+    );
+    monitored.guid = monitoredGuid;
+    const unmonitored = externalTable(
+      "foreign_orders",
+      "remote_server",
+      "remote_db",
+      []
+    );
+    unmonitored.guid = "remote;catalog;public;foreign_orders";
+    const wrapper = mount(ExternalTableList, {
+      props: {
+        items: [monitored, unmonitored],
+        qualitySignals: new Map([
+          [
+            qualitySignalKey(monitoredGuid, MetaType.EXTERNAL_TABLE),
+            create(QualityTargetSummarySchema, {
+              target: create(QualityTargetSchema, {
+                metaGuid: monitoredGuid,
+                metaType: MetaType.EXTERNAL_TABLE,
+              }),
+              worstStatus: QualityStatus.WARN,
+              enabledRuleCount: 1,
+              coveredColumnCount: 1,
+              totalColumnCount: 2,
+            }),
+          ],
+        ]),
+        qualityState: "ready",
+      },
+      global: { plugins: [i18n] },
+    });
+
+    const [monitoredRow, unmonitoredRow] = wrapper.findAll("tbody tr");
+    expect(monitoredRow?.text()).toContain(
+      i18n.global.t("dataQuality.status.warn")
+    );
+    expect(monitoredRow?.text()).toContain(
+      i18n.global.t("dataQuality.signal.coverage", { covered: 1, total: 2 })
+    );
+    expect(unmonitoredRow?.text()).toContain(
+      i18n.global.t("dataQuality.signal.notMonitored")
+    );
   });
 
   it("reports an empty list rather than rendering an empty table", () => {

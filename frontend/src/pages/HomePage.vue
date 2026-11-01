@@ -462,6 +462,7 @@ import {
   Network,
   RefreshCw,
   Rocket,
+  ShieldCheck,
   Sparkles,
   Table2,
   Users,
@@ -502,6 +503,12 @@ import { useAuthStore } from "@/store/modules/auth";
 import { useEnvironmentStore } from "@/store/modules/environment";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import {
+  coveragePercent,
+  formatPercentValue,
+  formatQualityScore,
+  openIssueCount,
+} from "@/utils/dataQualityOverview";
+import {
   formatDateTime,
   formatRelativeTime,
   formatTime,
@@ -518,6 +525,7 @@ const environmentStore = useEnvironmentStore();
 const {
   instances,
   recentRuns,
+  qualityOverview,
   estate,
   openLineage,
   databasesPerInstance,
@@ -531,6 +539,7 @@ const {
   canViewInstances,
   canViewDatabases,
   canViewOpenLineage,
+  canViewDataQuality,
   load,
 } = useDashboard();
 
@@ -563,6 +572,8 @@ const failedSectionLabels = computed(() =>
         return t("home.loadErrorInstances");
       case "databases":
         return t("home.loadErrorDatabases");
+      case "dataQuality":
+        return t("home.loadErrorDataQuality");
       default:
         return t("home.loadErrorOpenLineage");
     }
@@ -709,6 +720,22 @@ const stats = computed(() => {
         to: { name: "OpenLineageDatasets" },
       }
     );
+  }
+  if (canViewDataQuality.value && qualityOverview.value) {
+    const overview = qualityOverview.value;
+    items.push({
+      key: "dataQuality",
+      label: t("home.statDataQuality"),
+      value: formatPercentValue(
+        coveragePercent(overview.monitoredTableCount, overview.totalTableCount)
+      ),
+      hint: t("home.statDataQualityHint", {
+        score: formatQualityScore(overview.qualityScore),
+        count: openIssueCount(overview),
+      }),
+      icon: ShieldCheck,
+      to: { name: "DataQualityOverview" },
+    });
   }
 
   return items;

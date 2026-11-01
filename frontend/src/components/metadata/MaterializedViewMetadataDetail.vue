@@ -5,6 +5,13 @@
         <h1 class="text-2xl font-semibold tracking-tight wrap-break-word">
           {{ view.name }}
         </h1>
+        <QualitySignalBadge
+          v-if="guid"
+          :signal="qualitySignal"
+          :state="qualityState"
+          :guid="guid"
+          :meta-type="MetaType.MATERIALIZED_VIEW"
+        />
         <div
           v-if="view.comment"
           class="text-sm text-muted-foreground wrap-break-word max-w-xl"
@@ -47,6 +54,8 @@
       :table-guid="guid"
       :meta-type="MetaType.MATERIALIZED_VIEW"
       :columns="view.columns"
+      :signal="qualitySignal"
+      :signal-state="qualityState"
     />
 
     <template v-if="!guid || activeTab === 'details'">
@@ -73,12 +82,15 @@ import { Sparkles } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import MetadataQualitySection from "@/components/data-quality/MetadataQualitySection.vue";
+import QualitySignalBadge from "@/components/data-quality/QualitySignalBadge.vue";
 import MetadataColumnsSection from "@/components/metadata/MetadataColumnsSection.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import MetadataTabGroup from "@/components/metadata/MetadataTabGroup.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Button } from "@/components/ui/button";
+import type { QualitySignalState } from "@/composables/useQualitySignals";
 import { useAuthStore } from "@/store/modules/auth";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   type MaterializedViewMetadata,
   MetaType,
@@ -87,10 +99,16 @@ import { guidToRouteParams } from "@/utils/guid";
 import ExpandableText from "./ExpandableText.vue";
 import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 
-const props = defineProps<{
-  view: MaterializedViewMetadata;
-  guid?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    view: MaterializedViewMetadata;
+    guid?: string;
+    /** The target's trust signal, read by the metadata browser page. */
+    qualitySignal?: QualityTargetSummary;
+    qualityState?: QualitySignalState;
+  }>(),
+  { qualitySignal: undefined, qualityState: "idle" }
+);
 
 const { t } = useI18n();
 const authStore = useAuthStore();

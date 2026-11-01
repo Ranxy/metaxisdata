@@ -15,6 +15,7 @@ import {
   exportQualityIssues,
   exportQualityReport,
   exportQualityTargets,
+  listQualityTargets,
 } from "./data-quality";
 
 const mocks = vi.hoisted(() => ({
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   exportQualityIssues: vi.fn(),
   exportQualityTargets: vi.fn(),
   exportQualityReport: vi.fn(),
+  listQualityTargets: vi.fn(),
 }));
 
 vi.mock("./client", () => ({
@@ -30,6 +32,7 @@ vi.mock("./client", () => ({
     exportQualityIssues: mocks.exportQualityIssues,
     exportQualityTargets: mocks.exportQualityTargets,
     exportQualityReport: mocks.exportQualityReport,
+    listQualityTargets: mocks.listQualityTargets,
   },
 }));
 
@@ -155,6 +158,50 @@ describe("CSV export wrappers", () => {
       orderBy: QualityTargetOrder.ATTENTION,
       maxRows: 0,
     });
+  });
+});
+
+describe("target selection", () => {
+  it("asks for the exact objects it was handed, in request order", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      qualityTargets: [],
+      nextPageToken: "",
+    });
+
+    await listQualityTargets({
+      targets: [
+        { targetGuid: "inst1;shop;public;orders", metaType: MetaType.TABLE },
+        {
+          targetGuid: "inst1;shop;public;orders_view",
+          metaType: MetaType.VIEW,
+        },
+      ],
+    });
+
+    const request = mocks.listQualityTargets.mock.calls[0]?.[0];
+    expect(request.targets).toHaveLength(2);
+    expect(request.targets[0]).toMatchObject({
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
+    });
+    expect(request.targets[1]).toMatchObject({
+      targetGuid: "inst1;shop;public;orders_view",
+      metaType: MetaType.VIEW,
+    });
+    // A selection is not a page: the caller's cap and order are the server's.
+    expect(request.pageSize).toBe(50);
+    expect(request.pageToken).toBe("");
+  });
+
+  it("sends no selection for a directory read", async () => {
+    mocks.listQualityTargets.mockResolvedValue({
+      qualityTargets: [],
+      nextPageToken: "",
+    });
+
+    await listQualityTargets({ search: "orders" });
+
+    expect(mocks.listQualityTargets.mock.calls[0]?.[0].targets).toEqual([]);
   });
 });
 

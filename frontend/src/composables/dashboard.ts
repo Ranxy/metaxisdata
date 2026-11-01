@@ -1,5 +1,6 @@
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { computed, ref } from "vue";
+import { getQualityOverview } from "@/api/data-quality";
 import { listDatabases } from "@/api/database";
 import { listInstances } from "@/api/instance";
 import {
@@ -8,6 +9,7 @@ import {
   listOpenLineageTasks,
 } from "@/api/openlineage";
 import { useAuthStore } from "@/store/modules/auth";
+import type { QualityOverview } from "@/types/proto-es/v1/data_quality_service_pb";
 import type { Database } from "@/types/proto-es/v1/database_service_pb";
 import type { Instance } from "@/types/proto-es/v1/instance_service_pb";
 import type {
@@ -142,6 +144,7 @@ export function useDashboard() {
   const tasks = ref<OpenLineageTask[]>([]);
   const datasets = ref<OpenLineageDatasetResource[]>([]);
   const recentRuns = ref<OpenLineageRun[]>([]);
+  const qualityOverview = ref<QualityOverview | undefined>(undefined);
 
   const isLoading = ref(false);
   const failedSections = ref<string[]>([]);
@@ -159,6 +162,9 @@ export function useDashboard() {
   );
   const canViewOpenLineage = computed(() =>
     authStore.hasPermission("metaxisdata.openlineage.read")
+  );
+  const canViewDataQuality = computed(() =>
+    authStore.hasPermission("metaxisdata.dataQuality.rules.list")
   );
 
   const estate = computed(() =>
@@ -193,6 +199,23 @@ export function useDashboard() {
     } catch (error) {
       console.error("Failed to load databases for the dashboard:", error);
       failedSections.value.push("databases");
+    }
+  }
+
+  /**
+   * The workspace quality summary. The card shows coverage and the score, not
+   * the trend, so it reads a one-day window: the seven-day one would cost the
+   * first paint a query its reader never sees.
+   */
+  async function loadQuality() {
+    try {
+      qualityOverview.value = await getQualityOverview({ trendDays: 1 });
+    } catch (error) {
+      console.error(
+        "Failed to load the data quality summary for the dashboard:",
+        error
+      );
+      failedSections.value.push("dataQuality");
     }
   }
 
@@ -234,6 +257,9 @@ export function useDashboard() {
     if (canViewOpenLineage.value) {
       calls.push(loadOpenLineage());
     }
+    if (canViewDataQuality.value) {
+      calls.push(loadQuality());
+    }
     await Promise.all(calls);
     lastUpdated.value = new Date();
     isLoading.value = false;
@@ -243,6 +269,7 @@ export function useDashboard() {
     instances,
     databases,
     recentRuns,
+    qualityOverview,
     estate,
     openLineage,
     databasesPerInstance,
@@ -256,6 +283,7 @@ export function useDashboard() {
     canViewInstances,
     canViewDatabases,
     canViewOpenLineage,
+    canViewDataQuality,
     load,
   };
 }

@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuthStore } from "@/store/modules/auth";
+import { QualityOverviewSchema } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   type Database,
   DatabaseSchema,
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   listOpenLineageTasks: vi.fn(),
   listOpenLineageDatasets: vi.fn(),
   listOpenLineageRuns: vi.fn(),
+  getQualityOverview: vi.fn(),
 }));
 
 vi.mock("@/api/instance", () => ({ listInstances: mocks.listInstances }));
@@ -38,6 +40,9 @@ vi.mock("@/api/openlineage", () => ({
   listOpenLineageTasks: mocks.listOpenLineageTasks,
   listOpenLineageDatasets: mocks.listOpenLineageDatasets,
   listOpenLineageRuns: mocks.listOpenLineageRuns,
+}));
+vi.mock("@/api/data-quality", () => ({
+  getQualityOverview: mocks.getQualityOverview,
 }));
 
 function instance(
@@ -187,6 +192,7 @@ const PERMISSIONS = [
   "metaxisdata.instances.list",
   "metaxisdata.databases.list",
   "metaxisdata.openlineage.read",
+  "metaxisdata.dataQuality.rules.list",
 ];
 
 /** A fresh store, so one test's permissions never leak into the next. */
@@ -212,6 +218,9 @@ describe("useDashboard", () => {
       runs: [],
       nextPageToken: "",
     });
+    mocks.getQualityOverview.mockResolvedValue(
+      create(QualityOverviewSchema, {})
+    );
   });
 
   it("loads every permitted section and stamps the load time", async () => {
@@ -226,6 +235,44 @@ describe("useDashboard", () => {
     expect(mocks.listInstances).toHaveBeenCalledTimes(1);
     expect(mocks.listDatabases).toHaveBeenCalledTimes(1);
     expect(mocks.listOpenLineageTasks).toHaveBeenCalledTimes(1);
+    expect(mocks.getQualityOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the quality summary with a one-day window", async () => {
+    grant(PERMISSIONS);
+    mocks.getQualityOverview.mockResolvedValue(
+      create(QualityOverviewSchema, {
+        monitoredTableCount: 3,
+        totalTableCount: 12,
+        qualityScore: 82.5,
+      })
+    );
+    const dashboard = useDashboard();
+
+    await dashboard.load();
+
+    // The card shows coverage and score, not the trend, so the seven-day window
+    // would cost a query nobody reads.
+    expect(mocks.getQualityOverview).toHaveBeenCalledWith({ trendDays: 1 });
+    expect(dashboard.qualityOverview.value?.monitoredTableCount).toBe(3);
+    expect(dashboard.canViewDataQuality.value).toBe(true);
+  });
+
+  it("keeps the page when the quality summary fails", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    grant(PERMISSIONS);
+    mocks.getQualityOverview.mockRejectedValue(new Error("offline"));
+    const dashboard = useDashboard();
+
+    await dashboard.load();
+
+    expect(dashboard.failedSections.value).toEqual(["dataQuality"]);
+    expect(dashboard.qualityOverview.value).toBeUndefined();
+    // Every other section still loaded.
+    expect(mocks.listInstances).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
   });
 
   it("keeps the sections that loaded and names the ones that failed", async () => {
@@ -254,6 +301,7 @@ describe("useDashboard", () => {
     expect(mocks.listInstances).not.toHaveBeenCalled();
     expect(mocks.listDatabases).not.toHaveBeenCalled();
     expect(mocks.listOpenLineageTasks).not.toHaveBeenCalled();
+    expect(mocks.getQualityOverview).not.toHaveBeenCalled();
     expect(dashboard.failedSections.value).toEqual([]);
     expect(dashboard.isLoading.value).toBe(false);
   });

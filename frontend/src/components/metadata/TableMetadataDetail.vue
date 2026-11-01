@@ -14,6 +14,13 @@
           >
             {{ t("metadataBrowser.tables") }}
           </Badge>
+          <QualitySignalBadge
+            v-if="guid"
+            :signal="qualitySignal"
+            :state="qualityState"
+            :guid="guid"
+            :meta-type="MetaType.TABLE"
+          />
           <div
             v-if="table.userComment || table.comment"
             class="min-w-0 max-w-xl text-sm text-muted-foreground"
@@ -64,6 +71,8 @@
       :table-guid="guid"
       :meta-type="MetaType.TABLE"
       :columns="table.columns"
+      :signal="qualitySignal"
+      :signal-state="qualityState"
     />
 
     <template v-if="activeTab === 'columns'">
@@ -212,6 +221,7 @@ import {
 } from "vue";
 import { useI18n } from "vue-i18n";
 import MetadataQualitySection from "@/components/data-quality/MetadataQualitySection.vue";
+import QualitySignalBadge from "@/components/data-quality/QualitySignalBadge.vue";
 import MetadataHistorySection from "@/components/metadata/MetadataHistorySection.vue";
 import TableLineageSection from "@/components/metadata/TableLineageSection.vue";
 import { Badge } from "@/components/ui/badge";
@@ -224,8 +234,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { QualitySignalState } from "@/composables/useQualitySignals";
 import { useAuthStore } from "@/store/modules/auth";
 import { Engine } from "@/types/proto-es/v1/common_pb";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   MetaType,
   type TableMetadata,
@@ -237,12 +249,18 @@ import MetadataColumnsSection from "./MetadataColumnsSection.vue";
 import MetadataTabGroup from "./MetadataTabGroup.vue";
 import SchemaDefinitionDialog from "./SchemaDefinitionDialog.vue";
 
-const props = defineProps<{
-  table: TableMetadata;
-  instanceEngine?: Engine | null;
-  guid?: string;
-  selectedColumnName?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    table: TableMetadata;
+    instanceEngine?: Engine | null;
+    guid?: string;
+    selectedColumnName?: string;
+    /** The target's trust signal, read by the metadata browser page. */
+    qualitySignal?: QualityTargetSummary;
+    qualityState?: QualitySignalState;
+  }>(),
+  { qualitySignal: undefined, qualityState: "idle" }
+);
 
 const { t } = useI18n();
 const authStore = useAuthStore();

@@ -46,6 +46,47 @@
       </div>
     </div>
 
+    <!-- The contract's standing at a glance: the same trust signal the asset
+         header and the metadata lists carry, so the tab opens with the answer
+         before its cards. An unmonitored target offers the composer instead. -->
+    <div
+      v-if="signalState === 'ready'"
+      class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border px-4 py-3"
+    >
+      <div class="flex items-center gap-2">
+        <QualitySignalDot :tone="signalTone" />
+        <span class="text-sm font-medium">{{ signalStatus }}</span>
+      </div>
+      <div
+        v-for="fact in signalFacts"
+        :key="fact.key"
+        class="text-sm"
+        :title="fact.title"
+      >
+        <span class="text-muted-foreground">{{ fact.label }}</span>
+        <span class="ml-1 tabular-nums">{{ fact.value }}</span>
+      </div>
+      <!-- Paused is a state, not a verdict: it says why nothing is being
+           verified instead of showing health numbers nobody is updating. -->
+      <span
+        v-if="signalAllPaused"
+        class="text-sm text-muted-foreground"
+      >
+        {{ t("dataQuality.signal.allPausedHint") }}
+      </span>
+      <Button
+        v-if="!signal"
+        variant="outline"
+        size="sm"
+        class="ml-auto"
+        as-child
+      >
+        <RouterLink :to="targetWorkspaceTo">
+          {{ t("dataQuality.targets.startMonitoring") }}
+        </RouterLink>
+      </Button>
+    </div>
+
     <p
       v-if="actionError"
       class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm break-words text-destructive"
@@ -421,6 +462,7 @@ import {
   updateQualitySuggestion,
 } from "@/api/data-quality";
 import EmptyState from "@/components/common/EmptyState.vue";
+import QualitySignalDot from "@/components/data-quality/QualitySignalDot.vue";
 import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -440,6 +482,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import type { QualitySignalState } from "@/composables/useQualitySignals";
+import { useQualitySignalText } from "@/composables/useQualitySignalText";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -455,6 +499,7 @@ import {
   QualityStatus,
   type QualitySuggestion,
   QualitySuggestionStatus,
+  type QualityTargetSummary,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import type { ColumnMetadata } from "@/types/proto-es/v1/database_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -465,6 +510,7 @@ import {
   qualitySeverityVariant,
   qualityStatusKey,
   qualityStatusVariant,
+  qualityTargetWorkspaceRoute,
 } from "@/utils/dataQuality";
 import { ruleTypeForConfigCase } from "@/utils/dataQualityForm";
 import {
@@ -491,11 +537,17 @@ import { guidToRouteParams } from "@/utils/guid";
  * failure — and the actions are permission-gated.
  */
 
-const props = defineProps<{
-  tableGuid: string;
-  metaType: MetaType;
-  columns: ColumnMetadata[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    tableGuid: string;
+    metaType: MetaType;
+    columns: ColumnMetadata[];
+    /** The target's trust signal, read by the asset page that renders this tab. */
+    signal?: QualityTargetSummary;
+    signalState?: QualitySignalState;
+  }>(),
+  { signal: undefined, signalState: "idle" }
+);
 
 const { t, locale } = useI18n();
 const { formatError } = useErrorMessage();
@@ -528,12 +580,29 @@ const decideError = ref("");
 const actionError = ref("");
 
 // The target workspace is the one authoring surface; a check row carries the
-// check's resource name so the workspace can open it.
-const targetWorkspaceTo = computed(() => ({
-  name: "DataQualityTarget",
-  params: { targetGuid: guidToRouteParams(props.tableGuid) },
-  query: { metaType: String(props.metaType) },
-}));
+// check's resource name so the workspace can open it. An object nothing watches
+// opens the same workspace with its composer already open, which is its next step.
+const targetWorkspaceTo = computed(
+  () =>
+    qualityTargetWorkspaceRoute(props.tableGuid, props.metaType, {
+      add: props.signalState === "ready" && props.signal === undefined,
+    }) ?? {
+      name: "DataQualityTarget",
+      params: { targetGuid: guidToRouteParams(props.tableGuid) },
+      query: { metaType: String(props.metaType) },
+    }
+);
+
+const {
+  statusText: signalStatusText,
+  tone: signalToneOf,
+  facts,
+  allPaused,
+} = useQualitySignalText();
+const signalStatus = computed(() => signalStatusText(props.signal));
+const signalTone = computed(() => signalToneOf(props.signal));
+const signalFacts = computed(() => facts(props.signal));
+const signalAllPaused = computed(() => allPaused(props.signal));
 
 function checkTo(ruleName: string) {
   return {

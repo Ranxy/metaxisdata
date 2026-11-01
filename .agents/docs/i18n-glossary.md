@@ -193,4 +193,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | quiet hours | 静默时段 | Notifications | A workspace schedule during which outbound notifications are held instead of delivered. | notificationSettings. | zh-CN: `免打扰时段`, `安静时段` |
 | maintenance window | 维护窗口 | Notifications | A one-off absolute quiet window, for planned maintenance. | notificationSettings. | zh-CN: `维护时段` |
 | routing rule | 路由规则 | Notifications | An owner or team rule that sends matching events to the channels it names. | notificationSettings. | zh-CN: `路由策略`, `分发规则` |
+| not monitored | 未监控 | Data Quality | The state of a registry object that no live check watches. It is not a health verdict: it never renders as green or as 100%. | dataQuality. | — |
+| all checks paused | 检查已全部暂停 | Data Quality | The state of a target whose checks all exist but none is enabled. Nothing is verified, so it is not a health verdict. | dataQuality. | — |
+| last run | 最近运行 | Data Quality | When a target's checks last produced a verdict, rendered as a relative time and never as a raw timestamp in a list. | dataQuality. | — |
 <!-- END GENERATED GLOSSARY -->

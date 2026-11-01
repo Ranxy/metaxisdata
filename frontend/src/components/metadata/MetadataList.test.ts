@@ -3,13 +3,23 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
 import {
+  QualityStatus,
+  QualityTargetSchema,
+  type QualityTargetSummary,
+  QualityTargetSummarySchema,
+} from "@/types/proto-es/v1/data_quality_service_pb";
+import {
   ApplicationSQLMetadataSchema,
   ColumnMetadataSchema,
   ExternalTableMetadataSchema,
+  MaterializedViewMetadataSchema,
   MetaType,
   type StoredMetadata,
   StoredMetadataSchema,
+  TableMetadataSchema,
+  ViewMetadataSchema,
 } from "@/types/proto-es/v1/database_service_pb";
+import { qualitySignalKey } from "@/utils/dataQualitySignal";
 import MetadataList from "./MetadataList.vue";
 
 function externalTable(name: string, server: string): StoredMetadata {
@@ -45,6 +55,57 @@ function applicationSQL(id: string, text: string): StoredMetadata {
         databaseName: "shop",
       }),
     },
+  });
+}
+
+/** A stored row of `metaType` with a GUID, so its signal can be looked up. */
+function stored(guid: string, metaType: MetaType): StoredMetadata {
+  switch (metaType) {
+    case MetaType.TABLE:
+      return create(StoredMetadataSchema, {
+        guid,
+        type: {
+          case: "tableMetadata",
+          value: create(TableMetadataSchema, { name: "orders" }),
+        },
+      });
+    case MetaType.VIEW:
+      return create(StoredMetadataSchema, {
+        guid,
+        type: {
+          case: "viewMetadata",
+          value: create(ViewMetadataSchema, { name: "orders_view" }),
+        },
+      });
+    case MetaType.MATERIALIZED_VIEW:
+      return create(StoredMetadataSchema, {
+        guid,
+        type: {
+          case: "materializedViewMetadata",
+          value: create(MaterializedViewMetadataSchema, {
+            name: "orders_mv",
+          }),
+        },
+      });
+    default:
+      return create(StoredMetadataSchema, {
+        guid,
+        type: {
+          case: "externalTableMetadata",
+          value: create(ExternalTableMetadataSchema, { name: "orders_ext" }),
+        },
+      });
+  }
+}
+
+/** One monitored signal with a verdict and column coverage. */
+function signal(guid: string, metaType: MetaType): QualityTargetSummary {
+  return create(QualityTargetSummarySchema, {
+    target: create(QualityTargetSchema, { metaGuid: guid, metaType }),
+    worstStatus: QualityStatus.PASS,
+    enabledRuleCount: 1,
+    coveredColumnCount: 2,
+    totalColumnCount: 4,
   });
 }
 
@@ -88,6 +149,51 @@ describe("MetadataList", () => {
     expect(wrapper.text()).toContain("id");
     expect(wrapper.text()).toContain("bigint");
     expect(wrapper.text()).not.toContain("No databases");
+  });
+
+  it("hands the trust signals to every list a check can target", () => {
+    for (const metaType of [
+      MetaType.TABLE,
+      MetaType.VIEW,
+      MetaType.MATERIALIZED_VIEW,
+      MetaType.EXTERNAL_TABLE,
+    ]) {
+      const guid = `inst1;shop;public;object_${metaType}`;
+      const wrapper = mount(MetadataList, {
+        props: {
+          metaType,
+          items: [stored(guid, metaType)],
+          qualitySignals: new Map([
+            [qualitySignalKey(guid, metaType), signal(guid, metaType)],
+          ]),
+          qualityState: "ready",
+        },
+        global: { plugins: [i18n] },
+      });
+
+      const row = wrapper.find("tbody tr");
+      expect(row.text(), `meta type ${metaType}`).toContain(
+        i18n.global.t("dataQuality.status.pass")
+      );
+      expect(row.text()).toContain(
+        i18n.global.t("dataQuality.signal.coverage", { covered: 2, total: 4 })
+      );
+      wrapper.unmount();
+    }
+  });
+
+  it("draws no quality column for a caller who may not read the catalog", () => {
+    const wrapper = mount(MetadataList, {
+      props: {
+        metaType: MetaType.TABLE,
+        items: [stored("inst1;shop;public;orders", MetaType.TABLE)],
+      },
+      global: { plugins: [i18n] },
+    });
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.signal.column")
+    );
   });
 
   it("renders a group-neutral empty state for a type it has no list for", () => {

@@ -10,6 +10,7 @@
       <TableHeader>
         <TableRow>
           <TableHead>{{ t("metadataBrowser.externalTableName") }}</TableHead>
+          <TableHead v-if="qualitySignals !== undefined" class="hidden md:table-cell">{{ t("dataQuality.signal.column") }}</TableHead>
           <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.externalServer") }}</TableHead>
           <TableHead class="hidden md:table-cell">{{ t("metadataBrowser.externalDatabase") }}</TableHead>
           <TableHead class="hidden sm:table-cell">{{ t("metadataBrowser.columns") }}</TableHead>
@@ -31,6 +32,15 @@
               <Plug class="h-4 w-4 text-muted-foreground" />
               <span class="font-medium">{{ row.value.name }}</span>
             </div>
+          </TableCell>
+          <TableCell
+            v-if="qualitySignals !== undefined"
+            class="hidden md:table-cell"
+          >
+            <QualitySignalCell
+              :signal="qualitySignalOf(row.stored.guid)"
+              :state="qualityState"
+            />
           </TableCell>
           <TableCell class="hidden text-muted-foreground md:table-cell">
             {{ row.value.externalServerName || "-" }}
@@ -54,6 +64,7 @@ import { Plug } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
+import QualitySignalCell from "@/components/data-quality/QualitySignalCell.vue";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -63,16 +74,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type {
-  ExternalTableMetadata,
-  StoredMetadata,
+import type { QualitySignalState } from "@/composables/useQualitySignals";
+import type { QualityTargetSummary } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  type ExternalTableMetadata,
+  MetaType,
+  type StoredMetadata,
 } from "@/types/proto-es/v1/database_service_pb";
+import { qualitySignalKey } from "@/utils/dataQualitySignal";
 
-const props = defineProps<{ items: StoredMetadata[] }>();
+const props = withDefaults(
+  defineProps<{
+    items: StoredMetadata[];
+    qualitySignals?: Map<string, QualityTargetSummary>;
+    qualityState?: QualitySignalState;
+  }>(),
+  { qualitySignals: undefined, qualityState: "idle" }
+);
 
 defineEmits<{ select: [item: StoredMetadata] }>();
 
 const { t } = useI18n();
+
+function qualitySignalOf(guid: string): QualityTargetSummary | undefined {
+  return props.qualitySignals?.get(
+    qualitySignalKey(guid, MetaType.EXTERNAL_TABLE)
+  );
+}
 
 const rows = computed(() => {
   const list: Array<{
