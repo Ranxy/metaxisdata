@@ -6527,6 +6527,7 @@ paths:
                         - QUALITY_SUGGESTION_SOURCE_UNSPECIFIED
                         - QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE
                         - QUALITY_SUGGESTION_SOURCE_PROFILE
+                        - QUALITY_SUGGESTION_SOURCE_RECOMMENDATION
                     type: string
                     format: enum
                 - name: targetGuid
@@ -6670,6 +6671,43 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/BatchUpdateQualitySuggestionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualitySuggestions:recommendChecks:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Recommend checks for one table from its stored column profiles. The pass is
+                 deterministic: it needs no model, no provider configuration and no connection
+                 to the target database. Like every other generation pass it queues PENDING
+                 rule drafts only; a reviewer still decides which drafts become checks. The
+                 request refuses columns without a fresh profile, pointing at ProfileColumns.
+            operationId: DataQualityService_RecommendQualityChecks
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RecommendQualityChecksRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RecommendQualityChecksResponse'
                 default:
                     description: Default error response
                     content:
@@ -12981,6 +13019,7 @@ components:
                         - QUALITY_SUGGESTION_SOURCE_UNSPECIFIED
                         - QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE
                         - QUALITY_SUGGESTION_SOURCE_PROFILE
+                        - QUALITY_SUGGESTION_SOURCE_RECOMMENDATION
                     type: string
                     format: enum
                 target:
@@ -13539,6 +13578,69 @@ components:
             description: |-
                 RangeConfig counts rows outside a bound pair. At least one bound is required;
                  the values are strings parsed with the column's type.
+        RecommendQualityChecksRequest:
+            required:
+                - parent
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                tableGuid:
+                    type: string
+                    description: The globally unique metadata GUID of the table.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns to consider; empty means every column of the table. At most 50.
+                language:
+                    type: string
+                    description: |-
+                        The language the draft titles and rationales are written in, e.g. "en" or
+                         "zh-CN".
+                forceRegenerate:
+                    type: boolean
+                    description: |-
+                        Regenerate proposals that already have a pending proposal, or were already
+                         decided. Regeneration still never duplicates: it refreshes the one pending
+                         proposal per identity.
+        RecommendQualityChecksResponse:
+            type: object
+            properties:
+                qualitySuggestions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualitySuggestion'
+                    description: The rule drafts this pass queued, created or refreshed.
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualitySuggestionQueueSummary'
+                    description: |-
+                        What the pass did to the queue, including the columns no check was derived
+                         for.
         ReferentialIntegrityConfig:
             type: object
             properties:

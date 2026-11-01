@@ -342,6 +342,20 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
   }
 
+  // Recommend checks for one table from its stored column profiles. The pass is
+  // deterministic: it needs no model, no provider configuration and no connection
+  // to the target database. Like every other generation pass it queues PENDING
+  // rule drafts only; a reviewer still decides which drafts become checks. The
+  // request refuses columns without a fresh profile, pointing at ProfileColumns.
+  rpc RecommendQualityChecks(RecommendQualityChecksRequest) returns (RecommendQualityChecksResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualitySuggestions:recommendChecks"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
+  }
+
   // Explain one failed execution as a stream of hypotheses.
   //
   // No (google.api.http) annotation: this is a server-streaming method, and the
@@ -645,10 +659,17 @@ enum QualitySuggestionStatus {
 }
 
 // QualitySuggestionSource is what produced a suggestion.
+//
+// PROFILE is the model-assisted label pass, which reads profiles and asks the
+// model for semantic types; RECOMMENDATION is the deterministic pass that derives
+// checks and thresholds from the profile alone. They are separate values because a
+// generation pass may only refresh a pending proposal it produced itself (unless
+// it is forced), and because the review queue shows the source to the reviewer.
 enum QualitySuggestionSource {
   QUALITY_SUGGESTION_SOURCE_UNSPECIFIED = 0;
   QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE = 1;
   QUALITY_SUGGESTION_SOURCE_PROFILE = 2;
+  QUALITY_SUGGESTION_SOURCE_RECOMMENDATION = 3;
 }
 
 // QualityLabelSource is who asserted a column's semantic label.
@@ -2321,6 +2342,35 @@ message SuggestColumnLabelsResponse {
   repeated QualitySuggestion quality_suggestions = 1;
 
   // What the pass did to the queue, including the columns it left out.
+  QualitySuggestionQueueSummary summary = 2;
+}
+
+message RecommendQualityChecksRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The globally unique metadata GUID of the table.
+  string table_guid = 2;
+  MetaType meta_type = 3;
+  // The columns to consider; empty means every column of the table. At most 50.
+  repeated string columns = 4;
+
+  // The language the draft titles and rationales are written in, e.g. "en" or
+  // "zh-CN".
+  string language = 5;
+
+  // Regenerate proposals that already have a pending proposal, or were already
+  // decided. Regeneration still never duplicates: it refreshes the one pending
+  // proposal per identity.
+  bool force_regenerate = 6;
+}
+
+message RecommendQualityChecksResponse {
+  // The rule drafts this pass queued, created or refreshed.
+  repeated QualitySuggestion quality_suggestions = 1;
+
+  // What the pass did to the queue, including the columns no check was derived
+  // for.
   QualitySuggestionQueueSummary summary = 2;
 }
 

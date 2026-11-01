@@ -1445,6 +1445,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.RecommendQualityChecksRequest"><span class="badge">M</span>RecommendQualityChecksRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RecommendQualityChecksResponse"><span class="badge">M</span>RecommendQualityChecksResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ReferentialIntegrityConfig"><span class="badge">M</span>ReferentialIntegrityConfig</a>
                 </li>
               
@@ -18800,6 +18808,100 @@ on both ends. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.RecommendQualityChecksRequest">RecommendQualityChecksRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>table_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The globally unique metadata GUID of the table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>columns</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The columns to consider; empty means every column of the table. At most 50. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>language</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The language the draft titles and rationales are written in, e.g. &#34;en&#34; or
+&#34;zh-CN&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>force_regenerate</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Regenerate proposals that already have a pending proposal, or were already
+decided. Regeneration still never duplicates: it refreshes the one pending
+proposal per identity. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.RecommendQualityChecksResponse">RecommendQualityChecksResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_suggestions</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestion">QualitySuggestion</a></td>
+                  <td>repeated</td>
+                  <td><p>The rule drafts this pass queued, created or refreshed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.v1.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</a></td>
+                  <td></td>
+                  <td><p>What the pass did to the queue, including the columns no check was derived
+for. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ReferentialIntegrityConfig">ReferentialIntegrityConfig</h3>
         <p>ReferentialIntegrityConfig counts child rows with no matching parent row. The</p><p>parent must live in the same instance, database and schema.</p>
 
@@ -21014,7 +21116,7 @@ the same instance and database.</p></td>
         </table>
       
         <h3 id="metaxisdata.v1.QualitySuggestionSource">QualitySuggestionSource</h3>
-        <p>QualitySuggestionSource is what produced a suggestion.</p>
+        <p>QualitySuggestionSource is what produced a suggestion.</p><p>PROFILE is the model-assisted label pass, which reads profiles and asks the</p><p>model for semantic types; RECOMMENDATION is the deterministic pass that derives</p><p>checks and thresholds from the profile alone. They are separate values because a</p><p>generation pass may only refresh a pending proposal it produced itself (unless</p><p>it is forced), and because the review queue shows the source to the reviewer.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -21036,6 +21138,12 @@ the same instance and database.</p></td>
               <tr>
                 <td>QUALITY_SUGGESTION_SOURCE_PROFILE</td>
                 <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_SOURCE_RECOMMENDATION</td>
+                <td>3</td>
                 <td><p></p></td>
               </tr>
             
@@ -21435,6 +21543,17 @@ measurements; there is no get or update.</p></td>
                 <td><a href="#metaxisdata.v1.SuggestColumnLabelsRequest">SuggestColumnLabelsRequest</a></td>
                 <td><a href="#metaxisdata.v1.SuggestColumnLabelsResponse">SuggestColumnLabelsResponse</a></td>
                 <td><p>Propose semantic labels for up to 50 columns of one table.</p></td>
+              </tr>
+            
+              <tr>
+                <td>RecommendQualityChecks</td>
+                <td><a href="#metaxisdata.v1.RecommendQualityChecksRequest">RecommendQualityChecksRequest</a></td>
+                <td><a href="#metaxisdata.v1.RecommendQualityChecksResponse">RecommendQualityChecksResponse</a></td>
+                <td><p>Recommend checks for one table from its stored column profiles. The pass is
+deterministic: it needs no model, no provider configuration and no connection
+to the target database. Like every other generation pass it queues PENDING
+rule drafts only; a reviewer still decides which drafts become checks. The
+request refuses columns without a fresh profile, pointing at ProfileColumns.</p></td>
               </tr>
             
               <tr>
@@ -21892,6 +22011,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>SuggestColumnLabels</td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualitySuggestions:suggestLabels</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>RecommendQualityChecks</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualitySuggestions:recommendChecks</td>
                 <td>*</td>
               </tr>
               

@@ -4913,7 +4913,7 @@ the same instance and database.</p></td>
         </table>
       
         <h3 id="metaxisdata.store.QualitySuggestionSource">QualitySuggestionSource</h3>
-        <p>QualitySuggestionSource is what produced a suggestion.</p>
+        <p>QualitySuggestionSource is what produced a suggestion.</p><p>PROFILE is the model-assisted label pass, which reads profiles and asks the</p><p>model for semantic types; RECOMMENDATION is the deterministic pass that derives</p><p>checks and thresholds from the profile alone. They are separate values because a</p><p>generation pass may only refresh a pending proposal it produced itself (unless</p><p>it is forced), and because the review queue shows the source to the reviewer.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -4935,6 +4935,12 @@ the same instance and database.</p></td>
               <tr>
                 <td>QUALITY_SUGGESTION_SOURCE_PROFILE</td>
                 <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SUGGESTION_SOURCE_RECOMMENDATION</td>
+                <td>3</td>
                 <td><p></p></td>
               </tr>
             

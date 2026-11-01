@@ -1669,11 +1669,18 @@ QualitySuggestionKind is what a suggestion proposes.
 ### QualitySuggestionSource
 QualitySuggestionSource is what produced a suggestion.
 
+PROFILE is the model-assisted label pass, which reads profiles and asks the
+model for semantic types; RECOMMENDATION is the deterministic pass that derives
+checks and thresholds from the profile alone. They are separate values because a
+generation pass may only refresh a pending proposal it produced itself (unless
+it is forced), and because the review queue shows the source to the reviewer.
+
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | QUALITY_SUGGESTION_SOURCE_UNSPECIFIED | 0 |  |
 | QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE | 1 |  |
 | QUALITY_SUGGESTION_SOURCE_PROFILE | 2 |  |
+| QUALITY_SUGGESTION_SOURCE_RECOMMENDATION | 3 |  |
 
 
 

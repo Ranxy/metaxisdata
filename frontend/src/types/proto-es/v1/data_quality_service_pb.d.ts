@@ -4420,6 +4420,86 @@ export declare type SuggestColumnLabelsResponse = Message<"metaxisdata.v1.Sugges
 export declare const SuggestColumnLabelsResponseSchema: GenMessage<SuggestColumnLabelsResponse>;
 
 /**
+ * @generated from message metaxisdata.v1.RecommendQualityChecksRequest
+ */
+export declare type RecommendQualityChecksRequest = Message<"metaxisdata.v1.RecommendQualityChecksRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The globally unique metadata GUID of the table.
+   *
+   * @generated from field: string table_guid = 2;
+   */
+  tableGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The columns to consider; empty means every column of the table. At most 50.
+   *
+   * @generated from field: repeated string columns = 4;
+   */
+  columns: string[];
+
+  /**
+   * The language the draft titles and rationales are written in, e.g. "en" or
+   * "zh-CN".
+   *
+   * @generated from field: string language = 5;
+   */
+  language: string;
+
+  /**
+   * Regenerate proposals that already have a pending proposal, or were already
+   * decided. Regeneration still never duplicates: it refreshes the one pending
+   * proposal per identity.
+   *
+   * @generated from field: bool force_regenerate = 6;
+   */
+  forceRegenerate: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.RecommendQualityChecksRequest.
+ * Use `create(RecommendQualityChecksRequestSchema)` to create a new message.
+ */
+export declare const RecommendQualityChecksRequestSchema: GenMessage<RecommendQualityChecksRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.RecommendQualityChecksResponse
+ */
+export declare type RecommendQualityChecksResponse = Message<"metaxisdata.v1.RecommendQualityChecksResponse"> & {
+  /**
+   * The rule drafts this pass queued, created or refreshed.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualitySuggestion quality_suggestions = 1;
+   */
+  qualitySuggestions: QualitySuggestion[];
+
+  /**
+   * What the pass did to the queue, including the columns no check was derived
+   * for.
+   *
+   * @generated from field: metaxisdata.v1.QualitySuggestionQueueSummary summary = 2;
+   */
+  summary?: QualitySuggestionQueueSummary;
+};
+
+/**
+ * Describes the message metaxisdata.v1.RecommendQualityChecksResponse.
+ * Use `create(RecommendQualityChecksResponseSchema)` to create a new message.
+ */
+export declare const RecommendQualityChecksResponseSchema: GenMessage<RecommendQualityChecksResponse>;
+
+/**
  * @generated from message metaxisdata.v1.ExplainQualityExecutionRequest
  */
 export declare type ExplainQualityExecutionRequest = Message<"metaxisdata.v1.ExplainQualityExecutionRequest"> & {
@@ -6973,6 +7053,12 @@ export declare const QualitySuggestionStatusSchema: GenEnum<QualitySuggestionSta
 /**
  * QualitySuggestionSource is what produced a suggestion.
  *
+ * PROFILE is the model-assisted label pass, which reads profiles and asks the
+ * model for semantic types; RECOMMENDATION is the deterministic pass that derives
+ * checks and thresholds from the profile alone. They are separate values because a
+ * generation pass may only refresh a pending proposal it produced itself (unless
+ * it is forced), and because the review queue shows the source to the reviewer.
+ *
  * @generated from enum metaxisdata.v1.QualitySuggestionSource
  */
 export enum QualitySuggestionSource {
@@ -6990,6 +7076,11 @@ export enum QualitySuggestionSource {
    * @generated from enum value: QUALITY_SUGGESTION_SOURCE_PROFILE = 2;
    */
   PROFILE = 2,
+
+  /**
+   * @generated from enum value: QUALITY_SUGGESTION_SOURCE_RECOMMENDATION = 3;
+   */
+  RECOMMENDATION = 3,
 }
 
 /**
@@ -7921,6 +8012,20 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof SuggestColumnLabelsRequestSchema;
     output: typeof SuggestColumnLabelsResponseSchema;
+  },
+  /**
+   * Recommend checks for one table from its stored column profiles. The pass is
+   * deterministic: it needs no model, no provider configuration and no connection
+   * to the target database. Like every other generation pass it queues PENDING
+   * rule drafts only; a reviewer still decides which drafts become checks. The
+   * request refuses columns without a fresh profile, pointing at ProfileColumns.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.RecommendQualityChecks
+   */
+  recommendQualityChecks: {
+    methodKind: "unary";
+    input: typeof RecommendQualityChecksRequestSchema;
+    output: typeof RecommendQualityChecksResponseSchema;
   },
   /**
    * Explain one failed execution as a stream of hypotheses.

@@ -1162,12 +1162,19 @@ func (QualitySuggestionStatus) EnumDescriptor() ([]byte, []int) {
 }
 
 // QualitySuggestionSource is what produced a suggestion.
+//
+// PROFILE is the model-assisted label pass, which reads profiles and asks the
+// model for semantic types; RECOMMENDATION is the deterministic pass that derives
+// checks and thresholds from the profile alone. They are separate values because a
+// generation pass may only refresh a pending proposal it produced itself (unless
+// it is forced), and because the review queue shows the source to the reviewer.
 type QualitySuggestionSource int32
 
 const (
 	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_UNSPECIFIED      QualitySuggestionSource = 0
 	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE QualitySuggestionSource = 1
 	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_PROFILE          QualitySuggestionSource = 2
+	QualitySuggestionSource_QUALITY_SUGGESTION_SOURCE_RECOMMENDATION   QualitySuggestionSource = 3
 )
 
 // Enum value maps for QualitySuggestionSource.
@@ -1176,11 +1183,13 @@ var (
 		0: "QUALITY_SUGGESTION_SOURCE_UNSPECIFIED",
 		1: "QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE",
 		2: "QUALITY_SUGGESTION_SOURCE_PROFILE",
+		3: "QUALITY_SUGGESTION_SOURCE_RECOMMENDATION",
 	}
 	QualitySuggestionSource_value = map[string]int32{
 		"QUALITY_SUGGESTION_SOURCE_UNSPECIFIED":      0,
 		"QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE": 1,
 		"QUALITY_SUGGESTION_SOURCE_PROFILE":          2,
+		"QUALITY_SUGGESTION_SOURCE_RECOMMENDATION":   3,
 	}
 )
 
@@ -5918,11 +5927,12 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"!QUALITY_SUGGESTION_STATUS_PENDING\x10\x01\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_ACCEPTED\x10\x02\x12&\n" +
 	"\"QUALITY_SUGGESTION_STATUS_REJECTED\x10\x03\x12(\n" +
-	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04*\x9b\x01\n" +
+	"$QUALITY_SUGGESTION_STATUS_SUPERSEDED\x10\x04*\xc9\x01\n" +
 	"\x17QualitySuggestionSource\x12)\n" +
 	"%QUALITY_SUGGESTION_SOURCE_UNSPECIFIED\x10\x00\x12.\n" +
 	"*QUALITY_SUGGESTION_SOURCE_NATURAL_LANGUAGE\x10\x01\x12%\n" +
-	"!QUALITY_SUGGESTION_SOURCE_PROFILE\x10\x02*y\n" +
+	"!QUALITY_SUGGESTION_SOURCE_PROFILE\x10\x02\x12,\n" +
+	"(QUALITY_SUGGESTION_SOURCE_RECOMMENDATION\x10\x03*y\n" +
 	"\x12QualityLabelSource\x12$\n" +
 	" QUALITY_LABEL_SOURCE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bQUALITY_LABEL_SOURCE_MANUAL\x10\x01\x12\x1c\n" +
