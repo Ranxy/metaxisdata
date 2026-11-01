@@ -196,4 +196,6 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | not monitored | 未监控 | Data Quality | The state of a registry object that no live check watches. It is not a health verdict: it never renders as green or as 100%. | dataQuality. | — |
 | all checks paused | 检查已全部暂停 | Data Quality | The state of a target whose checks all exist but none is enabled. Nothing is verified, so it is not a health verdict. | dataQuality. | — |
 | last run | 最近运行 | Data Quality | When a target's checks last produced a verdict, rendered as a relative time and never as a raw timestamp in a list. | dataQuality. | — |
+| trend | 趋势 | Data Quality | A check's judged values over its recent executions, plotted oldest to newest. | dataQuality. | zh-CN: `走势` |
+| baseline | 基线 | Data Quality | The previous measurement a row-count-change check compares its current count with. | dataQuality. | — |
 <!-- END GENERATED GLOSSARY -->

@@ -30,6 +30,7 @@ import {
   QualityTargetPathSchema,
   QualityTargetSchema,
   QualityThresholdMetric,
+  type QualityThresholdSuggestion,
   RangeConfigSchema,
   ReferentialIntegrityConfigSchema,
   RegexConfigSchema,
@@ -239,6 +240,21 @@ export const ON_EMPTY_IRRELEVANT_RULE_TYPES: QualityRuleType[] = [
 /** True when the on_empty behavior can change this rule type's verdict. */
 export function isOnEmptyRelevant(ruleType: QualityRuleType): boolean {
   return !ON_EMPTY_IRRELEVANT_RULE_TYPES.includes(ruleType);
+}
+
+/**
+ * The empty-result behaviour a *new* check of this type starts with, or
+ * undefined to keep the editor's default. A count-change check's first run only
+ * records the baseline the next run compares against and therefore has no
+ * verdict; PASS is the behaviour that says exactly that. An existing check keeps
+ * whatever it saved, so callers apply this to a create form only.
+ */
+export function defaultOnEmptyForNewRule(
+  ruleType: QualityRuleType
+): QualityEmptyBehavior | undefined {
+  return ruleType === QualityRuleType.ROW_COUNT_CHANGE
+    ? QualityEmptyBehavior.PASS
+    : undefined;
 }
 
 const DIMENSION_BY_RULE_TYPE: Partial<
@@ -1340,6 +1356,97 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       break;
   }
   return form;
+}
+
+/**
+ * Fill a form from a suggested threshold snapshot, leaving every other field
+ * alone. It is a form edit, not a save: the caller still has to submit the check.
+ *
+ * The suggestion's bounds are shaped like the snapshot the rule itself records —
+ * fail/warn values for a single upper bound, the pairs for a two-sided row-count
+ * range — so each arm reads the same numbers the judge would compare against.
+ * Only bounds actually present are written; a missing one keeps what the form
+ * already held rather than being invented.
+ */
+export function applyThresholdSuggestion(
+  form: RuleFormState,
+  suggestion: QualityThresholdSuggestion
+): RuleFormState {
+  const thresholds = suggestion.thresholds;
+  if (!thresholds) {
+    return form;
+  }
+  const config: RuleConfigForm = { ...form.config };
+  const fail = numberText(thresholds.failValue);
+  const warn = numberText(thresholds.warnValue);
+  const set = (field: keyof RuleConfigForm, value: string | undefined) => {
+    if (value !== undefined) {
+      (config as Record<string, string | undefined>)[field] = value;
+    }
+  };
+  const setSingleBounds = () => {
+    set("failThreshold", fail);
+    set("warnThreshold", warn);
+  };
+
+  switch (form.ruleType) {
+    case QualityRuleType.ROW_COUNT:
+      set("minRows", integerText(thresholds.failValue));
+      set("maxRows", integerText(thresholds.failValueUpper));
+      set("warnMinRows", integerText(thresholds.warnValue));
+      set("warnMaxRows", integerText(thresholds.warnValueUpper));
+      break;
+    case QualityRuleType.NULL_PERCENT:
+      // A null check owns its count/percent switch instead of the shared
+      // threshold metric; writing the suggestion into the other unit would
+      // turn "5 rows" into "5%".
+      if (form.config.nullMetric === "count") {
+        set("maxNullCount", integerText(thresholds.failValue));
+        set("warnNullCount", integerText(thresholds.warnValue));
+      } else {
+        set("maxNullPct", fail);
+        set("warnNullPct", warn);
+      }
+      break;
+    case QualityRuleType.FRESHNESS:
+      // A lag is measured in whole seconds; a fractional suggestion is rounded.
+      set("maxLagSeconds", integerText(thresholds.failValue));
+      set("warnLagSeconds", integerText(thresholds.warnValue));
+      break;
+    case QualityRuleType.UNIQUE:
+    case QualityRuleType.UNIQUE_COMBINATION:
+    case QualityRuleType.ACCEPTED_VALUES:
+    case QualityRuleType.RANGE:
+    case QualityRuleType.REGEX:
+    case QualityRuleType.STRING_LENGTH:
+    case QualityRuleType.REFERENTIAL_INTEGRITY:
+    case QualityRuleType.CROSS_COLUMN:
+    case QualityRuleType.GROUP_CHECK:
+    case QualityRuleType.CEL_EXPRESSION:
+    case QualityRuleType.CUSTOM_SQL:
+    case QualityRuleType.CROSS_TABLE:
+      setSingleBounds();
+      break;
+    default:
+      // Row-count change and schema drift have no bound this read model suggests;
+      // a form in either arm stays untouched.
+      return form;
+  }
+  return { ...form, config };
+}
+
+/** A bound as form text, without float noise like `0.30000000000000004`. */
+function numberText(value: number | undefined): string | undefined {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return String(Number(value.toFixed(6)));
+}
+
+/** A bound as whole-unit form text (bounds are stored as integers server-side). */
+function integerText(value: number | undefined): string | undefined {
+  const text = numberText(value);
+  return text === undefined ? undefined : String(Math.round(Number(text)));
 }
 
 // ---- update mask ----

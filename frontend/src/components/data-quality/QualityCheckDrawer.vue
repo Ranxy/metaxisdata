@@ -150,6 +150,18 @@
                         >
                           {{ t("dataQuality.noResults") }}
                         </p>
+                        <!-- A count-change check judges against its last
+                             observation, so the sheet names the value it compared
+                             with rather than leaving the verdict unexplained. -->
+                        <p
+                          v-if="isRowCountChangeCheck && latest"
+                          class="text-sm text-muted-foreground"
+                        >
+                          {{ t("dataQuality.baseline.label") }}
+                          <span class="font-medium text-foreground tabular-nums">
+                            {{ baselineLabel }}
+                          </span>
+                        </p>
                         <RouterLink
                           v-if="canViewExecution && latestSummary.execution"
                           :to="executionRoute(latestSummary.execution)"
@@ -203,6 +215,39 @@
                       @select="openExecution"
                     />
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card v-if="canListExecutions">
+                <CardHeader class="border-b">
+                  <CardTitle class="text-base">
+                    {{ t("dataQuality.trend.title") }}
+                  </CardTitle>
+                  <CardDescription>
+                    {{ t("dataQuality.trend.description") }}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent class="pt-4">
+                  <p
+                    v-if="trendError"
+                    class="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm break-words text-destructive"
+                  >
+                    {{ trendError }}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      class="mt-2 block"
+                      @click="retryTrend"
+                    >
+                      {{ t("common.refresh") }}
+                    </Button>
+                  </p>
+                  <QualityObservedTrendChart
+                    v-else-if="trend && rule"
+                    :trend="trend"
+                    :rule-type="rule.ruleType"
+                    @select="openTrendPoint"
+                  />
                 </CardContent>
               </Card>
 
@@ -531,6 +576,7 @@ import {
   deleteQualityRule,
   getQualityExecution,
   getQualityRule,
+  getQualityRuleTrend,
   listQualityExecutions,
   runQualityRules,
   updateQualityRule,
@@ -539,11 +585,18 @@ import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import QualityExplainDrawer from "@/components/data-quality/QualityExplainDrawer.vue";
+import QualityObservedTrendChart from "@/components/data-quality/QualityObservedTrendChart.vue";
 import QualityResultStrip from "@/components/data-quality/QualityResultStrip.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -571,6 +624,9 @@ import {
   type QualityRule,
   QualityRuleSchema,
   QualityRuleState,
+  type QualityRuleTrend,
+  type QualityRuleTrendPoint,
+  QualityRuleType,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import type { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -614,6 +670,8 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 /** How many recent executions the sheet reads and shows. */
 const RECENT_EXECUTION_LIMIT = 20;
+/** How many judged executions the trend draws, matching the editor's suggestion. */
+const TREND_LIMIT = 30;
 
 /** How often a manual run's planned executions are polled, and for how long. */
 const RUN_POLL_INTERVAL_MS = 2000;
@@ -655,9 +713,11 @@ const {
 
 const rule = ref<QualityRule>();
 const executions = ref<QualityExecution[]>([]);
+const trend = ref<QualityRuleTrend>();
 const loading = ref(false);
 const error = ref("");
 const executionsError = ref("");
+const trendError = ref("");
 const running = ref(false);
 const changingState = ref(false);
 const deleting = ref(false);
@@ -814,6 +874,23 @@ const latestSummary = computed(() => {
       : "-",
     execution: summary?.execution,
   };
+});
+
+/** A count-change check's baseline is one of the facts its verdict rests on. */
+const isRowCountChangeCheck = computed(
+  () => rule.value?.ruleType === QualityRuleType.ROW_COUNT_CHANGE
+);
+
+/** The baseline the newest execution compared with; missing before the first. */
+const baselineLabel = computed(() => {
+  const execution = latest.value;
+  if (!execution || execution.baselineValue === undefined) {
+    return t("dataQuality.baseline.missing");
+  }
+  return t("dataQuality.baseline.value", {
+    value: formatRowCount(execution.baselineValue, locale.value),
+    time: formatDateTime(execution.baselineTime, locale.value),
+  });
 });
 
 const STATUS_ORDER = [
@@ -984,6 +1061,19 @@ function executionRoute(name: string) {
   };
 }
 
+/** Re-read just the trend; the rest of the sheet already loaded. */
+function retryTrend() {
+  void loadTrend(props.ruleName, loadTicket);
+}
+
+/** A trend point is one execution; opening it is the same navigation as a strip. */
+function openTrendPoint(point: QualityRuleTrendPoint) {
+  if (!canViewExecution.value || !point.execution) {
+    return;
+  }
+  void router.push(executionRoute(point.execution));
+}
+
 /** A strip click is navigation, so it needs the execution's own permission. */
 function openExecution(execution: QualityExecution) {
   if (!canViewExecution.value) {
@@ -1021,6 +1111,36 @@ async function loadExecutions(name: string, ticket: number) {
   }
 }
 
+/**
+ * The measured history. It is a separate, optional read: a failure leaves the
+ * verdict, the recent executions and the definition intact, and the card offers
+ * its own retry instead of failing the whole sheet.
+ */
+async function loadTrend(name: string, ticket: number) {
+  if (!canListExecutions.value) {
+    return;
+  }
+  try {
+    const loaded = await getQualityRuleTrend(name, { limit: TREND_LIMIT });
+    if (ticket !== loadTicket) {
+      return;
+    }
+    trend.value = loaded;
+    trendError.value = "";
+  } catch (cause: unknown) {
+    if (ticket !== loadTicket) {
+      return;
+    }
+    trend.value = undefined;
+    // The trend card owns its own sentence: a Connect code's generic message
+    // ("the server hit an internal error") says nothing about what is missing.
+    // The reason stays in the console for the operator; the reader gets the
+    // card's name and a retry.
+    console.error("Failed to load the quality trend", cause);
+    trendError.value = t("dataQuality.trend.loadFailed");
+  }
+}
+
 async function load() {
   if (!props.open || !canView.value) {
     return;
@@ -1033,9 +1153,12 @@ async function load() {
   loading.value = true;
   error.value = "";
   executionsError.value = "";
+  trendError.value = "";
   rule.value = undefined;
   executions.value = [];
+  trend.value = undefined;
   const executionsRead = loadExecutions(name, ticket);
+  const trendRead = loadTrend(name, ticket);
   try {
     const loaded = await getQualityRule(name);
     if (ticket !== loadTicket) {
@@ -1058,7 +1181,7 @@ async function load() {
       loading.value = false;
     }
   }
-  await executionsRead;
+  await Promise.all([executionsRead, trendRead]);
 }
 
 watch(

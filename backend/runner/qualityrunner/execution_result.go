@@ -83,12 +83,16 @@ func (r *Runner) loadRuleSnapshot(ctx context.Context, ruleID int64) (*dataquali
 	}, head, nil
 }
 
-// ruleBaseline returns the rule's last evaluated observation, the denominator
-// row_count_change compares the current count against. An unreadable baseline is
-// not fatal: the rule then reports NOT_EVALUATED, which is the correct "no
-// baseline" verdict rather than a made-up comparison.
-func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64, interval time.Duration) *float64 {
-	executions, err := r.stores.ListRecentQualityExecutions(ctx, ruleID, 1)
+// ruleBaseline returns the rule's newest usable observation, the denominator
+// row_count_change compares the current count against. The read is bounded to the
+// rule's current target: after a move the old table's history is not a
+// denominator for the new one. Several rows are read because the newest completed
+// executions may carry no observation or zero rows; the baseline picker skips
+// those. An unreadable baseline is not fatal: the rule then reports
+// NOT_EVALUATED, which is the correct "no baseline" verdict rather than a
+// made-up comparison.
+func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64, target store.MetaGUIDKey, interval time.Duration) *baselineObservation {
+	executions, err := r.stores.ListRecentQualityExecutions(ctx, ruleID, &target, baselineCandidateLimit)
 	if err != nil {
 		slog.Warn("failed to read a quality rule baseline",
 			slog.Int64("rule", ruleID),
@@ -166,6 +170,15 @@ func buildExecutionMessage(planned *store.QualityExecutionMessage, outcome *rule
 		execution.Truncated = outcome.execution.Truncated
 	}
 	execution.ObservedValue = observedValue(outcome.state.Status, outcome.observation.Observed)
+	if outcome.baseline != nil {
+		// The baseline is evidence, not a verdict, so it is recorded whatever the
+		// status: a NOT_EVALUATED row still tells the reader which row count it
+		// would have compared against, and a FAIL shows the number it grew from.
+		value := outcome.baseline.Value
+		measuredAt := outcome.baseline.MeasuredAt
+		execution.BaselineValue = &value
+		execution.BaselineTime = &measuredAt
+	}
 	return execution
 }
 

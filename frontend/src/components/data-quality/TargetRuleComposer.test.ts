@@ -9,15 +9,18 @@ import UserSelect from "@/components/common/UserSelect.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import { Select } from "@/components/ui/select";
+import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityComparison,
   QualityEmptyBehavior,
   QualityFilterOperator,
   type QualityRule,
   QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleState,
+  QualityRuleTrendSchema,
   QualityRuleType,
   QualitySeverity,
   QualitySuggestionKind,
@@ -25,6 +28,11 @@ import {
   QualitySuggestionStatus,
   QualityTargetPathSchema,
   QualityTargetSchema,
+  QualityThresholdSuggestionMethod,
+  QualityThresholdSuggestionSchema,
+  QualityThresholdsSchema,
+  QualityTrendUnit,
+  RowCountChangeConfigSchema,
   RowCountConfigSchema,
   UniqueConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -47,6 +55,7 @@ const mocks = vi.hoisted(() => ({
   createQualityRule: vi.fn(),
   updateQualityRule: vi.fn(),
   previewQualityRule: vi.fn(),
+  getQualityRuleTrend: vi.fn(),
   listAllMetadata: vi.fn(),
 }));
 
@@ -54,6 +63,7 @@ vi.mock("@/api/data-quality", () => ({
   createQualityRule: mocks.createQualityRule,
   updateQualityRule: mocks.updateQualityRule,
   previewQualityRule: mocks.previewQualityRule,
+  getQualityRuleTrend: mocks.getQualityRuleTrend,
 }));
 
 vi.mock("@/api/database", () => ({
@@ -124,6 +134,7 @@ function ruleFixture(
     tags?: string[];
     minRows?: bigint;
     column?: string;
+    config?: QualityRule["config"];
   } = {}
 ): QualityRule {
   const ruleType = options.ruleType ?? QualityRuleType.ROW_COUNT;
@@ -161,7 +172,27 @@ function ruleFixture(
       }),
       columns: [],
     }),
-    config: create(QualityRuleConfigSchema, { config }),
+    config: options.config ?? create(QualityRuleConfigSchema, { config }),
+  });
+}
+
+/** A trend whose suggestion offers the full two-sided row-count range. */
+function suggestedTrendFixture() {
+  return create(QualityRuleTrendSchema, {
+    rule: CREATED,
+    unit: QualityTrendUnit.COUNT,
+    points: [],
+    suggestion: create(QualityThresholdSuggestionSchema, {
+      sampleSize: 12,
+      method: QualityThresholdSuggestionMethod.OBSERVED_RANGE,
+      thresholds: create(QualityThresholdsSchema, {
+        comparison: QualityComparison.OUTSIDE_RANGE,
+        failValue: 10,
+        failValueUpper: 100,
+        warnValue: 20,
+        warnValueUpper: 80,
+      }),
+    }),
   });
 }
 
@@ -252,6 +283,7 @@ describe("TargetRuleComposer", () => {
       referencedColumns: [],
       parameters: [],
     });
+    mocks.getQualityRuleTrend.mockResolvedValue(suggestedTrendFixture());
     mocks.createQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: CREATED,
@@ -729,6 +761,116 @@ describe("TargetRuleComposer", () => {
     await flushPromises();
 
     expect(mocks.listAllMetadata).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+  it("uses the saved check's trend to suggest thresholds, without saving", async () => {
+    const success = vi.spyOn(notify, "success");
+    const wrapper = await mountComposer({ rule: ruleFixture() });
+    await flushPromises();
+
+    // Editing asks for the check's own history; creating never does.
+    expect(mocks.getQualityRuleTrend).toHaveBeenCalledWith(CREATED, {
+      limit: 30,
+      signal: expect.any(AbortSignal),
+    });
+    expect(document.body.textContent).toContain(
+      label("dataQuality.trend.suggestion.title")
+    );
+    // Reading the suggestion is not applying it: the saved bound is still in
+    // the form until the reader asks for the new one.
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-field-minRows")?.value
+    ).toBe("1");
+
+    dialogButton(label("dataQuality.trend.suggestion.apply"))?.click();
+    await flushPromises();
+
+    // The suggestion only fills the form: both bounds are now typed in, and
+    // nothing has been written to the server yet.
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-field-minRows")?.value
+    ).toBe("10");
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-field-maxRows")?.value
+    ).toBe("100");
+    expect(mocks.updateQualityRule).not.toHaveBeenCalled();
+    expect(success).toHaveBeenCalledWith(
+      label("dataQuality.trend.suggestion.applied")
+    );
+    success.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("disables the suggestion when the edited form changes the measurement unit", async () => {
+    const wrapper = await mountComposer({ rule: ruleFixture() });
+    await flushPromises();
+
+    // Switching the check type makes the saved history's unit unrelated to the
+    // form being edited, so the panel refuses to copy its numbers in.
+    typeButton(QualityRuleType.UNIQUE)?.click();
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.trend.suggestion.unitChanged")
+    );
+    const button = dialogButton(label("dataQuality.trend.suggestion.apply")) as
+      | HTMLButtonElement
+      | undefined;
+    expect(button?.disabled).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("keeps an existing count-change check's saved empty behaviour", async () => {
+    const original = ruleFixture({
+      ruleType: QualityRuleType.ROW_COUNT_CHANGE,
+      config: create(QualityRuleConfigSchema, {
+        onEmpty: QualityEmptyBehavior.NOT_EVALUATED,
+        config: {
+          case: "rowCountChange",
+          value: create(RowCountChangeConfigSchema, { maxIncreasePct: 10 }),
+        },
+      }),
+    });
+    const wrapper = await mountComposer({ rule: original });
+
+    // The new-check default is PASS, but an edit must not rewrite what the check
+    // already saved: renaming it sends the stored behaviour back unchanged.
+    mocks.updateQualityRule.mockResolvedValue(original);
+    setInput("#dq-composer-title", "Renamed");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.saveChanges"))?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRule).toHaveBeenCalledTimes(1);
+    const [saved] = mocks.updateQualityRule.mock.calls[0] as [QualityRule];
+    expect(saved.config?.onEmpty).toBe(QualityEmptyBehavior.NOT_EVALUATED);
+    wrapper.unmount();
+  });
+
+  it("starts a new count-change check with on_empty pass and explains why", async () => {
+    const wrapper = await mountComposer();
+    await nextTick();
+
+    typeButton(QualityRuleType.ROW_COUNT_CHANGE)?.click();
+    await flushPromises();
+
+    // A count-change check's first run only records a baseline; the editor says
+    // so next to the empty-result control instead of leaving the reader to
+    // discover it from a NOT_EVALUATED verdict.
+    expect(document.body.textContent).toContain(
+      label("dataQuality.editor.onEmptyRowCountChangeHint")
+    );
+
+    setInput("#dq-composer-title", "Row count stays stable");
+    setInput("#dq-field-maxIncreasePct", "10");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    expect(rule.config?.config.case).toBe("rowCountChange");
+    expect(rule.config?.onEmpty).toBe(QualityEmptyBehavior.PASS);
     wrapper.unmount();
   });
 });

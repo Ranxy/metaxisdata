@@ -20,22 +20,29 @@ import {
   QualityRuleConfigSchema,
   QualityRuleSchema,
   QualityRuleState,
+  QualityRuleTrendPointSchema,
+  QualityRuleTrendSchema,
   QualityRuleType,
   QualitySeverity,
   QualityStatus,
   QualityTargetPathSchema,
   QualityTargetSchema,
   QualityThresholdMetric,
+  QualityTrendUnit,
+  RowCountChangeConfigSchema,
   RowCountConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import QualityCheckDrawer from "./QualityCheckDrawer.vue";
+import QualityObservedTrendChart from "./QualityObservedTrendChart.vue";
 
 const mocks = vi.hoisted(() => ({
   getQualityRule: vi.fn(),
   getQualityExecution: vi.fn(),
   listQualityExecutions: vi.fn(),
+  getQualityRuleTrend: vi.fn(),
   runQualityRules: vi.fn(),
   updateQualityRule: vi.fn(),
   deleteQualityRule: vi.fn(),
@@ -46,6 +53,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   getQualityRule: mocks.getQualityRule,
   getQualityExecution: mocks.getQualityExecution,
   listQualityExecutions: mocks.listQualityExecutions,
+  getQualityRuleTrend: mocks.getQualityRuleTrend,
   runQualityRules: mocks.runQualityRules,
   updateQualityRule: mocks.updateQualityRule,
   deleteQualityRule: mocks.deleteQualityRule,
@@ -153,6 +161,54 @@ function executionsFixture() {
   ];
 }
 
+/** The check's measured history, oldest first, as the trend RPC returns it. */
+function trendFixture() {
+  return create(QualityRuleTrendSchema, {
+    rule: RULE,
+    unit: QualityTrendUnit.COUNT,
+    points: [
+      create(QualityRuleTrendPointSchema, {
+        execution: "workspaces/ws/qualityExecutions/3",
+        status: QualityStatus.PASS,
+        value: 12,
+        failedRows: 0n,
+        totalRows: 12n,
+        startTime: timestampFromDate(new Date(START.getTime() - 120_000)),
+      }),
+      create(QualityRuleTrendPointSchema, {
+        execution: "workspaces/ws/qualityExecutions/2",
+        status: QualityStatus.FAIL,
+        value: 0,
+        failedRows: 10n,
+        totalRows: 10n,
+        startTime: timestampFromDate(new Date(START.getTime() - 60_000)),
+      }),
+      create(QualityRuleTrendPointSchema, {
+        execution: "workspaces/ws/qualityExecutions/1",
+        status: QualityStatus.PASS,
+        value: 11,
+        failedRows: 0n,
+        totalRows: 11n,
+        startTime: timestampFromDate(START),
+      }),
+    ],
+  });
+}
+
+/** A count-change rule, whose verdict rests on a baseline. */
+function countChangeRuleFixture() {
+  return ruleFixture({
+    ruleType: QualityRuleType.ROW_COUNT_CHANGE,
+    config: create(QualityRuleConfigSchema, {
+      onEmpty: QualityEmptyBehavior.PASS,
+      config: {
+        case: "rowCountChange",
+        value: create(RowCountChangeConfigSchema, { maxIncreasePct: 10 }),
+      },
+    }),
+  });
+}
+
 /** The execution `runQualityRules` plans: it starts without a verdict. */
 function plannedExecution(state: QualityExecutionState) {
   return create(QualityExecutionSchema, {
@@ -242,6 +298,7 @@ describe("QualityCheckDrawer", () => {
       items: executionsFixture(),
       nextPageToken: "",
     });
+    mocks.getQualityRuleTrend.mockResolvedValue(trendFixture());
     mocks.runQualityRules.mockResolvedValue([]);
     mocks.updateQualityRule.mockImplementation(
       async (rule: ReturnType<typeof ruleFixture>) => rule
@@ -560,6 +617,106 @@ describe("QualityCheckDrawer", () => {
           | undefined
       )?.disabled
     ).toBe(false);
+    wrapper.unmount();
+  });
+  it("draws the check's measured history beside its verdict", async () => {
+    const { wrapper, router } = await mountDrawer();
+
+    expect(mocks.getQualityRuleTrend).toHaveBeenCalledWith(RULE, {
+      limit: 30,
+    });
+    const text = document.body.textContent ?? "";
+    expect(text).toContain(label("dataQuality.trend.title"));
+    expect(text).toContain(label("dataQuality.trend.description"));
+
+    const chart = wrapper.findComponent(QualityObservedTrendChart);
+    expect(chart.exists()).toBe(true);
+    expect(chart.props("trend").points).toHaveLength(3);
+
+    // A point is one execution: opening it lands on the execution detail page.
+    const point = chart.props("trend").points[1];
+    chart.vm.$emit("select", point);
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe("DataQualityExecutionDetail");
+    expect(router.currentRoute.value.params.executionId).toEqual([
+      "workspaces",
+      "ws",
+      "qualityExecutions",
+      "2",
+    ]);
+    wrapper.unmount();
+  });
+
+  it("keeps the rest of the sheet when only the trend read fails", async () => {
+    mocks.getQualityRuleTrend.mockRejectedValueOnce(
+      new ConnectError("trend down", Code.Internal)
+    );
+    const { wrapper } = await mountDrawer();
+
+    // The verdict, the history and the definition are unaffected.
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Orders should have rows");
+    expect(text).toContain(label("dataQuality.status.fail"));
+    expect(text).toContain(label("dataQuality.trend.loadFailed"));
+
+    buttonByText(label("common.refresh"))?.click();
+    await flushPromises();
+    expect(mocks.getQualityRuleTrend).toHaveBeenCalledTimes(2);
+    expect(wrapper.findComponent(QualityObservedTrendChart).exists()).toBe(
+      true
+    );
+    wrapper.unmount();
+  });
+
+  it("names the baseline a count-change check compared with", async () => {
+    mocks.getQualityRule.mockResolvedValue(countChangeRuleFixture());
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [
+        create(QualityExecutionSchema, {
+          ...executionFixture(0, "PASS"),
+          baselineValue: 100,
+          baselineTime: timestampFromDate(
+            new Date(START.getTime() - 86_400_000)
+          ),
+        }),
+      ],
+      nextPageToken: "",
+    });
+    const withBaseline = await mountDrawer();
+    const text = document.body.textContent ?? "";
+    expect(text).toContain(label("dataQuality.baseline.label"));
+    expect(text).toContain(
+      label("dataQuality.baseline.value", {
+        value: "100",
+        time: formatDateTime(
+          timestampFromDate(new Date(START.getTime() - 86_400_000)),
+          "en-US"
+        ),
+      })
+    );
+    withBaseline.wrapper.unmount();
+
+    // A first observation has no baseline to compare with, and says so.
+    mocks.listQualityExecutions.mockResolvedValue({
+      items: [executionFixture(0, "PASS")],
+      nextPageToken: "",
+    });
+    const withoutBaseline = await mountDrawer();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.baseline.missing")
+    );
+    withoutBaseline.wrapper.unmount();
+  });
+
+  it("does not read the trend without the executions.list permission", async () => {
+    const { wrapper } = await mountDrawer({
+      permissions: ["metaxisdata.dataQuality.rules.get"],
+    });
+
+    expect(mocks.getQualityRuleTrend).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.trend.title")
+    );
     wrapper.unmount();
   });
 });

@@ -255,6 +255,7 @@
     - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
+    - [GetQualityRuleTrendRequest](#metaxisdata-v1-GetQualityRuleTrendRequest)
     - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
     - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
     - [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest)
@@ -312,6 +313,8 @@
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
     - [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory)
+    - [QualityRuleTrend](#metaxisdata-v1-QualityRuleTrend)
+    - [QualityRuleTrendPoint](#metaxisdata-v1-QualityRuleTrendPoint)
     - [QualityRun](#metaxisdata-v1-QualityRun)
     - [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts)
     - [QualitySuggestion](#metaxisdata-v1-QualitySuggestion)
@@ -325,6 +328,7 @@
     - [QualityTargetPath](#metaxisdata-v1-QualityTargetPath)
     - [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule)
     - [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary)
+    - [QualityThresholdSuggestion](#metaxisdata-v1-QualityThresholdSuggestion)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
     - [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint)
     - [RangeConfig](#metaxisdata-v1-RangeConfig)
@@ -381,6 +385,9 @@
     - [QualitySuggestionStatus](#metaxisdata-v1-QualitySuggestionStatus)
     - [QualityTargetOrder](#metaxisdata-v1-QualityTargetOrder)
     - [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric)
+    - [QualityThresholdSuggestionMethod](#metaxisdata-v1-QualityThresholdSuggestionMethod)
+    - [QualityTrendNotice](#metaxisdata-v1-QualityTrendNotice)
+    - [QualityTrendUnit](#metaxisdata-v1-QualityTrendUnit)
   
     - [DataQualityService](#metaxisdata-v1-DataQualityService)
   
@@ -4766,6 +4773,22 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityRuleTrendRequest"></a>
+
+### GetQualityRuleTrendRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| limit | [int32](#int32) |  | How many of the check&#39;s most recent judged executions to read. Omitted or non-positive means the default of 30; values above 90 are coerced to 90, the execution retention window in days. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityRunRequest"></a>
 
 ### GetQualityRunRequest
@@ -5633,6 +5656,8 @@ the same row.
 | finish_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | Unset while the execution is PENDING or RUNNING. |
 | run | [string](#string) |  | The dispatch batch that planned this execution, so the execution directory can group checks by the run that produced them. Format: workspaces/{workspace}/qualityRuns/{quality_run} |
 | attempt | [int32](#int32) |  | The scheduled attempt number in the target&#39;s current due cycle: 1 for the first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions always use 1. A retry is planned only while the attempt budget lasts. |
+| baseline_value | [double](#double) | optional | The row count a row_count_change check compared against. Unset for every other type, and for a first observation that had no recent baseline to compare with (the verdict is then NOT_EVALUATED, driven by on_empty). |
+| baseline_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When that baseline was measured. Unset whenever baseline_value is. |
 
 
 
@@ -5943,6 +5968,52 @@ QualityRuleHistory is one rule&#39;s recent completed executions.
 
 
 
+<a name="metaxisdata-v1-QualityRuleTrend"></a>
+
+### QualityRuleTrend
+QualityRuleTrend is one check&#39;s measured history, oldest point first so a chart
+draws left to right. Points come from the check&#39;s executions against its
+current target: executions of an earlier rule definition that had a different
+rule type are not comparable and are left out.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+| unit | [QualityTrendUnit](#metaxisdata-v1-QualityTrendUnit) |  | The unit the points and both threshold bounds are expressed in. |
+| points | [QualityRuleTrendPoint](#metaxisdata-v1-QualityRuleTrendPoint) | repeated |  |
+| thresholds | [QualityThresholds](#metaxisdata-v1-QualityThresholds) |  | The band the check judges against now. It is set only when the newest point was judged with the rule&#39;s current revision, so the drawn band always describes the rule this trend was read with; a check edited since its last run draws no band and explains why in band_notice. |
+| band_notice | [QualityTrendNotice](#metaxisdata-v1-QualityTrendNotice) |  |  |
+| suggestion | [QualityThresholdSuggestion](#metaxisdata-v1-QualityThresholdSuggestion) |  | A threshold derived from the same history, offered to the editor. Nothing is applied by reading it; a person fills the form and saves the check. |
+| history_restarted | [bool](#bool) |  | True when executions from an earlier rule type were left out, i.e. the drawn history starts at a type change. The window is then shorter than the requested limit even when older judged executions exist. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityRuleTrendPoint"></a>
+
+### QualityRuleTrendPoint
+QualityRuleTrendPoint is one judged execution of the check.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
+| start_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| status | [QualityStatus](#metaxisdata-v1-QualityStatus) |  |  |
+| value | [double](#double) |  | The quantity the check judged, in the trend&#39;s unit. For a PERCENT check this is failed rows over total rows; a row_count_change check plots its row count. |
+| failed_rows | [int64](#int64) |  |  |
+| total_rows | [int64](#int64) |  |  |
+| sampled | [bool](#bool) |  | True when the observation was made over a sample rather than every row. |
+| rule_revision | [int32](#int32) |  | The rule revision the execution was judged with. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityRun"></a>
 
 ### QualityRun
@@ -6244,6 +6315,26 @@ plus the counts and health the row and the workspace header render.
 | recent_execution_count | [int32](#int32) |  |  |
 | covered_column_count | [int32](#int32) |  | Column coverage: how many of the target&#39;s current registry columns at least one ENABLED check reads, and the target&#39;s current registry column count. A check that names no column, a paused check and a column that no longer exists in the registry cover nothing, so covered_column_count never exceeds total_column_count; both come from one registry read, which is what keeps that true while schema sync is rewriting the column list. A target whose registry row no longer resolves reports 0/0. The formula is the workspace coverage&#39;s; see docs/data-quality.md. |
 | total_column_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityThresholdSuggestion"></a>
+
+### QualityThresholdSuggestion
+QualityThresholdSuggestion is a threshold derived from the check&#39;s history. It
+is a starting point for the editor, never a verdict: the values are rounded for
+display, the method is stated, and nothing is written until the check is saved.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| thresholds | [QualityThresholds](#metaxisdata-v1-QualityThresholds) |  | The suggested bounds, in the trend&#39;s unit and shaped like the snapshot the check itself records: fail_value/warn_value for a single upper bound, and the fail/warn pairs for the two-sided row-count bounds. Unset when no suggestion could be derived; notice then says why. |
+| sample_size | [int32](#int32) |  | How many judged executions the suggestion was derived from. |
+| method | [QualityThresholdSuggestionMethod](#metaxisdata-v1-QualityThresholdSuggestionMethod) |  |  |
+| notice | [QualityTrendNotice](#metaxisdata-v1-QualityTrendNotice) |  |  |
 
 
 
@@ -7244,6 +7335,52 @@ against: the number of failed rows, or failed rows divided by total rows.
 | QUALITY_THRESHOLD_METRIC_PERCENT | 2 |  |
 
 
+
+<a name="metaxisdata-v1-QualityThresholdSuggestionMethod"></a>
+
+### QualityThresholdSuggestionMethod
+QualityThresholdSuggestionMethod names the arithmetic behind a suggestion, so
+the editor can say how the number was reached.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_THRESHOLD_SUGGESTION_METHOD_UNSPECIFIED | 0 |  |
+| QUALITY_THRESHOLD_SUGGESTION_METHOD_P95_P99 | 1 | A single upper bound: warn = p95 and fail = p99 of the judged values. |
+| QUALITY_THRESHOLD_SUGGESTION_METHOD_OBSERVED_RANGE | 2 | Two-sided row-count bounds: the observed range widened by a margin, with the warn bounds at the observed extremes. |
+
+
+
+<a name="metaxisdata-v1-QualityTrendNotice"></a>
+
+### QualityTrendNotice
+QualityTrendNotice explains why a trend has no threshold band or no suggestion.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_TREND_NOTICE_UNSPECIFIED | 0 |  |
+| QUALITY_TREND_NOTICE_NO_JUDGED_EXECUTION | 1 | The check has no judged execution in the window. |
+| QUALITY_TREND_NOTICE_EDITED_SINCE_LAST_RUN | 2 | The check was edited after its newest judged execution, so its current thresholds never judged any of the drawn points. |
+| QUALITY_TREND_NOTICE_UNIT_NOT_COMPARABLE | 3 | The plotted value is not the quantity the thresholds bound: a row count against percent-change bounds. |
+| QUALITY_TREND_NOTICE_UNSUPPORTED_RULE_TYPE | 4 | The rule type has no numeric observation or no threshold shape this read model can suggest. |
+| QUALITY_TREND_NOTICE_INSUFFICIENT_HISTORY | 5 | Fewer judged executions than the suggestion needs (five). |
+| QUALITY_TREND_NOTICE_UNSUPPORTED_CONFIG | 6 | The rule type could be suggested, but its current config has no bound to fill in. |
+
+
+
+<a name="metaxisdata-v1-QualityTrendUnit"></a>
+
+### QualityTrendUnit
+QualityTrendUnit is the unit of a trend&#39;s values and threshold bounds.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_TREND_UNIT_UNSPECIFIED | 0 |  |
+| QUALITY_TREND_UNIT_COUNT | 1 | A number of rows: failed rows, a row count, a group count. |
+| QUALITY_TREND_UNIT_PERCENT | 2 | Already a percentage in 0-100, never a 0-1 ratio: a PERCENT threshold metric&#39;s failed rows over total rows, or a null percentage. |
+| QUALITY_TREND_UNIT_SECONDS | 3 | A lag in seconds. |
+| QUALITY_TREND_UNIT_NUMBER | 4 | An aggregate value or a table-to-table difference. |
+
+
  
 
  
@@ -7275,6 +7412,9 @@ scheduling is an internal concern and is not exposed as a resource.
 | RunQualityRules | [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest) | [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse) | Execute rules now. One execution is planned per selected rule; the call returns them all as PENDING after queueing them. Clients poll GetQualityExecution for each execution&#39;s state and outcome. |
 | ListQualityExecutions | [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest) | [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse) | List executions, newest first. |
 | GetQualityExecution | [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest) | [QualityExecution](#metaxisdata-v1-QualityExecution) | Read one execution: its state, verdict, and the evidence behind it. |
+| GetQualityRuleTrend | [GetQualityRuleTrendRequest](#metaxisdata-v1-GetQualityRuleTrendRequest) | [QualityRuleTrend](#metaxisdata-v1-QualityRuleTrend) | Read one check&#39;s judged values over its recent executions, the band its current thresholds draw, and a threshold suggestion derived from that history. It is a read model over the stored executions: nothing is written, audited or measured against the target database.
+
+Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a value, so only those appear as points; a check that has never been judged has no trend rather than a fabricated flat line. |
 | ExportQualityExecutions | [ExportQualityExecutionsRequest](#metaxisdata-v1-ExportQualityExecutionsRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the executions the same filters select as ListQualityExecutions as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
 
 Rows are read page by page, so the file is not a consistent snapshot: a row written while the export runs may fall in this file or the next. A stream error means the file is incomplete and must be discarded — only a completed stream is a document.

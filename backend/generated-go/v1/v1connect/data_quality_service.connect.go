@@ -64,6 +64,9 @@ const (
 	// DataQualityServiceGetQualityExecutionProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityExecution RPC.
 	DataQualityServiceGetQualityExecutionProcedure = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	// DataQualityServiceGetQualityRuleTrendProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityRuleTrend RPC.
+	DataQualityServiceGetQualityRuleTrendProcedure = "/metaxisdata.v1.DataQualityService/GetQualityRuleTrend"
 	// DataQualityServiceExportQualityExecutionsProcedure is the fully-qualified name of the
 	// DataQualityService's ExportQualityExecutions RPC.
 	DataQualityServiceExportQualityExecutionsProcedure = "/metaxisdata.v1.DataQualityService/ExportQualityExecutions"
@@ -209,6 +212,15 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
+	// Read one check's judged values over its recent executions, the band its
+	// current thresholds draw, and a threshold suggestion derived from that
+	// history. It is a read model over the stored executions: nothing is written,
+	// audited or measured against the target database.
+	//
+	// Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+	// value, so only those appear as points; a check that has never been judged has
+	// no trend rather than a fabricated flat line.
+	GetQualityRuleTrend(context.Context, *connect.Request[v1.GetQualityRuleTrendRequest]) (*connect.Response[v1.QualityRuleTrend], error)
 	// Export the executions the same filters select as ListQualityExecutions as one
 	// CSV document, streamed in slices. This is a file download, not a list: it
 	// stops at max_rows and reports the running row count on every slice.
@@ -439,6 +451,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceGetQualityExecutionProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityExecution")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityRuleTrend: connect.NewClient[v1.GetQualityRuleTrendRequest, v1.QualityRuleTrend](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityRuleTrendProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityRuleTrend")),
 			connect.WithClientOptions(opts...),
 		),
 		exportQualityExecutions: connect.NewClient[v1.ExportQualityExecutionsRequest, v1.ExportQualityDataChunk](
@@ -678,6 +696,7 @@ type dataQualityServiceClient struct {
 	runQualityRules                    *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
 	listQualityExecutions              *connect.Client[v1.ListQualityExecutionsRequest, v1.ListQualityExecutionsResponse]
 	getQualityExecution                *connect.Client[v1.GetQualityExecutionRequest, v1.QualityExecution]
+	getQualityRuleTrend                *connect.Client[v1.GetQualityRuleTrendRequest, v1.QualityRuleTrend]
 	exportQualityExecutions            *connect.Client[v1.ExportQualityExecutionsRequest, v1.ExportQualityDataChunk]
 	listQualityRuns                    *connect.Client[v1.ListQualityRunsRequest, v1.ListQualityRunsResponse]
 	getQualityRun                      *connect.Client[v1.GetQualityRunRequest, v1.QualityRun]
@@ -765,6 +784,11 @@ func (c *dataQualityServiceClient) ListQualityExecutions(ctx context.Context, re
 // GetQualityExecution calls metaxisdata.v1.DataQualityService.GetQualityExecution.
 func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, req *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error) {
 	return c.getQualityExecution.CallUnary(ctx, req)
+}
+
+// GetQualityRuleTrend calls metaxisdata.v1.DataQualityService.GetQualityRuleTrend.
+func (c *dataQualityServiceClient) GetQualityRuleTrend(ctx context.Context, req *connect.Request[v1.GetQualityRuleTrendRequest]) (*connect.Response[v1.QualityRuleTrend], error) {
+	return c.getQualityRuleTrend.CallUnary(ctx, req)
 }
 
 // ExportQualityExecutions calls metaxisdata.v1.DataQualityService.ExportQualityExecutions.
@@ -987,6 +1011,15 @@ type DataQualityServiceHandler interface {
 	ListQualityExecutions(context.Context, *connect.Request[v1.ListQualityExecutionsRequest]) (*connect.Response[v1.ListQualityExecutionsResponse], error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error)
+	// Read one check's judged values over its recent executions, the band its
+	// current thresholds draw, and a threshold suggestion derived from that
+	// history. It is a read model over the stored executions: nothing is written,
+	// audited or measured against the target database.
+	//
+	// Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+	// value, so only those appear as points; a check that has never been judged has
+	// no trend rather than a fabricated flat line.
+	GetQualityRuleTrend(context.Context, *connect.Request[v1.GetQualityRuleTrendRequest]) (*connect.Response[v1.QualityRuleTrend], error)
 	// Export the executions the same filters select as ListQualityExecutions as one
 	// CSV document, streamed in slices. This is a file download, not a list: it
 	// stops at max_rows and reports the running row count on every slice.
@@ -1213,6 +1246,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceGetQualityExecutionProcedure,
 		svc.GetQualityExecution,
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityExecution")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityRuleTrendHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityRuleTrendProcedure,
+		svc.GetQualityRuleTrend,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityRuleTrend")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceExportQualityExecutionsHandler := connect.NewServerStreamHandler(
@@ -1459,6 +1498,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceListQualityExecutionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityExecutionProcedure:
 			dataQualityServiceGetQualityExecutionHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityRuleTrendProcedure:
+			dataQualityServiceGetQualityRuleTrendHandler.ServeHTTP(w, r)
 		case DataQualityServiceExportQualityExecutionsProcedure:
 			dataQualityServiceExportQualityExecutionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityRunsProcedure:
@@ -1580,6 +1621,10 @@ func (UnimplementedDataQualityServiceHandler) ListQualityExecutions(context.Cont
 
 func (UnimplementedDataQualityServiceHandler) GetQualityExecution(context.Context, *connect.Request[v1.GetQualityExecutionRequest]) (*connect.Response[v1.QualityExecution], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityExecution is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityRuleTrend(context.Context, *connect.Request[v1.GetQualityRuleTrendRequest]) (*connect.Response[v1.QualityRuleTrend], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityRuleTrend is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ExportQualityExecutions(context.Context, *connect.Request[v1.ExportQualityExecutionsRequest], *connect.ServerStream[v1.ExportQualityDataChunk]) error {

@@ -6004,6 +6004,55 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRules/{qualityRule}:trend:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read one check's judged values over its recent executions, the band its
+                 current thresholds draw, and a threshold suggestion derived from that
+                 history. It is a read model over the stored executions: nothing is written,
+                 audited or measured against the target database.
+
+                 Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+                 value, so only those appear as points; a check that has never been judged has
+                 no trend rather than a fabricated flat line.
+            operationId: DataQualityService_GetQualityRuleTrend
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRule
+                  in: path
+                  description: The qualityRule id.
+                  required: true
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: |-
+                    How many of the check's most recent judged executions to read. Omitted or
+                     non-positive means the default of 30; values above 90 are coerced to 90, the
+                     execution retention window in days.
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRuleTrend'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityRules:batchCreate:
         post:
             tags:
@@ -12312,6 +12361,17 @@ components:
                          first attempt, 2+ for a retry after an abandoned attempt. Manual executions
                          always use 1. A retry is planned only while the attempt budget lasts.
                     format: int32
+                baselineValue:
+                    type: number
+                    description: |-
+                        The row count a row_count_change check compared against. Unset for every
+                         other type, and for a first observation that had no recent baseline to
+                         compare with (the verdict is then NOT_EVALUATED, driven by on_empty).
+                    format: double
+                baselineTime:
+                    type: string
+                    description: When that baseline was measured. Unset whenever baseline_value is.
+                    format: date-time
             description: |-
                 QualityExecution is one rule checked once: the durable unit of the data
                  quality engine. A scheduled tick or a manual request plans one execution per
@@ -12889,6 +12949,100 @@ components:
                         $ref: '#/components/schemas/QualityExecutionSummary'
                     description: Newest first. At most 20 are returned.
             description: QualityRuleHistory is one rule's recent completed executions.
+        QualityRuleTrend:
+            type: object
+            properties:
+                rule:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRules/{quality_rule}'
+                unit:
+                    enum:
+                        - QUALITY_TREND_UNIT_UNSPECIFIED
+                        - QUALITY_TREND_UNIT_COUNT
+                        - QUALITY_TREND_UNIT_PERCENT
+                        - QUALITY_TREND_UNIT_SECONDS
+                        - QUALITY_TREND_UNIT_NUMBER
+                    type: string
+                    description: The unit the points and both threshold bounds are expressed in.
+                    format: enum
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRuleTrendPoint'
+                thresholds:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityThresholds'
+                    description: |-
+                        The band the check judges against now. It is set only when the newest point
+                         was judged with the rule's current revision, so the drawn band always
+                         describes the rule this trend was read with; a check edited since its last
+                         run draws no band and explains why in band_notice.
+                bandNotice:
+                    enum:
+                        - QUALITY_TREND_NOTICE_UNSPECIFIED
+                        - QUALITY_TREND_NOTICE_NO_JUDGED_EXECUTION
+                        - QUALITY_TREND_NOTICE_EDITED_SINCE_LAST_RUN
+                        - QUALITY_TREND_NOTICE_UNIT_NOT_COMPARABLE
+                        - QUALITY_TREND_NOTICE_UNSUPPORTED_RULE_TYPE
+                        - QUALITY_TREND_NOTICE_INSUFFICIENT_HISTORY
+                        - QUALITY_TREND_NOTICE_UNSUPPORTED_CONFIG
+                    type: string
+                    format: enum
+                suggestion:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityThresholdSuggestion'
+                    description: |-
+                        A threshold derived from the same history, offered to the editor. Nothing is
+                         applied by reading it; a person fills the form and saves the check.
+                historyRestarted:
+                    type: boolean
+                    description: |-
+                        True when executions from an earlier rule type were left out, i.e. the drawn
+                         history starts at a type change. The window is then shorter than the
+                         requested limit even when older judged executions exist.
+            description: |-
+                QualityRuleTrend is one check's measured history, oldest point first so a chart
+                 draws left to right. Points come from the check's executions against its
+                 current target: executions of an earlier rule definition that had a different
+                 rule type are not comparable and are left out.
+        QualityRuleTrendPoint:
+            type: object
+            properties:
+                execution:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityExecutions/{quality_execution}'
+                startTime:
+                    type: string
+                    format: date-time
+                status:
+                    enum:
+                        - QUALITY_STATUS_UNSPECIFIED
+                        - QUALITY_STATUS_PASS
+                        - QUALITY_STATUS_WARN
+                        - QUALITY_STATUS_FAIL
+                        - QUALITY_STATUS_ERROR
+                        - QUALITY_STATUS_SKIPPED
+                        - QUALITY_STATUS_NOT_EVALUATED
+                    type: string
+                    format: enum
+                value:
+                    type: number
+                    description: |-
+                        The quantity the check judged, in the trend's unit. For a PERCENT check this
+                         is failed rows over total rows; a row_count_change check plots its row count.
+                    format: double
+                failedRows:
+                    type: string
+                totalRows:
+                    type: string
+                sampled:
+                    type: boolean
+                    description: True when the observation was made over a sample rather than every row.
+                ruleRevision:
+                    type: integer
+                    description: The rule revision the execution was judged with.
+                    format: int32
+            description: QualityRuleTrendPoint is one judged execution of the check.
         QualityRun:
             type: object
             properties:
@@ -13454,6 +13608,43 @@ components:
             description: |-
                 QualityTargetSummary is one row of the target directory: the target identity
                  plus the counts and health the row and the workspace header render.
+        QualityThresholdSuggestion:
+            type: object
+            properties:
+                thresholds:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityThresholds'
+                    description: |-
+                        The suggested bounds, in the trend's unit and shaped like the snapshot the
+                         check itself records: fail_value/warn_value for a single upper bound, and the
+                         fail/warn pairs for the two-sided row-count bounds. Unset when no suggestion
+                         could be derived; notice then says why.
+                sampleSize:
+                    type: integer
+                    description: How many judged executions the suggestion was derived from.
+                    format: int32
+                method:
+                    enum:
+                        - QUALITY_THRESHOLD_SUGGESTION_METHOD_UNSPECIFIED
+                        - QUALITY_THRESHOLD_SUGGESTION_METHOD_P95_P99
+                        - QUALITY_THRESHOLD_SUGGESTION_METHOD_OBSERVED_RANGE
+                    type: string
+                    format: enum
+                notice:
+                    enum:
+                        - QUALITY_TREND_NOTICE_UNSPECIFIED
+                        - QUALITY_TREND_NOTICE_NO_JUDGED_EXECUTION
+                        - QUALITY_TREND_NOTICE_EDITED_SINCE_LAST_RUN
+                        - QUALITY_TREND_NOTICE_UNIT_NOT_COMPARABLE
+                        - QUALITY_TREND_NOTICE_UNSUPPORTED_RULE_TYPE
+                        - QUALITY_TREND_NOTICE_INSUFFICIENT_HISTORY
+                        - QUALITY_TREND_NOTICE_UNSUPPORTED_CONFIG
+                    type: string
+                    format: enum
+            description: |-
+                QualityThresholdSuggestion is a threshold derived from the check's history. It
+                 is a starting point for the editor, never a verdict: the values are rounded for
+                 display, the method is stated, and nothing is written until the check is saved.
         QualityThresholds:
             type: object
             properties:

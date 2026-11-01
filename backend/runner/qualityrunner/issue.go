@@ -142,7 +142,7 @@ func (r *Runner) resolveQualityIssue(ctx context.Context, workspaceID string, ex
 // missing or unreadable history is treated as "no previous result": opening an
 // issue is still correct and the partial unique index prevents a duplicate.
 func previousQualityStatus(ctx context.Context, st batchExecutionStore, ruleID int64) *storepb.QualityStatus {
-	executions, err := st.ListRecentQualityExecutions(ctx, ruleID, 1)
+	executions, err := st.ListRecentQualityExecutions(ctx, ruleID, nil, 1)
 	if err != nil {
 		slog.Warn("failed to read a quality rule's previous execution",
 			slog.Int64("rule", ruleID),

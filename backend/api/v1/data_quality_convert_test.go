@@ -297,6 +297,8 @@ func TestConvertQualityExecution(t *testing.T) {
 	startedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(3 * time.Minute)
 	observed := 3.5
+	baselineValue := 10.0
+	baselineAt := startedAt.Add(-time.Hour)
 	execution := &store.QualityExecutionMessage{
 		ID:                42,
 		RunID:             11,
@@ -334,10 +336,12 @@ func TestConvertQualityExecution(t *testing.T) {
 			{Column: "note", IsNull: proto.Bool(true)},
 			{Column: "legacy"},
 		}}}},
-		ExecutedSQL: "SELECT COUNT(*) FROM orders",
-		DurationMS:  1500,
-		StartedAt:   startedAt,
-		FinishedAt:  finishedAt,
+		ExecutedSQL:   "SELECT COUNT(*) FROM orders",
+		DurationMS:    1500,
+		StartedAt:     startedAt,
+		FinishedAt:    finishedAt,
+		BaselineValue: &baselineValue,
+		BaselineTime:  &baselineAt,
 	}
 
 	converted := convertQualityExecution("ws1", execution, "workspaces/ws1/qualityRules/rule123")
@@ -381,6 +385,9 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.Equal(t, 1500*time.Millisecond, converted.GetDuration().AsDuration())
 	require.Equal(t, startedAt, converted.GetStartTime().AsTime())
 	require.Equal(t, finishedAt, converted.GetFinishTime().AsTime())
+	require.NotNil(t, converted.BaselineValue, "the row_count_change evidence survives the conversion")
+	require.Equal(t, 10.0, converted.GetBaselineValue())
+	require.Equal(t, baselineAt, converted.GetBaselineTime().AsTime())
 
 	pending := convertQualityExecution("ws1", &store.QualityExecutionMessage{
 		ID:          43,
@@ -397,6 +404,8 @@ func TestConvertQualityExecution(t *testing.T) {
 	// difference between "zero" and "not measured".
 	require.Equal(t, 0.0, pending.GetObservedValue())
 	require.Empty(t, pending.GetSamples())
+	require.Nil(t, pending.BaselineValue, "a first observation has no baseline to show")
+	require.Nil(t, pending.GetBaselineTime())
 	require.Nil(t, convertQualityExecution("ws1", nil, ""))
 }
 

@@ -318,6 +318,11 @@
       "title": "Data quality"
     },
     "attempt": "Attempt",
+    "baseline": {
+      "label": "Baseline",
+      "missing": "No baseline yet",
+      "value": "{value} rows at {time}"
+    },
     "checks": {
       "description": "Every check across targets, for audit and search. Create and edit checks inside a target's contract workspace.",
       "emptyDescription": "Open a target and add its first check there.",
@@ -521,6 +526,7 @@
       "nullableHint": "Checked means the column is nullable; clearing it and saving records \"NOT NULL expected\". Columns from an older snapshot that never recorded nullability stay unjudged until the check is saved again.",
       "onEmpty": "When the query returns nothing",
       "onEmptyHint": "The default is not evaluated, so an empty table never looks like a pass.",
+      "onEmptyRowCountChangeHint": "A count-change check's first run only records a baseline; it is not judged.",
       "owner": "Owner",
       "ownerHint": "Owner of the check; search a workspace member. Leave empty for no owner.",
       "parameterCandidateFields": "Filter clauses without a value: {fields}",
@@ -1395,6 +1401,37 @@
     },
     "thresholdOutside": "outside [{lower}, {upper}]",
     "thresholdValue": "{value}",
+    "trend": {
+      "band": {
+        "edited": "The check was edited after its last judged run, so its current thresholds are not drawn.",
+        "noExecution": "No judged execution to draw thresholds from.",
+        "notComparable": "This check compares against a moving baseline; its thresholds do not apply to this line.",
+        "unsupported": "This check has no numeric observation."
+      },
+      "description": "The value this check judged over its recent executions.",
+      "empty": "No judged execution yet, so there is no trend to draw.",
+      "historyRestarted": "The check type changed; only executions after the change are drawn.",
+      "loadFailed": "Failed to load the check's trend.",
+      "noValue": "This check's verdict has no numeric value, so there is no trend to draw.",
+      "suggestion": {
+        "applied": "Suggested thresholds filled in",
+        "apply": "Use suggested thresholds",
+        "description": "Derived from this check's own judged executions. It only fills the form; the check changes when you save it.",
+        "insufficient": "Not enough history yet: a suggestion needs at least five judged executions.",
+        "method": {
+          "observedRange": "observed range, widened by a margin",
+          "p95P99": "warn = p95, fail = p99"
+        },
+        "sample": "Based on the last {count} judged executions.",
+        "title": "Suggested thresholds",
+        "unitChanged": "The measurement unit changed in this form; the suggestion describes the saved check.",
+        "unitNotComparable": "This check compares against a moving baseline, so its threshold cannot be suggested.",
+        "unsupportedConfig": "This check's current bounds leave nothing to suggest.",
+        "unsupportedType": "This check type has no threshold suggestion."
+      },
+      "title": "Observed value trend",
+      "window": "Last {count} judged execution | Last {count} judged executions"
+    },
     "trigger": "Trigger",
     "truncated": "Samples truncated",
     "type": "Type",

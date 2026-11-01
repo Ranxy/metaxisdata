@@ -1569,6 +1569,35 @@
       "scope": [
         "dataQuality."
       ]
+    },
+    {
+      "id": "trend",
+      "category": "Data Quality",
+      "definition": "A check's judged values over its recent executions, plotted oldest to newest.",
+      "translations": {
+        "en-US": "trend",
+        "zh-CN": "趋势"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "走势"
+        ]
+      }
+    },
+    {
+      "id": "baseline",
+      "category": "Data Quality",
+      "definition": "The previous measurement a row-count-change check compares its current count with.",
+      "translations": {
+        "en-US": "baseline",
+        "zh-CN": "基线"
+      },
+      "scope": [
+        "dataQuality."
+      ]
     }
   ]
 }

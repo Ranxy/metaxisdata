@@ -1527,6 +1527,22 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
    * @generated from field: int32 attempt = 27;
    */
   attempt: number;
+
+  /**
+   * The row count a row_count_change check compared against. Unset for every
+   * other type, and for a first observation that had no recent baseline to
+   * compare with (the verdict is then NOT_EVALUATED, driven by on_empty).
+   *
+   * @generated from field: optional double baseline_value = 28;
+   */
+  baselineValue?: number;
+
+  /**
+   * When that baseline was measured. Unset whenever baseline_value is.
+   *
+   * @generated from field: google.protobuf.Timestamp baseline_time = 29;
+   */
+  baselineTime?: Timestamp;
 };
 
 /**
@@ -3117,6 +3133,204 @@ export declare type GetQualityExecutionRequest = Message<"metaxisdata.v1.GetQual
  * Use `create(GetQualityExecutionRequestSchema)` to create a new message.
  */
 export declare const GetQualityExecutionRequestSchema: GenMessage<GetQualityExecutionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityRuleTrendRequest
+ */
+export declare type GetQualityRuleTrendRequest = Message<"metaxisdata.v1.GetQualityRuleTrendRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * How many of the check's most recent judged executions to read. Omitted or
+   * non-positive means the default of 30; values above 90 are coerced to 90, the
+   * execution retention window in days.
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityRuleTrendRequest.
+ * Use `create(GetQualityRuleTrendRequestSchema)` to create a new message.
+ */
+export declare const GetQualityRuleTrendRequestSchema: GenMessage<GetQualityRuleTrendRequest>;
+
+/**
+ * QualityRuleTrend is one check's measured history, oldest point first so a chart
+ * draws left to right. Points come from the check's executions against its
+ * current target: executions of an earlier rule definition that had a different
+ * rule type are not comparable and are left out.
+ *
+ * @generated from message metaxisdata.v1.QualityRuleTrend
+ */
+export declare type QualityRuleTrend = Message<"metaxisdata.v1.QualityRuleTrend"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string rule = 1;
+   */
+  rule: string;
+
+  /**
+   * The unit the points and both threshold bounds are expressed in.
+   *
+   * @generated from field: metaxisdata.v1.QualityTrendUnit unit = 2;
+   */
+  unit: QualityTrendUnit;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityRuleTrendPoint points = 3;
+   */
+  points: QualityRuleTrendPoint[];
+
+  /**
+   * The band the check judges against now. It is set only when the newest point
+   * was judged with the rule's current revision, so the drawn band always
+   * describes the rule this trend was read with; a check edited since its last
+   * run draws no band and explains why in band_notice.
+   *
+   * @generated from field: metaxisdata.v1.QualityThresholds thresholds = 4;
+   */
+  thresholds?: QualityThresholds;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTrendNotice band_notice = 5;
+   */
+  bandNotice: QualityTrendNotice;
+
+  /**
+   * A threshold derived from the same history, offered to the editor. Nothing is
+   * applied by reading it; a person fills the form and saves the check.
+   *
+   * @generated from field: metaxisdata.v1.QualityThresholdSuggestion suggestion = 6;
+   */
+  suggestion?: QualityThresholdSuggestion;
+
+  /**
+   * True when executions from an earlier rule type were left out, i.e. the drawn
+   * history starts at a type change. The window is then shorter than the
+   * requested limit even when older judged executions exist.
+   *
+   * @generated from field: bool history_restarted = 7;
+   */
+  historyRestarted: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRuleTrend.
+ * Use `create(QualityRuleTrendSchema)` to create a new message.
+ */
+export declare const QualityRuleTrendSchema: GenMessage<QualityRuleTrend>;
+
+/**
+ * QualityRuleTrendPoint is one judged execution of the check.
+ *
+ * @generated from message metaxisdata.v1.QualityRuleTrendPoint
+ */
+export declare type QualityRuleTrendPoint = Message<"metaxisdata.v1.QualityRuleTrendPoint"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+   *
+   * @generated from field: string execution = 1;
+   */
+  execution: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp start_time = 2;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityStatus status = 3;
+   */
+  status: QualityStatus;
+
+  /**
+   * The quantity the check judged, in the trend's unit. For a PERCENT check this
+   * is failed rows over total rows; a row_count_change check plots its row count.
+   *
+   * @generated from field: double value = 4;
+   */
+  value: number;
+
+  /**
+   * @generated from field: int64 failed_rows = 5;
+   */
+  failedRows: bigint;
+
+  /**
+   * @generated from field: int64 total_rows = 6;
+   */
+  totalRows: bigint;
+
+  /**
+   * True when the observation was made over a sample rather than every row.
+   *
+   * @generated from field: bool sampled = 7;
+   */
+  sampled: boolean;
+
+  /**
+   * The rule revision the execution was judged with.
+   *
+   * @generated from field: int32 rule_revision = 8;
+   */
+  ruleRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRuleTrendPoint.
+ * Use `create(QualityRuleTrendPointSchema)` to create a new message.
+ */
+export declare const QualityRuleTrendPointSchema: GenMessage<QualityRuleTrendPoint>;
+
+/**
+ * QualityThresholdSuggestion is a threshold derived from the check's history. It
+ * is a starting point for the editor, never a verdict: the values are rounded for
+ * display, the method is stated, and nothing is written until the check is saved.
+ *
+ * @generated from message metaxisdata.v1.QualityThresholdSuggestion
+ */
+export declare type QualityThresholdSuggestion = Message<"metaxisdata.v1.QualityThresholdSuggestion"> & {
+  /**
+   * The suggested bounds, in the trend's unit and shaped like the snapshot the
+   * check itself records: fail_value/warn_value for a single upper bound, and the
+   * fail/warn pairs for the two-sided row-count bounds. Unset when no suggestion
+   * could be derived; notice then says why.
+   *
+   * @generated from field: metaxisdata.v1.QualityThresholds thresholds = 1;
+   */
+  thresholds?: QualityThresholds;
+
+  /**
+   * How many judged executions the suggestion was derived from.
+   *
+   * @generated from field: int32 sample_size = 2;
+   */
+  sampleSize: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityThresholdSuggestionMethod method = 3;
+   */
+  method: QualityThresholdSuggestionMethod;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTrendNotice notice = 4;
+   */
+  notice: QualityTrendNotice;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityThresholdSuggestion.
+ * Use `create(QualityThresholdSuggestionSchema)` to create a new message.
+ */
+export declare const QualityThresholdSuggestionSchema: GenMessage<QualityThresholdSuggestion>;
 
 /**
  * @generated from message metaxisdata.v1.ListQualityIssuesRequest
@@ -7506,6 +7720,148 @@ export enum QualityAggregateFunction {
 export declare const QualityAggregateFunctionSchema: GenEnum<QualityAggregateFunction>;
 
 /**
+ * QualityTrendUnit is the unit of a trend's values and threshold bounds.
+ *
+ * @generated from enum metaxisdata.v1.QualityTrendUnit
+ */
+export enum QualityTrendUnit {
+  /**
+   * @generated from enum value: QUALITY_TREND_UNIT_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A number of rows: failed rows, a row count, a group count.
+   *
+   * @generated from enum value: QUALITY_TREND_UNIT_COUNT = 1;
+   */
+  COUNT = 1,
+
+  /**
+   * Already a percentage in 0-100, never a 0-1 ratio: a PERCENT threshold
+   * metric's failed rows over total rows, or a null percentage.
+   *
+   * @generated from enum value: QUALITY_TREND_UNIT_PERCENT = 2;
+   */
+  PERCENT = 2,
+
+  /**
+   * A lag in seconds.
+   *
+   * @generated from enum value: QUALITY_TREND_UNIT_SECONDS = 3;
+   */
+  SECONDS = 3,
+
+  /**
+   * An aggregate value or a table-to-table difference.
+   *
+   * @generated from enum value: QUALITY_TREND_UNIT_NUMBER = 4;
+   */
+  NUMBER = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityTrendUnit.
+ */
+export declare const QualityTrendUnitSchema: GenEnum<QualityTrendUnit>;
+
+/**
+ * QualityThresholdSuggestionMethod names the arithmetic behind a suggestion, so
+ * the editor can say how the number was reached.
+ *
+ * @generated from enum metaxisdata.v1.QualityThresholdSuggestionMethod
+ */
+export enum QualityThresholdSuggestionMethod {
+  /**
+   * @generated from enum value: QUALITY_THRESHOLD_SUGGESTION_METHOD_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A single upper bound: warn = p95 and fail = p99 of the judged values.
+   *
+   * @generated from enum value: QUALITY_THRESHOLD_SUGGESTION_METHOD_P95_P99 = 1;
+   */
+  P95_P99 = 1,
+
+  /**
+   * Two-sided row-count bounds: the observed range widened by a margin, with the
+   * warn bounds at the observed extremes.
+   *
+   * @generated from enum value: QUALITY_THRESHOLD_SUGGESTION_METHOD_OBSERVED_RANGE = 2;
+   */
+  OBSERVED_RANGE = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityThresholdSuggestionMethod.
+ */
+export declare const QualityThresholdSuggestionMethodSchema: GenEnum<QualityThresholdSuggestionMethod>;
+
+/**
+ * QualityTrendNotice explains why a trend has no threshold band or no suggestion.
+ *
+ * @generated from enum metaxisdata.v1.QualityTrendNotice
+ */
+export enum QualityTrendNotice {
+  /**
+   * @generated from enum value: QUALITY_TREND_NOTICE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The check has no judged execution in the window.
+   *
+   * @generated from enum value: QUALITY_TREND_NOTICE_NO_JUDGED_EXECUTION = 1;
+   */
+  NO_JUDGED_EXECUTION = 1,
+
+  /**
+   * The check was edited after its newest judged execution, so its current
+   * thresholds never judged any of the drawn points.
+   *
+   * @generated from enum value: QUALITY_TREND_NOTICE_EDITED_SINCE_LAST_RUN = 2;
+   */
+  EDITED_SINCE_LAST_RUN = 2,
+
+  /**
+   * The plotted value is not the quantity the thresholds bound: a row count
+   * against percent-change bounds.
+   *
+   * @generated from enum value: QUALITY_TREND_NOTICE_UNIT_NOT_COMPARABLE = 3;
+   */
+  UNIT_NOT_COMPARABLE = 3,
+
+  /**
+   * The rule type has no numeric observation or no threshold shape this read
+   * model can suggest.
+   *
+   * @generated from enum value: QUALITY_TREND_NOTICE_UNSUPPORTED_RULE_TYPE = 4;
+   */
+  UNSUPPORTED_RULE_TYPE = 4,
+
+  /**
+   * Fewer judged executions than the suggestion needs (five).
+   *
+   * @generated from enum value: QUALITY_TREND_NOTICE_INSUFFICIENT_HISTORY = 5;
+   */
+  INSUFFICIENT_HISTORY = 5,
+
+  /**
+   * The rule type could be suggested, but its current config has no bound to
+   * fill in.
+   *
+   * @generated from enum value: QUALITY_TREND_NOTICE_UNSUPPORTED_CONFIG = 6;
+   */
+  UNSUPPORTED_CONFIG = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityTrendNotice.
+ */
+export declare const QualityTrendNoticeSchema: GenEnum<QualityTrendNotice>;
+
+/**
  * QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.
  *
  * @generated from enum metaxisdata.v1.QualitySuggestionJobStatus
@@ -7760,6 +8116,23 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityExecutionRequestSchema;
     output: typeof QualityExecutionSchema;
+  },
+  /**
+   * Read one check's judged values over its recent executions, the band its
+   * current thresholds draw, and a threshold suggestion derived from that
+   * history. It is a read model over the stored executions: nothing is written,
+   * audited or measured against the target database.
+   *
+   * Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+   * value, so only those appear as points; a check that has never been judged has
+   * no trend rather than a fabricated flat line.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityRuleTrend
+   */
+  getQualityRuleTrend: {
+    methodKind: "unary";
+    input: typeof GetQualityRuleTrendRequestSchema;
+    output: typeof QualityRuleTrendSchema;
   },
   /**
    * Export the executions the same filters select as ListQualityExecutions as one

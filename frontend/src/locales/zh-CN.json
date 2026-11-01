@@ -318,6 +318,11 @@
       "title": "数据质量"
     },
     "attempt": "尝试",
+    "baseline": {
+      "label": "基线",
+      "missing": "暂无基线",
+      "value": "{time} 的 {value} 行"
+    },
     "checks": {
       "description": "跨所有目标的检查，用于审计与搜索；创建和编辑在目标的契约工作台中进行。",
       "emptyDescription": "打开一个质量目标，在那里添加第一条检查。",
@@ -521,6 +526,7 @@
       "nullableHint": "勾选表示字段可空；取消勾选并保存会记录“期望 NOT NULL”。旧快照里未记录可空性的字段在重新保存前不参与判断。",
       "onEmpty": "查询没有返回结果时",
       "onEmptyHint": "默认是“未评估”，空表不会被当作通过。",
+      "onEmptyRowCountChangeHint": "行数变化检查的首次运行只记录基线，不做判定。",
       "owner": "负责人",
       "ownerHint": "检查负责人；搜索工作区成员。留空表示无负责人。",
       "parameterCandidateFields": "缺少取值的过滤条件：{fields}",
@@ -1395,6 +1401,37 @@
     },
     "thresholdOutside": "超出 [{lower}, {upper}]",
     "thresholdValue": "{value}",
+    "trend": {
+      "band": {
+        "edited": "该检查在上次判定之后被修改，未绘制当前阈值。",
+        "noExecution": "没有可用的已判定执行，无法绘制阈值。",
+        "notComparable": "该检查按移动基线比较，其阈值不适用于这条曲线。",
+        "unsupported": "该检查没有数值观测。"
+      },
+      "description": "该检查最近若干次执行中被判定的实际值。",
+      "empty": "还没有已判定的执行，暂无趋势可画。",
+      "historyRestarted": "检查类型发生过变更，仅显示变更之后的执行。",
+      "loadFailed": "加载检查趋势失败。",
+      "noValue": "该检查的结论没有数值，暂无趋势可画。",
+      "suggestion": {
+        "applied": "已填入建议阈值",
+        "apply": "使用建议阈值",
+        "description": "根据该检查自己的历史执行推导。只填入表单，保存后才会生效。",
+        "insufficient": "历史不足：至少需要五次已判定执行。",
+        "method": {
+          "observedRange": "观测区间外扩",
+          "p95P99": "警告 = p95，失败 = p99"
+        },
+        "sample": "基于最近 {count} 次已判定执行。",
+        "title": "建议阈值",
+        "unitChanged": "表单里的计量单位已变更，建议值对应已保存的检查。",
+        "unitNotComparable": "该检查按移动基线比较，无法建议阈值。",
+        "unsupportedConfig": "该检查当前的边界没有可建议的字段。",
+        "unsupportedType": "该检查类型没有阈值建议。"
+      },
+      "title": "实际值趋势",
+      "window": "最近 {count} 次已判定执行"
+    },
     "trigger": "触发方式",
     "truncated": "样本已截断",
     "type": "类型",

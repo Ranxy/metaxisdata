@@ -941,6 +941,48 @@ func (s *Store) ListQualityRuleRevisions(ctx context.Context, ruleID int64, limi
 	return result, nil
 }
 
+// qualityRuleRevisionByNumbersStatement reads the named revisions of one rule.
+// The trend read model needs only the snapshots behind a window of executions, so
+// it resolves revisions by number instead of walking the whole history.
+const qualityRuleRevisionByNumbersStatement = `
+	SELECT ` + qualityRuleRevisionColumns + `
+	FROM quality_rule_revision
+	WHERE rule_id = $1 AND revision = ANY($2::int[])
+	ORDER BY revision DESC
+`
+
+// ListQualityRuleRevisionsByRevision returns the rule's revisions whose numbers
+// are listed, newest first. An empty input is a no-op and never touches the
+// database; the returned slice is non-nil so a caller can range over it
+// unconditionally.
+func (s *Store) ListQualityRuleRevisionsByRevision(ctx context.Context, ruleID int64, revisions []int32) ([]*QualityRuleRevisionMessage, error) {
+	if ruleID <= 0 {
+		return nil, common.Errorf(common.Invalid, "a quality rule id is required")
+	}
+	if len(revisions) == 0 {
+		return []*QualityRuleRevisionMessage{}, nil
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, qualityRuleRevisionByNumbersStatement, ruleID, pq.Array(revisions))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to query quality rule revisions by number")
+	}
+	defer rows.Close()
+
+	result := make([]*QualityRuleRevisionMessage, 0, len(revisions))
+	for rows.Next() {
+		msg, err := scanQualityRuleRevision(rows)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to scan quality rule revision")
+		}
+		result = append(result, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows iteration error for quality rule revisions by number")
+	}
+	return result, nil
+}
+
 // ListQualityRulesByResourceIDs resolves several rules at once for callers that
 // hold resource names (result and issue rendering). Deleted rules are excluded,
 // because a resolved name must not resurrect a retired rule.

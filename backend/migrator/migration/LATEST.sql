@@ -1062,7 +1062,12 @@ CREATE TABLE IF NOT EXISTS quality_execution (
     error_message TEXT NOT NULL DEFAULT '',
     duration_ms INT4 NOT NULL DEFAULT 0,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at TIMESTAMPTZ
+    finished_at TIMESTAMPTZ,
+    -- The row count a row_count_change check compared against, and when that
+    -- count was measured. NULL for every other rule type and for a first
+    -- observation that had no recent baseline to compare with.
+    baseline_value DOUBLE PRECISION,
+    baseline_time TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_quality_execution_run ON quality_execution(run_id);
 CREATE INDEX IF NOT EXISTS idx_quality_execution_rule_time ON quality_execution(rule_id, started_at DESC);

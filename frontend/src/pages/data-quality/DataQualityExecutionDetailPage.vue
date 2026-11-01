@@ -236,6 +236,14 @@
                     {{ execution.ruleRevision }}
                   </div>
                 </div>
+                <div v-if="isRowCountChange">
+                  <div class="text-xs text-muted-foreground">
+                    {{ t("dataQuality.baseline.label") }}
+                  </div>
+                  <div class="text-sm tabular-nums">
+                    {{ baselineLabel }}
+                  </div>
+                </div>
                 <div v-if="execution.attempt > 1">
                   <div class="text-xs text-muted-foreground">
                     {{ t("dataQuality.attempt") }}
@@ -466,6 +474,7 @@ import { useAuthStore } from "@/store/modules/auth";
 import {
   type QualityExecution,
   QualityExecutionState,
+  QualityRuleType,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
@@ -523,6 +532,8 @@ const targetWorkspaceTo = computed(() => {
   };
 });
 const ruleTitle = ref("");
+/** The check's type; only the execution's own record cannot tell it. */
+const ruleType = ref<QualityRuleType>();
 const isLoading = ref(true);
 const isPolling = ref(false);
 const error = ref("");
@@ -600,6 +611,22 @@ const observedLabel = computed(() =>
       )
     : "-"
 );
+
+/** A count-change execution compares against a baseline; the page names it. */
+const isRowCountChange = computed(
+  () => ruleType.value === QualityRuleType.ROW_COUNT_CHANGE
+);
+
+const baselineLabel = computed(() => {
+  const current = execution.value;
+  if (!current || current.baselineValue === undefined) {
+    return t("dataQuality.baseline.missing");
+  }
+  return t("dataQuality.baseline.value", {
+    value: formatRowCount(current.baselineValue, locale.value),
+    time: formatDateTime(current.baselineTime, locale.value),
+  });
+});
 
 const rowsLabel = computed(() =>
   execution.value && hasVerdict.value
@@ -781,6 +808,7 @@ async function initialLoad() {
   isLoading.value = true;
   execution.value = undefined;
   ruleTitle.value = "";
+  ruleType.value = undefined;
   error.value = "";
   stopPolling();
   await Promise.all([load(true), loadLlmSetting()]);
@@ -826,6 +854,7 @@ async function loadRuleTitle(name: string) {
   try {
     const rule = await getQualityRule(name);
     ruleTitle.value = rule.title || qualityRuleID(name);
+    ruleType.value = rule.ruleType;
   } catch {
     ruleTitle.value = qualityRuleID(name);
   }

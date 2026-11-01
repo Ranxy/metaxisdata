@@ -637,6 +637,32 @@ func TestListQualityRulesByIDsEmptyInputIsEmptySlice(t *testing.T) {
 	require.Empty(t, rules)
 }
 
+// The trend read model resolves only the revisions its window names, so it reads
+// a rule's entire definition history only when every revision is actually used.
+func TestQualityRuleRevisionsByNumberStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityRuleRevisionByNumbersStatement, "FROM quality_rule_revision")
+	require.Contains(t, qualityRuleRevisionByNumbersStatement, "rule_id = $1")
+	require.Contains(t, qualityRuleRevisionByNumbersStatement, "revision = ANY($2::int[])")
+	require.Contains(t, qualityRuleRevisionByNumbersStatement, "ORDER BY revision DESC")
+}
+
+func TestListQualityRuleRevisionsByRevisionEmptyInputIsEmptySlice(t *testing.T) {
+	t.Parallel()
+
+	// A zero Store has no pool: reaching the database here would panic, so this
+	// also pins that an empty input is a no-op.
+	s := &Store{}
+	revisions, err := s.ListQualityRuleRevisionsByRevision(t.Context(), 7, nil)
+	require.NoError(t, err)
+	require.NotNil(t, revisions)
+	require.Empty(t, revisions)
+
+	_, err = s.ListQualityRuleRevisionsByRevision(t.Context(), 0, []int32{1})
+	require.Equal(t, common.Invalid, common.ErrorCode(err))
+}
+
 // The due scan's budget is target-complete: it may exceed the budget by the target
 // that crosses it, but it never selects half a target.
 func TestSelectDueTargetsTakesWholeTargetsUntilTheBudget(t *testing.T) {
