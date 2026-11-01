@@ -293,6 +293,8 @@
 
 一次 `Send` / `SendToWorkspaceAdmins` / `SendToRecipients` 调用 = **一个事件**。事件写入 N 条站内信（每个收件人一条），同时按渠道订阅过滤 fan-out 成 0..M 条 `notification_delivery`；每条投递由 dispatcher 渲染、POST、重试。**站内信与投递解耦**：投递失败不回滚、不阻塞站内信写入，也不改变现有 1h 去重与风暴抑制语义。
 
+同一套静默窗口也是**数据质量的维护窗口**：窗口内 DQ 检查照常执行、站内信照常写入，只有出站投递被推迟到窗口结束（`bypass_quiet_hours` 的渠道照常），见 [data-quality.md](data-quality.md) §3.15 与 O-15/O-16。
+
 | 概念 | 含义 |
 | --- | --- |
 | `notification_channel` | 管理员配置的目的地。kind 为 `WEBHOOK` / `DINGTALK` / `WECOM` / `FEISHU` / `EMAIL`；`payload` 存 `NotificationChannel`（含 kind 对应的 config oneof），HTTP 类的凭据（endpoint URL、签名密钥）单独加密存 `secret` 列，**任何读路径都不返回**；EMAIL 渠道本身无凭据，发信走工作区 SMTP 设置 |
