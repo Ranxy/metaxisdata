@@ -77,9 +77,10 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   write a custom-SQL check when the condition needs more. A target-level filter
   from the contract is ANDed on top.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
-  source: it proves syntax and permission without scanning the table. The
-  statement and the parameter list below it show the values the filter (and any
-  time variable) resolves to right now.
+  source: it proves syntax and permission without scanning the table. If it is
+  refused, the error shows the statement and its bound values; a successful dry
+  run does not display the statement. Time variables are resolved when the check
+  actually runs, in the workspace's check time zone.
 - **Schema drift** compares each column's type and nullability — plus, if you ask
   for it, order and extra columns — with the snapshot saved when the check was
   created. Columns recorded by an older snapshot that did not store nullability
@@ -104,11 +105,15 @@ reads and how long it may run:
 - **Sampling**: *No sampling* (the default), *By row limit* ("read at most N rows
   of the filtered relation"), or *By percentage* ("read approximately P% of the
   table"). The choice is an intent, not a query hint: the engine's own mechanism
-  implements it. *By percentage* is offered for PostgreSQL, SQL Server and Doris
-  tables only; MySQL/TiDB/MariaDB/OceanBase and StarRocks tables offer the row
-  limit only, and views never offer percentage sampling. The dialog only offers
-  what the target can express, and a sampled execution is marked as such — its
-  verdict is judged on the sample.
+  implements it. *By percentage* is offered for PostgreSQL and SQL Server tables
+  only. MySQL/TiDB/MariaDB/OceanBase have no query-level sampling clause, and
+  Doris/StarRocks sample storage units whose row statistics can lag behind a fresh
+  load — such a query may read everything while still reporting itself as a sample
+  — so all of those tables offer the row limit only, and a view never offers
+  percentage sampling. The dialog only offers what the target can express (while
+  the instance is still loading it may offer the percentage optimistically, and
+  the server refuses it), and a sampled execution is marked as such — its verdict
+  is judged on the sample.
 - **Query timeout**: how long one query of this check may run, 1–300 seconds;
   empty means the 60-second default. A target's scan batch still ends after 15
   minutes, so a long timeout can be cut short by the batch.
@@ -729,7 +734,7 @@ pruned.
 | The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |
 | The digest email has no recipients | The digest has no per-person audience: an email channel must carry fixed addresses; "include the audience" cannot resolve anyone for it. |
 | A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample. Remove the sampling or pick another check type. |
-| *By percentage* is unavailable | The target is a view, or its engine has no table sampling clause (MySQL, TiDB, MariaDB, OceanBase, StarRocks). Use *By row limit*. |
+| *By percentage* is unavailable | The target is a view, or its engine has no reliable table sampling clause (MySQL, TiDB, MariaDB, OceanBase, StarRocks, Doris). Use *By row limit*. |
 | A sampled check returned no failure sample | The failed rows are read from the same sample as the counts. If the sample held no failing row the evidence is empty while the verdict still stands — the counts decide it, not the evidence rows. |
 | A filter value with a time variable is rejected | A filter value must be one whole variable (`${today-7d}`); quoting it or mixing it with text is refused. Check the name (`now`/`today`/`yesterday`), the unit (`m`/`h`/`d`) and the size (at most 366 days). A date variable cannot be compared with a numeric column. |
 | The partition window looks a day off | Time variables resolve in the workspace's check time zone (Settings → Data Quality; empty means UTC). An integer partition column (`20261101`) is not a date to the engine — use a custom SQL check with an explicit cast. |
