@@ -229,6 +229,12 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 	assertJourneyRecentWindowCap(t, fixture, source.orders)
 	assertJourneyOverview(t, fixture, len(rules), 2*len(rules), 0)
 
+	// P7c: the check's measured trend is the history it already has. The repaired
+	// row count change run records the baseline it compared against, and a check
+	// with five judged executions can offer a threshold suggestion.
+	assertJourneyTrend(t, fixture, ruleNames, secondRun)
+	assertJourneyDefaultOnEmptyBaseline(t, fixture, source.orders)
+
 	// P8a: a runtime-unusable read-only source is an ERROR, not a FAIL, and the
 	// operational failure is announced to the administrators.
 	assertJourneyMissingReadOnlySource(t, fixture, ruleNames["row_count"])
@@ -1121,6 +1127,108 @@ func repairJourneyData(t *testing.T, fixture *qualityFixture) {
 
 	require.NoError(t, fixture.env.ExecMySQL(fixture.ctx,
 		"USE "+quoteMySQLIdentifier(fixture.sourceDatabase)+";"+journeyRepairSQL), "repair the journey source")
+}
+
+// qualityRuleTrend reads one check's trend through the public API.
+func (f *qualityFixture) qualityRuleTrend(t *testing.T, ruleName string) *v1pb.QualityRuleTrend {
+	t.Helper()
+
+	resp, err := f.dataQuality.GetQualityRuleTrend(f.ctx, withToken(f.env.AdminToken(), &v1pb.GetQualityRuleTrendRequest{
+		Name: ruleName,
+	}))
+	require.NoError(t, err, "get the quality rule trend")
+	return resp.Msg
+}
+
+// assertJourneyTrend reads the measured history after the repair. The row count
+// change check has two judged executions now, so the trend has two points oldest
+// first and its second execution records the row count it compared against; its
+// thresholds bound a percent change rather than the plotted count, so no band is
+// drawn and the notice says why. A five-run check then reaches the suggestion's
+// sample floor.
+func assertJourneyTrend(t *testing.T, fixture *qualityFixture, ruleNames map[string]string, secondRun map[string]*v1pb.QualityExecution) {
+	t.Helper()
+
+	rowCountChange := ruleNames["row_count_change"]
+	trend := fixture.qualityRuleTrend(t, rowCountChange)
+	require.Equal(t, rowCountChange, trend.GetRule())
+	require.Equal(t, v1pb.QualityTrendUnit_QUALITY_TREND_UNIT_COUNT, trend.GetUnit())
+	// The first batch, the target's scheduled cycle and the repaired batch are all
+	// judged passes over the same ten rows.
+	require.GreaterOrEqual(t, len(trend.GetPoints()), 2, "both the first and the repaired run are judged")
+	for index, point := range trend.GetPoints() {
+		require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_PASS, point.GetStatus())
+		require.Equal(t, float64(10), point.GetValue())
+		require.NotEmpty(t, point.GetExecution())
+		require.NotNil(t, point.GetStartTime())
+		if index == 0 {
+			continue
+		}
+		require.False(t, trend.GetPoints()[index-1].GetStartTime().AsTime().After(point.GetStartTime().AsTime()),
+			"trend points are oldest first")
+	}
+	require.Nil(t, trend.GetThresholds(), "a row count change plots a count, not the percent its bounds judge")
+	require.Equal(t, v1pb.QualityTrendNotice_QUALITY_TREND_NOTICE_UNIT_NOT_COMPARABLE, trend.GetBandNotice())
+
+	// The post-repair execution compares against the first observation and says so,
+	// instead of leaving only the resulting percentage in the row.
+	executed := secondRun[rowCountChange]
+	require.NotNil(t, executed, "the repaired suite ran the row count change check")
+	require.NotNil(t, executed.BaselineValue, "a second observation compares against the first")
+	require.Equal(t, float64(10), executed.GetBaselineValue())
+	require.NotNil(t, executed.GetBaselineTime())
+
+	// A suggestion needs five judged executions; the unique check already has three
+	// (first batch, scheduled retry, repaired batch), so two more complete it.
+	unique := ruleNames["unique"]
+	fixture.runToCompletion(t, unique)
+	fixture.runToCompletion(t, unique)
+	suggested := fixture.qualityRuleTrend(t, unique)
+	require.GreaterOrEqual(t, len(suggested.GetPoints()), 5, "the suggestion needs five judged executions")
+	require.NotNil(t, suggested.GetThresholds(), "the newest point is the current revision, so its snapshot is the band")
+	require.Equal(t, v1pb.QualityTrendNotice_QUALITY_TREND_NOTICE_UNSPECIFIED, suggested.GetBandNotice())
+	require.Equal(t, int32(len(suggested.GetPoints())), suggested.GetSuggestion().GetSampleSize())
+	require.Equal(t, v1pb.QualityThresholdSuggestionMethod_QUALITY_THRESHOLD_SUGGESTION_METHOD_P95_P99, suggested.GetSuggestion().GetMethod())
+	require.NotNil(t, suggested.GetSuggestion().GetThresholds())
+	require.Equal(t, float64(1), suggested.GetSuggestion().GetThresholds().GetFailValue())
+}
+
+// assertJourneyDefaultOnEmptyBaseline proves the baseline fallback without a
+// configuration opt-in: a row_count_change check left at the default
+// NOT_EVALUATED judges nothing on its first run, but the row count that run
+// recorded becomes the next run's baseline, so the second run is decided. Before
+// the fix such a rule stayed NOT_EVALUATED forever.
+func assertJourneyDefaultOnEmptyBaseline(t *testing.T, fixture *qualityFixture, targetGUID string) {
+	t.Helper()
+
+	increase, decrease := 100.0, 100.0
+	rule := fixture.createJourneyRule(t, journeyRuleSpec{
+		label:      "row_count_change_default_on_empty",
+		ruleType:   v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
+		dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+		severity:   v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		targetGUID: targetGUID,
+		config: &v1pb.QualityRuleConfig{
+			Config: &v1pb.QualityRuleConfig_RowCountChange{RowCountChange: &v1pb.RowCountChangeConfig{
+				MaxIncreasePct: &increase, MaxDecreasePct: &decrease,
+			}},
+			// No on_empty on purpose: the default NOT_EVALUATED is exactly the
+			// configuration that used to never establish a baseline.
+		},
+	})
+
+	first := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, first.GetOutcome(),
+		"the first run has no baseline to compare with")
+	require.Equal(t, int64(10), first.GetTotalRows(), "the unevaluated run still measured the table")
+	require.Nil(t, first.BaselineValue)
+
+	second := fixture.runToCompletion(t, rule.GetName())
+	require.NotEqual(t, v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, second.GetOutcome(),
+		"the row count the first run recorded is the second run's baseline")
+	require.NotNil(t, second.BaselineValue, "the judged run records the baseline it compared against")
+	require.Equal(t, float64(10), second.GetBaselineValue())
+	require.NotNil(t, second.GetBaselineTime())
 }
 
 // assertJourneyMissingReadOnlySource removes the instance's READ_ONLY source after

@@ -71,6 +71,11 @@ type ruleTypeSpec struct {
 	// LabelDraft builds the deterministic draft config for a semantic label; nil
 	// means no default draft exists for this type.
 	LabelDraft func(storepb.QualitySemanticType, string, *storepb.ColumnProfile) *storepb.QualityRuleConfig
+
+	// Trend describes how the type plots as a series: the unit its judged quantity
+	// is measured in, whether its thresholds bound that quantity, and how history
+	// can propose a threshold. Nil means the type has no numeric observation.
+	Trend func(*storepb.QualityRuleConfig) trendShape
 }
 
 // ruleTypeSpecFor returns the descriptor of one rule type. UNSPECIFIED and any
@@ -101,6 +106,7 @@ func ruleTypeSpecForConfig(config *storepb.QualityRuleConfig) (ruleTypeSpec, boo
 var ruleTypeSpecs = []ruleTypeSpec{
 	{
 		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		Trend:    trendRowCountShape,
 		Title:    "row count",
 		Arm:      armRowCount,
 		Views:    true,
@@ -113,6 +119,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
+		Trend:    trendRowCountChangeShape,
 		Title:    "row count change",
 		Arm:      armRowCountChange,
 		Views:    true,
@@ -125,6 +132,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Trend: trendNullPercentShape,
 		Title: "null percent",
 		Arm:   armNullPercent,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -144,6 +152,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		Trend: trendPercentCapableShape,
 		Title: "unique",
 		Arm:   armUnique,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -177,6 +186,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		Trend: trendPercentCapableShape,
 		Title: "unique combination",
 		Arm:   armUniqueCombination,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
@@ -206,6 +216,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		Trend: trendPercentCapableShape,
 		Title: "accepted values",
 		Arm:   armAcceptedValues,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -243,6 +254,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		Trend: trendPercentCapableShape,
 		Title: "range",
 		Arm:   armRange,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -268,6 +280,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		Trend: trendPercentCapableShape,
 		Title: "format",
 		Arm:   armRegex,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -307,6 +320,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		Trend: trendPercentCapableShape,
 		Title: "string length",
 		Arm:   armStringLength,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -332,6 +346,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
+		Trend: trendPercentCapableShape,
 		Title: "referential integrity",
 		Arm:   armReferentialIntegrity,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -366,6 +381,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		Trend: trendPercentCapableShape,
 		Title: "cross column",
 		Arm:   armCrossColumn,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
@@ -404,6 +420,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		Trend: trendFreshnessShape,
 		Title: "freshness",
 		Arm:   armFreshness,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
@@ -423,6 +440,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
+		Trend: trendCustomSQLShape,
 		Title: "custom SQL",
 		Arm:   armCustomSQL,
 		Discriminators: func(config *storepb.QualityRuleConfig) []string {
@@ -447,6 +465,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 	},
 	{
 		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		Trend: trendPercentCapableShape,
 		Title: "expression",
 		Arm:   armCELExpression,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
@@ -472,7 +491,8 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Validator:   validateCELExpressionConfig,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		// schema_drift observes the registry rather than a numeric value, so it has no trend.
 		Arm:   armSchemaDrift,
 		Views: true,
 		// The drift snapshot is the registry itself: no read-only source and no SQL.
@@ -498,8 +518,9 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		},
 	},
 	{
-		Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		Arm:  armGroupCheck,
+		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		Trend: trendPercentCapableShape,
+		Arm:   armGroupCheck,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetGroupCheck().GetColumns()
 		},
@@ -518,8 +539,9 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:     observeGroupCheck,
 	},
 	{
-		Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		Arm:  armAggregate,
+		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		Trend: trendAggregateShape,
+		Arm:   armAggregate,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetAggregate().GetColumn())
 		},
@@ -543,8 +565,9 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:   observeAggregate,
 	},
 	{
-		Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
-		Arm:  armCrossTable,
+		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		Trend: trendCrossTableShape,
+		Arm:   armCrossTable,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			cross := config.GetCrossTable()
 			return twoColumns(cross.GetLeftColumn(), cross.GetRightColumn())

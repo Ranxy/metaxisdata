@@ -66,6 +66,13 @@ func TestRuleTypeSpecsCoverTheEnum(t *testing.T) {
 			judgeOrThresholds++
 		}
 		require.Equal(t, 1, judgeOrThresholds, "%s must set exactly one of judge/thresholds", spec.Type)
+		if spec.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT {
+			// schema_drift observes the registry rather than a numeric value, so it has
+			// no trend shape; every other type must plot.
+			require.Nil(t, spec.Trend, "%s must not have a trend shape", spec.Type)
+		} else {
+			require.NotNil(t, spec.Trend, "%s has no trend shape", spec.Type)
+		}
 	}
 	require.False(t, seen[storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED],
 		"UNSPECIFIED must not have a spec")

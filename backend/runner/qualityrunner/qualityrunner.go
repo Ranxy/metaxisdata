@@ -111,6 +111,10 @@ const (
 	// maxBaselineAge bounds how old a row_count_change baseline may be. An older
 	// observation describes a different data shape.
 	maxBaselineAge = 7 * 24 * time.Hour
+	// baselineCandidateLimit is how many completed executions the baseline read
+	// fetches. The newest rows may carry no observation or zero rows and are
+	// skipped, so one row is not enough to find a usable denominator.
+	baselineCandidateLimit = 10
 	// QualityStormThreshold is how many failing executions in one batch turn
 	// per-rule notifications into a single summary. A batch that fails more rules
 	// than this would otherwise write one inbox message per rule for a single

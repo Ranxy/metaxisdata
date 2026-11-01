@@ -1153,6 +1153,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityRuleTrendRequest"><span class="badge">M</span>GetQualityRuleTrendRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityRunRequest"><span class="badge">M</span>GetQualityRunRequest</a>
                 </li>
               
@@ -1381,6 +1385,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityRuleTrend"><span class="badge">M</span>QualityRuleTrend</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityRuleTrendPoint"><span class="badge">M</span>QualityRuleTrendPoint</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityRun"><span class="badge">M</span>QualityRun</a>
                 </li>
               
@@ -1430,6 +1442,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityTargetSummary"><span class="badge">M</span>QualityTargetSummary</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityThresholdSuggestion"><span class="badge">M</span>QualityThresholdSuggestion</a>
                 </li>
               
                 <li>
@@ -1651,6 +1667,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityThresholdMetric"><span class="badge">E</span>QualityThresholdMetric</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityThresholdSuggestionMethod"><span class="badge">E</span>QualityThresholdSuggestionMethod</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityTrendNotice"><span class="badge">E</span>QualityTrendNotice</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityTrendUnit"><span class="badge">E</span>QualityTrendUnit</a>
                 </li>
               
               
@@ -14099,6 +14127,39 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityRuleTrendRequest">GetQualityRuleTrendRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many of the check&#39;s most recent judged executions to read. Omitted or
+non-positive means the default of 30; values above 90 are coerced to 90, the
+execution retention window in days. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityRunRequest">GetQualityRunRequest</h3>
         <p></p>
 
@@ -16532,6 +16593,23 @@ first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions
 always use 1. A retry is planned only while the attempt budget lasts. </p></td>
                 </tr>
               
+                <tr>
+                  <td>baseline_value</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p>The row count a row_count_change check compared against. Unset for every
+other type, and for a first observation that had no recent baseline to
+compare with; the verdict then follows on_empty, which a new count-change
+check defaults to PASS so the first run only records the baseline. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>baseline_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When that baseline was measured. Unset whenever baseline_value is. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17611,6 +17689,152 @@ and results are still recorded. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityRuleTrend">QualityRuleTrend</h3>
+        <p>QualityRuleTrend is one check's measured history, oldest point first so a chart</p><p>draws left to right. Points come from the check's executions against its</p><p>current target: executions of an earlier rule definition that had a different</p><p>rule type are not comparable and are left out.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>unit</td>
+                  <td><a href="#metaxisdata.v1.QualityTrendUnit">QualityTrendUnit</a></td>
+                  <td></td>
+                  <td><p>The unit the points and both threshold bounds are expressed in. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>points</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleTrendPoint">QualityRuleTrendPoint</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>thresholds</td>
+                  <td><a href="#metaxisdata.v1.QualityThresholds">QualityThresholds</a></td>
+                  <td></td>
+                  <td><p>The band the check judges against now. It is set only when the newest point
+was judged with the rule&#39;s current revision, so the drawn band always
+describes the rule this trend was read with; a check edited since its last
+run draws no band and explains why in band_notice. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>band_notice</td>
+                  <td><a href="#metaxisdata.v1.QualityTrendNotice">QualityTrendNotice</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestion</td>
+                  <td><a href="#metaxisdata.v1.QualityThresholdSuggestion">QualityThresholdSuggestion</a></td>
+                  <td></td>
+                  <td><p>A threshold derived from the same history, offered to the editor. Nothing is
+applied by reading it; a person fills the form and saves the check. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>history_restarted</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when executions from an earlier rule type were left out, i.e. the drawn
+history starts at a type change. The window is then shorter than the
+requested limit even when older judged executions exist. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityRuleTrendPoint">QualityRuleTrendPoint</h3>
+        <p>QualityRuleTrendPoint is one judged execution of the check.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>execution</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityExecutions/{quality_execution} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>start_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityStatus">QualityStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value</td>
+                  <td><a href="#double">double</a></td>
+                  <td></td>
+                  <td><p>The quantity the check judged, in the trend&#39;s unit. For a PERCENT check this
+is failed rows over total rows; a row_count_change check plots its row count. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failed_rows</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_rows</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sampled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the observation was made over a sample rather than every row. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The rule revision the execution was judged with. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityRun">QualityRun</h3>
         <p>QualityRun is one dispatch batch that belongs to one target: the executions a</p><p>scheduler tick or a manual request planned for that target together. It is a</p><p>projection over quality_run and the executions it planned, not a second source</p><p>of truth; the execution remains the per-check unit and the evidence. The batch</p><p>counts and outcome are therefore the target's counts and outcome.</p>
 
@@ -18609,6 +18833,54 @@ see docs/data-quality.md. </p></td>
                 <tr>
                   <td>total_column_count</td>
                   <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityThresholdSuggestion">QualityThresholdSuggestion</h3>
+        <p>QualityThresholdSuggestion is a threshold derived from the check's history. It</p><p>is a starting point for the editor, never a verdict: the values are rounded for</p><p>display, the method is stated, and nothing is written until the check is saved.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>thresholds</td>
+                  <td><a href="#metaxisdata.v1.QualityThresholds">QualityThresholds</a></td>
+                  <td></td>
+                  <td><p>The suggested bounds, in the trend&#39;s unit and shaped like the snapshot the
+check itself records: fail_value/warn_value for a single upper bound, and the
+fail/warn pairs for the two-sided row-count bounds. Unset when no suggestion
+could be derived; notice then says why. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sample_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many judged executions the suggestion was derived from. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>method</td>
+                  <td><a href="#metaxisdata.v1.QualityThresholdSuggestionMethod">QualityThresholdSuggestionMethod</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>notice</td>
+                  <td><a href="#metaxisdata.v1.QualityTrendNotice">QualityTrendNotice</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -21267,6 +21539,135 @@ the same instance and database.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityThresholdSuggestionMethod">QualityThresholdSuggestionMethod</h3>
+        <p>QualityThresholdSuggestionMethod names the arithmetic behind a suggestion, so</p><p>the editor can say how the number was reached.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_THRESHOLD_SUGGESTION_METHOD_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_THRESHOLD_SUGGESTION_METHOD_P95_P99</td>
+                <td>1</td>
+                <td><p>A single upper bound: warn = p95 and fail = p99 of the judged values.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_THRESHOLD_SUGGESTION_METHOD_OBSERVED_RANGE</td>
+                <td>2</td>
+                <td><p>Two-sided row-count bounds: the observed range widened by a margin, with the
+warn bounds at the observed extremes.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityTrendNotice">QualityTrendNotice</h3>
+        <p>QualityTrendNotice explains why a trend has no threshold band or no suggestion.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_NO_JUDGED_EXECUTION</td>
+                <td>1</td>
+                <td><p>The check has no judged execution in the window.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_EDITED_SINCE_LAST_RUN</td>
+                <td>2</td>
+                <td><p>The check was edited after its newest judged execution, so its current
+thresholds never judged any of the drawn points.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_UNIT_NOT_COMPARABLE</td>
+                <td>3</td>
+                <td><p>The plotted value is not the quantity the thresholds bound: a row count
+against percent-change bounds.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_UNSUPPORTED_RULE_TYPE</td>
+                <td>4</td>
+                <td><p>The rule type has no numeric observation or no threshold shape this read
+model can suggest.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_INSUFFICIENT_HISTORY</td>
+                <td>5</td>
+                <td><p>Fewer judged executions than the suggestion needs (five).</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_NOTICE_UNSUPPORTED_CONFIG</td>
+                <td>6</td>
+                <td><p>The rule type could be suggested, but its current config has no bound to
+fill in.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityTrendUnit">QualityTrendUnit</h3>
+        <p>QualityTrendUnit is the unit of a trend's values and threshold bounds.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_TREND_UNIT_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_UNIT_COUNT</td>
+                <td>1</td>
+                <td><p>A number of rows: failed rows, a row count, a group count.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_UNIT_PERCENT</td>
+                <td>2</td>
+                <td><p>Already a percentage in 0-100, never a 0-1 ratio: a PERCENT threshold
+metric&#39;s failed rows over total rows, or a null percentage.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_UNIT_SECONDS</td>
+                <td>3</td>
+                <td><p>A lag in seconds.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_TREND_UNIT_NUMBER</td>
+                <td>4</td>
+                <td><p>An aggregate value or a table-to-table difference.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
 
       
 
@@ -21357,6 +21758,20 @@ GetQualityExecution for each execution&#39;s state and outcome.</p></td>
                 <td><a href="#metaxisdata.v1.GetQualityExecutionRequest">GetQualityExecutionRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityExecution">QualityExecution</a></td>
                 <td><p>Read one execution: its state, verdict, and the evidence behind it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityRuleTrend</td>
+                <td><a href="#metaxisdata.v1.GetQualityRuleTrendRequest">GetQualityRuleTrendRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityRuleTrend">QualityRuleTrend</a></td>
+                <td><p>Read one check&#39;s judged values over its recent executions, the band its
+current thresholds draw, and a threshold suggestion derived from that
+history. It is a read model over the stored executions: nothing is written,
+audited or measured against the target database.
+
+Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+value, so only those appear as points; a check that has never been judged has
+no trend rather than a fabricated flat line.</p></td>
               </tr>
             
               <tr>
@@ -21817,6 +22232,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityExecution</td>
                 <td>GET</td>
                 <td>/v1/{name=workspaces/*/qualityExecutions/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityRuleTrend</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityRules/*}:trend</td>
                 <td></td>
               </tr>
               

@@ -14,12 +14,14 @@ import {
   QualityExecutionTrigger,
   QualityObservedKind,
   QualityRuleSchema,
+  QualityRuleType,
   QualityStatus,
   QualityTargetPathSchema,
   QualityTargetSchema,
   QualityThresholdsSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
+import { formatDateTime } from "@/utils/datetime";
 import DataQualityExecutionDetailPage from "./DataQualityExecutionDetailPage.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -287,5 +289,40 @@ describe("DataQualityExecutionDetailPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.fetchExecutionError")
     );
+  });
+  it("names the baseline a count-change execution compared with", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Row count stays stable",
+        ruleType: QualityRuleType.ROW_COUNT_CHANGE,
+      })
+    );
+    const baselineAt = new Date(START.getTime() - 86_400_000);
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        baselineValue: 900,
+        baselineTime: timestampFromDate(baselineAt),
+      })
+    );
+    const withBaseline = await mountPage();
+    const text = withBaseline.wrapper.text();
+    expect(text).toContain(i18n.global.t("dataQuality.baseline.label"));
+    // The baseline is a row count with the time it was measured.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.baseline.value", {
+        value: "900",
+        time: formatDateTime(timestampFromDate(baselineAt), "en-US"),
+      })
+    );
+    withBaseline.wrapper.unmount();
+
+    // A first observation has no baseline to compare with, and says so.
+    mocks.getQualityExecution.mockResolvedValue(executionFixture());
+    const withoutBaseline = await mountPage();
+    expect(withoutBaseline.wrapper.text()).toContain(
+      i18n.global.t("dataQuality.baseline.missing")
+    );
+    withoutBaseline.wrapper.unmount();
   });
 });

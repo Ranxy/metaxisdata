@@ -16,7 +16,7 @@ import (
 
 // qualityExecutionColumns is the projection every quality_execution query
 // returns, in the order scanQualityExecution reads it.
-const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at`
+const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at, baseline_value, baseline_time`
 
 // QualityExecutionMessage is one rule checked once: the durable, user-facing
 // unit of the data quality engine. Its public resource name is built from ID,
@@ -77,6 +77,12 @@ type QualityExecutionMessage struct {
 	// FinishedAt is the zero time until the execution reaches COMPLETED or
 	// ABANDONED.
 	FinishedAt time.Time
+	// BaselineValue and BaselineTime are the row count a row_count_change check
+	// compared against and when that count was measured. They are nil for every
+	// other rule type, and for a first observation that had no recent baseline, so
+	// the verdict carries the evidence it used instead of leaving a reader to guess.
+	BaselineValue *float64
+	BaselineTime  *time.Time
 }
 
 // FindQualityExecutionMessage is the query filter for quality executions.
@@ -188,6 +194,8 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 		sampleRaw     []byte
 		initiator     sql.NullInt32
 		finished      sql.NullTime
+		baselineValue sql.NullFloat64
+		baselineTime  sql.NullTime
 	)
 	err := scanner.Scan(
 		&msg.ID,
@@ -219,6 +227,8 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 		&msg.DurationMS,
 		&msg.StartedAt,
 		&finished,
+		&baselineValue,
+		&baselineTime,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to scan quality execution")
@@ -244,6 +254,12 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 	}
 	if finished.Valid {
 		msg.FinishedAt = finished.Time
+	}
+	if baselineValue.Valid {
+		msg.BaselineValue = &baselineValue.Float64
+	}
+	if baselineTime.Valid {
+		msg.BaselineTime = &baselineTime.Time
 	}
 	return &msg, nil
 }
@@ -435,7 +451,9 @@ const qualityExecutionFinishStatement = `
 		error_message = $20::text,
 		duration_ms = $21::int4,
 		state = $22::int2,
-		finished_at = $23::timestamptz
+		finished_at = $23::timestamptz,
+		baseline_value = $24::double precision,
+		baseline_time = $25::timestamptz
 	WHERE id = $1 AND state IN (1, 2)
 	RETURNING id
 `
@@ -474,6 +492,14 @@ func (s *Store) FinishQualityExecution(ctx context.Context, execution *QualityEx
 	if execution.ObservedValue != nil {
 		observedValue = sql.NullFloat64{Float64: *execution.ObservedValue, Valid: true}
 	}
+	baselineValue := sql.NullFloat64{}
+	if execution.BaselineValue != nil {
+		baselineValue = sql.NullFloat64{Float64: *execution.BaselineValue, Valid: true}
+	}
+	baselineTime := sql.NullTime{}
+	if execution.BaselineTime != nil {
+		baselineTime = sql.NullTime{Time: *execution.BaselineTime, Valid: true}
+	}
 	// The planned row already carries the initiator and the dispatch trigger;
 	// finishing never rewrites either of them.
 	finishedAt := execution.FinishedAt
@@ -506,6 +532,8 @@ func (s *Store) FinishQualityExecution(ctx context.Context, execution *QualityEx
 		execution.DurationMS,
 		int32(storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED),
 		finishedAt,
+		baselineValue,
+		baselineTime,
 	).Scan(&finishedID)
 	if err == nil {
 		return nil
@@ -671,11 +699,38 @@ func (s *Store) ListQualityExecutions(ctx context.Context, find *FindQualityExec
 	return executions, nil
 }
 
+// qualityExecutionRecentStatement is the baseline read of one rule's completed
+// executions. When a target is named, its predicate is appended so a row count
+// observed on another table is never compared against.
+const qualityExecutionRecentStatement = `
+	SELECT ` + qualityExecutionColumns + `
+	FROM quality_execution
+	WHERE rule_id = $1 AND state = $2
+`
+
+// qualityExecutionRecentQuery renders the baseline read and its positional
+// arguments. It is a pure function so the target predicate is unit-testable
+// without a database.
+func qualityExecutionRecentQuery(ruleID int64, target *MetaGUIDKey, limit int) (string, []any) {
+	args := []any{ruleID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED}
+	where := ""
+	if target != nil {
+		args = append(args, target.GUID, int16(target.ObjectType))
+		where = " AND target_guid = $3 AND target_type = $4"
+	}
+	args = append(args, limit)
+	query := qualityExecutionRecentStatement + where +
+		" ORDER BY started_at DESC, id DESC LIMIT $" + fmt.Sprint(len(args))
+	return query, args
+}
+
 // ListRecentQualityExecutions returns the rule's newest completed executions.
-// The row_count_change rule type reads its baseline through this method, and an
-// execution that never reached a verdict (PENDING, RUNNING or ABANDONED) is not
-// a baseline observation.
-func (s *Store) ListRecentQualityExecutions(ctx context.Context, ruleID int64, limit int) ([]*QualityExecutionMessage, error) {
+// When target is non-nil the read is restricted to executions against that
+// target: a row_count_change execution that compares row counts belongs to one
+// table, and after a rule is moved the history of the old table is not a
+// denominator for the new one. An execution that never reached a verdict
+// (PENDING, RUNNING or ABANDONED) is not a baseline observation either.
+func (s *Store) ListRecentQualityExecutions(ctx context.Context, ruleID int64, target *MetaGUIDKey, limit int) ([]*QualityExecutionMessage, error) {
 	if ruleID <= 0 {
 		return nil, common.Errorf(common.Invalid, "quality rule id is required")
 	}
@@ -683,15 +738,52 @@ func (s *Store) ListRecentQualityExecutions(ctx context.Context, ruleID int64, l
 		return nil, common.Errorf(common.Invalid, "quality execution limit must be positive")
 	}
 
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualityExecutionColumns+`
-		FROM quality_execution
-		WHERE rule_id = $1 AND state = $2
-		ORDER BY started_at DESC, id DESC
-		LIMIT $3
-	`, ruleID, storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, limit)
+	query, args := qualityExecutionRecentQuery(ruleID, target, limit)
+	rows, err := s.GetDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list recent quality executions")
+	}
+	return scanQualityExecutions(rows)
+}
+
+// qualityExecutionRecentJudgedStatement reads the judged executions one check's
+// trend plots. Only a COMPLETED execution has a verdict, only a non-null observed
+// value is a measurement, and only the current target's history is comparable:
+// executions from before a rule was moved describe another table. Newest first so
+// the caller can bound the read with LIMIT.
+const qualityExecutionRecentJudgedStatement = `
+	SELECT ` + qualityExecutionColumns + `
+	FROM quality_execution
+	WHERE rule_id = $1 AND target_guid = $2 AND target_type = $3
+		AND state = $4 AND observed_value IS NOT NULL
+	ORDER BY started_at DESC, id DESC
+	LIMIT $5
+`
+
+// ListRecentJudgedQualityExecutions returns the newest judged executions of one
+// rule against one target: the evidence a trend is drawn from. A verdict without
+// a measurement (ERROR, NOT_EVALUATED) is not a point, so the query requires an
+// observed value; a planned or running row has no verdict yet.
+func (s *Store) ListRecentJudgedQualityExecutions(ctx context.Context, ruleID int64, target MetaGUIDKey, limit int) ([]*QualityExecutionMessage, error) {
+	if ruleID <= 0 {
+		return nil, common.Errorf(common.Invalid, "quality rule id is required")
+	}
+	if target.GUID == "" {
+		return nil, common.Errorf(common.Invalid, "a quality target is required")
+	}
+	if limit <= 0 {
+		return nil, common.Errorf(common.Invalid, "quality execution limit must be positive")
+	}
+
+	rows, err := s.GetDB().QueryContext(ctx, qualityExecutionRecentJudgedStatement,
+		ruleID,
+		target.GUID,
+		int16(target.ObjectType),
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		limit,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list recent judged quality executions")
 	}
 	return scanQualityExecutions(rows)
 }

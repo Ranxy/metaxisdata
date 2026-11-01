@@ -359,7 +359,7 @@ func (s *DataQualityService) qualityRuleConfigAtRevision(ctx context.Context, ru
 // newest first, with the execution being explained omitted so the prompt does not
 // see it twice.
 func (s *DataQualityService) qualityRecentExecutionSnapshots(ctx context.Context, ruleID, excludeID int64) []dataquality.ResultSnapshot {
-	executions, err := s.store.ListRecentQualityExecutions(ctx, ruleID, qualityExplainRecentExecutions+1)
+	executions, err := s.store.ListRecentQualityExecutions(ctx, ruleID, nil, qualityExplainRecentExecutions+1)
 	if err != nil {
 		slog.Warn("failed to read recent executions for the explanation", slog.Int64("rule_id", ruleID), slog.Any("error", err))
 		return nil

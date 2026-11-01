@@ -27,7 +27,7 @@ type executionTask struct {
 type batchExecutionStore interface {
 	MarkQualityRunRunning(ctx context.Context, batchID int64, at time.Time) error
 	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)
-	ListRecentQualityExecutions(ctx context.Context, ruleID int64, limit int) ([]*store.QualityExecutionMessage, error)
+	ListRecentQualityExecutions(ctx context.Context, ruleID int64, target *store.MetaGUIDKey, limit int) ([]*store.QualityExecutionMessage, error)
 	MarkQualityExecutionRunning(ctx context.Context, id int64, at time.Time) error
 	FinishQualityExecution(ctx context.Context, execution *store.QualityExecutionMessage) error
 	AbandonQualityExecutions(ctx context.Context, batchID int64, at time.Time) (int64, error)
@@ -102,4 +102,7 @@ type ruleExecutionOutcome struct {
 	state        dataquality.ResultState
 	errorCode    string
 	errorMessage string
+	// baseline is the row_count_change denominator this verdict compared against;
+	// nil for every other rule type and for a first observation without one.
+	baseline *baselineObservation
 }

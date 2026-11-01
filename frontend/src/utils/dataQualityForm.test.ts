@@ -5,6 +5,7 @@ import {
   CelExpressionConfigSchema,
   FreshnessConfigSchema,
   QualityAggregateFunction,
+  QualityComparison,
   QualityComparisonOperator,
   QualityDimension,
   QualityEmptyBehavior,
@@ -16,16 +17,20 @@ import {
   QualityRuleType,
   QualitySeverity,
   QualityThresholdMetric,
+  QualityThresholdSuggestionSchema,
+  QualityThresholdsSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import type { RuleFormState, TargetSelection } from "./dataQualityForm";
 import {
   allowedRuleTypes,
+  applyThresholdSuggestion,
   buildFilter,
   buildRuleConfig,
   buildTarget,
   columnsForConfig,
   computeUpdateMask,
+  defaultOnEmptyForNewRule,
   durationToSchedule,
   EDITABLE_RULE_TYPES,
   emptyConfig,
@@ -1359,5 +1364,195 @@ describe("shared helpers", () => {
     expect(invalidInteger("10")).toBe(false);
     expect(invalidInteger("1.5")).toBe(true);
     expect(invalidInteger("-2")).toBe(false);
+  });
+});
+
+describe("threshold suggestions", () => {
+  function suggestion(thresholds: Record<string, unknown>) {
+    return create(QualityThresholdSuggestionSchema, {
+      thresholds: create(QualityThresholdsSchema, thresholds),
+    });
+  }
+
+  function formFor(ruleType: QualityRuleType): RuleFormState {
+    return emptyRuleForm(ruleType);
+  }
+
+  it("defaults a new count-change check's empty behaviour to pass", () => {
+    // Its first run only records the baseline, and "pass" is the setting that
+    // says the run has no verdict.
+    expect(defaultOnEmptyForNewRule(QualityRuleType.ROW_COUNT_CHANGE)).toBe(
+      QualityEmptyBehavior.PASS
+    );
+    // Every other type keeps the editor's own default.
+    expect(defaultOnEmptyForNewRule(QualityRuleType.ROW_COUNT)).toBeUndefined();
+    expect(
+      defaultOnEmptyForNewRule(QualityRuleType.NULL_PERCENT)
+    ).toBeUndefined();
+  });
+
+  it("fills a row count's two-sided range, only where a bound exists", () => {
+    const form = formFor(QualityRuleType.ROW_COUNT);
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({
+        comparison: QualityComparison.OUTSIDE_RANGE,
+        failValue: 10,
+        failValueUpper: 100,
+        warnValue: 20,
+        warnValueUpper: 80,
+      })
+    );
+    expect(applied.config.minRows).toBe("10");
+    expect(applied.config.maxRows).toBe("100");
+    expect(applied.config.warnMinRows).toBe("20");
+    expect(applied.config.warnMaxRows).toBe("80");
+
+    const oneSided = applyThresholdSuggestion(
+      formFor(QualityRuleType.ROW_COUNT),
+      suggestion({ comparison: QualityComparison.OUTSIDE_RANGE, failValue: 10 })
+    );
+    expect(oneSided.config.minRows).toBe("10");
+    // A bound the suggestion did not carry is not invented.
+    expect(oneSided.config.maxRows).toBe("");
+    expect(oneSided.config.warnMinRows).toBe("");
+  });
+
+  it("fills the shared fail/warn fields of the single-bound family", () => {
+    for (const ruleType of [
+      QualityRuleType.UNIQUE,
+      QualityRuleType.UNIQUE_COMBINATION,
+      QualityRuleType.ACCEPTED_VALUES,
+      QualityRuleType.RANGE,
+      QualityRuleType.REGEX,
+      QualityRuleType.STRING_LENGTH,
+      QualityRuleType.REFERENTIAL_INTEGRITY,
+      QualityRuleType.CROSS_COLUMN,
+      QualityRuleType.GROUP_CHECK,
+      QualityRuleType.CEL_EXPRESSION,
+      QualityRuleType.CUSTOM_SQL,
+      QualityRuleType.CROSS_TABLE,
+    ]) {
+      const applied = applyThresholdSuggestion(
+        formFor(ruleType),
+        suggestion({ failValue: 5.5, warnValue: 3 })
+      );
+      expect(applied.config.failThreshold).toBe("5.5");
+      expect(applied.config.warnThreshold).toBe("3");
+    }
+  });
+
+  it("clears a warning bound the suggestion does not carry", () => {
+    // A flat history suggests fail=0 and no warning zone; keeping the old warn=5
+    // would make the form invalid (warn above fail) and the server would reject
+    // the save.
+    const form = formFor(QualityRuleType.UNIQUE);
+    form.config.failThreshold = "10";
+    form.config.warnThreshold = "5";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 0 })
+    );
+    expect(applied.config.failThreshold).toBe("0");
+    expect(applied.config.warnThreshold).toBe("");
+  });
+
+  it("clears a freshness warning lag the suggestion does not carry", () => {
+    const form = formFor(QualityRuleType.FRESHNESS);
+    form.config.maxLagSeconds = "3600";
+    form.config.warnLagSeconds = "1800";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 900 })
+    );
+    expect(applied.config.maxLagSeconds).toBe("900");
+    expect(applied.config.warnLagSeconds).toBe("");
+  });
+
+  it("clears a null check's warning bound in the unit it measures in", () => {
+    const form = formFor(QualityRuleType.NULL_PERCENT);
+    form.config.nullMetric = "percent";
+    form.config.maxNullPct = "5";
+    form.config.warnNullPct = "2";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 1 })
+    );
+    expect(applied.config.maxNullPct).toBe("1");
+    expect(applied.config.warnNullPct).toBe("");
+  });
+
+  it("clears a row count's warning bound when only the failure bound is suggested", () => {
+    const form = formFor(QualityRuleType.ROW_COUNT);
+    form.config.minRows = "5";
+    form.config.warnMinRows = "8";
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 10 })
+    );
+    expect(applied.config.minRows).toBe("10");
+    expect(applied.config.warnMinRows).toBe("");
+  });
+
+  it("writes a null check's suggestion into the unit it measures in", () => {
+    const countForm = formFor(QualityRuleType.NULL_PERCENT);
+    countForm.config.nullMetric = "count";
+    const count = applyThresholdSuggestion(
+      countForm,
+      suggestion({ failValue: 5, warnValue: 2 })
+    );
+    expect(count.config.maxNullCount).toBe("5");
+    expect(count.config.warnNullCount).toBe("2");
+    expect(count.config.maxNullPct).toBe("");
+
+    const percentForm = formFor(QualityRuleType.NULL_PERCENT);
+    percentForm.config.nullMetric = "percent";
+    const percent = applyThresholdSuggestion(
+      percentForm,
+      suggestion({ failValue: 5.5, warnValue: 2 })
+    );
+    expect(percent.config.maxNullPct).toBe("5.5");
+    expect(percent.config.warnNullPct).toBe("2");
+    expect(percent.config.maxNullCount).toBe("");
+  });
+
+  it("rounds a lag to whole seconds", () => {
+    const fresh = applyThresholdSuggestion(
+      formFor(QualityRuleType.FRESHNESS),
+      suggestion({ failValue: 86_400.4, warnValue: 3_600 })
+    );
+    expect(fresh.config.maxLagSeconds).toBe("86400");
+    expect(fresh.config.warnLagSeconds).toBe("3600");
+  });
+
+  it("leaves the form alone (and unmutated) when nothing applies", () => {
+    const form = formFor(QualityRuleType.UNIQUE);
+    form.config.failThreshold = "1";
+    expect(
+      applyThresholdSuggestion(
+        form,
+        create(QualityThresholdSuggestionSchema, {})
+      )
+    ).toBe(form);
+
+    for (const ruleType of [
+      QualityRuleType.ROW_COUNT_CHANGE,
+      QualityRuleType.SCHEMA_DRIFT,
+    ]) {
+      const untouched = formFor(ruleType);
+      expect(
+        applyThresholdSuggestion(untouched, suggestion({ failValue: 5 }))
+      ).toBe(untouched);
+    }
+
+    const applied = applyThresholdSuggestion(
+      form,
+      suggestion({ failValue: 5 })
+    );
+    // The helper returns a new form; the one the dialog is holding keeps its
+    // values until the caller replaces it.
+    expect(applied).not.toBe(form);
+    expect(form.config.failThreshold).toBe("1");
+    expect(applied.config.failThreshold).toBe("5");
   });
 });

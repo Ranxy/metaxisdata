@@ -50,11 +50,13 @@ type qualityExecutionScannerStub struct {
 	durationMS         int32
 	startedAt          time.Time
 	finishedAt         sql.NullTime
+	baselineValue      sql.NullFloat64
+	baselineTime       sql.NullTime
 }
 
 func (s qualityExecutionScannerStub) Scan(dest ...any) error {
-	if len(dest) != 29 {
-		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 29", len(dest))
+	if len(dest) != 31 {
+		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 31", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*int64)) = s.runID
@@ -85,6 +87,8 @@ func (s qualityExecutionScannerStub) Scan(dest ...any) error {
 	*(dest[26].(*int32)) = s.durationMS
 	*(dest[27].(*time.Time)) = s.startedAt
 	*(dest[28].(*sql.NullTime)) = s.finishedAt
+	*(dest[29].(*sql.NullFloat64)) = s.baselineValue
+	*(dest[30].(*sql.NullTime)) = s.baselineTime
 	return nil
 }
 
@@ -124,6 +128,8 @@ func TestQualityExecutionColumnsMatchTheScan(t *testing.T) {
 		"duration_ms",
 		"started_at",
 		"finished_at",
+		"baseline_value",
+		"baseline_time",
 	}, columns)
 	require.NotContains(t, qualityExecutionColumns, "*")
 }
@@ -163,6 +169,8 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 		durationMS:         120,
 		startedAt:          startedAt,
 		finishedAt:         sql.NullTime{Time: finishedAt, Valid: true},
+		baselineValue:      sql.NullFloat64{Float64: 10, Valid: true},
+		baselineTime:       sql.NullTime{Time: startedAt.Add(-time.Hour), Valid: true},
 	})
 	require.NoError(t, err)
 
@@ -211,6 +219,10 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 	require.Equal(t, int32(120), execution.DurationMS)
 	require.Equal(t, startedAt, execution.StartedAt)
 	require.Equal(t, finishedAt, execution.FinishedAt)
+	require.NotNil(t, execution.BaselineValue)
+	require.InDelta(t, 10, *execution.BaselineValue, 1e-9)
+	require.NotNil(t, execution.BaselineTime)
+	require.Equal(t, startedAt.Add(-time.Hour), *execution.BaselineTime)
 }
 
 // A NULL observed value, initiator and finished_at must stay absent rather than
@@ -231,6 +243,8 @@ func TestScanQualityExecutionKeepsAbsentColumnsAbsent(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Nil(t, execution.ObservedValue)
+	require.Nil(t, execution.BaselineValue)
+	require.Nil(t, execution.BaselineTime)
 	require.Nil(t, execution.InitiatorID)
 	require.True(t, execution.FinishedAt.IsZero())
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED, execution.Status)
@@ -375,6 +389,10 @@ func TestQualityExecutionFinishStatementMergesPlannedSnapshot(t *testing.T) {
 	require.Contains(t, qualityExecutionFinishStatement, "status = $8::int2")
 	require.Contains(t, qualityExecutionFinishStatement, "state = $22::int2")
 	require.Contains(t, qualityExecutionFinishStatement, "finished_at = $23::timestamptz")
+	// The row_count_change evidence is written with the verdict; it is never
+	// merged from the planned row, which has none.
+	require.Contains(t, qualityExecutionFinishStatement, "baseline_value = $24::double precision")
+	require.Contains(t, qualityExecutionFinishStatement, "baseline_time = $25::timestamptz")
 	require.Contains(t, qualityExecutionFinishStatement, "WHERE id = $1 AND state IN (1, 2)")
 	require.Contains(t, qualityExecutionFinishStatement, "RETURNING id")
 	// The dispatch trigger, initiator and rule identity were written when the
@@ -465,9 +483,9 @@ func TestQualityExecutionReadsValidateArguments(t *testing.T) {
 	require.Nil(t, execution)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 
-	_, err = s.ListRecentQualityExecutions(ctx, 0, 10)
+	_, err = s.ListRecentQualityExecutions(ctx, 0, nil, 10)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
-	_, err = s.ListRecentQualityExecutions(ctx, 7, 0)
+	_, err = s.ListRecentQualityExecutions(ctx, 7, nil, 0)
 	require.Equal(t, common.Invalid, common.ErrorCode(err))
 
 	latest, err := s.ListLatestQualityExecutions(ctx, nil)
@@ -491,6 +509,55 @@ func TestQualityExecutionBaselineQueriesReadOnlyCompletedRows(t *testing.T) {
 	require.Contains(t, qualityExecutionLatestStatement, "state = $2")
 	require.Contains(t, qualityExecutionLatestStatement, "DISTINCT ON (rule_id)")
 	require.Contains(t, qualityExecutionLatestStatement, "ORDER BY rule_id, started_at DESC, id DESC")
+}
+
+// The row_count_change baseline read must be pinned to the rule's current target:
+// after a rule is moved, a row count observed on the old table would be compared
+// against the new one. Callers that only need the previous verdict omit the target.
+func TestQualityExecutionRecentQueryFiltersTheTarget(t *testing.T) {
+	t.Parallel()
+
+	query, args := qualityExecutionRecentQuery(7, &MetaGUIDKey{
+		GUID:       "inst;db;;orders",
+		ObjectType: storepb.MetaType_TABLE,
+	}, 10)
+	require.Contains(t, query, "rule_id = $1 AND state = $2")
+	require.Contains(t, query, "target_guid = $3 AND target_type = $4")
+	require.Contains(t, query, "ORDER BY started_at DESC, id DESC")
+	require.Contains(t, query, "LIMIT $5")
+	require.Equal(t, []any{
+		int64(7),
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		"inst;db;;orders",
+		int16(storepb.MetaType_TABLE),
+		10,
+	}, args)
+
+	query, args = qualityExecutionRecentQuery(7, nil, 1)
+	require.NotContains(t, query, "target_guid = $3")
+	require.NotContains(t, query, "target_type = $4")
+	require.Contains(t, query, "LIMIT $3")
+	require.Equal(t, []any{
+		int64(7),
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		1,
+	}, args)
+}
+
+// The trend reads judged measurements only: a completed ERROR/NOT_EVALUATED row
+// has no observed value and a planned/running row has no verdict, so neither is a
+// point on the chart. Scoping to the current target keeps the series to one table.
+func TestQualityExecutionRecentJudgedStatementShape(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "FROM quality_execution")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "rule_id = $1")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "target_guid = $2")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "target_type = $3")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "state = $4")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "observed_value IS NOT NULL")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "ORDER BY started_at DESC, id DESC")
+	require.Contains(t, qualityExecutionRecentJudgedStatement, "LIMIT $5")
 }
 
 // The per-target recent-execution tally is bounded and narrow: the LATERAL applies

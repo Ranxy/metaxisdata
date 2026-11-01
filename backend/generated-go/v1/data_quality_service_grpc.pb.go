@@ -30,6 +30,7 @@ const (
 	DataQualityService_RunQualityRules_FullMethodName                    = "/metaxisdata.v1.DataQualityService/RunQualityRules"
 	DataQualityService_ListQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
 	DataQualityService_GetQualityExecution_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	DataQualityService_GetQualityRuleTrend_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityRuleTrend"
 	DataQualityService_ExportQualityExecutions_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExportQualityExecutions"
 	DataQualityService_ListQualityRuns_FullMethodName                    = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
 	DataQualityService_GetQualityRun_FullMethodName                      = "/metaxisdata.v1.DataQualityService/GetQualityRun"
@@ -114,6 +115,15 @@ type DataQualityServiceClient interface {
 	ListQualityExecutions(ctx context.Context, in *ListQualityExecutionsRequest, opts ...grpc.CallOption) (*ListQualityExecutionsResponse, error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(ctx context.Context, in *GetQualityExecutionRequest, opts ...grpc.CallOption) (*QualityExecution, error)
+	// Read one check's judged values over its recent executions, the band its
+	// current thresholds draw, and a threshold suggestion derived from that
+	// history. It is a read model over the stored executions: nothing is written,
+	// audited or measured against the target database.
+	//
+	// Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+	// value, so only those appear as points; a check that has never been judged has
+	// no trend rather than a fabricated flat line.
+	GetQualityRuleTrend(ctx context.Context, in *GetQualityRuleTrendRequest, opts ...grpc.CallOption) (*QualityRuleTrend, error)
 	// Export the executions the same filters select as ListQualityExecutions as one
 	// CSV document, streamed in slices. This is a file download, not a list: it
 	// stops at max_rows and reports the running row count on every slice.
@@ -377,6 +387,16 @@ func (c *dataQualityServiceClient) GetQualityExecution(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityExecution)
 	err := c.cc.Invoke(ctx, DataQualityService_GetQualityExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityRuleTrend(ctx context.Context, in *GetQualityRuleTrendRequest, opts ...grpc.CallOption) (*QualityRuleTrend, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityRuleTrend)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityRuleTrend_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -834,6 +854,15 @@ type DataQualityServiceServer interface {
 	ListQualityExecutions(context.Context, *ListQualityExecutionsRequest) (*ListQualityExecutionsResponse, error)
 	// Read one execution: its state, verdict, and the evidence behind it.
 	GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error)
+	// Read one check's judged values over its recent executions, the band its
+	// current thresholds draw, and a threshold suggestion derived from that
+	// history. It is a read model over the stored executions: nothing is written,
+	// audited or measured against the target database.
+	//
+	// Only executions that reached a judged verdict (PASS, WARN or FAIL) carry a
+	// value, so only those appear as points; a check that has never been judged has
+	// no trend rather than a fabricated flat line.
+	GetQualityRuleTrend(context.Context, *GetQualityRuleTrendRequest) (*QualityRuleTrend, error)
 	// Export the executions the same filters select as ListQualityExecutions as one
 	// CSV document, streamed in slices. This is a file download, not a list: it
 	// stops at max_rows and reports the running row count on every slice.
@@ -1032,6 +1061,9 @@ func (UnimplementedDataQualityServiceServer) ListQualityExecutions(context.Conte
 }
 func (UnimplementedDataQualityServiceServer) GetQualityExecution(context.Context, *GetQualityExecutionRequest) (*QualityExecution, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityExecution not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityRuleTrend(context.Context, *GetQualityRuleTrendRequest) (*QualityRuleTrend, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityRuleTrend not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ExportQualityExecutions(*ExportQualityExecutionsRequest, grpc.ServerStreamingServer[ExportQualityDataChunk]) error {
 	return status.Error(codes.Unimplemented, "method ExportQualityExecutions not implemented")
@@ -1341,6 +1373,24 @@ func _DataQualityService_GetQualityExecution_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).GetQualityExecution(ctx, req.(*GetQualityExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityRuleTrend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityRuleTrendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityRuleTrend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityRuleTrend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityRuleTrend(ctx, req.(*GetQualityRuleTrendRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2029,6 +2079,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityExecution",
 			Handler:    _DataQualityService_GetQualityExecution_Handler,
+		},
+		{
+			MethodName: "GetQualityRuleTrend",
+			Handler:    _DataQualityService_GetQualityRuleTrend_Handler,
 		},
 		{
 			MethodName: "ListQualityRuns",

@@ -141,30 +141,39 @@ func manualExecutionTasks(executionIDs []int64) []executionTask {
 	return tasks
 }
 
-// baselineFromExecutions picks the most recent evaluated observation to use as
-// the row_count_change baseline. ERROR, SKIPPED and NOT_EVALUATED verdicts carry
-// no usable measurement even if one slipped into the observed value.
-func baselineFromExecutions(executions []*store.QualityExecutionMessage, now time.Time, interval time.Duration) *float64 {
+// baselineObservation is the denominator a row_count_change execution compared
+// against, plus when that row count was measured so the execution row can record
+// the evidence it used instead of leaving a reader to guess.
+type baselineObservation struct {
+	// Value is the row count the baseline execution measured: its observed value
+	// when it stored one, otherwise the total rows it recorded.
+	Value float64
+	// MeasuredAt is when that baseline execution started.
+	MeasuredAt time.Time
+}
+
+// baselineFromExecutions picks the newest completed measurement a
+// row_count_change check may compare against. The value is the execution's
+// observed value when it has one, and its recorded total rows otherwise: a
+// NOT_EVALUATED row has no observed value but still counted the rows it measured,
+// and that count is a perfectly good denominator. Any verdict therefore
+// qualifies, because a baseline is a measurement, not a verdict. An execution
+// with no rows carries no denominator and is skipped. The first usable candidate
+// decides: if it is already too old there is no baseline at all, because an even
+// older candidate would describe a data shape further away still.
+func baselineFromExecutions(executions []*store.QualityExecutionMessage, now time.Time, interval time.Duration) *baselineObservation {
 	for _, execution := range executions {
-		if execution == nil || execution.ObservedValue == nil {
+		if execution == nil || execution.TotalRows <= 0 {
 			continue
 		}
-		switch execution.Status {
-		case storepb.QualityStatus_QUALITY_STATUS_PASS,
-			storepb.QualityStatus_QUALITY_STATUS_WARN,
-			storepb.QualityStatus_QUALITY_STATUS_FAIL:
-			if !baselineIsRecent(execution.StartedAt, now, interval) {
-				return nil
-			}
-			return execution.ObservedValue
-		case storepb.QualityStatus_QUALITY_STATUS_ERROR,
-			storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
-			storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
-			storepb.QualityStatus_QUALITY_STATUS_UNSPECIFIED:
-			continue
-		default:
-			continue
+		value := float64(execution.TotalRows)
+		if execution.ObservedValue != nil {
+			value = *execution.ObservedValue
 		}
+		if !baselineIsRecent(execution.StartedAt, now, interval) {
+			return nil
+		}
+		return &baselineObservation{Value: value, MeasuredAt: execution.StartedAt}
 	}
 	return nil
 }

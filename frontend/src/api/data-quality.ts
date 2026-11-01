@@ -28,6 +28,7 @@ import {
   GetQualityLLMUsageRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
+  GetQualityRuleTrendRequestSchema,
   GetQualityRunRequestSchema,
   GetQualitySuggestionJobRequestSchema,
   GetQualitySuggestionJobTargetDebugRequestSchema,
@@ -65,6 +66,7 @@ import {
   QualityResolutionReason,
   type QualityRule,
   QualityRuleState,
+  type QualityRuleTrend,
   QualityRuleType,
   type QualityRun,
   type QualitySemanticType,
@@ -443,6 +445,25 @@ export async function listAllQualityRules(
 export async function getQualityRule(name: string): Promise<QualityRule> {
   const request = create(GetQualityRuleRequestSchema, { name });
   return await dataQualityClient.getQualityRule(request);
+}
+
+/**
+ * One check's measured history, oldest point first, plus the threshold band its
+ * newest point was judged against and a threshold suggested from the same
+ * history. `limit` counts judged executions, not executions: skipped or
+ * never-judged runs are not points.
+ */
+export async function getQualityRuleTrend(
+  name: string,
+  options: { limit?: number; signal?: AbortSignal } = {}
+): Promise<QualityRuleTrend> {
+  const request = create(GetQualityRuleTrendRequestSchema, {
+    name,
+    limit: options.limit ?? 0,
+  });
+  return await dataQualityClient.getQualityRuleTrend(request, {
+    signal: options.signal,
+  });
 }
 
 /**

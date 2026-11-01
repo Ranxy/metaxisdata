@@ -360,11 +360,18 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	}
 
 	observation := execution.Observation
+	var baseline *baselineObservation
 	if snapshot.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE {
 		// The executor measures the current row count; the baseline is this rule's
-		// last evaluated observation, which only the store can supply.
-		observation.Baseline = r.ruleBaseline(ctx, snapshot.ID,
+		// last usable observation on the same target, which only the store can
+		// supply. It is read for the current target because a count from another
+		// table says nothing about this one.
+		baseline = r.ruleBaseline(ctx, snapshot.ID,
+			store.MetaGUIDKey{GUID: snapshot.Target.GUID, ObjectType: snapshot.Target.MetaType},
 			r.targetScheduleInterval(ctx, snapshot.Target.GUID, snapshot.Target.MetaType))
+		if baseline != nil {
+			observation.Baseline = &baseline.Value
+		}
 	}
 	state := dataquality.Evaluate(*snapshot, observation, time.Now().UTC())
 	return &ruleExecution{
@@ -375,6 +382,7 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 			observation: observation,
 			execution:   execution,
 			state:       state,
+			baseline:    baseline,
 		}),
 		head:     head,
 		snapshot: snapshot,

@@ -66,6 +66,13 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   not a pass. Choose pass or fail per check if that is the intent; row count,
   custom SQL and schema drift always produce a value, so the setting does not
   apply to them.
+- **Row count change**: compares the current row count with the check's most
+  recent completed execution that measured a non-zero count — whatever that
+  run's verdict was — within the last seven days and two target intervals. The
+  first run has no baseline and is not judged; a newly created check's dialog
+  defaults *empty data* to pass, so that first observation only records the
+  baseline. The execution detail shows the baseline value and time the
+  comparison used.
 - **Filters** narrow the rows the check reads (structured AND conditions only);
   write a custom-SQL check when the condition needs more. A target-level filter
   from the contract is ANDed on top.
@@ -76,6 +83,17 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   created. Columns recorded by an older snapshot that did not store nullability
   stay unjudged until the check is saved again. Use *Fill from target* to record
   the current definition.
+
+Once a check has been judged at least five times, its edit dialog offers
+**Suggested thresholds** derived from the check's own history: for a check that
+counts failing rows, measures a lag, or reconciles a table-to-table difference,
+warning at the 95th percentile and failure at the 99th (rounded up to the
+check's unit); for a row count check, the observed range
+widened by 10%, and only for the bounds the check already sets. Using them only
+fills the form — the check changes when you save it. The suggestion is
+unavailable for aggregate, row count change and schema drift checks, and while
+the form's check type or measurement unit differs from the saved check, because
+the history then describes a different measurement.
 
 Checks can also start from a proposal instead of a blank form. **Recommend
 checks** reads the columns' stored profiles and drafts the checks that follow
@@ -204,6 +222,22 @@ rows open the execution behind them, and the check's definition (target, type,
 revision, tags, filter, empty behavior). *Run now*, *Edit*,
 *pause/resume* and *Delete* appear there for callers who hold the matching
 permission.
+
+The drawer also plots the check's **observed value trend**: the value each
+recent judged execution measured, oldest to newest, colored by its verdict,
+with the warning and failure bounds as reference lines. Only judged runs
+(`PASS`/`WARN`/`FAIL`) are points, so an execution that errored or had nothing
+to judge shows in the history strip above the chart rather than as a fake zero.
+The bounds come from the execution that judged the check's current definition,
+so a check edited since its last run says the band is not drawn instead of
+showing stale bounds. A percentage check is plotted in percent; a row count
+change is plotted as rows, without a band, because its thresholds bound a
+percentage change against a baseline rather than the count; a sampled check
+marks its sample points. Click a point to open that execution. The series stops
+at a rule-type change and says so, because values measured by a different kind
+of check are not comparable. Editing the check's filter changes which rows it
+measures: the line still spans both regimes, so read across a filter change
+with care.
 
 ## Coverage and quality score
 
@@ -621,6 +655,11 @@ pruned.
 | A label suggestion cannot be accepted | Profile the columns first; label suggestions require profiles fresher than seven days. |
 | *Recommend checks* proposes nothing, or far fewer checks than expected | The columns were never profiled (the server refuses to recommend without a profile fresher than seven days), every check the profile supports is already a saved check, or the proposals were already accepted/rejected. Rejecting a recommendation keeps it out of later passes until you use *Regenerate*. A column can also be listed as skipped because its profile cannot support a check (for example a mostly-NULL column, a value set the sample could not enumerate completely, or a value the profile had to shorten for display). |
 | *Recommend checks* proposed a threshold that looks too loose or too tight | The bound is the observation plus a fixed tolerance and is a starting point, not a verdict: edit it in the check dialog before saving, or lower the tolerance by making the check stricter. A range check will legitimately fail when the data moves past today's extremes; widen it or replace it with an aggregate check once the shape is understood. |
+| The trend chart is empty | The check has no judged execution yet (never run, or only `ERROR`/`NOT_EVALUATED` outcomes), or it is a schema drift check, which has no numeric value to plot. |
+| The trend has no threshold band | The check was edited after its last judged run, so its current thresholds never judged the drawn points; the row count change is plotted without a band on purpose, because its thresholds bound a percentage change against a baseline. |
+| Suggested thresholds are unavailable | The check has fewer than five judged executions; aggregate, row count change and schema drift checks have no suggestion; a row count check with an exact row count has nothing to suggest; and if the form's check type or measurement unit was changed, the suggestion describes the saved check and is disabled. |
+| A row count change check reports `NOT_EVALUATED` on its first run | It has no baseline yet: the first completed run records it and the comparison starts with the second. Newly created checks default *empty data* to pass so the first run does not look like a problem; an older check keeps its saved setting, which can be changed under Details. |
+| The row count change baseline seems stale | The baseline is the most recent completed execution with a non-zero measured count within seven days and two target intervals; zero-row and unmeasured executions are skipped, and the check falls back to its empty-data behavior when no baseline qualifies. |
 | Running *AI label fields* changed the recommendation thresholds | It should not: a pending recommendation is not overwritten by a label-pass draft. If a draft shows the default parameters instead, the recommendation was rejected/decided first, or *Regenerate* was used on the label pass. |
 | A CSV export stops early | The selection is capped at 100,000 rows; the app warns when the file was cut. Narrow the filters (especially the time window) and export again. |
 | "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |

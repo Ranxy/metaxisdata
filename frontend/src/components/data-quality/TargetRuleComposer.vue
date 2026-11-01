@@ -223,6 +223,16 @@
                 :rule-type="form.ruleType"
                 :column-details="columns"
               />
+              <!-- Editing an existing check only: a new one has no history to
+                   derive a threshold from. -->
+              <QualityThresholdSuggestion
+                v-if="rule"
+                :rule="rule"
+                :rule-type="form.ruleType"
+                :threshold-metric="form.thresholdMetric"
+                :null-metric="form.config.nullMetric"
+                @apply="useThresholdSuggestion"
+              />
             </section>
 
             <!-- Everything that is not a parameter of the check itself. Kept
@@ -283,6 +293,14 @@
                   <p class="text-sm text-muted-foreground">
                     {{ t("dataQuality.editor.onEmptyHint") }}
                   </p>
+                  <!-- A count-change check's first run records the baseline and
+                       has no verdict; PASS is the setting that spells that out. -->
+                  <p
+                    v-if="form.ruleType === QualityRuleType.ROW_COUNT_CHANGE"
+                    class="text-sm text-muted-foreground"
+                  >
+                    {{ t("dataQuality.editor.onEmptyRowCountChangeHint") }}
+                  </p>
                 </div>
               </div>
             </details>
@@ -326,6 +344,7 @@ import {
 } from "@/api/data-quality";
 import { listAllMetadata } from "@/api/database";
 import UserSelect from "@/components/common/UserSelect.vue";
+import QualityThresholdSuggestion from "@/components/data-quality/QualityThresholdSuggestion.vue";
 import RuleConfigForm from "@/components/data-quality/RuleConfigForm.vue";
 import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -359,6 +378,7 @@ import {
   QualitySeverity,
   type QualitySuggestion,
   QualityThresholdMetric,
+  type QualityThresholdSuggestion as QualityThresholdSuggestionMessage,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
@@ -370,7 +390,9 @@ import {
 } from "@/utils/dataQuality";
 import {
   allowedRuleTypes,
+  applyThresholdSuggestion,
   computeUpdateMask,
+  defaultOnEmptyForNewRule,
   emptyConfig,
   emptyRuleForm,
   formToRule,
@@ -666,6 +688,10 @@ function initialForm(): RuleFormState {
   if (props.defaultSeverity !== QualitySeverity.UNSPECIFIED) {
     form.severity = props.defaultSeverity;
   }
+  const onEmpty = defaultOnEmptyForNewRule(form.ruleType);
+  if (onEmpty !== undefined) {
+    form.onEmpty = onEmpty;
+  }
   return form;
 }
 
@@ -737,6 +763,12 @@ function changeRuleType(ruleType: QualityRuleType) {
   if (!isThresholdMetricType(ruleType)) {
     form.value.thresholdMetric = QualityThresholdMetric.COUNT;
   }
+  // Only a new check adopts the type's own empty behaviour; an edit keeps what
+  // was saved, exactly like the config itself.
+  if (!isEdit.value) {
+    form.value.onEmpty =
+      defaultOnEmptyForNewRule(ruleType) ?? emptyRuleForm(ruleType).onEmpty;
+  }
   applyColumn(ruleType, column);
   issues.value = [];
   saveError.value = "";
@@ -752,6 +784,18 @@ function setSeverity(value: unknown) {
 
 function setOnEmpty(value: unknown) {
   form.value.onEmpty = Number(value) as QualityEmptyBehavior;
+}
+
+/**
+ * Fill the form from the suggested thresholds. Reading a suggestion is not a
+ * save: the form now holds the values and the reader still has to submit the
+ * check, which is what lets them adjust a bound before committing it.
+ */
+function useThresholdSuggestion(suggestion: QualityThresholdSuggestionMessage) {
+  form.value = applyThresholdSuggestion(form.value, suggestion);
+  issues.value = [];
+  saveError.value = "";
+  notify.success(t("dataQuality.trend.suggestion.applied"));
 }
 
 function onDetailsToggle(event: Event) {

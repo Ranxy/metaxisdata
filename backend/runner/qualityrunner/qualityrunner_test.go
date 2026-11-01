@@ -608,37 +608,89 @@ func TestDurationMSClampsNegativeAndOverflow(t *testing.T) {
 	require.Equal(t, int32(^uint32(0)>>1), durationMS(now.Add(-20*24*time.Hour), now.Add(20*24*time.Hour)))
 }
 
-func TestBaselineFromExecutionsSkipsUnjudgedVerdicts(t *testing.T) {
+func TestBaselineFromExecutionsUsesTheMeasuredRowCount(t *testing.T) {
 	t.Parallel()
 
-	observed := 42.0
-	// The newest execution is an ERROR; the last evaluated one is the baseline.
-	executions := []*store.QualityExecutionMessage{
-		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR, ObservedValue: &observed},
-		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed},
-	}
 	now := time.Now().UTC()
-	executions[1].StartedAt = now.Add(-time.Minute)
+	observed := 42.0
+	measuredAt := now.Add(-time.Minute)
+	// The newest execution measured nothing at all; the last usable measurement is
+	// the baseline, and it carries the moment it was taken.
+	executions := []*store.QualityExecutionMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_ERROR},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, TotalRows: 42, StartedAt: measuredAt},
+	}
 	baseline := baselineFromExecutions(executions, now, time.Hour)
 	require.NotNil(t, baseline)
-	require.InDelta(t, 42, *baseline, 1e-9)
+	require.InDelta(t, 42, baseline.Value, 1e-9)
+	require.Equal(t, measuredAt, baseline.MeasuredAt, "the execution records when its denominator was measured")
+
+	// A NOT_EVALUATED verdict stores no observed value, but it still recorded the
+	// row count it measured. That count must become the next baseline, or a rule at
+	// its default on_empty would never break out of NOT_EVALUATED: this is the gap
+	// the fallback closes.
+	notEvaluated := baselineFromExecutions([]*store.QualityExecutionMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, TotalRows: 42, StartedAt: measuredAt},
+	}, now, time.Hour)
+	require.NotNil(t, notEvaluated)
+	require.InDelta(t, 42, notEvaluated.Value, 1e-9)
+
+	// A stored observed value is preferred over the total-row fallback.
+	storedValue := 7.0
+	preferred := baselineFromExecutions([]*store.QualityExecutionMessage{
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &storedValue, TotalRows: 10, StartedAt: measuredAt},
+	}, now, time.Hour)
+	require.NotNil(t, preferred)
+	require.InDelta(t, 7, preferred.Value, 1e-9)
 
 	require.Nil(t, baselineFromExecutions(nil, now, time.Hour))
+	// Zero rows is not a denominator: the candidate is skipped, and with nothing
+	// older there is no baseline.
 	require.Nil(t, baselineFromExecutions([]*store.QualityExecutionMessage{
-		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, ObservedValue: &observed},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED, TotalRows: 0, StartedAt: measuredAt},
 	}, now, time.Hour))
 
-	// A week-old observation, or one more than two intervals behind, is no
-	// longer a fair denominator.
+	// A week-old observation, or one more than two intervals behind, is no longer
+	// a fair denominator; a still older row must not be used as a fallback.
 	stale := []*store.QualityExecutionMessage{
-		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, StartedAt: now.Add(-8 * 24 * time.Hour)},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, TotalRows: 42, StartedAt: now.Add(-8 * 24 * time.Hour)},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, TotalRows: 21, StartedAt: now.Add(-9 * 24 * time.Hour)},
 	}
 	require.Nil(t, baselineFromExecutions(stale, now, 24*time.Hour))
 	drifted := []*store.QualityExecutionMessage{
-		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, StartedAt: now.Add(-3 * time.Hour)},
+		{Status: storepb.QualityStatus_QUALITY_STATUS_PASS, ObservedValue: &observed, TotalRows: 42, StartedAt: now.Add(-3 * time.Hour)},
 	}
 	require.Nil(t, baselineFromExecutions(drifted, now, time.Hour))
 	require.NotNil(t, baselineFromExecutions(drifted, now, 4*time.Hour))
+}
+
+// A row_count_change execution records the baseline it judged against, not only
+// the resulting percentage, so a reader can see both numbers. Every other rule
+// type leaves both columns nil.
+func TestBuildExecutionMessageRecordsTheBaselineEvidence(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	measuredAt := now.Add(-time.Hour)
+	planned := &store.QualityExecutionMessage{ID: 5, RunID: 9, RuleID: 7}
+	execution := buildExecutionMessage(planned, &ruleExecutionOutcome{
+		startedAt:  now,
+		finishedAt: now,
+		state:      dataquality.ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+		baseline:   &baselineObservation{Value: 42, MeasuredAt: measuredAt},
+	})
+	require.NotNil(t, execution.BaselineValue)
+	require.InDelta(t, 42, *execution.BaselineValue, 1e-9)
+	require.NotNil(t, execution.BaselineTime)
+	require.Equal(t, measuredAt, *execution.BaselineTime)
+
+	withoutBaseline := buildExecutionMessage(planned, &ruleExecutionOutcome{
+		startedAt:  now,
+		finishedAt: now,
+		state:      dataquality.ResultState{Status: storepb.QualityStatus_QUALITY_STATUS_PASS},
+	})
+	require.Nil(t, withoutBaseline.BaselineValue)
+	require.Nil(t, withoutBaseline.BaselineTime)
 }
 
 func TestErrorCodeAndMessageMapsRunnerLevelFailures(t *testing.T) {
@@ -1036,7 +1088,7 @@ func (f *fakeBatchStore) GetQualityExecution(_ context.Context, id int64) (*stor
 	return f.planned[id], nil
 }
 
-func (*fakeBatchStore) ListRecentQualityExecutions(_ context.Context, _ int64, _ int) ([]*store.QualityExecutionMessage, error) {
+func (*fakeBatchStore) ListRecentQualityExecutions(_ context.Context, _ int64, _ *store.MetaGUIDKey, _ int) ([]*store.QualityExecutionMessage, error) {
 	return nil, nil
 }
 

@@ -406,6 +406,10 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 		Duration:      durationFromMilliseconds(execution.DurationMS),
 		StartTime:     timestamppb.New(execution.StartedAt),
 		Run:           formatQualityRunName(workspaceID, execution.RunID),
+		// The row_count_change evidence is optional on purpose: an absent baseline
+		// is a first observation, not a zero it compared against.
+		BaselineValue: copyPtr(execution.BaselineValue),
+		BaselineTime:  timeToProtoTimestampPtr(execution.BaselineTime),
 	}
 	// An execution that has not reached a terminal state has no finish time; the
 	// proto field stays unset rather than showing the epoch.
