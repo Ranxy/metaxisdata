@@ -86,6 +86,7 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 		Config:         rule.Config,
 		Filter:         filter,
 		ContractFilter: contractFilter,
+		Variables:      opts.Variables,
 	}
 	compiled, err := Compile(input)
 	if err != nil {
@@ -126,6 +127,16 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	if opts.StoreSamples {
 		if err := addSamples(ctx, queryer, input, execution, opts, e.Metrics); err != nil {
 			return nil, err
+		}
+	}
+	// A sampled aggregate is judged on the rows the sample read, and the count of
+	// those rows is its own denominator. The failure sample query must not
+	// overwrite that with the number of evidence rows it happened to return.
+	if samplingConfigured(rule.Config.GetSampling()) {
+		execution.Sampled = true
+		execution.Observation.Sampled = true
+		if execution.Observation.TotalRows > 0 {
+			execution.Observation.SampleRows = execution.Observation.TotalRows
 		}
 	}
 	return execution, nil

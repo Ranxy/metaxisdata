@@ -48,6 +48,11 @@ type ruleTypeSpec struct {
 	// Percent reports whether threshold_metric PERCENT has a denominator for this
 	// type (ruleTypeAllowsPercent).
 	Percent bool
+	// Sampling reports whether the type can be judged from a sample of the target
+	// instead of every filtered row. It is false for measurements that describe the
+	// relation as a whole (row counts, freshness) and for rules that read more than
+	// one relation.
+	Sampling bool
 
 	// Compiler produces the observation statement (Compile).
 	Compiler compilerFunc
@@ -131,10 +136,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe: observeRowCount,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
-		Trend: trendNullPercentShape,
-		Title: "null percent",
-		Arm:   armNullPercent,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		Sampling: true,
+		Trend:    trendNullPercentShape,
+		Title:    "null percent",
+		Arm:      armNullPercent,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetNullPercent().GetColumn())
 		},
@@ -151,10 +157,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft: labelDraftNullPercent,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
-		Trend: trendPercentCapableShape,
-		Title: "unique",
-		Arm:   armUnique,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "unique",
+		Arm:      armUnique,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetUnique().GetColumn())
 		},
@@ -185,10 +192,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftUnique,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
-		Trend: trendPercentCapableShape,
-		Title: "unique combination",
-		Arm:   armUniqueCombination,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "unique combination",
+		Arm:      armUniqueCombination,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetUniqueCombination().GetColumns()
 		},
@@ -215,10 +223,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftUniqueCombination,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
-		Trend: trendPercentCapableShape,
-		Title: "accepted values",
-		Arm:   armAcceptedValues,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "accepted values",
+		Arm:      armAcceptedValues,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetAcceptedValues().GetColumn())
 		},
@@ -253,10 +262,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftAcceptedValues,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
-		Trend: trendPercentCapableShape,
-		Title: "range",
-		Arm:   armRange,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "range",
+		Arm:      armRange,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetRange().GetColumn())
 		},
@@ -279,10 +289,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft:  labelDraftRange,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
-		Trend: trendPercentCapableShape,
-		Title: "format",
-		Arm:   armRegex,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "format",
+		Arm:      armRegex,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetRegex().GetColumn())
 		},
@@ -319,10 +330,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		LabelDraft: labelDraftRegex,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
-		Trend: trendPercentCapableShape,
-		Title: "string length",
-		Arm:   armStringLength,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "string length",
+		Arm:      armStringLength,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetStringLength().GetColumn())
 		},
@@ -380,10 +392,11 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:     countObservation,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
-		Trend: trendPercentCapableShape,
-		Title: "cross column",
-		Arm:   armCrossColumn,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Title:    "cross column",
+		Arm:      armCrossColumn,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			cross := config.GetCrossColumn()
 			return twoColumns(cross.GetLeftColumn(), cross.GetRightColumn())
@@ -518,9 +531,10 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		},
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
-		Trend: trendPercentCapableShape,
-		Arm:   armGroupCheck,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		Sampling: true,
+		Trend:    trendPercentCapableShape,
+		Arm:      armGroupCheck,
 		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
 			return config.GetGroupCheck().GetColumns()
 		},
@@ -539,9 +553,10 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Observe:     observeGroupCheck,
 	},
 	{
-		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
-		Trend: trendAggregateShape,
-		Arm:   armAggregate,
+		Type:     storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		Sampling: true,
+		Trend:    trendAggregateShape,
+		Arm:      armAggregate,
 		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
 			return strings.TrimSpace(config.GetAggregate().GetColumn())
 		},

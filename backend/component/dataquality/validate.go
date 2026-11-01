@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -39,7 +40,7 @@ type ValidatedRule struct {
 // filter at compile time; it comes from the contract rather than the rule, so it is
 // never stored on the rule. Each filter is bounded by MaxFilterClauses on its own;
 // the compiled predicate may therefore carry up to twice that budget.
-func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig, filterProto *storepb.QualityFilter, contractFilterProto *storepb.QualityFilter) (*ValidatedRule, error) {
+func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig, filterProto *storepb.QualityFilter, contractFilterProto *storepb.QualityFilter, variables TimeVariables) (*ValidatedRule, error) {
 	if config == nil {
 		return nil, invalidConfig("a rule config is required")
 	}
@@ -96,11 +97,12 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 		return nil, invalidConfig("%v", err)
 	}
 	compiled, err := Compile(CompileInput{
-		Dialect: dialect,
-		Target:  resolution.Target,
-		Type:    ruleType,
-		Config:  effective,
-		Filter:  compileFilter,
+		Dialect:   dialect,
+		Target:    resolution.Target,
+		Type:      ruleType,
+		Config:    effective,
+		Filter:    compileFilter,
+		Variables: variables,
 	})
 	if err != nil {
 		if common.ErrorCode(err) == common.Invalid {
@@ -148,6 +150,15 @@ func ValidateConfig(target ResolvedTarget, ruleType storepb.QualityRuleType, con
 		return err
 	}
 	if err := validateFilter(target, config.GetFilter()); err != nil {
+		return err
+	}
+	if err := rejectUnexpectedTimeVariables(config); err != nil {
+		return err
+	}
+	if err := validateSampling(target, ruleType, config.GetSampling()); err != nil {
+		return err
+	}
+	if err := validateCheckTimeout(config.GetTimeoutSeconds()); err != nil {
 		return err
 	}
 
@@ -265,11 +276,18 @@ func validateFilter(target ResolvedTarget, filter *storepb.QualityFilter) error 
 	if len(parsed.Clauses) == 0 {
 		return nil
 	}
+	// A filter value may be a time variable. Resolving it against a reference
+	// instant is enough for the type check: every rendering of ${today} is a date
+	// and of ${now} a timestamp, whatever the execution time turns out to be.
+	resolved, err := ResolveFilterVariables(parsed, referenceTimeVariables())
+	if err != nil {
+		return err
+	}
 	dialect, err := DialectFor(target.Engine)
 	if err != nil {
 		return invalidConfig("%v", err)
 	}
-	if _, _, err := CompileFilter(dialect, target, parsed); err != nil {
+	if _, _, err := CompileFilter(dialect, target, resolved); err != nil {
 		return err
 	}
 	return nil
@@ -1299,4 +1317,34 @@ func validateCrossTableConfig(target ResolvedTarget, config *storepb.QualityRule
 		}
 	}
 	return validateCountThresholds(config, cross.FailThreshold, cross.WarnThreshold)
+}
+
+// validateCheckTimeout checks a per-check query timeout. Zero means the server
+// default; anything else must stay inside the range the runner clamps to, so a
+// stored rule and its evidence agree about the budget.
+func validateCheckTimeout(seconds int32) error {
+	if seconds == 0 {
+		return nil
+	}
+	if seconds < 0 || time.Duration(seconds)*time.Second > MaxCheckTimeout {
+		return invalidConfig("timeout_seconds must be between 1 and %d, or 0 for the default %s",
+			int(MaxCheckTimeout.Seconds()), DefaultCheckTimeout)
+	}
+	return nil
+}
+
+// CheckTimeout resolves a rule's query timeout. Zero (or an out-of-range value a
+// row written elsewhere left behind) reads as the default, and the ceiling is
+// clamped rather than refused here: the runner must never widen a budget because
+// a stored row is malformed.
+func CheckTimeout(config *storepb.QualityRuleConfig) time.Duration {
+	seconds := config.GetTimeoutSeconds()
+	if seconds <= 0 {
+		return DefaultCheckTimeout
+	}
+	timeout := time.Duration(seconds) * time.Second
+	if timeout > MaxCheckTimeout {
+		return MaxCheckTimeout
+	}
+	return timeout
 }

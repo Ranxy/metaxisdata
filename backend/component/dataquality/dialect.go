@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -31,6 +32,17 @@ type Dialect interface {
 	LimitClause(n int) string
 	// NormalizeBool renders a boolean literal for the engine.
 	NormalizeBool(value bool) string
+	// BoundedRelation renders a from-operand that reads at most maxRows rows of the
+	// relation the filter selects. The filter moves inside the derived relation:
+	// bounding the table first and filtering afterwards would sample the wrong rows
+	// whenever the filter is selective.
+	BoundedRelation(table, where string, maxRows int64) (string, error)
+	// SampledRelation renders a from-operand that reads approximately percent of
+	// the table with the engine's own sampling clause. An engine without one
+	// returns an error, and the rule is refused at save time.
+	SampledRelation(table string, percent float64) (string, error)
+	// SupportsTableSample reports whether SampledRelation can render anything.
+	SupportsTableSample() bool
 }
 
 // DialectFor returns the dialect for an engine, and an error for an engine this
@@ -167,3 +179,69 @@ func (mssqlDialect) NormalizeBool(value bool) string {
 	}
 	return "0"
 }
+
+// formatSamplePercent renders a sampling percentage without an exponent so every
+// engine's parser accepts the literal.
+func formatSamplePercent(percent float64) string {
+	return strconv.FormatFloat(percent, 'f', -1, 64)
+}
+
+// BoundedRelation renders a bounded derived relation. MySQL and its family accept
+// LIMIT in a derived table's own SELECT, and materializing it keeps the read
+// bounded to maxRows rows.
+func (mysqlDialect) BoundedRelation(table, where string, maxRows int64) (string, error) {
+	if maxRows <= 0 {
+		return "", errors.New("the sample row limit must be positive")
+	}
+	return "(SELECT * FROM " + table + where + " LIMIT " + strconv.FormatInt(maxRows, 10) + ") dq", nil
+}
+
+// SampledRelation uses Doris' TABLESAMPLE clause. The other MySQL-wire engines this
+// build serves (MySQL, TiDB, MariaDB, OceanBase, StarRocks) have no query-level
+// sampling clause, so they refuse a percentage sample at save time.
+func (d mysqlDialect) SampledRelation(table string, percent float64) (string, error) {
+	if d.engine != storepb.Engine_DORIS {
+		return "", errors.Errorf("engine %s has no table sampling clause", d.Name())
+	}
+	return table + " TABLESAMPLE (" + formatSamplePercent(percent) + " PERCENT)", nil
+}
+
+// SupportsTableSample is true only for Doris in the MySQL-wire family.
+func (d mysqlDialect) SupportsTableSample() bool { return d.engine == storepb.Engine_DORIS }
+
+// BoundedRelation renders a bounded derived relation; PostgreSQL takes LIMIT in
+// the derived SELECT.
+func (postgresDialect) BoundedRelation(table, where string, maxRows int64) (string, error) {
+	if maxRows <= 0 {
+		return "", errors.New("the sample row limit must be positive")
+	}
+	return "(SELECT * FROM " + table + where + " LIMIT " + strconv.FormatInt(maxRows, 10) + ") dq", nil
+}
+
+// SampledRelation uses PostgreSQL's TABLESAMPLE SYSTEM clause, which samples
+// physical blocks and is therefore cheapest on large tables. The zone between the
+// two ends of the sample is approximate by definition.
+func (postgresDialect) SampledRelation(table string, percent float64) (string, error) {
+	return table + " TABLESAMPLE SYSTEM (" + formatSamplePercent(percent) + ")", nil
+}
+
+// SupportsTableSample is always true for PostgreSQL.
+func (postgresDialect) SupportsTableSample() bool { return true }
+
+// BoundedRelation renders a bounded derived relation. T-SQL writes the bound as
+// TOP inside the derived SELECT.
+func (mssqlDialect) BoundedRelation(table, where string, maxRows int64) (string, error) {
+	if maxRows <= 0 {
+		return "", errors.New("the sample row limit must be positive")
+	}
+	return "(SELECT TOP (" + strconv.FormatInt(maxRows, 10) + ") * FROM " + table + where + ") dq", nil
+}
+
+// SampledRelation uses SQL Server's TABLESAMPLE clause with an approximate
+// percentage of pages.
+func (mssqlDialect) SampledRelation(table string, percent float64) (string, error) {
+	return table + " TABLESAMPLE (" + formatSamplePercent(percent) + " PERCENT)", nil
+}
+
+// SupportsTableSample is always true for SQL Server.
+func (mssqlDialect) SupportsTableSample() bool { return true }
