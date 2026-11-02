@@ -132,6 +132,11 @@ type Report struct {
 	FailedChecks     []FailedCheck
 	FailedCheckTotal int32
 
+	// Impact is the target's lineage impact: what its data reaches downstream and
+	// which upstream targets may explain a failure. Nil when the caller computed
+	// none.
+	Impact *Impact
+
 	// Orphaned reports that the target no longer resolves; the document is then
 	// rendered from the snapshots saved with the rules.
 	Orphaned       bool
@@ -225,6 +230,62 @@ type SampleCell struct {
 	Value  string
 	IsNull bool
 }
+
+// Impact is the target's lineage impact: the assets its data reaches downstream,
+// and the upstream targets whose checks failed or whose structure changed in the
+// window before the newest failure. It is a projection of the recorded lineage, so
+// an empty section means "nothing is recorded", not "nothing consumes it".
+type Impact struct {
+	// Downstream are the affected assets, nearest first.
+	Downstream []ImpactAsset
+	// DownstreamOmitted counts walked objects that cannot carry a check (a reported
+	// statement, an external dataset, an object that no longer exists).
+	DownstreamOmitted int32
+	// DownstreamTruncated reports that the walk hit its budget, so more objects may
+	// be affected than are listed.
+	DownstreamTruncated bool
+	// RootCauses are the upstream targets with evidence in the window, strongest
+	// first. Empty when no failing check anchored the window.
+	RootCauses []ImpactCause
+	// RootCausesOmitted counts candidates found beyond the report's own cap.
+	RootCausesOmitted int32
+	// WindowStart and WindowEnd are the window the root causes were read from; zero
+	// when no failing check anchored it.
+	WindowStart time.Time
+	WindowEnd   time.Time
+}
+
+// ImpactAsset is one downstream asset and its monitoring state.
+type ImpactAsset struct {
+	Path     string
+	TypeKey  string
+	Distance int32
+	// Monitored is false when no non-archived check watches the asset; AllPaused
+	// tells "its checks exist but are paused" from "it has none".
+	Monitored      bool
+	AllPaused      bool
+	WorstStatusKey string
+	OpenIssueCount int32
+	LastRunTime    *time.Time
+}
+
+// ImpactCause is one upstream target with evidence against it.
+type ImpactCause struct {
+	Path                  string
+	Distance              int32
+	FailingRuleCount      int32
+	FailingExecutionCount int32
+	LatestFailureTime     *time.Time
+	StructureChangedTime  *time.Time
+}
+
+// MaxImpactAssets and MaxImpactCauses cap the report's impact section. They are
+// render caps, not read caps: the API hands over the bounded walk and the section
+// says how many rows it did not print.
+const (
+	MaxImpactAssets = 10
+	MaxImpactCauses = 5
+)
 
 // Basis is the monitoring basis the report records: what the target state, the
 // schedule and the rule revisions were when the document was produced.
@@ -358,7 +419,39 @@ type reportView struct {
 	IssuesEmpty   bool
 	IssuesTrimmed bool
 	Samples       samplesView
+	Impact        impactView
 	Basis         basisView
+}
+
+// impactView is the lineage-impact section: what the target feeds, then what may
+// explain a failure.
+type impactView struct {
+	Description     string
+	WindowNote      string
+	CausesTitle     string
+	Causes          []impactCauseView
+	CausesEmpty     bool
+	CausesNote      string
+	DownstreamTitle string
+	Downstream      []impactAssetView
+	DownstreamEmpty bool
+	DownstreamNote  string
+}
+
+type impactAssetView struct {
+	Path            string
+	Type            string
+	Hops            string
+	Monitoring      string
+	MonitoringClass string
+	OpenIssues      string
+	LastRun         string
+}
+
+type impactCauseView struct {
+	Path     string
+	LevelsUp string
+	Evidence string
 }
 
 type scopeView struct {
@@ -540,6 +633,7 @@ func newReportView(language string, report *Report, limits *renderLimits) *repor
 	view.Rules, view.RulesEmpty, view.RulesTrimmed = newRuleViews(lang, text, report.Rules, limits)
 	view.Issues, view.IssuesEmpty, view.IssuesTrimmed = newIssueViews(lang, text, report.OpenIssues, limits)
 	view.Samples = newSamplesView(text, report, limits)
+	view.Impact = newImpactView(lang, text, report.Impact)
 	view.Basis = basisView{
 		Path:     valueOr(report.Target.Path, text.LabelNotAvailable),
 		Schedule: scheduleText(lang, text, report.Basis),
@@ -798,6 +892,111 @@ func newSamplesView(text labels, report *Report, limits *renderLimits) samplesVi
 	}
 	view.Empty = len(view.Checks) == 0
 	view.Trimmed = limits.checks < len(report.FailedChecks)
+	return view
+}
+
+// newImpactView builds the lineage-impact section. A missing impact renders empty
+// sections with the honest reason; an asset with no check renders as unmonitored and
+// never as a status, because "nobody watches it" is not "it passed".
+func newImpactView(language string, text labels, impact *Impact) impactView {
+	view := impactView{
+		Description:     text.ImpactDescription,
+		WindowNote:      text.ImpactNoWindow,
+		CausesTitle:     text.ImpactRootCausesTitle,
+		DownstreamTitle: text.ImpactDownstreamTitle,
+	}
+	if impact == nil {
+		view.CausesEmpty = true
+		view.DownstreamEmpty = true
+		view.CausesNote = text.ImpactNoRootCauses
+		view.DownstreamNote = text.ImpactNoDownstream
+		return view
+	}
+	if !impact.WindowStart.IsZero() && !impact.WindowEnd.IsZero() {
+		view.WindowNote = fmt.Sprintf(text.ImpactWindowNote,
+			formatTime(impact.WindowStart, text.LabelNotAvailable),
+			formatTime(impact.WindowEnd, text.LabelNotAvailable))
+	}
+
+	shownCauses := impact.RootCauses
+	if len(shownCauses) > MaxImpactCauses {
+		shownCauses = shownCauses[:MaxImpactCauses]
+	}
+	for _, cause := range shownCauses {
+		levelsUp := cause.Distance
+		if levelsUp < 0 {
+			levelsUp = -levelsUp
+		}
+		evidence := make([]string, 0, 2)
+		if cause.FailingExecutionCount > 0 {
+			evidence = append(evidence, fmt.Sprintf(text.ImpactFailingChecks,
+				cause.FailingRuleCount, cause.FailingExecutionCount))
+		}
+		if cause.StructureChangedTime != nil {
+			evidence = append(evidence, fmt.Sprintf(text.ImpactStructureChanged,
+				formatTime(*cause.StructureChangedTime, text.LabelNotAvailable)))
+		}
+		view.Causes = append(view.Causes, impactCauseView{
+			Path:     valueOr(cause.Path, text.LabelNotAvailable),
+			LevelsUp: strconv.Itoa(int(levelsUp)),
+			Evidence: strings.Join(evidence, "; "),
+		})
+	}
+	causeNotes := make([]string, 0, 2)
+	if rest := len(impact.RootCauses) - len(shownCauses); rest > 0 {
+		causeNotes = append(causeNotes, fmt.Sprintf(text.ImpactMoreCauses, rest))
+	}
+	if impact.RootCausesOmitted > 0 {
+		causeNotes = append(causeNotes, fmt.Sprintf(text.ImpactMoreCauses, impact.RootCausesOmitted))
+	}
+	view.CausesEmpty = len(view.Causes) == 0
+	if view.CausesEmpty {
+		causeNotes = append([]string{text.ImpactNoRootCauses}, causeNotes...)
+	}
+	view.CausesNote = strings.Join(causeNotes, " ")
+
+	shownAssets := impact.Downstream
+	if len(shownAssets) > MaxImpactAssets {
+		shownAssets = shownAssets[:MaxImpactAssets]
+	}
+	for _, asset := range shownAssets {
+		row := impactAssetView{
+			Path:       valueOr(asset.Path, text.LabelNotAvailable),
+			Type:       objectTypeLabel(language, asset.TypeKey),
+			Hops:       strconv.Itoa(int(asset.Distance)),
+			OpenIssues: strconv.Itoa(int(asset.OpenIssueCount)),
+			LastRun:    formatTimePtr(asset.LastRunTime, text.LabelNeverRun),
+		}
+		switch {
+		case !asset.Monitored:
+			row.Monitoring = text.ImpactUnmonitored
+		case asset.AllPaused:
+			row.Monitoring = text.ImpactAllPaused
+		case asset.WorstStatusKey == "":
+			// Monitored but never judged: "never run" is the honest state, and an
+			// empty cell would read as "nothing to report".
+			row.Monitoring = text.LabelNeverRun
+		default:
+			row.Monitoring = statusLabel(language, asset.WorstStatusKey)
+			row.MonitoringClass = "status-" + cssKey(asset.WorstStatusKey)
+		}
+		view.Downstream = append(view.Downstream, row)
+	}
+	assetNotes := make([]string, 0, 3)
+	if rest := len(impact.Downstream) - len(shownAssets); rest > 0 {
+		assetNotes = append(assetNotes, fmt.Sprintf(text.ImpactMoreAssets, rest))
+	}
+	if impact.DownstreamOmitted > 0 {
+		assetNotes = append(assetNotes, fmt.Sprintf(text.ImpactOmitted, impact.DownstreamOmitted))
+	}
+	if impact.DownstreamTruncated {
+		assetNotes = append(assetNotes, text.ImpactTruncated)
+	}
+	view.DownstreamEmpty = len(view.Downstream) == 0
+	if view.DownstreamEmpty {
+		assetNotes = append([]string{text.ImpactNoDownstream}, assetNotes...)
+	}
+	view.DownstreamNote = strings.Join(assetNotes, " ")
 	return view
 }
 

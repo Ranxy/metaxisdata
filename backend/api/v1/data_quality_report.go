@@ -37,7 +37,8 @@ const (
 // evidence belongs to whoever may read the target, so the report deliberately
 // does not require the execution-read permission as well.
 func (s *DataQualityService) ExportQualityReport(ctx context.Context, req *connect.Request[v1pb.ExportQualityReportRequest]) (*connect.Response[v1pb.ExportQualityReportResponse], error) {
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
 		return nil, err
 	}
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
@@ -85,7 +86,22 @@ func (s *DataQualityService) ExportQualityReport(ctx context.Context, req *conne
 		return nil, errors.Wrap(err, "failed to read the target's failed executions")
 	}
 
-	report := buildQualityReport(workspace, points, failedExecutions, windowStart, now, qualityReportGeneratedBy(ctx))
+	// The impact section is anchored at the newest failure in the window: that is the
+	// run whose "why now?" the report answers. With no failure there is nothing to
+	// explain, so the root-cause window stays empty and the section says so; the
+	// downstream assets are still listed.
+	var impactAnchor *time.Time
+	if len(failedExecutions) > 0 {
+		anchor := failedExecutions[0].StartedAt
+		impactAnchor = &anchor
+	}
+	impact, err := s.qualityReportImpact(ctx, workspaceID,
+		store.MetaGUIDKey{GUID: workspace.targetGUID, ObjectType: workspace.metaType}, impactAnchor)
+	if err != nil {
+		return nil, err
+	}
+
+	report := buildQualityReport(workspace, points, failedExecutions, impact, windowStart, now, qualityReportGeneratedBy(ctx))
 	document, err := qualityreport.Render(req.Msg.GetLanguage(), report)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to render the quality report"))
@@ -141,7 +157,7 @@ func qualityReportGeneratedBy(ctx context.Context) string {
 // buildQualityReport maps the assembled store data onto the renderer's report.
 // It is a pure function of its inputs, so the mapping (orphan state, rule list,
 // failed-sample caps, basis) is unit-testable without a store.
-func buildQualityReport(workspace *qualityTargetWorkspace, points []*v1pb.QualityTrendPoint, failedExecutions []*store.QualityExecutionMessage, windowStart, generatedAt time.Time, generatedBy string) *qualityreport.Report {
+func buildQualityReport(workspace *qualityTargetWorkspace, points []*v1pb.QualityTrendPoint, failedExecutions []*store.QualityExecutionMessage, impact *qualityreport.Impact, windowStart, generatedAt time.Time, generatedBy string) *qualityreport.Report {
 	rules := make(map[int64]*store.QualityRuleMessage, len(workspace.rules))
 	for _, rule := range workspace.rules {
 		rules[rule.ID] = rule
@@ -156,6 +172,7 @@ func buildQualityReport(workspace *qualityTargetWorkspace, points []*v1pb.Qualit
 		OrphanedReason: workspace.orphanedReason,
 		RuleCount:      int32(len(workspace.rules)),
 		FailedChecks:   qualityReportFailedChecks(failedExecutions, rules),
+		Impact:         impact,
 	}
 	for _, rule := range workspace.rules {
 		if rule.State == storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
@@ -417,4 +434,92 @@ func qualityReportEnumKey(value fmt.Stringer) string {
 		}
 	}
 	return name
+}
+
+// qualityReportImpact reads the target's lineage impact for the report. The
+// exported document and the execution page's panel call the same assembler, so a
+// forwarded file cannot disagree with what the product shows.
+//
+// anchor is the start of the newest failure the report covers; nil means the target
+// has not failed in the window, so the root-cause window — and the candidates it
+// would explain — is left out while the downstream assets are still listed.
+func (s *DataQualityService) qualityReportImpact(ctx context.Context, workspaceID string, key store.MetaGUIDKey, anchor *time.Time) (*qualityreport.Impact, error) {
+	asOf := time.Now().UTC()
+	if anchor != nil {
+		asOf = anchor.UTC()
+	}
+	response, err := s.buildQualityTargetImpact(ctx, workspaceID, key, qualityImpactDefaultDepth, asOf,
+		time.Duration(qualityImpactDefaultWindowHours)*time.Hour)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's lineage impact")
+	}
+	return qualityReportImpactOf(response, anchor), nil
+}
+
+// qualityReportImpactOf maps one impact answer onto the renderer's model. It is a
+// pure function so the mapping (anchor handling, monitoring three-state, omission
+// notes) is testable without a store.
+func qualityReportImpactOf(response *v1pb.GetQualityTargetImpactResponse, anchor *time.Time) *qualityreport.Impact {
+	impact := &qualityreport.Impact{
+		DownstreamOmitted:   response.GetOmittedDownstreamCount(),
+		DownstreamTruncated: response.GetDownstreamTruncated(),
+		RootCausesOmitted:   response.GetOmittedRootCauseCount(),
+	}
+	for _, asset := range response.GetDownstreamAssets() {
+		entry := qualityreport.ImpactAsset{
+			Path:     qualityReportImpactPath(asset.GetTarget().GetPath()),
+			TypeKey:  qualityReportEnumKey(asset.GetTarget().GetMetaType()),
+			Distance: asset.GetDistance(),
+		}
+		if summary := asset.GetSummary(); summary != nil {
+			entry.Monitored = true
+			entry.AllPaused = summary.GetEnabledRuleCount() == 0
+			entry.WorstStatusKey = qualityReportEnumKey(summary.GetWorstStatus())
+			entry.OpenIssueCount = summary.GetOpenIssueCount()
+			if lastRun := summary.GetLastRunTime(); lastRun != nil {
+				value := lastRun.AsTime()
+				entry.LastRunTime = &value
+			}
+		}
+		impact.Downstream = append(impact.Downstream, entry)
+	}
+	if anchor == nil {
+		return impact
+	}
+	if windowStart := response.GetWindowStart(); windowStart != nil {
+		impact.WindowStart = windowStart.AsTime()
+	}
+	if windowEnd := response.GetWindowEnd(); windowEnd != nil {
+		impact.WindowEnd = windowEnd.AsTime()
+	}
+	for _, cause := range response.GetRootCauses() {
+		entry := qualityreport.ImpactCause{
+			Path:                  qualityReportImpactPath(cause.GetTarget().GetPath()),
+			Distance:              cause.GetDistance(),
+			FailingRuleCount:      cause.GetFailingRuleCount(),
+			FailingExecutionCount: cause.GetFailingExecutionCount(),
+		}
+		if latest := cause.GetLatestFailureTime(); latest != nil {
+			value := latest.AsTime()
+			entry.LatestFailureTime = &value
+		}
+		if changed := cause.GetStructureChangedTime(); changed != nil {
+			value := changed.AsTime()
+			entry.StructureChangedTime = &value
+		}
+		impact.RootCauses = append(impact.RootCauses, entry)
+	}
+	return impact
+}
+
+// qualityReportImpactPath renders an impact asset's path as the report's dotted
+// path, matching the target path in the scope section.
+func qualityReportImpactPath(path *v1pb.QualityTargetPath) string {
+	segments := make([]string, 0, 4)
+	for _, segment := range []string{path.GetInstance(), path.GetDatabase(), path.GetSchema(), path.GetObject()} {
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	return strings.Join(segments, "/")
 }

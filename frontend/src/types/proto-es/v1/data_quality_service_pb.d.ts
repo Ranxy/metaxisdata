@@ -5685,6 +5685,338 @@ export declare type QualityTargetSummary = Message<"metaxisdata.v1.QualityTarget
 export declare const QualityTargetSummarySchema: GenMessage<QualityTargetSummary>;
 
 /**
+ * QualityImpactAsset is one asset downstream of a target, with its monitoring
+ * state.
+ *
+ * @generated from message metaxisdata.v1.QualityImpactAsset
+ */
+export declare type QualityImpactAsset = Message<"metaxisdata.v1.QualityImpactAsset"> & {
+  /**
+   * The asset. Its path is built from the GUID, so it names where the object
+   * lives now rather than a value a rule once saved.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * How many lineage hops downstream of the target it sits: 1 is a direct
+   * dependent, 2 a dependent of a dependent.
+   *
+   * @generated from field: int32 distance = 2;
+   */
+  distance: number;
+
+  /**
+   * The asset's quality state, read through the same exact-target selection the
+   * metadata browser uses. Unset when the asset has no non-archived check, which
+   * is "unmonitored", not "healthy"; a target whose checks are all paused is
+   * present with enabled_rule_count = 0.
+   *
+   * @generated from field: metaxisdata.v1.QualityTargetSummary summary = 3;
+   */
+  summary?: QualityTargetSummary;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityImpactAsset.
+ * Use `create(QualityImpactAssetSchema)` to create a new message.
+ */
+export declare const QualityImpactAssetSchema: GenMessage<QualityImpactAsset>;
+
+/**
+ * QualityRootCauseCandidate is one upstream target that may explain a failure.
+ *
+ * @generated from message metaxisdata.v1.QualityRootCauseCandidate
+ */
+export declare type QualityRootCauseCandidate = Message<"metaxisdata.v1.QualityRootCauseCandidate"> & {
+  /**
+   * The upstream target.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * How many lineage hops upstream: -1 is a direct source, -2 a source of a
+   * source.
+   *
+   * @generated from field: int32 distance = 2;
+   */
+  distance: number;
+
+  /**
+   * The target's checks that completed with a FAIL verdict inside the window.
+   *
+   * @generated from field: int32 failing_rule_count = 3;
+   */
+  failingRuleCount: number;
+
+  /**
+   * @generated from field: int32 failing_execution_count = 4;
+   */
+  failingExecutionCount: number;
+
+  /**
+   * The newest failing executions inside the window, newest first, at most
+   * three. Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+   *
+   * @generated from field: repeated string recent_failing_executions = 5;
+   */
+  recentFailingExecutions: string[];
+
+  /**
+   * When the newest of those failures started. Unset when no check of the
+   * target failed in the window.
+   *
+   * @generated from field: google.protobuf.Timestamp latest_failure_time = 6;
+   */
+  latestFailureTime?: Timestamp;
+
+  /**
+   * When the target's structure fingerprint last changed, inside the window.
+   * Unset when its shape did not change in the window; an object created inside
+   * the window is a new object rather than a structure change, and is not
+   * reported here.
+   *
+   * @generated from field: google.protobuf.Timestamp structure_changed_time = 7;
+   */
+  structureChangedTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRootCauseCandidate.
+ * Use `create(QualityRootCauseCandidateSchema)` to create a new message.
+ */
+export declare const QualityRootCauseCandidateSchema: GenMessage<QualityRootCauseCandidate>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityTargetImpactRequest
+ */
+export declare type GetQualityTargetImpactRequest = Message<"metaxisdata.v1.GetQualityTargetImpactRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The target whose impact to read. The target does not have to be monitored
+   * or to still resolve: lineage recorded before it disappeared is still walked.
+   *
+   * @generated from field: metaxisdata.v1.QualityTargetKey target = 2;
+   */
+  target?: QualityTargetKey;
+
+  /**
+   * How many lineage levels downstream to walk, 0-3. Zero means two; a larger
+   * value is coerced to three. The upstream walk behind the root causes is always
+   * two levels.
+   *
+   * @generated from field: int32 depth = 3;
+   */
+  depth: number;
+
+  /**
+   * The instant the root-cause window ends: the start of the failure being
+   * explained. Zero means now; a value in the future is read as now.
+   *
+   * @generated from field: google.protobuf.Timestamp as_of = 4;
+   */
+  asOf?: Timestamp;
+
+  /**
+   * How far back root-cause evidence is looked for, in hours 0-168. Zero means
+   * 24; a larger value is coerced to 168.
+   *
+   * @generated from field: int32 window_hours = 5;
+   */
+  windowHours: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityTargetImpactRequest.
+ * Use `create(GetQualityTargetImpactRequestSchema)` to create a new message.
+ */
+export declare const GetQualityTargetImpactRequestSchema: GenMessage<GetQualityTargetImpactRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityTargetImpactResponse
+ */
+export declare type GetQualityTargetImpactResponse = Message<"metaxisdata.v1.GetQualityTargetImpactResponse"> & {
+  /**
+   * The assets the target's data reaches downstream, nearest first. Only the
+   * object types a check can watch are listed; a reported statement, an external
+   * dataset or an object that no longer exists is walked through but counted in
+   * omitted_downstream_count instead.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityImpactAsset downstream_assets = 1;
+   */
+  downstreamAssets: QualityImpactAsset[];
+
+  /**
+   * Upstream targets with root-cause evidence inside the window, strongest
+   * first: a target with failing checks outranks one whose structure changed,
+   * then the nearer one wins, then the more recent evidence.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityRootCauseCandidate root_causes = 2;
+   */
+  rootCauses: QualityRootCauseCandidate[];
+
+  /**
+   * The largest distance a downstream asset was found at; 0 when nothing is
+   * recorded downstream.
+   *
+   * @generated from field: int32 depth_reached = 3;
+   */
+  depthReached: number;
+
+  /**
+   * Whether the node or time budget cut the downstream walk short.
+   *
+   * @generated from field: bool downstream_truncated = 4;
+   */
+  downstreamTruncated: boolean;
+
+  /**
+   * How many walked downstream objects are not listed as assets. A floor when
+   * downstream_truncated is true.
+   *
+   * @generated from field: int32 omitted_downstream_count = 5;
+   */
+  omittedDownstreamCount: number;
+
+  /**
+   * Whether the two-level upstream walk was cut short by its node budget.
+   *
+   * @generated from field: bool upstream_truncated = 6;
+   */
+  upstreamTruncated: boolean;
+
+  /**
+   * How many root-cause candidates were found beyond the twenty returned.
+   *
+   * @generated from field: int32 omitted_root_cause_count = 7;
+   */
+  omittedRootCauseCount: number;
+
+  /**
+   * The window the root causes were read from: [window_start, window_end].
+   *
+   * @generated from field: google.protobuf.Timestamp window_start = 8;
+   */
+  windowStart?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp window_end = 9;
+   */
+  windowEnd?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityTargetImpactResponse.
+ * Use `create(GetQualityTargetImpactResponseSchema)` to create a new message.
+ */
+export declare const GetQualityTargetImpactResponseSchema: GenMessage<GetQualityTargetImpactResponse>;
+
+/**
+ * QualityConsumptionGap is an asset another asset's lineage reads with no
+ * enabled check watching it.
+ *
+ * @generated from message metaxisdata.v1.QualityConsumptionGap
+ */
+export declare type QualityConsumptionGap = Message<"metaxisdata.v1.QualityConsumptionGap"> & {
+  /**
+   * The unwatched asset.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * How many distinct assets its lineage reaches directly. It ranks how much
+   * depends on the asset, not how important the asset is.
+   *
+   * @generated from field: int32 downstream_asset_count = 2;
+   */
+  downstreamAssetCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityConsumptionGap.
+ * Use `create(QualityConsumptionGapSchema)` to create a new message.
+ */
+export declare const QualityConsumptionGapSchema: GenMessage<QualityConsumptionGap>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityConsumptionCoverageRequest
+ */
+export declare type GetQualityConsumptionCoverageRequest = Message<"metaxisdata.v1.GetQualityConsumptionCoverageRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * How many gaps to return, 0-100. Zero means 20; a larger value is coerced to
+   * 100. The counts always cover the whole workspace.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityConsumptionCoverageRequest.
+ * Use `create(GetQualityConsumptionCoverageRequestSchema)` to create a new message.
+ */
+export declare const GetQualityConsumptionCoverageRequestSchema: GenMessage<GetQualityConsumptionCoverageRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityConsumptionCoverageResponse
+ */
+export declare type GetQualityConsumptionCoverageResponse = Message<"metaxisdata.v1.GetQualityConsumptionCoverageResponse"> & {
+  /**
+   * Registry assets that at least one other object's lineage reads, under a live
+   * instance and of the four object types a check can watch. This denominator is
+   * not the overview's: there, every monitorable object counts.
+   *
+   * @generated from field: int32 consumed_asset_count = 1;
+   */
+  consumedAssetCount: number;
+
+  /**
+   * Of those, assets with at least one enabled check.
+   *
+   * @generated from field: int32 monitored_asset_count = 2;
+   */
+  monitoredAssetCount: number;
+
+  /**
+   * How many consumed assets have no enabled check.
+   *
+   * @generated from field: int32 gap_count = 3;
+   */
+  gapCount: number;
+
+  /**
+   * The gaps with the most direct readers, highest first, at most page_size.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityConsumptionGap gaps = 4;
+   */
+  gaps: QualityConsumptionGap[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityConsumptionCoverageResponse.
+ * Use `create(GetQualityConsumptionCoverageResponseSchema)` to create a new message.
+ */
+export declare const GetQualityConsumptionCoverageResponseSchema: GenMessage<GetQualityConsumptionCoverageResponse>;
+
+/**
  * @generated from message metaxisdata.v1.UpdateQualityTargetScheduleRequest
  */
 export declare type UpdateQualityTargetScheduleRequest = Message<"metaxisdata.v1.UpdateQualityTargetScheduleRequest"> & {
@@ -8641,6 +8973,23 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityOverviewSchema;
   },
   /**
+   * Read how much of the data other assets consume is watched. Unlike the
+   * overview's coverage, whose denominator is every monitorable registry object,
+   * this answers a consumption question: of the assets whose lineage shows
+   * another object reading them, how many have an enabled check? The two ratios
+   * have different denominators and are deliberately not combined.
+   *
+   * It is a separate read because answering it costs one grouped scan of the
+   * lineage table, which the overview must not pay on every load.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage
+   */
+  getQualityConsumptionCoverage: {
+    methodKind: "unary";
+    input: typeof GetQualityConsumptionCoverageRequestSchema;
+    output: typeof GetQualityConsumptionCoverageResponseSchema;
+  },
+  /**
    * List the targets (tables or views) that have quality rules, one row per
    * target. The counts, the worst latest result and the pending draft tally are
    * aggregated by the database, so the directory does not page through every
@@ -8685,6 +9034,20 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityTargetRequestSchema;
     output: typeof GetQualityTargetResponseSchema;
+  },
+  /**
+   * Explain a target's quality state by its lineage: the assets its data
+   * reaches downstream, and the upstream targets whose checks failed or whose
+   * structure changed in the window before a reference instant. Both lists are
+   * bounded walks over the recorded lineage, so a target with no recorded edges
+   * has no impact to report — which is not the same as having no consumers.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityTargetImpact
+   */
+  getQualityTargetImpact: {
+    methodKind: "unary";
+    input: typeof GetQualityTargetImpactRequestSchema;
+    output: typeof GetQualityTargetImpactResponseSchema;
   },
   /**
    * Acknowledge that a target's structure changed and re-baseline its checks.

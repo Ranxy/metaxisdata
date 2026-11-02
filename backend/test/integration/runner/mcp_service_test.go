@@ -196,7 +196,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 
 		tools, err := session.ListTools(ctx, nil)
 		require.NoError(t, err)
-		require.Len(t, tools.Tools, 15)
+		require.Len(t, tools.Tools, 17)
 
 		expected, err := admin.user.GetCurrentUser(ctx, connect.NewRequest(&emptypb.Empty{}))
 		require.NoError(t, err)

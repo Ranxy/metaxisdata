@@ -386,6 +386,19 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Read how much of the data other assets consume is watched. Unlike the
+  // overview's coverage, whose denominator is every monitorable registry object,
+  // this answers a consumption question: of the assets whose lineage shows
+  // another object reading them, how many have an enabled check? The two ratios
+  // have different denominators and are deliberately not combined.
+  //
+  // It is a separate read because answering it costs one grouped scan of the
+  // lineage table, which the overview must not pay on every load.
+  rpc GetQualityConsumptionCoverage(GetQualityConsumptionCoverageRequest) returns (GetQualityConsumptionCoverageResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityConsumptionCoverage"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // List the targets (tables or views) that have quality rules, one row per
   // target. The counts, the worst latest result and the pending draft tally are
   // aggregated by the database, so the directory does not page through every
@@ -417,6 +430,16 @@ service DataQualityService {
   // is named by GUID because a target is not a resource of its own.
   rpc GetQualityTarget(GetQualityTargetRequest) returns (GetQualityTargetResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:get"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Explain a target's quality state by its lineage: the assets its data
+  // reaches downstream, and the upstream targets whose checks failed or whose
+  // structure changed in the window before a reference instant. Both lists are
+  // bounded walks over the recorded lineage, so a target with no recorded edges
+  // has no impact to report — which is not the same as having no consumers.
+  rpc GetQualityTargetImpact(GetQualityTargetImpactRequest) returns (GetQualityTargetImpactResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityTargets:impact"};
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
@@ -2929,6 +2952,144 @@ message QualityTargetSummary {
   // see docs/data-quality.md.
   int32 covered_column_count = 20;
   int32 total_column_count = 21;
+}
+
+// QualityImpactAsset is one asset downstream of a target, with its monitoring
+// state.
+message QualityImpactAsset {
+  // The asset. Its path is built from the GUID, so it names where the object
+  // lives now rather than a value a rule once saved.
+  QualityTarget target = 1;
+
+  // How many lineage hops downstream of the target it sits: 1 is a direct
+  // dependent, 2 a dependent of a dependent.
+  int32 distance = 2;
+
+  // The asset's quality state, read through the same exact-target selection the
+  // metadata browser uses. Unset when the asset has no non-archived check, which
+  // is "unmonitored", not "healthy"; a target whose checks are all paused is
+  // present with enabled_rule_count = 0.
+  QualityTargetSummary summary = 3;
+}
+
+// QualityRootCauseCandidate is one upstream target that may explain a failure.
+message QualityRootCauseCandidate {
+  // The upstream target.
+  QualityTarget target = 1;
+
+  // How many lineage hops upstream: -1 is a direct source, -2 a source of a
+  // source.
+  int32 distance = 2;
+
+  // The target's checks that completed with a FAIL verdict inside the window.
+  int32 failing_rule_count = 3;
+  int32 failing_execution_count = 4;
+
+  // The newest failing executions inside the window, newest first, at most
+  // three. Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+  repeated string recent_failing_executions = 5 [(google.api.resource_reference) = {type: "metaxisdata/QualityExecution"}];
+
+  // When the newest of those failures started. Unset when no check of the
+  // target failed in the window.
+  google.protobuf.Timestamp latest_failure_time = 6;
+
+  // When the target's structure fingerprint last changed, inside the window.
+  // Unset when its shape did not change in the window; an object created inside
+  // the window is a new object rather than a structure change, and is not
+  // reported here.
+  google.protobuf.Timestamp structure_changed_time = 7;
+}
+
+message GetQualityTargetImpactRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The target whose impact to read. The target does not have to be monitored
+  // or to still resolve: lineage recorded before it disappeared is still walked.
+  QualityTargetKey target = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // How many lineage levels downstream to walk, 0-3. Zero means two; a larger
+  // value is coerced to three. The upstream walk behind the root causes is always
+  // two levels.
+  int32 depth = 3;
+
+  // The instant the root-cause window ends: the start of the failure being
+  // explained. Zero means now; a value in the future is read as now.
+  google.protobuf.Timestamp as_of = 4;
+
+  // How far back root-cause evidence is looked for, in hours 0-168. Zero means
+  // 24; a larger value is coerced to 168.
+  int32 window_hours = 5;
+}
+
+message GetQualityTargetImpactResponse {
+  // The assets the target's data reaches downstream, nearest first. Only the
+  // object types a check can watch are listed; a reported statement, an external
+  // dataset or an object that no longer exists is walked through but counted in
+  // omitted_downstream_count instead.
+  repeated QualityImpactAsset downstream_assets = 1;
+
+  // Upstream targets with root-cause evidence inside the window, strongest
+  // first: a target with failing checks outranks one whose structure changed,
+  // then the nearer one wins, then the more recent evidence.
+  repeated QualityRootCauseCandidate root_causes = 2;
+
+  // The largest distance a downstream asset was found at; 0 when nothing is
+  // recorded downstream.
+  int32 depth_reached = 3;
+
+  // Whether the node or time budget cut the downstream walk short.
+  bool downstream_truncated = 4;
+
+  // How many walked downstream objects are not listed as assets. A floor when
+  // downstream_truncated is true.
+  int32 omitted_downstream_count = 5;
+
+  // Whether the two-level upstream walk was cut short by its node budget.
+  bool upstream_truncated = 6;
+
+  // How many root-cause candidates were found beyond the twenty returned.
+  int32 omitted_root_cause_count = 7;
+
+  // The window the root causes were read from: [window_start, window_end].
+  google.protobuf.Timestamp window_start = 8;
+  google.protobuf.Timestamp window_end = 9;
+}
+
+// QualityConsumptionGap is an asset another asset's lineage reads with no
+// enabled check watching it.
+message QualityConsumptionGap {
+  // The unwatched asset.
+  QualityTarget target = 1;
+
+  // How many distinct assets its lineage reaches directly. It ranks how much
+  // depends on the asset, not how important the asset is.
+  int32 downstream_asset_count = 2;
+}
+
+message GetQualityConsumptionCoverageRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // How many gaps to return, 0-100. Zero means 20; a larger value is coerced to
+  // 100. The counts always cover the whole workspace.
+  int32 page_size = 2;
+}
+
+message GetQualityConsumptionCoverageResponse {
+  // Registry assets that at least one other object's lineage reads, under a live
+  // instance and of the four object types a check can watch. This denominator is
+  // not the overview's: there, every monitorable object counts.
+  int32 consumed_asset_count = 1;
+
+  // Of those, assets with at least one enabled check.
+  int32 monitored_asset_count = 2;
+
+  // How many consumed assets have no enabled check.
+  int32 gap_count = 3;
+
+  // The gaps with the most direct readers, highest first, at most page_size.
+  repeated QualityConsumptionGap gaps = 4;
 }
 
 message UpdateQualityTargetScheduleRequest {

@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/lib/pq"
+	"github.com/pkg/errors"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
@@ -208,4 +210,68 @@ func (*Store) BatchDeleteMetaRegistrySchemaFingerprints(ctx context.Context, tx 
 		return err
 	}
 	return nil
+}
+
+// buildListMetaRegistrySchemaChangeTimesQuery finds the objects whose structure
+// changed inside a window. The fingerprint's updated_at only advances when the
+// shape really changed, and the object's open metadata-history row records when
+// its current version began, so requiring both is what tells a change apart from
+// the writes that must not look like one: a backfill after an upgrade (metadata
+// unchanged, so the history row is older than the window) and a newly created
+// object (no version exists before the window). An object deleted and re-created
+// inside the window keeps its GUID and is reported, which is deliberate: what that
+// name stands for did change.
+const buildListMetaRegistrySchemaChangeTimesQuery = `
+	SELECT f.guid, f.object_type, f.updated_at
+	FROM meta_registry_schema_fingerprint f
+	JOIN meta_registry_resource_history current
+		ON current.guid = f.guid
+		AND current.object_type = f.object_type
+		AND current.valid_to IS NULL
+	WHERE (f.guid, f.object_type::INT) IN (SELECT * FROM unnest($1::text[], $2::INT[]))
+		AND f.updated_at >= $3
+		AND f.updated_at <= $4
+		AND current.valid_from >= $3
+		AND EXISTS (
+			SELECT 1
+			FROM meta_registry_resource_history previous
+			WHERE previous.guid = f.guid
+				AND previous.object_type = f.object_type
+				AND previous.valid_from < $3
+		)
+`
+
+// ListMetaRegistrySchemaChangeTimes reports, per requested target, when its
+// structure last changed, if that change happened inside [from, to]. A target
+// whose shape did not change in the window is absent from the result rather than
+// reported as zero.
+func (s *Store) ListMetaRegistrySchemaChangeTimes(ctx context.Context, keys []MetaGUIDKey, from, to time.Time) (map[MetaGUIDKey]time.Time, error) {
+	result := make(map[MetaGUIDKey]time.Time, len(keys))
+	if len(keys) == 0 {
+		return result, nil
+	}
+
+	guids, objectTypes := metaGUIDKeyArrays(keys)
+	rows, err := s.GetDB().QueryContext(ctx, buildListMetaRegistrySchemaChangeTimesQuery,
+		pq.Array(guids), pq.Array(objectTypes), from, to)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the targets' structure changes")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			guid       string
+			objectType int32
+			changedAt  time.Time
+		)
+		if err := rows.Scan(&guid, &objectType, &changedAt); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a target's structure change")
+		}
+		result[MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}] = changedAt
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to read the targets' structure changes")
+	}
+	return result, nil
 }

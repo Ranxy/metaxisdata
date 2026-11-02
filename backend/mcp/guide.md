@@ -38,6 +38,8 @@ work around: pick from the candidates, or narrow the reference.
 | What is in the quality problem ledger? | `list_quality_issues` |
 | What have the checks run, and how did they verdict? | `list_quality_executions` |
 | What is the evidence behind one run's verdict? | `get_quality_execution` |
+| What is downstream of this table, and what upstream may explain a failure? | `get_quality_impact` |
+| How much of the data other assets read is watched? | `get_quality_consumption_coverage` |
 | What does this SQL statement read and write? | `analyze_sql` |
 | What feeds this table, or what does it feed? | `get_lineage_graph` |
 | What may I read? | `whoami` |

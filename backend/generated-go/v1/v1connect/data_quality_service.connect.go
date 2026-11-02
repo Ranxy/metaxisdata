@@ -142,6 +142,9 @@ const (
 	// DataQualityServiceGetQualityOverviewProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityOverview RPC.
 	DataQualityServiceGetQualityOverviewProcedure = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	// DataQualityServiceGetQualityConsumptionCoverageProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityConsumptionCoverage RPC.
+	DataQualityServiceGetQualityConsumptionCoverageProcedure = "/metaxisdata.v1.DataQualityService/GetQualityConsumptionCoverage"
 	// DataQualityServiceListQualityTargetsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityTargets RPC.
 	DataQualityServiceListQualityTargetsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
@@ -151,6 +154,9 @@ const (
 	// DataQualityServiceGetQualityTargetProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityTarget RPC.
 	DataQualityServiceGetQualityTargetProcedure = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	// DataQualityServiceGetQualityTargetImpactProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityTargetImpact RPC.
+	DataQualityServiceGetQualityTargetImpactProcedure = "/metaxisdata.v1.DataQualityService/GetQualityTargetImpact"
 	// DataQualityServiceAcknowledgeQualityTargetSchemaProcedure is the fully-qualified name of the
 	// DataQualityService's AcknowledgeQualityTargetSchema RPC.
 	DataQualityServiceAcknowledgeQualityTargetSchemaProcedure = "/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema"
@@ -321,6 +327,15 @@ type DataQualityServiceClient interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
+	// Read how much of the data other assets consume is watched. Unlike the
+	// overview's coverage, whose denominator is every monitorable registry object,
+	// this answers a consumption question: of the assets whose lineage shows
+	// another object reading them, how many have an enabled check? The two ratios
+	// have different denominators and are deliberately not combined.
+	//
+	// It is a separate read because answering it costs one grouped scan of the
+	// lineage table, which the overview must not pay on every load.
+	GetQualityConsumptionCoverage(context.Context, *connect.Request[v1.GetQualityConsumptionCoverageRequest]) (*connect.Response[v1.GetQualityConsumptionCoverageResponse], error)
 	// List the targets (tables or views) that have quality rules, one row per
 	// target. The counts, the worst latest result and the pending draft tally are
 	// aggregated by the database, so the directory does not page through every
@@ -343,6 +358,12 @@ type DataQualityServiceClient interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
+	// Explain a target's quality state by its lineage: the assets its data
+	// reaches downstream, and the upstream targets whose checks failed or whose
+	// structure changed in the window before a reference instant. Both lists are
+	// bounded walks over the recorded lineage, so a target with no recorded edges
+	// has no impact to report — which is not the same as having no consumers.
+	GetQualityTargetImpact(context.Context, *connect.Request[v1.GetQualityTargetImpactRequest]) (*connect.Response[v1.GetQualityTargetImpactResponse], error)
 	// Acknowledge that a target's structure changed and re-baseline its checks.
 	// Every non-archived check whose saved structure snapshot differs from the
 	// target's current fingerprint gets the current fingerprint, which clears the
@@ -620,6 +641,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualityConsumptionCoverage: connect.NewClient[v1.GetQualityConsumptionCoverageRequest, v1.GetQualityConsumptionCoverageResponse](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityConsumptionCoverageProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityConsumptionCoverage")),
+			connect.WithClientOptions(opts...),
+		),
 		listQualityTargets: connect.NewClient[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse](
 			httpClient,
 			baseURL+DataQualityServiceListQualityTargetsProcedure,
@@ -636,6 +663,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceGetQualityTargetProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityTargetImpact: connect.NewClient[v1.GetQualityTargetImpactRequest, v1.GetQualityTargetImpactResponse](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityTargetImpactProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTargetImpact")),
 			connect.WithClientOptions(opts...),
 		),
 		acknowledgeQualityTargetSchema: connect.NewClient[v1.AcknowledgeQualityTargetSchemaRequest, v1.AcknowledgeQualityTargetSchemaResponse](
@@ -739,9 +772,11 @@ type dataQualityServiceClient struct {
 	recommendQualityChecks             *connect.Client[v1.RecommendQualityChecksRequest, v1.RecommendQualityChecksResponse]
 	explainQualityExecution            *connect.Client[v1.ExplainQualityExecutionRequest, v1.ExplainQualityExecutionResponse]
 	getQualityOverview                 *connect.Client[v1.GetQualityOverviewRequest, v1.QualityOverview]
+	getQualityConsumptionCoverage      *connect.Client[v1.GetQualityConsumptionCoverageRequest, v1.GetQualityConsumptionCoverageResponse]
 	listQualityTargets                 *connect.Client[v1.ListQualityTargetsRequest, v1.ListQualityTargetsResponse]
 	exportQualityTargets               *connect.Client[v1.ExportQualityTargetsRequest, v1.ExportQualityDataChunk]
 	getQualityTarget                   *connect.Client[v1.GetQualityTargetRequest, v1.GetQualityTargetResponse]
+	getQualityTargetImpact             *connect.Client[v1.GetQualityTargetImpactRequest, v1.GetQualityTargetImpactResponse]
 	acknowledgeQualityTargetSchema     *connect.Client[v1.AcknowledgeQualityTargetSchemaRequest, v1.AcknowledgeQualityTargetSchemaResponse]
 	exportQualityReport                *connect.Client[v1.ExportQualityReportRequest, v1.ExportQualityReportResponse]
 	updateQualityTargetSchedule        *connect.Client[v1.UpdateQualityTargetScheduleRequest, v1.QualityTargetSchedule]
@@ -936,6 +971,12 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, req *
 	return c.getQualityOverview.CallUnary(ctx, req)
 }
 
+// GetQualityConsumptionCoverage calls
+// metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage.
+func (c *dataQualityServiceClient) GetQualityConsumptionCoverage(ctx context.Context, req *connect.Request[v1.GetQualityConsumptionCoverageRequest]) (*connect.Response[v1.GetQualityConsumptionCoverageResponse], error) {
+	return c.getQualityConsumptionCoverage.CallUnary(ctx, req)
+}
+
 // ListQualityTargets calls metaxisdata.v1.DataQualityService.ListQualityTargets.
 func (c *dataQualityServiceClient) ListQualityTargets(ctx context.Context, req *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error) {
 	return c.listQualityTargets.CallUnary(ctx, req)
@@ -949,6 +990,11 @@ func (c *dataQualityServiceClient) ExportQualityTargets(ctx context.Context, req
 // GetQualityTarget calls metaxisdata.v1.DataQualityService.GetQualityTarget.
 func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, req *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
 	return c.getQualityTarget.CallUnary(ctx, req)
+}
+
+// GetQualityTargetImpact calls metaxisdata.v1.DataQualityService.GetQualityTargetImpact.
+func (c *dataQualityServiceClient) GetQualityTargetImpact(ctx context.Context, req *connect.Request[v1.GetQualityTargetImpactRequest]) (*connect.Response[v1.GetQualityTargetImpactResponse], error) {
+	return c.getQualityTargetImpact.CallUnary(ctx, req)
 }
 
 // AcknowledgeQualityTargetSchema calls
@@ -1141,6 +1187,15 @@ type DataQualityServiceHandler interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *connect.Request[v1.GetQualityOverviewRequest]) (*connect.Response[v1.QualityOverview], error)
+	// Read how much of the data other assets consume is watched. Unlike the
+	// overview's coverage, whose denominator is every monitorable registry object,
+	// this answers a consumption question: of the assets whose lineage shows
+	// another object reading them, how many have an enabled check? The two ratios
+	// have different denominators and are deliberately not combined.
+	//
+	// It is a separate read because answering it costs one grouped scan of the
+	// lineage table, which the overview must not pay on every load.
+	GetQualityConsumptionCoverage(context.Context, *connect.Request[v1.GetQualityConsumptionCoverageRequest]) (*connect.Response[v1.GetQualityConsumptionCoverageResponse], error)
 	// List the targets (tables or views) that have quality rules, one row per
 	// target. The counts, the worst latest result and the pending draft tally are
 	// aggregated by the database, so the directory does not page through every
@@ -1163,6 +1218,12 @@ type DataQualityServiceHandler interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error)
+	// Explain a target's quality state by its lineage: the assets its data
+	// reaches downstream, and the upstream targets whose checks failed or whose
+	// structure changed in the window before a reference instant. Both lists are
+	// bounded walks over the recorded lineage, so a target with no recorded edges
+	// has no impact to report — which is not the same as having no consumers.
+	GetQualityTargetImpact(context.Context, *connect.Request[v1.GetQualityTargetImpactRequest]) (*connect.Response[v1.GetQualityTargetImpactResponse], error)
 	// Acknowledge that a target's structure changed and re-baseline its checks.
 	// Every non-archived check whose saved structure snapshot differs from the
 	// target's current fingerprint gets the current fingerprint, which clears the
@@ -1436,6 +1497,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityOverview")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualityConsumptionCoverageHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityConsumptionCoverageProcedure,
+		svc.GetQualityConsumptionCoverage,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityConsumptionCoverage")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceListQualityTargetsHandler := connect.NewUnaryHandler(
 		DataQualityServiceListQualityTargetsProcedure,
 		svc.ListQualityTargets,
@@ -1452,6 +1519,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceGetQualityTargetProcedure,
 		svc.GetQualityTarget,
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTarget")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityTargetImpactHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityTargetImpactProcedure,
+		svc.GetQualityTargetImpact,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityTargetImpact")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceAcknowledgeQualityTargetSchemaHandler := connect.NewUnaryHandler(
@@ -1588,12 +1661,16 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceExplainQualityExecutionHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityOverviewProcedure:
 			dataQualityServiceGetQualityOverviewHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityConsumptionCoverageProcedure:
+			dataQualityServiceGetQualityConsumptionCoverageHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityTargetsProcedure:
 			dataQualityServiceListQualityTargetsHandler.ServeHTTP(w, r)
 		case DataQualityServiceExportQualityTargetsProcedure:
 			dataQualityServiceExportQualityTargetsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityTargetProcedure:
 			dataQualityServiceGetQualityTargetHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityTargetImpactProcedure:
+			dataQualityServiceGetQualityTargetImpactHandler.ServeHTTP(w, r)
 		case DataQualityServiceAcknowledgeQualityTargetSchemaProcedure:
 			dataQualityServiceAcknowledgeQualityTargetSchemaHandler.ServeHTTP(w, r)
 		case DataQualityServiceExportQualityReportProcedure:
@@ -1767,6 +1844,10 @@ func (UnimplementedDataQualityServiceHandler) GetQualityOverview(context.Context
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityOverview is not implemented"))
 }
 
+func (UnimplementedDataQualityServiceHandler) GetQualityConsumptionCoverage(context.Context, *connect.Request[v1.GetQualityConsumptionCoverageRequest]) (*connect.Response[v1.GetQualityConsumptionCoverageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage is not implemented"))
+}
+
 func (UnimplementedDataQualityServiceHandler) ListQualityTargets(context.Context, *connect.Request[v1.ListQualityTargetsRequest]) (*connect.Response[v1.ListQualityTargetsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityTargets is not implemented"))
 }
@@ -1777,6 +1858,10 @@ func (UnimplementedDataQualityServiceHandler) ExportQualityTargets(context.Conte
 
 func (UnimplementedDataQualityServiceHandler) GetQualityTarget(context.Context, *connect.Request[v1.GetQualityTargetRequest]) (*connect.Response[v1.GetQualityTargetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityTarget is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityTargetImpact(context.Context, *connect.Request[v1.GetQualityTargetImpactRequest]) (*connect.Response[v1.GetQualityTargetImpactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityTargetImpact is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) AcknowledgeQualityTargetSchema(context.Context, *connect.Request[v1.AcknowledgeQualityTargetSchemaRequest]) (*connect.Response[v1.AcknowledgeQualityTargetSchemaResponse], error) {
