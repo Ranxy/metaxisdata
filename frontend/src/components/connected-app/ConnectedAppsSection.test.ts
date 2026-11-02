@@ -127,10 +127,10 @@ describe("ConnectedAppsSection", () => {
 
   it("explains an empty list differently to each audience", async () => {
     const admin = await mountSection("admin");
-    expect(admin.text()).toContain("No MCP client has been authorized");
+    expect(admin.text()).toContain("No client has been authorized");
 
     const self = await mountSection("self");
-    expect(self.text()).toContain("You have not authorized any MCP client");
+    expect(self.text()).toContain("signed in with mxd yet");
   });
 
   it("renders an inline error when the list request fails", async () => {

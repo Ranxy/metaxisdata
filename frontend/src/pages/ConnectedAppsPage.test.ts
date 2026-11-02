@@ -74,7 +74,7 @@ describe("ConnectedAppsPage", () => {
 
     expect(wrapper.text()).toContain("Connected apps");
     expect(wrapper.text()).toContain(
-      "The MCP clients you authorized to act as you"
+      "The clients you authorized to act as you"
     );
     expect(mocks.listConnectedApps).toHaveBeenCalledWith(
       expect.objectContaining({ user: "users/1", filter: "" })

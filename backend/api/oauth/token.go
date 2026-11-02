@@ -2,9 +2,9 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -229,7 +229,7 @@ func (s *Server) exchangeRefreshToken(w http.ResponseWriter, r *http.Request, re
 	// The atomic rotation is the single-use gate: concurrent refreshes of one
 	// token race here and only the caller that claims the row may issue. The row
 	// id survives, so the connection keeps one identity across rotations.
-	grantID, refreshToken, rotated, err := s.rotateGrant(r.Context(), request.ClientID, tokenHash, now)
+	grantID, refreshToken, rotated, _, err := rotateGrantToken(r.Context(), s.config.tokenStore(), request.ClientID, tokenHash, now, auth.GetRefreshTokenDuration(r.Context(), s.config.Stores))
 	if err != nil {
 		slog.Error("failed to rotate an OAuth grant", clog.WithError(err))
 		writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to consume the refresh token")
@@ -239,24 +239,20 @@ func (s *Server) exchangeRefreshToken(w http.ResponseWriter, r *http.Request, re
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the refresh token is unknown, already used or was issued to another client")
 		return
 	}
-	user, err := s.config.tokenStore().GetUserByID(r.Context(), stored.UserID)
-	if err != nil || user == nil {
-		s.revokeFailedGrant(r.Context(), grantID)
+	user, err := recheckGrantPrincipal(r.Context(), s.config.tokenStore(), s.config.State, stored, grantID, now)
+	switch {
+	case errors.Is(err, ErrGrantUserMissing):
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the approving user no longer exists")
 		return
-	}
-	if user.MemberDeleted {
-		s.revokeFailedGrant(r.Context(), grantID)
+	case errors.Is(err, ErrGrantUserDeactivated):
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the approving user has been deactivated")
 		return
-	}
-	// A grant issued before the last password change must not mint a fresh access
-	// token: that would resurrect exactly the session the change retired. The
-	// comparison uses persisted state, so it holds across replicas, just as the
-	// access token's own iat cutoff does.
-	if last := user.Profile.GetLastChangePasswordTime(); last != nil && auth.TokenPredatesPasswordChange(stored.CreatedAt, last.AsTime()) {
-		s.revokeFailedGrant(r.Context(), grantID)
+	case errors.Is(err, ErrGrantPredatesPasswordChange):
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the grant predates the last password change; authorize again")
+		return
+	case err != nil:
+		slog.Error("failed to re-check an OAuth grant's principal", clog.WithError(err))
+		writeOAuthError(w, http.StatusInternalServerError, "server_error", "failed to consume the refresh token")
 		return
 	}
 	s.writeGrantResponse(w, r, endpoints, oauthGrant{clientID: request.ClientID, user: user, scopes: ParseScopeList(stored.Scope), issuedAt: stored.CreatedAt}, grantID, refreshToken)
@@ -274,6 +270,7 @@ func (s *Server) createGrant(ctx context.Context, grant oauthGrant, resource str
 		TokenHash: auth.HashToken(token),
 		ClientID:  grant.clientID,
 		UserID:    grant.user.ID,
+		Kind:      store.OAuthGrantKindMCP,
 		Resource:  resource,
 		Scope:     grantedScope(grant.scopes),
 		ExpiresAt: s.now().Add(auth.GetRefreshTokenDuration(ctx, s.config.Stores)),
@@ -283,40 +280,6 @@ func (s *Server) createGrant(ctx context.Context, grant oauthGrant, resource str
 		return 0, "", err
 	}
 	return id, token, nil
-}
-
-// rotateGrant mints a replacement refresh token and claims the stored one in one
-// atomic statement. A false result means another caller claimed it, the grant was
-// revoked, or it expired; the minted token is then simply discarded.
-func (s *Server) rotateGrant(ctx context.Context, clientID, oldHash string, now time.Time) (int64, string, bool, error) {
-	token, err := auth.GenerateRefreshToken()
-	if err != nil {
-		return 0, "", false, err
-	}
-	expiresAt := now.Add(auth.GetRefreshTokenDuration(ctx, s.config.Stores))
-	id, rotated, err := s.config.tokenStore().RotateOAuthGrant(ctx, clientID, oldHash, auth.HashToken(token), expiresAt, now)
-	if err != nil || !rotated {
-		return 0, "", rotated, err
-	}
-	return id, token, true, nil
-}
-
-// revokeFailedGrant ends a grant whose live principal can no longer use it. The
-// current code path used to end it by deleting the consumed row; an in-place
-// rotation must say so explicitly, or the row would remain listed as an active
-// connection that can never refresh. Best effort: the credential is already
-// burned, so a failure here only leaves a stale row for the maintenance prune.
-func (s *Server) revokeFailedGrant(ctx context.Context, grantID int64) {
-	if _, err := s.config.tokenStore().RevokeOAuthGrant(ctx, grantID, s.now(), nil); err != nil {
-		slog.Warn("failed to revoke an unusable OAuth grant", clog.WithError(err))
-		return
-	}
-	// Marked after the write commits, so this replica refuses the connection's
-	// tokens immediately instead of serving a live decision for the rest of the
-	// cache window.
-	if s.config.State != nil {
-		s.config.State.GrantRevocationCache.Revoke(strconv.FormatInt(grantID, 10), s.now())
-	}
 }
 
 // writeGrantResponse mints the access token for a stored grant, records the

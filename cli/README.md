@@ -15,7 +15,7 @@ $ mxd auth login --server https://mx.example.com
 
 The command prints a URL and a code. The URL already carries the code, so
 opening it goes straight to the confirmation screen; `mxd` polls until you
-decide, then stores the token in `~/.config/metaxisdata/config.json` (mode
+decide, then stores the session in `~/.config/metaxisdata/config.json` (mode
 0600). Pass `--no-prefill-url` to print the bare page address instead, for a
 workflow where the code has to be typed.
 
@@ -30,9 +30,20 @@ also serves the web application; if you run the SPA separately (the usual local
 setup, where Vite serves it on `:3000`), set the workspace external URL to that
 address and the server will name the right page itself.
 
-The server address is saved **with** the token, because a token is issued by one
-server; later commands do not need `--server` again. `mxd auth logout` revokes
-the token and keeps the address.
+The server address is saved **with** the session, because a credential is issued
+by one server; later commands do not need `--server` again.
+
+A login is a **connected app**, like an MCP client's authorization. It carries a
+refresh credential that `mxd` rotates on its own when the access token expires,
+so a machine in use stays signed in without another approval. The connection is
+listed on the server's **Connected apps** page (Settings for an administrator,
+the avatar menu for your own), where you can see which machines signed in and cut
+one off. The refresh lifetime slides while the session is in use and otherwise
+expires 30 days after the last rotation; a revoked connection, a changed password
+or a deactivated account ends it sooner.
+
+`mxd auth logout` revokes **this machine's** connection and keeps the address;
+your other machines stay signed in.
 
 `--login-timeout` (default 10m) bounds the wait for that approval. It is
 separate from `--timeout` (default 30s), which bounds a single request: the
@@ -210,7 +221,7 @@ data and a caller never has to tell "missing" from "empty".
 | --- | --- | --- |
 | 0 | Success | — |
 | 1 | Bad input: flags, an empty statement, `server_required`, `scope_required`, `config_invalid` | Fix the invocation; the error carries a `hint` |
-| 2 | Not authenticated: the token is missing, expired or revoked, or the device login session is gone or was denied | `mxd auth login` |
+| 2 | Not authenticated: the session is gone (expired, revoked from Connected apps, ended by a password change, or the device login was denied) | `mxd auth login` |
 | 3 | Not found | Check the GUID |
 | 4 | Permission denied | Ask an administrator |
 | 5 | Could not complete: `unavailable` (the server was not reachable), `resource_exhausted`, or a server fault | Retry, then check that the server is running and read its logs |
@@ -227,5 +238,6 @@ but name different fixes, and a server that is not reachable reports
   cookie-based CSRF protection the web session uses.
 - `--ca-cert <pem>` trusts an extra certificate for a self-signed deployment;
   `--insecure` skips verification and prints a warning.
-- The token is stored in clear text. It is equivalent to a seven day session;
-  the CLI never prints it.
+- The session is stored in clear text: an access token and its rotating refresh
+  token, in a 0600 file. `mxd` never prints either. A CLI login can be revoked
+  from the Connected apps page without touching the machine.

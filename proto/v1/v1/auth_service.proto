@@ -47,6 +47,22 @@ service AuthService {
     option (metaxisdata.v1.allow_without_credential) = true;
   }
 
+  // ExchangeRefreshToken rotates a CLI session from the refresh token in the
+  // body. The CLI has no cookie jar, so it presents the opaque refresh token the
+  // device login issued instead of the browser's cookie; the session itself is
+  // the same rotating grant row an MCP client gets, which is what makes a CLI
+  // login a visible, revocable connected app. Each call consumes the presented
+  // token and returns a replacement, so a stolen copy is worthless once the real
+  // holder refreshes.
+  // Permissions required: None
+  rpc ExchangeRefreshToken(ExchangeRefreshTokenRequest) returns (ExchangeRefreshTokenResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/refreshTokens:exchange"
+      body: "*"
+    };
+    option (metaxisdata.v1.allow_without_credential) = true;
+  }
+
   // CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
   // before redirecting to the identity provider, pass it back to the provider
   // and then send it with the login request; the server consumes it there.
@@ -174,6 +190,28 @@ message RefreshRequest {}
 // HttpOnly cookies, so no token ever reaches page JavaScript.
 message RefreshResponse {}
 
+message ExchangeRefreshTokenRequest {
+  // The opaque refresh token this session was last issued. It is a credential of
+  // its own: the server accepts it only through this method, and only for a CLI
+  // session it minted.
+  string refresh_token = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ExchangeRefreshTokenResponse {
+  // The rotated access token, addressed to the user API.
+  string access_token = 1;
+
+  // The replacement refresh token. The presented one is consumed by this call.
+  string refresh_token = 2;
+
+  // The access token's lifetime in seconds.
+  int64 expires_in = 3;
+
+  // The refresh token's remaining lifetime in seconds. The session slides: every
+  // rotation restarts it, so a CLI in use does not have to sign in again.
+  int64 refresh_expires_in = 4;
+}
+
 message CreateDeviceLoginRequest {
   // A human-readable client name for the confirmation page, e.g. "mxd". It is
   // display only and never trusted.
@@ -275,7 +313,10 @@ message ExchangeDeviceLoginResponse {
   DeviceLoginState state = 1;
 
   // The access token, returned only when the request was approved. The device
-  // login is consumed at the same time, so a second exchange finds nothing.
+  // login is consumed at the same time, so a second exchange finds nothing. The
+  // token belongs to the CLI session the exchange creates (a connected app), so
+  // a revocation of that connection refuses it within the grant-revocation
+  // cache's window.
   string token = 2;
 
   // The remaining lifetime of the token in seconds.
@@ -283,4 +324,12 @@ message ExchangeDeviceLoginResponse {
 
   // The user who approved the request.
   User user = 4;
+
+  // The CLI session's rotating refresh token. Only its digest is stored, and
+  // every use must go through ExchangeRefreshToken, which consumes it. Empty
+  // only on a response that answered a state other than APPROVED.
+  string refresh_token = 5;
+
+  // The refresh token's lifetime in seconds.
+  int64 refresh_expires_in = 6;
 }

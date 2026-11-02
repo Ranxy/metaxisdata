@@ -33,8 +33,17 @@
           <div class="font-medium break-words">
             {{ app.clientName || app.clientId }}
           </div>
+          <!-- A CLI row names the device the session was opened from, because the
+               client name is the same built-in client for every machine; an MCP
+               row names the registration. -->
           <div
-            v-if="app.clientName"
+            v-if="isCLI(app)"
+            class="text-xs break-words text-muted-foreground"
+          >
+            {{ cliDevice(app) }}
+          </div>
+          <div
+            v-else-if="app.clientName"
             class="text-xs break-all text-muted-foreground"
           >
             {{ app.clientId }}
@@ -55,6 +64,9 @@
           >
             {{ formatRelativeTime(app.lastToolCallTime, locale) }}
           </span>
+          <!-- A CLI session is used through ordinary API calls, not tool calls, so
+               the column does not apply to it. -->
+          <span v-else-if="isCLI(app)" class="text-muted-foreground">—</span>
           <span v-else class="text-muted-foreground">
             {{ t("connectedApps.noToolCall") }}
           </span>
@@ -111,6 +123,7 @@ import {
 } from "@/components/ui/table";
 import {
   type ConnectedApp,
+  ConnectedApp_Kind,
   ConnectedApp_State,
 } from "@/types/proto-es/v1/connected_app_service_pb";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -137,6 +150,26 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+
+/** isCLI reports whether the connection is a CLI device login. */
+function isCLI(app: ConnectedApp): boolean {
+  return app.kind === ConnectedApp_Kind.CLI;
+}
+
+/**
+ * cliDevice is the line under a CLI row's name: the kind, the CLI build that
+ * opened the session, and the address it came from. Every CLI login uses the same
+ * built-in client, so this is what tells a user's own devices apart.
+ */
+function cliDevice(app: ConnectedApp): string {
+  return [
+    "CLI",
+    app.clientVersion ? `v${app.clientVersion}` : "",
+    app.requestIp,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 /** Red is reserved for failures and the confirm button; a state is a tone. */
 function statusVariant(state: ConnectedApp_State): BadgeVariant {

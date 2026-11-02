@@ -74,7 +74,7 @@ describe("ConnectedAppsSettingsPage", () => {
 
     expect(wrapper.text()).toContain("Connected apps");
     expect(wrapper.text()).toContain(
-      "Every MCP client authorized to act on behalf of a user"
+      "Every client authorized to act on behalf of a user"
     );
     // The administrator's own name must not pin the query.
     expect(mocks.listConnectedApps).toHaveBeenCalledWith(

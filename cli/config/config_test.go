@@ -34,19 +34,25 @@ func TestSaveWritesOwnerOnlyAndRoundTrips(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "nested", "config.json")
 	expiry := time.Date(2026, 1, 8, 10, 0, 0, 0, time.UTC)
+	refreshExpiry := time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC)
 	require.NoError(t, Save(path, &Credentials{
-		Server:         "https://mx.example.com",
-		Token:          "secret",
-		User:           &User{Email: "dev@example.com", Name: "Dev"},
-		TokenExpiresAt: expiry,
+		Server:           "https://mx.example.com",
+		Token:            "secret",
+		RefreshToken:     "rotating-secret",
+		User:             &User{Email: "dev@example.com", Name: "Dev"},
+		TokenExpiresAt:   expiry,
+		RefreshExpiresAt: refreshExpiry,
 	}))
 
 	loaded, err := Load(path)
 	require.NoError(t, err)
 	require.Equal(t, "https://mx.example.com", loaded.Server)
 	require.Equal(t, "secret", loaded.Token)
+	require.Equal(t, "rotating-secret", loaded.RefreshToken,
+		"the session's rotating half must survive a round trip")
 	require.Equal(t, "dev@example.com", loaded.User.Email)
 	require.True(t, expiry.Equal(loaded.TokenExpiresAt))
+	require.True(t, refreshExpiry.Equal(loaded.RefreshExpiresAt))
 
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(path)
@@ -71,15 +77,19 @@ func TestClearKeepsTheServer(t *testing.T) {
 	t.Parallel()
 
 	credentials := &Credentials{
-		Server:         "https://mx.example.com",
-		Token:          "secret",
-		User:           &User{Email: "dev@example.com"},
-		TokenExpiresAt: time.Now(),
+		Server:           "https://mx.example.com",
+		Token:            "secret",
+		RefreshToken:     "rotating-secret",
+		User:             &User{Email: "dev@example.com"},
+		TokenExpiresAt:   time.Now(),
+		RefreshExpiresAt: time.Now().Add(time.Hour),
 	}
 	credentials.Clear()
 
 	require.Equal(t, "https://mx.example.com", credentials.Server)
 	require.Empty(t, credentials.Token)
+	require.Empty(t, credentials.RefreshToken, "a cleared file must not keep a reusable session")
 	require.Nil(t, credentials.User)
 	require.True(t, credentials.TokenExpiresAt.IsZero())
+	require.True(t, credentials.RefreshExpiresAt.IsZero())
 }

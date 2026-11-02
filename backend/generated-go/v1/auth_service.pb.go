@@ -524,6 +524,126 @@ func (*RefreshResponse) Descriptor() ([]byte, []int) {
 	return file_v1_auth_service_proto_rawDescGZIP(), []int{7}
 }
 
+type ExchangeRefreshTokenRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The opaque refresh token this session was last issued. It is a credential of
+	// its own: the server accepts it only through this method, and only for a CLI
+	// session it minted.
+	RefreshToken  string `protobuf:"bytes,1,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExchangeRefreshTokenRequest) Reset() {
+	*x = ExchangeRefreshTokenRequest{}
+	mi := &file_v1_auth_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExchangeRefreshTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExchangeRefreshTokenRequest) ProtoMessage() {}
+
+func (x *ExchangeRefreshTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_auth_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExchangeRefreshTokenRequest.ProtoReflect.Descriptor instead.
+func (*ExchangeRefreshTokenRequest) Descriptor() ([]byte, []int) {
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ExchangeRefreshTokenRequest) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+type ExchangeRefreshTokenResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The rotated access token, addressed to the user API.
+	AccessToken string `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	// The replacement refresh token. The presented one is consumed by this call.
+	RefreshToken string `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	// The access token's lifetime in seconds.
+	ExpiresIn int64 `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
+	// The refresh token's remaining lifetime in seconds. The session slides: every
+	// rotation restarts it, so a CLI in use does not have to sign in again.
+	RefreshExpiresIn int64 `protobuf:"varint,4,opt,name=refresh_expires_in,json=refreshExpiresIn,proto3" json:"refresh_expires_in,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ExchangeRefreshTokenResponse) Reset() {
+	*x = ExchangeRefreshTokenResponse{}
+	mi := &file_v1_auth_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExchangeRefreshTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExchangeRefreshTokenResponse) ProtoMessage() {}
+
+func (x *ExchangeRefreshTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_auth_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExchangeRefreshTokenResponse.ProtoReflect.Descriptor instead.
+func (*ExchangeRefreshTokenResponse) Descriptor() ([]byte, []int) {
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ExchangeRefreshTokenResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *ExchangeRefreshTokenResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *ExchangeRefreshTokenResponse) GetExpiresIn() int64 {
+	if x != nil {
+		return x.ExpiresIn
+	}
+	return 0
+}
+
+func (x *ExchangeRefreshTokenResponse) GetRefreshExpiresIn() int64 {
+	if x != nil {
+		return x.RefreshExpiresIn
+	}
+	return 0
+}
+
 type CreateDeviceLoginRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// A human-readable client name for the confirmation page, e.g. "mxd". It is
@@ -536,7 +656,7 @@ type CreateDeviceLoginRequest struct {
 
 func (x *CreateDeviceLoginRequest) Reset() {
 	*x = CreateDeviceLoginRequest{}
-	mi := &file_v1_auth_service_proto_msgTypes[8]
+	mi := &file_v1_auth_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +668,7 @@ func (x *CreateDeviceLoginRequest) String() string {
 func (*CreateDeviceLoginRequest) ProtoMessage() {}
 
 func (x *CreateDeviceLoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[8]
+	mi := &file_v1_auth_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +681,7 @@ func (x *CreateDeviceLoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeviceLoginRequest.ProtoReflect.Descriptor instead.
 func (*CreateDeviceLoginRequest) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{8}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateDeviceLoginRequest) GetClientName() string {
@@ -602,7 +722,7 @@ type CreateDeviceLoginResponse struct {
 
 func (x *CreateDeviceLoginResponse) Reset() {
 	*x = CreateDeviceLoginResponse{}
-	mi := &file_v1_auth_service_proto_msgTypes[9]
+	mi := &file_v1_auth_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -614,7 +734,7 @@ func (x *CreateDeviceLoginResponse) String() string {
 func (*CreateDeviceLoginResponse) ProtoMessage() {}
 
 func (x *CreateDeviceLoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[9]
+	mi := &file_v1_auth_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -627,7 +747,7 @@ func (x *CreateDeviceLoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDeviceLoginResponse.ProtoReflect.Descriptor instead.
 func (*CreateDeviceLoginResponse) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{9}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CreateDeviceLoginResponse) GetDeviceCode() string {
@@ -683,7 +803,7 @@ type GetDeviceLoginRequest struct {
 
 func (x *GetDeviceLoginRequest) Reset() {
 	*x = GetDeviceLoginRequest{}
-	mi := &file_v1_auth_service_proto_msgTypes[10]
+	mi := &file_v1_auth_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -695,7 +815,7 @@ func (x *GetDeviceLoginRequest) String() string {
 func (*GetDeviceLoginRequest) ProtoMessage() {}
 
 func (x *GetDeviceLoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[10]
+	mi := &file_v1_auth_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -708,7 +828,7 @@ func (x *GetDeviceLoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeviceLoginRequest.ProtoReflect.Descriptor instead.
 func (*GetDeviceLoginRequest) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{10}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetDeviceLoginRequest) GetName() string {
@@ -743,7 +863,7 @@ type DeviceLogin struct {
 
 func (x *DeviceLogin) Reset() {
 	*x = DeviceLogin{}
-	mi := &file_v1_auth_service_proto_msgTypes[11]
+	mi := &file_v1_auth_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -755,7 +875,7 @@ func (x *DeviceLogin) String() string {
 func (*DeviceLogin) ProtoMessage() {}
 
 func (x *DeviceLogin) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[11]
+	mi := &file_v1_auth_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -768,7 +888,7 @@ func (x *DeviceLogin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceLogin.ProtoReflect.Descriptor instead.
 func (*DeviceLogin) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{11}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeviceLogin) GetName() string {
@@ -852,7 +972,7 @@ type ApproveDeviceLoginRequest struct {
 
 func (x *ApproveDeviceLoginRequest) Reset() {
 	*x = ApproveDeviceLoginRequest{}
-	mi := &file_v1_auth_service_proto_msgTypes[12]
+	mi := &file_v1_auth_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -864,7 +984,7 @@ func (x *ApproveDeviceLoginRequest) String() string {
 func (*ApproveDeviceLoginRequest) ProtoMessage() {}
 
 func (x *ApproveDeviceLoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[12]
+	mi := &file_v1_auth_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -877,7 +997,7 @@ func (x *ApproveDeviceLoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveDeviceLoginRequest.ProtoReflect.Descriptor instead.
 func (*ApproveDeviceLoginRequest) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{12}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ApproveDeviceLoginRequest) GetName() string {
@@ -903,7 +1023,7 @@ type ExchangeDeviceLoginRequest struct {
 
 func (x *ExchangeDeviceLoginRequest) Reset() {
 	*x = ExchangeDeviceLoginRequest{}
-	mi := &file_v1_auth_service_proto_msgTypes[13]
+	mi := &file_v1_auth_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -915,7 +1035,7 @@ func (x *ExchangeDeviceLoginRequest) String() string {
 func (*ExchangeDeviceLoginRequest) ProtoMessage() {}
 
 func (x *ExchangeDeviceLoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[13]
+	mi := &file_v1_auth_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -928,7 +1048,7 @@ func (x *ExchangeDeviceLoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExchangeDeviceLoginRequest.ProtoReflect.Descriptor instead.
 func (*ExchangeDeviceLoginRequest) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{13}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ExchangeDeviceLoginRequest) GetDeviceCode() string {
@@ -942,19 +1062,28 @@ type ExchangeDeviceLoginResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	State DeviceLoginState       `protobuf:"varint,1,opt,name=state,proto3,enum=metaxisdata.v1.DeviceLoginState" json:"state,omitempty"`
 	// The access token, returned only when the request was approved. The device
-	// login is consumed at the same time, so a second exchange finds nothing.
+	// login is consumed at the same time, so a second exchange finds nothing. The
+	// token belongs to the CLI session the exchange creates (a connected app), so
+	// a revocation of that connection refuses it within the grant-revocation
+	// cache's window.
 	Token string `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
 	// The remaining lifetime of the token in seconds.
 	ExpiresIn int64 `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
 	// The user who approved the request.
-	User          *User `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	User *User `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
+	// The CLI session's rotating refresh token. Only its digest is stored, and
+	// every use must go through ExchangeRefreshToken, which consumes it. Empty
+	// only on a response that answered a state other than APPROVED.
+	RefreshToken string `protobuf:"bytes,5,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
+	// The refresh token's lifetime in seconds.
+	RefreshExpiresIn int64 `protobuf:"varint,6,opt,name=refresh_expires_in,json=refreshExpiresIn,proto3" json:"refresh_expires_in,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ExchangeDeviceLoginResponse) Reset() {
 	*x = ExchangeDeviceLoginResponse{}
-	mi := &file_v1_auth_service_proto_msgTypes[14]
+	mi := &file_v1_auth_service_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -966,7 +1095,7 @@ func (x *ExchangeDeviceLoginResponse) String() string {
 func (*ExchangeDeviceLoginResponse) ProtoMessage() {}
 
 func (x *ExchangeDeviceLoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_auth_service_proto_msgTypes[14]
+	mi := &file_v1_auth_service_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -979,7 +1108,7 @@ func (x *ExchangeDeviceLoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExchangeDeviceLoginResponse.ProtoReflect.Descriptor instead.
 func (*ExchangeDeviceLoginResponse) Descriptor() ([]byte, []int) {
-	return file_v1_auth_service_proto_rawDescGZIP(), []int{14}
+	return file_v1_auth_service_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ExchangeDeviceLoginResponse) GetState() DeviceLoginState {
@@ -1010,6 +1139,20 @@ func (x *ExchangeDeviceLoginResponse) GetUser() *User {
 	return nil
 }
 
+func (x *ExchangeDeviceLoginResponse) GetRefreshToken() string {
+	if x != nil {
+		return x.RefreshToken
+	}
+	return ""
+}
+
+func (x *ExchangeDeviceLoginResponse) GetRefreshExpiresIn() int64 {
+	if x != nil {
+		return x.RefreshExpiresIn
+	}
+	return 0
+}
+
 var File_v1_auth_service_proto protoreflect.FileDescriptor
 
 const file_v1_auth_service_proto_rawDesc = "" +
@@ -1038,7 +1181,15 @@ const file_v1_auth_service_proto_rawDesc = "" +
 	"\x0faccount_adopted\x18\x05 \x01(\bR\x0eaccountAdopted\"\x0f\n" +
 	"\rLogoutRequest\"\x10\n" +
 	"\x0eRefreshRequest\"\x11\n" +
-	"\x0fRefreshResponse\"b\n" +
+	"\x0fRefreshResponse\"G\n" +
+	"\x1bExchangeRefreshTokenRequest\x12(\n" +
+	"\rrefresh_token\x18\x01 \x01(\tB\x03\xe0A\x02R\frefreshToken\"\xb3\x01\n" +
+	"\x1cExchangeRefreshTokenResponse\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\n" +
+	"expires_in\x18\x03 \x01(\x03R\texpiresIn\x12,\n" +
+	"\x12refresh_expires_in\x18\x04 \x01(\x03R\x10refreshExpiresIn\"b\n" +
 	"\x18CreateDeviceLoginRequest\x12\x1f\n" +
 	"\vclient_name\x18\x01 \x01(\tR\n" +
 	"clientName\x12%\n" +
@@ -1079,24 +1230,27 @@ const file_v1_auth_service_proto_rawDesc = "" +
 	"\aapprove\x18\x02 \x01(\bR\aapprove\"B\n" +
 	"\x1aExchangeDeviceLoginRequest\x12$\n" +
 	"\vdevice_code\x18\x01 \x01(\tB\x03\xe0A\x02R\n" +
-	"deviceCode\"\xb4\x01\n" +
+	"deviceCode\"\x87\x02\n" +
 	"\x1bExchangeDeviceLoginResponse\x126\n" +
 	"\x05state\x18\x01 \x01(\x0e2 .metaxisdata.v1.DeviceLoginStateR\x05state\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1d\n" +
 	"\n" +
 	"expires_in\x18\x03 \x01(\x03R\texpiresIn\x12(\n" +
-	"\x04user\x18\x04 \x01(\v2\x14.metaxisdata.v1.UserR\x04user*j\n" +
+	"\x04user\x18\x04 \x01(\v2\x14.metaxisdata.v1.UserR\x04user\x12#\n" +
+	"\rrefresh_token\x18\x05 \x01(\tR\frefreshToken\x12,\n" +
+	"\x12refresh_expires_in\x18\x06 \x01(\x03R\x10refreshExpiresIn*j\n" +
 	"\x10DeviceLoginState\x12\"\n" +
 	"\x1eDEVICE_LOGIN_STATE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aPENDING\x10\x01\x12\f\n" +
 	"\bAPPROVED\x10\x02\x12\n" +
 	"\n" +
 	"\x06DENIED\x10\x03\x12\v\n" +
-	"\aEXPIRED\x10\x042\xf6\a\n" +
+	"\aEXPIRED\x10\x042\x9a\t\n" +
 	"\vAuthService\x12g\n" +
 	"\x05Login\x12\x1c.metaxisdata.v1.LoginRequest\x1a\x1d.metaxisdata.v1.LoginResponse\"!\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/auth/login\x12c\n" +
 	"\x06Logout\x12\x1d.metaxisdata.v1.LogoutRequest\x1a\x16.google.protobuf.Empty\"\"\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/auth/logout\x12k\n" +
-	"\aRefresh\x12\x1e.metaxisdata.v1.RefreshRequest\x1a\x1f.metaxisdata.v1.RefreshResponse\"\x1f\x80\xea0\x01\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/auth/refresh\x12r\n" +
+	"\aRefresh\x12\x1e.metaxisdata.v1.RefreshRequest\x1a\x1f.metaxisdata.v1.RefreshResponse\"\x1f\x80\xea0\x01\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/auth/refresh\x12\xa1\x01\n" +
+	"\x14ExchangeRefreshToken\x12+.metaxisdata.v1.ExchangeRefreshTokenRequest\x1a,.metaxisdata.v1.ExchangeRefreshTokenResponse\".\x80\xea0\x01\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/auth/refreshTokens:exchange\x12r\n" +
 	"\x0eCreateSSOState\x12\x16.google.protobuf.Empty\x1a&.metaxisdata.v1.CreateSSOStateResponse\" \x80\xea0\x01\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/auth/ssoState\x12\x92\x01\n" +
 	"\x11CreateDeviceLogin\x12(.metaxisdata.v1.CreateDeviceLoginRequest\x1a).metaxisdata.v1.CreateDeviceLoginResponse\"(\x80\xea0\x01\x98\xea0\x01\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/auth/deviceLogins\x12w\n" +
 	"\x0eGetDeviceLogin\x12%.metaxisdata.v1.GetDeviceLoginRequest\x1a\x1b.metaxisdata.v1.DeviceLogin\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/{name=deviceLogins/*}\x12\x89\x01\n" +
@@ -1116,7 +1270,7 @@ func file_v1_auth_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_auth_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_v1_auth_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_v1_auth_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_v1_auth_service_proto_goTypes = []any{
 	(DeviceLoginState)(0),                 // 0: metaxisdata.v1.DeviceLoginState
 	(*CreateSSOStateResponse)(nil),        // 1: metaxisdata.v1.CreateSSOStateResponse
@@ -1127,45 +1281,49 @@ var file_v1_auth_service_proto_goTypes = []any{
 	(*LogoutRequest)(nil),                 // 6: metaxisdata.v1.LogoutRequest
 	(*RefreshRequest)(nil),                // 7: metaxisdata.v1.RefreshRequest
 	(*RefreshResponse)(nil),               // 8: metaxisdata.v1.RefreshResponse
-	(*CreateDeviceLoginRequest)(nil),      // 9: metaxisdata.v1.CreateDeviceLoginRequest
-	(*CreateDeviceLoginResponse)(nil),     // 10: metaxisdata.v1.CreateDeviceLoginResponse
-	(*GetDeviceLoginRequest)(nil),         // 11: metaxisdata.v1.GetDeviceLoginRequest
-	(*DeviceLogin)(nil),                   // 12: metaxisdata.v1.DeviceLogin
-	(*ApproveDeviceLoginRequest)(nil),     // 13: metaxisdata.v1.ApproveDeviceLoginRequest
-	(*ExchangeDeviceLoginRequest)(nil),    // 14: metaxisdata.v1.ExchangeDeviceLoginRequest
-	(*ExchangeDeviceLoginResponse)(nil),   // 15: metaxisdata.v1.ExchangeDeviceLoginResponse
-	(*User)(nil),                          // 16: metaxisdata.v1.User
-	(*timestamppb.Timestamp)(nil),         // 17: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                 // 18: google.protobuf.Empty
+	(*ExchangeRefreshTokenRequest)(nil),   // 9: metaxisdata.v1.ExchangeRefreshTokenRequest
+	(*ExchangeRefreshTokenResponse)(nil),  // 10: metaxisdata.v1.ExchangeRefreshTokenResponse
+	(*CreateDeviceLoginRequest)(nil),      // 11: metaxisdata.v1.CreateDeviceLoginRequest
+	(*CreateDeviceLoginResponse)(nil),     // 12: metaxisdata.v1.CreateDeviceLoginResponse
+	(*GetDeviceLoginRequest)(nil),         // 13: metaxisdata.v1.GetDeviceLoginRequest
+	(*DeviceLogin)(nil),                   // 14: metaxisdata.v1.DeviceLogin
+	(*ApproveDeviceLoginRequest)(nil),     // 15: metaxisdata.v1.ApproveDeviceLoginRequest
+	(*ExchangeDeviceLoginRequest)(nil),    // 16: metaxisdata.v1.ExchangeDeviceLoginRequest
+	(*ExchangeDeviceLoginResponse)(nil),   // 17: metaxisdata.v1.ExchangeDeviceLoginResponse
+	(*User)(nil),                          // 18: metaxisdata.v1.User
+	(*timestamppb.Timestamp)(nil),         // 19: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                 // 20: google.protobuf.Empty
 }
 var file_v1_auth_service_proto_depIdxs = []int32{
 	3,  // 0: metaxisdata.v1.LoginRequest.idp_context:type_name -> metaxisdata.v1.IdentityProviderContext
 	4,  // 1: metaxisdata.v1.IdentityProviderContext.oauth2_context:type_name -> metaxisdata.v1.OAuth2IdentityProviderContext
-	16, // 2: metaxisdata.v1.LoginResponse.user:type_name -> metaxisdata.v1.User
+	18, // 2: metaxisdata.v1.LoginResponse.user:type_name -> metaxisdata.v1.User
 	0,  // 3: metaxisdata.v1.DeviceLogin.state:type_name -> metaxisdata.v1.DeviceLoginState
-	17, // 4: metaxisdata.v1.DeviceLogin.create_time:type_name -> google.protobuf.Timestamp
-	17, // 5: metaxisdata.v1.DeviceLogin.expire_time:type_name -> google.protobuf.Timestamp
-	16, // 6: metaxisdata.v1.DeviceLogin.approved_by:type_name -> metaxisdata.v1.User
+	19, // 4: metaxisdata.v1.DeviceLogin.create_time:type_name -> google.protobuf.Timestamp
+	19, // 5: metaxisdata.v1.DeviceLogin.expire_time:type_name -> google.protobuf.Timestamp
+	18, // 6: metaxisdata.v1.DeviceLogin.approved_by:type_name -> metaxisdata.v1.User
 	0,  // 7: metaxisdata.v1.ExchangeDeviceLoginResponse.state:type_name -> metaxisdata.v1.DeviceLoginState
-	16, // 8: metaxisdata.v1.ExchangeDeviceLoginResponse.user:type_name -> metaxisdata.v1.User
+	18, // 8: metaxisdata.v1.ExchangeDeviceLoginResponse.user:type_name -> metaxisdata.v1.User
 	2,  // 9: metaxisdata.v1.AuthService.Login:input_type -> metaxisdata.v1.LoginRequest
 	6,  // 10: metaxisdata.v1.AuthService.Logout:input_type -> metaxisdata.v1.LogoutRequest
 	7,  // 11: metaxisdata.v1.AuthService.Refresh:input_type -> metaxisdata.v1.RefreshRequest
-	18, // 12: metaxisdata.v1.AuthService.CreateSSOState:input_type -> google.protobuf.Empty
-	9,  // 13: metaxisdata.v1.AuthService.CreateDeviceLogin:input_type -> metaxisdata.v1.CreateDeviceLoginRequest
-	11, // 14: metaxisdata.v1.AuthService.GetDeviceLogin:input_type -> metaxisdata.v1.GetDeviceLoginRequest
-	13, // 15: metaxisdata.v1.AuthService.ApproveDeviceLogin:input_type -> metaxisdata.v1.ApproveDeviceLoginRequest
-	14, // 16: metaxisdata.v1.AuthService.ExchangeDeviceLogin:input_type -> metaxisdata.v1.ExchangeDeviceLoginRequest
-	5,  // 17: metaxisdata.v1.AuthService.Login:output_type -> metaxisdata.v1.LoginResponse
-	18, // 18: metaxisdata.v1.AuthService.Logout:output_type -> google.protobuf.Empty
-	8,  // 19: metaxisdata.v1.AuthService.Refresh:output_type -> metaxisdata.v1.RefreshResponse
-	1,  // 20: metaxisdata.v1.AuthService.CreateSSOState:output_type -> metaxisdata.v1.CreateSSOStateResponse
-	10, // 21: metaxisdata.v1.AuthService.CreateDeviceLogin:output_type -> metaxisdata.v1.CreateDeviceLoginResponse
-	12, // 22: metaxisdata.v1.AuthService.GetDeviceLogin:output_type -> metaxisdata.v1.DeviceLogin
-	18, // 23: metaxisdata.v1.AuthService.ApproveDeviceLogin:output_type -> google.protobuf.Empty
-	15, // 24: metaxisdata.v1.AuthService.ExchangeDeviceLogin:output_type -> metaxisdata.v1.ExchangeDeviceLoginResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
+	9,  // 12: metaxisdata.v1.AuthService.ExchangeRefreshToken:input_type -> metaxisdata.v1.ExchangeRefreshTokenRequest
+	20, // 13: metaxisdata.v1.AuthService.CreateSSOState:input_type -> google.protobuf.Empty
+	11, // 14: metaxisdata.v1.AuthService.CreateDeviceLogin:input_type -> metaxisdata.v1.CreateDeviceLoginRequest
+	13, // 15: metaxisdata.v1.AuthService.GetDeviceLogin:input_type -> metaxisdata.v1.GetDeviceLoginRequest
+	15, // 16: metaxisdata.v1.AuthService.ApproveDeviceLogin:input_type -> metaxisdata.v1.ApproveDeviceLoginRequest
+	16, // 17: metaxisdata.v1.AuthService.ExchangeDeviceLogin:input_type -> metaxisdata.v1.ExchangeDeviceLoginRequest
+	5,  // 18: metaxisdata.v1.AuthService.Login:output_type -> metaxisdata.v1.LoginResponse
+	20, // 19: metaxisdata.v1.AuthService.Logout:output_type -> google.protobuf.Empty
+	8,  // 20: metaxisdata.v1.AuthService.Refresh:output_type -> metaxisdata.v1.RefreshResponse
+	10, // 21: metaxisdata.v1.AuthService.ExchangeRefreshToken:output_type -> metaxisdata.v1.ExchangeRefreshTokenResponse
+	1,  // 22: metaxisdata.v1.AuthService.CreateSSOState:output_type -> metaxisdata.v1.CreateSSOStateResponse
+	12, // 23: metaxisdata.v1.AuthService.CreateDeviceLogin:output_type -> metaxisdata.v1.CreateDeviceLoginResponse
+	14, // 24: metaxisdata.v1.AuthService.GetDeviceLogin:output_type -> metaxisdata.v1.DeviceLogin
+	20, // 25: metaxisdata.v1.AuthService.ApproveDeviceLogin:output_type -> google.protobuf.Empty
+	17, // 26: metaxisdata.v1.AuthService.ExchangeDeviceLogin:output_type -> metaxisdata.v1.ExchangeDeviceLoginResponse
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -1187,7 +1345,7 @@ func file_v1_auth_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_auth_service_proto_rawDesc), len(file_v1_auth_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/Ranxy/metaxisdata/backend/api/oauth"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	integrationenv "github.com/Ranxy/metaxisdata/backend/test/integration/env"
@@ -24,10 +25,11 @@ import (
 // apiClients bundles the service clients the scenarios need, each bound to the
 // credential given.
 type apiClients struct {
-	auth     v1connect.AuthServiceClient
-	user     v1connect.UserServiceClient
-	database v1connect.DatabaseServiceClient
-	lineage  v1connect.LineageServiceClient
+	auth         v1connect.AuthServiceClient
+	user         v1connect.UserServiceClient
+	database     v1connect.DatabaseServiceClient
+	lineage      v1connect.LineageServiceClient
+	connectedApp v1connect.ConnectedAppServiceClient
 }
 
 // newAPIClients builds clients that send, or omit, a bearer token. Anonymous
@@ -39,10 +41,11 @@ func newAPIClients(env *integrationenv.ServiceEnv, token string) *apiClients {
 		httpClient.Transport = bearerRoundTripper{base: http.DefaultTransport, token: token}
 	}
 	return &apiClients{
-		auth:     v1connect.NewAuthServiceClient(httpClient, env.BaseURL),
-		user:     v1connect.NewUserServiceClient(httpClient, env.BaseURL),
-		database: v1connect.NewDatabaseServiceClient(httpClient, env.BaseURL),
-		lineage:  v1connect.NewLineageServiceClient(httpClient, env.BaseURL),
+		auth:         v1connect.NewAuthServiceClient(httpClient, env.BaseURL),
+		user:         v1connect.NewUserServiceClient(httpClient, env.BaseURL),
+		database:     v1connect.NewDatabaseServiceClient(httpClient, env.BaseURL),
+		lineage:      v1connect.NewLineageServiceClient(httpClient, env.BaseURL),
+		connectedApp: v1connect.NewConnectedAppServiceClient(httpClient, env.BaseURL),
 	}
 }
 
@@ -107,6 +110,9 @@ func TestDeviceLoginRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, v1pb.DeviceLoginState_APPROVED, exchanged.Msg.GetState())
 	require.NotEmpty(t, exchanged.Msg.GetToken())
+	require.NotEmpty(t, exchanged.Msg.GetRefreshToken(),
+		"a CLI login hands out the session's rotating refresh credential")
+	require.Positive(t, exchanged.Msg.GetRefreshExpiresIn())
 	require.NotEmpty(t, exchanged.Msg.GetUser().GetEmail())
 
 	// The token is a real credential for the user who approved the request.
@@ -467,4 +473,145 @@ func TestGetLineageCountsRealServerIntegration(t *testing.T) {
 	// An empty list is refused rather than read as "count everything".
 	_, err = client.lineage.GetLineageCounts(ctx, connect.NewRequest(&v1pb.GetLineageCountsRequest{}))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+// cliSession is one CLI login as a scenario needs to see it: an access token, the
+// rotating refresh credential, and the device facts that identify its connected-app
+// row.
+type cliSession struct {
+	clients       *apiClients
+	accessToken   string
+	refreshToken  string
+	clientVersion string
+	user          *v1pb.User
+}
+
+// openCLISession walks a device login end to end: anonymous create, signed-in
+// approve, exchange for the pair. The client version is unique per call because
+// the suite shares one database and the connected-app row is found by it.
+func openCLISession(ctx context.Context, t *testing.T, env *integrationenv.ServiceEnv, anonymous, signedIn *apiClients) *cliSession {
+	t.Helper()
+
+	clientVersion := fmt.Sprintf("it-%d", time.Now().UnixNano())
+	created, err := anonymous.auth.CreateDeviceLogin(ctx, connect.NewRequest(&v1pb.CreateDeviceLoginRequest{
+		ClientName:    "mxd",
+		ClientVersion: clientVersion,
+	}))
+	require.NoError(t, err)
+	_, err = signedIn.auth.ApproveDeviceLogin(ctx, connect.NewRequest(&v1pb.ApproveDeviceLoginRequest{
+		Name:    "deviceLogins/" + created.Msg.GetUserCode(),
+		Approve: true,
+	}))
+	require.NoError(t, err)
+	exchanged, err := anonymous.auth.ExchangeDeviceLogin(ctx, connect.NewRequest(&v1pb.ExchangeDeviceLoginRequest{
+		DeviceCode: created.Msg.GetDeviceCode(),
+	}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.DeviceLoginState_APPROVED, exchanged.Msg.GetState())
+	require.NotEmpty(t, exchanged.Msg.GetToken())
+	require.NotEmpty(t, exchanged.Msg.GetRefreshToken())
+
+	return &cliSession{
+		clients:       newAPIClients(env, exchanged.Msg.GetToken()),
+		accessToken:   exchanged.Msg.GetToken(),
+		refreshToken:  exchanged.Msg.GetRefreshToken(),
+		clientVersion: clientVersion,
+		user:          exchanged.Msg.GetUser(),
+	}
+}
+
+// findCLIConnectedApp locates one scenario's CLI session on the management surface.
+func findCLIConnectedApp(ctx context.Context, t *testing.T, clients *apiClients, clientVersion string) *v1pb.ConnectedApp {
+	t.Helper()
+
+	response, err := clients.connectedApp.ListConnectedApps(ctx, connect.NewRequest(&v1pb.ListConnectedAppsRequest{PageSize: 1000}))
+	require.NoError(t, err)
+	for _, app := range response.Msg.GetConnectedApps() {
+		if app.GetClientId() == oauth.CLIClientID && app.GetClientVersion() == clientVersion {
+			return app
+		}
+	}
+	t.Fatalf("no connected app for CLI session %q", clientVersion)
+	return nil
+}
+
+// TestCLISessionIsAConnectedAppRealServerIntegration pins what treating a CLI
+// login as a connected app buys: it is listed with the device that opened it, and
+// revoking it cuts the outstanding access token and the refresh credential
+// together.
+func TestCLISessionIsAConnectedAppRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedMySQLServiceEnvNoReset(t)
+	ctx := context.Background()
+	anonymous := newAPIClients(env, "")
+	signedIn := newAPIClients(env, env.AdminToken())
+	session := openCLISession(ctx, t, env, anonymous, signedIn)
+
+	app := findCLIConnectedApp(ctx, t, session.clients, session.clientVersion)
+	require.Equal(t, v1pb.ConnectedApp_CLI, app.GetKind())
+	require.Equal(t, oauth.CLIClientID, app.GetClientId())
+	require.Equal(t, oauth.CLIClientName, app.GetClientName())
+	require.Equal(t, session.clientVersion, app.GetClientVersion())
+	require.NotEmpty(t, app.GetRequestIp(), "the page must be able to say where the session was opened")
+	require.Equal(t, session.user.GetEmail(), app.GetUserEmail())
+	require.Equal(t, v1pb.ConnectedApp_ACTIVE, app.GetState())
+
+	_, err := session.clients.connectedApp.RevokeConnectedApp(ctx, connect.NewRequest(&v1pb.RevokeConnectedAppRequest{Name: app.GetName()}))
+	require.NoError(t, err)
+
+	// The access token names its connection, so revoking the connection refuses it
+	// immediately on the replica that revoked it.
+	_, err = session.clients.user.GetCurrentUser(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "a revoked CLI session's access token must stop working")
+	_, err = anonymous.auth.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: session.refreshToken}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "a revoked CLI session's refresh token must mint nothing")
+}
+
+// TestCLISessionRefreshAndPerDeviceLogoutRealServerIntegration pins the rotation
+// contract and the per-device logout: the session slides while it is used, a
+// replayed token is refused, and signing out on one machine leaves the user's
+// other CLI sessions alone.
+func TestCLISessionRefreshAndPerDeviceLogoutRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	env := sharedMySQLServiceEnvNoReset(t)
+	ctx := context.Background()
+	anonymous := newAPIClients(env, "")
+	signedIn := newAPIClients(env, env.AdminToken())
+
+	first := openCLISession(ctx, t, env, anonymous, signedIn)
+	second := openCLISession(ctx, t, env, anonymous, signedIn)
+
+	// Rotation consumes the presented token and returns a usable pair.
+	rotated, err := anonymous.auth.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: first.refreshToken}))
+	require.NoError(t, err)
+	require.NotEqual(t, first.refreshToken, rotated.Msg.GetRefreshToken(), "rotation must not hand back the same credential")
+	require.NotEmpty(t, rotated.Msg.GetAccessToken())
+	rotatedClients := newAPIClients(env, rotated.Msg.GetAccessToken())
+	me, err := rotatedClients.user.GetCurrentUser(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.NoError(t, err)
+	require.Equal(t, first.user.GetEmail(), me.Msg.GetEmail())
+
+	// Replaying the consumed token is refused.
+	_, err = anonymous.auth.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: first.refreshToken}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+
+	// The session slides: the replacement rotates too, so a CLI in use does not have
+	// to sign in again while it is used.
+	slid, err := anonymous.auth.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: rotated.Msg.GetRefreshToken()}))
+	require.NoError(t, err)
+
+	// Logging out here ends this machine's connection, not the user's other one.
+	_, err = rotatedClients.auth.Logout(ctx, connect.NewRequest(&v1pb.LogoutRequest{}))
+	require.NoError(t, err)
+
+	_, err = anonymous.auth.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: slid.Msg.GetRefreshToken()}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err), "logout must burn the session's refresh chain")
+
+	_, err = second.clients.user.GetCurrentUser(ctx, connect.NewRequest(&emptypb.Empty{}))
+	require.NoError(t, err, "logging out on one device must not sign the user out of another")
+
+	require.Equal(t, v1pb.ConnectedApp_REVOKED, findCLIConnectedApp(ctx, t, second.clients, first.clientVersion).GetState())
+	require.Equal(t, v1pb.ConnectedApp_ACTIVE, findCLIConnectedApp(ctx, t, second.clients, second.clientVersion).GetState())
 }

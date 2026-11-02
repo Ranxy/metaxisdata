@@ -23,6 +23,59 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Kind is what produced the grant. Both kinds rotate and revoke identically;
+// only the authorization ceremony and the token audience differ.
+type ConnectedApp_Kind int32
+
+const (
+	ConnectedApp_KIND_UNSPECIFIED ConnectedApp_Kind = 0
+	// Authorized through the OAuth browser flow (authorization code + PKCE).
+	ConnectedApp_MCP ConnectedApp_Kind = 1
+	// Authorized through a CLI device login.
+	ConnectedApp_CLI ConnectedApp_Kind = 2
+)
+
+// Enum value maps for ConnectedApp_Kind.
+var (
+	ConnectedApp_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "MCP",
+		2: "CLI",
+	}
+	ConnectedApp_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED": 0,
+		"MCP":              1,
+		"CLI":              2,
+	}
+)
+
+func (x ConnectedApp_Kind) Enum() *ConnectedApp_Kind {
+	p := new(ConnectedApp_Kind)
+	*p = x
+	return p
+}
+
+func (x ConnectedApp_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ConnectedApp_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_connected_app_service_proto_enumTypes[0].Descriptor()
+}
+
+func (ConnectedApp_Kind) Type() protoreflect.EnumType {
+	return &file_v1_connected_app_service_proto_enumTypes[0]
+}
+
+func (x ConnectedApp_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ConnectedApp_Kind.Descriptor instead.
+func (ConnectedApp_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_v1_connected_app_service_proto_rawDescGZIP(), []int{0, 0}
+}
+
 // State is a derived value: it is computed from the stored grant, the MCP
 // surface's current configuration, and the user's account, so it is not stored.
 type ConnectedApp_State int32
@@ -37,8 +90,8 @@ const (
 	// The refresh credential expired; no new access token can be minted.
 	ConnectedApp_EXPIRED ConnectedApp_State = 3
 	// Re-authorization is required before the connection can work: the MCP
-	// resource identifier changed, or the grant predates the user's last password
-	// change.
+	// resource identifier changed (MCP only), or the grant predates the user's
+	// last password change.
 	ConnectedApp_REAUTH_REQUIRED ConnectedApp_State = 4
 	// The user's account is deactivated. The connection resumes if the account is
 	// restored; it is not revoked automatically.
@@ -76,11 +129,11 @@ func (x ConnectedApp_State) String() string {
 }
 
 func (ConnectedApp_State) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_connected_app_service_proto_enumTypes[0].Descriptor()
+	return file_v1_connected_app_service_proto_enumTypes[1].Descriptor()
 }
 
 func (ConnectedApp_State) Type() protoreflect.EnumType {
-	return &file_v1_connected_app_service_proto_enumTypes[0]
+	return &file_v1_connected_app_service_proto_enumTypes[1]
 }
 
 func (x ConnectedApp_State) Number() protoreflect.EnumNumber {
@@ -89,43 +142,59 @@ func (x ConnectedApp_State) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ConnectedApp_State.Descriptor instead.
 func (ConnectedApp_State) EnumDescriptor() ([]byte, []int) {
-	return file_v1_connected_app_service_proto_rawDescGZIP(), []int{0, 0}
+	return file_v1_connected_app_service_proto_rawDescGZIP(), []int{0, 1}
 }
 
-// ConnectedApp is one user's authorization of one MCP client. It is derived from
-// the grant record the OAuth token endpoint rotates in place, not from the
-// client registration: the same client may be authorized several times, and each
-// authorization is its own row.
+// ConnectedApp is one user's authorization of one client: an MCP client through
+// the OAuth browser flow, or the `mxd` CLI through a device login. Both are the
+// same rotating grant record, so both are listed, revocable and labeled here; the
+// kind field says which ceremony produced the row. It is derived from that record,
+// not from the client registration: the same client may be authorized several
+// times, and each authorization is its own row.
 type ConnectedApp struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The resource name of the connected app, in the form `connectedApps/{id}`.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// The registered client identifier (RFC 7591). Opaque.
+	// The client identifier: a dynamic registration's identifier (RFC 7591) for an
+	// MCP client, or the built-in `mxd` client for a CLI session. Opaque.
 	ClientId string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	// The client's self-reported name at registration. It is not verified, so it is
-	// display text only.
+	// display text only. A CLI row shows the built-in client's name.
 	ClientName string `protobuf:"bytes,3,opt,name=client_name,json=clientName,proto3" json:"client_name,omitempty"`
 	// The user whose identity the client acts as, in the form `users/{id}`.
 	User string `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
 	// The user's email. It is filled only for the caller's own rows or when the
 	// caller may read users; a connected-apps reader is not thereby a user reader.
 	UserEmail string `protobuf:"bytes,5,opt,name=user_email,json=userEmail,proto3" json:"user_email,omitempty"`
-	// The MCP resource identifier the authorization was granted for.
+	// The MCP resource identifier the authorization was granted for. Empty for a
+	// CLI session, which is not bound to the MCP endpoint and is refused there
+	// because its access token carries the user API audience.
 	Resource string `protobuf:"bytes,6,opt,name=resource,proto3" json:"resource,omitempty"`
-	// The OAuth scopes the user consented to.
+	// The OAuth scopes the user consented to. Empty for a CLI session.
 	Scopes []string `protobuf:"bytes,7,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	// When the authorization completed (the first token pair was issued).
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	// The most recent tool call made with this connection. Empty when the client
-	// has been authorized but has not called a tool yet.
+	// The most recent tool call made with an MCP connection. Empty for a client that
+	// has not called a tool yet and for a CLI session, whose activity is not a tool
+	// call.
 	LastToolCallTime *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=last_tool_call_time,json=lastToolCallTime,proto3" json:"last_tool_call_time,omitempty"`
 	// When the refresh credential expires. A connection past this instant cannot
-	// mint another access token.
+	// mint another access token. The lifetime slides on every rotation, so an
+	// actively used connection keeps moving this instant out.
 	ExpireTime *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=expire_time,json=expireTime,proto3" json:"expire_time,omitempty"`
 	// The connection's current state.
 	State ConnectedApp_State `protobuf:"varint,11,opt,name=state,proto3,enum=metaxisdata.v1.ConnectedApp_State" json:"state,omitempty"`
 	// When the connection was revoked. Set only for REVOKED.
-	RevokeTime    *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=revoke_time,json=revokeTime,proto3" json:"revoke_time,omitempty"`
+	RevokeTime *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=revoke_time,json=revokeTime,proto3" json:"revoke_time,omitempty"`
+	// Which authorization ceremony created the connection.
+	Kind ConnectedApp_Kind `protobuf:"varint,13,opt,name=kind,proto3,enum=metaxisdata.v1.ConnectedApp_Kind" json:"kind,omitempty"`
+	// The CLI build that created the session, e.g. "0.1.0" (display only; empty for
+	// an MCP connection).
+	ClientVersion string `protobuf:"bytes,14,opt,name=client_version,json=clientVersion,proto3" json:"client_version,omitempty"`
+	// The source address the CLI device login came from, as the server resolved it
+	// (trusted-proxy rules applied; empty for an MCP connection). It is personal
+	// data, so it lives only as long as the grant row.
+	RequestIp     string `protobuf:"bytes,15,opt,name=request_ip,json=requestIp,proto3" json:"request_ip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -242,6 +311,27 @@ func (x *ConnectedApp) GetRevokeTime() *timestamppb.Timestamp {
 		return x.RevokeTime
 	}
 	return nil
+}
+
+func (x *ConnectedApp) GetKind() ConnectedApp_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return ConnectedApp_KIND_UNSPECIFIED
+}
+
+func (x *ConnectedApp) GetClientVersion() string {
+	if x != nil {
+		return x.ClientVersion
+	}
+	return ""
+}
+
+func (x *ConnectedApp) GetRequestIp() string {
+	if x != nil {
+		return x.RequestIp
+	}
+	return ""
 }
 
 type ListConnectedAppsRequest struct {
@@ -437,7 +527,7 @@ var File_v1_connected_app_service_proto protoreflect.FileDescriptor
 
 const file_v1_connected_app_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1ev1/connected_app_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"\xc1\x05\n" +
+	"\x1ev1/connected_app_service.proto\x12\x0emetaxisdata.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x13v1/annotation.proto\"\xee\x06\n" +
 	"\fConnectedApp\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x1f\n" +
@@ -457,7 +547,15 @@ const file_v1_connected_app_service_proto_rawDesc = "" +
 	"expireTime\x128\n" +
 	"\x05state\x18\v \x01(\x0e2\".metaxisdata.v1.ConnectedApp.StateR\x05state\x12;\n" +
 	"\vrevoke_time\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"revokeTime\"g\n" +
+	"revokeTime\x125\n" +
+	"\x04kind\x18\r \x01(\x0e2!.metaxisdata.v1.ConnectedApp.KindR\x04kind\x12%\n" +
+	"\x0eclient_version\x18\x0e \x01(\tR\rclientVersion\x12\x1d\n" +
+	"\n" +
+	"request_ip\x18\x0f \x01(\tR\trequestIp\".\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\a\n" +
+	"\x03MCP\x10\x01\x12\a\n" +
+	"\x03CLI\x10\x02\"g\n" +
 	"\x05State\x12\x15\n" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
@@ -496,32 +594,34 @@ func file_v1_connected_app_service_proto_rawDescGZIP() []byte {
 	return file_v1_connected_app_service_proto_rawDescData
 }
 
-var file_v1_connected_app_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_v1_connected_app_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_v1_connected_app_service_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_v1_connected_app_service_proto_goTypes = []any{
-	(ConnectedApp_State)(0),           // 0: metaxisdata.v1.ConnectedApp.State
-	(*ConnectedApp)(nil),              // 1: metaxisdata.v1.ConnectedApp
-	(*ListConnectedAppsRequest)(nil),  // 2: metaxisdata.v1.ListConnectedAppsRequest
-	(*ListConnectedAppsResponse)(nil), // 3: metaxisdata.v1.ListConnectedAppsResponse
-	(*RevokeConnectedAppRequest)(nil), // 4: metaxisdata.v1.RevokeConnectedAppRequest
-	(*timestamppb.Timestamp)(nil),     // 5: google.protobuf.Timestamp
+	(ConnectedApp_Kind)(0),            // 0: metaxisdata.v1.ConnectedApp.Kind
+	(ConnectedApp_State)(0),           // 1: metaxisdata.v1.ConnectedApp.State
+	(*ConnectedApp)(nil),              // 2: metaxisdata.v1.ConnectedApp
+	(*ListConnectedAppsRequest)(nil),  // 3: metaxisdata.v1.ListConnectedAppsRequest
+	(*ListConnectedAppsResponse)(nil), // 4: metaxisdata.v1.ListConnectedAppsResponse
+	(*RevokeConnectedAppRequest)(nil), // 5: metaxisdata.v1.RevokeConnectedAppRequest
+	(*timestamppb.Timestamp)(nil),     // 6: google.protobuf.Timestamp
 }
 var file_v1_connected_app_service_proto_depIdxs = []int32{
-	5, // 0: metaxisdata.v1.ConnectedApp.create_time:type_name -> google.protobuf.Timestamp
-	5, // 1: metaxisdata.v1.ConnectedApp.last_tool_call_time:type_name -> google.protobuf.Timestamp
-	5, // 2: metaxisdata.v1.ConnectedApp.expire_time:type_name -> google.protobuf.Timestamp
-	0, // 3: metaxisdata.v1.ConnectedApp.state:type_name -> metaxisdata.v1.ConnectedApp.State
-	5, // 4: metaxisdata.v1.ConnectedApp.revoke_time:type_name -> google.protobuf.Timestamp
-	1, // 5: metaxisdata.v1.ListConnectedAppsResponse.connected_apps:type_name -> metaxisdata.v1.ConnectedApp
-	2, // 6: metaxisdata.v1.ConnectedAppService.ListConnectedApps:input_type -> metaxisdata.v1.ListConnectedAppsRequest
-	4, // 7: metaxisdata.v1.ConnectedAppService.RevokeConnectedApp:input_type -> metaxisdata.v1.RevokeConnectedAppRequest
-	3, // 8: metaxisdata.v1.ConnectedAppService.ListConnectedApps:output_type -> metaxisdata.v1.ListConnectedAppsResponse
-	1, // 9: metaxisdata.v1.ConnectedAppService.RevokeConnectedApp:output_type -> metaxisdata.v1.ConnectedApp
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6, // 0: metaxisdata.v1.ConnectedApp.create_time:type_name -> google.protobuf.Timestamp
+	6, // 1: metaxisdata.v1.ConnectedApp.last_tool_call_time:type_name -> google.protobuf.Timestamp
+	6, // 2: metaxisdata.v1.ConnectedApp.expire_time:type_name -> google.protobuf.Timestamp
+	1, // 3: metaxisdata.v1.ConnectedApp.state:type_name -> metaxisdata.v1.ConnectedApp.State
+	6, // 4: metaxisdata.v1.ConnectedApp.revoke_time:type_name -> google.protobuf.Timestamp
+	0, // 5: metaxisdata.v1.ConnectedApp.kind:type_name -> metaxisdata.v1.ConnectedApp.Kind
+	2, // 6: metaxisdata.v1.ListConnectedAppsResponse.connected_apps:type_name -> metaxisdata.v1.ConnectedApp
+	3, // 7: metaxisdata.v1.ConnectedAppService.ListConnectedApps:input_type -> metaxisdata.v1.ListConnectedAppsRequest
+	5, // 8: metaxisdata.v1.ConnectedAppService.RevokeConnectedApp:input_type -> metaxisdata.v1.RevokeConnectedAppRequest
+	4, // 9: metaxisdata.v1.ConnectedAppService.ListConnectedApps:output_type -> metaxisdata.v1.ListConnectedAppsResponse
+	2, // 10: metaxisdata.v1.ConnectedAppService.RevokeConnectedApp:output_type -> metaxisdata.v1.ConnectedApp
+	9, // [9:11] is the sub-list for method output_type
+	7, // [7:9] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_v1_connected_app_service_proto_init() }
@@ -535,7 +635,7 @@ func file_v1_connected_app_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_connected_app_service_proto_rawDesc), len(file_v1_connected_app_service_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,

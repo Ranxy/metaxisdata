@@ -1,7 +1,7 @@
 # Agent CLI（`mxd`）与 Device Login — Reference
 
 > Status: **implemented**。Maintenance reference for `cli/` 与服务端 device login 一侧。
-> Related: 使用者文档 [cli/README.md](../../cli/README.md);刻意决策（明文 token、scope 只在环境、device 状态进程内）[docs/security-posture.md](../../docs/security-posture.md);目录规则 `cli/AGENTS.md`、根 `AGENTS.md`。
+> Related: 使用者文档 [cli/README.md](../../cli/README.md);刻意决策（明文凭据、scope 只在环境、device 状态进程内）[docs/security-posture.md](../../docs/security-posture.md);会话轮换与 connected app [refresh-tokens.md](refresh-tokens.md)、[connected-apps.md](connected-apps.md);目录规则 `cli/AGENTS.md`、根 `AGENTS.md`。
 
 ## What it is
 
@@ -11,7 +11,7 @@
 2. **任意 SQL 的血缘** —— `LineageService.AnalyzeSQL`（无状态，不落库）；`lineage sql --depth N` 再把解析出的真实 target 接到 `GetLineageGraph`。
 3. **多层上下游血缘** —— `LineageService.GetLineageGraph` 服务端有界 BFS，一次调用返回整图。
 
-认证是 **Device Login**（RFC 8628 思路，签发本平台自己的 JWT）：CLI `CreateDeviceLogin` → 人在网页 `/device` 确认 → CLI `ExchangeDeviceLogin` 轮询拿到与确认者身份绑定的 token。
+认证是 **Device Login**（RFC 8628 思路，签发本平台自己的 JWT）：CLI `CreateDeviceLogin` → 人在网页 `/device` 确认 → CLI `ExchangeDeviceLogin` 轮询拿到与确认者身份绑定的 **会话凭据对**（7 天 access token + 滑动的 30 天 refresh token）。这条会话同时是一条 **connected app**（`kind='cli'`），因此用户能在 Connected apps 页看到「我的账号在哪台机器登录了 CLI」并单独吊销；access token 过期时 CLI 自己用 refresh token 轮换，不需要人再批准。
 
 `cli/` 与后端**同一个 Go module**，但物理隔离，且 `.golangci.yaml` 的 `depguard` 只放行 stdlib、cobra、connect、protobuf、`backend/generated-go`（`cli/AGENTS.md`）。stdout 的契约是**恰好一个 JSON 文档**；进度与错误走 stderr。
 
@@ -37,6 +37,11 @@
 | temp 关系 | `lineage sql` 默认隐藏 `is_temp`，`--include-temp` 打开；scope 因此变空时报 `tempRelationsHidden` + 提示 | 裸 SELECT 的 temp 就是答案，空结果不能静默 |
 | server 地址 | `auth login --server <url>` 填写并持久化；解析顺序 `--server` > `METAXISDATA_SERVER` > 凭据文件 > **报错** | 自托管 server 基本不变；不猜默认值、不探测 localhost |
 | token 存储 | CLI 永不打印 token，只写本机凭据文件（0600） | agent 日志可能被转发/粘贴 |
+| 会话续期 | device login 同时签发 access + refresh；access 过期时 CLI 用 `ExchangeRefreshToken` 换一对，写回文件 | 7 天一次人工确认对 agent 是真实痛点；轮换后的旧 refresh 立即失效，泄密窗口有限 |
+| 续期触发 | 懒刷新：某个 RPC 返回 `Unauthenticated` 时续期一次、重放一次 | 与 SPA 的 session interceptor 同构；避免每条命令都写一次文件 |
+| 跨进程并发 | 进程内 mutex 单飞；跨进程失败后重读文件、采用赢家写回的那一对，最多重试 5×100ms | 同机多 agent 共用一个文件；刷新 token 单次使用，不重读会把有效会话误判为失效 |
+| 登出范围 | `auth logout` 只结束**本机**这条连接（服务端删该 `gid` 的 grant），保留 server | 一条 CLI 记录 = 一台机器；登出一台不应把其他机器一起登出 |
+| `--service-account` | 仍是 1 小时 API token，**不给 refresh**；写入时会清掉旧会话字段 | 它不是交互式会话；残留的 refresh 可能在后续 401 时静默换成另一个身份 |
 
 **刻意不做（已评审，勿再当作待办）**：`AnalyzeSQL` 逐 scope **串行**执行 —— 十个 scope 只是几次小查询加一次 CPU 解析，并发只会换来共享故障模式。`DeviceLoginStore.pruneLocked` 扫 map 而不是维护插入顺序 —— 上限一万条，且只在满容量 create 时扫。`cli/cmd` 把解析结果存在包级状态里，所以它的测试只测纯函数而不真的跑命令。`GetLineageGraph` 除节点/边天花板外还有墙钟预算，预算耗尽同样报 `truncated`；边天花板在**单个对象的读取内部**执行（fetcher 拿到剩余预算并多探一条），否则先读完一个 hub 的全部边就会把它拉进内存。
 
@@ -67,13 +72,13 @@ stdout 恰好一个 JSON 对象（protojson lowerCamelCase，2 空格缩进）�
 | --- | --- | --- |
 | `0` | 成功 | — |
 | `1` | 参数/输入错误 | `UsageError`（含 `server_required`、`scope_required`、`config_invalid`）、`CodeInvalidArgument`/`CodeFailedPrecondition` |
-| `2` | 未认证 | `CodeUnauthenticated`，以及 device 会话失效（`device_session_expired`）→ 应执行 `mxd auth login` |
+| `2` | 未认证 | access token 被拒且续期也被拒（`unauthenticated`），或 device 会话失效（`device_session_expired`）→ 应执行 `mxd auth login` |
 | `3` | 资源未找到 | `CodeNotFound` |
 | `4` | 权限不足 | `CodePermissionDenied` |
 | `5` | 服务端错误 | 其余 Connect 码 |
 | `6` | 超时/取消 | `CodeDeadlineExceeded`/`CodeCanceled` 与本地 `context.DeadlineExceeded`/`Canceled` |
 
-**错误码词表**（`cli/output/output.go:201` 的 `CodeOf`）：`unauthenticated`/`permission_denied`/`not_found`/`invalid_argument`(InvalidArgument+FailedPrecondition)/`timeout`/`resource_exhausted`/`already_exists`/`unavailable`/`unimplemented`/`internal`，外加 `server_required`、`scope_required`、`config_invalid`、`device_session_expired`。任何 `CodeUnauthenticated` 响应会顺手清掉本地失效凭据。
+**错误码词表**（`cli/output/output.go:201` 的 `CodeOf`）：`unauthenticated`/`permission_denied`/`not_found`/`invalid_argument`(InvalidArgument+FailedPrecondition)/`timeout`/`resource_exhausted`/`already_exists`/`unavailable`/`unimplemented`/`internal`，外加 `server_required`、`scope_required`、`config_invalid`、`device_session_expired`。`CodeUnauthenticated` 会先尝试一次会话续期；续期被拒就原样返回（退出码 2），**不重试、不循环**。
 
 ## 连接地址与登录凭据
 
@@ -81,23 +86,24 @@ stdout 恰好一个 JSON 对象（protojson lowerCamelCase，2 空格缩进）�
 | --- | --- | --- |
 | server | `--server` > `METAXISDATA_SERVER` > 凭据文件 > **`server_required`(退出码 1)** | `auth login` 写入（与 token 原子写入） |
 | token | `--token` > `METAXISDATA_TOKEN` > 凭据文件 | `auth login` 写入 |
+| refresh token | **只来自凭据文件**（`--token`/env 覆盖时不续期） | `auth login` / 每次轮换写入 |
 | **scope** | `--scope` > `METAXISDATA_SCOPES` | **从不写入任何文件** |
 | `--ca-cert` / `--insecure` | flag / env | 不持久化（描述当前网络路径） |
 
-解析实现在 `cli/cmd/root.go:185-205`。地址在 `client.New` 里规范化：必须带 `http`/`https` scheme、去尾 `/`、拒绝 userinfo/query/fragment（`cli/client/client.go:252-280`）；非法 → `invalid_argument`(退出码 1)。没有「默认 localhost」，也不探测端口。
+解析实现在 `cli/cmd/root.go` 的 `resolve`。续期只在 token 来源是凭据文件时启用：`--token` / `METAXISDATA_TOKEN` 的值从不落盘，拿它去续期会悄悄把调用者指定的身份换成文件里的身份。地址在 `client.New` 里规范化：必须带 `http`/`https` scheme、去尾 `/`、拒绝 userinfo/query/fragment（`cli/client/client.go:252-280`）；非法 → `invalid_argument`(退出码 1)。没有「默认 localhost」，也不探测端口。
 
-**凭据文件**：默认 `$XDG_CONFIG_HOME/metaxisdata/config.json`（`cli/config/config.go:40-49`），`--config`/`METAXISDATA_CONFIG` 指向另一份；创建即 `chmod 0600`，先写临时文件再 rename，临时文件也带最终权限（`cli/config/config.go:85-107`）。内容只有 `{"server","token","user","tokenExpiresAt"}` —— **没有 scope 字段**（`cli/config/config.go:23-28`）。
+**凭据文件**：默认 `$XDG_CONFIG_HOME/metaxisdata/config.json`（`cli/config/config.go` 的 `Path`），`--config`/`METAXISDATA_CONFIG` 指向另一份；创建即 `chmod 0600`，先写临时文件再 rename，临时文件也带最终权限（`Save`）。内容只有 `{"server","token","refreshToken","user","tokenExpiresAt","refreshExpiresAt"}` —— **没有 scope 字段**；旧版本文件没有 refresh 字段，行为退化为「7 天后重新登录一次」。
 
 **`auth login` 的写入语义**（`cli/cmd/auth.go:137-160`）：
 
-- 解析出**生效地址**后，把 server 与 token 作为**一个原子对**落盘；只更新 token 而地址记的是另一个 server 会让后续全部请求莫名 401。
+- 解析出**生效地址**后，把 server 与整对会话凭据（access + refresh）作为**一个原子写**落盘；只更新 token 而地址记的是另一个 server 会让后续全部请求莫名 401。
 - 生效地址与文件旧值不同时，在 stderr 打印 `server changed: <old> -> <new>`，不弹交互确认。
 - 把实际写入的凭据文件路径打印到 stderr（便于同机多 agent 排查），且**不读写 scope**。
-- 成功时 stdout 输出一个对象 `{"status":"approved","server","user","tokenExpiresAt"}`。
-- `--service-account` 路径改走 `AuthService.Login`，token 有效期固定 1 小时，key 来自 `METAXISDATA_SERVICE_KEY`（`cli/cmd/auth.go:110-132`）。
-- **`auth logout` 只清 token/user/expiry，保留 server**（`cli/config/config.go:113-117`，`cli/cmd/auth.go:209-218`）。
+- 成功时 stdout 输出一个对象 `{"status":"approved","server","user","tokenExpiresAt","refreshExpiresAt"}`（API token 没有 refresh 时省略后者）。
+- `--service-account` 路径改走 `AuthService.Login`，token 有效期固定 1 小时，key 来自 `METAXISDATA_SERVICE_KEY`；写入时显式清空 refresh 字段，避免 401 时续期成另一个身份。
+- **`auth logout` 先尽力续期一次（access 可能已过期，Logout 只接受有效 token），再带当前 token 调 `Logout`；服务端删掉这条 `gid` 的 grant，最后清 token/refresh/user/expiry，保留 server。**
 
-**`config show`**（只读）回显 `server{value,source}`（source = `flag`/`env:METAXISDATA_SERVER`/`file:<path>`）、`token{value:"[REDACTED]",source}`、`configFile`、`scopes[{name?,guid}]`、`scopeSource`（`env:METAXISDATA_SCOPES` 或 `none`）。
+**`config show`**（只读）回显 `server{value,source}`（source = `flag`/`env:METAXISDATA_SERVER`/`file:<path>`）、`token{value:"[REDACTED]",source}`、`refreshToken{value:"[REDACTED]",source}`（未启用续期时为 `none`）、`configFile`、`scopes[{name?,guid}]`、`scopeSource`（`env:METAXISDATA_SCOPES` 或 `none`）。
 
 ## 执行作用域（scope）
 
@@ -121,20 +127,22 @@ CLI ── CreateDeviceLogin {clientName,clientVersion} ──► server 生成 
     ◄── device_code, user_code, verification_uri(+complete), expires_in=600, interval=3
     stderr 打印 URL + code（--no-browser 时不尝试开浏览器）
 浏览器 /device：GetDeviceLogin 详情 → ApproveDeviceLogin → PENDING→APPROVED（绑定确认者 user_id，审计）
-CLI ── ExchangeDeviceLogin {device_code} ──► APPROVED 首次：签发 JWT、消费条目
-    ◄── token + user + expires_in；写入凭据文件，stdout 一个 JSON
+CLI ── ExchangeDeviceLogin {device_code} ──► APPROVED 首次：建 CLI grant(`kind=cli`)、签发 JWT、消费条目
+    ◄── token + refresh_token + user + expires_in/refresh_expires_in；写入凭据文件，stdout 一个 JSON
+CLI ── ExchangeRefreshToken {refresh_token} ──► 原子轮换 grant（滑动 30 天）
+    ◄── access + 新 refresh；写回凭据文件（某个 RPC 401 时自动发生，不产生 stdout）
 ```
 
-**状态机**：`PENDING ──approve──► APPROVED ──exchange(首次)──► CONSUMED（条目删除）`；`PENDING ──deny──► DENIED`；超 TTL → `EXPIRED`（lazy 清理）。approve 时绑定确认者 `user_id`，exchange 为该用户签发 `GenerateAccessToken`（与 web 登录同一路径，含 last-login 更新）；exchange 一次性，重复轮询得到 `CodeNotFound`，CLI 翻译成 `device_session_expired`（退出码 2）而不是泛化的「未找到」。
+**状态机**：`PENDING ──approve──► APPROVED ──exchange(首次)──► CONSUMED（条目删除）`；`PENDING ──deny──► DENIED`；超 TTL → `EXPIRED`（lazy 清理）。approve 时绑定确认者 `user_id`，exchange 先建 connected-app grant，再签 **CLI access token**（用户 API audience + `cid=mxd` + `gid`，含 last-login 更新）并返回 refresh token；exchange 一次性，重复轮询得到 `CodeNotFound`，CLI 翻译成 `device_session_expired`（退出码 2）而不是泛化的「未找到」。
 
 **服务端边界**（`backend/component/state/device_login.go:32-49`）：TTL 10 分钟、最短轮询间隔 1s、建议 3s、容量 10000；`user_code` 8 位 Crockford base32（排除 `ILOU`，`O→0`/`I,L→1` 归一化）、`device_code` 43 位 base62；生成后校验唯一（碰撞重试 5 次，`ErrDeviceLoginCodeTaken`）。
 
 ## Invariants
 
-1. **server 与 token 是一个原子对**：`auth login` 必须同时写；分开写会产生「token 属于 B、地址记的是 A」的静默失败。
+1. **server 与整对会话凭据是一个原子写**：`auth login` 必须同时写；分开写会产生「token 属于 B、地址记的是 A」的静默失败。
 2. **scope 永不落盘**：只从进程环境读。落盘会让同机两个 agent 互相覆盖，且失败是静默的。
 3. **stdout 恰好一个 JSON 文档**：进度、提示、人类可读文字一律走 stderr；`--format table` 也只在 stdout 放表格。
-4. **token 永不打印**：只进 0600 的凭据文件；`config show` 只回显 `[REDACTED]`。
+4. **两枚 token 都永不打印**：只进 0600 的凭据文件；`config show` 只回显 `[REDACTED]`。
 5. **token 不出 server host**：HTTP 客户端拒绝离开 `--server` 地址的重定向（含子域与 https→http 降级），并保留标准库的 10 跳上限；bearer 传输层也只对同一 host 附加 header（`cli/client/client.go:190-232`、`338-348`）。
 6. **device 状态进程内**：create/approve/exchange 必须到达同一副本，否则 approve 落到别处会 NotFound；部署需单实例或粘性路由（`docs/security-posture.md`）。
 7. **exchange 一次性**：签发后立即删除条目；`CodeNotFound` → `device_session_expired`，退出码 2。
@@ -145,6 +153,10 @@ CLI ── ExchangeDeviceLogin {device_code} ──► APPROVED 首次：签发 
 12. **user_code 一一对应**：`DeviceLogin` 资源名就是 `deviceLogins/{user_code}`；生成后必须校验唯一并重试。
 13. **GUID 是不透明字符串**：CLI 不解析、不拼装，只透传服务端给的 `guid`。
 14. **`lineage sql --depth N` 原样传给 `GetLineageGraph`**，不是 `N-1`（`cli/cmd/lineage.go:266` 的 `graphDepth := depth`）。
+15. **续期只由凭据文件里的 refresh token 发起**：`--token`/`METAXISDATA_TOKEN` 永不续期、永不写文件；`--service-account` 写入时清空 refresh 字段，否则后续 401 会静默换成文件里上一次会话的身份。
+16. **refresh token 单次使用**：进程内用 mutex 让并发调用共享一次轮换；跨进程输掉竞态时重读文件、采用赢家写回的凭据对（`cli/client/session.go` 的 `adoptFromDisk`），重试 5×100ms 后仍无变化才认为会话真的失效。**失效时故意不清理文件**——可能正有另一个进程在写它的新凭据。
+17. **续期失败不循环**：每个请求最多续期并重放一次；续期被拒（`ErrSessionExpired`）时把原始 401 原样返回（退出码 2），续期的网络/写盘错误则按原错误上报（退出码 5），两者不混淆。
+18. **`auth logout` 只撤销本机那条 grant**：服务端按 access token 的 `gid` 撤销（`identity.ClientID == "mxd"` 分支），其他机器的 CLI 会话不受影响；web/MCP 的 Logout 语义不变。
 
 ## Failure modes
 
@@ -152,7 +164,9 @@ CLI ── ExchangeDeviceLogin {device_code} ──► APPROVED 首次：签发 
 | --- | --- |
 | 全新机器、无地址 | `server_required`，退出码 1，hint 指向 `mxd auth login --server <url>` |
 | 无 scope | `scope_required`，退出码 1，hint 给出格式与获取 GUID 的命令 |
-| token 缺失/过期/被吊销 | `unauthenticated`，退出码 2 → `mxd auth login` |
+| access token 过期/被撤销 | 自动用 refresh token 续期并重放一次；成功后命令照常返回（stdout 不变） |
+| 会话被吊销/refresh 过期/改密 | 续期被拒 → `unauthenticated`，退出码 2 → `mxd auth login`；文件保留，下一次命令会再试一次 |
+| 凭据文件被并发进程轮换 | 重读文件采用新的一对并重放请求，用户无感 |
 | device 会话被消费/拒绝/过期 | `device_session_expired`，退出码 2 |
 | 地址 scheme 非法 / 凭据文件损坏 | `invalid_argument` / `config_invalid`，退出码 1 |
 | server 返回重定向到另一 host 或降级 | 拒绝跟随，错误同时点出两个 host |
@@ -176,9 +190,9 @@ CLI ── ExchangeDeviceLogin {device_code} ──► APPROVED 首次：签发 
 
 ## Where things live
 
-- CLI：`cli/main.go`；命令 `cli/cmd/{root,auth,config,instance,database,meta,lineage,pagination,skill}.go`；客户端与重定向策略 `cli/client/client.go`；凭据文件 `cli/config/config.go`；环境与 scope 解析 `cli/env/env.go`；渲染 `cli/output/output.go`；device 流程 `cli/authflow/device.go`；内嵌 agent skill `cli/skill/SKILL.md` + `cli/skill/skill.go`。
-- 服务端 device login：`backend/api/v1/auth_service_device_login.go`（4 个 RPC + 生成器 + `validateApprover`）、`backend/component/state/device_login.go`（store/状态机/TTL/限流键）、`backend/api/v1/throttle_interceptor.go`（create 与 logout 的预算）；proto `proto/v1/v1/auth_service.proto`。
+- CLI：`cli/main.go`；命令 `cli/cmd/{root,auth,config,instance,database,meta,lineage,pagination,skill}.go`；客户端与重定向策略 `cli/client/client.go`，会话续期与 401 拦截器 `cli/client/session.go`；凭据文件 `cli/config/config.go`；环境与 scope 解析 `cli/env/env.go`；渲染 `cli/output/output.go`；device 流程 `cli/authflow/device.go`；内嵌 agent skill `cli/skill/SKILL.md` + `cli/skill/skill.go`。
+- 服务端 device login 与会话：`backend/api/v1/auth_service_device_login.go`（4 个 RPC + 生成器 + `validateApprover` + `issueDeviceLoginToken`）、`backend/api/v1/auth_service_exchange_refresh_token.go`（`ExchangeRefreshToken`）、`backend/api/oauth/cli.go`（CLI grant 的创建/轮换）、`backend/api/oauth/grant.go`（与 MCP 共用的轮换/principal 复核）、`backend/api/auth/grant_token.go`（`GenerateCLIAccessToken`）；`backend/component/state/device_login.go`（store/状态机/TTL/限流键）、`backend/api/v1/throttle_interceptor.go`（create/exchange-refresh/logout 的预算）；proto `proto/v1/v1/auth_service.proto`。
 - 血缘 RPC：`backend/api/v1/lineage_service_analyze.go`、`backend/api/v1/lineage_service_graph.go`；proto `proto/v1/v1/lineage_service.proto`；GUID 输出 `proto/v1/v1/database_service.proto`。
 - 前端确认页：`frontend/src/pages/DeviceLoginPage.vue`、路由 `frontend/src/router/index.ts:262`、`frontend/src/api/device-login.ts`；locale `frontend/src/locales/{en-US,zh-CN}.json`。
 - 使用者文档：`cli/README.md`。刻意决策：`docs/security-posture.md`。
-- 门禁：`gofmt` + `golangci-lint run --allow-parallel-runners`（含 `depguard`）；`go test ./cli/...`（`cli/env/env_test.go`、`cli/config/config_test.go`、`cli/client/client_test.go` 的 `TestExitCode`/`TestNormalizeServer`、`cli/authflow/device_test.go`、`cli/cmd/*_test.go`）；真实 server 端到端 `make test-integration-smoke` 跑 `backend/test/integration/runner/agent_cli_service_test.go`（`TestDeviceLoginRealServerIntegration:63` 是 authorize→approve→exchange 骨架，另有 denied、AnalyzeSQL、GUID、lineage graph 用例）。
+- 门禁：`gofmt` + `golangci-lint run --allow-parallel-runners`（含 `depguard`）；`go test ./cli/...`（`cli/env/env_test.go`、`cli/config/config_test.go`、`cli/client/client_test.go` 的 `TestExitCode`/`TestNormalizeServer`、`cli/authflow/device_test.go`、`cli/cmd/*_test.go`）；真实 server 端到端 `make test-integration-smoke` 跑 `backend/test/integration/runner/agent_cli_service_test.go`（`TestDeviceLoginRealServerIntegration` 是 authorize→approve→exchange 骨架，另有 denied、CLI 会话的列表/撤销/轮换/按机器登出、AnalyzeSQL、GUID、lineage graph 用例）。

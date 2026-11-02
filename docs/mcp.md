@@ -156,7 +156,10 @@ when you need them.
 ## Connected apps
 
 An authorized MCP client is recorded as one **connected app**: one user, one
-client, one authorization. The record exists even when no `/mcp` request is in
+client, one authorization. A CLI device login is the same kind of record — one
+user, the built-in `mxd` client, one machine — so both appear in the same list
+and are revoked the same way; a CLI row is labeled `CLI` and shows the CLI build
+and the address the login came from. The record exists even when no `/mcp` request is in
 flight, because `/mcp` is stateless — what lasts is the OAuth grant, not a
 transport session.
 
@@ -167,16 +170,21 @@ transport session.
   apps. The pages keep working while `mcp_enabled` is off: they are also the way
   to clean up connections after the surface has been switched off.
 - **What it shows.** The client (the name it reported at registration, or its
-  id), the user, when the authorization completed, the most recent tool call
-  (not the most recent token refresh — a connection authorized but never used
-  shows "no calls yet"; the column is written at most once every five minutes),
-  the refresh credential's expiry, and a derived state: `ACTIVE`,
-  `REAUTH_REQUIRED` (the external URL changed, or the grant predates the user's
-  last password change), `INACTIVE` (the account is deactivated and the
-  connection resumes if it is restored), `EXPIRED`, or `REVOKED`.
+  id; a CLI row shows the built-in client and, beneath it, `CLI · v<build> ·
+  <address>`), the user, when the authorization completed, the most recent tool
+  call for an MCP connection (not the most recent token refresh — a connection
+  authorized but never used shows "no calls yet"; the column is written at most
+  once every five minutes and is blank for a CLI session), the refresh
+  credential's expiry (it slides while the connection is used), and a derived
+  state: `ACTIVE`, `REAUTH_REQUIRED` (an MCP grant whose external URL changed, or
+  a grant older than the user's last password change), `INACTIVE` (the account is
+  deactivated and the connection resumes if it is restored), `EXPIRED`, or
+  `REVOKED`.
 - **What revoke does.** The connection's outstanding access tokens are refused —
   immediately on the replica that performed the revoke, within 30 seconds on the
-  others — and its refresh token can mint nothing more. Authorizing the same
+  others — and its refresh token can mint nothing more. Revoking a CLI session
+  cuts that machine only: the next `mxd` command exits 2 and asks the user to
+  sign in again, while the user's other machines keep working. Authorizing the same
   client again creates a new connection and a new entry, not a resurrection of
   the old one. Revoking your own connection needs no permission; revoking
   another user's needs `metaxisdata.connectedApps.revoke`, which a workspace

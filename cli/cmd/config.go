@@ -44,6 +44,12 @@ func newConfigShowCmd() *cobra.Command {
 			if current.options.Token != "" {
 				tokenValue = "[REDACTED]"
 			}
+			refreshTokenValue := ""
+			refreshTokenSource := "none"
+			if current.options.RefreshToken != "" {
+				refreshTokenValue = "[REDACTED]"
+				refreshTokenSource = "file:" + current.configPath
+			}
 
 			return current.out.JSON(map[string]any{
 				"server": map[string]string{
@@ -53,6 +59,10 @@ func newConfigShowCmd() *cobra.Command {
 				"token": map[string]string{
 					"value":  tokenValue,
 					"source": current.tokenSource,
+				},
+				"refreshToken": map[string]string{
+					"value":  refreshTokenValue,
+					"source": refreshTokenSource,
 				},
 				"configFile":  current.configPath,
 				"scopes":      scopes,

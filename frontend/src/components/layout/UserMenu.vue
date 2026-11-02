@@ -102,9 +102,9 @@
 
       <DropdownMenuSeparator />
 
-      <!-- An account control, not a product destination: the MCP clients this
-           person authorized are theirs alone, so the entry sits with language
-           and theme rather than in the sidebar. -->
+      <!-- An account control, not a product destination: the clients and CLI
+           sessions this person authorized are theirs alone, so the entry sits
+           with language and theme rather than in the sidebar. -->
       <DropdownMenuItem @click="router.push({ name: 'ConnectedApps' })">
         <Link2 class="mr-2 h-4 w-4" />
         {{ t("menu.connectedApps") }}

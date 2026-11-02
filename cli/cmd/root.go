@@ -204,6 +204,15 @@ func resolve(cmd *cobra.Command) (*app, error) {
 		resolved.tokenSource = "none"
 	}
 
+	// A stored session can be rotated only when the token is also the stored one: a
+	// --token or METAXISDATA_TOKEN value is never persisted, so refreshing it would
+	// silently replace the caller's credential choice with the file's identity.
+	if resolved.tokenSource == "file:"+configPath && credentials.RefreshToken != "" {
+		resolved.options.RefreshToken = credentials.RefreshToken
+		resolved.options.Credentials = credentials
+		resolved.options.CredentialsPath = configPath
+	}
+
 	// Scopes live only in the environment: they are never written anywhere.
 	resolved.scopes, err = env.ParseScopes(os.Getenv(env.ScopesEnv))
 	if err != nil {

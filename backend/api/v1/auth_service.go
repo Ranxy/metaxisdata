@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
+	"github.com/Ranxy/metaxisdata/backend/api/oauth"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 
 	"github.com/Ranxy/metaxisdata/backend/config"
@@ -320,24 +321,39 @@ func (s *AuthService) Logout(ctx context.Context, req *connect.Request[v1pb.Logo
 	}
 	s.stateCfg.TokenRevocationCache.Revoke(identity.TokenID, time.Now())
 
-	// An MCP access token names the registration it was issued to, so revoking
-	// it retires that client's connections as well. Without that, the client
-	// would rotate a moment later and the logout would amount to nothing. The
-	// rows are kept (revoked, not deleted) so the connected-apps page can show
-	// what the logout ended.
+	// A token that names the client it was issued to can retire what could replace
+	// it, so the logout is not undone by a rotation a moment later. Without that,
+	// the client would rotate and the logout would amount to nothing. The rows are
+	// kept (revoked, not deleted) so the connected-apps page can show what the
+	// logout ended.
+	//
+	// An MCP token names a registration, which is the app itself: every grant that
+	// client holds for the user ends. A CLI token names a session, which is one
+	// device: only its own grant ends, or signing out on one machine would sign the
+	// user out of every other one.
 	if identity.ClientID != "" {
 		now := time.Now()
 		revokedBy := identity.UserID
-		grantIDs, err := s.store.RevokeOAuthGrantsByUserAndClient(ctx, identity.UserID, identity.ClientID, now, &revokedBy)
-		if err != nil {
-			// The access token is already revoked, which is the primary action,
-			// so a failure here is logged rather than reported as a failed logout.
-			slog.Error("failed to revoke the OAuth grants of a logged-out client", log.WithError(err))
-		}
-		// The cache is marked after the write commits, so this replica refuses the
-		// grants immediately instead of after the next table read.
-		for _, grantID := range grantIDs {
-			s.stateCfg.GrantRevocationCache.Revoke(strconv.FormatInt(grantID, 10), now)
+		if identity.ClientID == oauth.CLIClientID && identity.GrantID != 0 {
+			if _, err := s.store.RevokeOAuthGrant(ctx, identity.GrantID, now, &revokedBy); err != nil {
+				slog.Error("failed to revoke a logged-out CLI session", log.WithError(err))
+			} else {
+				// Marked after the write commits, so this replica refuses the
+				// session's tokens immediately instead of after the next read.
+				s.stateCfg.GrantRevocationCache.Revoke(strconv.FormatInt(identity.GrantID, 10), now)
+			}
+		} else {
+			grantIDs, err := s.store.RevokeOAuthGrantsByUserAndClient(ctx, identity.UserID, identity.ClientID, now, &revokedBy)
+			if err != nil {
+				// The access token is already revoked, which is the primary action,
+				// so a failure here is logged rather than reported as a failed logout.
+				slog.Error("failed to revoke the OAuth grants of a logged-out client", log.WithError(err))
+			}
+			// The cache is marked after the write commits, so this replica refuses the
+			// grants immediately instead of after the next table read.
+			for _, grantID := range grantIDs {
+				s.stateCfg.GrantRevocationCache.Revoke(strconv.FormatInt(grantID, 10), now)
+			}
 		}
 	}
 	// The web session's refresh cookie is a credential of its own: logging out

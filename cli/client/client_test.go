@@ -112,7 +112,7 @@ func TestBearerTransportAttachesTheToken(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
 
-	transport, err := newTransport(mustParseURL(t, "https://mx.example.com"), Options{Token: "secret"})
+	transport, err := newTransport(mustParseURL(t, "https://mx.example.com"), Options{Token: "secret"}, &tokenSource{token: "secret"})
 	require.NoError(t, err)
 
 	// Swap the base transport for the recorder while keeping the token layer.
@@ -157,7 +157,7 @@ func TestBearerTransportOnlyAttachesTheTokenToTheConfiguredServer(t *testing.T) 
 				seen = req.Header.Get("Authorization")
 				return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 			})
-			transport, err := newTransport(mustParseURL(t, tc.server), Options{Token: "secret"})
+			transport, err := newTransport(mustParseURL(t, tc.server), Options{Token: "secret"}, &tokenSource{token: "secret"})
 			require.NoError(t, err)
 			bearer, ok := transport.(*bearerTransport)
 			require.True(t, ok)
@@ -354,7 +354,7 @@ func (l *countingListener) Accepted() int32 { return l.accepted.Load() }
 func TestTransportWithoutATokenIsUnchanged(t *testing.T) {
 	t.Parallel()
 
-	transport, err := newTransport(mustParseURL(t, "https://mx.example.com"), Options{})
+	transport, err := newTransport(mustParseURL(t, "https://mx.example.com"), Options{}, nil)
 	require.NoError(t, err)
 	_, ok := transport.(*bearerTransport)
 	require.False(t, ok, "an anonymous invocation needs no token layer")

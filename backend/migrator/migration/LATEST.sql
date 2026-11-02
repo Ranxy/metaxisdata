@@ -679,10 +679,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_client_client_id ON oauth_client(cli
 -- deactivated one or a grant older than the last password change.
 --
 -- oauth_refresh_token is also the durable record of one connected app: one
--- user's authorization of one MCP client. resource pins it to the
--- `<external_url>/mcp` the user consented to, and scope is carried forward
--- verbatim so a refresh re-issues the grant as consented. last_tool_call_at is
--- per authorization (the MCP tool path updates it, throttled); revoked_at is a
+-- user's authorization of one client. An MCP client is authorized through the
+-- OAuth browser flow and a CLI through a device login; kind names which, and the
+-- two rotate and revoke identically. resource pins an MCP grant to the
+-- `<external_url>/mcp` the user consented to and is empty for a CLI session,
+-- which targets the user API; scope is carried forward verbatim so a refresh
+-- re-issues the grant as consented. last_tool_call_at is per authorization (the
+-- MCP tool path updates it, throttled); client_version and request_ip are
+-- display-only facts about the device that opened a CLI session. revoked_at is a
 -- soft revocation the management page reads and no path may clear (authorizing
 -- again creates a new row); revoked_by is who revoked it, or NULL when the
 -- system ended it (a refresh refused for a gone/deactivated principal or a
@@ -698,7 +702,10 @@ CREATE TABLE IF NOT EXISTS oauth_refresh_token (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_tool_call_at TIMESTAMPTZ,
     revoked_at TIMESTAMPTZ,
-    revoked_by INTEGER REFERENCES principal(id) ON DELETE SET NULL
+    revoked_by INTEGER REFERENCES principal(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL DEFAULT 'mcp' CHECK (kind IN ('mcp', 'cli')),
+    client_version TEXT NOT NULL DEFAULT '',
+    request_ip TEXT NOT NULL DEFAULT ''
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_refresh_token_hash ON oauth_refresh_token(token_hash);

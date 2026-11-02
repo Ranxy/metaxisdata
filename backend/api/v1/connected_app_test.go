@@ -181,6 +181,19 @@ func TestConnectedAppStatePrecedence(t *testing.T) {
 			want:  v1pb.ConnectedApp_REAUTH_REQUIRED,
 		},
 		{
+			// A CLI session targets the user API, not the MCP endpoint, so moving the
+			// external URL must not tell the user to sign in again.
+			name:            "a CLI session is not pinned to the MCP resource",
+			grant:           &store.OAuthGrant{Kind: store.OAuthGrantKindCLI, ExpiresAt: now.Add(time.Hour)},
+			currentResource: resource,
+			want:            v1pb.ConnectedApp_ACTIVE,
+		},
+		{
+			name:  "a CLI session older than the last password change requires re-authorization",
+			grant: &store.OAuthGrant{Kind: store.OAuthGrantKindCLI, ExpiresAt: now.Add(time.Hour), CreatedAt: now.Add(-time.Hour), UserLastChangePasswordTime: &lastChange},
+			want:  v1pb.ConnectedApp_REAUTH_REQUIRED,
+		},
+		{
 			name:  "an unresolvable surface does not invent a re-authorization state",
 			grant: &store.OAuthGrant{ExpiresAt: now.Add(time.Hour), Resource: "https://old.example.com/mcp"},
 			want:  v1pb.ConnectedApp_ACTIVE,
@@ -233,6 +246,32 @@ func TestConvertConnectedApp(t *testing.T) {
 	require.Equal(t, common.FormatUserUID(7), hidden.GetUser())
 }
 
+func TestConvertCLIConnectedApp(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	grant := &store.OAuthGrant{
+		ID:            43,
+		ClientID:      "mxd",
+		ClientName:    "Metaxisdata CLI",
+		Kind:          store.OAuthGrantKindCLI,
+		ClientVersion: "0.1.0",
+		RequestIP:     "192.168.1.20",
+		UserID:        7,
+		CreatedAt:     now.Add(-time.Hour),
+		ExpiresAt:     now.Add(240 * time.Hour),
+	}
+
+	app := convertConnectedApp(grant, now, "https://mx.example.com/mcp", true)
+	require.Equal(t, v1pb.ConnectedApp_CLI, app.GetKind())
+	require.Equal(t, "0.1.0", app.GetClientVersion())
+	require.Equal(t, "192.168.1.20", app.GetRequestIp())
+	require.Empty(t, app.GetResource(), "a CLI session is not bound to the MCP resource")
+	require.Empty(t, app.GetScopes())
+	require.Equal(t, v1pb.ConnectedApp_ACTIVE, app.GetState(),
+		"the MCP resource must not decide a CLI session's state")
+}
+
 func TestParseConnectedAppStateFilter(t *testing.T) {
 	t.Parallel()
 
@@ -247,6 +286,9 @@ func TestParseConnectedAppStateFilter(t *testing.T) {
 	require.Contains(t, filter.Args, now)
 	require.Contains(t, filter.Args, resource)
 	require.Contains(t, filter.Args, "REVOKED")
+	require.Contains(t, filter.Where, "g.kind <> $",
+		"the moved-resource clause must exclude CLI sessions")
+	require.Contains(t, filter.Args, store.OAuthGrantKindCLI)
 
 	filter, err = parseConnectedAppFilter(`state in ["ACTIVE", "EXPIRED"]`, now, "")
 	require.NoError(t, err)

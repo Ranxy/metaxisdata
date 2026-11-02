@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
+	"github.com/Ranxy/metaxisdata/backend/api/oauth"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
@@ -148,16 +149,19 @@ func (s *AuthService) ExchangeDeviceLogin(ctx context.Context, req *connect.Requ
 		return connect.NewResponse(response), nil
 	}
 
-	// The token lifetime is resolved once and reused, so the reported remaining
-	// lifetime cannot drift from the one the token was minted with.
+	// Both lifetimes are resolved once and reused, so the reported remaining
+	// lifetimes cannot drift from the ones the credentials were minted with.
 	tokenDuration := auth.GetTokenDuration(ctx, s.store)
-	user, token, err := s.issueDeviceLoginToken(ctx, login, tokenDuration)
+	refreshDuration := auth.GetRefreshTokenDuration(ctx, s.store)
+	user, accessToken, refreshToken, err := s.issueDeviceLoginToken(ctx, login, tokenDuration, refreshDuration)
 	if err != nil {
 		return nil, err
 	}
-	response.Token = token
+	response.Token = accessToken
+	response.RefreshToken = refreshToken
 	response.User = convertToUser(user)
 	response.ExpiresIn = int64(tokenDuration.Seconds())
+	response.RefreshExpiresIn = int64(refreshDuration.Seconds())
 	return connect.NewResponse(response), nil
 }
 
@@ -193,26 +197,41 @@ func (s *AuthService) deviceLoginVerificationURI(ctx context.Context) (string, e
 	return parsed.String(), nil
 }
 
-// issueDeviceLoginToken mints the access token for the user who approved the
-// request, following the same path a web login takes so both produce the same
-// token and stamp the same last-login time.
-func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.DeviceLogin, tokenDuration time.Duration) (*store.UserMessage, string, error) {
+// issueDeviceLoginToken opens the CLI session for the user who approved the
+// request and mints its access token.
+//
+// The session is a connected app: the same grant row an MCP client gets, which is
+// what makes a CLI login visible and revocable on the Connected apps page. The
+// grant is created first because the access token carries its id; the access token
+// then follows the same path a web login takes, including the last-login stamp.
+func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.DeviceLogin, tokenDuration, refreshDuration time.Duration) (*store.UserMessage, string, string, error) {
 	user, err := s.store.GetUserByID(ctx, login.ApprovedByUserID)
 	if err != nil {
-		return nil, "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the approving user"))
+		return nil, "", "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to get the approving user"))
 	}
 	if user == nil {
-		return nil, "", connect.NewError(connect.CodeNotFound, errors.New("the approving user no longer exists"))
+		return nil, "", "", connect.NewError(connect.CodeNotFound, errors.New("the approving user no longer exists"))
 	}
 	// The approval may be minutes old, so the account state is checked again
 	// before it is turned into a credential.
 	if err := validateApprover(ctx, s.store, user); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	token, err := auth.GenerateAccessToken(user.Name, user.ID, s.profile.Mode, s.secret, tokenDuration)
+	// The built-in client row must exist before the grant points at it: the
+	// connected-apps list joins it for the display name. Ensure is idempotent, so
+	// no startup seed is needed.
+	if err := oauth.EnsureCLIClient(ctx, s.store); err != nil {
+		return nil, "", "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to prepare the CLI client"))
+	}
+	grantID, refreshToken, _, err := oauth.CreateCLIGrant(ctx, s.store, user, time.Now(), refreshDuration, login.ClientVersion, login.RequestIP)
 	if err != nil {
-		return nil, "", connect.NewError(connect.CodeInternal, errors.New("failed to generate API access token"))
+		return nil, "", "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to open the CLI session"))
+	}
+
+	token, err := auth.GenerateCLIAccessToken(user.Name, user.ID, oauth.CLIClientID, grantID, s.profile.Mode, s.secret, tokenDuration)
+	if err != nil {
+		return nil, "", "", connect.NewError(connect.CodeInternal, errors.New("failed to generate API access token"))
 	}
 
 	// A targeted JSONB write, for the same reason as a password login: rewriting
@@ -221,7 +240,7 @@ func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.Dev
 	if err := s.store.RecordLastLogin(ctx, user, time.Now()); err != nil {
 		slog.Error("failed to update user profile", log.WithError(err), slog.Int("user_id", user.ID))
 	}
-	return user, token, nil
+	return user, token, refreshToken, nil
 }
 
 // validateApprover checks that a signed-in user may still be turned into a

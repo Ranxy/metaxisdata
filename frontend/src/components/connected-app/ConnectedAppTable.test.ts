@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { i18n } from "@/locales";
 import {
   type ConnectedApp,
+  ConnectedApp_Kind,
   ConnectedApp_State,
   ConnectedAppSchema,
 } from "@/types/proto-es/v1/connected_app_service_pb";
@@ -151,9 +152,36 @@ describe("ConnectedAppTable", () => {
     ).toBe(true);
   });
 
+  // A CLI login is one device: every session shares the built-in client name, so
+  // the version and source address are what let a user tell their own apart.
+  it("names the device behind a CLI session", () => {
+    const wrapper = mountTable([
+      app({
+        clientId: "mxd",
+        clientName: "Metaxisdata CLI",
+        kind: ConnectedApp_Kind.CLI,
+        clientVersion: "0.1.0",
+        requestIp: "192.168.1.20",
+      }),
+    ]);
+
+    expect(wrapper.text()).toContain("Metaxisdata CLI");
+    expect(wrapper.text()).toContain("CLI · v0.1.0 · 192.168.1.20");
+  });
+
   it("says a connection has not called a tool yet", () => {
     const wrapper = mountTable([app({ lastToolCallTime: undefined })]);
     expect(wrapper.text()).toContain("No tool call yet");
+  });
+
+  // A CLI session is used through API calls, not tool calls, so the column is
+  // blank rather than claiming it has never called a tool.
+  it("leaves the tool-call column blank for a CLI session", () => {
+    const wrapper = mountTable([
+      app({ kind: ConnectedApp_Kind.CLI, lastToolCallTime: undefined }),
+    ]);
+    expect(wrapper.text()).not.toContain("No tool call yet");
+    expect(wrapper.text()).toContain("—");
   });
 
   it("shows the last tool call as a relative time", () => {

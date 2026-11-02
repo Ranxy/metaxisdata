@@ -56,6 +56,27 @@ func (s *Store) CreateOAuthClient(ctx context.Context, client *OAuthClient) (*OA
 	return oauthClientFromScan(clientID, clientName, redirects, authMethod, createdTime, lastUsedTime)
 }
 
+// EnsureOAuthClient inserts a built-in client registration if it is absent.
+//
+// The CLI's client is not dynamically registered: its identifier is fixed and the
+// row exists so the connected-apps list can name it and the grant's foreign
+// context is real. Re-running is a no-op, which is what makes it safe to call on
+// every device-login exchange.
+func (s *Store) EnsureOAuthClient(ctx context.Context, client *OAuthClient) error {
+	redirectURIs, err := encodeOAuthRedirectURIs(client.RedirectURIs)
+	if err != nil {
+		return err
+	}
+	if _, err := s.GetDB().ExecContext(ctx, `
+		INSERT INTO oauth_client (client_id, client_name, redirect_uris, token_endpoint_auth_method)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (client_id) DO NOTHING
+	`, client.ClientID, client.ClientName, redirectURIs, client.TokenEndpointAuthMethod); err != nil {
+		return errors.Wrap(err, "failed to ensure OAuth client")
+	}
+	return nil
+}
+
 // GetOAuthClient returns the registration for clientID, or (nil, nil) when no
 // such client exists. The nil result matters: a client deleted after it
 // registered must make the token endpoint answer invalid_client, not 500.

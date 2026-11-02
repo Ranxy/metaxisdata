@@ -20,14 +20,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Login_FullMethodName               = "/metaxisdata.v1.AuthService/Login"
-	AuthService_Logout_FullMethodName              = "/metaxisdata.v1.AuthService/Logout"
-	AuthService_Refresh_FullMethodName             = "/metaxisdata.v1.AuthService/Refresh"
-	AuthService_CreateSSOState_FullMethodName      = "/metaxisdata.v1.AuthService/CreateSSOState"
-	AuthService_CreateDeviceLogin_FullMethodName   = "/metaxisdata.v1.AuthService/CreateDeviceLogin"
-	AuthService_GetDeviceLogin_FullMethodName      = "/metaxisdata.v1.AuthService/GetDeviceLogin"
-	AuthService_ApproveDeviceLogin_FullMethodName  = "/metaxisdata.v1.AuthService/ApproveDeviceLogin"
-	AuthService_ExchangeDeviceLogin_FullMethodName = "/metaxisdata.v1.AuthService/ExchangeDeviceLogin"
+	AuthService_Login_FullMethodName                = "/metaxisdata.v1.AuthService/Login"
+	AuthService_Logout_FullMethodName               = "/metaxisdata.v1.AuthService/Logout"
+	AuthService_Refresh_FullMethodName              = "/metaxisdata.v1.AuthService/Refresh"
+	AuthService_ExchangeRefreshToken_FullMethodName = "/metaxisdata.v1.AuthService/ExchangeRefreshToken"
+	AuthService_CreateSSOState_FullMethodName       = "/metaxisdata.v1.AuthService/CreateSSOState"
+	AuthService_CreateDeviceLogin_FullMethodName    = "/metaxisdata.v1.AuthService/CreateDeviceLogin"
+	AuthService_GetDeviceLogin_FullMethodName       = "/metaxisdata.v1.AuthService/GetDeviceLogin"
+	AuthService_ApproveDeviceLogin_FullMethodName   = "/metaxisdata.v1.AuthService/ApproveDeviceLogin"
+	AuthService_ExchangeDeviceLogin_FullMethodName  = "/metaxisdata.v1.AuthService/ExchangeDeviceLogin"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -45,6 +46,15 @@ type AuthServiceClient interface {
 	// holder refreshes.
 	// Permissions required: None
 	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*RefreshResponse, error)
+	// ExchangeRefreshToken rotates a CLI session from the refresh token in the
+	// body. The CLI has no cookie jar, so it presents the opaque refresh token the
+	// device login issued instead of the browser's cookie; the session itself is
+	// the same rotating grant row an MCP client gets, which is what makes a CLI
+	// login a visible, revocable connected app. Each call consumes the presented
+	// token and returns a replacement, so a stolen copy is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	ExchangeRefreshToken(ctx context.Context, in *ExchangeRefreshTokenRequest, opts ...grpc.CallOption) (*ExchangeRefreshTokenResponse, error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -104,6 +114,16 @@ func (c *authServiceClient) Refresh(ctx context.Context, in *RefreshRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RefreshResponse)
 	err := c.cc.Invoke(ctx, AuthService_Refresh_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) ExchangeRefreshToken(ctx context.Context, in *ExchangeRefreshTokenRequest, opts ...grpc.CallOption) (*ExchangeRefreshTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExchangeRefreshTokenResponse)
+	err := c.cc.Invoke(ctx, AuthService_ExchangeRefreshToken_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +195,15 @@ type AuthServiceServer interface {
 	// holder refreshes.
 	// Permissions required: None
 	Refresh(context.Context, *RefreshRequest) (*RefreshResponse, error)
+	// ExchangeRefreshToken rotates a CLI session from the refresh token in the
+	// body. The CLI has no cookie jar, so it presents the opaque refresh token the
+	// device login issued instead of the browser's cookie; the session itself is
+	// the same rotating grant row an MCP client gets, which is what makes a CLI
+	// login a visible, revocable connected app. Each call consumes the presented
+	// token and returns a replacement, so a stolen copy is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -218,6 +247,9 @@ func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*
 }
 func (UnimplementedAuthServiceServer) Refresh(context.Context, *RefreshRequest) (*RefreshResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Refresh not implemented")
+}
+func (UnimplementedAuthServiceServer) ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExchangeRefreshToken not implemented")
 }
 func (UnimplementedAuthServiceServer) CreateSSOState(context.Context, *emptypb.Empty) (*CreateSSOStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSSOState not implemented")
@@ -305,6 +337,24 @@ func _AuthService_Refresh_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AuthServiceServer).Refresh(ctx, req.(*RefreshRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_ExchangeRefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeRefreshTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ExchangeRefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ExchangeRefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ExchangeRefreshToken(ctx, req.(*ExchangeRefreshTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -417,6 +467,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Refresh",
 			Handler:    _AuthService_Refresh_Handler,
+		},
+		{
+			MethodName: "ExchangeRefreshToken",
+			Handler:    _AuthService_ExchangeRefreshToken_Handler,
 		},
 		{
 			MethodName: "CreateSSOState",

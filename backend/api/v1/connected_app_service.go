@@ -20,8 +20,10 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// ConnectedAppService manages the MCP OAuth connections a user established by
-// authorizing a client against the deployment's MCP endpoint.
+// ConnectedAppService manages the connections a user established by authorizing
+// a client against this deployment: an MCP client through the OAuth browser flow,
+// or the mxd CLI through a device login. Both are one rotating grant row, so both
+// are listed, derived and revoked here.
 //
 // Neither method carries a permission annotation: the same call serves a
 // workspace administrator listing every connection and an ordinary user managing
@@ -182,15 +184,18 @@ func connectedAppNotFound(id int64) error {
 // user: reading connected apps does not grant reading account data.
 func convertConnectedApp(grant *store.OAuthGrant, now time.Time, currentResource string, includeEmail bool) *v1pb.ConnectedApp {
 	app := &v1pb.ConnectedApp{
-		Name:       common.ConnectedAppNamePrefix + strconv.FormatInt(grant.ID, 10),
-		ClientId:   grant.ClientID,
-		ClientName: grant.ClientName,
-		User:       common.FormatUserUID(grant.UserID),
-		Resource:   grant.Resource,
-		Scopes:     scopesOf(grant.Scope),
-		CreateTime: timestamppb.New(grant.CreatedAt),
-		ExpireTime: timestamppb.New(grant.ExpiresAt),
-		State:      connectedAppState(grant, now, currentResource),
+		Name:          common.ConnectedAppNamePrefix + strconv.FormatInt(grant.ID, 10),
+		ClientId:      grant.ClientID,
+		ClientName:    grant.ClientName,
+		ClientVersion: grant.ClientVersion,
+		RequestIp:     grant.RequestIP,
+		Kind:          connectedAppKind(grant.Kind),
+		User:          common.FormatUserUID(grant.UserID),
+		Resource:      grant.Resource,
+		Scopes:        scopesOf(grant.Scope),
+		CreateTime:    timestamppb.New(grant.CreatedAt),
+		ExpireTime:    timestamppb.New(grant.ExpiresAt),
+		State:         connectedAppState(grant, now, currentResource),
 	}
 	if includeEmail {
 		app.UserEmail = grant.UserEmail
@@ -204,6 +209,15 @@ func convertConnectedApp(grant *store.OAuthGrant, now time.Time, currentResource
 	return app
 }
 
+// connectedAppKind maps the stored ceremony onto the API enum. Rows written before
+// the column existed read back as MCP, which is what they were.
+func connectedAppKind(kind string) v1pb.ConnectedApp_Kind {
+	if kind == store.OAuthGrantKindCLI {
+		return v1pb.ConnectedApp_CLI
+	}
+	return v1pb.ConnectedApp_MCP
+}
+
 // connectedAppState derives the state with the same precedence the list filter's
 // CASE expression encodes.
 func connectedAppState(grant *store.OAuthGrant, now time.Time, currentResource string) v1pb.ConnectedApp_State {
@@ -214,7 +228,9 @@ func connectedAppState(grant *store.OAuthGrant, now time.Time, currentResource s
 		return v1pb.ConnectedApp_EXPIRED
 	case grant.UserDeleted:
 		return v1pb.ConnectedApp_INACTIVE
-	case currentResource != "" && grant.Resource != currentResource:
+	// Only an MCP grant is pinned to the endpoint's resource; a CLI session targets
+	// the user API, so a moved external URL must not mark it for re-authorization.
+	case grant.Kind != store.OAuthGrantKindCLI && currentResource != "" && grant.Resource != currentResource:
 		return v1pb.ConnectedApp_REAUTH_REQUIRED
 	case grant.UserLastChangePasswordTime != nil && grant.CreatedAt.Before(*grant.UserLastChangePasswordTime):
 		return v1pb.ConnectedApp_REAUTH_REQUIRED
