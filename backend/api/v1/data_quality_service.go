@@ -475,7 +475,10 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if err != nil {
 		return nil, err
 	}
-	if err := requireReadOnlySourceForNewRule(storepb.QualityRuleType(rule.GetRuleType()), validated.Resolution); err != nil {
+	if err := requireReadOnlySourceForNewRule(storepb.QualityRuleType(rule.GetRuleType()), validated); err != nil {
+		return nil, err
+	}
+	if err := requireReferenceConnectionBudget(validated); err != nil {
 		return nil, err
 	}
 	if err := s.checkQualityRuleLimits(ctx, validated.Target); err != nil {
@@ -723,7 +726,37 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, workspaceID 
 	if err != nil {
 		return nil, filled, err
 	}
+	// A reconciliation names its reference by identity; the display path is a
+	// snapshot of where that reference lived. A caller that left it out (an API
+	// client) or sent a stale one gets the resolved path written back, so the editor
+	// and the execution detail show the same place. It is display metadata only:
+	// validation never reads it back.
+	if normalizeReconciliationReferencePath(config, validated) {
+		filled = true
+	}
 	return validated, filled, nil
+}
+
+// normalizeReconciliationReferencePath replaces a reconciliation's display path with
+// the resolved reference's, and reports whether it changed.
+func normalizeReconciliationReferencePath(config *storepb.QualityRuleConfig, validated *dataquality.ValidatedRule) bool {
+	cross := config.GetCrossTable()
+	if cross == nil || cross.GetReference() == nil || validated == nil || validated.Reference == nil ||
+		validated.Reference.Resolution == nil {
+		return false
+	}
+	resolved := validated.Reference.Resolution.Target.Path
+	if sameQualityTargetPath(cross.GetReference().GetPath(), resolved) {
+		return false
+	}
+	cross.GetReference().Path = resolved
+	return true
+}
+
+// sameQualityTargetPath compares two display path snapshots.
+func sameQualityTargetPath(a, b *storepb.QualityTargetPath) bool {
+	return a.GetInstance() == b.GetInstance() && a.GetDatabase() == b.GetDatabase() &&
+		a.GetSchema() == b.GetSchema() && a.GetObject() == b.GetObject() && a.GetColumn() == b.GetColumn()
 }
 
 // checkQualityRuleLimits refuses a create that would exceed the workspace's or
@@ -751,20 +784,78 @@ func (s *DataQualityService) checkQualityRuleLimits(ctx context.Context, target 
 }
 
 // requireReadOnlySourceForNewRule rejects a query rule whose instance has no
-// READ_ONLY data source. The rule is validated here rather than left to fail at
-// runtime, because the failure is a configuration mistake, not a data problem.
-func requireReadOnlySourceForNewRule(ruleType storepb.QualityRuleType, resolution *dataquality.Resolution) error {
+// READ_ONLY data source, and the same for a reconciliation's reference instance.
+// The rule is validated here rather than left to fail at runtime, because the
+// failure is a configuration mistake, not a data problem. The reference is checked
+// whenever the rule has one, even when it shares the target's connection: a
+// reference instance without a read-only source could not serve the rule if the
+// registry moved it there.
+func requireReadOnlySourceForNewRule(ruleType storepb.QualityRuleType, validated *dataquality.ValidatedRule) error {
 	if dataquality.IsMetadataRule(ruleType) {
 		return nil
 	}
-	if resolution == nil || resolution.Instance == nil {
+	if validated == nil || validated.Resolution == nil || validated.Resolution.Instance == nil {
 		return connectErrorInvalid("the rule target has no instance")
 	}
-	if utils.DataSourceFromInstanceWithType(resolution.Instance, storepb.DataSourceType_READ_ONLY) == nil {
+	if err := requireReadOnlySource(validated.Resolution.Instance, "the rule target"); err != nil {
+		return err
+	}
+	reference := validated.Reference
+	if reference == nil {
+		return nil
+	}
+	if reference.Resolution == nil || reference.Resolution.Instance == nil {
+		return connectErrorInvalid("the reconciliation's reference target has no instance")
+	}
+	return requireReadOnlySource(reference.Resolution.Instance, "the reconciliation's reference instance")
+}
+
+// requireReadOnlySource refuses an instance with no READ_ONLY data source, naming
+// the role it plays in the rule so the message points at the right instance
+// settings page.
+func requireReadOnlySource(instance *store.InstanceMessage, role string) error {
+	if utils.DataSourceFromInstanceWithType(instance, storepb.DataSourceType_READ_ONLY) == nil {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
-			"instance %q has no READ_ONLY data source; add one before creating a rule that queries it", resolution.Instance.ResourceID))
+			"%s %q has no READ_ONLY data source; add one before creating a rule that queries it", role, instance.ResourceID))
 	}
 	return nil
+}
+
+// requireReferenceConnectionBudget refuses a reconciliation whose reference needs a
+// second connection on the target's own instance when that instance cannot provide
+// one. A batch holds one of the instance's connections for its whole query phase, so
+// with a ceiling of one the reference side could never open a session and every
+// execution would be skipped forever - a rule that can never run must not be saved.
+func requireReferenceConnectionBudget(validated *dataquality.ValidatedRule) error {
+	if validated == nil || validated.Resolution == nil || validated.Reference == nil {
+		return nil
+	}
+	reference := validated.Reference
+	if !reference.Separate || reference.Resolution == nil || reference.Resolution.Instance == nil {
+		return nil
+	}
+	targetInstance := validated.Resolution.Instance
+	if targetInstance == nil || targetInstance.ResourceID != reference.Resolution.Instance.ResourceID {
+		// Another instance has its own connection budget.
+		return nil
+	}
+	limit := qualityInstanceConnectionLimit(targetInstance)
+	if limit >= 2 {
+		return nil
+	}
+	return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+		"instance %q allows %d connection(s); this reconciliation reads its reference table over a second connection on the same instance, so it needs at least 2. Raise the instance's maximum connections, or point the reference at a table in the target's own database",
+		targetInstance.ResourceID, limit))
+}
+
+// qualityInstanceConnectionLimit reads an instance's connection ceiling, with the
+// deployment default when it does not set one.
+func qualityInstanceConnectionLimit(instance *store.InstanceMessage) int {
+	maximumConnections := int(instance.Metadata.GetMaximumConnections())
+	if maximumConnections <= 0 {
+		maximumConnections = common.DefaultInstanceMaximumConnections
+	}
+	return maximumConnections
 }
 
 // revalidateQualityRuleDefinition runs the save pipeline on the merged
@@ -777,6 +868,9 @@ func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context
 	ruleType, guid, metaType, config := mergedQualityRuleDefinition(current, update.Patch)
 	validated, filledSnapshot, err := s.validateRuleInput(ctx, workspaceID, ruleType, guid, metaType, config)
 	if err != nil {
+		return err
+	}
+	if err := requireReferenceConnectionBudget(validated); err != nil {
 		return err
 	}
 	if filledSnapshot {
@@ -878,17 +972,21 @@ func (s *DataQualityService) PreviewQualityRule(ctx context.Context, req *connec
 }
 
 // previewQualityRuleResponse renders what the editor shows after a successful
-// dry run: the SQL, the bound filter values and the target columns it reads.
+// dry run: the SQL, the bound filter values and the target columns it reads. A
+// reconciliation whose reference needs its own connection compiles to a second
+// statement, which is reported separately; when both sides share the target's
+// connection the rule's single statement already reads them.
 func previewQualityRuleResponse(config *storepb.QualityRuleConfig, validated *dataquality.ValidatedRule) *v1pb.PreviewQualityRuleResponse {
-	parameters := make([]string, 0, len(validated.Compiled.Args))
-	for _, argument := range validated.Compiled.Args {
-		parameters = append(parameters, formatQueryParameter(argument))
-	}
-	return &v1pb.PreviewQualityRuleResponse{
+	response := &v1pb.PreviewQualityRuleResponse{
 		CompiledSql:       validated.Compiled.SQL,
 		ReferencedColumns: qualityRuleReferencedColumns(config),
-		Parameters:        parameters,
+		Parameters:        formatQueryParameters(validated.Compiled.Args),
 	}
+	if reference := validated.Reference; reference != nil && reference.Separate {
+		response.ReferenceSql = reference.Compiled.SQL
+		response.ReferenceParameters = formatQueryParameters(reference.Compiled.Args)
+	}
+	return response
 }
 
 // dryRunNeedsProbe reports whether PreviewQualityRule must probe the target's
@@ -902,25 +1000,67 @@ func qualityRuleProbeSQL(validated *dataquality.ValidatedRule) string {
 	return dataquality.ProbeStatement(validated.Target.Engine, validated.Compiled)
 }
 
+// qualityRuleReferenceProbeSQL wraps a reconciliation's reference-side statement
+// in the reference engine's LIMIT 0 probe. It is empty when the reference shares
+// the target's connection, because then there is no second statement.
+func qualityRuleReferenceProbeSQL(validated *dataquality.ValidatedRule) string {
+	if validated == nil {
+		return ""
+	}
+	reference := validated.Reference
+	if reference == nil || !reference.Separate {
+		return ""
+	}
+	return dataquality.ProbeStatement(reference.Resolution.Target.Engine, reference.Compiled)
+}
+
 // probeQualityRule runs the compiled statement wrapped in a LIMIT 0 probe against
-// the target's READ_ONLY data source. It proves syntax and permission without
-// scanning the table.
+// the target's READ_ONLY data source and, when a reconciliation's reference side
+// needs its own connection, the reference-side statement against the reference
+// instance's. It proves syntax and permission on both engines without scanning
+// either table. The probes run one after the other, so the request never holds two
+// connection leases at once.
 func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *dataquality.ValidatedRule) error {
 	if s.dbFactory == nil {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("a database factory is required to probe a rule"))
 	}
-	connection, err := s.acquireQualityConnection(ctx, validated.Resolution.Instance, "the dry run", qualityPreviewConnectionWait)
+	if err := s.probeQualityStatement(ctx, validated, false); err != nil {
+		return err
+	}
+	reference := validated.Reference
+	if reference == nil || !reference.Separate {
+		return nil
+	}
+	return s.probeQualityStatement(ctx, validated, true)
+}
+
+// probeQualityStatement proves one side of a rule is executable over its own
+// READ_ONLY data source. reference selects the reconciliation's reference side;
+// the target side is the rule's compiled statement.
+func (s *DataQualityService) probeQualityStatement(ctx context.Context, validated *dataquality.ValidatedRule, reference bool) error {
+	resolution := validated.Resolution
+	compiled := validated.Compiled
+	probeSQL := qualityRuleProbeSQL(validated)
+	side := "target"
+	if reference {
+		resolution = validated.Reference.Resolution
+		compiled = validated.Reference.Compiled
+		probeSQL = qualityRuleReferenceProbeSQL(validated)
+		side = "reference"
+	}
+	connection, err := s.acquireQualityConnection(ctx, resolution.Instance, "the dry run", qualityPreviewConnectionWait)
 	if err != nil {
 		return err
 	}
 	defer connection()
-	driver, err := s.dbFactory.GetReadOnlyDatabaseDriver(ctx, validated.Resolution.Instance, validated.Resolution.Database)
+	driver, err := s.dbFactory.GetReadOnlyDatabaseDriver(ctx, resolution.Instance, resolution.Database)
 	if err != nil {
 		if errors.Is(err, dbfactory.ErrNoReadOnlyDataSource) {
-			return connect.NewError(connect.CodeFailedPrecondition, errors.Wrap(err,
-				"add a READ_ONLY data source to the instance before previewing a rule"))
+			return connect.NewError(connect.CodeFailedPrecondition, errors.Wrapf(err,
+				"add a READ_ONLY data source to the %s instance before previewing a rule", side))
 		}
-		return connect.NewError(connect.CodeFailedPrecondition, errors.Wrap(err, "failed to open the target's read-only data source"))
+		return connect.NewError(connect.CodeFailedPrecondition,
+			errors.Wrapf(err, "failed to open the %s's read-only data source", side))
 	}
 	defer func() {
 		if closeErr := driver.Close(ctx); closeErr != nil {
@@ -931,15 +1071,18 @@ func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *da
 	queryer, ok := driver.(db.ReadOnlyQueryer)
 	if !ok {
 		return connect.NewError(connect.CodeFailedPrecondition,
-			errors.Errorf("engine %s does not support read-only queries", validated.Target.Engine))
+			errors.Errorf("engine %s does not support read-only queries", resolution.Target.Engine))
 	}
-	_, probeErr := queryer.QueryReadOnly(ctx, qualityRuleProbeSQL(validated), validated.Compiled.Args, db.QueryOptions{
+	_, probeErr := queryer.QueryReadOnly(ctx, probeSQL, compiled.Args, db.QueryOptions{
 		MaxRows: 1,
 		Timeout: qualityPreviewProbeTimeout,
 		Purpose: metrics.QueryPurposeDryRunProbe,
 		Metrics: s.metrics,
 	})
 	if probeErr != nil {
+		if reference {
+			return qualityReferenceProbeError(probeErr, compiled)
+		}
 		return qualityProbeError(probeErr, validated)
 	}
 	return nil
@@ -956,29 +1099,44 @@ func (s *DataQualityService) probeQualityRule(ctx context.Context, validated *da
 // user's own rule, so echoing it leaks nothing they did not write; the values are
 // truncated.
 func qualityProbeError(err error, validated *dataquality.ValidatedRule) error {
+	var compiled dataquality.CompiledQuery
+	if validated != nil {
+		compiled = validated.Compiled
+	}
+	return qualityProbeFailure(err, compiled, "target")
+}
+
+// qualityReferenceProbeError is qualityProbeError for a reconciliation's
+// reference-side statement: the message names the reference's data source and
+// quotes the reference statement, not the rule's.
+func qualityReferenceProbeError(err error, compiled dataquality.CompiledQuery) error {
+	return qualityProbeFailure(err, compiled, "reference")
+}
+
+// qualityProbeFailure maps a failed dry run of one statement. side names the data
+// source it ran against, so a two-statement reconciliation can report which half
+// failed.
+func qualityProbeFailure(err error, compiled dataquality.CompiledQuery, side string) error {
 	code, message := dataquality.ClassifyError(err)
-	detail := qualityProbeErrorDetail(validated)
+	detail := qualityProbeErrorDetail(compiled)
 	switch code {
 	case dataquality.ErrCodeAuth, dataquality.ErrCodePermission, dataquality.ErrCodeConnection,
 		dataquality.ErrCodeTimeout, dataquality.ErrCodeLimitExceeded, dataquality.ErrCodeNoReadOnly:
 		return connect.NewError(connect.CodeFailedPrecondition,
-			errors.Errorf("the dry run could not reach the target data source: %s%s", message, detail))
+			errors.Errorf("the dry run could not reach the %s data source: %s%s", side, message, detail))
 	default:
 		return connect.NewError(connect.CodeInvalidArgument,
-			errors.Errorf("the rule's compiled query failed the dry run: %s%s", message, detail))
+			errors.Errorf("the %s's compiled query failed the dry run: %s%s", side, message, detail))
 	}
 }
 
 // qualityProbeErrorDetail renders the compiled statement and its parameters for a
 // dry-run error, bounded so a long custom statement cannot make the message
 // unusable.
-func qualityProbeErrorDetail(validated *dataquality.ValidatedRule) string {
-	if validated == nil {
-		return ""
-	}
-	statement := truncateForError(strings.TrimSpace(validated.Compiled.SQL), 2048)
-	parameters := make([]string, 0, len(validated.Compiled.Args))
-	for _, argument := range validated.Compiled.Args {
+func qualityProbeErrorDetail(compiled dataquality.CompiledQuery) string {
+	statement := truncateForError(strings.TrimSpace(compiled.SQL), 2048)
+	parameters := make([]string, 0, len(compiled.Args))
+	for _, argument := range compiled.Args {
 		parameters = append(parameters, truncateForError(formatQueryParameter(argument), 128))
 	}
 	if statement == "" {

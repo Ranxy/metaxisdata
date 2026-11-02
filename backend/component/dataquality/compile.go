@@ -21,6 +21,10 @@ type CompileInput struct {
 	// Variables is the instant and zone the rule's time variables resolve in. The
 	// zero value is fine for a rule that uses none.
 	Variables TimeVariables
+	// Reference is the relation a reconciliation compares against, resolved
+	// against the registry. Every cross-table rule requires one; no other type
+	// reads it.
+	Reference *ResolvedTarget
 }
 
 // compilerFunc turns a validated rule into the read-only statement that observes

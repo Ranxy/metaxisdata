@@ -230,6 +230,46 @@ func convertQualityFilterToV1(filter *storepb.QualityFilter) *v1pb.QualityFilter
 	return converted
 }
 
+// convertCrossTableReferenceToV1 converts a reconciliation's reference relation.
+func convertCrossTableReferenceToV1(reference *storepb.CrossTableReference) *v1pb.CrossTableReference {
+	if reference == nil {
+		return nil
+	}
+	return &v1pb.CrossTableReference{
+		MetaGuid: reference.GetMetaGuid(),
+		MetaType: v1pb.MetaType(reference.GetMetaType()),
+		Path:     convertQualityTargetPathToV1(reference.GetPath()),
+	}
+}
+
+// convertCrossTableReferenceFromV1 converts the public reference relation into the
+// stored shape. The display path is whatever the caller saved; the GUID and type
+// are the identity validation resolves.
+func convertCrossTableReferenceFromV1(reference *v1pb.CrossTableReference) *storepb.CrossTableReference {
+	if reference == nil {
+		return nil
+	}
+	return &storepb.CrossTableReference{
+		MetaGuid: strings.TrimSpace(reference.GetMetaGuid()),
+		MetaType: storepb.MetaType(reference.GetMetaType()),
+		Path:     convertQualityTargetPathFromV1(reference.GetPath()),
+	}
+}
+
+// convertQualityTargetPathFromV1 converts a caller-supplied display path snapshot.
+func convertQualityTargetPathFromV1(path *v1pb.QualityTargetPath) *storepb.QualityTargetPath {
+	if path == nil {
+		return nil
+	}
+	return &storepb.QualityTargetPath{
+		Instance: path.GetInstance(),
+		Database: path.GetDatabase(),
+		Schema:   path.GetSchema(),
+		Object:   path.GetObject(),
+		Column:   path.GetColumn(),
+	}
+}
+
 // convertQualityFilterFromV1 converts the public filter into the stored shape.
 func convertQualityFilterFromV1(filter *v1pb.QualityFilter) *storepb.QualityFilter {
 	if filter == nil {
@@ -430,6 +470,9 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 		Duration:      durationFromMilliseconds(execution.DurationMS),
 		StartTime:     timestamppb.New(execution.StartedAt),
 		Run:           formatQualityRunName(workspaceID, execution.RunID),
+		// A reconciliation that needed a second session ran a second statement;
+		// it is the evidence for the reference side and stays empty otherwise.
+		ReferenceExecutedSql: execution.ReferenceExecutedSQL,
 		// The row_count_change evidence is optional on purpose: an absent baseline
 		// is a first observation, not a zero it compared against.
 		BaselineValue: copyPtr(execution.BaselineValue),
@@ -753,6 +796,16 @@ func appendColumn(columns []string, column string) []string {
 	return append(columns, column)
 }
 
+// formatQueryParameters renders a compiled statement's bound arguments for
+// display, in placeholder order.
+func formatQueryParameters(args []any) []string {
+	parameters := make([]string, 0, len(args))
+	for _, argument := range args {
+		parameters = append(parameters, formatQueryParameter(argument))
+	}
+	return parameters
+}
+
 // formatQueryParameter renders one bound argument for the preview response.
 func formatQueryParameter(value any) string {
 	switch typed := value.(type) {
@@ -938,7 +991,7 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 		}}
 	case *storepb.QualityRuleConfig_CrossTable:
 		converted.Config = &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-			RightTable:    arm.CrossTable.GetRightTable(),
+			Reference:     convertCrossTableReferenceToV1(arm.CrossTable.GetReference()),
 			LeftFunction:  v1pb.QualityAggregateFunction(arm.CrossTable.GetLeftFunction()),
 			LeftColumn:    arm.CrossTable.GetLeftColumn(),
 			RightFunction: v1pb.QualityAggregateFunction(arm.CrossTable.GetRightFunction()),
@@ -946,6 +999,7 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			Tolerance:     copyPtr(arm.CrossTable.Tolerance),
 			FailThreshold: copyPtr(arm.CrossTable.FailThreshold),
 			WarnThreshold: copyPtr(arm.CrossTable.WarnThreshold),
+			RightFilter:   convertQualityFilterToV1(arm.CrossTable.GetRightFilter()),
 		}}
 	case *storepb.QualityRuleConfig_StandardCode:
 		converted.Config = &v1pb.QualityRuleConfig_StandardCode{StandardCode: &v1pb.StandardCodeConfig{
@@ -1134,7 +1188,7 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 		}}
 	case *v1pb.QualityRuleConfig_CrossTable:
 		converted.Config = &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-			RightTable:    arm.CrossTable.GetRightTable(),
+			Reference:     convertCrossTableReferenceFromV1(arm.CrossTable.GetReference()),
 			LeftFunction:  storepb.QualityAggregateFunction(arm.CrossTable.GetLeftFunction()),
 			LeftColumn:    arm.CrossTable.GetLeftColumn(),
 			RightFunction: storepb.QualityAggregateFunction(arm.CrossTable.GetRightFunction()),
@@ -1142,6 +1196,7 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			Tolerance:     copyPtr(arm.CrossTable.Tolerance),
 			FailThreshold: copyPtr(arm.CrossTable.FailThreshold),
 			WarnThreshold: copyPtr(arm.CrossTable.WarnThreshold),
+			RightFilter:   convertQualityFilterFromV1(arm.CrossTable.GetRightFilter()),
 		}}
 	case *v1pb.QualityRuleConfig_StandardCode:
 		converted.Config = &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{

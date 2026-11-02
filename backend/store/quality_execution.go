@@ -16,7 +16,7 @@ import (
 
 // qualityExecutionColumns is the projection every quality_execution query
 // returns, in the order scanQualityExecution reads it.
-const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, error_code, error_message, duration_ms, started_at, finished_at, baseline_value, baseline_time, scheduled_at`
+const qualityExecutionColumns = `id, run_id, rule_id, rule_revision, rule_engine_version, target_guid, target_type, target_path, instance_resource_id, trigger, attempt, initiator_id, state, status, observed_value, observed_kind, thresholds, failed_rows, total_rows, sampled, sample_rows, truncated, sample, executed_sql, reference_executed_sql, error_code, error_message, duration_ms, started_at, finished_at, baseline_value, baseline_time, scheduled_at`
 
 // QualityExecutionMessage is one rule checked once: the durable, user-facing
 // unit of the data quality engine. Its public resource name is built from ID,
@@ -67,9 +67,13 @@ type QualityExecutionMessage struct {
 	Truncated     bool
 	Sample        *storepb.QualityFailureSamples
 	ExecutedSQL   string
-	ErrorCode     string
-	ErrorMessage  string
-	DurationMS    int32
+	// ReferenceExecutedSQL is the statement that read a cross-table
+	// reconciliation's reference side when that side needed its own connection.
+	// Empty for every other execution and when both sides shared one statement.
+	ReferenceExecutedSQL string
+	ErrorCode            string
+	ErrorMessage         string
+	DurationMS           int32
 	// StartedAt is when the execution was planned (queue time). MarkQualityExecutionRunning
 	// rewrites it to the moment the runner picked it up, so a queued execution is
 	// still reachable by the stale sweep.
@@ -227,6 +231,7 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 		&msg.Truncated,
 		&sampleRaw,
 		&msg.ExecutedSQL,
+		&msg.ReferenceExecutedSQL,
 		&msg.ErrorCode,
 		&msg.ErrorMessage,
 		&msg.DurationMS,
@@ -473,7 +478,8 @@ const qualityExecutionFinishStatement = `
 		state = $22::int2,
 		finished_at = $23::timestamptz,
 		baseline_value = $24::double precision,
-		baseline_time = $25::timestamptz
+		baseline_time = $25::timestamptz,
+		reference_executed_sql = $26::text
 	WHERE id = $1 AND state IN (1, 2)
 	RETURNING id
 `
@@ -554,6 +560,7 @@ func (s *Store) FinishQualityExecution(ctx context.Context, execution *QualityEx
 		finishedAt,
 		baselineValue,
 		baselineTime,
+		execution.ReferenceExecutedSQL,
 	).Scan(&finishedID)
 	if err == nil {
 		return nil

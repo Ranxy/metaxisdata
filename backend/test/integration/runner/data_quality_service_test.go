@@ -1696,6 +1696,14 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 	guidPrefix := fmt.Sprintf("%s;%s", instanceID, sourceDatabase)
 	probeGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "opaque_probe")
 	refGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_TABLE, "code_ref")
+	// A reconciliation's reference is a registry target, so a view is identified by
+	// its own object type; a relation that does not exist is named by a well-formed
+	// GUID the registry has no row for.
+	viewGUID := waitForMetaGUIDByName(ctx, t, env, guidPrefix, storepb.MetaType_VIEW, "code_numbers")
+	droppedGUID := fmt.Sprintf("%s;public;dropped_relation", guidPrefix)
+	reference := func(guid string, metaType v1pb.MetaType) *v1pb.CrossTableReference {
+		return &v1pb.CrossTableReference{MetaGuid: guid, MetaType: metaType}
+	}
 	client := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 30 * time.Second}, env.BaseURL)
 	token := env.AdminToken()
 
@@ -1806,7 +1814,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "cross_table MAX on a temporal right column",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-					RightTable:    "opaque_probe",
+					Reference:     reference(probeGUID, v1pb.MetaType_TABLE),
 					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MAX,
 					RightColumn:   "created_at",
@@ -1818,7 +1826,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "cross_table MIN on a temporal left column",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-					RightTable:    "code_ref",
+					Reference:     reference(refGUID, v1pb.MetaType_TABLE),
 					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
 					LeftColumn:    "created_at",
 					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
@@ -1839,7 +1847,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "cross_table missing right table",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-					RightTable:    "dropped_relation",
+					Reference:     reference(droppedGUID, v1pb.MetaType_TABLE),
 					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 				}},
@@ -1850,7 +1858,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "cross_table MIN on json",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-					RightTable:    "opaque_probe",
+					Reference:     reference(probeGUID, v1pb.MetaType_TABLE),
 					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_MIN,
 					RightColumn:   "payload_json",
@@ -1931,7 +1939,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "cross_table SUM over a view",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-					RightTable:    "code_numbers",
+					Reference:     reference(viewGUID, v1pb.MetaType_VIEW),
 					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
 					RightColumn:   "n",
@@ -1942,7 +1950,7 @@ CREATE VIEW public.code_numbers AS SELECT 1::bigint AS n;
 			name: "cross_table COUNT reconciliation",
 			rule: newRule(probeGUID, v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, &v1pb.QualityRuleConfig{
 				Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-					RightTable:    "code_ref",
+					Reference:     reference(refGUID, v1pb.MetaType_TABLE),
 					LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 					RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 				}},

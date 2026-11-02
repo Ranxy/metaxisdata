@@ -2,9 +2,9 @@
   <div class="space-y-3">
     <div class="flex items-start justify-between gap-3">
       <div class="space-y-1">
-        <Label>{{ t("dataQuality.editor.filter") }}</Label>
+        <Label>{{ labels.title }}</Label>
         <p class="text-sm text-muted-foreground">
-          {{ t("dataQuality.editor.filterHint") }}
+          {{ labels.hint }}
         </p>
         <p class="text-sm text-muted-foreground">
           {{ t("dataQuality.editor.filterVariablesHint") }}
@@ -13,7 +13,7 @@
       <Button
         variant="outline"
         size="sm"
-        :disabled="clauses.length >= MAX_FILTER_CLAUSES"
+        :disabled="disabled || clauses.length >= MAX_FILTER_CLAUSES"
         @click="addClause"
       >
         <Plus class="mr-1 h-4 w-4" />
@@ -25,7 +25,7 @@
       v-if="clauses.length === 0"
       class="rounded-md border border-dashed p-3 text-sm text-muted-foreground"
     >
-      {{ t("dataQuality.editor.noFilters") }}
+      {{ labels.empty }}
     </p>
 
     <div
@@ -36,15 +36,20 @@
       <ColumnSelect
         :model-value="clause.column"
         :columns="columns"
+        :disabled="disabled"
         :aria-label="t('dataQuality.editor.filterColumn')"
         :placeholder="t('dataQuality.editor.filterColumn')"
         @update:model-value="(value) => (clause.column = String(value))"
       />
       <Select
         :model-value="String(clause.op)"
+        :disabled="disabled"
         @update:model-value="(value: unknown) => setOperator(clause, value)"
       >
-        <SelectTrigger :aria-label="t('dataQuality.editor.filterOperator')">
+        <SelectTrigger
+          :disabled="disabled"
+          :aria-label="t('dataQuality.editor.filterOperator')"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -59,7 +64,7 @@
       </Select>
       <Input
         v-model="clause.values"
-        :disabled="!filterOperatorNeedsValues(clause.op)"
+        :disabled="disabled || !filterOperatorNeedsValues(clause.op)"
         :aria-label="t('dataQuality.editor.filterValues')"
         :placeholder="filterOperatorNeedsValues(clause.op) ? t('dataQuality.editor.filterValues') : t('dataQuality.editor.filterNoValues')"
       />
@@ -67,6 +72,7 @@
         variant="ghost"
         size="icon"
         class="h-9 w-9 text-muted-foreground hover:text-destructive"
+        :disabled="disabled"
         :aria-label="t('dataQuality.editor.removeFilter')"
         :title="t('dataQuality.editor.removeFilter')"
         @click="removeClause(index)"
@@ -79,6 +85,7 @@
 
 <script setup lang="ts">
 import { Plus, Trash2 } from "lucide-vue-next";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ColumnSelect from "@/components/common/ColumnSelect.vue";
 import { Button } from "@/components/ui/button";
@@ -105,16 +112,42 @@ import {
  * The rule's AND pre-filter: a list of column/operator/value clauses. The parent
  * owns the array; this component only appends and removes, so the config message
  * is built at one place (`buildFilter`).
+ *
+ * The same editor serves a cross-table check's reference side
+ * (`scope="reference"`), where the clauses are compiled against the reference
+ * relation rather than the target: the copy names that side, and the controls are
+ * disabled until a reference table is picked.
  */
 
 const clauses = defineModel<FilterClauseForm[]>({ required: true });
 
-defineProps<{
-  /** The target's columns; the picker offers them by name and type. */
-  columns: TargetColumnDetail[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** The relation's columns; the picker offers them by name and type. */
+    columns: TargetColumnDetail[];
+    /** Which side the clauses are compiled against; decides the copy. */
+    scope?: "target" | "reference";
+    /** True until the side the clauses belong to is known (a missing reference). */
+    disabled?: boolean;
+  }>(),
+  { scope: "target", disabled: false }
+);
 
 const { t } = useI18n();
+
+const labels = computed(() =>
+  props.scope === "reference"
+    ? {
+        title: t("dataQuality.editor.referenceFilter"),
+        hint: t("dataQuality.editor.referenceFilterHint"),
+        empty: t("dataQuality.editor.noReferenceFilters"),
+      }
+    : {
+        title: t("dataQuality.editor.filter"),
+        hint: t("dataQuality.editor.filterHint"),
+        empty: t("dataQuality.editor.noFilters"),
+      }
+);
 
 const FILTER_OPERATORS = [
   QualityFilterOperator.EQ,
@@ -134,7 +167,7 @@ function setOperator(clause: FilterClauseForm, value: unknown) {
 }
 
 function addClause() {
-  if (clauses.value.length >= MAX_FILTER_CLAUSES) {
+  if (props.disabled || clauses.value.length >= MAX_FILTER_CLAUSES) {
     return;
   }
   clauses.value = [...clauses.value, emptyFilterClause()];

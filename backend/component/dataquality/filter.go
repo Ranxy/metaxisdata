@@ -159,6 +159,16 @@ func parseFilterOp(op storepb.QualityFilterOperator) (FilterOp, error) {
 // Every value is bound as a parameter; the column is quoted from the resolved
 // target, never from user input.
 func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (string, []any, error) {
+	return CompileFilterAfter(dialect, target, filter, 0)
+}
+
+// CompileFilterAfter renders a filter whose placeholders continue from the
+// arguments an earlier filter already bound in the same statement: offset is how
+// many arguments came before it. A reconciliation with a reference-side filter in
+// one statement binds the target filter first and the reference filter second, so
+// the numbered dialects cannot restart at 1. Positional dialects ignore the
+// offset, and the caller appends the two argument lists in predicate order.
+func CompileFilterAfter(dialect Dialect, target ResolvedTarget, filter Filter, offset int) (string, []any, error) {
 	if len(filter.Clauses) == 0 {
 		return "", nil, nil
 	}
@@ -194,20 +204,21 @@ func CompileFilter(dialect Dialect, target ResolvedTarget, filter Filter) (strin
 			if err != nil {
 				return "", nil, err
 			}
-			conditions = append(conditions, renderFilterComparison(dialect, quoted, clause.Op, values, &args))
+			conditions = append(conditions, renderFilterComparison(dialect, quoted, clause.Op, values, &args, offset))
 		}
 	}
 	return strings.Join(conditions, " AND "), args, nil
 }
 
 // renderFilterComparison renders one operator's predicate and appends its
-// arguments.
-func renderFilterComparison(dialect Dialect, quoted string, op FilterOp, values []any, args *[]any) string {
+// arguments. offset is the number of arguments an earlier predicate in the same
+// statement already bound.
+func renderFilterComparison(dialect Dialect, quoted string, op FilterOp, values []any, args *[]any, offset int) string {
 	if op == FilterIN || op == FilterNOTIN {
 		placeholders := make([]string, 0, len(values))
 		for _, value := range values {
 			*args = append(*args, value)
-			placeholders = append(placeholders, dialect.Placeholder(len(*args)))
+			placeholders = append(placeholders, dialect.Placeholder(offset+len(*args)))
 		}
 		keyword := "IN"
 		if op == FilterNOTIN {
@@ -216,7 +227,7 @@ func renderFilterComparison(dialect Dialect, quoted string, op FilterOp, values 
 		return fmt.Sprintf("%s %s (%s)", quoted, keyword, strings.Join(placeholders, ", "))
 	}
 	*args = append(*args, values[0])
-	return quoted + " " + op.String() + " " + dialect.Placeholder(len(*args))
+	return quoted + " " + op.String() + " " + dialect.Placeholder(offset+len(*args))
 }
 
 // convertFilterValues converts the wire strings to typed arguments using the

@@ -196,7 +196,11 @@ func TestRuleSignatureKeepsDirectionalRoles(t *testing.T) {
 	crossTable := func(left, right string) *storepb.QualityRuleConfig {
 		return &storepb.QualityRuleConfig{
 			Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-				LeftColumn: left, RightColumn: right, RightTable: "other",
+				LeftColumn: left, RightColumn: right,
+				Reference: &storepb.CrossTableReference{
+					MetaGuid: "instances/ins1;shop;;other",
+					MetaType: storepb.MetaType_TABLE,
+				},
 				LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 				RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 			}},

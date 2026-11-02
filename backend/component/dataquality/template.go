@@ -257,7 +257,10 @@ func ClearRuleConfigTargetScope(config *storepb.QualityRuleConfig) {
 		}
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
 		if cross := config.GetCrossTable(); cross != nil {
-			cross.RightTable = ""
+			// The reference relation and its filter name another table's columns,
+			// so a template cannot carry either; the editor picks them per target.
+			cross.Reference = nil
+			cross.RightFilter = nil
 			cross.LeftColumn = ""
 			cross.RightColumn = ""
 		}

@@ -592,14 +592,21 @@ var ruleTypeSpecs = []ruleTypeSpec{
 			if cross == nil {
 				return nil
 			}
-			return []string{
-				"right=" + suggestionSignatureEscape(cross.GetRightTable()),
+			parts := []string{
+				// The reference relation is part of what the rule means: the same
+				// aggregate against another table is a different rule.
+				"right_ref=" + suggestionSignatureEscape(cross.GetReference().GetMetaGuid()),
+				"right_type=" + cross.GetReference().GetMetaType().String(),
 				"left_fn=" + cross.GetLeftFunction().String(),
 				"right_fn=" + cross.GetRightFunction().String(),
 				// The two sides of a reconciliation are not interchangeable.
 				"left_col=" + suggestionSignatureEscape(cross.GetLeftColumn()),
 				"right_col=" + suggestionSignatureEscape(cross.GetRightColumn()),
 			}
+			if filter := cross.GetRightFilter(); len(filter.GetClauses()) > 0 {
+				parts = append(parts, "right_filter="+suggestionFilterDigest(filter))
+			}
+			return parts
 		},
 		Compiler:  compileCrossTable,
 		Validator: validateCrossTableConfig,

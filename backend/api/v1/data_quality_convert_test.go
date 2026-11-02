@@ -154,13 +154,26 @@ func qualityConfigCases() []struct {
 			Inclusive:  true,
 		}}}},
 		{name: "cross_table", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-			RightTable:    "billing.invoices",
 			LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
+			LeftColumn:    "id",
 			RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
 			RightColumn:   "total",
 			Tolerance:     qualityTestPtr(0.5),
 			FailThreshold: qualityTestPtr(1.5),
 			WarnThreshold: qualityTestPtr(0.5),
+			Reference: &storepb.CrossTableReference{
+				MetaGuid: "instance_2;billing;public;invoices",
+				MetaType: storepb.MetaType_TABLE,
+				Path: &storepb.QualityTargetPath{
+					Instance: "instances/ins2",
+					Database: "billing",
+					Schema:   "public",
+					Object:   "invoices",
+				},
+			},
+			RightFilter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+				{Column: "status", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"paid"}},
+			}},
 		}}}},
 		{name: "standard_code", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{
 			Column:        "credit_code",
@@ -229,6 +242,50 @@ func TestConvertQualityFilterRoundTrip(t *testing.T) {
 	require.True(t, proto.Equal(filter, convertQualityFilterFromV1(convertQualityFilterToV1(filter))))
 	require.Nil(t, convertQualityFilterToV1(nil))
 	require.Nil(t, convertQualityFilterFromV1(nil))
+}
+
+// A reconciliation's reference relation crosses the API boundary as its registry
+// identity plus a display path, and its reference-side filter is a cross-table
+// field rather than the rule's own filter.
+func TestConvertCrossTableReferenceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	stored := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
+		LeftColumn:  "id",
+		RightColumn: "total",
+		Reference: &storepb.CrossTableReference{
+			MetaGuid: "instance_2;billing;public;invoices",
+			MetaType: storepb.MetaType_TABLE,
+			Path: &storepb.QualityTargetPath{
+				Instance: "instances/ins2",
+				Database: "billing",
+				Schema:   "public",
+				Object:   "invoices",
+			},
+		},
+		RightFilter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+			{Column: "status", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"paid"}},
+		}},
+	}}}
+
+	public := convertQualityRuleConfigToV1(stored)
+	crossTable := public.GetCrossTable()
+	require.NotNil(t, crossTable)
+	require.Equal(t, "instance_2;billing;public;invoices", crossTable.GetReference().GetMetaGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, crossTable.GetReference().GetMetaType())
+	require.Equal(t, "billing", crossTable.GetReference().GetPath().GetDatabase())
+	require.Equal(t, "invoices", crossTable.GetReference().GetPath().GetObject())
+	require.Len(t, crossTable.GetRightFilter().GetClauses(), 1)
+	require.Equal(t, "status", crossTable.GetRightFilter().GetClauses()[0].GetColumn())
+	require.Nil(t, public.GetFilter(), "the reference filter must not become the rule's own filter")
+
+	roundTripped := convertQualityRuleConfigFromV1(public)
+	require.True(t, proto.Equal(stored, roundTripped))
+	require.True(t, proto.Equal(stored.GetCrossTable().GetRightFilter(),
+		roundTripped.GetCrossTable().GetRightFilter()), "the reference-side filter survives the round trip")
+
+	require.Nil(t, convertCrossTableReferenceToV1(nil))
+	require.Nil(t, convertCrossTableReferenceFromV1(nil))
 }
 
 func TestConvertQualityRule(t *testing.T) {
@@ -349,12 +406,13 @@ func TestConvertQualityExecution(t *testing.T) {
 			{Column: "id_card", Value: "110105********002X", Masked: proto.Bool(true)},
 			{Column: "legacy"},
 		}}}},
-		ExecutedSQL:   "SELECT COUNT(*) FROM orders",
-		DurationMS:    1500,
-		StartedAt:     startedAt,
-		FinishedAt:    finishedAt,
-		BaselineValue: &baselineValue,
-		BaselineTime:  &baselineAt,
+		ExecutedSQL:          "SELECT COUNT(*) FROM orders",
+		ReferenceExecutedSQL: "SELECT SUM(total) FROM billing.invoices WHERE status = 'paid'",
+		DurationMS:           1500,
+		StartedAt:            startedAt,
+		FinishedAt:           finishedAt,
+		BaselineValue:        &baselineValue,
+		BaselineTime:         &baselineAt,
 	}
 
 	converted := convertQualityExecution("ws1", execution, "workspaces/ws1/qualityRules/rule123")
@@ -398,6 +456,8 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.True(t, converted.GetSamples()[0].GetColumns()[2].GetIsNull())
 	require.Nil(t, converted.GetSamples()[0].GetColumns()[3].IsNull, "a legacy row keeps its absence")
 	require.Equal(t, "SELECT COUNT(*) FROM orders", converted.GetExecutedSql())
+	require.Equal(t, "SELECT SUM(total) FROM billing.invoices WHERE status = 'paid'", converted.GetReferenceExecutedSql(),
+		"a two-statement reconciliation reports its reference-side evidence too")
 	require.Equal(t, 1500*time.Millisecond, converted.GetDuration().AsDuration())
 	require.Equal(t, startedAt, converted.GetStartTime().AsTime())
 	require.Equal(t, finishedAt, converted.GetFinishTime().AsTime())
@@ -527,6 +587,17 @@ func TestQualityRuleReferencedColumns(t *testing.T) {
 		{name: "unique_combination", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{Columns: []string{"a", "b"}}}}, expected: []string{"a", "b", "dt", "email"}},
 		{name: "cross_column", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossColumn{CrossColumn: &storepb.CrossColumnConfig{LeftColumn: "started_at", RightColumn: "finished_at"}}}, expected: []string{"started_at", "finished_at", "dt", "email"}},
 		{name: "standard_code", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{Column: "credit_code"}}}, expected: []string{"credit_code", "dt", "email"}},
+		{name: "cross_table_reads_target_columns_only", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
+			LeftColumn:  "total",
+			RightColumn: "amount",
+			Reference: &storepb.CrossTableReference{
+				MetaGuid: "instance_2;billing;public;invoices",
+				MetaType: storepb.MetaType_TABLE,
+			},
+			RightFilter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{
+				{Column: "status", Op: storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ, Values: []string{"paid"}},
+			}},
+		}}}, expected: []string{"total", "dt", "email"}},
 		{name: "custom_sql_has_no_named_column", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{CustomSql: &storepb.CustomSQLConfig{Sql: "SELECT 1"}}}, expected: []string{"dt", "email"}},
 	}
 	for _, testCase := range cases {

@@ -328,7 +328,15 @@ var templateScopeCases = map[storepb.QualityRuleType]templateScopeCase{
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE: {
 		input: &storepb.QualityRuleConfig{
 			Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-				RightTable:    "orders",
+				Reference: &storepb.CrossTableReference{
+					MetaGuid: "instances/ins1;shop;;orders",
+					MetaType: storepb.MetaType_TABLE,
+				},
+				RightFilter: &storepb.QualityFilter{Clauses: []*storepb.QualityFilterClause{{
+					Column: "status",
+					Op:     storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
+					Values: []string{"paid"},
+				}}},
 				LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
 				LeftColumn:    "total",
 				RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
@@ -515,7 +523,10 @@ func TestValidateRuleTemplateConfigRefusals(t *testing.T) {
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{
 				CrossTable: &storepb.CrossTableConfig{
-					RightTable:    "orders",
+					Reference: &storepb.CrossTableReference{
+						MetaGuid: "instances/ins1;shop;;orders",
+						MetaType: storepb.MetaType_TABLE,
+					},
 					LeftFunction:  storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
 					RightFunction: storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM,
 				},

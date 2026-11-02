@@ -1264,20 +1264,50 @@ export declare type AggregateConfig = Message<"metaxisdata.v1.AggregateConfig"> 
 export declare const AggregateConfigSchema: GenMessage<AggregateConfig>;
 
 /**
+ * CrossTableReference names the relation a reconciliation compares against, as
+ * a registry target. Unlike a table name it can point at any database and
+ * instance of the workspace.
+ *
+ * @generated from message metaxisdata.v1.CrossTableReference
+ */
+export declare type CrossTableReference = Message<"metaxisdata.v1.CrossTableReference"> & {
+  /**
+   * The registry GUID of the reference relation.
+   *
+   * @generated from field: string meta_guid = 1;
+   */
+  metaGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 2;
+   */
+  metaType: MetaType;
+
+  /**
+   * Where the reference lived when the rule was saved: display metadata, not
+   * identity. The GUID and its meta type are the identity.
+   *
+   * @generated from field: metaxisdata.v1.QualityTargetPath path = 3;
+   */
+  path?: QualityTargetPath;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CrossTableReference.
+ * Use `create(CrossTableReferenceSchema)` to create a new message.
+ */
+export declare const CrossTableReferenceSchema: GenMessage<CrossTableReference>;
+
+/**
  * CrossTableConfig reconciles one aggregate of the rule's table with one
- * aggregate of another table in the same instance and database.
+ * aggregate of a reference relation, which may live in another database or
+ * another instance. A reference in the target's own database is read in the
+ * same statement as the target side; anything else is read over its own
+ * read-only connection.
  *
  * @generated from message metaxisdata.v1.CrossTableConfig
  */
 export declare type CrossTableConfig = Message<"metaxisdata.v1.CrossTableConfig"> & {
-  /**
-   * The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
-   * "table" (MySQL family); it must live in the rule target's database.
-   *
-   * @generated from field: string right_table = 1;
-   */
-  rightTable: string;
-
   /**
    * The left (target) aggregate; COUNT ignores left_column.
    *
@@ -1322,6 +1352,22 @@ export declare type CrossTableConfig = Message<"metaxisdata.v1.CrossTableConfig"
    * @generated from field: optional double warn_threshold = 8;
    */
   warnThreshold?: number;
+
+  /**
+   * The reference relation; required.
+   *
+   * @generated from field: metaxisdata.v1.CrossTableReference reference = 9;
+   */
+  reference?: CrossTableReference;
+
+  /**
+   * Rows the reference side reads, bounded like the rule's own filter. The
+   * rule's filter and the target contract's filter never apply to the reference
+   * side; this is the only filter it sees.
+   *
+   * @generated from field: metaxisdata.v1.QualityFilter right_filter = 10;
+   */
+  rightFilter?: QualityFilter;
 };
 
 /**
@@ -1685,6 +1731,15 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
    * @generated from field: google.protobuf.Timestamp baseline_time = 29;
    */
   baselineTime?: Timestamp;
+
+  /**
+   * The statement that read a reconciliation's reference side, when the
+   * reference needed its own connection. Empty for every other execution and
+   * for a reconciliation whose two sides share the target's connection.
+   *
+   * @generated from field: string reference_executed_sql = 30;
+   */
+  referenceExecutedSql: string;
 };
 
 /**
@@ -3152,6 +3207,22 @@ export declare type PreviewQualityRuleResponse = Message<"metaxisdata.v1.Preview
    * @generated from field: repeated string parameters = 3;
    */
   parameters: string[];
+
+  /**
+   * The statement that reads a reconciliation's reference side alone, when the
+   * reference needs its own connection. Empty when both sides compile to
+   * compiled_sql, which is the case whenever they share a connection.
+   *
+   * @generated from field: string reference_sql = 4;
+   */
+  referenceSql: string;
+
+  /**
+   * The values bound to reference_sql, in placeholder order.
+   *
+   * @generated from field: repeated string reference_parameters = 5;
+   */
+  referenceParameters: string[];
 };
 
 /**

@@ -337,7 +337,7 @@ func compileFreshnessLagExpr(dialect Dialect, maxTimestamp string) (string, erro
 
 // compileRelatedTable renders a second table that must live in the target's own
 // database (MySQL family) or schema (PostgreSQL/MSSQL). role names the table in
-// error messages ("parent table", "right table"); ruleName names the rule kind.
+// error messages ("parent table"); ruleName names the rule kind.
 func compileRelatedTable(dialect Dialect, target ResolvedTarget, spec, role, ruleName string) (string, error) {
 	schema, table, err := relatedTableName(target, spec, role, ruleName)
 	if err != nil {
@@ -355,13 +355,6 @@ func compileRelatedTable(dialect Dialect, target ResolvedTarget, spec, role, rul
 // compileParentTable renders the parent side of a referential-integrity rule.
 func compileParentTable(dialect Dialect, target ResolvedTarget, spec string) (string, error) {
 	return compileRelatedTable(dialect, target, spec, "parent table", "referential-integrity")
-}
-
-// compileRightTable renders the reference side of a cross-table reconciliation
-// rule. It must live in the target's own database/schema: v1.1 reconciles tables
-// that share a connection, not tables across instances.
-func compileRightTable(dialect Dialect, target ResolvedTarget, spec string) (string, error) {
-	return compileRelatedTable(dialect, target, spec, "right table", "cross-table")
 }
 
 // aggregateExpression renders one aggregate over a quoted column. The percentile

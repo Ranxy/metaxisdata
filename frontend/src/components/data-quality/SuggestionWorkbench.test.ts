@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   suggestQualityRule: vi.fn(),
   batchUpdateQualitySuggestions: vi.fn(),
   createQualitySuggestionJob: vi.fn(),
+  getQualityTarget: vi.fn(),
   listAllMetadata: vi.fn(),
 }));
 
@@ -33,6 +34,7 @@ vi.mock("@/api/data-quality", () => ({
   suggestQualityRule: mocks.suggestQualityRule,
   batchUpdateQualitySuggestions: mocks.batchUpdateQualitySuggestions,
   createQualitySuggestionJob: mocks.createQualitySuggestionJob,
+  getQualityTarget: mocks.getQualityTarget,
 }));
 
 vi.mock("@/api/database", () => ({

@@ -5195,13 +5195,79 @@ func (x *AggregateConfig) GetInclusive() bool {
 	return false
 }
 
+// CrossTableReference names the relation a reconciliation compares against, as
+// a registry target. Unlike a table name it can point at any database and
+// instance of the workspace.
+type CrossTableReference struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The registry GUID of the reference relation.
+	MetaGuid string   `protobuf:"bytes,1,opt,name=meta_guid,json=metaGuid,proto3" json:"meta_guid,omitempty"`
+	MetaType MetaType `protobuf:"varint,2,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.store.MetaType" json:"meta_type,omitempty"`
+	// Where the reference lived when the rule was saved: display metadata, not
+	// identity. The GUID and its meta type are the identity.
+	Path          *QualityTargetPath `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CrossTableReference) Reset() {
+	*x = CrossTableReference{}
+	mi := &file_store_data_quality_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CrossTableReference) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CrossTableReference) ProtoMessage() {}
+
+func (x *CrossTableReference) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CrossTableReference.ProtoReflect.Descriptor instead.
+func (*CrossTableReference) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *CrossTableReference) GetMetaGuid() string {
+	if x != nil {
+		return x.MetaGuid
+	}
+	return ""
+}
+
+func (x *CrossTableReference) GetMetaType() MetaType {
+	if x != nil {
+		return x.MetaType
+	}
+	return MetaType_UNSPECIFIED
+}
+
+func (x *CrossTableReference) GetPath() *QualityTargetPath {
+	if x != nil {
+		return x.Path
+	}
+	return nil
+}
+
 // CrossTableConfig reconciles one aggregate of the rule's table with one
-// aggregate of another table in the same instance and database.
+// aggregate of a reference relation, which may live in another database or
+// another instance. A reference in the target's own database is read in the
+// same statement as the target side; anything else is read over its own
+// read-only connection.
 type CrossTableConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
-	// "table" (MySQL family); it must live in the rule target's database.
-	RightTable string `protobuf:"bytes,1,opt,name=right_table,json=rightTable,proto3" json:"right_table,omitempty"`
 	// The left (target) aggregate; COUNT ignores left_column.
 	LeftFunction QualityAggregateFunction `protobuf:"varint,2,opt,name=left_function,json=leftFunction,proto3,enum=metaxisdata.store.QualityAggregateFunction" json:"left_function,omitempty"`
 	LeftColumn   string                   `protobuf:"bytes,3,opt,name=left_column,json=leftColumn,proto3" json:"left_column,omitempty"`
@@ -5215,13 +5281,19 @@ type CrossTableConfig struct {
 	// The fail threshold defaults to zero.
 	FailThreshold *float64 `protobuf:"fixed64,7,opt,name=fail_threshold,json=failThreshold,proto3,oneof" json:"fail_threshold,omitempty"`
 	WarnThreshold *float64 `protobuf:"fixed64,8,opt,name=warn_threshold,json=warnThreshold,proto3,oneof" json:"warn_threshold,omitempty"`
+	// The reference relation; required.
+	Reference *CrossTableReference `protobuf:"bytes,9,opt,name=reference,proto3" json:"reference,omitempty"`
+	// Rows the reference side reads, bounded like the rule's own filter. The
+	// rule's filter and the target contract's filter never apply to the reference
+	// side; this is the only filter it sees.
+	RightFilter   *QualityFilter `protobuf:"bytes,10,opt,name=right_filter,json=rightFilter,proto3" json:"right_filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CrossTableConfig) Reset() {
 	*x = CrossTableConfig{}
-	mi := &file_store_data_quality_proto_msgTypes[41]
+	mi := &file_store_data_quality_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5233,7 +5305,7 @@ func (x *CrossTableConfig) String() string {
 func (*CrossTableConfig) ProtoMessage() {}
 
 func (x *CrossTableConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[41]
+	mi := &file_store_data_quality_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5246,14 +5318,7 @@ func (x *CrossTableConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrossTableConfig.ProtoReflect.Descriptor instead.
 func (*CrossTableConfig) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{41}
-}
-
-func (x *CrossTableConfig) GetRightTable() string {
-	if x != nil {
-		return x.RightTable
-	}
-	return ""
+	return file_store_data_quality_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CrossTableConfig) GetLeftFunction() QualityAggregateFunction {
@@ -5305,6 +5370,20 @@ func (x *CrossTableConfig) GetWarnThreshold() float64 {
 	return 0
 }
 
+func (x *CrossTableConfig) GetReference() *CrossTableReference {
+	if x != nil {
+		return x.Reference
+	}
+	return nil
+}
+
+func (x *CrossTableConfig) GetRightFilter() *QualityFilter {
+	if x != nil {
+		return x.RightFilter
+	}
+	return nil
+}
+
 // QualitySuggestionJobTarget is one table a background drafting job visits. The
 // path and columns are a snapshot taken at submission, so the job still renders
 // after the registry changes; resolution happens again when the model is asked.
@@ -5338,7 +5417,7 @@ type QualityLLMDiagnostic struct {
 
 func (x *QualityLLMDiagnostic) Reset() {
 	*x = QualityLLMDiagnostic{}
-	mi := &file_store_data_quality_proto_msgTypes[42]
+	mi := &file_store_data_quality_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5350,7 +5429,7 @@ func (x *QualityLLMDiagnostic) String() string {
 func (*QualityLLMDiagnostic) ProtoMessage() {}
 
 func (x *QualityLLMDiagnostic) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[42]
+	mi := &file_store_data_quality_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5363,7 +5442,7 @@ func (x *QualityLLMDiagnostic) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityLLMDiagnostic.ProtoReflect.Descriptor instead.
 func (*QualityLLMDiagnostic) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{42}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *QualityLLMDiagnostic) GetErrorCode() string {
@@ -5480,7 +5559,7 @@ type QualitySuggestionJobTarget struct {
 
 func (x *QualitySuggestionJobTarget) Reset() {
 	*x = QualitySuggestionJobTarget{}
-	mi := &file_store_data_quality_proto_msgTypes[43]
+	mi := &file_store_data_quality_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5492,7 +5571,7 @@ func (x *QualitySuggestionJobTarget) String() string {
 func (*QualitySuggestionJobTarget) ProtoMessage() {}
 
 func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[43]
+	mi := &file_store_data_quality_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5505,7 +5584,7 @@ func (x *QualitySuggestionJobTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualitySuggestionJobTarget.ProtoReflect.Descriptor instead.
 func (*QualitySuggestionJobTarget) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{43}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *QualitySuggestionJobTarget) GetTargetGuid() string {
@@ -5596,7 +5675,7 @@ type QualitySuggestionJobTargets struct {
 
 func (x *QualitySuggestionJobTargets) Reset() {
 	*x = QualitySuggestionJobTargets{}
-	mi := &file_store_data_quality_proto_msgTypes[44]
+	mi := &file_store_data_quality_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5608,7 +5687,7 @@ func (x *QualitySuggestionJobTargets) String() string {
 func (*QualitySuggestionJobTargets) ProtoMessage() {}
 
 func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[44]
+	mi := &file_store_data_quality_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5621,7 +5700,7 @@ func (x *QualitySuggestionJobTargets) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualitySuggestionJobTargets.ProtoReflect.Descriptor instead.
 func (*QualitySuggestionJobTargets) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{44}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *QualitySuggestionJobTargets) GetTargets() []*QualitySuggestionJobTarget {
@@ -5648,7 +5727,7 @@ type QualityContractSettings struct {
 
 func (x *QualityContractSettings) Reset() {
 	*x = QualityContractSettings{}
-	mi := &file_store_data_quality_proto_msgTypes[45]
+	mi := &file_store_data_quality_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5660,7 +5739,7 @@ func (x *QualityContractSettings) String() string {
 func (*QualityContractSettings) ProtoMessage() {}
 
 func (x *QualityContractSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[45]
+	mi := &file_store_data_quality_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5673,7 +5752,7 @@ func (x *QualityContractSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractSettings.ProtoReflect.Descriptor instead.
 func (*QualityContractSettings) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{45}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *QualityContractSettings) GetFilter() *QualityFilter {
@@ -5707,7 +5786,7 @@ type QualityContractSnapshot struct {
 
 func (x *QualityContractSnapshot) Reset() {
 	*x = QualityContractSnapshot{}
-	mi := &file_store_data_quality_proto_msgTypes[46]
+	mi := &file_store_data_quality_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5719,7 +5798,7 @@ func (x *QualityContractSnapshot) String() string {
 func (*QualityContractSnapshot) ProtoMessage() {}
 
 func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[46]
+	mi := &file_store_data_quality_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5732,7 +5811,7 @@ func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractSnapshot.ProtoReflect.Descriptor instead.
 func (*QualityContractSnapshot) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{46}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *QualityContractSnapshot) GetSettings() *QualityContractSettings {
@@ -5774,7 +5853,7 @@ type QualityContractCheck struct {
 
 func (x *QualityContractCheck) Reset() {
 	*x = QualityContractCheck{}
-	mi := &file_store_data_quality_proto_msgTypes[47]
+	mi := &file_store_data_quality_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5786,7 +5865,7 @@ func (x *QualityContractCheck) String() string {
 func (*QualityContractCheck) ProtoMessage() {}
 
 func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[47]
+	mi := &file_store_data_quality_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5799,7 +5878,7 @@ func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractCheck.ProtoReflect.Descriptor instead.
 func (*QualityContractCheck) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{47}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *QualityContractCheck) GetRuleResourceId() string {
@@ -5848,7 +5927,7 @@ var File_store_data_quality_proto protoreflect.FileDescriptor
 
 const file_store_data_quality_proto_rawDesc = "" +
 	"\n" +
-	"\x18store/data_quality.proto\x12\x11metaxisdata.store\"\x93\x01\n" +
+	"\x18store/data_quality.proto\x12\x11metaxisdata.store\x1a\x10store/meta.proto\"\x93\x01\n" +
 	"\x11QualityTargetPath\x12\x1a\n" +
 	"\binstance\x18\x01 \x01(\tR\binstance\x12\x1a\n" +
 	"\bdatabase\x18\x02 \x01(\tR\bdatabase\x12\x16\n" +
@@ -6205,10 +6284,12 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x04_minB\x06\n" +
 	"\x04_maxB\v\n" +
 	"\t_warn_minB\v\n" +
-	"\t_warn_max\"\xcc\x03\n" +
-	"\x10CrossTableConfig\x12\x1f\n" +
-	"\vright_table\x18\x01 \x01(\tR\n" +
-	"rightTable\x12P\n" +
+	"\t_warn_max\"\xa6\x01\n" +
+	"\x13CrossTableReference\x12\x1b\n" +
+	"\tmeta_guid\x18\x01 \x01(\tR\bmetaGuid\x128\n" +
+	"\tmeta_type\x18\x02 \x01(\x0e2\x1b.metaxisdata.store.MetaTypeR\bmetaType\x128\n" +
+	"\x04path\x18\x03 \x01(\v2$.metaxisdata.store.QualityTargetPathR\x04path\"\xc9\x04\n" +
+	"\x10CrossTableConfig\x12P\n" +
 	"\rleft_function\x18\x02 \x01(\x0e2+.metaxisdata.store.QualityAggregateFunctionR\fleftFunction\x12\x1f\n" +
 	"\vleft_column\x18\x03 \x01(\tR\n" +
 	"leftColumn\x12R\n" +
@@ -6216,11 +6297,14 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\fright_column\x18\x05 \x01(\tR\vrightColumn\x12!\n" +
 	"\ttolerance\x18\x06 \x01(\x01H\x00R\ttolerance\x88\x01\x01\x12*\n" +
 	"\x0efail_threshold\x18\a \x01(\x01H\x01R\rfailThreshold\x88\x01\x01\x12*\n" +
-	"\x0ewarn_threshold\x18\b \x01(\x01H\x02R\rwarnThreshold\x88\x01\x01B\f\n" +
+	"\x0ewarn_threshold\x18\b \x01(\x01H\x02R\rwarnThreshold\x88\x01\x01\x12D\n" +
+	"\treference\x18\t \x01(\v2&.metaxisdata.store.CrossTableReferenceR\treference\x12C\n" +
+	"\fright_filter\x18\n" +
+	" \x01(\v2 .metaxisdata.store.QualityFilterR\vrightFilterB\f\n" +
 	"\n" +
 	"_toleranceB\x11\n" +
 	"\x0f_fail_thresholdB\x11\n" +
-	"\x0f_warn_threshold\"\xee\x03\n" +
+	"\x0f_warn_thresholdJ\x04\b\x01\x10\x02R\vright_table\"\xee\x03\n" +
 	"\x14QualityLLMDiagnostic\x12\x1d\n" +
 	"\n" +
 	"error_code\x18\x01 \x01(\tR\terrorCode\x12\x1a\n" +
@@ -6482,7 +6566,7 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 }
 
 var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 26)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),                  // 0: metaxisdata.store.QualityRuleType
 	(QualityStandardCode)(0),              // 1: metaxisdata.store.QualityStandardCode
@@ -6551,13 +6635,15 @@ var file_store_data_quality_proto_goTypes = []any{
 	(*SchemaDriftConfig)(nil),             // 64: metaxisdata.store.SchemaDriftConfig
 	(*GroupCheckConfig)(nil),              // 65: metaxisdata.store.GroupCheckConfig
 	(*AggregateConfig)(nil),               // 66: metaxisdata.store.AggregateConfig
-	(*CrossTableConfig)(nil),              // 67: metaxisdata.store.CrossTableConfig
-	(*QualityLLMDiagnostic)(nil),          // 68: metaxisdata.store.QualityLLMDiagnostic
-	(*QualitySuggestionJobTarget)(nil),    // 69: metaxisdata.store.QualitySuggestionJobTarget
-	(*QualitySuggestionJobTargets)(nil),   // 70: metaxisdata.store.QualitySuggestionJobTargets
-	(*QualityContractSettings)(nil),       // 71: metaxisdata.store.QualityContractSettings
-	(*QualityContractSnapshot)(nil),       // 72: metaxisdata.store.QualityContractSnapshot
-	(*QualityContractCheck)(nil),          // 73: metaxisdata.store.QualityContractCheck
+	(*CrossTableReference)(nil),           // 67: metaxisdata.store.CrossTableReference
+	(*CrossTableConfig)(nil),              // 68: metaxisdata.store.CrossTableConfig
+	(*QualityLLMDiagnostic)(nil),          // 69: metaxisdata.store.QualityLLMDiagnostic
+	(*QualitySuggestionJobTarget)(nil),    // 70: metaxisdata.store.QualitySuggestionJobTarget
+	(*QualitySuggestionJobTargets)(nil),   // 71: metaxisdata.store.QualitySuggestionJobTargets
+	(*QualityContractSettings)(nil),       // 72: metaxisdata.store.QualityContractSettings
+	(*QualityContractSnapshot)(nil),       // 73: metaxisdata.store.QualityContractSnapshot
+	(*QualityContractCheck)(nil),          // 74: metaxisdata.store.QualityContractCheck
+	(MetaType)(0),                         // 75: metaxisdata.store.MetaType
 }
 var file_store_data_quality_proto_depIdxs = []int32{
 	28, // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
@@ -6595,7 +6681,7 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	64, // 32: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
 	65, // 33: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
 	66, // 34: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
-	67, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
+	68, // 35: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
 	61, // 36: metaxisdata.store.QualityRuleConfig.standard_code:type_name -> metaxisdata.store.StandardCodeConfig
 	12, // 37: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
 	27, // 38: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
@@ -6605,24 +6691,28 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	1,  // 42: metaxisdata.store.StandardCodeConfig.standard:type_name -> metaxisdata.store.QualityStandardCode
 	63, // 43: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
 	23, // 44: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
-	23, // 45: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
-	23, // 46: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
-	26, // 47: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
-	25, // 48: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
-	68, // 49: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
-	38, // 50: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
-	69, // 51: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
-	27, // 52: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
-	3,  // 53: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
-	71, // 54: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
-	73, // 55: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
-	0,  // 56: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
-	3,  // 57: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
-	58, // [58:58] is the sub-list for method output_type
-	58, // [58:58] is the sub-list for method input_type
-	58, // [58:58] is the sub-list for extension type_name
-	58, // [58:58] is the sub-list for extension extendee
-	0,  // [0:58] is the sub-list for field type_name
+	75, // 45: metaxisdata.store.CrossTableReference.meta_type:type_name -> metaxisdata.store.MetaType
+	26, // 46: metaxisdata.store.CrossTableReference.path:type_name -> metaxisdata.store.QualityTargetPath
+	23, // 47: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
+	23, // 48: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
+	67, // 49: metaxisdata.store.CrossTableConfig.reference:type_name -> metaxisdata.store.CrossTableReference
+	27, // 50: metaxisdata.store.CrossTableConfig.right_filter:type_name -> metaxisdata.store.QualityFilter
+	26, // 51: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
+	25, // 52: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
+	69, // 53: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
+	38, // 54: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
+	70, // 55: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
+	27, // 56: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
+	3,  // 57: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
+	72, // 58: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
+	74, // 59: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
+	0,  // 60: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
+	3,  // 61: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
+	62, // [62:62] is the sub-list for method output_type
+	62, // [62:62] is the sub-list for method input_type
+	62, // [62:62] is the sub-list for extension type_name
+	62, // [62:62] is the sub-list for extension extendee
+	0,  // [0:62] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -6630,6 +6720,7 @@ func file_store_data_quality_proto_init() {
 	if File_store_data_quality_proto != nil {
 		return
 	}
+	file_store_meta_proto_init()
 	file_store_data_quality_proto_msgTypes[3].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[7].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[8].OneofWrappers = []any{}
@@ -6685,14 +6776,14 @@ func file_store_data_quality_proto_init() {
 	file_store_data_quality_proto_msgTypes[38].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[39].OneofWrappers = []any{}
 	file_store_data_quality_proto_msgTypes[40].OneofWrappers = []any{}
-	file_store_data_quality_proto_msgTypes[41].OneofWrappers = []any{}
+	file_store_data_quality_proto_msgTypes[42].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
 			NumEnums:      26,
-			NumMessages:   48,
+			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

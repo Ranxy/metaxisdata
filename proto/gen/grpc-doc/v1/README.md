@@ -245,6 +245,7 @@
     - [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
+    - [CrossTableReference](#metaxisdata-v1-CrossTableReference)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
     - [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
@@ -4595,12 +4596,14 @@ the comparison.
 
 ### CrossTableConfig
 CrossTableConfig reconciles one aggregate of the rule&#39;s table with one
-aggregate of another table in the same instance and database.
+aggregate of a reference relation, which may live in another database or
+another instance. A reference in the target&#39;s own database is read in the
+same statement as the target side; anything else is read over its own
+read-only connection.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| right_table | [string](#string) |  | The other table as &#34;schema.table&#34; (PostgreSQL/MSSQL) or &#34;database.table&#34; / &#34;table&#34; (MySQL family); it must live in the rule target&#39;s database. |
 | left_function | [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction) |  | The left (target) aggregate; COUNT ignores left_column. |
 | left_column | [string](#string) |  |  |
 | right_function | [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction) |  | The right (reference) aggregate; COUNT ignores right_column. |
@@ -4608,6 +4611,27 @@ aggregate of another table in the same instance and database.
 | tolerance | [double](#double) | optional | The absolute difference tolerated before the thresholds apply: the observed value is max(0, |left - right| - tolerance). |
 | fail_threshold | [double](#double) | optional | Difference beyond the tolerance that fails, and the warning level inside it. The fail threshold defaults to zero. |
 | warn_threshold | [double](#double) | optional |  |
+| reference | [CrossTableReference](#metaxisdata-v1-CrossTableReference) |  | The reference relation; required. |
+| right_filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  | Rows the reference side reads, bounded like the rule&#39;s own filter. The rule&#39;s filter and the target contract&#39;s filter never apply to the reference side; this is the only filter it sees. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CrossTableReference"></a>
+
+### CrossTableReference
+CrossTableReference names the relation a reconciliation compares against, as
+a registry target. Unlike a table name it can point at any database and
+instance of the workspace.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| meta_guid | [string](#string) |  | The registry GUID of the reference relation. |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| path | [QualityTargetPath](#metaxisdata-v1-QualityTargetPath) |  | Where the reference lived when the rule was saved: display metadata, not identity. The GUID and its meta type are the identity. |
 
 
 
@@ -5792,6 +5816,8 @@ optional and must not exceed the fail threshold.
 | compiled_sql | [string](#string) |  | The SQL the rule compiles to, for the editor&#39;s query preview. |
 | referenced_columns | [string](#string) | repeated | The target columns the compiled SQL reads. |
 | parameters | [string](#string) | repeated | The filter values the compiler bound, encoded for display, in the order the placeholders appear in compiled_sql. |
+| reference_sql | [string](#string) |  | The statement that reads a reconciliation&#39;s reference side alone, when the reference needs its own connection. Empty when both sides compile to compiled_sql, which is the case whenever they share a connection. |
+| reference_parameters | [string](#string) | repeated | The values bound to reference_sql, in placeholder order. |
 
 
 
@@ -6105,6 +6131,7 @@ the same row.
 | attempt | [int32](#int32) |  | The scheduled attempt number in the target&#39;s current due cycle: 1 for the first attempt, 2&#43; for a retry after an abandoned attempt. Manual executions always use 1. A retry is planned only while the attempt budget lasts. |
 | baseline_value | [double](#double) | optional | The row count a row_count_change check compared against. Unset for every other type, and for a first observation that had no recent baseline to compare with; the verdict then follows on_empty, which a new count-change check defaults to PASS so the first run only records the baseline. |
 | baseline_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When that baseline was measured. Unset whenever baseline_value is. |
+| reference_executed_sql | [string](#string) |  | The statement that read a reconciliation&#39;s reference side, when the reference needed its own connection. Empty for every other execution and for a reconciliation whose two sides share the target&#39;s connection. |
 
 
 

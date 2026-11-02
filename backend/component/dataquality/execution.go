@@ -60,6 +60,11 @@ type ExecOptions struct {
 	// rule references, loaded by the caller. A rule with no code table gets nil.
 	// The list is the whole table: the executor never reads the store itself.
 	CodeTableValues []string
+	// Reference is the second side of a cross-table reconciliation, resolved by
+	// the caller. The executor needs it for every cross-table rule; it opens the
+	// reference's own session only when the two sides cannot share the target's
+	// connection.
+	Reference *ReferenceExecution
 }
 
 // Execution is everything one execution measured: the observation the evaluator
@@ -71,6 +76,9 @@ type Execution struct {
 	Samples *storepb.QualityFailureSamples
 	// ExecutedSQL is the aggregate statement, truncated for storage.
 	ExecutedSQL string
+	// ReferenceExecutedSQL is the statement that read a reconciliation's reference
+	// side when that side needed its own connection. Empty otherwise.
+	ReferenceExecutedSQL string
 	// Sampled reports that the observation was made over a sample of the rows
 	// rather than the whole filtered table. A CEL rule samples by construction (it
 	// reads a bounded number of rows); any other rule does so only when its config

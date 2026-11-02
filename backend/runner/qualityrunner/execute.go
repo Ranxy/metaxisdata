@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
@@ -324,6 +323,19 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
 	}
 
+	// A reconciliation compares against a second registry target. It is resolved
+	// here, before any connection is opened; the executor opens the reference's own
+	// read-only session only when the two sides cannot share the target's
+	// connection.
+	var reference *dataquality.ReferenceExecution
+	if snapshot.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
+		reference, err = r.prepareReferenceExecution(ctx, snapshot, admission)
+		if err != nil {
+			status, code, message := executionErrorVerdict(err)
+			return fail(status, code, message)
+		}
+	}
+
 	// A metadata rule observes the registry and compiles to no SQL, so it needs
 	// neither a target connection nor a READ_ONLY data source: it must not fail
 	// because the target has no read-only account. The executor receives a nil
@@ -359,6 +371,7 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	}
 
 	options := r.execOptions(snapshot.Config)
+	options.Reference = reference
 	// A personal-data column's sampled values are redacted before they are stored.
 	// If the labels cannot be read, the verdict still runs but no failure sample is
 	// stored: a privacy guarantee must not degrade into storing raw values on a
@@ -387,15 +400,8 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	options.Variables = dataquality.NewTimeVariables(startedAt, r.currentSettings().TimeZoneLocation())
 	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, options)
 	if err != nil {
-		// A stored rule this build cannot compile (an engine whose dialect was
-		// removed, or a definition the current metadata no longer satisfies) is an
-		// execution failure, not a quality verdict: ERROR(UNSUPPORTED), the code
-		// the save/preview path already uses for the same class of defect.
-		if common.ErrorCode(err) == common.Invalid {
-			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
-		}
-		code, message := errorCodeAndMessage(err)
-		return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message)
+		status, code, message := executionErrorVerdict(err)
+		return fail(status, code, message)
 	}
 
 	observation := execution.Observation

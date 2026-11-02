@@ -340,6 +340,8 @@
 | **P2-7** | 质量分权重编辑 + 等级映射 | 在 P0-3 的分数之上加：维度权重配置、等级文案（优秀/良好/中等/及格/不及格）、**多套评分卡并存**（政务 70/30 与通用六维，投标友好） | 3–5 |
 | **P2-8** | 多副本/HA | 与"单副本"接受决策冲突，只在企业客户明确要求时做（调度租约/分布式锁/计数外置） | 15–25 |
 
+> **P2-5 实施记录（2026-11）**：`cross_table` 的右表已从"同容器表名字符串"升级为**注册表目标引用**（`CrossTableReference{meta_guid, meta_type, path}`，可为任意实例/库/schema 的 TABLE/EXTERNAL_TABLE/VIEW/MATERIALIZED_VIEW；`right_table` 字段号 1 已 `reserved`——功能从未上线，故不做兼容分支），并同批支持**参考侧 filter**（左表 filter 与目标契约 filter 仍只作用于左侧）。语句条数由连接共享决定：同实例同库、以及 MySQL 家族同实例跨库仍是**一条**语句（一个快照）；PG/MSSQL 跨库与跨实例是**两条**语句 + 非阻塞抢租约的第二个只读连接（抢不到 → `SKIPPED`、参考实例无只读源 → `ERROR(NO_READ_ONLY_SOURCE)`、参考目标消失 → `ERROR(UNSUPPORTED)`）。dry run 对两侧各自 `LIMIT 0`/`TOP 0` probe，创建期校验两侧实例都有 READ_ONLY 数据源；执行证据新增 `quality_execution.reference_executed_sql`（迁移 `0042`），预览新增 `reference_sql`/`reference_parameters`；前端参考表选择器复用元数据浏览对话框，右列与参考侧 filter 按参考表列编辑。口径、边界与测试见 [.agents/docs/data-quality.md](../docs/data-quality.md) D-100、§7 #47、I-63 与 §8。
+
 
 ---
 

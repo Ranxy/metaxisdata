@@ -29,6 +29,21 @@ func NewExecutor() *Executor {
 	return &Executor{}
 }
 
+// ReferenceExecution is the second side of a cross-table reconciliation, resolved
+// by the caller. The executor opens the reference's own read-only session only when
+// the two sides cannot share the target's connection (ReferenceSharesConnection);
+// a shared connection reads both sides in the rule's single statement.
+type ReferenceExecution struct {
+	// Resolution is the reference relation's metadata, including the instance and
+	// database its session must be opened for.
+	Resolution *Resolution
+	// Open opens a read-only session on the reference relation. The executor calls
+	// it at most once, only when the reference needs its own connection, and always
+	// releases the returned lease before Execute returns. A nil Open is an internal
+	// defect for a reference that needs a session and is reported as such.
+	Open func(ctx context.Context) (db.ReadOnlyQueryer, func(), error)
+}
+
 // Execute compiles the rule, runs its aggregate statement through the read-only
 // queryer, and interprets the result columns into an Observation. A CEL rule is
 // the exception: its statement returns a sample of rows and the predicate runs in
@@ -66,7 +81,8 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	if err != nil {
 		// Validation rejects an engine this build cannot compile for, so reaching
 		// here means the stored rule and this build disagree. Invalid is the code
-		// the runner maps to SKIPPED(UNSUPPORTED) rather than ERROR.
+		// the runner records as ERROR(UNSUPPORTED), the same class as a stored
+		// definition the current metadata no longer satisfies.
 		return nil, common.Errorf(common.Invalid, "%s", err)
 	}
 	filter, err := ParseFilter(rule.Config.GetFilter())
@@ -89,9 +105,25 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 		ContractFilter: contractFilter,
 		Variables:      opts.Variables,
 	}
+	// A reconciliation always compares against a reference relation. The caller
+	// resolved it; without it the stored rule is unusable, which is a defect rather
+	// than a user error by the time execution starts.
+	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
+		if opts.Reference == nil || opts.Reference.Resolution == nil {
+			return nil, invalidConfig("a cross-table rule needs its reference table to be resolved")
+		}
+		input.Reference = &opts.Reference.Resolution.Target
+	}
 	compiled, err := Compile(input)
 	if err != nil {
 		return nil, err
+	}
+	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE &&
+		!ReferenceSharesConnection(resolution.Target, opts.Reference.Resolution.Target) {
+		// The reference lives in another database or instance, so the two aggregates
+		// are separate statements: the target side over the caller's session, the
+		// reference side over its own.
+		return e.executeReconciliationSides(ctx, queryer, input, rule, opts, compiled)
 	}
 	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION {
 		// A CEL rule reads a bounded sample of rows and evaluates the predicate in
@@ -159,11 +191,99 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	return execution, nil
 }
 
-// redactExecutionSamples replaces personal-data cells of an execution's failed-row
-// sample with their masked display forms. The columns come from the caller's
-// accepted semantic labels; a resident-ID standard-code rule also masks the column
-// it checks, so the verdict's evidence is redacted even when the column carries no
-// label.
+// executeReconciliationSides runs the two halves of a reconciliation whose
+// reference needs its own session, and combines them into the observation the
+// single-statement form produces. Both statements are bounded like any aggregate:
+// one row, the rule's query timeout, and the caller's value budget.
+func (e *Executor) executeReconciliationSides(ctx context.Context, targetQueryer db.ReadOnlyQueryer, input CompileInput, rule RuleSnapshot, opts ExecOptions, left CompiledQuery) (*Execution, error) {
+	reference, err := CompileReference(input)
+	if err != nil {
+		return nil, err
+	}
+	if opts.Reference.Open == nil {
+		return nil, common.Errorf(common.Internal, "the reference side has no read-only session opener")
+	}
+	// The reference session opens first: a missing read-only data source on the
+	// reference instance is a configuration mistake, and failing before the target
+	// scan keeps the failure cheap.
+	referenceQueryer, release, err := opts.Reference.Open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	leftResult, err := targetQueryer.QueryReadOnly(ctx, left.SQL, left.Args, db.QueryOptions{
+		MaxRows:  1,
+		MaxBytes: opts.MaxBytes,
+		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeRuleAggregate,
+		Metrics:  e.Metrics,
+	})
+	if err != nil {
+		return nil, err
+	}
+	rightResult, err := referenceQueryer.QueryReadOnly(ctx, reference.SQL, reference.Args, db.QueryOptions{
+		MaxRows:  1,
+		MaxBytes: opts.MaxBytes,
+		Timeout:  opts.QueryTimeout,
+		Purpose:  metrics.QueryPurposeRuleAggregate,
+		Metrics:  e.Metrics,
+	})
+	if err != nil {
+		return nil, err
+	}
+	observation, err := reconciliationObservation(leftResult, rightResult)
+	if err != nil {
+		return nil, err
+	}
+	execution := &Execution{
+		Observation:          observation,
+		ExecutedSQL:          truncateExecutedSQL(left.SQL),
+		ReferenceExecutedSQL: truncateExecutedSQL(reference.SQL),
+		Truncated:            leftResult.Truncated || rightResult.Truncated,
+	}
+	execution.Observation.Truncated = execution.Truncated
+	redactExecutionSamples(execution, rule, opts)
+	return execution, nil
+}
+
+// reconciliationObservation combines the two sides' rows into the observation the
+// evaluator judges: the absolute difference, or missing data when either side is
+// SQL NULL.
+func reconciliationObservation(left, right *db.QueryResult) (Observation, error) {
+	leftValue, leftPresent, err := sideValue(left, "left_value")
+	if err != nil {
+		return Observation{}, err
+	}
+	rightValue, rightPresent, err := sideValue(right, "right_value")
+	if err != nil {
+		return Observation{}, err
+	}
+	if !leftPresent || !rightPresent {
+		return Observation{
+			ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+			ObservedNull: true,
+		}, nil
+	}
+	return Observation{
+		Observed:     math.Abs(leftValue - rightValue),
+		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_NUMBER,
+	}, nil
+}
+
+// sideValue reads the one named value out of a single-row aggregate result.
+func sideValue(result *db.QueryResult, column string) (float64, bool, error) {
+	if result == nil {
+		return 0, false, badData("the aggregate returned no result")
+	}
+	if len(result.Rows) != 1 {
+		return 0, false, badData("the aggregate returned %d rows, expect 1", len(result.Rows))
+	}
+	indexes, err := resultColumnIndexes(result.Columns, []string{column})
+	if err != nil {
+		return 0, false, err
+	}
+	return aggregateFloat(result, indexes, column)
+}
 func redactExecutionSamples(execution *Execution, rule RuleSnapshot, opts ExecOptions) {
 	if execution == nil || execution.Samples == nil {
 		return

@@ -177,6 +177,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | schema drift | 结构漂移 | Data Quality | The rule that compares the target's live column list with the snapshot taken when the rule was saved. | dataQuality. | zh-CN: `表结构一致性`, `表结构漂移`, `字段结构漂移`, `模式漂移` |
 | grouped row count | 分组行数 | Data Quality | The rule that groups rows by columns and bounds each group's row count. | dataQuality. | zh-CN: `分组检查` |
 | aggregate value | 聚合值 | Data Quality | The rule that bounds one column's aggregate value (sum, average, extremes, standard deviation or percentile). | dataQuality. | zh-CN: `聚合检查`, `聚合校验` |
+| reference table | 参考表 | Data Quality | The relation a cross-table reconciliation compares the target against. It is a registry target, so it may live in any instance, database or schema and may be a table, external table, view or materialized view. | dataQuality. | zh-CN: `右侧表`, `引用表`, `对照表` |
 | cross-table reconciliation | 跨表对账 | Data Quality | The rule that compares one aggregate of the target table with one of another table and bounds their difference. | dataQuality. | zh-CN: `跨表校验`, `跨表比较` |
 | dry run | 干跑 | Data Quality | Compiling and probing a rule without saving it or creating an execution. | dataQuality. | — |
 | sampled | 采样 | Data Quality | Judged from a sample of rows rather than every row. | dataQuality. | zh-CN: `抽样` |

@@ -372,4 +372,28 @@ describe("DataQualityExecutionDetailPage", () => {
     );
     withoutBaseline.wrapper.unmount();
   });
+
+  it("shows the reference statement only when the reconciliation used one", async () => {
+    const withoutReference = await mountPage();
+    expect(withoutReference.wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.referenceExecutedSql")
+    );
+    withoutReference.wrapper.unmount();
+
+    // A reference in another database or instance runs over its own connection,
+    // so the execution carries a second statement beside the target's.
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        referenceExecutedSql:
+          "SELECT COUNT(*) AS right_value FROM other.customers",
+      })
+    );
+    const withReference = await mountPage();
+    const text = withReference.wrapper.text();
+    expect(text).toContain(i18n.global.t("dataQuality.referenceExecutedSql"));
+    expect(text).toContain(
+      "SELECT COUNT(*) AS right_value FROM other.customers"
+    );
+    withReference.wrapper.unmount();
+  });
 });
