@@ -36,10 +36,25 @@ func TestDataQualityImpactRealServerIntegration(t *testing.T) {
 		_ = fixture.env.Store.BatchReplaceColumnLineage(context.Background(), fixture.usersGUID, storepb.MetaType_TABLE, nil)
 	})
 
+	// This scenario creates workspace-global rows (rules, and the issue a failing
+	// run opens) even though its source database is dropped after the test. It is
+	// one of the few non-parallel scenarios, so it runs before the others can
+	// pause: archiving its rules keeps a later scenario that lists the whole
+	// workspace (the target directory asserts one row per target) from seeing
+	// them.
+	archiveRule := func(rule *v1pb.QualityRule) {
+		t.Cleanup(func() {
+			_, err := fixture.dataQuality.DeleteQualityRule(fixture.ctx, withToken(fixture.env.AdminToken(),
+				&v1pb.DeleteQualityRuleRequest{Name: rule.GetName()}))
+			require.NoError(t, err, "archive the scenario's rule %s", rule.GetName())
+		})
+	}
+
 	// The downstream table is watched, the upstream one is not yet.
 	ordersRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		ordersGUID, qualityRowCountConfig(1))
+	archiveRule(ordersRule)
 
 	before := fixture.consumptionCoverage(t, 100)
 	require.Contains(t, qualityConsumptionGapGUIDs(before), fixture.usersGUID,
@@ -51,6 +66,7 @@ func TestDataQualityImpactRealServerIntegration(t *testing.T) {
 	usersRule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
 		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL,
 		fixture.usersGUID, qualityRowCountConfig(100000))
+	archiveRule(usersRule)
 	execution := fixture.runToCompletion(t, usersRule.GetName())
 	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, execution.GetOutcome())
 
