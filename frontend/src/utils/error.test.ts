@@ -1,11 +1,13 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it } from "vitest";
 import {
+  codeFromName,
   errorCode,
   errorMessageKey,
   errorText,
   extractErrorMessage,
   isAborted,
+  parseBatchItemError,
   prefersServerMessage,
 } from "./error";
 
@@ -159,5 +161,46 @@ describe("errorText", () => {
     expect(errorText(undefined, t, "login.loginFailed")).toBe(
       "[login.loginFailed]"
     );
+  });
+});
+
+describe("codeFromName", () => {
+  it("maps a batch item's wire code name to its Connect code", () => {
+    expect(codeFromName("aborted")).toBe(Code.Aborted);
+    expect(codeFromName("not_found")).toBe(Code.NotFound);
+    expect(codeFromName("invalid_argument")).toBe(Code.InvalidArgument);
+    expect(codeFromName("  ABORTED  ")).toBe(Code.Aborted);
+  });
+
+  it("is undefined for a name it does not know", () => {
+    expect(codeFromName("quality")).toBeUndefined();
+    expect(codeFromName("")).toBeUndefined();
+  });
+});
+
+describe("parseBatchItemError", () => {
+  it("splits the code prefix from the server's wording", () => {
+    expect(
+      parseBatchItemError(
+        'aborted: quality rule "x" revision changed from 3 to 8'
+      )
+    ).toEqual({
+      code: Code.Aborted,
+      message: 'quality rule "x" revision changed from 3 to 8',
+    });
+    expect(parseBatchItemError("not_found: gone")).toEqual({
+      code: Code.NotFound,
+      message: "gone",
+    });
+  });
+
+  it("keeps a message whose first token is not a code name", () => {
+    expect(parseBatchItemError('quality rule "x: y" failed')).toEqual({
+      message: 'quality rule "x: y" failed',
+    });
+  });
+
+  it("keeps a string without a separator whole", () => {
+    expect(parseBatchItemError("  boom  ")).toEqual({ message: "boom" });
   });
 });

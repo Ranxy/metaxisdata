@@ -416,6 +416,235 @@ func TestDataQualityRuleLifecycleRealServerIntegration(t *testing.T) {
 	require.Len(t, fixture.executionsForRule(t, rule.GetName()), 1, "archiving keeps the executions")
 }
 
+// TestDataQualityBatchUpdateRulesRealServerIntegration applies one edit to many
+// rules and proves the per-item contract: the envelope is validated before any
+// item is attempted, a stale revision or an unknown rule fails on its own, and a
+// semantic edit still appends a revision.
+func TestDataQualityBatchUpdateRulesRealServerIntegration(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupQualityMySQLFixture(t, true)
+	token := fixture.env.AdminToken()
+
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+
+	ruleA := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	ruleB := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	// A column rule, so the batch can also change a typed config field.
+	ruleCConfig := qualityColumnConfig("name")
+	ruleCConfig.OnEmpty = v1pb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED
+	ruleC := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, ruleCConfig)
+
+	// An empty or oversized batch is a malformed request and writes nothing.
+	_, err = fixture.dataQuality.BatchUpdateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualityRulesRequest{
+		Parent: "workspaces/-",
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	oversized := make([]*v1pb.UpdateQualityRuleRequest, 201)
+	for index := range oversized {
+		oversized[index] = &v1pb.UpdateQualityRuleRequest{
+			Rule:       &v1pb.QualityRule{Name: ruleA.GetName(), Revision: ruleA.GetRevision()},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+		}
+	}
+	_, err = fixture.dataQuality.BatchUpdateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualityRulesRequest{
+		Parent:   "workspaces/-",
+		Requests: oversized,
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	// One batch: two valid edits, a stale revision, an unknown rule, a typed
+	// config edit and an item with no rule. The failures stay in their own
+	// results.
+	batch, err := fixture.dataQuality.BatchUpdateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualityRulesRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.UpdateQualityRuleRequest{
+			{
+				Rule:       &v1pb.QualityRule{Name: ruleA.GetName(), Revision: ruleA.GetRevision(), Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+			},
+			{
+				Rule:       &v1pb.QualityRule{Name: ruleB.GetName(), Revision: ruleB.GetRevision(), Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+			},
+			{
+				Rule:       &v1pb.QualityRule{Name: ruleA.GetName(), Revision: ruleA.GetRevision() + 100, Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+			},
+			{
+				Rule:       &v1pb.QualityRule{Name: common.FormatWorkspace(workspaceID) + "/qualityRules/doesnotexist", Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+			},
+			{
+				Rule: &v1pb.QualityRule{
+					Name:     ruleC.GetName(),
+					Revision: ruleC.GetRevision(),
+					Config: &v1pb.QualityRuleConfig{
+						Config: &v1pb.QualityRuleConfig_NullPercent{NullPercent: &v1pb.NullPercentConfig{
+							Column: "name", MaxNullCount: qualityPtr(int64(0)),
+						}},
+						OnEmpty: v1pb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS,
+					},
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"config"}},
+			},
+			{},
+		},
+	}))
+	require.NoError(t, err, "per-item failures do not fail the batch")
+	results := batch.Msg.GetResults()
+	require.Len(t, results, 6, "one result per request, in request order")
+
+	require.Equal(t, ruleA.GetName(), results[0].GetName(), "the result echoes the rule it applied")
+	require.Empty(t, results[0].GetError())
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, results[0].GetRule().GetSeverity())
+	require.Equal(t, int32(1), results[0].GetRule().GetRevision(), "severity is a head-only edit")
+	require.Empty(t, results[1].GetError())
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, results[1].GetRule().GetSeverity())
+
+	require.NotEmpty(t, results[2].GetError(), "a stale revision fails on its own")
+	require.Nil(t, results[2].GetRule(), "a failed item reports no rule")
+	require.Contains(t, results[2].GetError(), "revision")
+	require.NotEmpty(t, results[3].GetError(), "an unknown rule fails on its own")
+	require.Equal(t, common.FormatWorkspace(workspaceID)+"/qualityRules/doesnotexist", results[3].GetName())
+	require.Empty(t, results[4].GetError())
+	require.Equal(t, v1pb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS, results[4].GetRule().GetConfig().GetOnEmpty())
+	require.Equal(t, int32(2), results[4].GetRule().GetRevision(), "a config edit appends a revision")
+	require.NotEmpty(t, results[5].GetError(), "an item with no rule fails on its own")
+
+	// The batch is one audited action: one ledger row carries the request and the
+	// per-item results, rather than one row per item.
+	auditClient := v1connect.NewAuditLogServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
+	var auditLog *v1pb.AuditLog
+	require.Eventually(t, func() bool {
+		response, err := auditClient.ListAuditLogs(fixture.ctx, withToken(token, &v1pb.ListAuditLogsRequest{
+			Parent:   "workspaces/-",
+			PageSize: 100,
+			Filter:   `method.matches("BatchUpdateQualityRules")`,
+		}))
+		if err != nil {
+			return false
+		}
+		matched := 0
+		for _, entry := range response.Msg.GetAuditLogs() {
+			if entry.GetMethod() != v1connect.DataQualityServiceBatchUpdateQualityRulesProcedure {
+				continue
+			}
+			if entry.GetStatus().GetMessage() != "ok" {
+				continue
+			}
+			if len(entry.GetRequest().GetFields()["requests"].GetListValue().GetValues()) != 6 {
+				continue
+			}
+			matched++
+			auditLog = entry
+		}
+		return matched == 1
+	}, 30*time.Second, 250*time.Millisecond, "the batch update must write exactly one audit row: %s", fixture.env.ServerLogs())
+	require.Equal(t, 6, len(auditLog.GetResponse().GetFields()["results"].GetListValue().GetValues()),
+		"the single audit row carries the per-item results")
+
+	// The writes are persisted, and the stale item did not overwrite A's severity.
+	readA, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token, &v1pb.GetQualityRuleRequest{Name: ruleA.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, readA.Msg.GetSeverity())
+	require.Equal(t, int32(1), readA.Msg.GetRevision())
+	readB, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token, &v1pb.GetQualityRuleRequest{Name: ruleB.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL, readB.Msg.GetSeverity())
+	readC, err := fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token, &v1pb.GetQualityRuleRequest{Name: ruleC.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS, readC.Msg.GetConfig().GetOnEmpty())
+	require.Equal(t, "name", readC.Msg.GetConfig().GetNullPercent().GetColumn(), "the typed config is preserved")
+
+	// Definition and owner edits go through the same per-item pipeline as a single
+	// update: the dimension edit is semantic, the pause is not.
+	second, err := fixture.dataQuality.BatchUpdateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualityRulesRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.UpdateQualityRuleRequest{
+			{
+				Rule: &v1pb.QualityRule{
+					Name:      ruleA.GetName(),
+					Revision:  readA.Msg.GetRevision(),
+					Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS,
+					Owner:     "users/1",
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"dimension", "owner"}},
+			},
+			{
+				Rule:       &v1pb.QualityRule{Name: ruleB.GetName(), Revision: readB.Msg.GetRevision(), State: v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"state"}},
+			},
+		},
+	}))
+	require.NoError(t, err)
+	require.Len(t, second.Msg.GetResults(), 2)
+	require.Empty(t, second.Msg.GetResults()[0].GetError())
+	require.Empty(t, second.Msg.GetResults()[1].GetError())
+	require.Equal(t, int32(2), second.Msg.GetResults()[0].GetRule().GetRevision(), "a dimension edit appends a revision")
+	require.Equal(t, int32(1), second.Msg.GetResults()[1].GetRule().GetRevision(), "a pause is a head-only edit")
+
+	readA, err = fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token, &v1pb.GetQualityRuleRequest{Name: ruleA.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityDimension_QUALITY_DIMENSION_UNIQUENESS, readA.Msg.GetDimension())
+	require.Equal(t, "users/1", readA.Msg.GetOwner())
+	readB, err = fixture.dataQuality.GetQualityRule(fixture.ctx, withToken(token, &v1pb.GetQualityRuleRequest{Name: ruleB.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED, readB.Msg.GetState())
+
+	// A rule archived after it was listed cannot be updated: the store refuses a
+	// soft-deleted row, so the item fails on its own.
+	_, err = fixture.dataQuality.DeleteQualityRule(fixture.ctx, withToken(token, &v1pb.DeleteQualityRuleRequest{Name: ruleC.GetName()}))
+	require.NoError(t, err)
+	archivedBatch, err := fixture.dataQuality.BatchUpdateQualityRules(fixture.ctx, withToken(token, &v1pb.BatchUpdateQualityRulesRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.UpdateQualityRuleRequest{
+			{
+				Rule:       &v1pb.QualityRule{Name: ruleC.GetName(), Revision: readC.Msg.GetRevision(), Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_CRITICAL},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+			},
+		},
+	}))
+	require.NoError(t, err)
+	require.Len(t, archivedBatch.Msg.GetResults(), 1)
+	require.Contains(t, archivedBatch.Msg.GetResults()[0].GetError(), "not_found:",
+		"an archived rule's refusal keeps its Connect code so the client can localize it")
+	require.Nil(t, archivedBatch.Msg.GetResults()[0].GetRule())
+
+	// Only rules.update may batch-edit: a workspace member has the read baseline
+	// but no rule-update grant, so the whole call is refused before any item.
+	userClient := v1connect.NewUserServiceClient(&http.Client{Timeout: 30 * time.Second}, fixture.env.BaseURL)
+	memberEmail := fmt.Sprintf("dq-batch-member-%d@example.com", time.Now().UnixNano())
+	const memberPassword = "Integration-Password-1!"
+	_, err = userClient.CreateUser(fixture.ctx, withToken(token, &v1pb.CreateUserRequest{
+		User: &v1pb.User{Email: memberEmail, Title: "DQ batch member", Password: memberPassword, UserType: v1pb.UserType_END_USER},
+	}))
+	require.NoError(t, err)
+	memberToken, err := fixture.env.LoginAs(fixture.ctx, memberEmail, memberPassword)
+	require.NoError(t, err)
+	_, err = fixture.dataQuality.BatchUpdateQualityRules(fixture.ctx, withToken(memberToken, &v1pb.BatchUpdateQualityRulesRequest{
+		Parent: "workspaces/-",
+		Requests: []*v1pb.UpdateQualityRuleRequest{
+			{
+				Rule:       &v1pb.QualityRule{Name: ruleA.GetName(), Revision: readA.Msg.GetRevision(), Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"severity"}},
+			},
+		},
+	}))
+	require.Error(t, err, "a member without rules.update must not batch-edit")
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+}
+
 // TestDataQualityIssueLifecycleAndNotificationsRealServerIntegration runs a rule
 // that must fail, checks the problem ledger and the issue-opened message, then
 // repairs the rule and checks the automatic recovery and its message.

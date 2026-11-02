@@ -101,6 +101,64 @@ export function prefersServerMessage(code: Code): boolean {
 }
 
 /**
+ * Every Connect code's wire name. A batch call reports each item's failure as
+ * the `Error()` string of its own error — `aborted: ...`, `not_found: ...` — and
+ * the client has to recover the code from that name to say what happened.
+ */
+const CODE_BY_NAME: Readonly<Record<string, Code>> = {
+  canceled: Code.Canceled,
+  unknown: Code.Unknown,
+  invalid_argument: Code.InvalidArgument,
+  deadline_exceeded: Code.DeadlineExceeded,
+  not_found: Code.NotFound,
+  already_exists: Code.AlreadyExists,
+  permission_denied: Code.PermissionDenied,
+  resource_exhausted: Code.ResourceExhausted,
+  failed_precondition: Code.FailedPrecondition,
+  aborted: Code.Aborted,
+  out_of_range: Code.OutOfRange,
+  unimplemented: Code.Unimplemented,
+  internal: Code.Internal,
+  unavailable: Code.Unavailable,
+  data_loss: Code.DataLoss,
+  unauthenticated: Code.Unauthenticated,
+};
+
+/** The Connect code a wire name (e.g. `aborted`) names, when it names one. */
+export function codeFromName(name: string): Code | undefined {
+  return CODE_BY_NAME[name.trim().toLowerCase()];
+}
+
+/** One batch item's failure, split into its code and the server's wording. */
+export interface BatchItemError {
+  /** The code the string's prefix named, or undefined when it named none. */
+  code?: Code;
+  /** The message with the code prefix removed. */
+  message: string;
+}
+
+/**
+ * Split one batch result's error string, which the server serializes as
+ * `code: message`. A caller can then render a sentence that names the remedy
+ * instead of showing the wire code, and still present the server's wording for
+ * codes that describe something the caller can fix.
+ */
+export function parseBatchItemError(error: string): BatchItemError {
+  const text = error.trim();
+  const separator = text.indexOf(":");
+  if (separator < 0) {
+    return { message: text };
+  }
+  const code = codeFromName(text.slice(0, separator));
+  if (code === undefined) {
+    // The first token is not a code name: keep the string whole rather than
+    // silently dropping the part before its first colon.
+    return { message: text };
+  }
+  return { code, message: text.slice(separator + 1).trim() };
+}
+
+/**
  * The text to put in front of a user for `error`.
  *
  * A Connect error is described by its code (see {@link CODE_MESSAGE_KEYS}), or by

@@ -2,11 +2,14 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"connectrpc.com/connect"
 
+	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // qualityBatchRequestLimit caps one batch RPC. Batches are not atomic, so this is
@@ -74,6 +77,63 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 		results = append(results, result)
 	}
 	return connect.NewResponse(&v1pb.BatchCreateQualityRulesResponse{Results: results}), nil
+}
+
+// BatchUpdateQualityRules applies many rule updates in one call. Each item is
+// applied independently: a failure (including a stale revision) is reported in
+// its own result and does not abort the rest.
+func (s *DataQualityService) BatchUpdateQualityRules(ctx context.Context, req *connect.Request[v1pb.BatchUpdateQualityRulesRequest]) (*connect.Response[v1pb.BatchUpdateQualityRulesResponse], error) {
+	if req == nil {
+		return nil, connectErrorInvalid("a request is required")
+	}
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
+		return nil, err
+	}
+	if err := validateQualityBatchSize(len(req.Msg.GetRequests())); err != nil {
+		return nil, err
+	}
+
+	requests := req.Msg.GetRequests()
+	results := make([]*v1pb.BatchUpdateQualityRuleResult, len(requests))
+	updatedRules := make([]*store.QualityRuleMessage, 0, len(requests))
+	updatedAt := make([]int, 0, len(requests))
+	for index, item := range requests {
+		result := &v1pb.BatchUpdateQualityRuleResult{}
+		results[index] = result
+		if item == nil || item.GetRule() == nil {
+			result.Error = connectErrorInvalid("the rule is required").Error()
+			continue
+		}
+		result.Name = strings.TrimSpace(item.GetRule().GetName())
+		_, updated, err := s.applyQualityRuleUpdate(ctx, item)
+		if err != nil {
+			// A per-item error is a string, so the Connect interceptor cannot map
+			// it; map here or a wrapped NotFound (an archived row) would reach the
+			// client as a raw English sentence with no code to localize on.
+			result.Error = mapCommonError(err).Error()
+			continue
+		}
+		updatedRules = append(updatedRules, updated)
+		updatedAt = append(updatedAt, index)
+	}
+
+	// One enrichment pass for the whole batch: the read-only fields of a rule are
+	// three batch reads, not three per item.
+	converted, err := s.enrichQualityRules(ctx, workspaceID, updatedRules)
+	if err != nil {
+		// The writes already committed. Report them without the read-only
+		// projections instead of failing the call and losing the outcome.
+		slog.Warn("failed to enrich updated quality rules", "count", len(updatedRules), clog.WithError(err))
+		converted = make([]*v1pb.QualityRule, len(updatedRules))
+		for i, rule := range updatedRules {
+			converted[i] = convertQualityRule(workspaceID, rule)
+		}
+	}
+	for i, index := range updatedAt {
+		results[index].Rule = converted[i]
+	}
+	return connect.NewResponse(&v1pb.BatchUpdateQualityRulesResponse{Results: results}), nil
 }
 
 // BatchUpdateQualitySuggestions accepts or rejects many queued suggestions in one

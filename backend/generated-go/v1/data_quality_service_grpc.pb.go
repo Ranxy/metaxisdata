@@ -24,6 +24,7 @@ const (
 	DataQualityService_GetQualityRule_FullMethodName                     = "/metaxisdata.v1.DataQualityService/GetQualityRule"
 	DataQualityService_CreateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
 	DataQualityService_BatchCreateQualityRules_FullMethodName            = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
+	DataQualityService_BatchUpdateQualityRules_FullMethodName            = "/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules"
 	DataQualityService_UpdateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
 	DataQualityService_DeleteQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
 	DataQualityService_PreviewQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
@@ -100,6 +101,11 @@ type DataQualityServiceClient interface {
 	// came from. Each item is validated and stored independently: a failure is
 	// reported in its own result and does not abort the other items.
 	BatchCreateQualityRules(ctx context.Context, in *BatchCreateQualityRulesRequest, opts ...grpc.CallOption) (*BatchCreateQualityRulesResponse, error)
+	// Update a batch of rules in one call. Each item is applied independently:
+	// a failure is reported in its own result and does not abort the other items.
+	// An item that names a stale revision fails on its own rather than
+	// overwriting a concurrent edit.
+	BatchUpdateQualityRules(ctx context.Context, in *BatchUpdateQualityRulesRequest, opts ...grpc.CallOption) (*BatchUpdateQualityRulesResponse, error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(ctx context.Context, in *UpdateQualityRuleRequest, opts ...grpc.CallOption) (*QualityRule, error)
@@ -353,6 +359,16 @@ func (c *dataQualityServiceClient) BatchCreateQualityRules(ctx context.Context, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BatchCreateQualityRulesResponse)
 	err := c.cc.Invoke(ctx, DataQualityService_BatchCreateQualityRules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) BatchUpdateQualityRules(ctx context.Context, in *BatchUpdateQualityRulesRequest, opts ...grpc.CallOption) (*BatchUpdateQualityRulesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchUpdateQualityRulesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_BatchUpdateQualityRules_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -892,6 +908,11 @@ type DataQualityServiceServer interface {
 	// came from. Each item is validated and stored independently: a failure is
 	// reported in its own result and does not abort the other items.
 	BatchCreateQualityRules(context.Context, *BatchCreateQualityRulesRequest) (*BatchCreateQualityRulesResponse, error)
+	// Update a batch of rules in one call. Each item is applied independently:
+	// a failure is reported in its own result and does not abort the other items.
+	// An item that names a stale revision fails on its own rather than
+	// overwriting a concurrent edit.
+	BatchUpdateQualityRules(context.Context, *BatchUpdateQualityRulesRequest) (*BatchUpdateQualityRulesResponse, error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(context.Context, *UpdateQualityRuleRequest) (*QualityRule, error)
@@ -1123,6 +1144,9 @@ func (UnimplementedDataQualityServiceServer) CreateQualityRule(context.Context, 
 func (UnimplementedDataQualityServiceServer) BatchCreateQualityRules(context.Context, *BatchCreateQualityRulesRequest) (*BatchCreateQualityRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchCreateQualityRules not implemented")
 }
+func (UnimplementedDataQualityServiceServer) BatchUpdateQualityRules(context.Context, *BatchUpdateQualityRulesRequest) (*BatchUpdateQualityRulesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchUpdateQualityRules not implemented")
+}
 func (UnimplementedDataQualityServiceServer) UpdateQualityRule(context.Context, *UpdateQualityRuleRequest) (*QualityRule, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityRule not implemented")
 }
@@ -1353,6 +1377,24 @@ func _DataQualityService_BatchCreateQualityRules_Handler(srv interface{}, ctx co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).BatchCreateQualityRules(ctx, req.(*BatchCreateQualityRulesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_BatchUpdateQualityRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchUpdateQualityRulesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).BatchUpdateQualityRules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_BatchUpdateQualityRules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).BatchUpdateQualityRules(ctx, req.(*BatchUpdateQualityRulesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2197,6 +2239,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchCreateQualityRules",
 			Handler:    _DataQualityService_BatchCreateQualityRules_Handler,
+		},
+		{
+			MethodName: "BatchUpdateQualityRules",
+			Handler:    _DataQualityService_BatchUpdateQualityRules_Handler,
 		},
 		{
 			MethodName: "UpdateQualityRule",

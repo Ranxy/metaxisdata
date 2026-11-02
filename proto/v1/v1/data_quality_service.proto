@@ -66,6 +66,19 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.create";
   }
 
+  // Update a batch of rules in one call. Each item is applied independently:
+  // a failure is reported in its own result and does not abort the other items.
+  // An item that names a stale revision fails on its own rather than
+  // overwriting a concurrent edit.
+  rpc BatchUpdateQualityRules(BatchUpdateQualityRulesRequest) returns (BatchUpdateQualityRulesResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityRules:batchUpdate"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
   // Update a rule. Every semantic edit appends a revision, so a historical
   // result always stays explainable by the definition that produced it.
   rpc UpdateQualityRule(UpdateQualityRuleRequest) returns (QualityRule) {
@@ -1851,6 +1864,34 @@ message BatchCreateQualityRuleResult {
   // to trust the index alone. Empty for an item that named no suggestion.
   // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
   string suggestion = 3;
+}
+
+message BatchUpdateQualityRulesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The updates to apply, at most 200, in submission order. Each item names one
+  // rule and is applied independently, so one rejected update does not block
+  // the others.
+  repeated UpdateQualityRuleRequest requests = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message BatchUpdateQualityRulesResponse {
+  // One result per request, in request order.
+  repeated BatchUpdateQualityRuleResult results = 1;
+}
+
+message BatchUpdateQualityRuleResult {
+  // The updated rule; unset when this item failed.
+  QualityRule rule = 1;
+
+  // Empty on success; otherwise why this rule could not be updated.
+  string error = 2;
+
+  // The rule name named by the request item, echoed so a client does not have
+  // to trust the index alone.
+  // Format: workspaces/{workspace}/qualityRules/{quality_rule}
+  string name = 3;
 }
 
 message UpdateQualityRuleRequest {

@@ -227,6 +227,9 @@
     - [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult)
     - [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest)
     - [BatchCreateQualityRulesResponse](#metaxisdata-v1-BatchCreateQualityRulesResponse)
+    - [BatchUpdateQualityRuleResult](#metaxisdata-v1-BatchUpdateQualityRuleResult)
+    - [BatchUpdateQualityRulesRequest](#metaxisdata-v1-BatchUpdateQualityRulesRequest)
+    - [BatchUpdateQualityRulesResponse](#metaxisdata-v1-BatchUpdateQualityRulesResponse)
     - [BatchUpdateQualitySuggestionResult](#metaxisdata-v1-BatchUpdateQualitySuggestionResult)
     - [BatchUpdateQualitySuggestionsRequest](#metaxisdata-v1-BatchUpdateQualitySuggestionsRequest)
     - [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse)
@@ -4258,6 +4261,54 @@ AggregateConfig bounds the value one aggregate over one column produces.
 
 
 
+<a name="metaxisdata-v1-BatchUpdateQualityRuleResult"></a>
+
+### BatchUpdateQualityRuleResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The updated rule; unset when this item failed. |
+| error | [string](#string) |  | Empty on success; otherwise why this rule could not be updated. |
+| name | [string](#string) |  | The rule name named by the request item, echoed so a client does not have to trust the index alone. Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchUpdateQualityRulesRequest"></a>
+
+### BatchUpdateQualityRulesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| requests | [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest) | repeated | The updates to apply, at most 200, in submission order. Each item names one rule and is applied independently, so one rejected update does not block the others. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-BatchUpdateQualityRulesResponse"></a>
+
+### BatchUpdateQualityRulesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| results | [BatchUpdateQualityRuleResult](#metaxisdata-v1-BatchUpdateQualityRuleResult) | repeated | One result per request, in request order. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-BatchUpdateQualitySuggestionResult"></a>
 
 ### BatchUpdateQualitySuggestionResult
@@ -7686,6 +7737,7 @@ scheduling is an internal concern and is not exposed as a resource.
 | GetQualityRule | [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Read one rule, including its current revision and a summary of its most recent result. |
 | CreateQualityRule | [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Create a rule. The rule is validated and compiled before it is stored; a rejected rule is never persisted. |
 | BatchCreateQualityRules | [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest) | [BatchCreateQualityRulesResponse](#metaxisdata-v1-BatchCreateQualityRulesResponse) | Create a batch of rules in one call, optionally from the suggestions they came from. Each item is validated and stored independently: a failure is reported in its own result and does not abort the other items. |
+| BatchUpdateQualityRules | [BatchUpdateQualityRulesRequest](#metaxisdata-v1-BatchUpdateQualityRulesRequest) | [BatchUpdateQualityRulesResponse](#metaxisdata-v1-BatchUpdateQualityRulesResponse) | Update a batch of rules in one call. Each item is applied independently: a failure is reported in its own result and does not abort the other items. An item that names a stale revision fails on its own rather than overwriting a concurrent edit. |
 | UpdateQualityRule | [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Update a rule. Every semantic edit appends a revision, so a historical result always stays explainable by the definition that produced it. |
 | DeleteQualityRule | [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a rule. The rule, its revisions and results are only archived, never physically removed, so history stays readable. |
 | PreviewQualityRule | [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest) | [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse) | Validate and compile a rule without saving it: config validation, filter validation and a `LIMIT 0` probe against the target&#39;s read-only data source. It writes nothing and creates no run. |
