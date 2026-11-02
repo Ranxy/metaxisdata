@@ -1,7 +1,7 @@
 # 数据质量能力：竞品对标与差距分析
 
 > 对象：Metaxisdata 数据质量模块（`/data-quality`，代码 `backend/component/dataquality`、`backend/runner/qualityrunner`、`backend/runner/qualitysuggestionrunner`、`frontend/src/pages|components/data-quality`）
-> 方法：仓库代码 + `docs/data-quality.md` / `.agents/docs/data-quality.md` / `.agents/docs/data-quality-target-centric.md` 逐项核对；竞品以公开文档为主，区分"文档确认"与"宣传口径"；2026-10 调研，网络经 `http://172.21.112.1:7897`。
+> 方法：仓库代码 + `docs/data-quality.md` / `.agents/docs/data-quality.md` 逐项核对；竞品以公开文档为主，区分"文档确认"与"宣传口径"；2026-10 调研，网络经 `http://172.21.112.1:7897`。
 > 结论口径：只讨论**会改变用户选择/验收结果**的差距，不追求功能清单的对称。
 
 ---
@@ -31,7 +31,7 @@
 
 **三个最值得放大的优势：**
 
-1. **目标（表/视图）中心的产品模型 + 契约**：与 Soda contract、Monte Carlo asset 的聚合单位一致，且我们已经把"表级/跨字段/字段"分区、覆盖卡、就地编辑、AI 草案就地审阅做完了（`data-quality-target-centric.md` 已论证）。
+1. **目标（表/视图）中心的产品模型 + 契约**：与 Soda contract、Monte Carlo asset 的聚合单位一致，且我们已经把"表级/跨字段/字段"分区、覆盖卡、就地编辑、AI 草案就地审阅做完了（目标中心化设计已论证，已实现行为见 `.agents/docs/data-quality.md`）。
 2. **元数据与血缘原生，但 DQ 还没用起来**：这是竞品最难复制的一层——我们已经有表级/列级血缘、OpenLineage 摄取、MCP、`mxd` CLI。把"失败检查 → 下游影响面""上游根因""按血缘推荐检查"做出来，比追 ML 异常检测更便宜、更像我们。调研结论也印证：**只有 Databricks/Snowflake/Monte Carlo 把血缘用到了 DQ 上，且没人展示"下游消费者正在读一张失败的表"**。
 3. **自托管 + 单二进制 + 确定性引擎 + LLM 安全边界**：数据不出域是 Monte Carlo/Anomalo 的硬伤；GX/Soda 要一套 Python 基础设施；DataHub 的评估/告警是 Cloud 专属。我们的 LLM 路径不发原始样本行、只产 PENDING 建议（D-30、I-12/I-13），"能用 AI 又不失控"是超前设计。
 
@@ -113,7 +113,7 @@
 
 ### 1.7 既有竞品调研的继承
 
-`.agents/docs/data-quality-target-centric.md` §2 已经做过一轮对标（Soda contract 语言、Monte Carlo 5 类 monitor、GX suite、dbt/Elementary、Anomalo/Bigeye 的异常检测定位），结论是"聚合单位=表/数据资产、契约=检查集合+元数据+发布状态、AI 只产建议"。**那一轮解决的是"入口与信息架构"；本报告解决的是"监控闭环与运营能力"**，两者不重复。
+此前的目标中心化设计（原设计文档已删除，历史见 git）已做过一轮对标（Soda contract 语言、Monte Carlo 5 类 monitor、GX suite、dbt/Elementary、Anomalo/Bigeye 的异常检测定位），结论是"聚合单位=表/数据资产、契约=检查集合+元数据+发布状态、AI 只产建议"。**那一轮解决的是"入口与信息架构"；本报告解决的是"监控闭环与运营能力"**，两者不重复。
 
 ---
 
@@ -325,7 +325,7 @@
 
 > **P1-7 实施记录（2026-11）**：已收敛为两个只读 RPC——`GetQualityTargetImpact`（下游影响面 + 上游根因候选，[D-92](../docs/data-quality.md)）与 `GetQualityConsumptionCoverage`（按消费关系的覆盖率，[D-93](../docs/data-quality.md)）；出口为执行详情、问题详情、概览页、单目标 HTML 报告与两个 MCP 只读工具（`get_quality_impact`/`get_quality_consumption_coverage`）。口径、边界与测试见 [.agents/docs/data-quality.md](../docs/data-quality.md) §3.16、§7 #40/#41；无迁移、无新表、无新权限。
 >
-> **P1-8 实施记录（2026-11）**：已按 [D-91](../docs/data-quality.md) 收敛为 5 个只读工具（`list_quality_targets`/`get_quality_target`/`list_quality_issues`/`list_quality_executions`/`get_quality_execution`），**不含** `explain_quality_execution`——调用 MCP 的本身就是 LLM agent，工具只提供证据；实现与复验见 [dq-mcp-quality-tools-review.md](dq-mcp-quality-tools-review.md)。
+> **P1-8 实施记录（2026-11）**：已按 [D-91](../docs/data-quality.md) 收敛为 5 个只读工具（`list_quality_targets`/`get_quality_target`/`list_quality_issues`/`list_quality_executions`/`get_quality_execution`），**不含** `explain_quality_execution`——调用 MCP 的本身就是 LLM agent，工具只提供证据；实现与复验见 `.agents/docs/data-quality.md`（原对抗性评审已归档，历史见 git）。
 
 ### P2 — 规模化与治理（按客户/场景触发）
 
@@ -431,7 +431,7 @@
 | 规则引擎的"可执行性保证" | 能力矩阵 + 保存期拒绝 + 方言 golden + preview | 把"保存前就知道能不能跑"作为卖点写进文档与 UI；对比 GX/Soda 的"运行时才发现表达式不被引擎支持" |
 | **竞品明确没有的检查语义**（调研确认） | `cel_expression`（**没有任何厂商文档化行级表达式**）、`string_length`、`on_empty`（空数据语义）、不可变 revision、契约指纹快照（fingerprint + added/modified/removed） | 写成对照页：这五项是"确定性判定"的具体证据，不是功能堆料 |
 | 执行/调度模型 | 一目标一批次 + 连接预算 + 周期重试 + 1h 去重 + 风暴抑制 | 竞品是"一检查一任务/一查询"，成本更高、告警更吵；把"批次"和"降噪"从实现细节提升为卖点 |
-| 目标中心 + 契约 | 已实现（`data-quality-target-centric.md`） | 继续把健康度/覆盖率做到目标行上；契约接 YAML/CI 后成为"承诺"而非"标签" |
+| 目标中心 + 契约 | 已实现（见 `.agents/docs/data-quality.md`） | 继续把健康度/覆盖率做到目标行上；契约接 YAML/CI 后成为"承诺"而非"标签" |
 | 血缘原生 | 有表级/列级血缘、OpenLineage 摄取，但 DQ 未使用 | **blast radius**（失败检查 → 下游资产列表）、**根因候选**（同窗口失败的上游检查）、**按血缘推荐检查**（source 表严、派生表对账）、**基于消费的覆盖率**（有下游的表必须有检查）。调研显示**没有厂商向消费者展示"下游正在读一张失败的表"**，这是空位 |
 | OpenLineage | 只摄取 | 以 `DataQualityAssertions` / `DataQualityMetrics` facet 发出执行结果（字段与我们的结果模型几乎 1:1）；反向摄取外部断言（GX/Soda/dbt）进同一问题台账 |
 | 自托管 + 单二进制 + 确定性 | 已实现 | 竞品里只有 Collibra（自托管）、Ataccama（on-prem/edge）、IBM（on-prem）能在客户机房跑，四个纯 SaaS（MC/Anomalo/Bigeye/Metaplane）都不能；**"数据不出域 + 按表不额外收费"要主动写成对比页**，否则客户不知道 |

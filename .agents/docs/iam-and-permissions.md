@@ -1,7 +1,7 @@
 # IAM and Permissions — Reference
 
 > Status: **implemented** (`6fddae6`; `environments.list` added by `51f6d5a`; `connectedApps.*` added with Connected Apps). Maintenance reference for `backend/common/permission/`, `backend/component/iam/`, `backend/api/v1/{acl_interceptor,iam_service,role_service,group_service,connected_app_service}.go`, `backend/store/{predefined_roles,role,policy,group}.go`.
-> Related: `docs/security-posture.md` (workspace-scoped authorization; the `allUsers` invariant), `.agents/docs/backend-review/02-auth-authorization.md` (C4/H4 history).
+> Related: [security-posture.md](../../docs/security-posture.md) (workspace-scoped authorization; the `allUsers` invariant). The C4/H4 history is in git, not in a separate file.
 
 ## What it is
 
