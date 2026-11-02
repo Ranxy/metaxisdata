@@ -7,6 +7,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  GetQualityTargetImpactResponseSchema,
   QualityComparison,
   type QualityExecution,
   QualityExecutionSchema,
@@ -20,6 +21,7 @@ import {
   QualityTargetSchema,
   QualityThresholdsSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import { formatDateTime } from "@/utils/datetime";
 import DataQualityExecutionDetailPage from "./DataQualityExecutionDetailPage.vue";
@@ -27,6 +29,7 @@ import DataQualityExecutionDetailPage from "./DataQualityExecutionDetailPage.vue
 const mocks = vi.hoisted(() => ({
   getQualityExecution: vi.fn(),
   getQualityRule: vi.fn(),
+  getQualityTargetImpact: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
   listAllUsers: vi.fn(),
 }));
@@ -35,6 +38,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityExecution: mocks.getQualityExecution,
   getQualityRule: mocks.getQualityRule,
+  getQualityTargetImpact: mocks.getQualityTargetImpact,
 }));
 
 vi.mock("@/api/setting", async (importOriginal) => ({
@@ -56,6 +60,7 @@ const PERMISSIONS = [
   "metaxisdata.dataQuality.executions.get",
   "metaxisdata.dataQuality.executions.list",
   "metaxisdata.dataQuality.rules.get",
+  "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.explain",
   "metaxisdata.users.list",
 ];
@@ -75,6 +80,7 @@ function executionFixture(
     instance: "instances/inst1",
     target: create(QualityTargetSchema, {
       metaGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
       path: create(QualityTargetPathSchema, {
         instance: "prod",
         database: "shop",
@@ -167,6 +173,9 @@ describe("DataQualityExecutionDetailPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.getQualityExecution.mockResolvedValue(executionFixture());
+    mocks.getQualityTargetImpact.mockResolvedValue(
+      create(GetQualityTargetImpactResponseSchema, {})
+    );
     mocks.getQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: RULE,
@@ -226,6 +235,40 @@ describe("DataQualityExecutionDetailPage", () => {
     expect(wrapper.text()).toContain("SELECT COUNT(*) FROM public.orders");
     // A finished execution does not poll.
     expect(text).not.toContain(i18n.global.t("dataQuality.polling"));
+
+    // A failed verdict explains its lineage; the root-cause window ends at the
+    // run's start time, so the evidence predates the failure.
+    expect(text).toContain(i18n.global.t("dataQuality.impact.title"));
+    expect(mocks.getQualityTargetImpact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetGuid: "inst1;shop;public;orders",
+        metaType: MetaType.TABLE,
+        depth: 2,
+        windowHours: 24,
+        asOf: timestampFromDate(START),
+      })
+    );
+  });
+
+  it("shows the impact card only for a failed or warned verdict", async () => {
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({ outcome: QualityStatus.PASS })
+    );
+    const passed = await mountPage();
+    expect(passed.wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.impact.title")
+    );
+    expect(mocks.getQualityTargetImpact).not.toHaveBeenCalled();
+    passed.wrapper.unmount();
+
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({ outcome: QualityStatus.WARN })
+    );
+    const warned = await mountPage();
+    expect(warned.wrapper.text()).toContain(
+      i18n.global.t("dataQuality.impact.title")
+    );
+    warned.wrapper.unmount();
   });
 
   it("polls a running execution until it reaches a verdict", async () => {

@@ -204,4 +204,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | baseline | 基线 | Data Quality | The previous measurement a row-count-change check compares its current count with. | dataQuality. | — |
 | cron expression | cron 表达式 | Data Quality | A standard five-field expression (minute hour day-of-month month day-of-week) a target's schedule can run on instead of a fixed interval, evaluated in an IANA time zone. | dataQuality. | — |
 | run cadence | 运行频率 | Data Quality | How often one check needs to run inside its target's schedule: follow the target, or at most once an hour, a day or a week. The target's tick is the floor, and a manual run ignores it. | dataQuality. | — |
+| downstream impact | 下游影响 | Data Quality | What a target's data reaches downstream, read from recorded lineage; it is evidence of consumers, never a complete list of them. | dataQuality.impact. | — |
+| root cause candidate | 根因候选 | Data Quality | An upstream target whose failing checks or changed structure may explain a failure; a candidate is evidence to check, not a cause proven. | dataQuality.impact. | — |
+| consumption coverage | 消费覆盖率 | Data Quality | The share of recorded consumer assets — assets another object's lineage reads — that have an enabled check. Its denominator is not the coverage card's, which counts every monitorable object. | dataQuality.overview.consumption | — |
 <!-- END GENERATED GLOSSARY -->

@@ -1686,6 +1686,42 @@
       "scope": [
         "dataQuality."
       ]
+    },
+    {
+      "id": "downstream-impact",
+      "category": "Data Quality",
+      "definition": "What a target's data reaches downstream, read from recorded lineage; it is evidence of consumers, never a complete list of them.",
+      "translations": {
+        "en-US": "downstream impact",
+        "zh-CN": "下游影响"
+      },
+      "scope": [
+        "dataQuality.impact."
+      ]
+    },
+    {
+      "id": "root-cause-candidate",
+      "category": "Data Quality",
+      "definition": "An upstream target whose failing checks or changed structure may explain a failure; a candidate is evidence to check, not a cause proven.",
+      "translations": {
+        "en-US": "root cause candidate",
+        "zh-CN": "根因候选"
+      },
+      "scope": [
+        "dataQuality.impact."
+      ]
+    },
+    {
+      "id": "consumption-coverage",
+      "category": "Data Quality",
+      "definition": "The share of recorded consumer assets — assets another object's lineage reads — that have an enabled check. Its denominator is not the coverage card's, which counts every monitorable object.",
+      "translations": {
+        "en-US": "consumption coverage",
+        "zh-CN": "消费覆盖率"
+      },
+      "scope": [
+        "dataQuality.overview.consumption"
+      ]
     }
   ]
 }

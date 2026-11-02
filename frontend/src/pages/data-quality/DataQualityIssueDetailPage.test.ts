@@ -1,4 +1,5 @@
 import { create } from "@bufbuild/protobuf";
+import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +7,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  GetQualityTargetImpactResponseSchema,
   QualityIssueSchema,
   QualityIssueStatus,
   QualityRuleSchema,
@@ -19,6 +21,7 @@ import DataQualityIssueDetailPage from "./DataQualityIssueDetailPage.vue";
 const mocks = vi.hoisted(() => ({
   getQualityIssue: vi.fn(),
   getQualityRule: vi.fn(),
+  getQualityTargetImpact: vi.fn(),
   getUser: vi.fn(),
 }));
 
@@ -26,6 +29,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityIssue: mocks.getQualityIssue,
   getQualityRule: mocks.getQualityRule,
+  getQualityTargetImpact: mocks.getQualityTargetImpact,
 }));
 
 vi.mock("@/api/user", async (importOriginal) => ({
@@ -42,6 +46,7 @@ const Dummy = { template: "<div />" };
 const PERMISSIONS = [
   "metaxisdata.dataQuality.issues.get",
   "metaxisdata.dataQuality.rules.get",
+  "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.executions.get",
 ];
 
@@ -129,6 +134,9 @@ describe("DataQualityIssueDetailPage", () => {
       issueFixture(ACKNOWLEDGED_BY, {
         guid: "instance_1;shop;public;orders",
       })
+    );
+    mocks.getQualityTargetImpact.mockResolvedValue(
+      create(GetQualityTargetImpactResponseSchema, {})
     );
     mocks.getQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
@@ -268,5 +276,28 @@ describe("DataQualityIssueDetailPage", () => {
 
     expect(wrapper.text()).toContain("Grace Hopper");
     expect(wrapper.text()).not.toContain("Ada Lovelace");
+  });
+
+  it("shows the target's lineage impact with the issue's first-seen instant", async () => {
+    const firstSeen = new Date("2026-10-07T09:30:00Z");
+    const issue = issueFixture(ACKNOWLEDGED_BY, {
+      guid: "instance_1;shop;public;orders",
+    });
+    issue.firstSeenTime = timestampFromDate(firstSeen);
+    mocks.getQualityIssue.mockResolvedValue(issue);
+
+    const { wrapper } = await mountPage(PERMISSIONS);
+
+    expect(wrapper.text()).toContain(i18n.global.t("dataQuality.impact.title"));
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.impact.downstreamEmpty")
+    );
+    expect(mocks.getQualityTargetImpact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetGuid: "instance_1;shop;public;orders",
+        metaType: MetaType.TABLE,
+        asOf: timestampFromDate(firstSeen),
+      })
+    );
   });
 });

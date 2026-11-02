@@ -1,9 +1,11 @@
 import { create } from "@bufbuild/protobuf";
-import { DurationSchema } from "@bufbuild/protobuf/wkt";
+import { DurationSchema, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it, vi } from "vitest";
 import {
   ExportQualityDataChunkSchema,
   ExportQualityReportResponseSchema,
+  GetQualityConsumptionCoverageResponseSchema,
+  GetQualityTargetImpactResponseSchema,
   QualityExecutionState,
   QualityIssueStatus,
   QualitySeverity,
@@ -17,6 +19,8 @@ import {
   exportQualityIssues,
   exportQualityReport,
   exportQualityTargets,
+  getQualityConsumptionCoverage,
+  getQualityTargetImpact,
   listQualityTargets,
   updateQualityTargetSchedule,
 } from "./data-quality";
@@ -26,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   exportQualityIssues: vi.fn(),
   exportQualityTargets: vi.fn(),
   exportQualityReport: vi.fn(),
+  getQualityConsumptionCoverage: vi.fn(),
+  getQualityTargetImpact: vi.fn(),
   listQualityTargets: vi.fn(),
   updateQualityTargetSchedule: vi.fn(),
 }));
@@ -36,6 +42,8 @@ vi.mock("./client", () => ({
     exportQualityIssues: mocks.exportQualityIssues,
     exportQualityTargets: mocks.exportQualityTargets,
     exportQualityReport: mocks.exportQualityReport,
+    getQualityConsumptionCoverage: mocks.getQualityConsumptionCoverage,
+    getQualityTargetImpact: mocks.getQualityTargetImpact,
     listQualityTargets: mocks.listQualityTargets,
     updateQualityTargetSchedule: mocks.updateQualityTargetSchedule,
   },
@@ -280,5 +288,98 @@ describe("target schedule wrapper", () => {
       timezone: "Asia/Shanghai",
     });
     expect(request.scheduleInterval).toBeUndefined();
+  });
+});
+
+describe("lineage impact wrapper", () => {
+  it("names the target and asks for two levels over 24 hours", async () => {
+    mocks.getQualityTargetImpact.mockResolvedValue(
+      create(GetQualityTargetImpactResponseSchema, {})
+    );
+
+    await getQualityTargetImpact({
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
+    });
+
+    const request = requestOf(mocks.getQualityTargetImpact);
+    expect(request).toMatchObject({
+      parent: "workspaces/-",
+      depth: 2,
+      windowHours: 24,
+    });
+    expect(request.target).toMatchObject({
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.TABLE,
+    });
+    // An absent reference instant is omitted, not sent as the epoch.
+    expect(request.asOf).toBeUndefined();
+  });
+
+  it("passes the reference instant and any explicit bounds", async () => {
+    const asOf = timestampFromDate(new Date("2026-10-07T09:30:00Z"));
+    const controller = new AbortController();
+    mocks.getQualityTargetImpact.mockResolvedValue(
+      create(GetQualityTargetImpactResponseSchema, {})
+    );
+
+    await getQualityTargetImpact({
+      targetGuid: "inst1;shop;public;orders",
+      metaType: MetaType.VIEW,
+      depth: 3,
+      windowHours: 6,
+      asOf,
+      signal: controller.signal,
+    });
+
+    expect(requestOf(mocks.getQualityTargetImpact)).toMatchObject({
+      depth: 3,
+      windowHours: 6,
+      asOf,
+    });
+    expect(mocks.getQualityTargetImpact).toHaveBeenCalledWith(
+      expect.anything(),
+      { signal: controller.signal }
+    );
+  });
+});
+
+describe("consumption coverage wrapper", () => {
+  it("uses the server default page size when none is given", async () => {
+    mocks.getQualityConsumptionCoverage.mockResolvedValue(
+      create(GetQualityConsumptionCoverageResponseSchema, {})
+    );
+
+    await getQualityConsumptionCoverage();
+
+    expect(requestOf(mocks.getQualityConsumptionCoverage)).toMatchObject({
+      parent: "workspaces/-",
+      pageSize: 0,
+    });
+  });
+
+  it("asks for the requested number of gaps and passes the signal", async () => {
+    const controller = new AbortController();
+    mocks.getQualityConsumptionCoverage.mockResolvedValue(
+      create(GetQualityConsumptionCoverageResponseSchema, {
+        consumedAssetCount: 40,
+        monitoredAssetCount: 12,
+        gapCount: 28,
+      })
+    );
+
+    const response = await getQualityConsumptionCoverage({
+      pageSize: 100,
+      signal: controller.signal,
+    });
+
+    expect(response.gapCount).toBe(28);
+    expect(requestOf(mocks.getQualityConsumptionCoverage)).toMatchObject({
+      pageSize: 100,
+    });
+    expect(mocks.getQualityConsumptionCoverage).toHaveBeenCalledWith(
+      expect.anything(),
+      { signal: controller.signal }
+    );
   });
 });

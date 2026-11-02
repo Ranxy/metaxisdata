@@ -21,6 +21,8 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
+  GetQualityConsumptionCoverageRequestSchema,
+  type GetQualityConsumptionCoverageResponse,
   GetQualityContractRequestSchema,
   GetQualityContractRevisionRequestSchema,
   type GetQualityContractRevisionResponse,
@@ -35,6 +37,8 @@ import {
   GetQualitySuggestionJobTargetDebugRequestSchema,
   type GetQualitySuggestionJobTargetDebugResponse,
   GetQualitySuggestionRequestSchema,
+  GetQualityTargetImpactRequestSchema,
+  type GetQualityTargetImpactResponse,
   GetQualityTargetRequestSchema,
   type GetQualityTargetResponse,
   GetQualityTargetScheduleRequestSchema,
@@ -235,6 +239,38 @@ export async function getQualityTarget(options: {
     metaType: options.metaType ?? MetaType.UNSPECIFIED,
   });
   return await dataQualityClient.getQualityTarget(request, {
+    signal: options.signal,
+  });
+}
+
+/**
+ * One target's recorded lineage impact: the assets its data reaches downstream
+ * and the upstream targets whose checks failed or whose structure changed in
+ * the window before `asOf`. Both lists are bounded walks over the recorded
+ * lineage, so an empty list means no recorded edge, not "no consumers".
+ */
+export async function getQualityTargetImpact(options: {
+  targetGuid: string;
+  metaType: MetaType;
+  /** How many levels downstream to walk, 1-3; zero means two. */
+  depth?: number;
+  /** The instant the root-cause window ends; unset means now. */
+  asOf?: Timestamp;
+  /** How far back root-cause evidence is read, in hours 1-168; zero means 24. */
+  windowHours?: number;
+  signal?: AbortSignal;
+}): Promise<GetQualityTargetImpactResponse> {
+  const request = create(GetQualityTargetImpactRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    target: create(QualityTargetKeySchema, {
+      targetGuid: options.targetGuid,
+      metaType: options.metaType,
+    }),
+    depth: options.depth ?? 2,
+    asOf: options.asOf,
+    windowHours: options.windowHours ?? 24,
+  });
+  return await dataQualityClient.getQualityTargetImpact(request, {
     signal: options.signal,
   });
 }
@@ -782,6 +818,28 @@ export async function getQualityOverview(
     trendDays: options.trendDays ?? 0,
   });
   return await dataQualityClient.getQualityOverview(request, {
+    signal: options.signal,
+  });
+}
+
+/**
+ * The share of recorded consumer assets — assets another object's lineage reads
+ * — that have an enabled check, plus the unmonitored ones. It is a separate read
+ * because answering it costs one grouped scan of the lineage table, which the
+ * overview must not pay on every load.
+ */
+export async function getQualityConsumptionCoverage(
+  options: {
+    /** How many gaps to return, 1-100; zero means 20. */
+    pageSize?: number;
+    signal?: AbortSignal;
+  } = {}
+): Promise<GetQualityConsumptionCoverageResponse> {
+  const request = create(GetQualityConsumptionCoverageRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 0,
+  });
+  return await dataQualityClient.getQualityConsumptionCoverage(request, {
     signal: options.signal,
   });
 }

@@ -179,6 +179,15 @@
           </CardContent>
         </Card>
 
+        <!-- An open issue is a live failure, so its lineage is always worth
+             showing; the root-cause window ends where this issue was first
+             seen, and an issue with no first-seen instant leaves it unset. -->
+        <QualityImpactCard
+          :target-guid="issue.target?.metaGuid ?? ''"
+          :meta-type="issue.target?.metaType ?? MetaType.UNSPECIFIED"
+          :as-of="issue.firstSeenTime"
+        />
+
         <Card v-if="issue.status === QualityIssueStatus.RESOLVED">
           <CardHeader>
             <CardTitle class="text-base">
@@ -404,6 +413,7 @@ import {
 } from "@/api/data-quality";
 import { getUser } from "@/api/user";
 import PageState from "@/components/common/PageState.vue";
+import QualityImpactCard from "@/components/data-quality/QualityImpactCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -440,6 +450,7 @@ import {
   QualityIssueStatus,
   QualityResolutionReason,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   formatTargetPath,
   qualityIssueStatusKey,
