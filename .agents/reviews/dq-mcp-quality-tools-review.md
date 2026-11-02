@@ -255,3 +255,95 @@ databases.list/databases.read）是同一模式；`workspaceMember` 基线包含
   未进一步核对。
 - 既有的 lint 告警 173 条（全部 `revive/multiline-if-init`）与 `mcp-server.md` 的旧行号指针属
   pre-existing，本次只要求修正 N6 中本 diff 触及的两处。
+
+## 复验（post-fix verification）
+
+**复验者与语境**：一位独立的 post-fix verifier，在全新上下文中只读执行；未参与 P1-8 的实现、
+文档撰写或修复，不复用修复报告的任何结论。逐条把 review 的发现对回树上的代码/文档，并跑命令
+证明行为确实改变。**唯一写入是本文件本节**（第一轮追加、本轮就地更新）；未改产品代码、
+测试、文档或生成物，未提交。
+
+**复验对象**：分支 `feat/dq-mcp-quality-tools`，base `main@35d0d13`。历史：
+`008bf67` 实现 → `3708529` Lead 文档 → `cc8ed52` guide 澄清 → `ecb1e40` review 快照 →
+`5446b41` 代码/测试/guide 修复 → `6632789` Lead 文档修复。第一轮复验固定在 **`6632789`**
+（`66327890eaa386d7e4f45c6583dbca6ebff80d65`）；N8 修复后第二轮固定在 **`8aa0cb8`**
+（`8aa0cb8b3c1acac460eb29ff34c60b2b450211c9`，新增 `61a57da` guide、`dbc6576`
+docs/mcp.md/D-91/§7 #39/mcp-server.md、`8aa0cb8` gap analysis）；最后一轮（原残留 5 的回归测试）
+固定在 **最终 HEAD `6cebc08`**（`6cebc0861823bde11e7591cecbb8607382b244c2`，仅新增
+`backend/mcp/tool_test.go` +38 行的 `TestGetQualityExecutionPinsZeroValueOmission`）。
+`git diff --name-only 8aa0cb8..HEAD` 只有 `backend/mcp/tool_test.go`，产品代码与文档未再变。
+各轮开始时 `git status --short` 都只有本文件的未提交复验节（或为空），未提交任何东西。
+
+**验证方法**：除逐行读代码/文档外，为证明修复改变的是行为而不只是文字或不会失败的测试，
+把**当前测试文件**放进 `git archive 5446b41^`（pre-fix 快照）的 `/tmp` 干净副本里跑新回归
+用例——四个 S1/S2/N4 用例全部 **FAIL**（输出见下表）；N8 则用 `git archive HEAD` 的副本加一个
+一次性 scratch 测试做端到端探测（不进入分支）。N8 修复后，又在 `8aa0cb8` 的
+`git archive HEAD` 副本上重跑同一探测（`ObservedValue=0` 的 PASS/FAIL、ERROR/SKIPPED/
+NOT_EVALUATED、PENDING 各一条，加列表投影与 all-paused summary 对照），确认文档的新读法
+正是调用方实际见到的形状（结果见命令表）。最后对 `6cebc08` 新增的回归测试做变异验证：在
+`/tmp` 副本把 `protoJSON` 改成 `protojson.MarshalOptions{EmitUnpopulated: true}` 后复跑该测试，
+以证明它在 marshal 行为变化时会真的失败，而不是空转。
+
+### 发现逐条判定
+
+| # | 判定 | 证据（file:line / 命令） |
+| --- | --- | --- |
+| **S1** | **CLOSED** | `observedValue` 字段改为 `*float64 \`json:"observedValue,omitempty"\``（`backend/mcp/tool.go:1301-1304`），只在 `qualityStatusJudged(outcome)` 为真时赋值（`backend/mcp/tool.go:1218-1231`、`:1421-1424`）；该判定与 runner 真正留空的规则逐值一致：`backend/runner/qualityrunner/execution_result.go:172`、`:205-220`（PASS/WARN/FAIL → `&observed`；ERROR/SKIPPED/NOT_EVALUATED/UNSPECIFIED → nil），并有既有单测 `backend/runner/qualityrunner/qualityrunner_test.go:598-603`；API 把 nil 压成非 optional 的 0（`backend/api/v1/data_quality_convert.go:413`、`:526-533`）。回归用例 `backend/mcp/tool_test.go:1380-1421`（注释起于 `:1377`）：ERROR（且带 `observedKind=COUNT`，即「NULL 观测仍保留 kind」）与 NOT_EVALUATED 行断言无 `observedValue`，PASS+0 行断言存在且为 0。pre-fix 副本跑同一测试 **FAIL**，输出 `map[... "observedValue":0 ... "outcome":"QUALITY_STATUS_ERROR"]`——修复前确实报 0。 |
+| **S2** | **CLOSED** | `qualityTargetAllPaused = ruleCount>0 && enabledRuleCount==0`（`backend/mcp/tool.go:1211-1213`），用于 `get_quality_target`（`:1163`、`:1195`）与目录行（`:1558`、`:1566`）；暂停时在 `proto.Merge` 出来的**副本**上清 `worstStatus` 再序列化（`:1167-1175`），目录行暂停时不赋 `WorstStatus`（`:1582-1586`）。`monitored` 仍是 `ruleCount>0`（`:1193`），即「至少有一条非归档检查」；有启用检查时仍输出 verdict（`tool_test.go:1034-1110` 断言 `allPaused:false` + `summary.worstStatus=FAIL`；目录行 `:1332-1350` 同理）。all-paused 用例 `tool_test.go:1425-1462`、`:1466-1499`；pre-fix 跑这两个用例 **FAIL**（`allPaused` 为 nil）。副本安全性单独核对：`proto.Merge` 到空消息是深拷贝，改 clone 的 `worstStatus`/嵌套 `target` 不改变源消息（指针不同、源值不变）。 |
+| **N1** | **CLOSED** | `backend/mcp/guide.md:143-149` 与 `docs/mcp.md:139-142` 均写明 `target.path` 是规则保存时的路径**快照**、仅作展示，目标已无存活检查或补全读失败时省略，用 `target.guid`+`target.metaType` 定位；与 proto 注释一致（`proto/v1/v1/data_quality_service.proto:890-892`）。代码：`qualityTargetRef.Path` 为 `omitempty`（`backend/mcp/tool.go:824-828`），补全失败直接返回空 map（`:1032-1060`），path 为空即不出现。 |
+| **N2** | **CLOSED** | `.agents/docs/data-quality.md:768`（§7 #39）已删去「不要用字段是否存在判断语义」，并在 `dbc6576` 后把规则写到与代码一致：「字段缺席表示该字段没有值（不要读成 false/0/通过）；投影行里的计数与布尔总会出现（0/false 是合法值），整条 proto 的 protoJSON 则按 proto3 规则省略零值（`get_quality_execution.observedValue` 为 0 时缺席、需与 outcome 一起读，`get_quality_target.summary` 的零计数同样缺席）」；D-91（`:127`）同义。投影行与 raw protoJSON 两种形状分别验证过（后者见 N8 探测）。 |
+| **N3** | **CLOSED** | `.agents/docs/data-quality.md:127`（D-91）逐个点名：`rule_history` 由 `list_quality_executions` 的 `rule` 过滤回答；`target_columns` 由 `get_metadata` 回答，且视图/外部表的列也在各自 `StoredMetadata` 里。核对：`rule` 过滤在 proto（`proto/v1/v1/data_quality_service.proto:1912-1914`）与工具透传（`backend/mcp/tool.go:1352-1356` 一带）存在；`get_metadata` 返回整个 `StoredMetadata`（`backend/mcp/tool.go:556-579`），View/ExternalTable 的 columns 分别在 `proto/v1/v1/database_service.proto:1174`、`:999` 附近。 |
+| **N4** | **CLOSED** | 两个列表工具在解析后调用 `requireQualityListTarget`：`backend/mcp/tool.go:899-910`（拒绝非四类可监控类型，`invalid_argument`+可执行 hint），调用点 `:979-981`（issues）、`:1361-1363`（executions）。裸 `guid` 不触发解析、`resolveObject` 对 guid 引用原样返回（`backend/mcp/ref.go:50-53`），故 `MetaType==UNSPECIFIED` 放行，与文档一致（`backend/mcp/guide.md:171-174`、`docs/mcp.md:142-145`）。用例 `tool_test.go:1504-1550`（注释起于 `:1501`）：schema/column（本用 column）按名字解析被拒、两个工具都覆盖、裸 guid 仍透传；pre-fix 副本 **FAIL**（失败信息 `ListQualityIssues/ListQualityExecutions was called`，即修复前确实返回空页）。 |
+| **N5** | **CLOSED** | 五处缺口逐一有可失败的用例：① `has_open_issue=false` 不过滤 → `tool_test.go:1554-1570`；② 两个列表工具的 name-path 解析 → `:1574-1619`；③ orphaned 200+`orphanedReason` → `:1623-1650`，NotFound 映射 → `:1654-1668`；④ `severity`/`outcome`/`trigger` 枚举错误 → `:1351-1375` 表驱动（断言错误消息列出全部合法值）；⑤ S1/S2 回归 → `:1380`、`:1425`、`:1466`。定向运行全 **PASS**（见命令表），且 S1/S2/N4 用例在 pre-fix 树上确认 **FAIL**（非空转）。 |
+| **N6** | **CLOSED（按 N6 所列范围）** | `.agents/docs/mcp-server.md:76` 的 `filterGraphByColumn`、`:89` 的 `toolDefinitions`、`:109` 的 `Description` 字段与 `TestEveryToolMatchesItsRPC` 均为符号名；符号确实存在：`backend/mcp/tool.go:38`（`toolDefinitions`）、`:1831`（`filterGraphByColumn`）、`backend/mcp/tool_guard_test.go:42`（`TestEveryToolMatchesItsRPC`）。N6 范围外的同文档 `:42`、`:49`、`:201` 行号指针随后已由 `dbc6576` 换成行为描述/符号名（`maxExpandedTargets`，存在于 `backend/mcp/tool.go:1735`），本轮 grep 已无 `tool.go:NNN`；该残留关闭。 |
+| **N7** | **CLOSED** | `.agents/docs/data-quality.md:127`（D-91）已记录：补全读的是 `rules.list` 的只读目标聚合，与既有 `get_quality_signal`/对象解析同一模式，并写明「若将来收紧自定义角色可在 Run 内补一次 `CheckPermission` 或不补全」。行为不变：`dispatch` 只校验工具声明的权限（`backend/mcp/server.go:366-377`），enrichment 仍是同请求内的进程内读（`backend/mcp/tool.go:1032-1060`）。 |
+| **N8（复验新报）** | **CLOSED（原 OPEN，已修复）** | 修复前写进文档的 `get_quality_execution` 说法与代码不符：`guide.md:159-161`、`docs/mcp.md:132-134`、D-91（`data-quality.md:127`）都称「整条 proto 的非 optional `observedValue` 在无观测时为 0，需与 outcome 一起读」。实际该工具整个返回 `protoJSON(response.Msg)`（`backend/mcp/tool.go:1462`），而 `protoJSON` 用默认 `protojson.MarshalOptions{}`（`:254-259`，未开 `EmitUnpopulated`），proto3 非 optional 的 0 会被**整个省略**：`observed_value` 在 `proto/v1/v1/data_quality_service.proto:1305` 是 `double`（非 optional）。端到端探测（HEAD 副本 + scratch 测试）：PASS 且 `ObservedValue=0` 的 `get_quality_execution` 返回 `map[attempt:1 name:... outcome:QUALITY_STATUS_PASS]`——既没有「无观测时的 0」，真实观测 0 也看不见。同一段「计数与布尔字段总会出现」对两个 raw protoJSON 输出也不成立：`get_quality_target.summary` 在 `enabledRuleCount=0` 时字段缺席（修复轮自己的测试 `tool_test.go:1460-1461` 就这么断言），`get_quality_execution` 的 `failedRows:0`/`sampled:false`/`truncated:false` 同样缺席（同一次探测）。`guide.md` 是 `go:embed` 的模型可见 prompt（`backend/mcp/guide.go:17-19`），这属于模型会照着执行的错误规则；代码行为是 pre-existing，但错误文档是本轮新引入。当时建议二选一（修复采纳前者）：改正措辞（「0 值字段被省略，judged 0 同样看不到，依据 outcome 判断是否观测」）并把「计数/布尔总会出现」限定为投影行；或给 `get_quality_execution` 加显式观测值/判定字段（会改变「整条 proto」形状，需另行评审）。**修复与复验（最终 HEAD `8aa0cb8`）**：`61a57da` 改 guide、`dbc6576` 改 docs/mcp.md/D-91/§7 #39/mcp-server.md；现文（`backend/mcp/guide.md:158-169`、 `docs/mcp.md:126-138`、`data-quality.md:127`、`:768`）明确「整条 proto 的 protoJSON 省略零值： 缺席 `observedValue` 在 PASS/WARN/FAIL 时按 0 读、在 ERROR/SKIPPED/NOT_EVALUATED 时表示无观测， PENDING/RUNNING 还没有 outcome；`failedRows`/`sampled` 等零值同样省略」，并把「计数/布尔总会出现」 限定到投影行。grep `non-optional|无观测时为 0|计数与布尔字段总会出现` 在本轮四份文档中已无命中。 HEAD 端到端探测（副本 + scratch 测试，固定 `ObservedValue=0`）：PASS/FAIL、ERROR/SKIPPED/ NOT_EVALUATED 的 `get_quality_execution` 输出都无 `observedValue`，`failedRows`/`sampled`/ `truncated` 也缺席；PENDING 行连 `outcome` 也没有；列表投影对照 PASS+0 行有 `observedValue:0`、 ERROR 行没有；all-paused summary 无 `enabledRuleCount`/`worstStatus`。与文档读法逐条一致。 |
+
+**计数：S1、S2、N1–N8 共 10 项全部 CLOSED**（N8 为复验新报，已由 `61a57da`/`dbc6576`
+修复、在 `8aa0cb8` 复验；最终 HEAD `6cebc08` 只是补上其回归测试，行为与文档均未再变）。
+
+### 已验证的命令与结果
+
+| 命令 / 核对 | 结果 |
+| --- | --- |
+| `gofmt -l backend/` | 空，exit 0（`6632789`、`8aa0cb8`、`6cebc08` 均如此） |
+| `golangci-lint run --allow-parallel-runners` | **exit 1**：默认 `max-same-issues: 3` 截断后只显示 3 条 `revive/multiline-if-init`（`backend/migrator/migrator.go:228/277/399`），均不在 diff 中 |
+| `golangci-lint run --allow-parallel-runners --max-same-issues=0 --max-issues-per-linter=0` | **exit 1，173 条**，全部同一条 `revive/multiline-if-init`；与 `git diff --name-only 35d0d13..HEAD` 求交集为**空** → 本 diff 新增 0 条。本地 v2.14.0，CI pin v2.13.1 |
+| `go test -count=1 ./backend/mcp/...` | **PASS**：首次 `6632789` 为 0.090s；`8aa0cb8` 复跑为 `ok ... 0.099s`（guide 是 `go:embed`，复跑覆盖新文本）；最终 `6cebc08` 复跑为 `ok ... 0.078s`（含新增回归测试与全部新用例、守卫/契约测试） |
+| 定向：`go test -count=1 -run 'TestListQualityExecutionsOmitsAbsentObservations\|TestGetQualityTargetReportsAnAllPausedTarget\|TestListQualityTargetsMarksAnAllPausedRow\|TestQualityListingRefusesAnUnwatchableObject\|TestQualityFiltersListAcceptedEnumValues\|TestListQualityTargetsTreatsFalseHasOpenIssueAsNoFilter\|TestQualityListingPassesAResolvedNamePathTargetGUID\|TestGetQualityTargetCarriesAnOrphanedReason\|TestGetQualityTargetMapsANotFound\|TestEveryToolMatchesItsRPC\|TestToolSchemasMatchTheirArgumentStructs' ./backend/mcp/` | 全部 **PASS** |
+| `go test -count=1 ./...` | **PASS**，exit 0（67 个包 `ok`，无 `FAIL`）；`8aa0cb8` 复跑同结果 |
+| `make build` | exit 0（`./build/metaxisdata`，`version.GitCommit=8aa0cb8`；产物被 gitignore） |
+| `go test -count=1 -tags=integration -run '^TestMCPAuthorizationAndToolsRealServerIntegration$' ./backend/test/integration/runner` | **PASS**：首次 `6632789` 为 22.917s；本次 `8aa0cb8` 复跑为 `ok ... 24.332s`；真实 Docker（PostgreSQL testcontainer），用例内无 `t.Skip`，断言 15 个工具（`mcp_service_test.go:199`） |
+| **原残留 5 回归测试（HEAD `6cebc08`）**：`go test -count=1 -run '^TestGetQualityExecutionPinsZeroValueOmission$' ./backend/mcp/`；再在 `/tmp` 副本把 `protoJSON` 改为 `EmitUnpopulated: true` 复跑 | HEAD 上 **PASS**（0.027s）；变异后 **FAIL**，payload 出现 `observedValue:0` 等零值字段 → 该测试确实钉住默认 marshal 的零值省略；测试内还断言 `name` 与 `attempt:1` 仍存在，证明省略断言不是空转 |
+| **pre-fix 回归探测**：`git archive 5446b41^\|tar -x -C /tmp/prefix-5446`，放入当前 `tool_test.go`，跑 S1/S2/N4 四个新用例 | 四个全 **FAIL**：S1 输出带 `"observedValue":0`（outcome=ERROR）；S2 `allPaused` 为 nil；N4 修复前 `ListQualityIssues/ListQualityExecutions was called`（返回空页） |
+| **N8 探测（修复前，`6632789`）**：`git archive` 到 `/tmp/head-copy`，加一次性 scratch 测试调用 `get_quality_execution`（PASS + `ObservedValue=0`） | 返回 `map[attempt:1 name:... outcome:QUALITY_STATUS_PASS]`，**无** `observedValue`；`failedRows`/`sampled`/`truncated` 的 0 值字段同样缺席 |
+| **N8 复验探测（HEAD `8aa0cb8`）**：`git archive HEAD` 到 `/tmp/head-copy-n8`，同一 scratch 测试覆盖 `ObservedValue=0` 的 PASS、FAIL、ERROR、SKIPPED、NOT_EVALUATED、PENDING，加列表投影与 all-paused summary | **与文档新读法一致**：PASS/FAIL、ERROR/SKIPPED/NOT_EVALUATED 的 `get_quality_execution` 都无 `observedValue`（靠 `outcome` 区分“测到 0”与“无观测”），PENDING 无 `outcome`；`failedRows`/`sampled`/`truncated` 缺席；列表投影 PASS+0 有 `observedValue:0`、ERROR 无；all-paused summary 无 `enabledRuleCount`/`worstStatus` |
+| `git diff --stat 35d0d13..HEAD` | 14 文件、+2169/−37（HEAD `6cebc08` 快照，不含本节未提交编辑）；`git diff --name-only 8aa0cb8..HEAD` 只有 `backend/mcp/tool_test.go`（测试-only，产品代码/文档未变），`6632789..8aa0cb8` 为 5 个文档/记录文件 → 上一轮 lint 结论继续成立；`git diff --name-only 35d0d13..HEAD` 中**无** `proto/`、`backend/migrator/`、`frontend/`、`go.mod`/`go.sum` |
+| `git status --short` | 本轮开始时仅 ` M .agents/reviews/dq-mcp-quality-tools-review.md`（上一轮未提交的复验节）；只编辑该节，最终仍仅此一项；未提交（HEAD `6cebc08`） |
+| `git rev-parse HEAD` / 分支 | **`6cebc0861823bde11e7591cecbb8607382b244c2`** / `feat/dq-mcp-quality-tools`（前两轮为 `6632789`、`8aa0cb8`） |
+
+### “刻意接受”项在修复后是否仍成立
+
+- **`get_quality_execution` 的整条 proto caveat**：`61a57da`/`dbc6576` 已把「整条 proto 的 protoJSON 省略零值、缺席 `observedValue` 必须与 `outcome` 合读」写进 guide/docs/D-91/#39；最终 HEAD 探测与实现一致 → N8 CLOSED。
+- **工具数 15**：`toolDefinitions` 15 条、`wantTools` 15 条（`tool_guard_test.go:90-106`）、`tool_schema_test` 15 个 case、集成断言 15；`mcp-server.md:9/30/89/207` 均为 15。全仓未再发现 MCP 文档里「10 个/9 个/14 个」的旧计数。
+- **`wantTools`/`readPermissions`/schema 对账**：`readPermissions` 8 条（`tool_guard_test.go:19-28`）且每条都有工具使用；`TestEveryToolMatchesItsRPC`、`TestToolSchemasMatchTheirArgumentStructs` 均 PASS。修复轮未增删工具，契约未漂移。
+- **enrichment 静默失败、≤200 key 上限、`has_open_issue=false`=不过滤、bare guid 列表语义、不可监控类型的未监控形状、错误映射**：相应代码路径本轮未改，复核仍成立；N4 新增的 `invalid_argument` 在调用 RPC 前返回，既有 `toolErrorFromRPC` 路径未被改写。
+- **五个工具、无 LLM explain**：未变，D-91/docs/guide/mcp-server 一致。
+- **新增字段没有「永远出现但无意义」**：`allPaused` 两种输出里都有（投影行/工作台顶层），且 false 有真实含义（并非全部暂停）。
+
+### 残留风险与未决项
+
+1. **原残留 5（`get_quality_execution` 零值省略的回归测试）已关闭**：`6cebc08` 新增
+   `TestGetQualityExecutionPinsZeroValueOmission`（`backend/mcp/tool_test.go:1279-1311`）。它构造
+   COMPLETED/PASS 且 `ObservedValue=0`、`FailedRows=0`、`TotalRows=0`、`Sampled=false`、
+   `SampleRows=0`、`Truncated=false` 的整条执行，断言输出不含 `observedValue`/`failedRows`/
+   `sampled`/`truncated`，同时 `name` 与 `attempt: 1` 仍在（防止空转）。变异验证：把 `protoJSON` 换成
+   `EmitUnpopulated: true` 后该测试 **FAIL**（payload 出现 `observedValue:0` 等），证明它确实钉住
+   默认 marshal 的文档契约；在 HEAD 上 PASS。
+2. **原残留 2（`mcp-server.md` 行号指针）已关闭**：`:42`、`:49`、`:201` 的 `tool.go:217`/`tool.go:688` 已由 `dbc6576` 换成「原样透传 next-page token」与符号 `maxExpandedTargets`（`backend/mcp/tool.go:1735`），本轮 grep 该文档已无 `tool.go:[0-9]`/`tool_guard_test.go:[0-9]`。文档中仍有指 `server.go`/OAuth 文件的既有行号（如 `server.go:276-279`），不属 N8 范围，仍有漂移风险。
+3. **原残留 3（S2 × `worst_status` 交互）已关闭**：`backend/mcp/guide.md:129-133`、`docs/mcp.md:130-132`、D-91（`data-quality.md:127`）、§7 #39（`:768`）都写明过滤按含暂停历史的聚合、可能返回 `allPaused=true` 且无 `worstStatus` 的行。
+4. **原残留 4（gap analysis）已关闭**：`8aa0cb8` 在 `.agents/reviews/data-quality-competitive-gap-analysis.md:325` 加了日期化的 P1-8 实施记录，指向 D-91 与本 review，写明 5 个只读工具、无 `explain_quality_execution`；原表行按原始提案保留。
+5. **未跑**：全量 `make test-integration`（全包 + `-race`）、前端门禁（本 diff 不动前端）、MSSQL/StarRocks/Doris 场景与浏览器/客户端级验证；`make build` 只验证编译。
+6. pre-fix/N8 探测都在 `/tmp` 的 `git archive` 副本中运行（`/tmp/prefix-5446`、`/tmp/head-copy`、`/tmp/head-copy-n8`），未在分支工作树留下改动；本轮唯一的树内写入仍是本节。
+
+**交接结论（最终 HEAD `6cebc08`）**：S1、S2、N1–N8 共 10 项**全部 CLOSED**；N8 的文档修正在 `8aa0cb8` 复验，原残留 2/3/4 关闭，原残留 5 由 `6cebc08` 的回归测试关闭并通过变异验证。门禁（gofmt/单测/全量测试/build/Docker 集成）在 `8aa0cb8` 复跑全绿，`6cebc08` 仅新增测试、`go test ./backend/mcp/...` 复跑仍 PASS；`8aa0cb8..HEAD` 只有 `backend/mcp/tool_test.go`，产品代码/文档未变，lint 结论（173 条 pre-existing、本 diff 新增 0）继续成立；分支 diff 无 proto/迁移/前端/依赖。**无未决发现，可交接。**
