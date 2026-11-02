@@ -896,6 +896,19 @@ func objectRefIsZero(ref objectRef) bool {
 	return ref == objectRef{}
 }
 
+// requireQualityListTarget refuses a listing object that no check can watch:
+// issues and executions belong to check targets, and an empty page would read as
+// "this object has none". A bare guid is allowed, because it leaves the type
+// unknown and the RPC filters by GUID only.
+func requireQualityListTarget(object resolvedObject, subject string) error {
+	if object.MetaType == v1pb.MetaType_UNSPECIFIED || qualitySignalMetaTypes[object.MetaType] {
+		return nil
+	}
+	return newToolError(codeInvalidArgument,
+		subject+" belong to quality check targets: a table, external table, view or materialized view",
+		"address one of those, or pass the target's guid")
+}
+
 // --- list_quality_issues ---
 
 type listQualityIssuesArgs struct {
@@ -961,6 +974,9 @@ func (s *Server) runListQualityIssues(ctx context.Context, _ *store.UserMessage,
 	if !objectRefIsZero(args.Object) {
 		object, err := s.resolveObject(ctx, args.Object, v1pb.MetaType_UNSPECIFIED)
 		if err != nil {
+			return nil, err
+		}
+		if err := requireQualityListTarget(object, "quality issues"); err != nil {
 			return nil, err
 		}
 		request.TargetGuid = object.GUID
@@ -1081,7 +1097,11 @@ type qualityTargetInfo struct {
 // and the unresolved problems. Rule history and the target's column list stay out:
 // the execution tools and get_metadata answer those.
 type getQualityTargetResult struct {
-	Monitored      bool              `json:"monitored"`
+	Monitored bool `json:"monitored"`
+	// AllPaused says every check on the target is paused: the checks exist but
+	// nothing is being verified, so the summary's verdict is history rather than
+	// a current health claim.
+	AllPaused      bool              `json:"allPaused"`
 	Target         qualityTargetInfo `json:"target"`
 	Summary        json.RawMessage   `json:"summary,omitempty"`
 	Rules          []qualityRuleRow  `json:"rules"`
@@ -1140,9 +1160,19 @@ func (s *Server) runGetQualityTarget(ctx context.Context, _ *store.UserMessage, 
 		return nil, toolErrorFromRPC(err)
 	}
 	summary := response.Msg.GetSummary()
+	allPaused := qualityTargetAllPaused(summary)
 	var encodedSummary, targetPath json.RawMessage
 	if summary != nil {
-		encodedSummary, err = protoJSON(summary)
+		// A paused check's last verdict is history, not a current claim: clear it
+		// from a copy of the summary, the way get_quality_signal omits it.
+		rendered := summary
+		if allPaused {
+			cloned := &v1pb.QualityTargetSummary{}
+			proto.Merge(cloned, summary)
+			cloned.WorstStatus = v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED
+			rendered = cloned
+		}
+		encodedSummary, err = protoJSON(rendered)
 		if err != nil {
 			return nil, err
 		}
@@ -1162,6 +1192,7 @@ func (s *Server) runGetQualityTarget(ctx context.Context, _ *store.UserMessage, 
 	})
 	return getQualityTargetResult{
 		Monitored: summary.GetRuleCount() > 0,
+		AllPaused: allPaused,
 		Target: qualityTargetInfo{
 			GUID:     object.GUID,
 			MetaType: object.MetaType.String(),
@@ -1172,6 +1203,32 @@ func (s *Server) runGetQualityTarget(ctx context.Context, _ *store.UserMessage, 
 		OpenIssues:     openIssues,
 		OrphanedReason: response.Msg.GetOrphanedReason(),
 	}, nil
+}
+
+// qualityTargetAllPaused reports a target whose checks all exist but are paused:
+// the target is monitored in the sense that checks are defined, and nothing is
+// being verified.
+func qualityTargetAllPaused(summary *v1pb.QualityTargetSummary) bool {
+	return summary.GetRuleCount() > 0 && summary.GetEnabledRuleCount() == 0
+}
+
+// qualityStatusJudged reports whether this verdict carries a measurement. Only
+// PASS, WARN and FAIL are judged outcomes; ERROR, SKIPPED and NOT_EVALUATED have
+// no observation.
+func qualityStatusJudged(status v1pb.QualityStatus) bool {
+	switch status {
+	case v1pb.QualityStatus_QUALITY_STATUS_PASS,
+		v1pb.QualityStatus_QUALITY_STATUS_WARN,
+		v1pb.QualityStatus_QUALITY_STATUS_FAIL:
+		return true
+	case v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
+		v1pb.QualityStatus_QUALITY_STATUS_ERROR,
+		v1pb.QualityStatus_QUALITY_STATUS_SKIPPED,
+		v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED:
+		return false
+	default:
+		return false
+	}
 }
 
 // qualityRuleRows projects a target's checks.
@@ -1231,31 +1288,34 @@ type listQualityExecutionsArgs struct {
 // that say how far to trust it. The evidence itself stays in get_quality_execution:
 // failed sample rows and executed SQL are one run's worth of data, not a page's.
 type qualityExecutionRow struct {
-	Name          string           `json:"name"`
-	Rule          string           `json:"rule"`
-	Target        qualityTargetRef `json:"target"`
-	Instance      string           `json:"instance,omitempty"`
-	Run           string           `json:"run,omitempty"`
-	Trigger       string           `json:"trigger,omitempty"`
-	State         string           `json:"state,omitempty"`
-	Outcome       string           `json:"outcome,omitempty"`
-	Attempt       int32            `json:"attempt"`
-	Initiator     string           `json:"initiator,omitempty"`
-	ObservedValue float64          `json:"observedValue"`
-	ObservedKind  string           `json:"observedKind,omitempty"`
-	Thresholds    json.RawMessage  `json:"thresholds,omitempty"`
-	FailedRows    int64            `json:"failedRows"`
-	TotalRows     int64            `json:"totalRows"`
-	Sampled       bool             `json:"sampled"`
-	SampleRows    int64            `json:"sampleRows"`
-	Truncated     bool             `json:"truncated"`
-	ErrorCode     string           `json:"errorCode,omitempty"`
-	ErrorMessage  string           `json:"errorMessage,omitempty"`
-	Duration      json.RawMessage  `json:"duration,omitempty"`
-	StartTime     string           `json:"startTime,omitempty"`
-	FinishTime    string           `json:"finishTime,omitempty"`
-	BaselineValue *float64         `json:"baselineValue,omitempty"`
-	BaselineTime  string           `json:"baselineTime,omitempty"`
+	Name      string           `json:"name"`
+	Rule      string           `json:"rule"`
+	Target    qualityTargetRef `json:"target"`
+	Instance  string           `json:"instance,omitempty"`
+	Run       string           `json:"run,omitempty"`
+	Trigger   string           `json:"trigger,omitempty"`
+	State     string           `json:"state,omitempty"`
+	Outcome   string           `json:"outcome,omitempty"`
+	Attempt   int32            `json:"attempt"`
+	Initiator string           `json:"initiator,omitempty"`
+	// ObservedValue is absent when the run produced no measurement: only a judged
+	// verdict (PASS, WARN, FAIL) carries one, and a present 0 is a real
+	// observation.
+	ObservedValue *float64        `json:"observedValue,omitempty"`
+	ObservedKind  string          `json:"observedKind,omitempty"`
+	Thresholds    json.RawMessage `json:"thresholds,omitempty"`
+	FailedRows    int64           `json:"failedRows"`
+	TotalRows     int64           `json:"totalRows"`
+	Sampled       bool            `json:"sampled"`
+	SampleRows    int64           `json:"sampleRows"`
+	Truncated     bool            `json:"truncated"`
+	ErrorCode     string          `json:"errorCode,omitempty"`
+	ErrorMessage  string          `json:"errorMessage,omitempty"`
+	Duration      json.RawMessage `json:"duration,omitempty"`
+	StartTime     string          `json:"startTime,omitempty"`
+	FinishTime    string          `json:"finishTime,omitempty"`
+	BaselineValue *float64        `json:"baselineValue,omitempty"`
+	BaselineTime  string          `json:"baselineTime,omitempty"`
 }
 
 type listQualityExecutionsResult struct {
@@ -1296,6 +1356,9 @@ func (s *Server) runListQualityExecutions(ctx context.Context, _ *store.UserMess
 	if !objectRefIsZero(args.Object) {
 		object, err := s.resolveObject(ctx, args.Object, v1pb.MetaType_UNSPECIFIED)
 		if err != nil {
+			return nil, err
+		}
+		if err := requireQualityListTarget(object, "quality executions"); err != nil {
 			return nil, err
 		}
 		request.TargetGuid = object.GUID
@@ -1339,7 +1402,6 @@ func qualityExecutionRowOf(execution *v1pb.QualityExecution) (qualityExecutionRo
 		Outcome:       qualityEnumName(execution.GetOutcome()),
 		Attempt:       execution.GetAttempt(),
 		Initiator:     execution.GetInitiator(),
-		ObservedValue: execution.GetObservedValue(),
 		ObservedKind:  qualityEnumName(execution.GetObservedKind()),
 		FailedRows:    execution.GetFailedRows(),
 		TotalRows:     execution.GetTotalRows(),
@@ -1352,6 +1414,13 @@ func qualityExecutionRowOf(execution *v1pb.QualityExecution) (qualityExecutionRo
 		FinishTime:    qualitySignalTime(execution.GetFinishTime()),
 		BaselineValue: execution.BaselineValue,
 		BaselineTime:  qualitySignalTime(execution.GetBaselineTime()),
+	}
+	// Only a judged verdict records a measurement; for ERROR, SKIPPED and
+	// NOT_EVALUATED the API's non-optional field is 0, which would read as an
+	// observed zero.
+	if qualityStatusJudged(execution.GetOutcome()) {
+		observed := execution.GetObservedValue()
+		row.ObservedValue = &observed
 	}
 	if thresholds := execution.GetThresholds(); thresholds != nil {
 		row.Thresholds, err = protoJSON(thresholds)
@@ -1405,12 +1474,15 @@ type listQualityTargetsArgs struct {
 
 // qualityTargetRow is one row of the target directory.
 type qualityTargetRow struct {
-	GUID                 string          `json:"guid"`
-	MetaType             string          `json:"metaType"`
-	Path                 json.RawMessage `json:"path,omitempty"`
-	RuleCount            int32           `json:"ruleCount"`
-	EnabledRuleCount     int32           `json:"enabledRuleCount"`
-	PausedRuleCount      int32           `json:"pausedRuleCount"`
+	GUID             string          `json:"guid"`
+	MetaType         string          `json:"metaType"`
+	Path             json.RawMessage `json:"path,omitempty"`
+	RuleCount        int32           `json:"ruleCount"`
+	EnabledRuleCount int32           `json:"enabledRuleCount"`
+	PausedRuleCount  int32           `json:"pausedRuleCount"`
+	// AllPaused says every check is paused: the target's worst latest result is
+	// history, so WorstStatus stays absent rather than reading as a current claim.
+	AllPaused            bool            `json:"allPaused"`
 	ColumnCount          int32           `json:"columnCount"`
 	OpenIssueCount       int32           `json:"openIssueCount"`
 	PendingDraftCount    int32           `json:"pendingDraftCount"`
@@ -1483,6 +1555,7 @@ func qualityTargetRowOf(summary *v1pb.QualityTargetSummary) (qualityTargetRow, e
 	if err != nil {
 		return qualityTargetRow{}, err
 	}
+	allPaused := qualityTargetAllPaused(summary)
 	row := qualityTargetRow{
 		GUID:                 summary.GetTarget().GetMetaGuid(),
 		MetaType:             qualityEnumName(summary.GetTarget().GetMetaType()),
@@ -1490,11 +1563,11 @@ func qualityTargetRowOf(summary *v1pb.QualityTargetSummary) (qualityTargetRow, e
 		RuleCount:            summary.GetRuleCount(),
 		EnabledRuleCount:     summary.GetEnabledRuleCount(),
 		PausedRuleCount:      summary.GetPausedRuleCount(),
+		AllPaused:            allPaused,
 		ColumnCount:          summary.GetColumnCount(),
 		OpenIssueCount:       summary.GetOpenIssueCount(),
 		PendingDraftCount:    summary.GetPendingDraftCount(),
 		PendingLabelCount:    summary.GetPendingLabelCount(),
-		WorstStatus:          qualitySignalStatus(summary.GetWorstStatus()),
 		LastRunTime:          qualitySignalTime(summary.GetLastRunTime()),
 		SchemaChanged:        summary.GetSchemaChanged(),
 		Orphaned:             summary.GetOrphaned(),
@@ -1505,6 +1578,11 @@ func qualityTargetRowOf(summary *v1pb.QualityTargetSummary) (qualityTargetRow, e
 		CoveredColumnCount:   summary.GetCoveredColumnCount(),
 		TotalColumnCount:     summary.GetTotalColumnCount(),
 		RunCount:             summary.GetRunCount(),
+	}
+	// A paused target's last verdict is history, so it is omitted the way
+	// get_quality_signal omits it.
+	if !allPaused {
+		row.WorstStatus = qualitySignalStatus(summary.GetWorstStatus())
 	}
 	if latestRun := summary.GetLatestRun(); latestRun != nil {
 		row.LatestRun, err = protoJSON(latestRun)

@@ -127,26 +127,43 @@ fail":
   their worst latest result, quality score, column coverage, latest run and
   schedule. Filter it by `search` (a case-insensitive substring of the path or
   GUID), by `worst_status`, or with `has_open_issue: true` to find what needs
-  attention.
+  attention. A target whose checks all exist but are paused reports
+  `allPaused: true` and omits `worstStatus`: its last verdict is history, not a
+  current health claim.
 - `get_quality_target` opens one table: its health summary, every check with its
   configuration and latest result, its schedule, and its unresolved problems. It
-  is the workspace a person would open. A watchable table with no live check
+  is the workspace a person would open. A watchable table with no check at all
   answers with `monitored: false` and an empty `rules` list, not an error — the
-  same "not monitored is an answer" rule as `get_quality_signal`.
+  same "not monitored is an answer" rule as `get_quality_signal`. A table whose
+  checks all exist but are paused answers `monitored: true` with `allPaused: true`
+  (its summary's `enabledRuleCount` is 0 and its `worstStatus` is omitted),
+  because nothing is being verified until a check is resumed.
 - `list_quality_issues` is the problem ledger: one row per unresolved or resolved
   problem, with its severity, when it was first and last seen, how many runs
-  observed it, and who acknowledged, muted or resolved it. An issue row names its
-  table by the target's stored path.
+  observed it, and who acknowledged, muted or resolved it. An issue row's
+  `target.path` is the path snapshot stored with the rule, for display only; it
+  is omitted when the target no longer has a live check or the best-effort
+  enrichment read fails, and `target.guid` with `target.metaType` still locate the
+  target.
 - `list_quality_executions` lists runs with their verdict, thresholds and
   evidence flags (`sampled`, `sampleRows`, `truncated`). It deliberately leaves
   out the failed sample rows and the executed SQL: those are one run's worth of
-  data, not a page's.
+  data, not a page's. `observedValue` is absent when the run produced no
+  observation (ERROR, SKIPPED or NOT_EVALUATED); a present 0 is a real
+  observation.
 - `get_quality_execution` returns all of it: the SQL that executed, the failed
   sample rows, the thresholds the run was judged against, any baseline value and
   time, and the sampling and truncation flags. It returns the whole execution as
   protoJSON, so its nested field names follow the proto
   (`target.metaGuid`, `executedSql`, `samples[].columns[].value`, `ruleRevision`)
-  rather than the projected `target.guid` shape the listing tools use.
+  rather than the projected `target.guid` shape the listing tools use. Its
+  `observedValue` is non-optional, so read it together with `outcome`: 0 with a
+  non-verdict outcome means "no observation".
+
+The `object` filter of `list_quality_issues` and `list_quality_executions` must
+name a quality check target — a table, external table, view or materialized view.
+Those tools refuse a schema or column reference, because no check can watch one;
+a bare `guid` is accepted because the filter then carries no type.
 
 There is no tool that asks a model to explain a failure. The agent calling these
 tools is the model: it reads the evidence — the executed SQL, the observed value,

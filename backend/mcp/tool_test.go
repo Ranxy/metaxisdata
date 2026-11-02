@@ -323,6 +323,19 @@ func storedSchema(guid, name string) *v1pb.StoredMetadata {
 	}
 }
 
+func storedColumn(guid, name string) *v1pb.StoredMetadata {
+	return &v1pb.StoredMetadata{
+		Guid: guid,
+		Type: &v1pb.StoredMetadata_ColumnMetadata{ColumnMetadata: &v1pb.ColumnMetadata{Name: name}},
+	}
+}
+
+// foundObject is one search hit of an arbitrary type; the result carries the same
+// guid the stored payload does, which is what the read RPC returns.
+func foundObject(stored *v1pb.StoredMetadata, metaType v1pb.MetaType) *v1pb.SearchMetadataResult {
+	return &v1pb.SearchMetadataResult{Guid: stored.GetGuid(), MetaType: metaType, Metadata: stored}
+}
+
 // foundTable is one search hit for a table, which is what every resolver test
 // looks for. The result carries the same guid the stored payload does, which is
 // what the read RPC returns.
@@ -1072,6 +1085,7 @@ func TestGetQualityTargetProjectsACheck(t *testing.T) {
 
 	payload := asMap(t, value)
 	require.Equal(t, true, payload["monitored"])
+	require.Equal(t, false, payload["allPaused"], "an enabled check is being verified")
 	target := asObject(t, payload["target"])
 	require.Equal(t, "1;shop;;orders", target["guid"])
 	require.Equal(t, "orders", target["name"], "a guid reference takes its name from the stored path")
@@ -1318,6 +1332,7 @@ func TestListQualityTargetsProjectsTheDirectory(t *testing.T) {
 	require.Equal(t, float64(1), row["pausedRuleCount"])
 	require.Equal(t, float64(2), row["columnCount"])
 	require.Equal(t, float64(1), row["openIssueCount"])
+	require.Equal(t, false, row["allPaused"], "an enabled check is being verified")
 	require.Equal(t, "QUALITY_STATUS_WARN", row["worstStatus"])
 	require.Equal(t, "2026-01-02T03:04:05Z", row["lastRunTime"])
 	require.Equal(t, true, row["schemaChanged"])
@@ -1343,7 +1358,10 @@ func TestQualityFiltersListAcceptedEnumValues(t *testing.T) {
 		values []string
 	}{
 		{tool: "list_quality_issues", args: map[string]any{"status": "PENDING"}, values: []string{"ACKNOWLEDGED", "OPEN", "RESOLVED"}},
+		{tool: "list_quality_issues", args: map[string]any{"severity": "BLOCKER"}, values: []string{"CRITICAL", "ERROR", "WARNING"}},
 		{tool: "list_quality_executions", args: map[string]any{"state": "DONE"}, values: []string{"ABANDONED", "COMPLETED", "PENDING", "RUNNING"}},
+		{tool: "list_quality_executions", args: map[string]any{"outcome": "BAD"}, values: []string{"ERROR", "FAIL", "NOT_EVALUATED", "PASS", "SKIPPED", "WARN"}},
+		{tool: "list_quality_executions", args: map[string]any{"trigger": "CRON"}, values: []string{"MANUAL", "SCHEDULED"}},
 		{tool: "list_quality_targets", args: map[string]any{"worst_status": "BAD"}, values: []string{"ERROR", "FAIL", "NOT_EVALUATED", "PASS", "SKIPPED", "WARN"}},
 	}
 	for _, testCase := range cases {
@@ -1354,6 +1372,299 @@ func TestQualityFiltersListAcceptedEnumValues(t *testing.T) {
 			require.Contains(t, failure.Message, value)
 		}
 	}
+}
+
+// TestListQualityExecutionsOmitsAbsentObservations pins the zero-vs-absent
+// distinction: the API's non-optional observed_value is 0 when the runner recorded
+// no measurement, which must not read as an observed zero.
+func TestListQualityExecutionsOmitsAbsentObservations(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		listQualityExecutions: func(*v1pb.ListQualityExecutionsRequest) (*v1pb.ListQualityExecutionsResponse, error) {
+			return &v1pb.ListQualityExecutionsResponse{QualityExecutions: []*v1pb.QualityExecution{
+				// ERROR can still carry a kind: the observation was attempted and
+				// failed, so the row must not look like a measured zero.
+				{
+					Name:         "workspaces/1/qualityExecutions/1",
+					Outcome:      v1pb.QualityStatus_QUALITY_STATUS_ERROR,
+					ObservedKind: v1pb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+				},
+				// NOT_EVALUATED has neither a value nor a unit.
+				{
+					Name:    "workspaces/1/qualityExecutions/2",
+					Outcome: v1pb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED,
+				},
+				// A judged zero is a real observation and must travel.
+				{
+					Name:          "workspaces/1/qualityExecutions/3",
+					Outcome:       v1pb.QualityStatus_QUALITY_STATUS_PASS,
+					ObservedValue: 0,
+				},
+			}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_executions", map[string]any{})
+	require.NoError(t, err)
+
+	rows := listOf(t, asMap(t, value), "executions")
+	require.Len(t, rows, 3)
+	errorRow := asObject(t, rows[0])
+	require.NotContains(t, errorRow, "observedValue", "an ERROR row has no measurement")
+	require.Equal(t, "QUALITY_OBSERVED_KIND_COUNT", errorRow["observedKind"])
+	notEvaluatedRow := asObject(t, rows[1])
+	require.NotContains(t, notEvaluatedRow, "observedValue")
+	passRow := asObject(t, rows[2])
+	require.Contains(t, passRow, "observedValue")
+	require.Equal(t, float64(0), passRow["observedValue"], "a judged zero is a real observation")
+}
+
+// TestGetQualityTargetReportsAnAllPausedTarget keeps a paused target's last
+// verdict from reading as a current health claim, the way get_quality_signal does.
+func TestGetQualityTargetReportsAnAllPausedTarget(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		getQualityTarget: func(*v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error) {
+			return &v1pb.GetQualityTargetResponse{
+				Summary: &v1pb.QualityTargetSummary{
+					Target: &v1pb.QualityTarget{
+						MetaGuid: "1;shop;;orders",
+						MetaType: v1pb.MetaType_TABLE,
+						Path:     &v1pb.QualityTargetPath{Instance: "prod-mysql", Database: "shop", Object: "orders"},
+					},
+					RuleCount:       2,
+					PausedRuleCount: 2,
+					WorstStatus:     v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+				},
+				QualityRules: []*v1pb.QualityRule{{
+					Name:  "workspaces/1/qualityRules/9",
+					State: v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED,
+				}},
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, true, payload["monitored"], "a paused check is still a defined check")
+	require.Equal(t, true, payload["allPaused"])
+	summary := asObject(t, payload["summary"])
+	require.NotContains(t, summary, "worstStatus", "a paused check's last verdict is history")
+	// protoJSON omits a zero scalar, so "no enabled check" is an absent field.
+	require.NotContains(t, summary, "enabledRuleCount")
+}
+
+// TestListQualityTargetsMarksAnAllPausedRow is the directory half of the same
+// rule: the flag says why worstStatus is absent.
+func TestListQualityTargetsMarksAnAllPausedRow(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		listQualityTargets: func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			return &v1pb.ListQualityTargetsResponse{QualityTargets: []*v1pb.QualityTargetSummary{
+				{
+					Target:          &v1pb.QualityTarget{MetaGuid: "1;shop;;paused", MetaType: v1pb.MetaType_TABLE},
+					RuleCount:       2,
+					PausedRuleCount: 2,
+					WorstStatus:     v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+				},
+				{
+					Target:           &v1pb.QualityTarget{MetaGuid: "1;shop;;watched", MetaType: v1pb.MetaType_TABLE},
+					RuleCount:        1,
+					EnabledRuleCount: 1,
+					WorstStatus:      v1pb.QualityStatus_QUALITY_STATUS_WARN,
+				},
+			}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_targets", map[string]any{})
+	require.NoError(t, err)
+
+	rows := listOf(t, asMap(t, value), "targets")
+	require.Len(t, rows, 2)
+	paused := asObject(t, rows[0])
+	require.Equal(t, true, paused["allPaused"])
+	require.NotContains(t, paused, "worstStatus", "a paused target's last verdict is history")
+	watched := asObject(t, rows[1])
+	require.Equal(t, false, watched["allPaused"])
+	require.Equal(t, "QUALITY_STATUS_WARN", watched["worstStatus"])
+}
+
+// TestQualityListingRefusesAnUnwatchableObject covers the listing filters: a
+// schema or column has no checks, so an empty page would be indistinguishable
+// from "nothing is wrong". A bare guid still passes, because it carries no type.
+func TestQualityListingRefusesAnUnwatchableObject(t *testing.T) {
+	t.Parallel()
+
+	columnReaders := func() *fakeReaders {
+		return &fakeReaders{
+			listInstances: oneInstance(),
+			listDatabases: oneDatabase(),
+			searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
+				return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
+					foundObject(storedColumn("1;shop;;orders;amount", "amount"), v1pb.MetaType_COLUMN),
+				}}, nil
+			},
+		}
+	}
+	object := map[string]string{"instance": "prod-mysql", "database": "shop", "name": "amount"}
+	for _, tool := range []string{"list_quality_issues", "list_quality_executions"} {
+		t.Run(tool, func(t *testing.T) {
+			t.Parallel()
+			server := newTestServer(t, columnReaders(), &fakeChecker{allow: true})
+			_, err := callTool(t, server, tool, map[string]any{"object": object})
+			failure := failureOf(t, err)
+			require.Equal(t, codeInvalidArgument, failure.Code)
+			require.NotEmpty(t, failure.Hint)
+			require.Contains(t, failure.Message, "table")
+			require.Contains(t, failure.Message, "view")
+		})
+	}
+
+	t.Run("a bare guid still passes", func(t *testing.T) {
+		t.Parallel()
+		// No resolution reader is configured: a guid must not trigger one.
+		var seen *v1pb.ListQualityIssuesRequest
+		readers := &fakeReaders{
+			listQualityIssues: func(request *v1pb.ListQualityIssuesRequest) (*v1pb.ListQualityIssuesResponse, error) {
+				seen = request
+				return &v1pb.ListQualityIssuesResponse{}, nil
+			},
+		}
+		server := newTestServer(t, readers, &fakeChecker{allow: true})
+		value, err := callTool(t, server, "list_quality_issues", map[string]any{
+			"object": map[string]string{"guid": "1;shop;;orders"},
+		})
+		require.NoError(t, err)
+		require.Equal(t, "1;shop;;orders", seen.GetTargetGuid())
+		require.Empty(t, listOf(t, asMap(t, value), "issues"))
+	})
+}
+
+// TestListQualityTargetsTreatsFalseHasOpenIssueAsNoFilter pins that the boolean
+// cannot ask for targets without issues: false is the proto default, no filter.
+func TestListQualityTargetsTreatsFalseHasOpenIssueAsNoFilter(t *testing.T) {
+	t.Parallel()
+
+	var seen *v1pb.ListQualityTargetsRequest
+	readers := &fakeReaders{
+		listQualityTargets: func(request *v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			seen = request
+			return &v1pb.ListQualityTargetsResponse{}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_targets", map[string]any{"has_open_issue": false})
+	require.NoError(t, err)
+	require.False(t, seen.GetHasOpenIssue())
+	require.Empty(t, seen.GetSearch())
+	require.Empty(t, listOf(t, asMap(t, value), "targets"))
+}
+
+// TestQualityListingPassesAResolvedNamePathTargetGUID covers the resolver branch
+// the listings take when the object is addressed by name rather than by guid.
+func TestQualityListingPassesAResolvedNamePathTargetGUID(t *testing.T) {
+	t.Parallel()
+
+	tableSearch := func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
+		return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
+			foundTable(storedTable("1;shop;;orders", "orders")),
+		}}, nil
+	}
+	object := map[string]string{"instance": "prod-mysql", "database": "shop", "name": "orders"}
+
+	t.Run("issues", func(t *testing.T) {
+		t.Parallel()
+		var seen *v1pb.ListQualityIssuesRequest
+		readers := &fakeReaders{
+			listInstances:  oneInstance(),
+			listDatabases:  oneDatabase(),
+			searchMetadata: tableSearch,
+			listQualityIssues: func(request *v1pb.ListQualityIssuesRequest) (*v1pb.ListQualityIssuesResponse, error) {
+				seen = request
+				return &v1pb.ListQualityIssuesResponse{}, nil
+			},
+		}
+		server := newTestServer(t, readers, &fakeChecker{allow: true})
+		_, err := callTool(t, server, "list_quality_issues", map[string]any{"object": object})
+		require.NoError(t, err)
+		require.Equal(t, "1;shop;;orders", seen.GetTargetGuid())
+	})
+
+	t.Run("executions", func(t *testing.T) {
+		t.Parallel()
+		var seen *v1pb.ListQualityExecutionsRequest
+		readers := &fakeReaders{
+			listInstances:  oneInstance(),
+			listDatabases:  oneDatabase(),
+			searchMetadata: tableSearch,
+			listQualityExecutions: func(request *v1pb.ListQualityExecutionsRequest) (*v1pb.ListQualityExecutionsResponse, error) {
+				seen = request
+				return &v1pb.ListQualityExecutionsResponse{}, nil
+			},
+		}
+		server := newTestServer(t, readers, &fakeChecker{allow: true})
+		_, err := callTool(t, server, "list_quality_executions", map[string]any{"object": object})
+		require.NoError(t, err)
+		require.Equal(t, "1;shop;;orders", seen.GetTargetGuid())
+	})
+}
+
+// TestGetQualityTargetCarriesAnOrphanedReason covers the readable-but-orphaned
+// state: the RPC answers 200 with the reason and the rules, which the tool keeps.
+func TestGetQualityTargetCarriesAnOrphanedReason(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		getQualityTarget: func(*v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error) {
+			return &v1pb.GetQualityTargetResponse{
+				Summary: &v1pb.QualityTargetSummary{
+					Target:           &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+					RuleCount:        1,
+					EnabledRuleCount: 1,
+				},
+				QualityRules:   []*v1pb.QualityRule{{Name: "workspaces/1/qualityRules/9"}},
+				OrphanedReason: "the target table no longer resolves",
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, "the target table no longer resolves", payload["orphanedReason"])
+	require.Equal(t, true, payload["monitored"])
+	require.Len(t, listOf(t, payload, "rules"), 1)
+}
+
+// TestGetQualityTargetMapsANotFound covers an unreadable target: the handler's
+// NotFound is the tool's not_found, not an empty workspace.
+func TestGetQualityTargetMapsANotFound(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		getQualityTarget: func(*v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("no quality rules and no registry row"))
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	_, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.Equal(t, codeNotFound, failureOf(t, err).Code)
 }
 
 // --- dispatch ---
