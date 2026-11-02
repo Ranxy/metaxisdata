@@ -11,6 +11,7 @@ import (
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -25,16 +26,20 @@ import (
 type fakeReaders struct {
 	t *testing.T
 
-	listInstances      func(*v1pb.ListInstancesRequest) (*v1pb.ListInstancesResponse, error)
-	listDatabases      func(*v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse, error)
-	listMetadata       func(*v1pb.ListMetadataRequest) (*v1pb.MetadataResponse, error)
-	getMetadata        func(*v1pb.GetMetadataRequest) (*v1pb.GetMetadataResponse, error)
-	searchMetadata     func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error)
-	getSchemaString    func(*v1pb.GetSchemaStringRequest) (*v1pb.MetadataSchemaString, error)
-	analyzeSQL         func(*v1pb.AnalyzeSQLRequest) (*v1pb.AnalyzeSQLResponse, error)
-	getLineageGraph    func(*v1pb.GetLineageGraphRequest) (*v1pb.GetLineageGraphResponse, error)
-	getCurrentUser     func(*emptypb.Empty) (*v1pb.User, error)
-	listQualityTargets func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error)
+	listInstances         func(*v1pb.ListInstancesRequest) (*v1pb.ListInstancesResponse, error)
+	listDatabases         func(*v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse, error)
+	listMetadata          func(*v1pb.ListMetadataRequest) (*v1pb.MetadataResponse, error)
+	getMetadata           func(*v1pb.GetMetadataRequest) (*v1pb.GetMetadataResponse, error)
+	searchMetadata        func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error)
+	getSchemaString       func(*v1pb.GetSchemaStringRequest) (*v1pb.MetadataSchemaString, error)
+	analyzeSQL            func(*v1pb.AnalyzeSQLRequest) (*v1pb.AnalyzeSQLResponse, error)
+	getLineageGraph       func(*v1pb.GetLineageGraphRequest) (*v1pb.GetLineageGraphResponse, error)
+	getCurrentUser        func(*emptypb.Empty) (*v1pb.User, error)
+	listQualityTargets    func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error)
+	listQualityIssues     func(*v1pb.ListQualityIssuesRequest) (*v1pb.ListQualityIssuesResponse, error)
+	getQualityTarget      func(*v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error)
+	listQualityExecutions func(*v1pb.ListQualityExecutionsRequest) (*v1pb.ListQualityExecutionsResponse, error)
+	getQualityExecution   func(*v1pb.GetQualityExecutionRequest) (*v1pb.QualityExecution, error)
 }
 
 func (f *fakeReaders) unexpected(method string) error {
@@ -153,6 +158,50 @@ func (f *fakeReaders) ListQualityTargets(_ context.Context, request *connect.Req
 	return connect.NewResponse(response), nil
 }
 
+func (f *fakeReaders) ListQualityIssues(_ context.Context, request *connect.Request[v1pb.ListQualityIssuesRequest]) (*connect.Response[v1pb.ListQualityIssuesResponse], error) {
+	if f.listQualityIssues == nil {
+		return nil, f.unexpected("ListQualityIssues")
+	}
+	response, err := f.listQualityIssues(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (f *fakeReaders) GetQualityTarget(_ context.Context, request *connect.Request[v1pb.GetQualityTargetRequest]) (*connect.Response[v1pb.GetQualityTargetResponse], error) {
+	if f.getQualityTarget == nil {
+		return nil, f.unexpected("GetQualityTarget")
+	}
+	response, err := f.getQualityTarget(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (f *fakeReaders) ListQualityExecutions(_ context.Context, request *connect.Request[v1pb.ListQualityExecutionsRequest]) (*connect.Response[v1pb.ListQualityExecutionsResponse], error) {
+	if f.listQualityExecutions == nil {
+		return nil, f.unexpected("ListQualityExecutions")
+	}
+	response, err := f.listQualityExecutions(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (f *fakeReaders) GetQualityExecution(_ context.Context, request *connect.Request[v1pb.GetQualityExecutionRequest]) (*connect.Response[v1pb.QualityExecution], error) {
+	if f.getQualityExecution == nil {
+		return nil, f.unexpected("GetQualityExecution")
+	}
+	response, err := f.getQualityExecution(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
 type fakeChecker struct {
 	allow bool
 	err   error
@@ -207,6 +256,15 @@ func asMap(t *testing.T, value any) map[string]any {
 	var parsed map[string]any
 	require.NoError(t, json.Unmarshal(payload, &parsed))
 	return parsed
+}
+
+// asObject reads a nested object out of a payload, failing the test rather than
+// panicking when the shape is not the one it expected.
+func asObject(t *testing.T, value any) map[string]any {
+	t.Helper()
+	object, ok := value.(map[string]any)
+	require.True(t, ok, "value is not an object: %T", value)
+	return object
 }
 
 func failureOf(t *testing.T, err error) *toolError {
@@ -840,6 +898,462 @@ func TestGetQualitySignalAnswersUnmonitoredForAnUnwatchableType(t *testing.T) {
 	require.Equal(t, false, payload["monitored"])
 	require.Equal(t, "COLUMN", payload["metaType"])
 	require.NotContains(t, payload, "enabledRuleCount")
+}
+
+// --- quality read models ---
+
+// TestListQualityIssuesEnrichesTargetPaths pins the one enrichment call the
+// listing makes: the API's issue rows carry only the target's GUID and type, so
+// the target path is read from the directory in a single selection.
+func TestListQualityIssuesEnrichesTargetPaths(t *testing.T) {
+	t.Parallel()
+
+	var seenIssues *v1pb.ListQualityIssuesRequest
+	var seenTargets *v1pb.ListQualityTargetsRequest
+	readers := &fakeReaders{
+		listQualityIssues: func(request *v1pb.ListQualityIssuesRequest) (*v1pb.ListQualityIssuesResponse, error) {
+			seenIssues = request
+			return &v1pb.ListQualityIssuesResponse{QualityIssues: []*v1pb.QualityIssue{
+				{
+					Name:            "workspaces/1/qualityIssues/1",
+					Rule:            "workspaces/1/qualityRules/9",
+					Target:          &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+					Status:          v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN,
+					Severity:        v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+					FirstSeenTime:   timestamppb.New(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)),
+					OccurrenceCount: 3,
+				},
+				{
+					Name:   "workspaces/1/qualityIssues/2",
+					Target: &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+					Status: v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_RESOLVED,
+				},
+				{
+					Name:   "workspaces/1/qualityIssues/3",
+					Target: &v1pb.QualityTarget{MetaGuid: "1;shop;;gone", MetaType: v1pb.MetaType_VIEW},
+				},
+			}}, nil
+		},
+		listQualityTargets: func(request *v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			seenTargets = request
+			return &v1pb.ListQualityTargetsResponse{QualityTargets: []*v1pb.QualityTargetSummary{{
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "1;shop;;orders",
+					MetaType: v1pb.MetaType_TABLE,
+					Path:     &v1pb.QualityTargetPath{Instance: "prod-mysql", Database: "shop", Object: "orders"},
+				},
+			}}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_issues", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"status":    "OPEN",
+		"severity":  "QUALITY_SEVERITY_ERROR",
+		"page_size": 500,
+	})
+	require.NoError(t, err)
+
+	// Both enum spellings are accepted, and the page size is explicit and clamped
+	// rather than left to the RPC's larger default.
+	require.Equal(t, "workspaces/-", seenIssues.GetParent())
+	require.Equal(t, "1;shop;;orders", seenIssues.GetTargetGuid())
+	require.Equal(t, v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_OPEN, seenIssues.GetStatus())
+	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR, seenIssues.GetSeverity())
+	require.Equal(t, int32(maxPageSize), seenIssues.GetPageSize())
+
+	// One selection call, deduplicated, and only the two watchable targets.
+	require.Equal(t, "workspaces/-", seenTargets.GetParent())
+	require.Len(t, seenTargets.GetTargets(), 2)
+	require.Zero(t, seenTargets.GetPageSize())
+
+	issues := listOf(t, asMap(t, value), "issues")
+	require.Len(t, issues, 3)
+	first := asObject(t, issues[0])
+	require.Equal(t, "QUALITY_ISSUE_STATUS_OPEN", first["status"])
+	require.Equal(t, "QUALITY_SEVERITY_ERROR", first["severity"])
+	require.Equal(t, "2026-01-02T03:04:05Z", first["firstSeenTime"])
+	require.Equal(t, float64(3), first["occurrenceCount"])
+	target := asObject(t, first["target"])
+	require.Equal(t, "1;shop;;orders", target["guid"])
+	require.Equal(t, "TABLE", target["metaType"])
+	require.NotNil(t, target["path"], "the path is what the enrichment adds")
+
+	// The same target twice is one key, so both rows get the same path.
+	second := asObject(t, asObject(t, issues[1])["target"])
+	require.NotNil(t, second["path"])
+
+	// A target the directory omits has no path, and the listing still answers.
+	third := asObject(t, asObject(t, issues[2])["target"])
+	require.NotContains(t, third, "path")
+}
+
+// TestListQualityIssuesToleratesAnEnrichmentFailure is the behaviour that matters
+// most about the enrichment: it is decoration, not the listing.
+func TestListQualityIssuesToleratesAnEnrichmentFailure(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		listQualityIssues: func(*v1pb.ListQualityIssuesRequest) (*v1pb.ListQualityIssuesResponse, error) {
+			return &v1pb.ListQualityIssuesResponse{QualityIssues: []*v1pb.QualityIssue{{
+				Name:   "workspaces/1/qualityIssues/1",
+				Target: &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+			}}}, nil
+		},
+		listQualityTargets: func(*v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("the directory is unavailable"))
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_issues", map[string]any{})
+	require.NoError(t, err)
+
+	issue := firstOf(t, asMap(t, value), "issues")
+	require.NotContains(t, asObject(t, issue["target"]), "path")
+}
+
+func TestGetQualityTargetProjectsACheck(t *testing.T) {
+	t.Parallel()
+
+	score := 50.0
+	var seen *v1pb.GetQualityTargetRequest
+	readers := &fakeReaders{
+		getQualityTarget: func(request *v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error) {
+			seen = request
+			return &v1pb.GetQualityTargetResponse{
+				Summary: &v1pb.QualityTargetSummary{
+					Target: &v1pb.QualityTarget{
+						MetaGuid: "1;shop;;orders",
+						MetaType: v1pb.MetaType_TABLE,
+						Path:     &v1pb.QualityTargetPath{Instance: "prod-mysql", Database: "shop", Object: "orders"},
+					},
+					RuleCount:        1,
+					EnabledRuleCount: 1,
+					WorstStatus:      v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+					QualityScore:     &score,
+				},
+				QualityRules: []*v1pb.QualityRule{{
+					Name:                "workspaces/1/qualityRules/9",
+					Title:               "row count",
+					Description:         "not part of this projection",
+					Dimension:           v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
+					RuleType:            v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+					Config:              &v1pb.QualityRuleConfig{},
+					Severity:            v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR,
+					State:               v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+					Revision:            2,
+					Tags:                []string{"tier-1"},
+					TargetSchemaChanged: true,
+					MuteUntil:           timestamppb.New(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)),
+					LastResult: &v1pb.QualityExecutionSummary{
+						Status:     v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+						FailedRows: 5,
+					},
+				}},
+				OpenIssues: []*v1pb.QualityIssue{{
+					Name:     "workspaces/1/qualityIssues/1",
+					Target:   &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+					Status:   v1pb.QualityIssueStatus_QUALITY_ISSUE_STATUS_ACKNOWLEDGED,
+					Severity: v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+				}},
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "workspaces/-", seen.GetParent())
+	require.Equal(t, "1;shop;;orders", seen.GetTargetGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, seen.GetMetaType())
+
+	payload := asMap(t, value)
+	require.Equal(t, true, payload["monitored"])
+	target := asObject(t, payload["target"])
+	require.Equal(t, "1;shop;;orders", target["guid"])
+	require.Equal(t, "orders", target["name"], "a guid reference takes its name from the stored path")
+	require.Equal(t, "QUALITY_STATUS_FAIL", asObject(t, payload["summary"])["worstStatus"])
+
+	rule := firstOf(t, payload, "rules")
+	require.Equal(t, "row count", rule["title"])
+	require.Equal(t, "QUALITY_RULE_TYPE_ROW_COUNT", rule["ruleType"])
+	require.Equal(t, "QUALITY_DIMENSION_COMPLETENESS", rule["dimension"])
+	require.Equal(t, "QUALITY_RULE_STATE_ENABLED", rule["state"])
+	require.Equal(t, "QUALITY_SEVERITY_ERROR", rule["severity"])
+	require.Equal(t, float64(2), rule["revision"])
+	require.Equal(t, "2026-02-01T00:00:00Z", rule["muteUntil"])
+	require.Equal(t, []any{"tier-1"}, rule["tags"])
+	require.Equal(t, true, rule["targetSchemaChanged"])
+	require.Equal(t, "QUALITY_STATUS_FAIL", asObject(t, rule["lastResult"])["status"])
+	require.NotContains(t, rule, "description", "the rule's description is not part of this projection")
+	require.NotContains(t, rule, "target", "the rule's own target would duplicate the answer's")
+	require.NotContains(t, rule, "createTime")
+	require.NotContains(t, rule, "updateTime")
+
+	issue := firstOf(t, payload, "openIssues")
+	require.Equal(t, "QUALITY_ISSUE_STATUS_ACKNOWLEDGED", issue["status"])
+	require.NotNil(t, asObject(t, issue["target"])["path"], "an open issue names its table from the workspace path")
+}
+
+func TestGetQualityTargetRequiresATypeAndSkipsUnwatchableObjects(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+	_, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object": map[string]string{"guid": "1;shop;;orders"},
+	})
+	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
+
+	// No quality reader is configured: an unwatchable object must not reach the RPC.
+	value, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;amount"},
+		"meta_type": "COLUMN",
+	})
+	require.NoError(t, err)
+	payload := asMap(t, value)
+	require.Equal(t, false, payload["monitored"])
+	require.NotContains(t, payload, "rules")
+}
+
+func TestGetQualityTargetReportsATargetWithNoLiveCheck(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		getQualityTarget: func(*v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error) {
+			return &v1pb.GetQualityTargetResponse{Summary: &v1pb.QualityTargetSummary{
+				Target: &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+			}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_target", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"meta_type": "TABLE",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, false, payload["monitored"])
+	require.Empty(t, listOf(t, payload, "rules"))
+}
+
+func TestListQualityExecutionsProjectsRows(t *testing.T) {
+	t.Parallel()
+
+	var seen *v1pb.ListQualityExecutionsRequest
+	baseline := 100.0
+	readers := &fakeReaders{
+		listQualityExecutions: func(request *v1pb.ListQualityExecutionsRequest) (*v1pb.ListQualityExecutionsResponse, error) {
+			seen = request
+			return &v1pb.ListQualityExecutionsResponse{QualityExecutions: []*v1pb.QualityExecution{{
+				Name: "workspaces/1/qualityExecutions/5",
+				Rule: "workspaces/1/qualityRules/9",
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "1;shop;;orders",
+					MetaType: v1pb.MetaType_TABLE,
+					Path:     &v1pb.QualityTargetPath{Instance: "prod-mysql", Database: "shop", Object: "orders"},
+				},
+				Instance:      "instances/1",
+				Run:           "workspaces/1/qualityRuns/2",
+				State:         v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+				Outcome:       v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+				Trigger:       v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED,
+				Attempt:       2,
+				ObservedValue: 7,
+				ObservedKind:  v1pb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+				Thresholds:    &v1pb.QualityThresholds{Comparison: v1pb.QualityComparison_QUALITY_COMPARISON_GREATER_THAN},
+				FailedRows:    7,
+				TotalRows:     100,
+				Sampled:       true,
+				SampleRows:    5000,
+				Truncated:     true,
+				Samples: []*v1pb.FailureSample{{
+					Columns: []*v1pb.ColumnValue{{Column: "amount", Value: "42"}},
+				}},
+				ExecutedSql:   "select count(*) from orders",
+				Duration:      durationpb.New(2 * time.Second),
+				StartTime:     timestamppb.New(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)),
+				FinishTime:    timestamppb.New(time.Date(2026, 1, 2, 3, 4, 7, 0, time.UTC)),
+				BaselineValue: &baseline,
+				BaselineTime:  timestamppb.New(time.Date(2026, 1, 1, 3, 4, 5, 0, time.UTC)),
+			}}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_executions", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;orders"},
+		"rule":      "workspaces/1/qualityRules/9",
+		"state":     "RUNNING",
+		"outcome":   "FAIL",
+		"trigger":   "SCHEDULED",
+		"page_size": 10,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "workspaces/-", seen.GetParent())
+	require.Equal(t, "1;shop;;orders", seen.GetTargetGuid())
+	require.Equal(t, "workspaces/1/qualityRules/9", seen.GetRule())
+	require.Equal(t, v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_RUNNING, seen.GetState())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, seen.GetOutcome())
+	require.Equal(t, v1pb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_SCHEDULED, seen.GetTrigger())
+	require.Equal(t, int32(10), seen.GetPageSize())
+
+	row := firstOf(t, asMap(t, value), "executions")
+	require.Equal(t, "QUALITY_EXECUTION_STATE_COMPLETED", row["state"])
+	require.Equal(t, "QUALITY_STATUS_FAIL", row["outcome"])
+	require.Equal(t, "QUALITY_EXECUTION_TRIGGER_SCHEDULED", row["trigger"])
+	require.Equal(t, "instances/1", row["instance"])
+	require.Equal(t, "workspaces/1/qualityRuns/2", row["run"])
+	require.Equal(t, float64(7), row["observedValue"])
+	require.Equal(t, "QUALITY_OBSERVED_KIND_COUNT", row["observedKind"])
+	require.Equal(t, float64(7), row["failedRows"])
+	require.Equal(t, float64(100), row["totalRows"])
+	require.Equal(t, true, row["sampled"])
+	require.Equal(t, float64(5000), row["sampleRows"])
+	require.Equal(t, true, row["truncated"])
+	require.Equal(t, float64(100), row["baselineValue"])
+	require.Equal(t, "2026-01-01T03:04:05Z", row["baselineTime"])
+	require.Equal(t, "2026-01-02T03:04:05Z", row["startTime"])
+	require.Equal(t, "2026-01-02T03:04:07Z", row["finishTime"])
+	require.NotNil(t, asObject(t, row["target"])["path"])
+	require.NotNil(t, row["thresholds"])
+	require.NotNil(t, row["duration"])
+	// The listing is a projection: the evidence stays in get_quality_execution.
+	require.NotContains(t, row, "samples")
+	require.NotContains(t, row, "executedSql")
+	require.NotContains(t, row, "ruleRevision")
+}
+
+func TestGetQualityExecutionReturnsItsWholeEvidence(t *testing.T) {
+	t.Parallel()
+
+	var seen *v1pb.GetQualityExecutionRequest
+	readers := &fakeReaders{
+		getQualityExecution: func(request *v1pb.GetQualityExecutionRequest) (*v1pb.QualityExecution, error) {
+			seen = request
+			return &v1pb.QualityExecution{
+				Name:        request.GetName(),
+				ExecutedSql: "select count(*) from orders",
+				Samples: []*v1pb.FailureSample{{
+					Columns: []*v1pb.ColumnValue{{Column: "amount", Value: "42"}},
+				}},
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_execution", map[string]any{
+		"execution": "workspaces/1/qualityExecutions/5",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "workspaces/1/qualityExecutions/5", seen.GetName())
+
+	payload := asMap(t, value)
+	require.Equal(t, "select count(*) from orders", payload["executedSql"])
+	require.Equal(t, "42", firstOf(t, asObject(t, listOf(t, payload, "samples")[0]), "columns")["value"])
+
+	_, err = callTool(t, server, "get_quality_execution", map[string]any{})
+	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
+}
+
+func TestListQualityTargetsProjectsTheDirectory(t *testing.T) {
+	t.Parallel()
+
+	score, passRate := 91.0, 0.8
+	var seen *v1pb.ListQualityTargetsRequest
+	readers := &fakeReaders{
+		listQualityTargets: func(request *v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
+			seen = request
+			return &v1pb.ListQualityTargetsResponse{QualityTargets: []*v1pb.QualityTargetSummary{{
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "1;shop;;orders",
+					MetaType: v1pb.MetaType_TABLE,
+					Path:     &v1pb.QualityTargetPath{Instance: "prod-mysql", Database: "shop", Object: "orders"},
+				},
+				RuleCount:            3,
+				EnabledRuleCount:     2,
+				PausedRuleCount:      1,
+				ColumnCount:          2,
+				OpenIssueCount:       1,
+				PendingDraftCount:    2,
+				PendingLabelCount:    3,
+				WorstStatus:          v1pb.QualityStatus_QUALITY_STATUS_WARN,
+				LastRunTime:          timestamppb.New(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)),
+				SchemaChanged:        true,
+				QualityScore:         &score,
+				ScoredRuleCount:      2,
+				RecentPassRate:       &passRate,
+				RecentExecutionCount: 5,
+				CoveredColumnCount:   2,
+				TotalColumnCount:     4,
+				LatestRun:            &v1pb.QualityRun{Name: "workspaces/1/qualityRuns/2"},
+				RunCount:             4,
+				Schedule:             &v1pb.QualityTargetSchedule{Cron: "0 2 * * *", Timezone: "UTC"},
+			}}}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "list_quality_targets", map[string]any{
+		"search":         "order",
+		"worst_status":   "QUALITY_STATUS_WARN",
+		"has_open_issue": true,
+		"page_size":      10,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "workspaces/-", seen.GetParent())
+	require.Equal(t, "order", seen.GetSearch())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_WARN, seen.GetWorstStatus())
+	require.True(t, seen.GetHasOpenIssue())
+	require.Equal(t, int32(10), seen.GetPageSize())
+
+	row := firstOf(t, asMap(t, value), "targets")
+	require.Equal(t, "1;shop;;orders", row["guid"])
+	require.Equal(t, "TABLE", row["metaType"])
+	require.NotNil(t, row["path"])
+	require.Equal(t, float64(3), row["ruleCount"])
+	require.Equal(t, float64(2), row["enabledRuleCount"])
+	require.Equal(t, float64(1), row["pausedRuleCount"])
+	require.Equal(t, float64(2), row["columnCount"])
+	require.Equal(t, float64(1), row["openIssueCount"])
+	require.Equal(t, "QUALITY_STATUS_WARN", row["worstStatus"])
+	require.Equal(t, "2026-01-02T03:04:05Z", row["lastRunTime"])
+	require.Equal(t, true, row["schemaChanged"])
+	require.Equal(t, float64(91), row["qualityScore"])
+	require.Equal(t, 0.8, row["recentPassRate"])
+	require.Equal(t, float64(5), row["recentExecutionCount"])
+	require.Equal(t, float64(2), row["coveredColumnCount"])
+	require.Equal(t, float64(4), row["totalColumnCount"])
+	require.Equal(t, float64(4), row["runCount"])
+	require.NotNil(t, row["latestRun"])
+	require.NotNil(t, row["schedule"])
+}
+
+// TestQualityFiltersListAcceptedEnumValues keeps a bad enum a self-correcting
+// error: the message names what the tool does accept.
+func TestQualityFiltersListAcceptedEnumValues(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+	cases := []struct {
+		tool   string
+		args   map[string]any
+		values []string
+	}{
+		{tool: "list_quality_issues", args: map[string]any{"status": "PENDING"}, values: []string{"ACKNOWLEDGED", "OPEN", "RESOLVED"}},
+		{tool: "list_quality_executions", args: map[string]any{"state": "DONE"}, values: []string{"ABANDONED", "COMPLETED", "PENDING", "RUNNING"}},
+		{tool: "list_quality_targets", args: map[string]any{"worst_status": "BAD"}, values: []string{"ERROR", "FAIL", "NOT_EVALUATED", "PASS", "SKIPPED", "WARN"}},
+	}
+	for _, testCase := range cases {
+		_, err := callTool(t, server, testCase.tool, testCase.args)
+		failure := failureOf(t, err)
+		require.Equal(t, codeInvalidArgument, failure.Code)
+		for _, value := range testCase.values {
+			require.Contains(t, failure.Message, value)
+		}
+	}
 }
 
 // --- dispatch ---

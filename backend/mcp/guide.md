@@ -33,6 +33,11 @@ work around: pick from the candidates, or narrow the reference.
 | What does this table look like? | `get_metadata` |
 | What is this object's definition? | `get_ddl` |
 | Is this table healthy, should I trust it? | `get_quality_signal` |
+| Which tables do quality checks watch, and which need attention? | `list_quality_targets` |
+| What are this table's checks, health and unresolved problems? | `get_quality_target` |
+| What is in the quality problem ledger? | `list_quality_issues` |
+| What have the checks run, and how did they verdict? | `list_quality_executions` |
+| What is the evidence behind one run's verdict? | `get_quality_execution` |
 | What does this SQL statement read and write? | `analyze_sql` |
 | What feeds this table, or what does it feed? | `get_lineage_graph` |
 | What may I read? | `whoami` |
@@ -110,6 +115,39 @@ and nothing is being verified until one is resumed. A monitored object reports:
   describe the table;
 - `orphaned` — the object, its instance or its database no longer resolves; the
   rules stay readable but runs are skipped.
+
+## Reading quality problems and their evidence
+
+The quality tools form a ladder from "how is this table" to "why did this check
+fail":
+
+- `get_quality_signal` answers about one object: is it watched, and how healthy is
+  it. Start here.
+- `list_quality_targets` is the directory: which tables the checks watch, with
+  their worst latest result, quality score, column coverage, latest run and
+  schedule. Filter it by `search` (a case-insensitive substring of the path or
+  GUID), by `worst_status`, or with `has_open_issue: true` to find what needs
+  attention.
+- `get_quality_target` opens one table: its health summary, every check with its
+  configuration and latest result, its schedule, and its unresolved problems. It
+  is the workspace a person would open.
+- `list_quality_issues` is the problem ledger: one row per unresolved or resolved
+  problem, with its severity, when it was first and last seen, how many runs
+  observed it, and who acknowledged, muted or resolved it. An issue row names its
+  table by the target's stored path.
+- `list_quality_executions` lists runs with their verdict, thresholds and
+  evidence flags (`sampled`, `sampleRows`, `truncated`). It deliberately leaves
+  out the failed sample rows and the executed SQL: those are one run's worth of
+  data, not a page's.
+- `get_quality_execution` returns all of it: the SQL that executed, the failed
+  sample rows, the thresholds the run was judged against, any baseline value and
+  time, and the sampling and truncation flags.
+
+There is no tool that asks a model to explain a failure. The agent calling these
+tools is the model: it reads the evidence — the executed SQL, the observed value,
+the thresholds, the failed rows — and forms the explanation itself. Failed sample
+values are real row data, returned to a caller the `executions.get` permission
+already entitles.
 
 ## What a failure means
 
