@@ -6,7 +6,7 @@
 
 ## What it is
 
-同一进程既是 MCP 资源服务器（RS）又是 OAuth 2.1 授权服务器（AS）。RS 是 `/mcp` 上的 **Streamable HTTP、无状态**端点，暴露 15 个只读工具；**数据面零新增 RPC** —— 工具在进程内直接调用现有 ConnectRPC handler 方法。AS 提供 PRM（RFC 9728）、AS metadata（RFC 8414）、Authorization Code + PKCE(S256)、RFC 8707 `resource`、DCR（RFC 7591）。整个面由工作区开关 `mcp_enabled`（默认 `false`）控制。同一进程还提供 `ConnectedAppService`：把「用户 × 客户端的一次授权」作为**已连接应用**列出来并撤销，它不改变 MCP 端点本身的能力面，也不受 `mcp_enabled` 影响（关闭后它仍是清理存量授权的入口）。
+同一进程既是 MCP 资源服务器（RS）又是 OAuth 2.1 授权服务器（AS）。RS 是 `/mcp` 上的 **Streamable HTTP、无状态**端点，暴露 17 个只读工具；**数据面零新增 RPC** —— 工具在进程内直接调用现有 ConnectRPC handler 方法。AS 提供 PRM（RFC 9728）、AS metadata（RFC 8414）、Authorization Code + PKCE(S256)、RFC 8707 `resource`、DCR（RFC 7591）。整个面由工作区开关 `mcp_enabled`（默认 `false`）控制。同一进程还提供 `ConnectedAppService`：把「用户 × 客户端的一次授权」作为**已连接应用**列出来并撤销，它不改变 MCP 端点本身的能力面，也不受 `mcp_enabled` 影响（关闭后它仍是清理存量授权的入口）。
 
 调用链：无令牌 `/mcp` → 401 + `WWW-Authenticate: Bearer resource_metadata=…` → PRM → AS metadata → (DCR) → 带 PKCE+`resource` 打开浏览器 → 已登录用户在 `/oauth/consent` 确认 → `/oauth/authorize/complete` 生成授权码并 302 回客户端 → `code_verifier`+`resource` 换令牌 → 带令牌请求 `/mcp`，每请求独立验令牌 → 工具（寻址 → IAM → 调 handler → 渲染 → 审计）。
 
@@ -27,8 +27,8 @@
 | 权限一致性 | 守卫测试：工具权限串 == 对应 RPC 注解值，且只引用只读权限 | `backend/mcp/tool_guard_test.go` |
 | 输出契约 | 与 CLI 共享语义（字段名、enum 名、错误码词表），**不共享渲染选项** | 省略空字段 + 紧凑 JSON + 投影 |
 | 审计 | 每次工具调用一条审计行（**含被拒的调用**），OAuth 事件同样 | `audit_log` 永久保留，量会上升 |
-| 能力面 | 只读 15 个工具 | 写操作需要确认语义，走 MRTR，另立方案 |
-| 质量工具的范围 | 目标目录、单目标工作台、问题台账、执行列表、单条执行证据五个只读工具；**不暴露 LLM explain** | 调用 MCP 的本身就是 LLM agent，解释应由它基于证据完成；只读面因此不引入 LLM 配额、`/mcp` 60s 端到端超时与“工具会写解释缓存”的语义冲突（`.agents/docs/data-quality.md` D-91） |
+| 能力面 | 只读 17 个工具 | 写操作需要确认语义，走 MRTR，另立方案 |
+| 质量工具的范围 | 目标目录、单目标工作台、问题台账、执行列表、单条执行证据、单目标血缘影响面、工作区消费覆盖率七个只读工具；**不暴露 LLM explain** | 调用 MCP 的本身就是 LLM agent，解释应由它基于证据完成；只读面因此不引入 LLM 配额、`/mcp` 60s 端到端超时与“工具会写解释缓存”的语义冲突（`.agents/docs/data-quality.md` D-91） |
 | 连接管理 | `ConnectedAppService.List/Revoke`（无 permission 注解，handler 先收窄再按权限放宽；revoke `audit=true`） | 一条授权 = 一条已连接应用；`connectedApps.list`/`.revoke` 只决定能否看全工作区、撤销他人，自助撤销自己的不需要权限 |
 
 **refresh token（推翻决策 #4 的原因与形状）**：token 端点支持 `refresh_token` grant；access token 仍用 `auth.GetTokenDuration`（7 天），refresh token 是**不透明、单次使用、每次轮换**的凭据，只存 SHA-256 摘要，落库 `oauth_refresh_token`（历史表名；Go 语义是 `OAuthGrant`，`backend/store/oauth_grant.go`）。轮换是**原地 `UPDATE ... RETURNING id`**（`token.go` 的 `rotateGrant`）：行 id 稳定，既是已连接应用的对外身份，也是 access token 的 `gid` claim；并发刷新只有一个赢家，撤销与轮换在同一行上串行化。grant 钉在同意时的 resource 与 scope 上，每次轮换复查 principal（存在、未停用、未早于上次改密）；principal 复核失败时显式把行置为已撤销，不再靠删除行隐式结束授权。`Logout` 按 `cid` claim **撤销**该用户该 client 的全部连接（行保留，供管理页与审计），不再是删除刷新凭据；maintenance 在过期 7 天后清理行。存量行即授权，升级后立刻出现在管理页，无需回填。
@@ -86,7 +86,7 @@
 
 ## 工具表
 
-15 个只读工具，实现在 `backend/mcp/tool.go` 的 `toolDefinitions`；权限必须等于 RPC 注解。行号会随代码增长而漂移，所以这里只指符号。
+17 个只读工具，实现在 `backend/mcp/tool.go` 的 `toolDefinitions`；权限必须等于 RPC 注解。行号会随代码增长而漂移，所以这里只指符号。
 
 | 工具 | RPC | 权限 | 入参要点 |
 | --- | --- | --- | --- |
@@ -104,6 +104,8 @@
 | `list_quality_issues` | `DataQualityService.ListQualityIssues` | `metaxisdata.dataQuality.issues.list` | `object?`/`rule?`/`status?`/`severity?`、分页；问题行（含 `target.path`，由一次批量目标选择补全）、ack/解决/静音字段 |
 | `list_quality_executions` | `DataQualityService.ListQualityExecutions` | `metaxisdata.dataQuality.executions.list` | `object?`/`rule?`/`state?`/`outcome?`/`trigger?`、分页；投影行，**不含**失败样本与 executed SQL |
 | `get_quality_execution` | `DataQualityService.GetQualityExecution` | `metaxisdata.dataQuality.executions.get` | `execution`(资源名)；单条执行完整证据（executed SQL/失败样本/阈值/基线/flags） |
+| `get_quality_impact` | `DataQualityService.GetQualityTargetImpact` | `metaxisdata.dataQuality.rules.list` | `object`(object_ref)、`meta_type?`、`depth?`(0..3，默认 2)、`window_hours?`(0..168，默认 24)；整个响应即 protojson（下游资产 + 上游根因候选 + 窗口 + 截断标记），证据由 agent 自己解释 |
+| `get_quality_consumption_coverage` | `DataQualityService.GetQualityConsumptionCoverage` | `metaxisdata.dataQuality.rules.list` | `page_size`(20/100)；被消费资产/已监控数/未监控数与按下游数排序的未监控清单 |
 | `whoami` | `UserService.GetCurrentUser` | 无（该 RPC 无注解，已白名单） | 回显身份与 `permissions` |
 
 每条 `Description` 说明它回答什么问题、并指明什么时候该换另一个工具（`toolDefinitions` 的 `Description` 字段）；守卫测试要求非空（`backend/mcp/tool_guard_test.go` 的 `TestEveryToolMatchesItsRPC`）。
@@ -204,12 +206,12 @@
 | `Cacheable`/`ttlMs` 未启用 | 全仓库无实现；`cacheScope` 默认 `public`，与按调用者的 IAM 冲突 |
 | 省略 `jwks_uri` | `backend/api/oauth/metadata.go:121-124`：对称密钥 HS256，消费者就是本进程；偏差已记入 security posture |
 | 老客户端（<`2025-06-18`）文本副本未做 | `backend/mcp/server.go:355-358` 只写 `StructuredContent`、不设 `Content`；版本可读（见 SDK 契约），真需要时是一行分支 |
-| 写工具未做 | 只读 15 工具是确认过的能力面；写操作需 MRTR 语义。DQ 的建/改/删规则、运行、确认/解决问题、契约发布同样不在 MCP 面，LLM explain 也不做（调用者自己就是模型，见 D-91） |
+| 写工具未做 | 只读 17 工具是确认过的能力面；写操作需 MRTR 语义。DQ 的建/改/删规则、运行、确认/解决问题、契约发布同样不在 MCP 面，LLM explain 也不做（调用者自己就是模型，见 D-91） |
 | device login 与 MCP 打通未做 | 未暴露 `device_code` grant；headless agent 仍需浏览器 |
 
 ## Where things live
 
-- RS 与工具：`backend/mcp/server.go`（Config/Handler/dispatch/审计）、`backend/mcp/tool.go`（工具表 + 15 个 Run）、`backend/mcp/ref.go`（object_ref/scope 解析）、`backend/mcp/errors.go`（错误信封）、`backend/mcp/auth.go`（`NewTokenVerifier`）、`backend/mcp/guide.go` + `backend/mcp/guide.md`（prompt）。
+- RS 与工具：`backend/mcp/server.go`（Config/Handler/dispatch/审计）、`backend/mcp/tool.go`（工具表 + 17 个 Run）、`backend/mcp/ref.go`（object_ref/scope 解析）、`backend/mcp/errors.go`（错误信封）、`backend/mcp/auth.go`（`NewTokenVerifier`）、`backend/mcp/guide.go` + `backend/mcp/guide.md`（prompt）。
 - AS：`backend/api/oauth/resource.go`（规范化 issuer/resource）、`backend/api/oauth/metadata.go`（PRM/AS metadata + 开关解析）、`backend/api/oauth/authorize.go`（PKCE/重定向/scope 安全核心）、`backend/api/oauth/token.go`（两种 grant）、`backend/api/oauth/register.go`（DCR）、`backend/api/oauth/server.go`（会话/错误渲染）、`backend/api/oauth/audit.go`。
 - consent RPC：`backend/api/v1/oauth_service.go`；proto `proto/v1/v1/oauth_service.proto`。
 - 已连接应用：`backend/api/v1/connected_app_service.go`（list/revoke、handler 侧 scope 与 `users.get` 可见性）、`backend/api/v1/filter.go` 的 `parseConnectedAppFilter`（CEL → 参数化 SQL，`state` 用 `CASE` 派生）、`proto/v1/v1/connected_app_service.proto`；前端 `frontend/src/pages/settings/ConnectedAppsSettingsPage.vue`、`frontend/src/pages/ConnectedAppsPage.vue`、`frontend/src/components/connected-app/`、`frontend/src/api/connected-app.ts`。

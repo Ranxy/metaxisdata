@@ -94,6 +94,8 @@ browser flow again.
 | `list_quality_issues` | the problem ledger: what is open, acknowledged, resolved or muted |
 | `list_quality_executions` | recent check runs with their verdicts, thresholds and evidence flags |
 | `get_quality_execution` | one run's full evidence: the SQL that ran, the failed rows, thresholds and baseline |
+| `get_quality_impact` | what a table's data reaches downstream, and which upstream targets may explain a failure |
+| `get_quality_consumption_coverage` | how much of the data other assets read is watched, and which consumed tables are not |
 | `analyze_sql` | what one SQL statement reads and writes, column by column |
 | `get_lineage_graph` | the multi-level lineage around an object |
 | `whoami` | who the caller is and what they may read |
@@ -117,7 +119,17 @@ table: every check with its configuration and latest result, its schedule and it
 unresolved problems. `list_quality_issues` reads the problem ledger;
 `list_quality_executions` lists runs with their verdicts; `get_quality_execution`
 returns one run's whole evidence — the SQL that ran, the failed sample rows, the
-thresholds it was judged against and the baseline it compared with. There is
+thresholds it was judged against and the baseline it compared with. `get_quality_impact` projects the recorded lineage around one table: the assets its
+data reaches downstream (with each one's monitoring state) and, in the 24 hours
+before now, the upstream targets whose checks failed or whose structure changed.
+It is a bounded walk, so an empty answer means the lineage records no such object,
+not that nothing consumes it. `get_quality_consumption_coverage` is the workspace
+counterpart: of the registry assets another object's lineage reads, how many have
+an enabled check, and which unmonitored ones have the most consumers. Its
+denominator is not `get_quality_signal`'s coverage — there every monitorable object
+counts, here only objects something reads — so the two ratios are not comparable.
+
+There is
 deliberately no tool that asks a model to explain a failure: the agent calling
 these tools is the model, so it reasons over the evidence itself. Failed sample
 values are real row data, shown to a caller the `executions.get` permission
