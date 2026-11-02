@@ -394,8 +394,9 @@ levels downstream, at most a hundred assets, and the section says when it was cu
 short or when objects that cannot carry a check (reported statements, external
 datasets, deleted objects) were passed through without being listed. The upstream
 question is about the run being explained: the window ends when that run started
-and reaches 24 hours back. An issue anchors the window at when the problem was
-first seen, and a panel with no failing run says so instead of implying a cause.
+and reaches 24 hours back (on an issue page it ends when the problem was first
+seen, and the caption says so). A panel with no failing run says so instead of
+implying a cause.
 
 The target report includes the same section, anchored at the newest failure in
 the report window, so a forwarded file answers the question too.

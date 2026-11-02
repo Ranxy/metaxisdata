@@ -500,6 +500,7 @@ func TestRenderImpactSection(t *testing.T) {
 		DownstreamOmitted:   2,
 		DownstreamTruncated: true,
 		RootCausesOmitted:   1,
+		UpstreamTruncated:   true,
 		WindowStart:         failureAt.Add(-24 * time.Hour),
 		WindowEnd:           failureAt,
 		Downstream: []ImpactAsset{
@@ -514,6 +515,12 @@ func TestRenderImpactSection(t *testing.T) {
 			},
 			pausedSummary,
 			{Path: "instance-1/shop;public;reporting", TypeKey: "TABLE", Distance: 2},
+			{
+				Path:      "instance-1/shop;public;never_run",
+				TypeKey:   "TABLE",
+				Distance:  2,
+				Monitored: true,
+			},
 		},
 		RootCauses: []ImpactCause{{
 			Path:                  "instance-1/shop;public;raw_orders",
@@ -536,12 +543,14 @@ func TestRenderImpactSection(t *testing.T) {
 		"order_summary",
 		"All checks paused",
 		"Unmonitored",
+		"Never run",
 		"Fail",
-		"2 checks failed (5 runs) in the window",
+		"Failed checks in the window: 2 · failed runs: 5",
 		"structure changed",
-		"2 walked objects are not listed because a check cannot watch them.",
+		"Objects walked through but not listed because a check cannot watch them: 2.",
 		"The lineage walk was cut short; more objects may be affected.",
-		"1 more candidates are not shown.",
+		"The upstream walk was cut short; other causes may be missing.",
+		"More candidates not shown: 1.",
 	} {
 		require.Contains(t, document, want, "english report")
 	}
@@ -555,8 +564,10 @@ func TestRenderImpactSection(t *testing.T) {
 		"可能的上游原因",
 		"检查已全部暂停",
 		"未监控",
-		"窗口内 2 条检查失败（5 次执行）",
-		"另有 1 个候选未显示",
+		"未运行",
+		"窗口内失败检查：2 条 · 失败执行：5 次",
+		"上游遍历被截断，可能还有其他原因未列出",
+		"另有候选未显示：1 个。",
 	} {
 		require.Contains(t, chinese, want, "chinese report")
 	}

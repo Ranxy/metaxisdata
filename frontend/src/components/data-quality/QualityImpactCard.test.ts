@@ -124,6 +124,7 @@ async function mountCard(
     targetGuid?: string;
     metaType?: MetaType;
     asOf?: ReturnType<typeof timestampFromDate>;
+    anchor?: "run" | "issue";
   } = {}
 ) {
   const router = createRouter({
@@ -159,6 +160,7 @@ async function mountCard(
       targetGuid: options.targetGuid ?? TARGET_GUID,
       metaType: options.metaType ?? MetaType.TABLE,
       asOf: options.asOf,
+      anchor: options.anchor,
     },
     global: { plugins: [router, i18n, pinia] },
   });
@@ -193,6 +195,17 @@ describe("QualityImpactCard", () => {
     expect(text).toContain(label("dataQuality.impact.downstreamTitle"));
     // The window is the response's own: 24 hours before the run.
     expect(text).toContain(label("dataQuality.impact.window", { hours: 24 }));
+  });
+
+  it("names the issue's first-seen instant when asked to anchor at an issue", async () => {
+    const { wrapper } = await mountCard({ anchor: "issue" });
+    const text = wrapper.text();
+    expect(text).toContain(
+      label("dataQuality.impact.windowIssue", { hours: 24 })
+    );
+    expect(text).not.toContain(
+      label("dataQuality.impact.window", { hours: 24 })
+    );
   });
 
   it("renders the upstream evidence and the newest failing run", async () => {

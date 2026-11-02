@@ -76,6 +76,49 @@ func TestWalkLineageReportsTruncation(t *testing.T) {
 	require.Len(t, nodes, 3)
 }
 
+// A level whose visible prefix is entirely nodes the walk has already visited must
+// still report the truncation: the peers behind that prefix are real objects the
+// node budget could not add, and claiming a complete walk would silently drop them.
+func TestWalkLineageReportsTruncationBehindAVisitedPrefix(t *testing.T) {
+	t.Parallel()
+
+	// A diamond with no cycle: the second level of a is {b1,b2}; b1 and b2 share
+	// the same successor c, so the level probe starts with an already visited peer.
+	graph := map[string][]string{
+		"a":  {"b1", "b2"},
+		"b1": {"b2", "c"},
+		"b2": {"c"},
+	}
+	fetch := func(_ context.Context, guids []string, budget int) ([]string, error) {
+		seen := make(map[string]struct{}, budget+1)
+		peers := make([]string, 0, budget+1)
+		for _, guid := range guids {
+			for _, peer := range graph[guid] {
+				if _, ok := seen[peer]; ok {
+					continue
+				}
+				seen[peer] = struct{}{}
+				peers = append(peers, peer)
+			}
+		}
+		slices.Sort(peers)
+		if len(peers) > budget+1 {
+			peers = peers[:budget+1]
+		}
+		return peers, nil
+	}
+	nodes, depthReached, truncated, err := walkLineage(context.Background(), "a", 3, 4, 1, fetch)
+	require.NoError(t, err)
+	require.True(t, truncated)
+	require.Equal(t, []lineageWalkNode{
+		{GUID: "a", Distance: 0},
+		{GUID: "b1", Distance: 1},
+		{GUID: "b2", Distance: 1},
+		{GUID: "c", Distance: 2},
+	}, nodes)
+	require.Equal(t, int32(2), depthReached)
+}
+
 // An expired budget is a truncation, not a failure: the caller asked for a bounded
 // answer and a partial one is still useful.
 func TestWalkLineageReportsExhaustedBudgetAsTruncation(t *testing.T) {

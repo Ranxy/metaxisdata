@@ -126,8 +126,10 @@ It is a bounded walk, so an empty answer means the lineage records no such objec
 not that nothing consumes it. `get_quality_consumption_coverage` is the workspace
 counterpart: of the registry assets another object's lineage reads, how many have
 an enabled check, and which unmonitored ones have the most consumers. Its
-denominator is not `get_quality_signal`'s coverage — there every monitorable object
-counts, here only objects something reads — so the two ratios are not comparable.
+denominator is only the objects something reads: it is neither the overview's object
+coverage (every monitorable object counts there, and this surface does not expose
+that summary) nor `get_quality_signal`'s per-object column coverage, so the ratios
+are not comparable.
 
 There is
 deliberately no tool that asks a model to explain a failure: the agent calling

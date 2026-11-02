@@ -806,7 +806,8 @@
       "upstreamEmpty": "No upstream check failed or changed structure in the window",
       "upstreamTitle": "Possible upstream causes",
       "viewFailingRun": "View failing run",
-      "window": "in the {hours} hours before this run"
+      "window": "in the {hours} hours before this run",
+      "windowIssue": "in the {hours} hours before this issue was first seen"
     },
     "initiator": "Initiator",
     "instance": "Instance",

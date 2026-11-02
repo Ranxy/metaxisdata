@@ -186,6 +186,7 @@
           :target-guid="issue.target?.metaGuid ?? ''"
           :meta-type="issue.target?.metaType ?? MetaType.UNSPECIFIED"
           :as-of="issue.firstSeenTime"
+          anchor="issue"
         />
 
         <Card v-if="issue.status === QualityIssueStatus.RESOLVED">

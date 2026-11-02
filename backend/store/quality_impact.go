@@ -77,9 +77,10 @@ func (s *Store) ListQualityTargetFailureEvidence(ctx context.Context, keys []Met
 			evidence   QualityFailureEvidence
 			recentIDs  pq.Int64Array
 		)
-		if err := rows.Scan(&guid, &objectType, &evidence.FailingRuleCount,
-			&evidence.FailingExecutionCount, &evidence.LatestFailureTime, &recentIDs); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a target's failing executions")
+		scanErr := rows.Scan(&guid, &objectType, &evidence.FailingRuleCount,
+			&evidence.FailingExecutionCount, &evidence.LatestFailureTime, &recentIDs)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a target's failing executions")
 		}
 		evidence.RecentExecutionIDs = recentIDs
 		result[MetaGUIDKey{GUID: guid, ObjectType: storepb.MetaType(objectType)}] = &evidence
@@ -186,9 +187,9 @@ func (s *Store) GetQualityConsumptionCoverage(ctx context.Context, gapLimit int)
 			consumed   int32
 			gaps       int32
 		)
-		if err := rows.Scan(&guid, &objectType, &readers, &monitored,
-			&consumed, &gaps); err != nil {
-			return nil, errors.Wrap(err, "failed to scan a consumption coverage row")
+		scanErr := rows.Scan(&guid, &objectType, &readers, &monitored, &consumed, &gaps)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a consumption coverage row")
 		}
 		result.ConsumedAssetCount = consumed
 		result.GapCount = gaps

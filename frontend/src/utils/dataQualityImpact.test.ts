@@ -24,6 +24,7 @@ import {
   impactMonitoringState,
   impactRootCauseRows,
   impactTargetPath,
+  impactWindowFallbackText,
   impactWindowHours,
   impactWindowText,
 } from "./dataQualityImpact";
@@ -219,6 +220,25 @@ describe("impactWindowText", () => {
     const response = create(GetQualityTargetImpactResponseSchema, {});
     expect(impactWindowText(response)).toEqual({
       key: "dataQuality.impact.window",
+      params: { hours: 24 },
+    });
+  });
+
+  it("names the issue's first-seen instant when the page anchors at an issue", () => {
+    const response = create(GetQualityTargetImpactResponseSchema, {});
+    expect(impactWindowText(response, "issue")).toEqual({
+      key: "dataQuality.impact.windowIssue",
+      params: { hours: 24 },
+    });
+  });
+
+  it("gives the fallback caption for the anchor before the response arrives", () => {
+    expect(impactWindowFallbackText("run")).toEqual({
+      key: "dataQuality.impact.window",
+      params: { hours: 24 },
+    });
+    expect(impactWindowFallbackText("issue")).toEqual({
+      key: "dataQuality.impact.windowIssue",
       params: { hours: 24 },
     });
   });

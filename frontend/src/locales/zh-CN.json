@@ -806,7 +806,8 @@
       "upstreamEmpty": "窗口内没有上游检查失败或结构发生变化",
       "upstreamTitle": "可能的上游原因",
       "viewFailingRun": "查看失败执行",
-      "window": "本次运行前 {hours} 小时内"
+      "window": "本次运行前 {hours} 小时内",
+      "windowIssue": "该问题首次出现前 {hours} 小时内"
     },
     "initiator": "发起人",
     "instance": "实例",

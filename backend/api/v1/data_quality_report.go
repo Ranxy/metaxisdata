@@ -464,6 +464,7 @@ func qualityReportImpactOf(response *v1pb.GetQualityTargetImpactResponse, anchor
 		DownstreamOmitted:   response.GetOmittedDownstreamCount(),
 		DownstreamTruncated: response.GetDownstreamTruncated(),
 		RootCausesOmitted:   response.GetOmittedRootCauseCount(),
+		UpstreamTruncated:   response.GetUpstreamTruncated(),
 	}
 	for _, asset := range response.GetDownstreamAssets() {
 		entry := qualityreport.ImpactAsset{
@@ -474,7 +475,12 @@ func qualityReportImpactOf(response *v1pb.GetQualityTargetImpactResponse, anchor
 		if summary := asset.GetSummary(); summary != nil {
 			entry.Monitored = true
 			entry.AllPaused = summary.GetEnabledRuleCount() == 0
-			entry.WorstStatusKey = qualityReportEnumKey(summary.GetWorstStatus())
+			// A monitored asset that has never produced a verdict is "never run",
+			// which the renderer expresses as an empty key. The raw enum would leak
+			// UNSPECIFIED into a forwarded document and disagree with the SPA.
+			if summary.GetWorstStatus() != v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED {
+				entry.WorstStatusKey = qualityReportEnumKey(summary.GetWorstStatus())
+			}
 			entry.OpenIssueCount = summary.GetOpenIssueCount()
 			if lastRun := summary.GetLastRunTime(); lastRun != nil {
 				value := lastRun.AsTime()

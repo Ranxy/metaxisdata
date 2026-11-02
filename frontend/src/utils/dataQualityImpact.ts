@@ -35,6 +35,13 @@ export const IMPACT_DEPTH = 2;
 /** The root-cause window: the 24 hours before the reference instant. */
 export const IMPACT_WINDOW_HOURS = 24;
 
+/**
+ * What the root-cause window is anchored at. An execution is anchored at the
+ * run that failed; an issue at the moment it was first seen. The caption has to
+ * name the right one, or the panel would talk about a run the page never shows.
+ */
+export type ImpactWindowAnchor = "run" | "issue";
+
 /** A catalog key and its params; a view passes it straight to `t`. */
 export interface ImpactText {
   key: string;
@@ -157,17 +164,37 @@ export function impactWindowHours(
   return Math.round((to - from) / 3_600);
 }
 
-/** The window caption: "in the {hours} hours before this run". */
+/**
+ * The window caption: "in the {hours} hours before this run", or before the issue
+ * was first seen when the page anchors at an issue.
+ */
 export function impactWindowText(
-  response: Pick<GetQualityTargetImpactResponse, "windowStart" | "windowEnd">
+  response: Pick<GetQualityTargetImpactResponse, "windowStart" | "windowEnd">,
+  anchor: ImpactWindowAnchor = "run"
 ): ImpactText {
   return {
-    key: "dataQuality.impact.window",
+    key:
+      anchor === "issue"
+        ? "dataQuality.impact.windowIssue"
+        : "dataQuality.impact.window",
     params: {
       hours:
         impactWindowHours(response.windowStart, response.windowEnd) ??
         IMPACT_WINDOW_HOURS,
     },
+  };
+}
+
+/** The fallback caption used before the response arrives, for one anchor. */
+export function impactWindowFallbackText(
+  anchor: ImpactWindowAnchor = "run"
+): ImpactText {
+  return {
+    key:
+      anchor === "issue"
+        ? "dataQuality.impact.windowIssue"
+        : "dataQuality.impact.window",
+    params: { hours: IMPACT_WINDOW_HOURS },
   };
 }
 

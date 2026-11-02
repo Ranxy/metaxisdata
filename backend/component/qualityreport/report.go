@@ -249,6 +249,9 @@ type Impact struct {
 	RootCauses []ImpactCause
 	// RootCausesOmitted counts candidates found beyond the report's own cap.
 	RootCausesOmitted int32
+	// UpstreamTruncated reports that the upstream walk hit its node budget, so the
+	// candidate list may be incomplete.
+	UpstreamTruncated bool
 	// WindowStart and WindowEnd are the window the root causes were read from; zero
 	// when no failing check anchored it.
 	WindowStart time.Time
@@ -948,6 +951,9 @@ func newImpactView(language string, text labels, impact *Impact) impactView {
 	}
 	if impact.RootCausesOmitted > 0 {
 		causeNotes = append(causeNotes, fmt.Sprintf(text.ImpactMoreCauses, impact.RootCausesOmitted))
+	}
+	if impact.UpstreamTruncated {
+		causeNotes = append(causeNotes, text.ImpactUpstreamTruncated)
 	}
 	view.CausesEmpty = len(view.Causes) == 0
 	if view.CausesEmpty {

@@ -23,7 +23,7 @@
 | OAuth scope | 单一粗粒度 `metaxisdata.mcp.read` | 真正的授权仍是平台 IAM；把 IAM 权限串当 scope 会造出第二套 ACL |
 | 开关 | `WorkspaceProfileSetting.mcp_enabled`，默认 `false` | 新攻击面由管理员显式开启；JSONB 加字段无需 migration |
 | Audience 纪律 | `/mcp` 只认 `<external_url 规范化>/mcp`；Connect 侧沿用 `mt.user.access.<mode>` | 规范 MUST audience 绑定、MUST NOT passthrough；双向隔离由 `backend/api/auth/authenticator_test.go` 钉住 |
-| 工具实现 | 进程内直接调用现有 handler 方法（`connect.NewRequest` 传参），不抽 service 函数 | 这 15 个只读 handler 不依赖拦截器 context，因此同一份代码、零漂移；代价是 MCP 层自己放用户进 ctx、自己做权限与审计 |
+| 工具实现 | 进程内直接调用现有 handler 方法（`connect.NewRequest` 传参），不抽 service 函数 | 这 17 个只读 handler 不依赖拦截器 context，因此同一份代码、零漂移；代价是 MCP 层自己放用户进 ctx、自己做权限与审计 |
 | 权限一致性 | 守卫测试：工具权限串 == 对应 RPC 注解值，且只引用只读权限 | `backend/mcp/tool_guard_test.go` |
 | 输出契约 | 与 CLI 共享语义（字段名、enum 名、错误码词表），**不共享渲染选项** | 省略空字段 + 紧凑 JSON + 投影 |
 | 审计 | 每次工具调用一条审计行（**含被拒的调用**），OAuth 事件同样 | `audit_log` 永久保留，量会上升 |

@@ -438,6 +438,22 @@ func TestQualityReportImpactOf(t *testing.T) {
 				},
 				Distance: 2,
 			},
+			{
+				// Monitored but never judged: the report must say "never run", not
+				// leak the raw UNSPECIFIED enum.
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "instance-1;shop;public;never_run",
+					MetaType: v1pb.MetaType_TABLE,
+					Path: &v1pb.QualityTargetPath{
+						Instance: "instance-1", Database: "shop", Schema: "public", Object: "never_run",
+					},
+				},
+				Distance: 2,
+				Summary: &v1pb.QualityTargetSummary{
+					EnabledRuleCount: 1,
+					WorstStatus:      v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
+				},
+			},
 		},
 		RootCauses: []*v1pb.QualityRootCauseCandidate{{
 			Target: &v1pb.QualityTarget{
@@ -456,12 +472,13 @@ func TestQualityReportImpactOf(t *testing.T) {
 		OmittedDownstreamCount: 1,
 		DownstreamTruncated:    true,
 		OmittedRootCauseCount:  2,
+		UpstreamTruncated:      true,
 		WindowStart:            timestamppb.New(anchor.Add(-24 * time.Hour)),
 		WindowEnd:              timestamppb.New(anchor),
 	}
 
 	impact := qualityReportImpactOf(response, &anchor)
-	require.Len(t, impact.Downstream, 2)
+	require.Len(t, impact.Downstream, 3)
 	require.Equal(t, "instance-1/shop/public/order_summary", impact.Downstream[0].Path)
 	require.Equal(t, "VIEW", impact.Downstream[0].TypeKey)
 	require.True(t, impact.Downstream[0].Monitored)
@@ -473,8 +490,12 @@ func TestQualityReportImpactOf(t *testing.T) {
 	require.False(t, impact.Downstream[1].Monitored)
 	require.Nil(t, impact.Downstream[1].LastRunTime)
 
+	require.True(t, impact.Downstream[2].Monitored)
+	require.Empty(t, impact.Downstream[2].WorstStatusKey, "a never-run asset must not map the raw UNSPECIFIED enum")
+
 	require.Equal(t, int32(1), impact.DownstreamOmitted)
 	require.True(t, impact.DownstreamTruncated)
+	require.True(t, impact.UpstreamTruncated)
 	require.Equal(t, int32(2), impact.RootCausesOmitted)
 	require.Len(t, impact.RootCauses, 1)
 	require.Equal(t, "instance-1/shop/public/raw_orders", impact.RootCauses[0].Path)
@@ -491,5 +512,5 @@ func TestQualityReportImpactOf(t *testing.T) {
 	unanchored := qualityReportImpactOf(response, nil)
 	require.Empty(t, unanchored.RootCauses)
 	require.Zero(t, unanchored.WindowStart)
-	require.Len(t, unanchored.Downstream, 2)
+	require.Len(t, unanchored.Downstream, 3)
 }

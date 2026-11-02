@@ -203,11 +203,14 @@ func (s *Server) toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        "get_quality_consumption_coverage",
-			Description: "Measure how much of the data other assets consume is watched: registry assets that another object's lineage reads, how many of them have an enabled check, and the unmonitored ones with the most consumers. This is not the coverage get_quality_signal reports: there every monitorable object counts, here only objects something reads. Use list_quality_targets or get_quality_signal to look at one of the gaps.",
+			Description: "Measure how much of the data other assets consume is watched: registry assets that another object's lineage reads, how many of them have an enabled check, and the unmonitored ones with the most consumers. Its denominator is only the objects something reads, so it is not the overview's object coverage (which this surface does not expose) and not get_quality_signal's per-object column coverage. Use list_quality_targets or get_quality_signal to look at one of the gaps.",
 			RPC:         "metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage",
 			Permission:  permission.DataQualityRulesList,
 			Schema: objectSchema(map[string]any{
-				"page_size": pageSizeProperty(),
+				// Not pageSizeProperty(): this RPC's ceiling is 100 and its default is
+				// 20, so advertising the general 25/200 shape would mislead a caller
+				// about whether the gap list it received is complete.
+				"page_size": map[string]any{"type": "integer", "description": "how many gaps to return (1-100; zero means the server default of 20, and a larger value is coerced to 100)"},
 			}),
 			Run: s.runGetQualityConsumptionCoverage,
 		},
@@ -1546,13 +1549,11 @@ func (s *Server) runGetQualityConsumptionCoverage(ctx context.Context, _ *store.
 	if err := decodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
-	pageSize, err := normalizePageSize(args.PageSize)
-	if err != nil {
-		return nil, err
-	}
+	// The RPC owns this bound (0 means 20, above 100 is coerced), so the raw value
+	// goes through; the tool's schema documents the same range.
 	response, err := s.config.Quality.GetQualityConsumptionCoverage(ctx, connect.NewRequest(&v1pb.GetQualityConsumptionCoverageRequest{
 		Parent:   qualityListParent,
-		PageSize: pageSize,
+		PageSize: args.PageSize,
 	}))
 	if err != nil {
 		return nil, toolErrorFromRPC(err)

@@ -244,9 +244,11 @@ import {
   IMPACT_WINDOW_HOURS,
   type ImpactDownstreamRow,
   type ImpactText,
+  type ImpactWindowAnchor,
   impactDownstreamRows,
   impactFootnotes,
   impactRootCauseRows,
+  impactWindowFallbackText,
   impactWindowText,
 } from "@/utils/dataQualityImpact";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
@@ -272,8 +274,10 @@ const props = withDefaults(
     metaType: MetaType;
     /** The instant the root-cause window ends; unset means "now". */
     asOf?: Timestamp;
+    /** What the window is anchored at: a run (default) or an issue. */
+    anchor?: ImpactWindowAnchor;
   }>(),
-  { asOf: undefined }
+  { asOf: undefined, anchor: "run" }
 );
 
 const { t, locale } = useI18n();
@@ -311,11 +315,8 @@ const footnotes = computed<ImpactText[]>(() =>
 
 const windowText = computed<ImpactText>(() =>
   impact.value
-    ? impactWindowText(impact.value)
-    : {
-        key: "dataQuality.impact.window",
-        params: { hours: IMPACT_WINDOW_HOURS },
-      }
+    ? impactWindowText(impact.value, props.anchor)
+    : impactWindowFallbackText(props.anchor)
 );
 
 /**

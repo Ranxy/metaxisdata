@@ -200,21 +200,29 @@ func walkLineage(ctx context.Context, root string, depth, maxNodes int, step int
 			}
 			return nil, 0, false, err
 		}
-		truncated := false
-		if len(peers) > remaining {
-			truncated = true
-			peers = peers[:remaining]
-		}
+		// The fetcher answered with at most budget+1 peers, so a longer answer is
+		// the probe that says this level was cut to the node budget. It must be
+		// decided before duplicates are skipped: a prefix that is entirely visited
+		// still hides the peers behind it.
+		truncated := len(peers) > remaining
 		var next []string
 		for _, peer := range peers {
 			if _, ok := visited[peer]; ok {
 				continue
+			}
+			if len(nodes) >= maxNodes {
+				// The level offers another object the walk has no budget to add.
+				truncated = true
+				break
 			}
 			visited[peer] = struct{}{}
 			nodes = append(nodes, lineageWalkNode{GUID: peer, Distance: step * int32(level)})
 			next = append(next, peer)
 		}
 		if len(next) == 0 {
+			if truncated {
+				return nodes, depthReached, true, nil
+			}
 			break
 		}
 		frontier = next
