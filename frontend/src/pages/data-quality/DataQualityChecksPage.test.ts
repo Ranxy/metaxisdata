@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import TablePager from "@/components/common/TablePager.vue";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
@@ -1024,6 +1025,83 @@ describe("DataQualityChecksPage bulk edit", () => {
     // Select-all covers the editable row only.
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    wrapper.unmount();
+  });
+
+  it("disables select-all when the visible page holds only archived checks", async () => {
+    mocks.listQualityRules.mockResolvedValue({
+      items: [archivedRuleFixture()],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+
+    const checkboxes = wrapper.findAll('[role="checkbox"]');
+    expect(checkboxes).toHaveLength(2);
+    // Neither the header nor the archived row can start a bulk edit.
+    expect(checkboxes[0]?.attributes("disabled")).toBeDefined();
+    expect(checkboxes[1]?.attributes("disabled")).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it("clears the selection when the cursor steps", async () => {
+    mocks.listQualityRules
+      .mockResolvedValueOnce({
+        items: [ruleFixture()],
+        nextPageToken: "cursor-2",
+      })
+      .mockResolvedValue({
+        items: [secondRuleFixture()],
+        nextPageToken: "",
+      });
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    await wrapper
+      .findAll(
+        `[aria-label="${i18n.global.t("dataQuality.checks.batchEdit.selectCheck")}"]`
+      )[0]
+      ?.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+
+    const next = wrapper
+      .findAll("button")
+      .find((button) => button.text().trim() === i18n.global.t("common.next"));
+    await next?.trigger("click");
+    await flushPromises();
+
+    // A selection belongs to the page it was made on, not to the cursor walk.
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: "cursor-2" })
+    );
+    wrapper.unmount();
+  });
+
+  it("clears the selection when the page size changes", async () => {
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    await wrapper
+      .findAll(
+        `[aria-label="${i18n.global.t("dataQuality.checks.batchEdit.selectCheck")}"]`
+      )[0]
+      ?.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+
+    wrapper.findComponent(TablePager).vm.$emit("update:pageSize", 100);
+    await nextTick();
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    expect(mocks.listQualityRules).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageSize: 100, pageToken: "" })
     );
     wrapper.unmount();
   });

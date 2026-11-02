@@ -41,6 +41,8 @@ func TestResolveParentPrefersTheRequestThenTheResponse(t *testing.T) {
 		{"request parent", map[string]any{"parent": "instances/i1"}, nil, "workspaces/ws", "instances/i1"},
 		{"response parent", nil, map[string]any{"parent": "instances/i1"}, "workspaces/ws", "instances/i1"},
 		{"request wins over response", map[string]any{"parent": "instances/i1"}, map[string]any{"parent": "instances/i2"}, "workspaces/ws", "instances/i1"},
+		{"wildcard request parent falls back", map[string]any{"parent": "workspaces/-"}, nil, "workspaces/ws", "workspaces/ws"},
+		{"wildcard response parent falls back", nil, map[string]any{"parent": "workspaces/-"}, "workspaces/ws", "workspaces/ws"},
 		{"default", nil, nil, "workspaces/ws", "workspaces/ws"},
 		{"non-string parent falls back", map[string]any{"parent": map[string]any{}}, nil, "workspaces/ws", "workspaces/ws"},
 	}

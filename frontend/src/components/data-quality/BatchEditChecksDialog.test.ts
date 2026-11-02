@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, nextTick } from "vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
+import { useAuthStore } from "@/store/modules/auth";
 import {
   NullPercentConfigSchema,
   QualityDimension,
@@ -18,7 +19,7 @@ import {
   RowCountConfigSchema,
   QualityRuleType as RuleType,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { qualityRuleTypeKey } from "@/utils/dataQuality";
+import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import BatchEditChecksDialog from "./BatchEditChecksDialog.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -34,74 +35,92 @@ const REGEX_RULE = "workspaces/ws/qualityRules/regex-1";
 const REGEX_RULE_TWO = "workspaces/ws/qualityRules/regex-2";
 const ROW_COUNT_RULE = "workspaces/ws/qualityRules/row-count-1";
 
-/** A percent-null check: a type where on_empty does change the verdict. */
-function nullPercentRule(name = NULL_RULE) {
+interface RuleOptions {
+  name: string;
+  type?: RuleType;
+  revision?: number;
+  severity?: QualitySeverity;
+  dimension?: QualityDimension;
+  state?: QualityRuleState;
+  owner?: string;
+  metric?: QualityThresholdMetric;
+  onEmpty?: QualityEmptyBehavior;
+  fail?: number;
+  warn?: number;
+  maxNullPct?: number;
+}
+
+/** A stored check whose config matches its type, as the directory lists it. */
+function makeRule(options: RuleOptions) {
+  const type = options.type ?? RuleType.REGEX;
+  const shared = {
+    thresholdMetric: options.metric ?? QualityThresholdMetric.COUNT,
+    onEmpty: options.onEmpty ?? QualityEmptyBehavior.NOT_EVALUATED,
+  };
+  const config =
+    type === RuleType.ROW_COUNT
+      ? create(QualityRuleConfigSchema, {
+          ...shared,
+          config: {
+            case: "rowCount",
+            value: create(RowCountConfigSchema, { minRows: 1n }),
+          },
+        })
+      : type === RuleType.NULL_PERCENT
+        ? create(QualityRuleConfigSchema, {
+            ...shared,
+            config: {
+              case: "nullPercent",
+              value: create(NullPercentConfigSchema, {
+                column: "email",
+                ...(options.maxNullPct === undefined
+                  ? {}
+                  : { maxNullPct: options.maxNullPct }),
+              }),
+            },
+          })
+        : create(QualityRuleConfigSchema, {
+            ...shared,
+            config: {
+              case: "regex",
+              value: create(RegexConfigSchema, {
+                column: "email",
+                pattern: "^.+@.+$",
+                ...(options.fail === undefined
+                  ? {}
+                  : { failThreshold: options.fail }),
+                ...(options.warn === undefined
+                  ? {}
+                  : { warnThreshold: options.warn }),
+              }),
+            },
+          });
   return create(QualityRuleSchema, {
-    name,
-    title: "Email is never null",
-    ruleType: RuleType.NULL_PERCENT,
-    severity: QualitySeverity.ERROR,
-    state: QualityRuleState.ENABLED,
-    revision: 3,
-    config: create(QualityRuleConfigSchema, {
-      thresholdMetric: QualityThresholdMetric.COUNT,
-      onEmpty: QualityEmptyBehavior.NOT_EVALUATED,
-      config: {
-        case: "nullPercent",
-        value: create(NullPercentConfigSchema, {
-          column: "email",
-          maxNullPct: 5,
-        }),
-      },
-    }),
+    name: options.name,
+    title: options.name.split("/").pop(),
+    ruleType: type,
+    severity: options.severity ?? QualitySeverity.ERROR,
+    dimension: options.dimension ?? QualityDimension.COMPLETENESS,
+    state: options.state ?? QualityRuleState.ENABLED,
+    owner: options.owner ?? "",
+    revision: options.revision ?? 3,
+    config,
   });
 }
 
-/** A regex check: one of the threshold-metric rule types. */
-function regexRule(name = REGEX_RULE, revision = 7) {
-  return create(QualityRuleSchema, {
-    name,
-    title: "Email matches the pattern",
-    ruleType: RuleType.REGEX,
-    severity: QualitySeverity.WARNING,
-    state: QualityRuleState.PAUSED,
-    revision,
-    config: create(QualityRuleConfigSchema, {
-      thresholdMetric: QualityThresholdMetric.PERCENT,
-      onEmpty: QualityEmptyBehavior.PASS,
-      config: {
-        case: "regex",
-        value: create(RegexConfigSchema, {
-          column: "email",
-          pattern: "^.+@.+$",
-          failThreshold: 1,
-          warnThreshold: 0.5,
-        }),
-      },
-    }),
-  });
+function nullPercentRule(name = NULL_RULE, options: Partial<RuleOptions> = {}) {
+  return makeRule({ name, type: RuleType.NULL_PERCENT, ...options });
 }
 
-/** A row-count check: on_empty is irrelevant and thresholds are not shared. */
+function regexRule(name = REGEX_RULE, options: Partial<RuleOptions> = {}) {
+  return makeRule({ name, type: RuleType.REGEX, ...options });
+}
+
 function rowCountRule(name = ROW_COUNT_RULE) {
-  return create(QualityRuleSchema, {
-    name,
-    title: "Orders have rows",
-    ruleType: RuleType.ROW_COUNT,
-    severity: QualitySeverity.ERROR,
-    state: QualityRuleState.ENABLED,
-    revision: 2,
-    config: create(QualityRuleConfigSchema, {
-      onEmpty: QualityEmptyBehavior.NOT_EVALUATED,
-      config: {
-        case: "rowCount",
-        value: create(RowCountConfigSchema, { minRows: 1n }),
-      },
-    }),
-  });
+  return makeRule({ name, type: RuleType.ROW_COUNT });
 }
 
-/** The picker is tested separately; this stub reports a member or the clears value. */
+/** The picker is tested separately; this stub reports a member or the clear value. */
 const UserSelectStub = defineComponent({
   name: "UserSelect",
   props: {
@@ -143,9 +162,12 @@ const UserSelectStub = defineComponent({
 
 let wrapper: ReturnType<typeof mount> | undefined;
 
-async function mountDialog(rules = [nullPercentRule(), regexRule()]) {
+async function mountDialog(rules: ReturnType<typeof makeRule>[]) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  useAuthStore().user = create(UserSchema, {
+    permissions: ["metaxisdata.users.list"],
+  });
   wrapper = mount(BatchEditChecksDialog, {
     attachTo: document.body,
     props: { open: true, rules },
@@ -168,6 +190,12 @@ function dialogButtonByText(text: string): HTMLElement | undefined {
   ].find((button) => button.textContent?.includes(text));
 }
 
+function submitButton(count = 1): HTMLElement | undefined {
+  return dialogButtonByText(
+    label("dataQuality.checks.batchEdit.submit", { count })
+  );
+}
+
 function selectById(id: string) {
   return wrapper
     ?.findAllComponents(Select)
@@ -187,6 +215,10 @@ function setInput(selector: string, value: string) {
     "value"
   )?.set?.call(element, value);
   element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function inputValue(selector: string): string {
+  return (document.querySelector(selector) as HTMLInputElement).value;
 }
 
 function lastRequests() {
@@ -225,114 +257,167 @@ describe("BatchEditChecksDialog", () => {
     wrapper = undefined;
   });
 
-  it("sends a narrow severity mask with every check's current revision", async () => {
-    await mountDialog();
+  it("opens with no field chosen and cannot submit", async () => {
+    await mountDialog([nullPercentRule(), regexRule()]);
 
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
+    expect(document.querySelector("#dq-batch-edit-field")).not.toBeNull();
+    expect(selectById("dq-batch-edit-field")?.props("modelValue")).toBe("");
+    // No value editor is rendered until a field is chosen.
+    expect(document.querySelector("#dq-batch-edit-severity")).toBeNull();
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+    expect(mocks.batchUpdateQualityRules).not.toHaveBeenCalled();
+  });
+
+  it("prefills a uniform severity and requires a deliberate pick when mixed", async () => {
+    // Mixed: submitting without choosing would silently pick one of the two.
+    const mixed = await mountDialog([
+      nullPercentRule(NULL_RULE, { severity: QualitySeverity.ERROR }),
+      regexRule(REGEX_RULE, { severity: QualitySeverity.WARNING }),
+    ]);
+    await pick("dq-batch-edit-field", "severity");
+    expect(selectById("dq-batch-edit-severity")?.props("modelValue")).toBe("");
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+    mixed.unmount();
+    document.body.innerHTML = "";
+
+    // Uniform: the current severity is prefilled, so one click rewrites the
+    // same value instead of downgrading the selection.
+    mocks.batchUpdateQualityRules.mockClear();
+    await mountDialog([
+      nullPercentRule(NULL_RULE, { severity: QualitySeverity.ERROR }),
+      regexRule(REGEX_RULE, { severity: QualitySeverity.ERROR }),
+    ]);
+    await pick("dq-batch-edit-field", "severity");
+    expect(selectById("dq-batch-edit-severity")?.props("modelValue")).toBe(
+      String(QualitySeverity.ERROR)
+    );
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(false);
+    submitButton(2)?.click();
     await flushPromises();
 
-    expect(mocks.batchUpdateQualityRules).toHaveBeenCalledTimes(1);
     const requests = lastRequests();
     expect(requests).toHaveLength(2);
-    expect(requests.map((request) => request.rule.name)).toEqual([
-      NULL_RULE,
-      REGEX_RULE,
-    ]);
-    expect(requests[0]?.rule.revision).toBe(3);
-    expect(requests[1]?.rule.revision).toBe(7);
-    expect(requests[0]?.rule.severity).toBe(QualitySeverity.WARNING);
+    expect(requests.map((request) => request.rule.revision)).toEqual([3, 3]);
+    expect(requests[0]?.rule.severity).toBe(QualitySeverity.ERROR);
     expect(requests[0]?.updateMask.paths).toEqual(["severity"]);
     // Only the field and the identity revision travel, not the whole definition.
     expect(requests[0]?.rule.config).toBeUndefined();
   });
 
-  it("sends dimension, state and owner as their own mask", async () => {
-    await mountDialog();
+  it("recomputes the value controls when the field changes", async () => {
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        severity: QualitySeverity.ERROR,
+        dimension: QualityDimension.ACCURACY,
+        state: QualityRuleState.PAUSED,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        severity: QualitySeverity.ERROR,
+        dimension: QualityDimension.ACCURACY,
+        state: QualityRuleState.PAUSED,
+      }),
+    ]);
+    await pick("dq-batch-edit-field", "severity");
+    expect(selectById("dq-batch-edit-severity")?.props("modelValue")).toBe(
+      String(QualitySeverity.ERROR)
+    );
+
     await pick("dq-batch-edit-field", "dimension");
-    await pick("dq-batch-edit-dimension", String(QualityDimension.ACCURACY));
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
+    // The previous editor is gone and the new one is prefilled from the rules.
+    expect(document.querySelector("#dq-batch-edit-severity")).toBeNull();
+    expect(selectById("dq-batch-edit-dimension")?.props("modelValue")).toBe(
+      String(QualityDimension.ACCURACY)
+    );
+
+    await pick("dq-batch-edit-field", "state");
+    expect(selectById("dq-batch-edit-state")?.props("modelValue")).toBe(
+      String(QualityRuleState.PAUSED)
+    );
+  });
+
+  it("writes dimension, state and owner through their own masks", async () => {
+    const dimensionDialog = await mountDialog([
+      nullPercentRule(NULL_RULE, { dimension: QualityDimension.ACCURACY }),
+      regexRule(REGEX_RULE, { dimension: QualityDimension.ACCURACY }),
+    ]);
+    await pick("dq-batch-edit-field", "dimension");
+    submitButton(2)?.click();
     await flushPromises();
     expect(lastRequests()[0]?.rule.dimension).toBe(QualityDimension.ACCURACY);
     expect(lastRequests()[0]?.updateMask.paths).toEqual(["dimension"]);
-    wrapper?.unmount();
+    dimensionDialog.unmount();
     document.body.innerHTML = "";
 
     mocks.batchUpdateQualityRules.mockClear();
-    await mountDialog();
+    const stateDialog = await mountDialog([
+      regexRule(REGEX_RULE, { state: QualityRuleState.PAUSED }),
+      regexRule(REGEX_RULE_TWO, { state: QualityRuleState.PAUSED }),
+    ]);
     await pick("dq-batch-edit-field", "state");
-    await pick("dq-batch-edit-state", String(QualityRuleState.PAUSED));
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
+    submitButton(2)?.click();
     await flushPromises();
     expect(lastRequests()[0]?.rule.state).toBe(QualityRuleState.PAUSED);
     expect(lastRequests()[0]?.updateMask.paths).toEqual(["state"]);
-    wrapper?.unmount();
+    stateDialog.unmount();
     document.body.innerHTML = "";
 
+    // All-unassigned maps to the explicit sentinel, so it may be submitted.
     mocks.batchUpdateQualityRules.mockClear();
-    await mountDialog();
+    const unassignedDialog = await mountDialog([
+      regexRule(REGEX_RULE),
+      regexRule(REGEX_RULE_TWO),
+    ]);
     await pick("dq-batch-edit-field", "owner");
-    // Nothing picked yet: the empty model never means "clear every owner".
-    expect(
-      dialogButtonByText(
-        label("dataQuality.checks.batchEdit.submit", { count: 2 })
-      )?.hasAttribute("disabled")
-    ).toBe(true);
-    await document.querySelector<HTMLElement>(".owner-member-stub")?.click();
-    await flushPromises();
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
-    await flushPromises();
-    expect(lastRequests()[0]?.rule.owner).toBe("users/101");
-    expect(lastRequests()[0]?.updateMask.paths).toEqual(["owner"]);
-    wrapper?.unmount();
-    document.body.innerHTML = "";
-
-    // The explicit "unassigned" choice is the only way to clear an owner.
-    mocks.batchUpdateQualityRules.mockClear();
-    await mountDialog();
-    await pick("dq-batch-edit-field", "owner");
-    await document
-      .querySelector<HTMLElement>(".owner-unassigned-stub")
-      ?.click();
-    await flushPromises();
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
+    expect(wrapper?.findComponent(UserSelectStub).props("modelValue")).toBe(
+      "__unassigned__"
+    );
+    submitButton(2)?.click();
     await flushPromises();
     expect(lastRequests()[0]?.rule.owner).toBe("");
     expect(lastRequests()[0]?.updateMask.paths).toEqual(["owner"]);
+    unassignedDialog.unmount();
+    document.body.innerHTML = "";
+
+    // Mixed owners stay unset until the operator picks a member explicitly.
+    mocks.batchUpdateQualityRules.mockClear();
+    await mountDialog([
+      regexRule(REGEX_RULE, { owner: "users/101" }),
+      regexRule(REGEX_RULE_TWO),
+    ]);
+    await pick("dq-batch-edit-field", "owner");
+    expect(wrapper?.findComponent(UserSelectStub).props("modelValue")).toBe("");
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+    await document.querySelector<HTMLElement>(".owner-member-stub")?.click();
+    await flushPromises();
+    submitButton(2)?.click();
+    await flushPromises();
+    expect(lastRequests()[0]?.rule.owner).toBe("users/101");
   });
 
   it("rebuilds the config for on_empty and leaves inapplicable checks alone", async () => {
     await mountDialog([nullPercentRule(), rowCountRule()]);
     await pick("dq-batch-edit-field", "on_empty");
 
+    // The single applicable check's current behavior is prefilled.
+    expect(selectById("dq-batch-edit-on-empty")?.props("modelValue")).toBe(
+      String(QualityEmptyBehavior.NOT_EVALUATED)
+    );
     // The row-count check is reported as not applicable before submitting.
     expect(document.body.textContent).toContain(
       label("dataQuality.checks.batchEdit.notApplicableTitle")
     );
-    expect(document.body.textContent).toContain("Orders have rows");
+    expect(document.body.textContent).toContain("row-count-1");
     expect(document.body.textContent).toContain(
       label("dataQuality.checks.batchEdit.notApplicable", { count: 1 })
     );
 
     await pick("dq-batch-edit-on-empty", String(QualityEmptyBehavior.FAIL));
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 1 })
-    )?.click();
+    submitButton(1)?.click();
     await flushPromises();
 
     const requests = lastRequests();
     expect(requests).toHaveLength(1);
     expect(requests[0]?.rule.name).toBe(NULL_RULE);
-    expect(requests[0]?.rule.revision).toBe(3);
     expect(requests[0]?.updateMask.paths).toEqual(["config"]);
     expect(requests[0]?.rule.config?.onEmpty).toBe(QualityEmptyBehavior.FAIL);
     // The rest of the definition survives the config rebuild.
@@ -341,117 +426,252 @@ describe("BatchEditChecksDialog", () => {
       column: "email",
     });
     // The skipped rule stays visible in the result summary too.
-    expect(document.body.textContent).toContain("Orders have rows");
     expect(document.body.textContent).toContain(
       label("dataQuality.checks.batchEdit.notApplicable", { count: 1 })
     );
   });
 
-  it("rebuilds the config for a threshold shared by one type", async () => {
-    await mountDialog([regexRule(), regexRule(REGEX_RULE_TWO, 4)]);
+  it("prefills a uniform threshold and keeps blank warn values per rule", async () => {
+    const uniform = await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        warn: 0.5,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        warn: 0.5,
+        revision: 4,
+      }),
+    ]);
     await pick("dq-batch-edit-field", "threshold");
-    await pick("dq-batch-edit-metric", String(QualityThresholdMetric.PERCENT));
-    setInput("#dq-batch-edit-fail-threshold", "2.5");
-    setInput("#dq-batch-edit-warn-threshold", "1");
-    await nextTick();
+    expect(selectById("dq-batch-edit-metric")?.props("modelValue")).toBe(
+      String(QualityThresholdMetric.PERCENT)
+    );
+    expect(inputValue("#dq-batch-edit-fail-threshold")).toBe("1");
+    expect(inputValue("#dq-batch-edit-warn-threshold")).toBe("0.5");
+    submitButton(2)?.click();
     await flushPromises();
-
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
-    await flushPromises();
-
-    const requests = lastRequests();
-    expect(requests).toHaveLength(2);
-    expect(requests.map((request) => request.rule.revision)).toEqual([7, 4]);
-    for (const request of requests) {
+    expect(lastRequests().map((request) => request.rule.revision)).toEqual([
+      3, 4,
+    ]);
+    for (const request of lastRequests()) {
       expect(request.updateMask.paths).toEqual(["config"]);
       expect(request.rule.config?.thresholdMetric).toBe(
         QualityThresholdMetric.PERCENT
       );
-      expect(request.rule.config?.config?.case).toBe("regex");
       expect(request.rule.config?.config?.value).toMatchObject({
-        failThreshold: 2.5,
-        warnThreshold: 1,
-        column: "email",
+        failThreshold: 1,
+        warnThreshold: 0.5,
       });
+    }
+    uniform.unmount();
+    document.body.innerHTML = "";
+
+    // A mixed warning threshold prefills blank, which means "keep each rule's
+    // current value" rather than dropping it.
+    mocks.batchUpdateQualityRules.mockClear();
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        warn: 0.5,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        revision: 4,
+      }),
+    ]);
+    await pick("dq-batch-edit-field", "threshold");
+    expect(inputValue("#dq-batch-edit-warn-threshold")).toBe("");
+    submitButton(2)?.click();
+    await flushPromises();
+    const requests = lastRequests();
+    expect(requests[0]?.rule.config?.config?.value).toMatchObject({
+      failThreshold: 1,
+      warnThreshold: 0.5,
+    });
+    expect(
+      requests[1]?.rule.config?.config?.value?.warnThreshold
+    ).toBeUndefined();
+  });
+
+  it("requires an explicit metric when the selection's metrics differ", async () => {
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.COUNT,
+        fail: 1,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        revision: 4,
+      }),
+    ]);
+    await pick("dq-batch-edit-field", "threshold");
+    expect(selectById("dq-batch-edit-metric")?.props("modelValue")).toBe("");
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+
+    await pick("dq-batch-edit-metric", String(QualityThresholdMetric.PERCENT));
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(false);
+    submitButton(2)?.click();
+    await flushPromises();
+    expect(lastRequests()[0]?.rule.config?.thresholdMetric).toBe(
+      QualityThresholdMetric.PERCENT
+    );
+  });
+
+  it("clears warning thresholds only when the clear affordance is ticked", async () => {
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.COUNT,
+        fail: 1,
+        warn: 0.5,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.COUNT,
+        fail: 1,
+        revision: 4,
+      }),
+    ]);
+    await pick("dq-batch-edit-field", "threshold");
+    // A mixed warning prefills blank (= keep); the checkbox is the only clear.
+    expect(inputValue("#dq-batch-edit-warn-threshold")).toBe("");
+
+    document.querySelector<HTMLElement>("#dq-batch-edit-clear-warn")?.click();
+    await flushPromises();
+    expect(
+      document
+        .querySelector("#dq-batch-edit-warn-threshold")
+        ?.hasAttribute("disabled")
+    ).toBe(true);
+    submitButton(2)?.click();
+    await flushPromises();
+    for (const request of lastRequests()) {
+      expect(request.rule.config?.config?.value?.warnThreshold).toBeUndefined();
     }
   });
 
-  it("disables threshold editing when the types differ or lack a threshold", async () => {
-    // Mixed types: no single family to share.
-    await mountDialog([nullPercentRule(), regexRule()]);
-    expect(document.body.textContent).toContain(
-      label("dataQuality.checks.batchEdit.thresholdHint")
-    );
-    // The option is disabled in the selector, and the guard still refuses a
-    // request if a caller sets the field some other way.
+  it("validates the threshold against the backend rules", async () => {
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        revision: 4,
+      }),
+    ]);
     await pick("dq-batch-edit-field", "threshold");
-    const submit = dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    );
-    expect(submit?.hasAttribute("disabled")).toBe(true);
-    wrapper?.unmount();
-    document.body.innerHTML = "";
 
-    // One shared type without a shared fail/warn threshold.
-    await mountDialog([rowCountRule(), rowCountRule("rule-2")]);
+    setInput("#dq-batch-edit-fail-threshold", "150");
+    await nextTick();
+    await flushPromises();
     expect(document.body.textContent).toContain(
-      label("dataQuality.checks.batchEdit.thresholdTypeHint", {
-        type: label(qualityRuleTypeKey(RuleType.ROW_COUNT)),
-      })
+      label("dataQuality.checks.batchEdit.thresholdPercentMax")
     );
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+
+    setInput("#dq-batch-edit-fail-threshold", "-1");
+    await nextTick();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.checks.batchEdit.thresholdNumberInvalid")
+    );
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+
+    setInput("#dq-batch-edit-fail-threshold", "1");
+    setInput("#dq-batch-edit-warn-threshold", "2");
+    await nextTick();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.checks.batchEdit.thresholdWarnAbove")
+    );
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+
+    setInput("#dq-batch-edit-fail-threshold", "");
+    await nextTick();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.checks.batchEdit.thresholdRequired")
+    );
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
   });
 
-  it("reports per-item failures and keeps the failed check selected", async () => {
+  it("emits one refresh as soon as an all-fail batch returns", async () => {
+    // An aborted item: someone else changed the definition first, and the new
+    // revision must replace the stale row on the page behind the dialog.
     mocks.batchUpdateQualityRules.mockResolvedValue([
-      { rule: nullPercentRule(), error: "", name: NULL_RULE },
       {
         rule: undefined,
-        error: "revision mismatch: expected 7, got 8",
+        error: 'aborted: quality rule "null-1" revision changed from 3 to 8',
+        name: NULL_RULE,
+      },
+      {
+        rule: undefined,
+        error: 'not_found: quality rule "regex-1" not found',
         name: REGEX_RULE,
       },
+      {
+        rule: undefined,
+        error: 'invalid_argument: unknown column "nope"',
+        name: REGEX_RULE_TWO,
+      },
     ]);
-    await mountDialog();
-
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
+    await mountDialog([
+      nullPercentRule(),
+      regexRule(REGEX_RULE),
+      regexRule(REGEX_RULE_TWO),
+    ]);
+    await pick("dq-batch-edit-field", "severity");
+    submitButton(3)?.click();
     await flushPromises();
 
     expect(document.body.textContent).toContain(
       label("dataQuality.checks.batchEdit.partial", {
-        succeeded: 1,
-        failed: 1,
+        succeeded: 0,
+        failed: 3,
       })
     );
+    // Raw wire codes become sentences; other codes keep just the server wording.
     expect(document.body.textContent).toContain(
-      "revision mismatch: expected 7, got 8"
+      label("dataQuality.checks.batchEdit.itemChanged")
     );
-    // The failure is labelled from the echoed rule name, not the request index.
-    expect(document.body.textContent).toContain("Email matches the pattern");
+    expect(document.body.textContent).toContain(
+      label("dataQuality.checks.batchEdit.itemGone")
+    );
+    expect(document.body.textContent).toContain('unknown column "nope"');
+    expect(document.body.textContent).not.toContain("invalid_argument:");
+    expect(document.body.textContent).not.toContain("aborted:");
 
+    // The refresh event fires with no succeeded names, immediately.
+    expect(wrapper?.emitted("done")).toContainEqual([[]]);
+
+    // Closing must not fire it a second time.
     dialogButtonByText(label("common.close"))?.click();
     await flushPromises();
-    expect(wrapper?.emitted("done")).toContainEqual([[NULL_RULE]]);
+    expect(wrapper?.emitted("done")).toHaveLength(1);
   });
 
-  it("keeps a whole-call failure next to the form", async () => {
+  it("keeps a transport failure next to the form and does not refresh", async () => {
     mocks.batchUpdateQualityRules.mockRejectedValue(new Error("network down"));
-    await mountDialog();
-
-    dialogButtonByText(
-      label("dataQuality.checks.batchEdit.submit", { count: 2 })
-    )?.click();
+    await mountDialog([
+      nullPercentRule(),
+      regexRule(REGEX_RULE, { severity: QualitySeverity.ERROR }),
+    ]);
+    await pick("dq-batch-edit-field", "severity");
+    submitButton(2)?.click();
     await flushPromises();
 
     expect(document.body.textContent).toContain(
       label("dataQuality.checks.batchEdit.failed")
     );
-    // Nothing was updated, so closing reports no success and the page keeps
-    // its selection.
-    dialogButtonByText(label("common.cancel"))?.click();
-    await flushPromises();
     expect(wrapper?.emitted("done")).toBeUndefined();
+    // The form is still there for a retry.
+    expect(document.querySelector("#dq-batch-edit-severity")).not.toBeNull();
   });
 });

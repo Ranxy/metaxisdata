@@ -242,17 +242,24 @@ every check with its target and latest execution, narrowed by the same target
 scope, text search, check type, dimension, severity, state and owner filters.
 Checks are still authored one at a time inside their target, but the directory
 also supports **bulk editing** for existing checks: tick rows on the current page
-(up to 200) and choose **Edit checks** to set their severity, quality dimension,
+(up to 100) and choose **Edit checks** to set their severity, quality dimension,
 owner, run state (enabled or paused), empty-data behavior, or fail/warn
-thresholds in one action. The edit is applied check by check, and the result
-panel lists what changed, what failed and why. A check that someone else edited
-in the meantime fails on its own instead of overwriting that edit, and archived
-checks stay out of the selection because they can no longer be changed. Thresholds can
-be set in bulk only for selected checks of the same type, and empty-data behavior
-does not apply to row-count, custom SQL or schema-drift checks, which the dialog
-leaves untouched. Its **Target scope** filter follows the metadata tree: pick an
-instance, then drill into a database, schema or table/view, and apply at any
-level. Filters take effect when you press **Apply**.
+thresholds in one action. The dialog starts with no field chosen, and the value
+starts from the selected checks' current value when they agree; a mixed selection
+asks you to pick one deliberately. The edit is applied check by check, and the
+result panel lists what changed, what failed and why. An edit that changes a
+check's definition (its dimension, parameters, thresholds or target) fails for
+that check if someone else changed it in the meantime, instead of overwriting
+that edit; a severity, owner or run-state edit is last-write-wins, exactly like
+the same edit made one check at a time. Archived checks stay out of the
+selection because they can no longer be changed. Thresholds can be set in bulk
+only for selected checks of the same type, and the dialog starts from their
+current unit and values; leaving the warning threshold blank keeps each check's
+existing warning level, and clearing it takes an explicit choice. Empty-data
+behavior does not apply to row-count, custom SQL or schema-drift checks, which
+the dialog leaves untouched. Its **Target scope** filter follows the metadata
+tree: pick an instance, then drill into a database, schema or table/view, and
+apply at any level. Filters take effect when you press **Apply**.
 
 ## Contracts and target-level settings
 

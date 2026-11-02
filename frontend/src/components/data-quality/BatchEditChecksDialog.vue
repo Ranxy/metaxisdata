@@ -61,14 +61,17 @@
                 class="break-words"
               >
                 <span class="font-medium">{{ failureTitle(failure.index) }}</span>
-                <span class="text-muted-foreground">— {{ failure.message }}</span>
+                <span class="text-muted-foreground">
+                  — {{ failureMessage(failure.message) }}
+                </span>
               </li>
             </ul>
           </div>
         </template>
 
         <!-- One field at a time: every rule keeps its parameters, and the update
-             mask names only the field the operator picked. -->
+             mask names only the field the operator picked. No field starts
+             chosen, so an untouched submit can never write anything. -->
         <template v-if="!summary">
           <div class="flex flex-col gap-1.5">
             <Label for="dq-batch-edit-field">
@@ -79,7 +82,9 @@
                 id="dq-batch-edit-field"
                 class="w-full"
               >
-                <SelectValue />
+                <SelectValue
+                  :placeholder="t('dataQuality.checks.batchEdit.fieldPlaceholder')"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="severity">
@@ -136,7 +141,9 @@
                 id="dq-batch-edit-severity"
                 class="w-full"
               >
-                <SelectValue />
+                <SelectValue
+                  :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -162,7 +169,9 @@
                 id="dq-batch-edit-dimension"
                 class="w-full"
               >
-                <SelectValue />
+                <SelectValue
+                  :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -188,7 +197,9 @@
                 id="dq-batch-edit-state"
                 class="w-full"
               >
-                <SelectValue />
+                <SelectValue
+                  :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -207,7 +218,7 @@
             id="dq-batch-edit-owner"
             v-model="ownerValue"
             :label="t('dataQuality.filterOwner')"
-            :placeholder="t('dataQuality.checks.batchEdit.ownerPlaceholder')"
+            :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
             :no-owner-value="UNASSIGNED_OWNER"
             :no-owner-label="t('dataQuality.unassignedOwner')"
             :hint="t('dataQuality.checks.batchEdit.ownerHint')"
@@ -226,7 +237,9 @@
                 id="dq-batch-edit-on-empty"
                 class="w-full"
               >
-                <SelectValue />
+                <SelectValue
+                  :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
+                />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -253,14 +266,17 @@
                   id="dq-batch-edit-metric"
                   class="w-full"
                 >
-                  <SelectValue />
+                  <SelectValue
+                    :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem :value="String(QualityThresholdMetric.COUNT)">
-                    {{ t("dataQuality.thresholdMetric.count") }}
-                  </SelectItem>
-                  <SelectItem :value="String(QualityThresholdMetric.PERCENT)">
-                    {{ t("dataQuality.thresholdMetric.percent") }}
+                  <SelectItem
+                    v-for="option in metricOptions"
+                    :key="option.value"
+                    :value="String(option.value)"
+                  >
+                    {{ t(option.key) }}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -272,23 +288,33 @@
               required
               :label="t('dataQuality.editor.failThreshold')"
               :hint="t('dataQuality.editor.thresholdHint')"
-              :error="
-                failThreshold.trim() !== '' && failValue === undefined
-                  ? t('dataQuality.checks.batchEdit.thresholdInvalid')
-                  : ''
-              "
+              :error="thresholdValidation.fail"
             />
             <FormField
               id="dq-batch-edit-warn-threshold"
               v-model="warnThreshold"
               type="number"
+              :disabled="clearWarn"
               :label="t('dataQuality.editor.warnThreshold')"
-              :error="
-                warnThreshold.trim() !== '' && warnValue === undefined
-                  ? t('dataQuality.checks.batchEdit.thresholdInvalid')
-                  : ''
-              "
+              :hint="t('dataQuality.checks.batchEdit.thresholdWarnHint')"
+              :error="thresholdValidation.warn"
             />
+            <div class="flex items-center gap-2">
+              <Checkbox
+                id="dq-batch-edit-clear-warn"
+                :checked="clearWarn"
+                @update:checked="
+                  (checked: boolean | 'indeterminate') =>
+                    setClearWarn(checked === true)
+                "
+              />
+              <Label
+                for="dq-batch-edit-clear-warn"
+                class="text-sm font-normal"
+              >
+                {{ t("dataQuality.checks.batchEdit.clearWarn") }}
+              </Label>
+            </div>
           </div>
         </template>
 
@@ -350,6 +376,7 @@
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
 import { FieldMaskSchema } from "@bufbuild/protobuf/wkt";
+import { Code } from "@connectrpc/connect";
 import { AlertTriangle } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -357,6 +384,7 @@ import { batchUpdateQualityRules } from "@/api/data-quality";
 import UserSelect from "@/components/common/UserSelect.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -403,15 +431,23 @@ import {
   isThresholdMetricType,
   ruleToForm,
 } from "@/utils/dataQualityForm";
+import { parseBatchItemError } from "@/utils/error";
 
 /**
  * Edit one field across several checks at once.
  *
- * Every item names its own update mask and its rule's current revision, so a
- * check someone else changed is rejected instead of overwritten, and one
- * rejected item does not block the rest. The empty-result behavior only exists
- * for some rule types; those rows are reported as not applicable and left alone
- * rather than rewritten.
+ * A batch item names its own update mask and its rule's current revision, but
+ * the revision is an optimistic-concurrency guard only for a *definition* edit
+ * (dimension or config): those are semantic, the store appends a revision, and a
+ * check someone else changed is rejected instead of overwritten. Severity, owner
+ * and state are head-only last-write-wins edits — the store does not append a
+ * revision for them, so they cannot conflict, and their outcome is only reported
+ * per item. The empty-result behavior exists for some rule types only; those rows
+ * are reported as not applicable and left alone rather than rewritten.
+ *
+ * Nothing starts selected: the operator has to choose the field and, whenever
+ * the selection disagrees, the value too. A field's value is prefilled only from
+ * a uniform selection, so an untouched submit cannot rewrite anything.
  */
 
 /** The server refuses more than 200 items in one batch. */
@@ -432,6 +468,9 @@ type BatchEditField =
   | "on_empty"
   | "threshold";
 
+/** The chosen field, or "" while nothing has been chosen yet. */
+type FieldChoice = BatchEditField | "";
+
 const props = withDefaults(
   defineProps<{
     open: boolean;
@@ -445,7 +484,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   "update:open": [value: boolean];
-  /** The checks whose update succeeded, so the page can refresh. */
+  /** The checks the batch call updated, so the page can refresh. */
   done: [ruleNames: string[]];
 }>();
 
@@ -453,20 +492,23 @@ const { t } = useI18n();
 const { formatError } = useErrorMessage();
 
 const snapshot = ref<QualityRule[]>([]);
-const field = ref<BatchEditField>("severity");
-const severityValue = ref(String(QualitySeverity.WARNING));
-const dimensionValue = ref(String(QualityDimension.COMPLETENESS));
-const stateValue = ref(String(QualityRuleState.ENABLED));
+const field = ref<FieldChoice>("");
+const severityValue = ref("");
+const dimensionValue = ref("");
+const stateValue = ref("");
 const ownerValue = ref("");
-const onEmptyValue = ref(String(QualityEmptyBehavior.NOT_EVALUATED));
-const metricValue = ref(String(QualityThresholdMetric.COUNT));
+const onEmptyValue = ref("");
+const metricValue = ref("");
 const failThreshold = ref("");
 const warnThreshold = ref("");
+const clearWarn = ref(false);
 const submitting = ref(false);
 const error = ref("");
 const results = ref<BatchUpdateQualityRuleResult[]>([]);
 /** The rules this submit actually sent, so result names resolve to titles. */
 const submittedRules = ref<QualityRule[]>([]);
+/** The refresh event fires once per batch response, not again on close. */
+const doneEmitted = ref(false);
 
 const severityOptions: Array<{ value: QualitySeverity; key: string }> = [
   QualitySeverity.WARNING,
@@ -495,6 +537,17 @@ const onEmptyOptions: Array<{ value: QualityEmptyBehavior; key: string }> = [
   QualityEmptyBehavior.FAIL,
 ].map((value) => ({ value, key: qualityEmptyBehaviorKey(value) }));
 
+const metricOptions: Array<{ value: QualityThresholdMetric; key: string }> = [
+  {
+    value: QualityThresholdMetric.COUNT,
+    key: "dataQuality.thresholdMetric.count",
+  },
+  {
+    value: QualityThresholdMetric.PERCENT,
+    key: "dataQuality.thresholdMetric.percent",
+  },
+];
+
 /** The one rule type all selected checks share, or undefined when they differ. */
 const sharedRuleType = computed<QualityRuleType | undefined>(() => {
   const types = new Set(snapshot.value.map((rule) => rule.ruleType));
@@ -518,30 +571,82 @@ const skipped = computed(() =>
   snapshot.value.filter((rule) => !isOnEmptyRelevant(rule.ruleType))
 );
 
-const failValue = computed(() => parseThreshold(failThreshold.value));
-const warnValue = computed(() => parseThreshold(warnThreshold.value));
-
 const requestCount = computed(() =>
   field.value === "on_empty" ? applicable.value.length : snapshot.value.length
 );
+
+const thresholdValidation = computed(() => {
+  if (field.value !== "threshold") {
+    return { fail: "", warn: "", valid: false };
+  }
+  const percent = metricValue.value === String(QualityThresholdMetric.PERCENT);
+  let fail = "";
+  const failText = failThreshold.value.trim();
+  const failNumber = parseNumber(failText);
+  if (failText === "") {
+    fail = t("dataQuality.checks.batchEdit.thresholdRequired");
+  } else if (failNumber === undefined || failNumber < 0) {
+    fail = t("dataQuality.checks.batchEdit.thresholdNumberInvalid");
+  } else if (percent && failNumber > 100) {
+    fail = t("dataQuality.checks.batchEdit.thresholdPercentMax");
+  }
+
+  // A blank warning threshold means "keep each check's current one"; the
+  // explicit clear checkbox is the only way to remove it.
+  let warn = "";
+  let warnNumber: number | undefined;
+  const warnText = warnThreshold.value.trim();
+  if (clearWarn.value) {
+    warnNumber = undefined;
+  } else if (warnText !== "") {
+    warnNumber = parseNumber(warnText);
+    if (warnNumber === undefined || warnNumber < 0) {
+      warn = t("dataQuality.checks.batchEdit.thresholdNumberInvalid");
+    } else if (percent && warnNumber > 100) {
+      warn = t("dataQuality.checks.batchEdit.thresholdPercentMax");
+    }
+  } else {
+    // Keeping the shared value; when the selection disagrees there is nothing
+    // to compare, so the server reports any per-item conflict.
+    warnNumber = keptWarnValue.value;
+  }
+  if (
+    warn === "" &&
+    fail === "" &&
+    failNumber !== undefined &&
+    warnNumber !== undefined &&
+    warnNumber > failNumber
+  ) {
+    warn = t("dataQuality.checks.batchEdit.thresholdWarnAbove");
+  }
+
+  return {
+    fail,
+    warn,
+    valid: metricValue.value !== "" && fail === "" && warn === "",
+  };
+});
 
 const canSubmit = computed(() => {
   if (submitting.value || snapshot.value.length === 0) {
     return false;
   }
-  if (field.value === "on_empty") {
-    return applicable.value.length > 0;
-  }
-  if (field.value === "owner") {
-    return ownerValue.value !== "";
-  }
-  if (field.value === "threshold") {
-    if (!thresholdAvailable.value || failValue.value === undefined) {
+  switch (field.value) {
+    case "severity":
+      return severityValue.value !== "";
+    case "dimension":
+      return dimensionValue.value !== "";
+    case "state":
+      return stateValue.value !== "";
+    case "owner":
+      return ownerValue.value !== "";
+    case "on_empty":
+      return applicable.value.length > 0 && onEmptyValue.value !== "";
+    case "threshold":
+      return thresholdValidation.value.valid;
+    default:
       return false;
-    }
-    return warnThreshold.value.trim() === "" || warnValue.value !== undefined;
   }
-  return true;
 });
 
 const summary = computed(() => {
@@ -554,6 +659,51 @@ const summary = computed(() => {
   return { succeeded: results.value.length - failed.length, failed };
 });
 
+/** The uniform value of a selection, or undefined when the values differ. */
+function agreedValue<T>(values: readonly T[]): T | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const [first] = values;
+  return values.every((value) => value === first) ? first : undefined;
+}
+
+/** The shared value as a select model, or "" when it is mixed or not offered. */
+function optionValue<T>(
+  agreed: T | undefined,
+  options: ReadonlyArray<{ value: T }>
+): string {
+  if (agreed === undefined) {
+    return "";
+  }
+  return options.some((option) => option.value === agreed)
+    ? String(agreed)
+    : "";
+}
+
+/** A finite number, or undefined when the text is empty or not a number. */
+function parseNumber(text: string): number | undefined {
+  const trimmed = text.trim();
+  if (trimmed === "") {
+    return undefined;
+  }
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/** The warning value a blank input keeps, when every check agrees on one. */
+const keptWarnValue = computed<number | undefined>(() => {
+  const agreed = agreedValue(
+    snapshot.value.map((rule) =>
+      (ruleToForm(rule).config.warnThreshold ?? "").trim()
+    )
+  );
+  if (agreed === undefined || agreed === "") {
+    return undefined;
+  }
+  return parseNumber(agreed);
+});
+
 watch(
   () => props.open,
   (isOpen) => {
@@ -564,31 +714,98 @@ watch(
   { immediate: true }
 );
 
+// A field switch never carries the previous field's value: the new editor is
+// prefilled from the selection, or left for the operator when it disagrees.
+watch(field, () => applyFieldDefaults());
+
 function reset() {
   snapshot.value = props.rules.slice(0, MAX_BATCH);
-  field.value = "severity";
-  severityValue.value = String(QualitySeverity.WARNING);
-  dimensionValue.value = String(QualityDimension.COMPLETENESS);
-  stateValue.value = String(QualityRuleState.ENABLED);
-  ownerValue.value = "";
-  onEmptyValue.value = String(QualityEmptyBehavior.NOT_EVALUATED);
-  metricValue.value = String(QualityThresholdMetric.COUNT);
-  failThreshold.value = "";
-  warnThreshold.value = "";
+  fieldsReset();
+  field.value = "";
   submitting.value = false;
   error.value = "";
   results.value = [];
   submittedRules.value = [];
+  doneEmitted.value = false;
 }
 
-/** A finite, non-negative number, or undefined when the text is not one. */
-function parseThreshold(text: string): number | undefined {
-  const trimmed = text.trim();
-  if (trimmed === "") {
-    return undefined;
+/** Every value control back to "nothing chosen". */
+function fieldsReset() {
+  severityValue.value = "";
+  dimensionValue.value = "";
+  stateValue.value = "";
+  ownerValue.value = "";
+  onEmptyValue.value = "";
+  metricValue.value = "";
+  failThreshold.value = "";
+  warnThreshold.value = "";
+  clearWarn.value = false;
+}
+
+/**
+ * Prefill the chosen field's value from the selection: a uniform value becomes
+ * the current choice, a disagreement leaves the control unset so submit stays
+ * disabled until the operator picks deliberately.
+ */
+function applyFieldDefaults() {
+  fieldsReset();
+  switch (field.value) {
+    case "severity":
+      severityValue.value = optionValue(
+        agreedValue(snapshot.value.map((rule) => rule.severity)),
+        severityOptions
+      );
+      break;
+    case "dimension":
+      dimensionValue.value = optionValue(
+        agreedValue(snapshot.value.map((rule) => rule.dimension)),
+        dimensionOptions
+      );
+      break;
+    case "state":
+      stateValue.value = optionValue(
+        agreedValue(snapshot.value.map((rule) => rule.state)),
+        stateOptions
+      );
+      break;
+    case "owner": {
+      const agreed = agreedValue(snapshot.value.map((rule) => rule.owner));
+      ownerValue.value =
+        agreed === undefined ? "" : agreed === "" ? UNASSIGNED_OWNER : agreed;
+      break;
+    }
+    case "on_empty":
+      onEmptyValue.value = optionValue(
+        agreedValue(applicable.value.map((rule) => ruleToForm(rule).onEmpty)),
+        onEmptyOptions
+      );
+      break;
+    case "threshold": {
+      const forms = snapshot.value.map((rule) => ruleToForm(rule));
+      metricValue.value = optionValue(
+        agreedValue(forms.map((form) => form.thresholdMetric)),
+        metricOptions
+      );
+      failThreshold.value =
+        agreedValue(
+          forms.map((form) => (form.config.failThreshold ?? "").trim())
+        ) ?? "";
+      // A blank warning means "keep each check's current one", so a mixed
+      // selection prefills blank by design.
+      warnThreshold.value =
+        agreedValue(
+          forms.map((form) => (form.config.warnThreshold ?? "").trim())
+        ) ?? "";
+      break;
+    }
   }
-  const value = Number(trimmed);
-  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function setClearWarn(value: boolean) {
+  clearWarn.value = value;
+  if (value) {
+    warnThreshold.value = "";
+  }
 }
 
 function ruleLabel(rule: QualityRule): string {
@@ -602,6 +819,22 @@ function failureTitle(index: number): string {
       ? submittedRules.value.find((item) => item.name === name)
       : undefined) ?? submittedRules.value[index];
   return rule ? ruleLabel(rule) : "-";
+}
+
+/**
+ * The sentence for one failed item. A concurrent definition edit is worth
+ * naming as a retryable race; a rule that disappeared is worth naming as gone.
+ * Every other code keeps the server's own wording, without its wire prefix.
+ */
+function failureMessage(message: string): string {
+  const parsed = parseBatchItemError(message);
+  if (parsed.code === Code.Aborted) {
+    return t("dataQuality.checks.batchEdit.itemChanged");
+  }
+  if (parsed.code === Code.NotFound) {
+    return t("dataQuality.checks.batchEdit.itemGone");
+  }
+  return parsed.message;
 }
 
 /** The scalar fields a batch can write through their own mask. */
@@ -683,18 +916,25 @@ function buildRequests(): {
     const metric = Number(metricValue.value) as QualityThresholdMetric;
     const fail = failThreshold.value.trim();
     const warn = warnThreshold.value.trim();
+    // Keep, set or clear: a blank warn without the checkbox leaves each rule's
+    // stored warning threshold untouched rather than dropping it to absent.
+    const warnMode = clearWarn.value ? "clear" : warn === "" ? "keep" : "set";
     return {
       rules: [...snapshot.value],
       requests: snapshot.value.map((rule) => {
         const form = ruleToForm(rule);
         form.thresholdMetric = metric;
         form.config.failThreshold = fail;
-        form.config.warnThreshold = warn;
+        if (warnMode === "clear") {
+          form.config.warnThreshold = "";
+        } else if (warnMode === "set") {
+          form.config.warnThreshold = warn;
+        }
         return configUpdate(rule, buildRuleConfig(form));
       }),
     };
   }
-  const path = field.value;
+  const path = field.value as Exclude<BatchEditField, "on_empty" | "threshold">;
   const patch = scalarPatch();
   return {
     rules: [...snapshot.value],
@@ -717,6 +957,9 @@ function submit() {
   batchUpdateQualityRules(requests)
     .then((created) => {
       results.value = created;
+      // Refresh as soon as the call settles: an all-fail batch changed nothing,
+      // but its stale revisions still need replacing on the page behind.
+      emitRefresh();
     })
     .catch((cause: unknown) => {
       error.value = formatError(cause, "dataQuality.checks.batchEdit.failed");
@@ -737,6 +980,15 @@ function succeededNames(): string[] {
   });
 }
 
+/** Tell the page to refresh, once; closing the dialog is not a second refresh. */
+function emitRefresh() {
+  if (doneEmitted.value) {
+    return;
+  }
+  doneEmitted.value = true;
+  emit("done", succeededNames());
+}
+
 function onOpenChange(value: boolean) {
   if (value || submitting.value) {
     return;
@@ -745,10 +997,6 @@ function onOpenChange(value: boolean) {
 }
 
 function close() {
-  const succeeded = succeededNames();
   emit("update:open", false);
-  if (succeeded.length > 0) {
-    emit("done", succeeded);
-  }
 }
 </script>

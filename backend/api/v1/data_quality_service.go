@@ -377,24 +377,40 @@ func (s *DataQualityService) GetQualityRule(ctx context.Context, req *connect.Re
 // target's schema changed, whether the target no longer resolves, and a summary
 // of its newest execution.
 func (s *DataQualityService) enrichQualityRule(ctx context.Context, workspaceID string, rule *store.QualityRuleMessage) (*v1pb.QualityRule, error) {
-	converted := convertQualityRule(workspaceID, rule)
-	latest, err := s.latestQualityExecutions(ctx, []*store.QualityRuleMessage{rule})
+	converted, err := s.enrichQualityRules(ctx, workspaceID, []*store.QualityRuleMessage{rule})
 	if err != nil {
 		return nil, err
 	}
-	if execution := latest[rule.ID]; execution != nil {
-		converted.LastResult = convertQualityExecutionSummary(workspaceID, execution)
+	return converted[0], nil
+}
+
+// enrichQualityRules converts many rules and fills their read-only fields in
+// three batch reads, so a list or a batch update stays a fixed number of queries
+// rather than a few per rule.
+func (s *DataQualityService) enrichQualityRules(ctx context.Context, workspaceID string, rules []*store.QualityRuleMessage) ([]*v1pb.QualityRule, error) {
+	converted := make([]*v1pb.QualityRule, len(rules))
+	for i, rule := range rules {
+		converted[i] = convertQualityRule(workspaceID, rule)
 	}
-	schemaChanged, err := s.targetSchemaChanges(ctx, []*store.QualityRuleMessage{rule})
+	latest, err := s.latestQualityExecutions(ctx, rules)
 	if err != nil {
 		return nil, err
 	}
-	converted.TargetSchemaChanged = schemaChanged[rule.ID]
-	orphaned, err := s.targetOrphanReasons(ctx, []*store.QualityRuleMessage{rule})
+	schemaChanged, err := s.targetSchemaChanges(ctx, rules)
 	if err != nil {
 		return nil, err
 	}
-	converted.OrphanedReason = orphaned[rule.ID]
+	orphaned, err := s.targetOrphanReasons(ctx, rules)
+	if err != nil {
+		return nil, err
+	}
+	for i, rule := range rules {
+		if execution := latest[rule.ID]; execution != nil {
+			converted[i].LastResult = convertQualityExecutionSummary(workspaceID, execution)
+		}
+		converted[i].TargetSchemaChanged = schemaChanged[rule.ID]
+		converted[i].OrphanedReason = orphaned[rule.ID]
+	}
 	return converted, nil
 }
 
@@ -614,38 +630,8 @@ func validateRuleTargetAgainstSuggestion(target *v1pb.QualityTarget, suggestion 
 // UpdateQualityRule applies the update mask to one rule, revalidating the
 // definition when the mask changes it.
 func (s *DataQualityService) UpdateQualityRule(ctx context.Context, req *connect.Request[v1pb.UpdateQualityRuleRequest]) (*connect.Response[v1pb.QualityRule], error) {
-	workspaceID, resourceID, err := s.ruleResourceID(ctx, req.Msg.GetRule().GetName())
+	workspaceID, updated, err := s.applyQualityRuleUpdate(ctx, req.Msg)
 	if err != nil {
-		return nil, err
-	}
-	current, err := s.fetchQualityRule(ctx, resourceID)
-	if err != nil {
-		return nil, err
-	}
-	update, err := parseQualityRuleUpdate(req.Msg.GetRule(), req.Msg.GetUpdateMask().GetPaths())
-	if err != nil {
-		return nil, err
-	}
-	if req.Msg.GetRule().GetRevision() != 0 {
-		expected := req.Msg.GetRule().GetRevision()
-		update.Patch.ExpectedRevision = &expected
-	}
-	update.Patch.UpdatedBy = principalIDPointer(currentUserID(ctx))
-
-	if err := s.revalidateQualityRuleDefinition(ctx, update, current); err != nil {
-		return nil, err
-	}
-
-	updated, err := s.store.UpdateQualityRule(ctx, resourceID, update.Patch)
-	if err != nil {
-		// A lost optimistic-concurrency race is Aborted for the client, not the
-		// AlreadyExists the shared code mapping would produce for a Conflict.
-		if common.ErrorCode(err) == common.Conflict {
-			return nil, connect.NewError(connect.CodeAborted, err)
-		}
-		return nil, errors.Wrap(err, "failed to update the quality rule")
-	}
-	if err := s.syncQualityTargetScheduleAfterRuleUpdate(ctx, update, current, updated); err != nil {
 		return nil, err
 	}
 	converted, err := s.enrichQualityRule(ctx, workspaceID, updated)
@@ -653,6 +639,50 @@ func (s *DataQualityService) UpdateQualityRule(ctx context.Context, req *connect
 		return nil, err
 	}
 	return connect.NewResponse(converted), nil
+}
+
+// applyQualityRuleUpdate validates and stores one update, returning the stored row
+// together with its workspace. It stops before the read-model enrichment, so a
+// batch can enrich every updated rule in one pass instead of once per item.
+func (s *DataQualityService) applyQualityRuleUpdate(ctx context.Context, msg *v1pb.UpdateQualityRuleRequest) (string, *store.QualityRuleMessage, error) {
+	if msg == nil || msg.GetRule() == nil {
+		return "", nil, connectErrorInvalid("the rule is required")
+	}
+	workspaceID, resourceID, err := s.ruleResourceID(ctx, msg.GetRule().GetName())
+	if err != nil {
+		return "", nil, err
+	}
+	current, err := s.fetchQualityRule(ctx, resourceID)
+	if err != nil {
+		return "", nil, err
+	}
+	update, err := parseQualityRuleUpdate(msg.GetRule(), msg.GetUpdateMask().GetPaths())
+	if err != nil {
+		return "", nil, err
+	}
+	if msg.GetRule().GetRevision() != 0 {
+		expected := msg.GetRule().GetRevision()
+		update.Patch.ExpectedRevision = &expected
+	}
+	update.Patch.UpdatedBy = principalIDPointer(currentUserID(ctx))
+
+	if err := s.revalidateQualityRuleDefinition(ctx, update, current); err != nil {
+		return "", nil, err
+	}
+
+	updated, err := s.store.UpdateQualityRule(ctx, resourceID, update.Patch)
+	if err != nil {
+		// A lost optimistic-concurrency race is Aborted for the client, not the
+		// AlreadyExists the shared code mapping would produce for a Conflict.
+		if common.ErrorCode(err) == common.Conflict {
+			return "", nil, connect.NewError(connect.CodeAborted, err)
+		}
+		return "", nil, errors.Wrap(err, "failed to update the quality rule")
+	}
+	if err := s.syncQualityTargetScheduleAfterRuleUpdate(ctx, update, current, updated); err != nil {
+		return "", nil, err
+	}
+	return workspaceID, updated, nil
 }
 
 // validateRuleInput is the save/preview pipeline plus the one API-side step it

@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // qualityBatchRequestLimit caps one batch RPC. Batches are not atomic, so this is
@@ -83,29 +84,43 @@ func (s *DataQualityService) BatchUpdateQualityRules(ctx context.Context, req *c
 	if req == nil {
 		return nil, connectErrorInvalid("a request is required")
 	}
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
 		return nil, err
 	}
 	if err := validateQualityBatchSize(len(req.Msg.GetRequests())); err != nil {
 		return nil, err
 	}
 
-	results := make([]*v1pb.BatchUpdateQualityRuleResult, 0, len(req.Msg.GetRequests()))
-	for _, item := range req.Msg.GetRequests() {
+	requests := req.Msg.GetRequests()
+	results := make([]*v1pb.BatchUpdateQualityRuleResult, len(requests))
+	updatedRules := make([]*store.QualityRuleMessage, 0, len(requests))
+	updatedAt := make([]int, 0, len(requests))
+	for index, item := range requests {
 		result := &v1pb.BatchUpdateQualityRuleResult{}
+		results[index] = result
 		if item == nil || item.GetRule() == nil {
 			result.Error = connectErrorInvalid("the rule is required").Error()
-			results = append(results, result)
 			continue
 		}
 		result.Name = strings.TrimSpace(item.GetRule().GetName())
-		updated, err := s.UpdateQualityRule(ctx, connect.NewRequest(item))
+		_, updated, err := s.applyQualityRuleUpdate(ctx, item)
 		if err != nil {
 			result.Error = err.Error()
-		} else {
-			result.Rule = updated.Msg
+			continue
 		}
-		results = append(results, result)
+		updatedRules = append(updatedRules, updated)
+		updatedAt = append(updatedAt, index)
+	}
+
+	// One enrichment pass for the whole batch: the read-only fields of a rule are
+	// three batch reads, not three per item.
+	converted, err := s.enrichQualityRules(ctx, workspaceID, updatedRules)
+	if err != nil {
+		return nil, err
+	}
+	for i, index := range updatedAt {
+		results[index].Rule = converted[i]
 	}
 	return connect.NewResponse(&v1pb.BatchUpdateQualityRulesResponse{Results: results}), nil
 }
