@@ -1260,6 +1260,25 @@
       }
     },
     {
+      "id": "reference-table",
+      "category": "Data Quality",
+      "definition": "The relation a cross-table reconciliation compares the target against. It is a registry target, so it may live in any instance, database or schema and may be a table, external table, view or materialized view.",
+      "translations": {
+        "en-US": "reference table",
+        "zh-CN": "参考表"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "右侧表",
+          "引用表",
+          "对照表"
+        ]
+      }
+    },
+    {
       "id": "cross-table-reconciliation",
       "category": "Data Quality",
       "definition": "The rule that compares one aggregate of the target table with one of another table and bounds their difference.",

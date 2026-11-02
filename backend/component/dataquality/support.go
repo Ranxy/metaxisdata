@@ -101,3 +101,20 @@ func crossTableFunctionSupported(function storepb.QualityAggregateFunction) (boo
 		return false, "cross_table supports COUNT, SUM, AVG, MIN and MAX only"
 	}
 }
+
+// ReferenceSharesConnection reports whether a reconciliation's reference side can
+// be read in the same statement as the target side, which keeps the comparison in
+// one snapshot and one read-only session. The two sides must live in the same
+// instance, and either in the same database or in a family whose qualified names
+// cross databases on one connection: the MySQL family names the database in the
+// table reference, while PostgreSQL and SQL Server select the database on the
+// connection and therefore need a second session for another database.
+func ReferenceSharesConnection(target, reference ResolvedTarget) bool {
+	if target.InstanceResourceID != reference.InstanceResourceID {
+		return false
+	}
+	if target.Database == reference.Database {
+		return true
+	}
+	return isMySQLWireEngine(target.Engine)
+}

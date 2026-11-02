@@ -722,13 +722,22 @@ func compileAggregate(input CompileInput) (CompiledQuery, error) {
 }
 
 // compileCrossTable reconciles one aggregate of the rule's target with one
-// aggregate of another table in the same database. Both sides are scalar
-// subqueries in one statement; the filter applies to the left (target) side only,
-// which is the v1.1 contract.
+// aggregate of its reference relation. When both sides are readable over the
+// target's connection they are two scalar subqueries of one statement, so the
+// comparison sees one snapshot in one round trip; when the reference needs its own
+// connection the statement carries the target side only and CompileReference
+// produces the other half.
+//
+// The rule's own filter and the target contract's filter bound the target side;
+// the reference side sees only its own right_filter.
 func compileCrossTable(input CompileInput) (CompiledQuery, error) {
 	config := input.Config.GetCrossTable()
 	if config == nil {
 		return CompiledQuery{}, invalidConfig("the cross-table config is missing")
+	}
+	reference := input.Reference
+	if reference == nil {
+		return CompiledQuery{}, invalidConfig("a cross-table rule needs a reference table")
 	}
 	leftFunction := config.GetLeftFunction()
 	if ok, reason := crossTableFunctionSupported(leftFunction); !ok {
@@ -742,7 +751,7 @@ func compileCrossTable(input CompileInput) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	rightTable, err := compileRightTable(input.Dialect, input.Target, config.GetRightTable())
+	leftExpression, err := crossTableExpression(input.Dialect, leftFunction, config.GetLeftColumn(), input.Target)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
@@ -750,30 +759,99 @@ func compileCrossTable(input CompileInput) (CompiledQuery, error) {
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-
-	leftExpression, err := crossTableExpression(input.Dialect, leftFunction, config.GetLeftColumn(), input.Target)
-	if err != nil {
-		return CompiledQuery{}, err
+	if !ReferenceSharesConnection(input.Target, *reference) {
+		// The reference side runs on its own session; see CompileReference.
+		return CompiledQuery{
+			SQL:     "SELECT " + leftExpression + " AS left_value FROM " + leftTable + where,
+			Args:    filterArgs,
+			Kind:    QueryAggregate,
+			Columns: []string{"left_value"},
+		}, nil
 	}
-	// The right table is not resolved here (the API resolves it when the rule is
-	// saved), so the right column is only quoted; its existence is checked there.
-	rightExpression, err := crossTableExpression(input.Dialect, rightFunction, config.GetRightColumn(), ResolvedTarget{})
+	// Both sides share the target's connection, so the reference is qualified with
+	// its own names and both aggregates come from one statement. The subqueries
+	// appear in target-then-reference order, so the reference arguments follow the
+	// target arguments and their placeholders continue after them.
+	rightTable, rightExpression, rightWhere, rightArgs, err := compileReferenceSide(input, *reference, len(filterArgs))
 	if err != nil {
 		return CompiledQuery{}, err
 	}
 	return CompiledQuery{
 		SQL: "SELECT (SELECT " + leftExpression + " FROM " + leftTable + where + ") AS left_value, " +
-			"(SELECT " + rightExpression + " FROM " + rightTable + ") AS right_value",
-		Args:    filterArgs,
+			"(SELECT " + rightExpression + " FROM " + rightTable + rightWhere + ") AS right_value",
+		Args:    append(filterArgs, rightArgs...),
 		Kind:    QueryAggregate,
 		Columns: []string{"left_value", "right_value"},
 	}, nil
 }
 
+// CompileReference compiles the statement that reads a reconciliation's reference
+// side on its own connection. The caller runs it only when
+// ReferenceSharesConnection is false: with a shared connection the reference is a
+// subquery of the rule's single statement and must not be read twice.
+func CompileReference(input CompileInput) (CompiledQuery, error) {
+	config := input.Config.GetCrossTable()
+	if config == nil {
+		return CompiledQuery{}, invalidConfig("the cross-table config is missing")
+	}
+	reference := input.Reference
+	if reference == nil {
+		return CompiledQuery{}, invalidConfig("a cross-table rule needs a reference table")
+	}
+	rightFunction := config.GetRightFunction()
+	if ok, reason := crossTableFunctionSupported(rightFunction); !ok {
+		return CompiledQuery{}, invalidConfig("%s", reason)
+	}
+	rightTable, rightExpression, rightWhere, rightArgs, err := compileReferenceSide(input, *reference, 0)
+	if err != nil {
+		return CompiledQuery{}, err
+	}
+	return CompiledQuery{
+		SQL:     "SELECT " + rightExpression + " AS right_value FROM " + rightTable + rightWhere,
+		Args:    rightArgs,
+		Kind:    QueryAggregate,
+		Columns: []string{"right_value"},
+	}, nil
+}
+
+// compileReferenceSide renders the reference relation, its aggregate and its own
+// filter. argOffset is how many arguments the statement already bound before this
+// side appears; it keeps the numbered dialects' placeholders unique.
+func compileReferenceSide(input CompileInput, reference ResolvedTarget, argOffset int) (table, expression, where string, args []any, err error) {
+	dialect, err := DialectFor(reference.Engine)
+	if err != nil {
+		return "", "", "", nil, invalidConfig("%v", err)
+	}
+	table, err = compileTable(dialect, reference)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	config := input.Config.GetCrossTable()
+	expression, err = crossTableExpression(dialect, config.GetRightFunction(), config.GetRightColumn(), reference)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	filter, err := ParseFilter(config.GetRightFilter())
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	filter, err = ResolveFilterVariables(filter, input.Variables)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	clause, args, err := CompileFilterAfter(dialect, reference, filter, argOffset)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	if clause != "" {
+		where = " WHERE " + clause
+	}
+	return table, expression, where, args, nil
+}
+
 // crossTableExpression renders one side of a reconciliation. COUNT ignores the
-// column; every other function aggregates it. When the target is resolved the
-// left column is proven to exist; the right side passes an empty target because
-// its table is not part of the rule's resolution.
+// column; every other function aggregates it, and the relation the side reads
+// proves the column exists.
 func crossTableExpression(dialect Dialect, function storepb.QualityAggregateFunction, column string, target ResolvedTarget) (string, error) {
 	if function == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
 		return "COUNT(*)", nil
@@ -782,14 +860,11 @@ func crossTableExpression(dialect Dialect, function storepb.QualityAggregateFunc
 	if column == "" {
 		return "", invalidConfig("a cross-table %s check needs a column", strings.TrimPrefix(function.String(), "QUALITY_AGGREGATE_FUNCTION_"))
 	}
-	if target.GUID != "" {
-		resolved, err := requireColumn(target, column)
-		if err != nil {
-			return "", err
-		}
-		column = resolved.Name
+	resolved, err := requireColumn(target, column)
+	if err != nil {
+		return "", err
 	}
-	return aggregateExpression(dialect, function, qualify(dialect, column), "")
+	return aggregateExpression(dialect, function, qualify(dialect, resolved.Name), "")
 }
 
 // uniqueKeyedAlias picks the alias of the derived "this group has no NULL key"

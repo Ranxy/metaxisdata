@@ -9205,11 +9205,6 @@ components:
         CrossTableConfig:
             type: object
             properties:
-                rightTable:
-                    type: string
-                    description: |-
-                        The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
-                         "table" (MySQL family); it must live in the rule target's database.
                 leftFunction:
                     enum:
                         - QUALITY_AGGREGATE_FUNCTION_UNSPECIFIED
@@ -9255,9 +9250,61 @@ components:
                 warnThreshold:
                     type: number
                     format: double
+                reference:
+                    allOf:
+                        - $ref: '#/components/schemas/CrossTableReference'
+                    description: The reference relation; required.
+                rightFilter:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityFilter'
+                    description: |-
+                        Rows the reference side reads, bounded like the rule's own filter. The
+                         rule's filter and the target contract's filter never apply to the reference
+                         side; this is the only filter it sees.
             description: |-
                 CrossTableConfig reconciles one aggregate of the rule's table with one
-                 aggregate of another table in the same instance and database.
+                 aggregate of a reference relation, which may live in another database or
+                 another instance. A reference in the target's own database is read in the
+                 same statement as the target side; anything else is read over its own
+                 read-only connection.
+        CrossTableReference:
+            type: object
+            properties:
+                metaGuid:
+                    type: string
+                    description: The registry GUID of the reference relation.
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                path:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTargetPath'
+                    description: |-
+                        Where the reference lived when the rule was saved: display metadata, not
+                         identity. The GUID and its meta type are the identity.
+            description: |-
+                CrossTableReference names the relation a reconciliation compares against, as
+                 a registry target. Unlike a table name it can point at any database and
+                 instance of the workspace.
         CustomSQLConfig:
             type: object
             properties:
@@ -12721,6 +12768,17 @@ components:
                     description: |-
                         The filter values the compiler bound, encoded for display, in the order the
                          placeholders appear in compiled_sql.
+                referenceSql:
+                    type: string
+                    description: |-
+                        The statement that reads a reconciliation's reference side alone, when the
+                         reference needs its own connection. Empty when both sides compile to
+                         compiled_sql, which is the case whenever they share a connection.
+                referenceParameters:
+                    type: array
+                    items:
+                        type: string
+                    description: The values bound to reference_sql, in placeholder order.
         ProcedureMetadata:
             type: object
             properties:
@@ -13289,6 +13347,12 @@ components:
                     type: string
                     description: When that baseline was measured. Unset whenever baseline_value is.
                     format: date-time
+                referenceExecutedSql:
+                    type: string
+                    description: |-
+                        The statement that read a reconciliation's reference side, when the
+                         reference needed its own connection. Empty for every other execution and
+                         for a reconciliation whose two sides share the target's connection.
             description: |-
                 QualityExecution is one rule checked once: the durable unit of the data
                  quality engine. A scheduled tick or a manual request plans one execution per

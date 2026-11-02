@@ -8,6 +8,8 @@ import {
   CelExpressionConfigSchema,
   CrossColumnConfigSchema,
   CrossTableConfigSchema,
+  type CrossTableReference,
+  CrossTableReferenceSchema,
   CustomSQLConfigSchema,
   QualityFilterOperator as FilterOperator,
   FreshnessConfigSchema,
@@ -489,11 +491,24 @@ export interface RuleConfigForm {
   aggWarnMax?: string;
   aggInclusive?: boolean;
   // cross_table
-  rightTable?: string;
+  /**
+   * The registry GUID of the reference relation; empty until one is picked. The
+   * reference may live in any instance, database or schema, so its identity is
+   * the GUID and meta type rather than a name.
+   */
+  referenceGuid?: string;
+  referenceMetaType?: MetaType;
+  /** Where the reference lived when it was picked; display metadata only. */
+  referencePath?: TargetPathForm;
   leftAggFunction?: QualityAggregateFunction;
   leftAggColumn?: string;
   rightAggFunction?: QualityAggregateFunction;
   rightAggColumn?: string;
+  /**
+   * The reference side's only filter. The check's own filter and the target
+   * contract's filter never apply to the reference side.
+   */
+  rightFilter?: FilterClauseForm[];
   // execution: shared by every rule type
   /** Whole seconds; blank means the server default (60). */
   timeoutSeconds?: string;
@@ -539,17 +554,20 @@ export interface RuleFormState {
   config: RuleConfigForm;
 }
 
+/** Where a relation lives, as the editor displays it and the rule stores it. */
+export interface TargetPathForm {
+  instance: string;
+  database: string;
+  schema: string;
+  object: string;
+}
+
 /** What the target is, as the editor and the request need it. */
 export interface TargetSelection {
   /** The metadata GUID of the target table (`instance;database;schema;object`). */
   guid: string;
   metaType: MetaType;
-  path: {
-    instance: string;
-    database: string;
-    schema: string;
-    object: string;
-  };
+  path: TargetPathForm;
   /** Every column the target's config reads; empty for table-level rules. */
   columns: string[];
 }
@@ -573,9 +591,14 @@ export interface ValidationIssue {
   params?: Record<string, string | number>;
 }
 
-/** The target types the editor accepts. */
+/**
+ * The target types the editor accepts. A rule and a cross-table reference may
+ * both point at an external table, which the metadata registry lists beside the
+ * tables and views.
+ */
 export const TARGET_META_TYPES: MetaType[] = [
   MetaType.TABLE,
+  MetaType.EXTERNAL_TABLE,
   MetaType.VIEW,
   MetaType.MATERIALIZED_VIEW,
 ];
@@ -669,11 +692,14 @@ export function emptyConfig(): RuleConfigForm {
     aggWarnMin: "",
     aggWarnMax: "",
     aggInclusive: false,
-    rightTable: "",
+    referenceGuid: "",
+    referenceMetaType: MetaType.TABLE,
+    referencePath: { instance: "", database: "", schema: "", object: "" },
     leftAggFunction: QualityAggregateFunction.COUNT,
     leftAggColumn: "",
     rightAggFunction: QualityAggregateFunction.COUNT,
     rightAggColumn: "",
+    rightFilter: [],
     timeoutSeconds: "",
     sampleMethod: "none",
     sampleMaxRows: "",
@@ -866,6 +892,31 @@ export function buildTarget(selection: TargetSelection): QualityTarget {
       column: columns.length === 1 ? columns[0] : "",
     }),
     columns,
+  });
+}
+
+/**
+ * The reference relation of a cross-table rule, or undefined while the form has
+ * none. The path is a snapshot for display; the GUID and its meta type are the
+ * identity the server resolves.
+ */
+function buildCrossTableReference(
+  config: RuleConfigForm
+): CrossTableReference | undefined {
+  const guid = trimmed(config.referenceGuid);
+  if (!guid) {
+    return undefined;
+  }
+  const path = config.referencePath;
+  return create(CrossTableReferenceSchema, {
+    metaGuid: guid,
+    metaType: config.referenceMetaType ?? MetaType.TABLE,
+    path: create(QualityTargetPathSchema, {
+      instance: path?.instance ?? "",
+      database: path?.database ?? "",
+      schema: path?.schema ?? "",
+      object: path?.object ?? "",
+    }),
   });
 }
 
@@ -1251,11 +1302,12 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
             inclusive: c.aggInclusive ?? false,
           }),
         };
-      case QualityRuleType.CROSS_TABLE:
+      case QualityRuleType.CROSS_TABLE: {
+        const reference = buildCrossTableReference(c);
+        const rightFilter = c.rightFilter ?? [];
         return {
           case: "crossTable" as const,
           value: create(CrossTableConfigSchema, {
-            rightTable: trimmed(c.rightTable),
             leftFunction: c.leftAggFunction ?? QualityAggregateFunction.COUNT,
             leftColumn:
               (c.leftAggFunction ?? QualityAggregateFunction.COUNT) ===
@@ -1268,11 +1320,16 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
               QualityAggregateFunction.COUNT
                 ? ""
                 : trimmed(c.rightAggColumn),
+            ...(reference ? { reference } : {}),
+            ...(rightFilter.some((clause) => clause.column.trim())
+              ? { rightFilter: buildFilter(rightFilter) }
+              : {}),
             ...optionalDouble("tolerance", c.tolerance),
             ...optionalDouble("failThreshold", c.failThreshold),
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
         };
+      }
       default:
         return {
           case: "rowCount" as const,
@@ -1579,11 +1636,19 @@ function configToForm(rule: QualityRule): RuleConfigForm {
     }
     case "crossTable": {
       const value = config.value;
-      form.rightTable = value.rightTable;
+      form.referenceGuid = value.reference?.metaGuid ?? "";
+      form.referenceMetaType = value.reference?.metaType ?? MetaType.TABLE;
+      form.referencePath = {
+        instance: value.reference?.path?.instance ?? "",
+        database: value.reference?.path?.database ?? "",
+        schema: value.reference?.path?.schema ?? "",
+        object: value.reference?.path?.object ?? "",
+      };
       form.leftAggFunction = value.leftFunction;
       form.leftAggColumn = value.leftColumn;
       form.rightAggFunction = value.rightFunction;
       form.rightAggColumn = value.rightColumn;
+      form.rightFilter = filterToForm(value.rightFilter?.clauses ?? []);
       form.tolerance = optionalStringFromDouble(value.tolerance);
       form.failThreshold = optionalStringFromDouble(value.failThreshold);
       form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
@@ -1826,7 +1891,19 @@ function configKey(form: RuleFormState): unknown {
 function normalizeConfigForm(form: RuleFormState): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(form.config)) {
-    if (typeof value === "string") {
+    if (key === "rightFilter") {
+      // A second clause list, compared with the same semantics as the check's
+      // own filter; treating it as a schema-drift row list would drop it.
+      out[key] = ((value as FilterClauseForm[] | undefined) ?? []).map(
+        (clause) => ({
+          column: clause.column.trim(),
+          op: clause.op,
+          values: filterOperatorNeedsValues(clause.op)
+            ? parseValueList(clause.values)
+            : [],
+        })
+      );
+    } else if (typeof value === "string") {
       const text = value.trim();
       if (text !== "") {
         out[key] = text;
@@ -1840,6 +1917,9 @@ function normalizeConfigForm(form: RuleFormState): Record<string, unknown> {
         .map((row) => normalizeConfigRow(row))
         .filter((row) => row.name !== "");
     }
+    // `referencePath` is display metadata, not identity: the reference GUID and
+    // its meta type are what the rule resolves, so a moved relation's path is
+    // not a config change. Objects are skipped here for that reason.
   }
   return out;
 }
@@ -2197,13 +2277,10 @@ export function validateRuleForm(
       break;
     }
     case QualityRuleType.CROSS_TABLE: {
-      const right = trimmed(c.rightTable);
-      if (!right) {
+      if (!trimmed(c.referenceGuid)) {
         issues.push({
-          key: VALIDATION_PREFIX + "crossTableRightTableRequired",
+          key: VALIDATION_PREFIX + "crossTableReferenceRequired",
         });
-      } else if (!isRightTableShape(right)) {
-        issues.push({ key: VALIDATION_PREFIX + "crossTableRightTableShape" });
       }
       const leftCount =
         (c.leftAggFunction ?? QualityAggregateFunction.COUNT) ===
@@ -2227,36 +2304,84 @@ export function validateRuleForm(
       if (tolerance !== undefined && tolerance < 0) {
         issues.push({ key: VALIDATION_PREFIX + "crossTableToleranceInvalid" });
       }
+      // The reference side has a filter of its own; the rule's filter and the
+      // target contract's filter never reach it, so the two are checked apart.
+      validateFilterClauses(
+        c.rightFilter ?? [],
+        issues,
+        REFERENCE_FILTER_VALIDATION_KEYS
+      );
       break;
     }
     default:
       break;
   }
-  const activeClauses = form.filter.filter((clause) => clause.column.trim());
+  validateFilterClauses(form.filter, issues, TARGET_FILTER_VALIDATION_KEYS);
+  return issues;
+}
+
+/**
+ * The i18n keys one filter's checks report under. Each filter is validated on
+ * its own — the check's pre-filter against the target, a cross-table rule's
+ * reference filter against the reference — so the two do not share a message.
+ */
+interface FilterValidationKeys {
+  tooMany: string;
+  valuesTooMany: string;
+  valueRequired: string;
+}
+
+const TARGET_FILTER_VALIDATION_KEYS: FilterValidationKeys = {
+  tooMany: "filterTooMany",
+  valuesTooMany: "filterValuesTooMany",
+  valueRequired: "filterValueRequired",
+};
+
+const REFERENCE_FILTER_VALIDATION_KEYS: FilterValidationKeys = {
+  tooMany: "crossTableRightFilterTooMany",
+  valuesTooMany: "crossTableRightFilterValuesTooMany",
+  valueRequired: "crossTableRightFilterValueRequired",
+};
+
+/**
+ * The bounds every AND filter obeys, mirroring `ParseFilter` on the server: at
+ * most `MAX_FILTER_CLAUSES` clauses, a value for every operator that takes one,
+ * exactly one value for the comparison operators, and at most
+ * `MAX_FILTER_VALUES` for IN / NOT IN. A clause without a column is not part of
+ * the filter yet (it is the blank row a new clause starts as).
+ */
+function validateFilterClauses(
+  clauses: FilterClauseForm[],
+  issues: ValidationIssue[],
+  keys: FilterValidationKeys
+): void {
+  const activeClauses = clauses.filter((clause) => clause.column.trim());
   if (activeClauses.length > MAX_FILTER_CLAUSES) {
     issues.push({
-      key: VALIDATION_PREFIX + "filterTooMany",
+      key: VALIDATION_PREFIX + keys.tooMany,
       params: { max: MAX_FILTER_CLAUSES },
     });
   }
   for (const clause of activeClauses) {
-    if (
-      !filterOperatorNeedsValues(clause.op) &&
-      parseValueList(clause.values).length === 0
-    ) {
+    if (!filterOperatorNeedsValues(clause.op)) {
       continue;
     }
-    if (
-      filterOperatorNeedsValues(clause.op) &&
-      parseValueList(clause.values).length > MAX_FILTER_VALUES
-    ) {
+    const values = parseValueList(clause.values);
+    if (values.length === 0) {
+      issues.push({ key: VALIDATION_PREFIX + keys.valueRequired });
+      continue;
+    }
+    const max =
+      clause.op === FilterOperator.IN || clause.op === FilterOperator.NOT_IN
+        ? MAX_FILTER_VALUES
+        : 1;
+    if (values.length > max) {
       issues.push({
-        key: VALIDATION_PREFIX + "filterValuesTooMany",
-        params: { max: MAX_FILTER_VALUES },
+        key: VALIDATION_PREFIX + keys.valuesTooMany,
+        params: { max },
       });
     }
   }
-  return issues;
 }
 
 /**
@@ -2309,12 +2434,6 @@ function validateExecutionFields(
 
 /** Every validation key lives under this prefix (see DYNAMIC_PREFIXES). */
 export const VALIDATION_PREFIX = "dataQuality.editor.validation.";
-
-/** A right table is `table` or `schema.table` (one dot, no empty segment). */
-function isRightTableShape(value: string): boolean {
-  const parts = value.split(".");
-  return parts.length <= 2 && parts.every((part) => part.trim().length > 0);
-}
 
 // ---- shared helpers ----
 

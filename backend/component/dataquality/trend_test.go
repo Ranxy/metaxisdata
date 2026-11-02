@@ -74,7 +74,8 @@ func TestRuleTypeSpecsCarryATrendShape(t *testing.T) {
 	}
 	crossTable := &storepb.QualityRuleConfig{
 		Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-			RightTable: "public.orders", Tolerance: validationPtr(10.0),
+			Reference: &storepb.CrossTableReference{MetaGuid: "instances/ins1;shop;public;orders", MetaType: storepb.MetaType_TABLE},
+			Tolerance: validationPtr(10.0),
 		}},
 	}
 	aggregate := &storepb.QualityRuleConfig{
@@ -445,12 +446,14 @@ func TestBuildTrendCrossTablePlotsTheExcess(t *testing.T) {
 
 	currentConfig := &storepb.QualityRuleConfig{
 		Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-			RightTable: "public.orders", Tolerance: validationPtr(10.0),
+			Reference: &storepb.CrossTableReference{MetaGuid: "instances/ins1;shop;public;orders", MetaType: storepb.MetaType_TABLE},
+			Tolerance: validationPtr(10.0),
 		}},
 	}
 	oldConfig := &storepb.QualityRuleConfig{
 		Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{
-			RightTable: "public.orders", Tolerance: validationPtr(4.0),
+			Reference: &storepb.CrossTableReference{MetaGuid: "instances/ins1;shop;public;orders", MetaType: storepb.MetaType_TABLE},
+			Tolerance: validationPtr(4.0),
 		}},
 	}
 	newest := trendExecution(3, 3, 0, 0)

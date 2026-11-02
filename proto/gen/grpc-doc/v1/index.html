@@ -1113,6 +1113,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CrossTableReference"><span class="badge">M</span>CrossTableReference</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CustomSQLConfig"><span class="badge">M</span>CustomSQLConfig</a>
                 </li>
               
@@ -13723,7 +13727,7 @@ Only meaningful for numeric columns. </p></td>
         
       
         <h3 id="metaxisdata.v1.CrossTableConfig">CrossTableConfig</h3>
-        <p>CrossTableConfig reconciles one aggregate of the rule's table with one</p><p>aggregate of another table in the same instance and database.</p>
+        <p>CrossTableConfig reconciles one aggregate of the rule's table with one</p><p>aggregate of a reference relation, which may live in another database or</p><p>another instance. A reference in the target's own database is read in the</p><p>same statement as the target side; anything else is read over its own</p><p>read-only connection.</p>
 
         
           <table class="field-table">
@@ -13731,14 +13735,6 @@ Only meaningful for numeric columns. </p></td>
               <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
             </thead>
             <tbody>
-              
-                <tr>
-                  <td>right_table</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The other table as &#34;schema.table&#34; (PostgreSQL/MSSQL) or &#34;database.table&#34; /
-&#34;table&#34; (MySQL family); it must live in the rule target&#39;s database. </p></td>
-                </tr>
               
                 <tr>
                   <td>left_function</td>
@@ -13789,6 +13785,61 @@ The fail threshold defaults to zero. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference</td>
+                  <td><a href="#metaxisdata.v1.CrossTableReference">CrossTableReference</a></td>
+                  <td></td>
+                  <td><p>The reference relation; required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>right_filter</td>
+                  <td><a href="#metaxisdata.v1.QualityFilter">QualityFilter</a></td>
+                  <td></td>
+                  <td><p>Rows the reference side reads, bounded like the rule&#39;s own filter. The
+rule&#39;s filter and the target contract&#39;s filter never apply to the reference
+side; this is the only filter it sees. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CrossTableReference">CrossTableReference</h3>
+        <p>CrossTableReference names the relation a reconciliation compares against, as</p><p>a registry target. Unlike a table name it can point at any database and</p><p>instance of the workspace.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>meta_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The registry GUID of the reference relation. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>path</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetPath">QualityTargetPath</a></td>
+                  <td></td>
+                  <td><p>Where the reference lived when the rule was saved: display metadata, not
+identity. The GUID and its meta type are the identity. </p></td>
                 </tr>
               
             </tbody>
@@ -16805,6 +16856,22 @@ converted with the column&#39;s type; at most 20. </p></td>
 placeholders appear in compiled_sql. </p></td>
                 </tr>
               
+                <tr>
+                  <td>reference_sql</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The statement that reads a reconciliation&#39;s reference side alone, when the
+reference needs its own connection. Empty when both sides compile to
+compiled_sql, which is the case whenever they share a connection. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference_parameters</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The values bound to reference_sql, in placeholder order. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17717,6 +17784,15 @@ check defaults to PASS so the first run only records the baseline. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p>When that baseline was measured. Unset whenever baseline_value is. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference_executed_sql</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The statement that read a reconciliation&#39;s reference side, when the
+reference needed its own connection. Empty for every other execution and
+for a reconciliation whose two sides share the target&#39;s connection. </p></td>
                 </tr>
               
             </tbody>

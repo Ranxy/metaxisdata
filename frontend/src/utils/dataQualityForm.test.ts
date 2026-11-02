@@ -217,11 +217,21 @@ const CONFIG_FIXTURES: Partial<
     warnThreshold: "1",
   },
   [QualityRuleType.CROSS_TABLE]: {
-    rightTable: "public.orders_ref",
+    referenceGuid: "inst2;db2;public;orders_ref",
+    referenceMetaType: MetaType.TABLE,
+    referencePath: {
+      instance: "inst2",
+      database: "db2",
+      schema: "public",
+      object: "orders_ref",
+    },
     leftAggFunction: QualityAggregateFunction.SUM,
     leftAggColumn: "amount",
     rightAggFunction: QualityAggregateFunction.COUNT,
     rightAggColumn: "",
+    rightFilter: [
+      { column: "status", op: QualityFilterOperator.EQ, values: "paid" },
+    ],
     tolerance: "0.5",
     failThreshold: "10",
     warnThreshold: "5",
@@ -460,6 +470,9 @@ describe("target selection", () => {
     expect(
       targetFromQuery("i;d;s;t", String(MetaType.MATERIALIZED_VIEW))?.metaType
     ).toBe(MetaType.MATERIALIZED_VIEW);
+    expect(
+      targetFromQuery("i;d;s;t", String(MetaType.EXTERNAL_TABLE))?.metaType
+    ).toBe(MetaType.EXTERNAL_TABLE);
     // An unknown type falls back to TABLE rather than blocking the form.
     expect(targetFromQuery("i;d;s;t", "999")?.metaType).toBe(MetaType.TABLE);
     expect(targetFromQuery("i;d;s;t", undefined)?.metaType).toBe(
@@ -572,6 +585,52 @@ describe("config conversion", () => {
     const back = ruleToForm(rule);
     expect(back.config.failThreshold).toBe("10");
     expect(back.config.warnThreshold).toBe("5");
+  });
+
+  it("sends and reads the cross-table reference relation and its filter", () => {
+    const form = validForm(QualityRuleType.CROSS_TABLE);
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "crossTable") {
+      throw new Error("expected a cross-table config arm");
+    }
+    const cross = rule.config.config.value;
+    expect(cross.reference?.metaGuid).toBe("inst2;db2;public;orders_ref");
+    expect(cross.reference?.metaType).toBe(MetaType.TABLE);
+    expect(cross.reference?.path).toMatchObject({
+      instance: "inst2",
+      database: "db2",
+      schema: "public",
+      object: "orders_ref",
+    });
+    expect(cross.rightFilter?.clauses).toMatchObject([
+      { column: "status", op: QualityFilterOperator.EQ, values: ["paid"] },
+    ]);
+
+    const back = ruleToForm(rule);
+    expect(back.config.referenceGuid).toBe("inst2;db2;public;orders_ref");
+    expect(back.config.referenceMetaType).toBe(MetaType.TABLE);
+    expect(back.config.referencePath).toEqual({
+      instance: "inst2",
+      database: "db2",
+      schema: "public",
+      object: "orders_ref",
+    });
+    expect(back.config.rightFilter).toEqual(form.config.rightFilter);
+  });
+
+  it("omits an unpicked reference and an empty reference filter", () => {
+    const form = validForm(QualityRuleType.CROSS_TABLE);
+    form.config = {
+      ...form.config,
+      referenceGuid: "",
+      rightFilter: [],
+    };
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "crossTable") {
+      throw new Error("expected a cross-table config arm");
+    }
+    expect(rule.config.config.value.reference).toBeUndefined();
+    expect(rule.config.config.value.rightFilter).toBeUndefined();
   });
 
   it("keeps an empty config usable", () => {
@@ -927,6 +986,61 @@ describe("update mask", () => {
     expect(computeUpdateMask(base, next)).toEqual(["config"]);
   });
 
+  it("treats a reference or reference-filter edit as a config change", () => {
+    const base = {
+      form: validForm(QualityRuleType.CROSS_TABLE),
+      target: { ...TARGET, columns: ["amount"] },
+    };
+    const next = {
+      form: {
+        ...base.form,
+        config: {
+          ...base.form.config,
+          referenceGuid: "inst3;db3;public;other",
+        },
+      },
+      target: base.target,
+    };
+    expect(computeUpdateMask(base, next)).toEqual(["config"]);
+
+    const refiltered = {
+      form: {
+        ...base.form,
+        config: {
+          ...base.form.config,
+          rightFilter: [
+            {
+              column: "status",
+              op: QualityFilterOperator.EQ,
+              values: "refunded",
+            },
+          ],
+        },
+      },
+      target: base.target,
+    };
+    expect(computeUpdateMask(base, refiltered)).toEqual(["config"]);
+
+    // The stored path is display metadata: a relation that moved does not
+    // change the rule's reference identity.
+    const moved = {
+      form: {
+        ...base.form,
+        config: {
+          ...base.form.config,
+          referencePath: {
+            instance: "inst2",
+            database: "db2",
+            schema: "public",
+            object: "renamed",
+          },
+        },
+      },
+      target: base.target,
+    };
+    expect(computeUpdateMask(base, moved)).toEqual([]);
+  });
+
   it("treats a config, filter, metric or empty-behaviour edit as a config change", () => {
     // The target snapshot records the columns the config reads, so changing the
     // column changes both the config and the target's column list.
@@ -1220,16 +1334,25 @@ describe("validation", () => {
       [
         QualityRuleType.CROSS_TABLE,
         (form) => {
-          form.config = { ...form.config, rightTable: "" };
+          form.config = { ...form.config, referenceGuid: "" };
         },
-        "crossTableRightTableRequired",
+        "crossTableReferenceRequired",
       ],
       [
         QualityRuleType.CROSS_TABLE,
         (form) => {
-          form.config = { ...form.config, rightTable: "a.b.c" };
+          form.config = {
+            ...form.config,
+            rightFilter: [
+              {
+                column: "status",
+                op: QualityFilterOperator.EQ,
+                values: "",
+              },
+            ],
+          };
         },
-        "crossTableRightTableShape",
+        "crossTableRightFilterValueRequired",
       ],
       [
         QualityRuleType.CROSS_TABLE,
@@ -1529,7 +1652,13 @@ describe("more validation branches", () => {
     );
   });
 
-  it("checks both sides of a cross-table rule and its tolerance", () => {
+  it("checks the cross-table reference, both sides and the tolerance", () => {
+    const missingReference = validForm(QualityRuleType.CROSS_TABLE);
+    missingReference.config.referenceGuid = "";
+    expect(
+      validateRuleForm(missingReference, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}crossTableReferenceRequired`);
+
     const forbidden = validForm(QualityRuleType.CROSS_TABLE);
     forbidden.config.leftAggFunction = QualityAggregateFunction.COUNT;
     forbidden.config.leftAggColumn = "amount";
@@ -1549,6 +1678,73 @@ describe("more validation branches", () => {
     expect(
       validateRuleForm(tolerance, TARGET).map((issue) => issue.key)
     ).toContain(`${VALIDATION_PREFIX}crossTableToleranceInvalid`);
+  });
+
+  it("mirrors the filter bounds on the reference side too", () => {
+    const cases: Array<{
+      clauses: {
+        column: string;
+        op: QualityFilterOperator;
+        values: string;
+      }[];
+      key: string;
+    }> = [
+      {
+        clauses: Array.from({ length: MAX_FILTER_CLAUSES + 1 }, () => ({
+          column: "status",
+          op: QualityFilterOperator.EQ,
+          values: "paid",
+        })),
+        key: "crossTableRightFilterTooMany",
+      },
+      {
+        clauses: [
+          {
+            column: "status",
+            op: QualityFilterOperator.EQ,
+            values: "",
+          },
+        ],
+        key: "crossTableRightFilterValueRequired",
+      },
+      {
+        clauses: [
+          {
+            column: "status",
+            op: QualityFilterOperator.IN,
+            values: Array.from({ length: MAX_FILTER_VALUES + 1 }, (_, i) =>
+              String(i)
+            ).join(","),
+          },
+        ],
+        key: "crossTableRightFilterValuesTooMany",
+      },
+    ];
+    for (const { clauses, key } of cases) {
+      const form = validForm(QualityRuleType.CROSS_TABLE);
+      form.config.rightFilter = clauses;
+      expect(
+        validateRuleForm(form, TARGET).map((issue) => issue.key),
+        key
+      ).toContain(`${VALIDATION_PREFIX}${key}`);
+    }
+  });
+
+  it("requires a value for every clause of the check's own filter", () => {
+    const form = validForm(QualityRuleType.UNIQUE);
+    form.filter = [
+      { column: "region", op: QualityFilterOperator.EQ, values: "" },
+    ];
+    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
+      `${VALIDATION_PREFIX}filterValueRequired`
+    );
+    const multiValue = validForm(QualityRuleType.UNIQUE);
+    multiValue.filter = [
+      { column: "region", op: QualityFilterOperator.EQ, values: "eu, us" },
+    ];
+    expect(
+      validateRuleForm(multiValue, TARGET).map((issue) => issue.key)
+    ).toContain(`${VALIDATION_PREFIX}filterValuesTooMany`);
   });
 
   it("skips the value count for an operator that takes none", () => {

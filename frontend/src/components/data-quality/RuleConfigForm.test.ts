@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
@@ -10,6 +10,7 @@ import {
   QualityRuleType,
   QualityThresholdMetric,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import {
   emptyConfig,
@@ -17,6 +18,20 @@ import {
   THRESHOLD_METRIC_RULE_TYPES,
 } from "@/utils/dataQualityForm";
 import RuleConfigForm from "./RuleConfigForm.vue";
+
+// The cross-table section reads its reference table's columns from the registry.
+const mocks = vi.hoisted(() => ({
+  getQualityTarget: vi.fn(),
+}));
+
+vi.mock("@/api/data-quality", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/data-quality")>()),
+  getQualityTarget: mocks.getQualityTarget,
+}));
+
+beforeEach(() => {
+  mocks.getQualityTarget.mockResolvedValue({ targetColumns: [] });
+});
 
 function label(key: string): string {
   return i18n.global.t(key);
@@ -104,9 +119,16 @@ describe("RuleConfigForm", () => {
     wrapper.unmount();
   });
 
-  it("renders the cross-table failure and warning thresholds", () => {
+  it("renders the cross-table reference, thresholds and reference filter", () => {
     const wrapper = mountForm(QualityRuleType.CROSS_TABLE, {
-      rightTable: "public.orders_ref",
+      referenceGuid: "inst2;db2;public;orders_ref",
+      referenceMetaType: MetaType.TABLE,
+      referencePath: {
+        instance: "inst2",
+        database: "db2",
+        schema: "public",
+        object: "orders_ref",
+      },
       leftAggFunction: QualityAggregateFunction.SUM,
       leftAggColumn: "amount",
     });
@@ -118,6 +140,13 @@ describe("RuleConfigForm", () => {
     expect(fields).toContain(label("dataQuality.editor.tolerance"));
     expect(wrapper.find("#dq-field-failThreshold").exists()).toBe(true);
     expect(wrapper.find("#dq-field-warnThreshold").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-referenceGuid").exists()).toBe(true);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.referenceTable")
+    );
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.referenceFilter")
+    );
     expect(wrapper.text()).not.toContain(THRESHOLD_LABEL());
     wrapper.unmount();
   });

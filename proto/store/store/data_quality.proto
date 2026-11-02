@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package metaxisdata.store;
 
+import "store/meta.proto";
+
 option go_package = "generated-go/store";
 
 // This file defines the JSONB payloads of the data quality tables. The scalar
@@ -857,12 +859,29 @@ message AggregateConfig {
   bool inclusive = 8;
 }
 
+// CrossTableReference names the relation a reconciliation compares against, as
+// a registry target. Unlike a table name it can point at any database and
+// instance of the workspace.
+message CrossTableReference {
+  // The registry GUID of the reference relation.
+  string meta_guid = 1;
+
+  MetaType meta_type = 2;
+
+  // Where the reference lived when the rule was saved: display metadata, not
+  // identity. The GUID and its meta type are the identity.
+  QualityTargetPath path = 3;
+}
+
 // CrossTableConfig reconciles one aggregate of the rule's table with one
-// aggregate of another table in the same instance and database.
+// aggregate of a reference relation, which may live in another database or
+// another instance. A reference in the target's own database is read in the
+// same statement as the target side; anything else is read over its own
+// read-only connection.
 message CrossTableConfig {
-  // The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
-  // "table" (MySQL family); it must live in the rule target's database.
-  string right_table = 1;
+  reserved 1;
+  reserved "right_table";
+
   // The left (target) aggregate; COUNT ignores left_column.
   QualityAggregateFunction left_function = 2;
   string left_column = 3;
@@ -876,6 +895,12 @@ message CrossTableConfig {
   // The fail threshold defaults to zero.
   optional double fail_threshold = 7;
   optional double warn_threshold = 8;
+  // The reference relation; required.
+  CrossTableReference reference = 9;
+  // Rows the reference side reads, bounded like the rule's own filter. The
+  // rule's filter and the target contract's filter never apply to the reference
+  // side; this is the only filter it sees.
+  QualityFilter right_filter = 10;
 }
 
 // QualitySuggestionJobStatus is the lifecycle of one background AI drafting job.

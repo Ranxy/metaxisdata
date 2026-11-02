@@ -221,6 +221,21 @@
         
           
           <li>
+            <a href="#store%2fmeta.proto">store/meta.proto</a>
+            <ul>
+              
+              
+                <li>
+                  <a href="#metaxisdata.store.MetaType"><span class="badge">E</span>MetaType</a>
+                </li>
+              
+              
+              
+            </ul>
+          </li>
+        
+          
+          <li>
             <a href="#store%2fdata_quality.proto">store/data_quality.proto</a>
             <ul>
               
@@ -250,6 +265,10 @@
               
                 <li>
                   <a href="#metaxisdata.store.CrossTableConfig"><span class="badge">M</span>CrossTableConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.CrossTableReference"><span class="badge">M</span>CrossTableReference</a>
                 </li>
               
                 <li>
@@ -817,21 +836,6 @@
               
                 <li>
                   <a href="#metaxisdata.store.LLMProviderType"><span class="badge">E</span>LLMProviderType</a>
-                </li>
-              
-              
-              
-            </ul>
-          </li>
-        
-          
-          <li>
-            <a href="#store%2fmeta.proto">store/meta.proto</a>
-            <ul>
-              
-              
-                <li>
-                  <a href="#metaxisdata.store.MetaType"><span class="badge">E</span>MetaType</a>
                 </li>
               
               
@@ -1436,6 +1440,139 @@ identified by an opaque server-generated id. </p></td>
     
       
       <div class="file-heading">
+        <h2 id="store/meta.proto">store/meta.proto</h2><a href="#title">Top</a>
+      </div>
+      <p></p>
+
+      
+
+      
+        <h3 id="metaxisdata.store.MetaType">MetaType</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>INSTANCE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DATABASE</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SCHEMA</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>TABLE</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>EXTERNAL_TABLE</td>
+                <td>16</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>EXTERNAL_DATASET</td>
+                <td>17</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MANUAL_SQL</td>
+                <td>18</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>APPLICATION_SQL</td>
+                <td>19</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>VIEW</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MATERIALIZED_VIEW</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>COLUMN</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>INDEX</td>
+                <td>8</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>FOREIGN_KEY</td>
+                <td>9</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>PROCEDURE</td>
+                <td>10</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>FUNCTION</td>
+                <td>11</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SEQUENCE</td>
+                <td>12</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>OPENLINEAGE</td>
+                <td>100</td>
+                <td><p>for Non-database internal structure</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+
+      
+
+      
+    
+      
+      <div class="file-heading">
         <h2 id="store/data_quality.proto">store/data_quality.proto</h2><a href="#title">Top</a>
       </div>
       <p></p>
@@ -1820,7 +1957,7 @@ Only meaningful for numeric columns. </p></td>
         
       
         <h3 id="metaxisdata.store.CrossTableConfig">CrossTableConfig</h3>
-        <p>CrossTableConfig reconciles one aggregate of the rule's table with one</p><p>aggregate of another table in the same instance and database.</p>
+        <p>CrossTableConfig reconciles one aggregate of the rule's table with one</p><p>aggregate of a reference relation, which may live in another database or</p><p>another instance. A reference in the target's own database is read in the</p><p>same statement as the target side; anything else is read over its own</p><p>read-only connection.</p>
 
         
           <table class="field-table">
@@ -1828,14 +1965,6 @@ Only meaningful for numeric columns. </p></td>
               <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
             </thead>
             <tbody>
-              
-                <tr>
-                  <td>right_table</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The other table as &#34;schema.table&#34; (PostgreSQL/MSSQL) or &#34;database.table&#34; /
-&#34;table&#34; (MySQL family); it must live in the rule target&#39;s database. </p></td>
-                </tr>
               
                 <tr>
                   <td>left_function</td>
@@ -1886,6 +2015,61 @@ The fail threshold defaults to zero. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference</td>
+                  <td><a href="#metaxisdata.store.CrossTableReference">CrossTableReference</a></td>
+                  <td></td>
+                  <td><p>The reference relation; required. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>right_filter</td>
+                  <td><a href="#metaxisdata.store.QualityFilter">QualityFilter</a></td>
+                  <td></td>
+                  <td><p>Rows the reference side reads, bounded like the rule&#39;s own filter. The
+rule&#39;s filter and the target contract&#39;s filter never apply to the reference
+side; this is the only filter it sees. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.CrossTableReference">CrossTableReference</h3>
+        <p>CrossTableReference names the relation a reconciliation compares against, as</p><p>a registry target. Unlike a table name it can point at any database and</p><p>instance of the workspace.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>meta_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The registry GUID of the reference relation. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.store.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>path</td>
+                  <td><a href="#metaxisdata.store.QualityTargetPath">QualityTargetPath</a></td>
+                  <td></td>
+                  <td><p>Where the reference lived when the rule was saved: display metadata, not
+identity. The GUID and its meta type are the identity. </p></td>
                 </tr>
               
             </tbody>
@@ -9249,139 +9433,6 @@ exposes the ciphertext through the API. </p></td>
                 <td>LLM_PROVIDER_TYPE_CUSTOM</td>
                 <td>4</td>
                 <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-
-      
-
-      
-    
-      
-      <div class="file-heading">
-        <h2 id="store/meta.proto">store/meta.proto</h2><a href="#title">Top</a>
-      </div>
-      <p></p>
-
-      
-
-      
-        <h3 id="metaxisdata.store.MetaType">MetaType</h3>
-        <p></p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>INSTANCE</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>DATABASE</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>SCHEMA</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>TABLE</td>
-                <td>4</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>EXTERNAL_TABLE</td>
-                <td>16</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>EXTERNAL_DATASET</td>
-                <td>17</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>MANUAL_SQL</td>
-                <td>18</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>APPLICATION_SQL</td>
-                <td>19</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>VIEW</td>
-                <td>5</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>MATERIALIZED_VIEW</td>
-                <td>6</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>COLUMN</td>
-                <td>7</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>INDEX</td>
-                <td>8</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>FOREIGN_KEY</td>
-                <td>9</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>PROCEDURE</td>
-                <td>10</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>FUNCTION</td>
-                <td>11</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>SEQUENCE</td>
-                <td>12</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>OPENLINEAGE</td>
-                <td>100</td>
-                <td><p>for Non-database internal structure</p></td>
               </tr>
             
           </tbody>

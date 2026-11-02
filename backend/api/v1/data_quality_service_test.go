@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -456,6 +457,69 @@ func TestPreviewQualityRuleResponse(t *testing.T) {
 	require.Equal(t, validated.Compiled.SQL, response.GetCompiledSql())
 	require.Equal(t, []string{"email", "dt"}, response.GetReferencedColumns())
 	require.Equal(t, []string{"2026-01-01"}, response.GetParameters())
+	require.Empty(t, response.GetReferenceSql(),
+		"a rule whose reference shares the target's connection has only one statement")
+	require.Empty(t, response.GetReferenceParameters())
+
+	shared := &dataquality.ValidatedRule{
+		Compiled: validated.Compiled,
+		// A reference that shares the target's connection is folded into the rule's
+		// statement, so there is nothing separate to preview.
+		Reference: &dataquality.ValidatedReference{Separate: false},
+	}
+	sharedResponse := previewQualityRuleResponse(config, shared)
+	require.Empty(t, sharedResponse.GetReferenceSql())
+	require.Empty(t, sharedResponse.GetReferenceParameters())
+}
+
+// A reconciliation whose reference needs its own connection previews two
+// statements, each with its own bound values.
+func TestPreviewQualityRuleResponseReportsTheReferenceStatement(t *testing.T) {
+	t.Parallel()
+
+	validated := &dataquality.ValidatedRule{
+		Compiled: dataquality.CompiledQuery{
+			SQL:  "SELECT COUNT(*) AS left_value FROM orders WHERE dt >= $1",
+			Args: []any{"2026-01-01"},
+		},
+		Reference: &dataquality.ValidatedReference{
+			Separate: true,
+			Compiled: dataquality.CompiledQuery{
+				SQL:  "SELECT SUM(total) AS right_value FROM invoices WHERE status = $1",
+				Args: []any{"paid"},
+			},
+		},
+	}
+	response := previewQualityRuleResponse(nil, validated)
+	require.Equal(t, validated.Compiled.SQL, response.GetCompiledSql())
+	require.Equal(t, []string{"2026-01-01"}, response.GetParameters())
+	require.Equal(t, validated.Reference.Compiled.SQL, response.GetReferenceSql())
+	require.Equal(t, []string{"paid"}, response.GetReferenceParameters())
+}
+
+// A reconciliation's reference side is probed with its own engine's LIMIT 0
+// wrapper, and there is no second probe when both sides share a connection.
+func TestQualityRuleReferenceProbeSQL(t *testing.T) {
+	t.Parallel()
+
+	validated := &dataquality.ValidatedRule{
+		Reference: &dataquality.ValidatedReference{
+			Separate: true,
+			Resolution: &dataquality.Resolution{
+				Target: dataquality.ResolvedTarget{Engine: storepb.Engine_POSTGRES},
+			},
+			Compiled: dataquality.CompiledQuery{SQL: "SELECT SUM(total) FROM invoices"},
+		},
+	}
+	probe := qualityRuleReferenceProbeSQL(validated)
+	require.Contains(t, probe, "SELECT SUM(total) FROM invoices")
+	require.Contains(t, probe, "LIMIT 0")
+
+	require.Empty(t, qualityRuleReferenceProbeSQL(&dataquality.ValidatedRule{
+		Reference: &dataquality.ValidatedReference{Separate: false},
+	}), "a shared connection has no reference-side statement to probe")
+	require.Empty(t, qualityRuleReferenceProbeSQL(&dataquality.ValidatedRule{}))
+	require.Empty(t, qualityRuleReferenceProbeSQL(nil))
 }
 
 func TestQualityProbeError(t *testing.T) {
@@ -960,7 +1024,8 @@ func TestDryRunNeedsProbe(t *testing.T) {
 }
 
 // TestRequireReadOnlySourceForNewRule pins the create-time configuration check: a
-// query rule needs a READ_ONLY source, while a metadata rule needs none.
+// query rule needs a READ_ONLY source, while a metadata rule needs none; a
+// reconciliation needs one on its reference instance too.
 func TestRequireReadOnlySourceForNewRule(t *testing.T) {
 	t.Parallel()
 
@@ -971,20 +1036,80 @@ func TestRequireReadOnlySourceForNewRule(t *testing.T) {
 			{Type: storepb.DataSourceType_READ_ONLY},
 		}},
 	}}
-	require.NoError(t, requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, withReadOnly))
-
 	adminOnly := &dataquality.Resolution{Instance: &store.InstanceMessage{
 		ResourceID: "instances/ins1",
 		Metadata: &storepb.Instance{DataSources: []*storepb.DataSource{
 			{Type: storepb.DataSourceType_ADMIN},
 		}},
 	}}
-	err := requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, adminOnly)
+	rowCount := storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT
+
+	require.NoError(t, requireReadOnlySourceForNewRule(rowCount, &dataquality.ValidatedRule{Resolution: withReadOnly}))
+
+	err := requireReadOnlySourceForNewRule(rowCount, &dataquality.ValidatedRule{Resolution: adminOnly})
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
 	require.Contains(t, err.Error(), "READ_ONLY")
+	require.Contains(t, err.Error(), "rule target")
 
 	// A metadata rule reads no target database, so it needs no data source at all.
-	require.NoError(t, requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, adminOnly))
+	require.NoError(t, requireReadOnlySourceForNewRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
+		&dataquality.ValidatedRule{Resolution: adminOnly}))
+
+	// A reconciliation needs a READ_ONLY source on the reference instance as well,
+	// and the refusal names that instance rather than the target.
+	crossTable := storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE
+	require.NoError(t, requireReadOnlySourceForNewRule(crossTable, &dataquality.ValidatedRule{
+		Resolution: withReadOnly,
+		Reference:  &dataquality.ValidatedReference{Resolution: withReadOnly},
+	}))
+	err = requireReadOnlySourceForNewRule(crossTable, &dataquality.ValidatedRule{
+		Resolution: withReadOnly,
+		Reference:  &dataquality.ValidatedReference{Resolution: adminOnly},
+	})
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "READ_ONLY")
+	require.Contains(t, err.Error(), "reference instance")
+
+	// The target is checked first, so a target without a source is still reported
+	// as the target's problem.
+	err = requireReadOnlySourceForNewRule(crossTable, &dataquality.ValidatedRule{
+		Resolution: adminOnly,
+		Reference:  &dataquality.ValidatedReference{Resolution: withReadOnly},
+	})
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "rule target")
+}
+
+// A preview's reference-side probe opens the reference instance's READ_ONLY source
+// and reports a missing one as a configuration mistake that names the reference,
+// not as an invalid rule.
+func TestProbeQualityStatementReferenceNeedsReadOnlySource(t *testing.T) {
+	t.Parallel()
+
+	stateCfg, err := state.New(nil)
+	require.NoError(t, err)
+	service := &DataQualityService{stateCfg: stateCfg, dbFactory: dbfactory.New(nil)}
+	adminOnly := &store.InstanceMessage{
+		ResourceID: "instances/ins2",
+		Metadata: &storepb.Instance{DataSources: []*storepb.DataSource{
+			{Type: storepb.DataSourceType_ADMIN},
+		}},
+	}
+	validated := &dataquality.ValidatedRule{
+		Resolution: &dataquality.Resolution{
+			Instance: adminOnly,
+			Target:   dataquality.ResolvedTarget{Engine: storepb.Engine_POSTGRES},
+		},
+		Reference: &dataquality.ValidatedReference{
+			Separate:   true,
+			Resolution: &dataquality.Resolution{Instance: adminOnly, Target: dataquality.ResolvedTarget{Engine: storepb.Engine_POSTGRES}},
+			Compiled:   dataquality.CompiledQuery{SQL: "SELECT SUM(total) FROM billing.invoices"},
+		},
+	}
+	err = service.probeQualityStatement(t.Context(), validated, true)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "reference")
+	require.Contains(t, err.Error(), "READ_ONLY")
 }
 
 // A dry run and a profile open a target driver on the user's behalf, so they wait

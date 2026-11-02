@@ -26,6 +26,22 @@ type ValidatedRule struct {
 	// filter is not part of the rule, so it is not reported here.
 	Filter   Filter
 	Compiled CompiledQuery
+	// Reference is a reconciliation's reference side. It is nil for every other
+	// rule type and for a cross-table rule whose config did not survive validation
+	// (which cannot happen: a cross-table rule requires a reference).
+	Reference *ValidatedReference
+}
+
+// ValidatedReference is the reference half of a cross-table reconciliation: the
+// resolved target and, when it cannot share the target's connection, the statement
+// that reads it.
+type ValidatedReference struct {
+	Resolution *Resolution
+	// Separate reports that the reference must be read over its own connection, so
+	// Compiled is the reference-side statement rather than part of the rule's.
+	Separate bool
+	// Compiled is the reference-side statement; it is set only when Separate.
+	Compiled CompiledQuery
 }
 
 // ValidateRule is the save/update/dry-run pipeline of design §6.2. Every step is a
@@ -90,11 +106,22 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 			return nil, err
 		}
 	}
-	// A cross-table reconciliation's right column is not part of the resolved
-	// target, so its type can only be checked against the registry here.
+	// A cross-table reconciliation's reference relation is another registry object,
+	// so its existence, its right column's type and its own filter can only be
+	// checked here, with the store. Failing now keeps a rule that would always
+	// ERROR out of the queue.
+	var reference *ValidatedReference
 	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE {
-		if err := validateCrossTableRight(ctx, s, resolution.Target, effective); err != nil {
+		resolved, err := resolveCrossTableReference(ctx, s, effective)
+		if err != nil {
 			return nil, err
+		}
+		if err := validateCrossTableReference(resolution.Target, resolved.Target, effective); err != nil {
+			return nil, err
+		}
+		reference = &ValidatedReference{
+			Resolution: resolved,
+			Separate:   !ReferenceSharesConnection(resolution.Target, resolved.Target),
 		}
 	}
 
@@ -102,14 +129,18 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 	if err != nil {
 		return nil, invalidConfig("%v", err)
 	}
-	compiled, err := Compile(CompileInput{
+	input := CompileInput{
 		Dialect:   dialect,
 		Target:    resolution.Target,
 		Type:      ruleType,
 		Config:    effective,
 		Filter:    compileFilter,
 		Variables: variables,
-	})
+	}
+	if reference != nil {
+		input.Reference = &reference.Resolution.Target
+	}
+	compiled, err := Compile(input)
 	if err != nil {
 		if common.ErrorCode(err) == common.Invalid {
 			return nil, err
@@ -119,12 +150,26 @@ func ValidateRule(ctx context.Context, s *store.Store, ruleType storepb.QualityR
 		// target, which is an invalid rule rather than a server fault.
 		return nil, invalidConfig("failed to compile the rule: %v", err)
 	}
+	// The reference side compiles to its own statement only when it needs its own
+	// connection; compiling it here is what proves the right filter is executable
+	// on the reference engine before the rule is saved.
+	if reference != nil && reference.Separate {
+		compiledReference, err := CompileReference(input)
+		if err != nil {
+			if common.ErrorCode(err) == common.Invalid {
+				return nil, err
+			}
+			return nil, invalidConfig("failed to compile the reference side: %v", err)
+		}
+		reference.Compiled = compiledReference
+	}
 
 	return &ValidatedRule{
 		Resolution: resolution,
 		Target:     resolution.Target,
 		Filter:     filter,
 		Compiled:   compiled,
+		Reference:  reference,
 	}, nil
 }
 
@@ -789,43 +834,71 @@ func validateReferentialParent(ctx context.Context, s *store.Store, target Resol
 	return nil
 }
 
-// validateCrossTableRight resolves a reconciliation's right relation against the
-// registry and checks the right aggregate's column the way the left side is
-// checked. The compiler quotes the right column without resolving it, so without
-// this step a MIN on a jsonb right column would be saved and fail on every run.
-func validateCrossTableRight(ctx context.Context, s *store.Store, target ResolvedTarget, config *storepb.QualityRuleConfig) error {
+// resolveCrossTableReference resolves a reconciliation's reference relation against
+// the registry. A reference is an ordinary registry target, so it may be a table,
+// an external table, a view or a materialized view in any database or instance of
+// the workspace.
+func resolveCrossTableReference(ctx context.Context, s *store.Store, config *storepb.QualityRuleConfig) (*Resolution, error) {
 	cross := config.GetCrossTable()
 	if cross == nil {
 		// The pure config validator reports a missing config.
-		return nil
+		return nil, invalidConfig("the cross-table config is missing")
 	}
-	rightSchema, rightTable, err := relatedTableName(target, cross.GetRightTable(), "right table", "cross-table")
-	if err != nil {
-		return err
+	reference := cross.GetReference()
+	if reference == nil || strings.TrimSpace(reference.GetMetaGuid()) == "" {
+		return nil, invalidConfig("a cross-table rule needs a reference table")
 	}
-	rightGUID := relatedTargetGUID(target, rightSchema, rightTable)
-	right, err := resolveRelatedRelation(ctx, s, rightGUID)
+	if err := validateReferenceMetaType(reference.GetMetaType()); err != nil {
+		return nil, err
+	}
+	resolved, err := ResolveTarget(ctx, s, strings.TrimSpace(reference.GetMetaGuid()), reference.GetMetaType())
 	if err != nil {
 		if common.ErrorCode(err) == common.NotFound {
-			return invalidConfig("right table %q does not exist or was dropped", cross.GetRightTable())
+			// The reference is a registry object of the workspace; a missing row means
+			// the rule names a relation that does not exist (or was dropped), not that
+			// the server failed.
+			return nil, invalidConfig("reference table %q does not exist or was dropped", reference.GetMetaGuid())
 		}
-		return err
+		return nil, err
 	}
-	rightFunction := cross.GetRightFunction()
-	if rightFunction == storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+	return resolved, nil
+}
+
+// validateReferenceMetaType accepts the relation types a reconciliation may read.
+func validateReferenceMetaType(metaType storepb.MetaType) error {
+	switch metaType {
+	case storepb.MetaType_TABLE, storepb.MetaType_EXTERNAL_TABLE,
+		storepb.MetaType_VIEW, storepb.MetaType_MATERIALIZED_VIEW:
+		return nil
+	case storepb.MetaType_UNSPECIFIED:
+		return invalidConfig("a cross-table reference needs an object type")
+	default:
+		return invalidConfig("a cross-table reference must be a table, external table, view or materialized view, not a %s", metaType)
+	}
+}
+
+// validateCrossTableReference checks the reference side against its resolved
+// metadata: the right aggregate's column must exist and be numeric for every
+// non-COUNT function. The compiler resolves the same column, so this step exists to
+// report a bad parameter rather than SQL.
+func validateCrossTableReference(target, reference ResolvedTarget, config *storepb.QualityRuleConfig) error {
+	cross := config.GetCrossTable()
+	if cross == nil {
 		return nil
 	}
-	rightColumnName := strings.TrimSpace(cross.GetRightColumn())
-	rightColumn, ok := right.Column(rightColumnName)
-	if !ok {
-		return invalidConfig("right column %q does not exist on %q", rightColumnName, cross.GetRightTable())
-	}
-	if err := validateAggregateColumnKind(rightColumn, rightFunction); err != nil {
-		return err
-	}
-	// The evaluator subtracts the two observations as numbers, so every non-COUNT
-	// side must be numeric: MIN/MAX on a date would be a timestamp, not a difference.
+	rightFunction := cross.GetRightFunction()
 	if rightFunction != storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT {
+		rightColumnName := strings.TrimSpace(cross.GetRightColumn())
+		rightColumn, ok := reference.Column(rightColumnName)
+		if !ok {
+			return invalidConfig("right column %q does not exist on %q", rightColumnName, reference.GUID)
+		}
+		if err := validateAggregateColumnKind(rightColumn, rightFunction); err != nil {
+			return err
+		}
+		// The evaluator subtracts the two observations as numbers, so every non-COUNT
+		// side must be numeric: MIN/MAX on a date would be a timestamp, not a
+		// difference.
 		if rightColumn.Kind != ColumnKindNumeric {
 			return invalidConfig("a cross-table %s needs a numeric column; %q is %s", aggregateFunctionName(rightFunction), rightColumn.Name, rightColumn.Type)
 		}
@@ -1257,21 +1330,25 @@ func validateAggregateBounds(aggregate *storepb.AggregateConfig) error {
 	return nil
 }
 
-// validateCrossTableConfig checks a reconciliation: the right table's shape and
-// container, both functions from the allowed set, the column rules for COUNT and
-// non-COUNT sides, the left column's existence and type, and a non-negative
-// tolerance. The right table's own metadata is resolved by the API layer, which is
-// the only place that can look it up in the registry.
+// validateCrossTableConfig checks a reconciliation's target-free half: a reference
+// relation is named, both functions come from the allowed set, the column rules for
+// COUNT and non-COUNT sides hold, the reference-side filter parses, and the
+// tolerance is a non-negative finite number. The reference's own metadata, the
+// right column's type and the filter's columns are resolved by ValidateRule, which
+// is the only place that can look them up in the registry.
 func validateCrossTableConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
 	cross := config.GetCrossTable()
 	if cross == nil {
 		return invalidConfig("the cross-table config is missing")
 	}
-	dialect, err := DialectFor(target.Engine)
-	if err != nil {
-		return invalidConfig("%v", err)
+	reference := cross.GetReference()
+	if reference == nil || strings.TrimSpace(reference.GetMetaGuid()) == "" {
+		return invalidConfig("a cross-table rule needs a reference table")
 	}
-	if _, err := compileRightTable(dialect, target, cross.GetRightTable()); err != nil {
+	if err := validateReferenceMetaType(reference.GetMetaType()); err != nil {
+		return err
+	}
+	if _, err := ParseFilter(cross.GetRightFilter()); err != nil {
 		return err
 	}
 	leftFunction := cross.GetLeftFunction()

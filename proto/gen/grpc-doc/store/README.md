@@ -15,6 +15,9 @@
   
     - [Engine](#metaxisdata-store-Engine)
   
+- [store/meta.proto](#store_meta-proto)
+    - [MetaType](#metaxisdata-store-MetaType)
+  
 - [store/data_quality.proto](#store_data_quality-proto)
     - [AcceptedValuesConfig](#metaxisdata-store-AcceptedValuesConfig)
     - [AggregateConfig](#metaxisdata-store-AggregateConfig)
@@ -23,6 +26,7 @@
     - [ColumnValue](#metaxisdata-store-ColumnValue)
     - [CrossColumnConfig](#metaxisdata-store-CrossColumnConfig)
     - [CrossTableConfig](#metaxisdata-store-CrossTableConfig)
+    - [CrossTableReference](#metaxisdata-store-CrossTableReference)
     - [CustomSQLConfig](#metaxisdata-store-CustomSQLConfig)
     - [DataQualityLLMResult](#metaxisdata-store-DataQualityLLMResult)
     - [ExplanationHypothesis](#metaxisdata-store-ExplanationHypothesis)
@@ -166,9 +170,6 @@
     - [LlmProviderProfile](#metaxisdata-store-LlmProviderProfile)
   
     - [LLMProviderType](#metaxisdata-store-LLMProviderType)
-  
-- [store/meta.proto](#store_meta-proto)
-    - [MetaType](#metaxisdata-store-MetaType)
   
 - [store/notification.proto](#store_notification-proto)
     - [DataQualityDetail](#metaxisdata-store-DataQualityDetail)
@@ -381,6 +382,50 @@ with metaxisdata.v1.Engine.
 
 
 
+<a name="store_meta-proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## store/meta.proto
+
+
+ 
+
+
+<a name="metaxisdata-store-MetaType"></a>
+
+### MetaType
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| UNSPECIFIED | 0 |  |
+| INSTANCE | 1 |  |
+| DATABASE | 2 |  |
+| SCHEMA | 3 |  |
+| TABLE | 4 |  |
+| EXTERNAL_TABLE | 16 |  |
+| EXTERNAL_DATASET | 17 |  |
+| MANUAL_SQL | 18 |  |
+| APPLICATION_SQL | 19 |  |
+| VIEW | 5 |  |
+| MATERIALIZED_VIEW | 6 |  |
+| COLUMN | 7 |  |
+| INDEX | 8 |  |
+| FOREIGN_KEY | 9 |  |
+| PROCEDURE | 10 |  |
+| FUNCTION | 11 |  |
+| SEQUENCE | 12 |  |
+| OPENLINEAGE | 100 | for Non-database internal structure |
+
+
+ 
+
+ 
+
+ 
+
+
+
 <a name="store_data_quality-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
@@ -518,12 +563,14 @@ the comparison.
 
 ### CrossTableConfig
 CrossTableConfig reconciles one aggregate of the rule&#39;s table with one
-aggregate of another table in the same instance and database.
+aggregate of a reference relation, which may live in another database or
+another instance. A reference in the target&#39;s own database is read in the
+same statement as the target side; anything else is read over its own
+read-only connection.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| right_table | [string](#string) |  | The other table as &#34;schema.table&#34; (PostgreSQL/MSSQL) or &#34;database.table&#34; / &#34;table&#34; (MySQL family); it must live in the rule target&#39;s database. |
 | left_function | [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction) |  | The left (target) aggregate; COUNT ignores left_column. |
 | left_column | [string](#string) |  |  |
 | right_function | [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction) |  | The right (reference) aggregate; COUNT ignores right_column. |
@@ -531,6 +578,27 @@ aggregate of another table in the same instance and database.
 | tolerance | [double](#double) | optional | The absolute difference tolerated before the thresholds apply: the observed value is max(0, |left - right| - tolerance). |
 | fail_threshold | [double](#double) | optional | Difference beyond the tolerance that fails, and the warning level inside it. The fail threshold defaults to zero. |
 | warn_threshold | [double](#double) | optional |  |
+| reference | [CrossTableReference](#metaxisdata-store-CrossTableReference) |  | The reference relation; required. |
+| right_filter | [QualityFilter](#metaxisdata-store-QualityFilter) |  | Rows the reference side reads, bounded like the rule&#39;s own filter. The rule&#39;s filter and the target contract&#39;s filter never apply to the reference side; this is the only filter it sees. |
+
+
+
+
+
+
+<a name="metaxisdata-store-CrossTableReference"></a>
+
+### CrossTableReference
+CrossTableReference names the relation a reconciliation compares against, as
+a registry target. Unlike a table name it can point at any database and
+instance of the workspace.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| meta_guid | [string](#string) |  | The registry GUID of the reference relation. |
+| meta_type | [MetaType](#metaxisdata-store-MetaType) |  |  |
+| path | [QualityTargetPath](#metaxisdata-store-QualityTargetPath) |  | Where the reference lived when the rule was saved: display metadata, not identity. The GUID and its meta type are the identity. |
 
 
 
@@ -3153,50 +3221,6 @@ Instance is the proto for instances.
 | LLM_PROVIDER_TYPE_DEEPSEEK | 2 |  |
 | LLM_PROVIDER_TYPE_OPENROUTER | 3 |  |
 | LLM_PROVIDER_TYPE_CUSTOM | 4 |  |
-
-
- 
-
- 
-
- 
-
-
-
-<a name="store_meta-proto"></a>
-<p align="right"><a href="#top">Top</a></p>
-
-## store/meta.proto
-
-
- 
-
-
-<a name="metaxisdata-store-MetaType"></a>
-
-### MetaType
-
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| UNSPECIFIED | 0 |  |
-| INSTANCE | 1 |  |
-| DATABASE | 2 |  |
-| SCHEMA | 3 |  |
-| TABLE | 4 |  |
-| EXTERNAL_TABLE | 16 |  |
-| EXTERNAL_DATASET | 17 |  |
-| MANUAL_SQL | 18 |  |
-| APPLICATION_SQL | 19 |  |
-| VIEW | 5 |  |
-| MATERIALIZED_VIEW | 6 |  |
-| COLUMN | 7 |  |
-| INDEX | 8 |  |
-| FOREIGN_KEY | 9 |  |
-| PROCEDURE | 10 |  |
-| FUNCTION | 11 |  |
-| SEQUENCE | 12 |  |
-| OPENLINEAGE | 100 | for Non-database internal structure |
 
 
  

@@ -6,6 +6,7 @@ import { i18n } from "@/locales";
 import { Engine, State } from "@/types/proto-es/v1/common_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { InstanceSchema } from "@/types/proto-es/v1/instance_service_pb";
+import { TARGET_META_TYPES } from "@/utils/dataQualityForm";
 import TargetPicker from "./TargetPicker.vue";
 
 const mocks = vi.hoisted(() => ({
@@ -685,8 +686,11 @@ describe("TargetPicker", () => {
 
       await typeSearch("inv");
 
-      // One request per target meta type, scoped to the schema being browsed.
-      expect(mocks.searchMetadata).toHaveBeenCalledTimes(3);
+      // One request per target meta type (table, external table, view,
+      // materialized view), scoped to the schema being browsed.
+      expect(mocks.searchMetadata).toHaveBeenCalledTimes(
+        TARGET_META_TYPES.length
+      );
       expect(mocks.searchMetadata).toHaveBeenCalledWith(
         expect.objectContaining({
           searchStr: "inv",

@@ -21,43 +21,44 @@ import (
 // same order and the same length: a schema change that adds a column without
 // touching the scan fails here instead of mis-assigning values at runtime.
 type qualityExecutionScannerStub struct {
-	id                 int64
-	runID              int64
-	ruleID             int64
-	ruleRevision       int32
-	ruleEngineVersion  string
-	targetGUID         string
-	targetType         storepb.MetaType
-	targetPath         []byte
-	instanceResourceID string
-	trigger            storepb.QualityExecutionTrigger
-	attempt            int32
-	initiatorID        sql.NullInt32
-	state              storepb.QualityExecutionState
-	status             storepb.QualityStatus
-	observedValue      sql.NullFloat64
-	observedKind       storepb.QualityObservedKind
-	thresholds         []byte
-	failedRows         int64
-	totalRows          int64
-	sampled            bool
-	sampleRows         int64
-	truncated          bool
-	sample             []byte
-	executedSQL        string
-	errorCode          string
-	errorMessage       string
-	durationMS         int32
-	startedAt          time.Time
-	finishedAt         sql.NullTime
-	baselineValue      sql.NullFloat64
-	baselineTime       sql.NullTime
-	scheduledAt        sql.NullTime
+	id                   int64
+	runID                int64
+	ruleID               int64
+	ruleRevision         int32
+	ruleEngineVersion    string
+	targetGUID           string
+	targetType           storepb.MetaType
+	targetPath           []byte
+	instanceResourceID   string
+	trigger              storepb.QualityExecutionTrigger
+	attempt              int32
+	initiatorID          sql.NullInt32
+	state                storepb.QualityExecutionState
+	status               storepb.QualityStatus
+	observedValue        sql.NullFloat64
+	observedKind         storepb.QualityObservedKind
+	thresholds           []byte
+	failedRows           int64
+	totalRows            int64
+	sampled              bool
+	sampleRows           int64
+	truncated            bool
+	sample               []byte
+	executedSQL          string
+	referenceExecutedSQL string
+	errorCode            string
+	errorMessage         string
+	durationMS           int32
+	startedAt            time.Time
+	finishedAt           sql.NullTime
+	baselineValue        sql.NullFloat64
+	baselineTime         sql.NullTime
+	scheduledAt          sql.NullTime
 }
 
 func (s qualityExecutionScannerStub) Scan(dest ...any) error {
-	if len(dest) != 32 {
-		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 32", len(dest))
+	if len(dest) != 33 {
+		return fmt.Errorf("scanQualityExecution scanned %d destinations, want 33", len(dest))
 	}
 	*(dest[0].(*int64)) = s.id
 	*(dest[1].(*int64)) = s.runID
@@ -83,14 +84,15 @@ func (s qualityExecutionScannerStub) Scan(dest ...any) error {
 	*(dest[21].(*bool)) = s.truncated
 	*(dest[22].(*[]byte)) = s.sample
 	*(dest[23].(*string)) = s.executedSQL
-	*(dest[24].(*string)) = s.errorCode
-	*(dest[25].(*string)) = s.errorMessage
-	*(dest[26].(*int32)) = s.durationMS
-	*(dest[27].(*time.Time)) = s.startedAt
-	*(dest[28].(*sql.NullTime)) = s.finishedAt
-	*(dest[29].(*sql.NullFloat64)) = s.baselineValue
-	*(dest[30].(*sql.NullTime)) = s.baselineTime
-	*(dest[31].(*sql.NullTime)) = s.scheduledAt
+	*(dest[24].(*string)) = s.referenceExecutedSQL
+	*(dest[25].(*string)) = s.errorCode
+	*(dest[26].(*string)) = s.errorMessage
+	*(dest[27].(*int32)) = s.durationMS
+	*(dest[28].(*time.Time)) = s.startedAt
+	*(dest[29].(*sql.NullTime)) = s.finishedAt
+	*(dest[30].(*sql.NullFloat64)) = s.baselineValue
+	*(dest[31].(*sql.NullTime)) = s.baselineTime
+	*(dest[32].(*sql.NullTime)) = s.scheduledAt
 	return nil
 }
 
@@ -125,6 +127,7 @@ func TestQualityExecutionColumnsMatchTheScan(t *testing.T) {
 		"truncated",
 		"sample",
 		"executed_sql",
+		"reference_executed_sql",
 		"error_code",
 		"error_message",
 		"duration_ms",
@@ -143,37 +146,38 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 	startedAt := time.Date(2026, time.October, 7, 9, 30, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(3 * time.Second)
 	execution, err := scanQualityExecution(qualityExecutionScannerStub{
-		id:                 31,
-		runID:              11,
-		ruleID:             7,
-		ruleRevision:       4,
-		ruleEngineVersion:  "2026.10.1",
-		targetGUID:         "table/abc",
-		targetType:         storepb.MetaType_TABLE,
-		targetPath:         []byte(`{"instance":"prod","database":"shop","schema":"public","object":"orders","column":"id"}`),
-		instanceResourceID: "instances/inst1",
-		trigger:            storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
-		attempt:            2,
-		initiatorID:        sql.NullInt32{Int32: 9, Valid: true},
-		state:              storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
-		status:             storepb.QualityStatus_QUALITY_STATUS_FAIL,
-		observedValue:      sql.NullFloat64{Float64: 0.42, Valid: true},
-		observedKind:       storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_RATIO,
-		thresholds:         []byte(`{"warnValue": 0.1, "failValue": 0.3, "comparison": "QUALITY_COMPARISON_GREATER_THAN"}`),
-		failedRows:         21,
-		totalRows:          50,
-		sampled:            true,
-		sampleRows:         500,
-		truncated:          true,
-		sample:             []byte(`{"samples": [{"columns": [{"column": "id", "value": "7", "isNull": false}, {"column": "note", "isNull": true}, {"column": "legacy"}]}]}`),
-		executedSQL:        "SELECT COUNT(*) FROM t WHERE t.id IS NULL",
-		errorCode:          "BAD_DATA",
-		errorMessage:       "unexpected value",
-		durationMS:         120,
-		startedAt:          startedAt,
-		finishedAt:         sql.NullTime{Time: finishedAt, Valid: true},
-		baselineValue:      sql.NullFloat64{Float64: 10, Valid: true},
-		baselineTime:       sql.NullTime{Time: startedAt.Add(-time.Hour), Valid: true},
+		id:                   31,
+		runID:                11,
+		ruleID:               7,
+		ruleRevision:         4,
+		ruleEngineVersion:    "2026.10.1",
+		targetGUID:           "table/abc",
+		targetType:           storepb.MetaType_TABLE,
+		targetPath:           []byte(`{"instance":"prod","database":"shop","schema":"public","object":"orders","column":"id"}`),
+		instanceResourceID:   "instances/inst1",
+		trigger:              storepb.QualityExecutionTrigger_QUALITY_EXECUTION_TRIGGER_MANUAL,
+		attempt:              2,
+		initiatorID:          sql.NullInt32{Int32: 9, Valid: true},
+		state:                storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		status:               storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		observedValue:        sql.NullFloat64{Float64: 0.42, Valid: true},
+		observedKind:         storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_RATIO,
+		thresholds:           []byte(`{"warnValue": 0.1, "failValue": 0.3, "comparison": "QUALITY_COMPARISON_GREATER_THAN"}`),
+		failedRows:           21,
+		totalRows:            50,
+		sampled:              true,
+		sampleRows:           500,
+		truncated:            true,
+		sample:               []byte(`{"samples": [{"columns": [{"column": "id", "value": "7", "isNull": false}, {"column": "note", "isNull": true}, {"column": "legacy"}]}]}`),
+		executedSQL:          "SELECT COUNT(*) FROM t WHERE t.id IS NULL",
+		referenceExecutedSQL: "SELECT COUNT(*) FROM ref",
+		errorCode:            "BAD_DATA",
+		errorMessage:         "unexpected value",
+		durationMS:           120,
+		startedAt:            startedAt,
+		finishedAt:           sql.NullTime{Time: finishedAt, Valid: true},
+		baselineValue:        sql.NullFloat64{Float64: 10, Valid: true},
+		baselineTime:         sql.NullTime{Time: startedAt.Add(-time.Hour), Valid: true},
 	})
 	require.NoError(t, err)
 
@@ -217,6 +221,7 @@ func TestScanQualityExecutionReadsEveryColumn(t *testing.T) {
 	require.True(t, execution.Sample.GetSamples()[0].GetColumns()[1].GetIsNull(), "a stored NULL keeps its marker")
 	require.Nil(t, execution.Sample.GetSamples()[0].GetColumns()[2].IsNull, "a legacy row has no marker, which is not the same as false")
 	require.Equal(t, "SELECT COUNT(*) FROM t WHERE t.id IS NULL", execution.ExecutedSQL)
+	require.Equal(t, "SELECT COUNT(*) FROM ref", execution.ReferenceExecutedSQL)
 	require.Equal(t, "BAD_DATA", execution.ErrorCode)
 	require.Equal(t, "unexpected value", execution.ErrorMessage)
 	require.Equal(t, int32(120), execution.DurationMS)

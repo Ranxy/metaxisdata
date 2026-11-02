@@ -114,6 +114,21 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   of its own (`sample_rows`, 10,000 by default, at most 100,000) and checks every
   returned value in the server, so the shared *Sampling* setting does not apply.
   See [Standard codes](#standard-codes).
+- **Reference table** (cross-table reconciliation): the other side of a
+  reconciliation is a table, view or external table picked from the metadata
+  browser — in any database or instance the workspace has synced, not only the
+  check target's own database. A reference in the target's database is read in
+  the same statement as the target side, so both aggregates come from one
+  snapshot; a reference in another database or another instance is read over its
+  own read-only connection, which means **both instances need a Read-only data
+  source**. The check's own filter and the target contract's filter bound the
+  target side only; the reference side has its own filter, whose columns are taken
+  from the reference table. *Preview* proves both statements, and an execution
+  records both of them. The reference has to be synced metadata: a relation the
+  workspace has never synced cannot be reconciled against (write a custom-SQL
+  check for that), and a reference that is dropped makes the check fail to save —
+  or, if it is dropped after saving, record an `UNSUPPORTED` error until you
+  re-point it.
 
 ### Check run cadence
 
@@ -1023,6 +1038,10 @@ pruned.
 | The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |
 | The digest email has no recipients | The digest has no per-person audience: an email channel must carry fixed addresses; "include the audience" cannot resolve anyone for it. |
 | A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample; a standard-code check has its own *Sample rows* setting instead. Remove the sampling or pick another check type. |
+| A reconciliation cannot be saved because the reference table does not exist | The reference side must be a table, view or external table the workspace has already synced into its metadata. Connect its instance and sync that database first; a relation that only exists in the database is not visible to the check. |
+| A reconciliation ends `ERROR(NO_READ_ONLY_SOURCE)` | One of the two instances has no **Read-only** data source. Add one on the target instance and on the reference instance — each side of the comparison is read over a read-only connection. |
+| A reconciliation against another instance was skipped | The reference instance's connection budget was fully used when the check needed its own connection, so the run was skipped rather than failed and repeats on the next cycle. Raise that instance's **Maximum connections**, or keep the reference on the same instance (a same-instance reference needs no second connection unless it is another PostgreSQL/SQL Server database). |
+| The execution of a reconciliation shows two statements | The reference lives in another database or instance, so it is read over its own connection: `executed sql` is the target side and `reference executed sql` is the reference side. A reference in the target's database compiles to one statement and only `executed sql` is recorded. |
 | *By percentage* is unavailable | The target is a view, or its engine has no reliable table sampling clause (MySQL, TiDB, MariaDB, OceanBase, StarRocks, Doris). Use *By row limit*. |
 | A sampled check returned no failure sample | The failed rows are read from the same sample as the counts. If the sample held no failing row the evidence is empty while the verdict still stands — the counts decide it, not the evidence rows. |
 | A standard-code execution says it was sampled | The sample cap was reached, or the server's value budget cut the read short, so the failed and total counts and the quality score describe the rows read, not the table. Raise *Sample rows* (up to 100,000) or narrow the check's filter, then run the check again; the execution shows how many rows the sample read. On very wide rows the value budget can bind first, in which case a larger *Sample rows* will not help until the column values are narrower. |

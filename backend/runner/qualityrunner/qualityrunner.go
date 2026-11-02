@@ -199,6 +199,10 @@ type Runner struct {
 	dbFactory *dbfactory.DBFactory
 	stateCfg  *state.State
 	exec      *dataquality.Executor
+	// resolveReferenceTarget resolves a cross-table rule's reference relation to
+	// its metadata. NewRunner binds it to the store; a test replaces it to exercise
+	// the reference wiring without a database.
+	resolveReferenceTarget resolveReferenceTargetFunc
 	// notifier delivers the problem and execution notifications an execution
 	// implies. It is best effort: a delivery failure is logged and never fails the
 	// batch.
@@ -240,10 +244,13 @@ func NewRunner(stores *store.Store, dbFactory *dbfactory.DBFactory, stateCfg *st
 	exec := dataquality.NewExecutor()
 	exec.Metrics = m
 	return &Runner{
-		stores:             stores,
-		dbFactory:          dbFactory,
-		stateCfg:           stateCfg,
-		exec:               exec,
+		stores:    stores,
+		dbFactory: dbFactory,
+		stateCfg:  stateCfg,
+		exec:      exec,
+		resolveReferenceTarget: func(ctx context.Context, guid string, metaType storepb.MetaType) (*dataquality.Resolution, error) {
+			return dataquality.ResolveTarget(ctx, stores, guid, metaType)
+		},
 		notifier:           notifier,
 		manual:             make(chan manualRun, manualQueueCapacity),
 		scheduled:          make(chan scheduledGroup, scheduledQueueCapacity),

@@ -1100,6 +1100,9 @@ CREATE TABLE IF NOT EXISTS quality_execution (
     truncated BOOLEAN NOT NULL DEFAULT FALSE,
     sample JSONB NOT NULL DEFAULT '{}',
     executed_sql TEXT NOT NULL DEFAULT '',
+    -- The statement that read a cross-table reconciliation's reference side when
+    -- that side needed its own connection; empty otherwise.
+    reference_executed_sql TEXT NOT NULL DEFAULT '',
     error_code TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
     duration_ms INT4 NOT NULL DEFAULT 0,

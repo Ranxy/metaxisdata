@@ -166,6 +166,7 @@ func buildExecutionMessage(planned *store.QualityExecutionMessage, outcome *rule
 	if outcome.execution != nil {
 		execution.Sample = outcome.execution.Samples
 		execution.ExecutedSQL = outcome.execution.ExecutedSQL
+		execution.ReferenceExecutedSQL = outcome.execution.ReferenceExecutedSQL
 		execution.Sampled = outcome.execution.Sampled
 		execution.Truncated = outcome.execution.Truncated
 	}
@@ -237,6 +238,28 @@ func durationMS(startedAt, finishedAt time.Time) int32 {
 // column is UTF-8 text.
 func truncateErrorMessage(message string) string {
 	return common.TruncateUTF8Bytes(message, maxErrorMessageLength)
+}
+
+// executionErrorVerdict classifies an error from the executor into the stored
+// verdict. A reference session that could not get a connection slot is a
+// transient capacity condition: the execution is SKIPPED and runs again on its
+// next schedule, never an ERROR. An invalid stored definition is
+// ERROR(UNSUPPORTED); every other error keeps the existing classifier.
+func executionErrorVerdict(err error) (status storepb.QualityStatus, code string, message string) {
+	if errors.Is(err, errReferenceConnectionUnavailable) {
+		return storepb.QualityStatus_QUALITY_STATUS_SKIPPED, "",
+			"the reference instance had no free connection slot when the check needed one"
+	}
+	// A stored rule this build cannot compile (an engine whose dialect was removed,
+	// a definition the current metadata no longer satisfies, or a reconciliation
+	// whose reference relation is gone) is an execution failure, not a quality
+	// verdict: ERROR(UNSUPPORTED), the code the save/preview path already uses for
+	// the same class of defect.
+	if common.ErrorCode(err) == common.Invalid {
+		return storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error()
+	}
+	code, message = errorCodeAndMessage(err)
+	return storepb.QualityStatus_QUALITY_STATUS_ERROR, code, message
 }
 
 // errorCodeAndMessage classifies an error that happened before or during the

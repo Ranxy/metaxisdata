@@ -413,12 +413,16 @@
           </CardContent>
         </Card>
 
-        <Card v-if="execution.executedSql">
+        <!-- A reconciliation over a separate reference connection runs two
+             statements; the second is the reference side's, kept in the same
+             card as the statement it belongs with. -->
+        <Card v-if="execution.executedSql || execution.referenceExecutedSql">
           <CardHeader class="flex flex-row items-center justify-between gap-3 border-b">
             <CardTitle class="text-base">
               {{ t("dataQuality.executedSql") }}
             </CardTitle>
             <Button
+              v-if="execution.executedSql"
               variant="outline"
               size="sm"
               @click="copySql(execution.executedSql)"
@@ -427,8 +431,27 @@
               {{ t("dataQuality.copySql") }}
             </Button>
           </CardHeader>
-          <CardContent class="pt-4">
-            <pre class="rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere">{{ execution.executedSql }}</pre>
+          <CardContent class="space-y-3 pt-4">
+            <pre v-if="execution.executedSql" class="rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere">{{ execution.executedSql }}</pre>
+            <div
+              v-if="execution.referenceExecutedSql"
+              class="space-y-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-medium">
+                  {{ t("dataQuality.referenceExecutedSql") }}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="copySql(execution.referenceExecutedSql)"
+                >
+                  <Copy class="mr-2 h-3.5 w-3.5" />
+                  {{ t("dataQuality.copySql") }}
+                </Button>
+              </div>
+              <pre class="rounded-md border bg-muted p-3 text-xs whitespace-pre-wrap wrap-anywhere">{{ execution.referenceExecutedSql }}</pre>
+            </div>
           </CardContent>
         </Card>
       </div>

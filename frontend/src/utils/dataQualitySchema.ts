@@ -417,19 +417,19 @@ export const RULE_SCHEMAS: Record<number, RuleFieldSchema> = {
     ruleType: QualityRuleType.CROSS_TABLE,
     fields: [
       {
-        field: "rightTable",
-        labelKey: "dataQuality.editor.rightTable",
+        field: "referenceGuid",
+        labelKey: "dataQuality.editor.referenceTable",
         kind: "text",
         required: true,
       },
       {
         field: "leftAggColumn",
-        labelKey: "dataQuality.editor.leftColumn",
+        labelKey: "dataQuality.editor.targetColumn",
         kind: "columns",
       },
       {
         field: "rightAggColumn",
-        labelKey: "dataQuality.editor.rightColumn",
+        labelKey: "dataQuality.editor.referenceColumn",
         kind: "columns",
       },
     ],
@@ -639,13 +639,13 @@ export function missingRequiredFields(
       if (!leftCount && !filled(config.leftAggColumn)) {
         missing.push({
           field: "leftAggColumn",
-          labelKey: "dataQuality.editor.leftColumn",
+          labelKey: "dataQuality.editor.targetColumn",
         });
       }
       if (!rightCount && !filled(config.rightAggColumn)) {
         missing.push({
           field: "rightAggColumn",
-          labelKey: "dataQuality.editor.rightColumn",
+          labelKey: "dataQuality.editor.referenceColumn",
         });
       }
       break;

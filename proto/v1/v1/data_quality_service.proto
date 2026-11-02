@@ -1385,12 +1385,29 @@ message AggregateConfig {
   bool inclusive = 8;
 }
 
+// CrossTableReference names the relation a reconciliation compares against, as
+// a registry target. Unlike a table name it can point at any database and
+// instance of the workspace.
+message CrossTableReference {
+  // The registry GUID of the reference relation.
+  string meta_guid = 1;
+
+  MetaType meta_type = 2;
+
+  // Where the reference lived when the rule was saved: display metadata, not
+  // identity. The GUID and its meta type are the identity.
+  QualityTargetPath path = 3;
+}
+
 // CrossTableConfig reconciles one aggregate of the rule's table with one
-// aggregate of another table in the same instance and database.
+// aggregate of a reference relation, which may live in another database or
+// another instance. A reference in the target's own database is read in the
+// same statement as the target side; anything else is read over its own
+// read-only connection.
 message CrossTableConfig {
-  // The other table as "schema.table" (PostgreSQL/MSSQL) or "database.table" /
-  // "table" (MySQL family); it must live in the rule target's database.
-  string right_table = 1;
+  reserved 1;
+  reserved "right_table";
+
   // The left (target) aggregate; COUNT ignores left_column.
   QualityAggregateFunction left_function = 2;
   string left_column = 3;
@@ -1404,6 +1421,12 @@ message CrossTableConfig {
   // The fail threshold defaults to zero.
   optional double fail_threshold = 7;
   optional double warn_threshold = 8;
+  // The reference relation; required.
+  CrossTableReference reference = 9;
+  // Rows the reference side reads, bounded like the rule's own filter. The
+  // rule's filter and the target contract's filter never apply to the reference
+  // side; this is the only filter it sees.
+  QualityFilter right_filter = 10;
 }
 
 // QualityFilter is the AND filter a rule applies before observing. Values are
@@ -1544,6 +1567,11 @@ message QualityExecution {
 
   // When that baseline was measured. Unset whenever baseline_value is.
   google.protobuf.Timestamp baseline_time = 29;
+
+  // The statement that read a reconciliation's reference side, when the
+  // reference needed its own connection. Empty for every other execution and
+  // for a reconciliation whose two sides share the target's connection.
+  string reference_executed_sql = 30;
 }
 
 // QualityExecutionSummary is the compact projection of the latest execution
@@ -2086,6 +2114,14 @@ message PreviewQualityRuleResponse {
   // The filter values the compiler bound, encoded for display, in the order the
   // placeholders appear in compiled_sql.
   repeated string parameters = 3;
+
+  // The statement that reads a reconciliation's reference side alone, when the
+  // reference needs its own connection. Empty when both sides compile to
+  // compiled_sql, which is the case whenever they share a connection.
+  string reference_sql = 4;
+
+  // The values bound to reference_sql, in placeholder order.
+  repeated string reference_parameters = 5;
 }
 
 message RunQualityRulesRequest {

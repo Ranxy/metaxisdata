@@ -32,11 +32,13 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   batchCreateQualityRules: vi.fn(),
+  getQualityTarget: vi.fn(),
   listAllMetadata: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
   batchCreateQualityRules: mocks.batchCreateQualityRules,
+  getQualityTarget: mocks.getQualityTarget,
 }));
 
 vi.mock("@/api/database", () => ({

@@ -512,7 +512,7 @@ func createJourneyRules(t *testing.T, source journeySource) []journeyRuleSpec {
 			severity:   v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 			targetGUID: source.orders,
 			config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_CrossTable{CrossTable: &v1pb.CrossTableConfig{
-				RightTable:    "dq_reference_customers",
+				Reference:     &v1pb.CrossTableReference{MetaGuid: source.reference, MetaType: v1pb.MetaType_TABLE},
 				LeftFunction:  v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 				RightFunction: v1pb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT,
 				Tolerance:     &crossTableTolerance,
