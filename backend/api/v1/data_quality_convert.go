@@ -953,6 +953,7 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			Standard:      v1pb.QualityStandardCode(arm.StandardCode.GetStandard()),
 			AllowNull:     arm.StandardCode.GetAllowNull(),
 			SampleRows:    arm.StandardCode.GetSampleRows(),
+			CodeTable:     arm.StandardCode.GetCodeTable(),
 			FailThreshold: copyPtr(arm.StandardCode.FailThreshold),
 			WarnThreshold: copyPtr(arm.StandardCode.WarnThreshold),
 		}}
@@ -1148,6 +1149,7 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			Standard:      storepb.QualityStandardCode(arm.StandardCode.GetStandard()),
 			AllowNull:     arm.StandardCode.GetAllowNull(),
 			SampleRows:    arm.StandardCode.GetSampleRows(),
+			CodeTable:     arm.StandardCode.GetCodeTable(),
 			FailThreshold: copyPtr(arm.StandardCode.FailThreshold),
 			WarnThreshold: copyPtr(arm.StandardCode.WarnThreshold),
 		}}

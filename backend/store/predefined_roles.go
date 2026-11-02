@@ -71,6 +71,10 @@ var memberBaselinePermissions = permissionSet(
 	permission.DataQualityIssuesGet,
 	permission.DataQualityIssuesList,
 	permission.DataQualityExplain,
+	// Rule templates and code tables are authoring helpers, so their reads are part
+	// of the member baseline; creating, editing and deleting them is a write.
+	permission.DataQualityTemplatesList,
+	permission.DataQualityCodeTablesList,
 )
 
 // PredefinedRoles are the read-only, Go-defined roles shown on the Roles page

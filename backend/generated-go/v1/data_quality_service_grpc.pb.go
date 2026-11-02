@@ -27,6 +27,16 @@ const (
 	DataQualityService_BatchUpdateQualityRules_FullMethodName            = "/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules"
 	DataQualityService_UpdateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
 	DataQualityService_DeleteQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
+	DataQualityService_ListQualityRuleTemplates_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityRuleTemplates"
+	DataQualityService_GetQualityRuleTemplate_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityRuleTemplate"
+	DataQualityService_CreateQualityRuleTemplate_FullMethodName          = "/metaxisdata.v1.DataQualityService/CreateQualityRuleTemplate"
+	DataQualityService_UpdateQualityRuleTemplate_FullMethodName          = "/metaxisdata.v1.DataQualityService/UpdateQualityRuleTemplate"
+	DataQualityService_DeleteQualityRuleTemplate_FullMethodName          = "/metaxisdata.v1.DataQualityService/DeleteQualityRuleTemplate"
+	DataQualityService_ListQualityCodeTables_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityCodeTables"
+	DataQualityService_GetQualityCodeTable_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityCodeTable"
+	DataQualityService_CreateQualityCodeTable_FullMethodName             = "/metaxisdata.v1.DataQualityService/CreateQualityCodeTable"
+	DataQualityService_UpdateQualityCodeTable_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateQualityCodeTable"
+	DataQualityService_DeleteQualityCodeTable_FullMethodName             = "/metaxisdata.v1.DataQualityService/DeleteQualityCodeTable"
 	DataQualityService_PreviewQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
 	DataQualityService_RunQualityRules_FullMethodName                    = "/metaxisdata.v1.DataQualityService/RunQualityRules"
 	DataQualityService_ListQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
@@ -112,6 +122,34 @@ type DataQualityServiceClient interface {
 	// Delete a rule. The rule, its revisions and results are only archived, never
 	// physically removed, so history stays readable.
 	DeleteQualityRule(ctx context.Context, in *DeleteQualityRuleRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// List the workspace's custom rule templates, newest first. Built-in templates
+	// are served by the client catalogue and are not part of this resource.
+	ListQualityRuleTemplates(ctx context.Context, in *ListQualityRuleTemplatesRequest, opts ...grpc.CallOption) (*ListQualityRuleTemplatesResponse, error)
+	// Read one custom rule template.
+	GetQualityRuleTemplate(ctx context.Context, in *GetQualityRuleTemplateRequest, opts ...grpc.CallOption) (*QualityRuleTemplate, error)
+	// Create a custom rule template. A template is a check type and its parameters:
+	// target-bound fields (columns, filter) are cleared by the server before it is
+	// stored.
+	CreateQualityRuleTemplate(ctx context.Context, in *CreateQualityRuleTemplateRequest, opts ...grpc.CallOption) (*QualityRuleTemplate, error)
+	// Update a custom rule template's title, description, severity, dimension or
+	// parameters. The same target-bound fields are cleared.
+	UpdateQualityRuleTemplate(ctx context.Context, in *UpdateQualityRuleTemplateRequest, opts ...grpc.CallOption) (*QualityRuleTemplate, error)
+	// Delete a custom rule template. Checks already created from it are unaffected.
+	DeleteQualityRuleTemplate(ctx context.Context, in *DeleteQualityRuleTemplateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// List the workspace's code tables. A list response carries each table's value
+	// count but not its values; read one table with GetQualityCodeTable.
+	ListQualityCodeTables(ctx context.Context, in *ListQualityCodeTablesRequest, opts ...grpc.CallOption) (*ListQualityCodeTablesResponse, error)
+	// Read one code table including its values.
+	GetQualityCodeTable(ctx context.Context, in *GetQualityCodeTableRequest, opts ...grpc.CallOption) (*QualityCodeTable, error)
+	// Create a workspace code table. Values are sorted, de-duplicated and capped by
+	// the server, so an import is idempotent.
+	CreateQualityCodeTable(ctx context.Context, in *CreateQualityCodeTableRequest, opts ...grpc.CallOption) (*QualityCodeTable, error)
+	// Update a code table's title, description or values. Replacing the values is the
+	// import path.
+	UpdateQualityCodeTable(ctx context.Context, in *UpdateQualityCodeTableRequest, opts ...grpc.CallOption) (*QualityCodeTable, error)
+	// Delete a code table. A table still referenced by a rule or a template is
+	// refused with FailedPrecondition rather than silently breaking those checks.
+	DeleteQualityCodeTable(ctx context.Context, in *DeleteQualityCodeTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Validate and compile a rule without saving it: config validation, filter
 	// validation and a `LIMIT 0` probe against the target's read-only data
 	// source. It writes nothing and creates no run.
@@ -389,6 +427,106 @@ func (c *dataQualityServiceClient) DeleteQualityRule(ctx context.Context, in *De
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, DataQualityService_DeleteQualityRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityRuleTemplates(ctx context.Context, in *ListQualityRuleTemplatesRequest, opts ...grpc.CallOption) (*ListQualityRuleTemplatesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityRuleTemplatesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityRuleTemplates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityRuleTemplate(ctx context.Context, in *GetQualityRuleTemplateRequest, opts ...grpc.CallOption) (*QualityRuleTemplate, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityRuleTemplate)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityRuleTemplate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) CreateQualityRuleTemplate(ctx context.Context, in *CreateQualityRuleTemplateRequest, opts ...grpc.CallOption) (*QualityRuleTemplate, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityRuleTemplate)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityRuleTemplate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualityRuleTemplate(ctx context.Context, in *UpdateQualityRuleTemplateRequest, opts ...grpc.CallOption) (*QualityRuleTemplate, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityRuleTemplate)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityRuleTemplate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) DeleteQualityRuleTemplate(ctx context.Context, in *DeleteQualityRuleTemplateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, DataQualityService_DeleteQualityRuleTemplate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityCodeTables(ctx context.Context, in *ListQualityCodeTablesRequest, opts ...grpc.CallOption) (*ListQualityCodeTablesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityCodeTablesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityCodeTables_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityCodeTable(ctx context.Context, in *GetQualityCodeTableRequest, opts ...grpc.CallOption) (*QualityCodeTable, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityCodeTable)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityCodeTable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) CreateQualityCodeTable(ctx context.Context, in *CreateQualityCodeTableRequest, opts ...grpc.CallOption) (*QualityCodeTable, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityCodeTable)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityCodeTable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualityCodeTable(ctx context.Context, in *UpdateQualityCodeTableRequest, opts ...grpc.CallOption) (*QualityCodeTable, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityCodeTable)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityCodeTable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) DeleteQualityCodeTable(ctx context.Context, in *DeleteQualityCodeTableRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, DataQualityService_DeleteQualityCodeTable_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -919,6 +1057,34 @@ type DataQualityServiceServer interface {
 	// Delete a rule. The rule, its revisions and results are only archived, never
 	// physically removed, so history stays readable.
 	DeleteQualityRule(context.Context, *DeleteQualityRuleRequest) (*emptypb.Empty, error)
+	// List the workspace's custom rule templates, newest first. Built-in templates
+	// are served by the client catalogue and are not part of this resource.
+	ListQualityRuleTemplates(context.Context, *ListQualityRuleTemplatesRequest) (*ListQualityRuleTemplatesResponse, error)
+	// Read one custom rule template.
+	GetQualityRuleTemplate(context.Context, *GetQualityRuleTemplateRequest) (*QualityRuleTemplate, error)
+	// Create a custom rule template. A template is a check type and its parameters:
+	// target-bound fields (columns, filter) are cleared by the server before it is
+	// stored.
+	CreateQualityRuleTemplate(context.Context, *CreateQualityRuleTemplateRequest) (*QualityRuleTemplate, error)
+	// Update a custom rule template's title, description, severity, dimension or
+	// parameters. The same target-bound fields are cleared.
+	UpdateQualityRuleTemplate(context.Context, *UpdateQualityRuleTemplateRequest) (*QualityRuleTemplate, error)
+	// Delete a custom rule template. Checks already created from it are unaffected.
+	DeleteQualityRuleTemplate(context.Context, *DeleteQualityRuleTemplateRequest) (*emptypb.Empty, error)
+	// List the workspace's code tables. A list response carries each table's value
+	// count but not its values; read one table with GetQualityCodeTable.
+	ListQualityCodeTables(context.Context, *ListQualityCodeTablesRequest) (*ListQualityCodeTablesResponse, error)
+	// Read one code table including its values.
+	GetQualityCodeTable(context.Context, *GetQualityCodeTableRequest) (*QualityCodeTable, error)
+	// Create a workspace code table. Values are sorted, de-duplicated and capped by
+	// the server, so an import is idempotent.
+	CreateQualityCodeTable(context.Context, *CreateQualityCodeTableRequest) (*QualityCodeTable, error)
+	// Update a code table's title, description or values. Replacing the values is the
+	// import path.
+	UpdateQualityCodeTable(context.Context, *UpdateQualityCodeTableRequest) (*QualityCodeTable, error)
+	// Delete a code table. A table still referenced by a rule or a template is
+	// refused with FailedPrecondition rather than silently breaking those checks.
+	DeleteQualityCodeTable(context.Context, *DeleteQualityCodeTableRequest) (*emptypb.Empty, error)
 	// Validate and compile a rule without saving it: config validation, filter
 	// validation and a `LIMIT 0` probe against the target's read-only data
 	// source. It writes nothing and creates no run.
@@ -1152,6 +1318,36 @@ func (UnimplementedDataQualityServiceServer) UpdateQualityRule(context.Context, 
 }
 func (UnimplementedDataQualityServiceServer) DeleteQualityRule(context.Context, *DeleteQualityRuleRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteQualityRule not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityRuleTemplates(context.Context, *ListQualityRuleTemplatesRequest) (*ListQualityRuleTemplatesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityRuleTemplates not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityRuleTemplate(context.Context, *GetQualityRuleTemplateRequest) (*QualityRuleTemplate, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityRuleTemplate not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualityRuleTemplate(context.Context, *CreateQualityRuleTemplateRequest) (*QualityRuleTemplate, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualityRuleTemplate not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityRuleTemplate(context.Context, *UpdateQualityRuleTemplateRequest) (*QualityRuleTemplate, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityRuleTemplate not implemented")
+}
+func (UnimplementedDataQualityServiceServer) DeleteQualityRuleTemplate(context.Context, *DeleteQualityRuleTemplateRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteQualityRuleTemplate not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityCodeTables(context.Context, *ListQualityCodeTablesRequest) (*ListQualityCodeTablesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityCodeTables not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityCodeTable(context.Context, *GetQualityCodeTableRequest) (*QualityCodeTable, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityCodeTable not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualityCodeTable(context.Context, *CreateQualityCodeTableRequest) (*QualityCodeTable, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualityCodeTable not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityCodeTable(context.Context, *UpdateQualityCodeTableRequest) (*QualityCodeTable, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityCodeTable not implemented")
+}
+func (UnimplementedDataQualityServiceServer) DeleteQualityCodeTable(context.Context, *DeleteQualityCodeTableRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteQualityCodeTable not implemented")
 }
 func (UnimplementedDataQualityServiceServer) PreviewQualityRule(context.Context, *PreviewQualityRuleRequest) (*PreviewQualityRuleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PreviewQualityRule not implemented")
@@ -1431,6 +1627,186 @@ func _DataQualityService_DeleteQualityRule_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).DeleteQualityRule(ctx, req.(*DeleteQualityRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityRuleTemplates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityRuleTemplatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityRuleTemplates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityRuleTemplates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityRuleTemplates(ctx, req.(*ListQualityRuleTemplatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityRuleTemplate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityRuleTemplateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityRuleTemplate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityRuleTemplate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityRuleTemplate(ctx, req.(*GetQualityRuleTemplateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_CreateQualityRuleTemplate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualityRuleTemplateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualityRuleTemplate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualityRuleTemplate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualityRuleTemplate(ctx, req.(*CreateQualityRuleTemplateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualityRuleTemplate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityRuleTemplateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityRuleTemplate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityRuleTemplate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityRuleTemplate(ctx, req.(*UpdateQualityRuleTemplateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_DeleteQualityRuleTemplate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteQualityRuleTemplateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).DeleteQualityRuleTemplate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_DeleteQualityRuleTemplate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).DeleteQualityRuleTemplate(ctx, req.(*DeleteQualityRuleTemplateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityCodeTables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityCodeTablesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityCodeTables(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityCodeTables_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityCodeTables(ctx, req.(*ListQualityCodeTablesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityCodeTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityCodeTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityCodeTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityCodeTable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityCodeTable(ctx, req.(*GetQualityCodeTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_CreateQualityCodeTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualityCodeTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualityCodeTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualityCodeTable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualityCodeTable(ctx, req.(*CreateQualityCodeTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualityCodeTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityCodeTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityCodeTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityCodeTable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityCodeTable(ctx, req.(*UpdateQualityCodeTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_DeleteQualityCodeTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteQualityCodeTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).DeleteQualityCodeTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_DeleteQualityCodeTable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).DeleteQualityCodeTable(ctx, req.(*DeleteQualityCodeTableRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2251,6 +2627,46 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteQualityRule",
 			Handler:    _DataQualityService_DeleteQualityRule_Handler,
+		},
+		{
+			MethodName: "ListQualityRuleTemplates",
+			Handler:    _DataQualityService_ListQualityRuleTemplates_Handler,
+		},
+		{
+			MethodName: "GetQualityRuleTemplate",
+			Handler:    _DataQualityService_GetQualityRuleTemplate_Handler,
+		},
+		{
+			MethodName: "CreateQualityRuleTemplate",
+			Handler:    _DataQualityService_CreateQualityRuleTemplate_Handler,
+		},
+		{
+			MethodName: "UpdateQualityRuleTemplate",
+			Handler:    _DataQualityService_UpdateQualityRuleTemplate_Handler,
+		},
+		{
+			MethodName: "DeleteQualityRuleTemplate",
+			Handler:    _DataQualityService_DeleteQualityRuleTemplate_Handler,
+		},
+		{
+			MethodName: "ListQualityCodeTables",
+			Handler:    _DataQualityService_ListQualityCodeTables_Handler,
+		},
+		{
+			MethodName: "GetQualityCodeTable",
+			Handler:    _DataQualityService_GetQualityCodeTable_Handler,
+		},
+		{
+			MethodName: "CreateQualityCodeTable",
+			Handler:    _DataQualityService_CreateQualityCodeTable_Handler,
+		},
+		{
+			MethodName: "UpdateQualityCodeTable",
+			Handler:    _DataQualityService_UpdateQualityCodeTable_Handler,
+		},
+		{
+			MethodName: "DeleteQualityCodeTable",
+			Handler:    _DataQualityService_DeleteQualityCodeTable_Handler,
 		},
 		{
 			MethodName: "PreviewQualityRule",

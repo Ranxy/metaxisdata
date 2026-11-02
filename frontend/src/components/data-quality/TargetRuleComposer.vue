@@ -27,17 +27,18 @@
             ref="catalogue"
             class="w-64 shrink-0 space-y-4 overflow-auto border-r px-3 py-4"
           >
-            <!-- Built-in templates start a check from a ready-made config. They
-                 edit the form only; saving stays the reader's decision. -->
+            <!-- Templates start a check from a ready-made config: the built-in
+                 catalogue and the workspace's stored templates. They edit the
+                 form only; saving stays the reader's decision. -->
             <div
-              v-if="templateGroups.length > 0"
+              v-if="showTemplates"
               class="space-y-2 border-b pb-4"
             >
               <p class="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                 {{ t("dataQuality.composer.templates") }}
               </p>
               <div
-                v-for="group in templateGroups"
+                v-for="group in builtInTemplateGroups"
                 :key="group.id"
                 class="space-y-1"
               >
@@ -53,12 +54,83 @@
                   @click="applyTemplate(template)"
                 >
                   <span class="block text-sm font-medium">
-                    {{ t(template.titleKey) }}
+                    {{ templateLabel(template) }}
                   </span>
                   <span class="mt-0.5 block text-xs text-muted-foreground">
-                    {{ t(template.descriptionKey) }}
+                    {{ templateSummary(template) }}
                   </span>
                 </button>
+              </div>
+
+              <div
+                v-if="canListTemplates"
+                class="space-y-1"
+              >
+                <p class="px-2 text-xs font-medium text-muted-foreground">
+                  {{ t("dataQuality.composer.workspaceTemplates") }}
+                </p>
+                <p
+                  v-if="workspaceTemplatesLoading"
+                  class="px-2 text-xs text-muted-foreground"
+                >
+                  {{ t("common.loading") }}
+                </p>
+                <div
+                  v-else-if="workspaceTemplatesError"
+                  class="space-y-1 px-2"
+                >
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("dataQuality.composer.workspaceTemplatesError") }}
+                  </p>
+                  <button
+                    type="button"
+                    class="text-xs font-medium text-primary underline underline-offset-4"
+                    @click="loadWorkspaceTemplates"
+                  >
+                    {{ t("common.retry") }}
+                  </button>
+                </div>
+                <p
+                  v-else-if="workspaceTemplates.length === 0"
+                  class="px-2 text-xs text-muted-foreground"
+                >
+                  {{ t("dataQuality.composer.workspaceTemplatesEmpty") }}
+                </p>
+                <template v-else>
+                  <div
+                    v-for="template in workspaceTemplates"
+                    :key="template.id"
+                    class="flex items-start gap-1"
+                  >
+                    <button
+                      type="button"
+                      :data-template="template.id"
+                      class="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                      @click="applyTemplate(template)"
+                    >
+                      <span class="block text-sm font-medium">
+                        {{ templateLabel(template) }}
+                      </span>
+                      <span
+                        v-if="templateSummary(template)"
+                        class="mt-0.5 block text-xs text-muted-foreground"
+                      >
+                        {{ templateSummary(template) }}
+                      </span>
+                    </button>
+                    <Button
+                      v-if="canManageTemplates"
+                      variant="ghost"
+                      size="icon"
+                      class="mt-0.5 h-7 w-7 shrink-0"
+                      :title="t('dataQuality.composer.manageTemplate')"
+                      :data-manage-template="template.id"
+                      @click="openManageTemplate(template)"
+                    >
+                      <Pencil class="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </template>
               </div>
             </div>
 
@@ -377,6 +449,17 @@
 
         <DialogFooter class="shrink-0 border-t px-6 py-4">
           <Button
+            v-if="canCreateTemplate"
+            variant="outline"
+            class="mr-auto"
+            :disabled="saving"
+            data-save-template
+            @click="openSaveAsTemplate"
+          >
+            <BookmarkPlus class="mr-2 h-4 w-4" />
+            {{ t("dataQuality.composer.saveAsTemplate") }}
+          </Button>
+          <Button
             variant="outline"
             :disabled="saving"
             @click="close"
@@ -399,16 +482,144 @@
       </div>
     </DialogContent>
   </Dialog>
+
+  <!-- Save the form as a workspace template. It sends the template only; the
+       check itself stays unsaved, exactly like applying one never saves. -->
+  <Dialog v-model:open="saveTemplateOpen">
+    <DialogContent class="max-w-md">
+      <DialogHeader>
+        <DialogTitle>{{ t("dataQuality.composer.saveAsTemplate") }}</DialogTitle>
+        <DialogDescription>
+          {{ t("dataQuality.composer.saveAsTemplateHint") }}
+        </DialogDescription>
+      </DialogHeader>
+      <div class="space-y-4">
+        <FormField
+          id="dq-save-template-title"
+          v-model="saveTemplateTitle"
+          required
+          :label="t('dataQuality.composer.templateTitle')"
+          :placeholder="t('dataQuality.composer.templateTitlePlaceholder')"
+        />
+        <div class="space-y-2">
+          <Label for="dq-save-template-description">
+            {{ t("dataQuality.composer.templateDescription") }}
+          </Label>
+          <textarea
+            id="dq-save-template-description"
+            v-model="saveTemplateDescription"
+            class="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            :placeholder="t('dataQuality.composer.templateDescriptionPlaceholder')"
+          />
+        </div>
+        <p
+          v-if="saveTemplateError"
+          class="text-sm text-destructive"
+        >
+          {{ saveTemplateError }}
+        </p>
+      </div>
+      <DialogFooter>
+        <Button
+          variant="outline"
+          :disabled="saveTemplateSaving"
+          @click="saveTemplateOpen = false"
+        >
+          {{ t("common.cancel") }}
+        </Button>
+        <Button
+          :disabled="saveTemplateSaving"
+          data-submit-template
+          @click="saveAsTemplate"
+        >
+          {{
+            saveTemplateSaving
+              ? t("dataQuality.composer.savingTemplate")
+              : t("common.save")
+          }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <!-- Rename or delete one workspace template. Built-ins never open this. -->
+  <Dialog v-model:open="manageTemplateOpen">
+    <DialogContent class="max-w-md">
+      <DialogHeader>
+        <DialogTitle>{{ t("dataQuality.composer.manageTemplate") }}</DialogTitle>
+        <DialogDescription>
+          {{ templateTypeLabel }}
+        </DialogDescription>
+      </DialogHeader>
+      <div class="space-y-4">
+        <FormField
+          id="dq-manage-template-title"
+          v-model="manageTemplateTitle"
+          required
+          :label="t('dataQuality.composer.templateTitle')"
+        />
+        <div class="space-y-2">
+          <Label for="dq-manage-template-description">
+            {{ t("dataQuality.composer.templateDescription") }}
+          </Label>
+          <textarea
+            id="dq-manage-template-description"
+            v-model="manageTemplateDescription"
+            class="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </div>
+        <p
+          v-if="manageTemplateError"
+          class="text-sm text-destructive"
+        >
+          {{ manageTemplateError }}
+        </p>
+      </div>
+      <DialogFooter>
+        <Button
+          v-if="canDeleteTemplate"
+          variant="destructive"
+          class="mr-auto"
+          :disabled="manageTemplateSaving || manageTemplateDeleting"
+          data-delete-template
+          @click="deleteManagedTemplate"
+        >
+          <Trash2 class="mr-2 h-4 w-4" />
+          {{ t("dataQuality.composer.deleteTemplate") }}
+        </Button>
+        <Button
+          variant="outline"
+          :disabled="manageTemplateSaving || manageTemplateDeleting"
+          @click="manageTemplateOpen = false"
+        >
+          {{ t("common.cancel") }}
+        </Button>
+        <Button
+          v-if="canUpdateTemplate"
+          :disabled="manageTemplateSaving || manageTemplateDeleting"
+          data-save-template-copy
+          @click="saveManagedTemplate"
+        >
+          {{ t("common.save") }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle } from "lucide-vue-next";
+import { create } from "@bufbuild/protobuf";
+import { AlertTriangle, BookmarkPlus, Pencil, Trash2 } from "lucide-vue-next";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   createQualityRule,
+  createQualityRuleTemplate,
+  deleteQualityRuleTemplate,
+  listAllQualityRuleTemplates,
   previewQualityRule,
   updateQualityRule,
+  updateQualityRuleTemplate,
 } from "@/api/data-quality";
 import { listAllMetadata } from "@/api/database";
 import UserSelect from "@/components/common/UserSelect.vue";
@@ -446,6 +657,8 @@ import {
   QualityFrequencyTier,
   type QualityRule,
   QualityRuleState,
+  type QualityRuleTemplate,
+  QualityRuleTemplateSchema,
   QualityRuleType,
   QualitySeverity,
   type QualitySuggestion,
@@ -482,6 +695,13 @@ import {
   type ValidationIssue,
   validateRuleForm,
 } from "@/utils/dataQualityForm";
+import {
+  formToRuleTemplate,
+  ruleTemplateToForm,
+  templateDescription,
+  templateTitle,
+  templateToCatalogueItem,
+} from "@/utils/dataQualityRuleTemplate";
 import { parseRuleError } from "@/utils/dataQualitySchema";
 import { suggestionToEditorPrefill } from "@/utils/dataQualitySuggestion";
 import {
@@ -630,6 +850,23 @@ const canSave = computed(() =>
 const canPreview = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.run")
 );
+// Workspace templates are a separate resource from checks: reading them is one
+// permission, writing the catalogue is another.
+const canListTemplates = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.templates.list")
+);
+const canCreateTemplate = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.templates.create")
+);
+const canUpdateTemplate = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.templates.update")
+);
+const canDeleteTemplate = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.templates.delete")
+);
+const canManageTemplates = computed(
+  () => canUpdateTemplate.value || canDeleteTemplate.value
+);
 
 /** The suggestion's draft, as the form it would open as. */
 const suggestionPrefill = computed(() =>
@@ -678,6 +915,22 @@ const prefillColumn = ref("");
 let originalForm: RuleFormState | undefined;
 let originalTarget: TargetSelection | undefined;
 
+/** The save-as-template dialog's form. */
+const saveTemplateOpen = ref(false);
+const saveTemplateTitle = ref("");
+const saveTemplateDescription = ref("");
+const saveTemplateSaving = ref(false);
+const saveTemplateError = ref("");
+
+/** The manage dialog: rename or delete one workspace template. */
+const manageTemplateOpen = ref(false);
+const managingTemplate = ref<RuleTemplate>();
+const manageTemplateTitle = ref("");
+const manageTemplateDescription = ref("");
+const manageTemplateSaving = ref(false);
+const manageTemplateDeleting = ref(false);
+const manageTemplateError = ref("");
+
 /** The check types the target can watch, in catalogue order. */
 const checkGroups = computed(() => {
   const allowed = allowedRuleTypes(props.metaType);
@@ -691,7 +944,7 @@ const checkGroups = computed(() => {
  * The built-in templates the current target can use. A template is a starting
  * point for a new check, so an edit and a prefilled draft keep their own form.
  */
-const templateGroups = computed(() => {
+const builtInTemplateGroups = computed(() => {
   if (isEdit.value || props.suggestion) {
     return [];
   }
@@ -704,6 +957,34 @@ const templateGroups = computed(() => {
     ),
   })).filter((group) => group.templates.length > 0);
 });
+
+/** The stored templates the dialog has read, before the target filter. */
+const workspaceTemplateMessages = ref<QualityRuleTemplate[]>([]);
+const workspaceTemplatesLoading = ref(false);
+const workspaceTemplatesError = ref(false);
+
+/**
+ * The workspace templates the target can use, in the catalogue shape. A stored
+ * template names a check type; one a view cannot run is left out, like a
+ * built-in it could not use.
+ */
+const workspaceTemplates = computed<RuleTemplate[]>(() => {
+  const allowed = allowedRuleTypes(props.metaType);
+  return workspaceTemplateMessages.value
+    .filter((template) => allowed.includes(template.ruleType))
+    .map(templateToCatalogueItem);
+});
+
+/**
+ * The Templates section is a new-check affordance: an edit and a prefilled draft
+ * keep their own form. It also stays visible when only workspace templates exist.
+ */
+const showTemplates = computed(
+  () =>
+    !isEdit.value &&
+    !props.suggestion &&
+    (builtInTemplateGroups.value.length > 0 || canListTemplates.value)
+);
 
 /** The catalogue section headings; one literal key per group, translated. */
 const groupLabels = computed<Record<CheckGroupId, string>>(() => ({
@@ -855,10 +1136,30 @@ function reset(template?: RuleTemplate) {
   } else if (prefill) {
     form.value = cloneForm(prefill.form);
   } else if (template) {
-    form.value = cloneForm(templateForm(template));
+    form.value = cloneForm(
+      template.template
+        ? ruleTemplateToForm(template.template)
+        : templateForm(template)
+    );
+    // A workspace template carries its own copy; a built-in one names i18n keys.
+    if (!template.template) {
+      form.value.title = t(template.titleKey);
+      form.value.description = t(template.descriptionKey);
+    }
+    // The contract's default severity still wins over the template's stored one,
+    // like it does for every other new check. A template that stated its own
+    // on_empty keeps that statement; the type default only fills the blank case.
+    // Only workspace templates carry a stored config (and thus an on_empty); a
+    // built-in preset patches config fields only and never states one.
+    const explicitOnEmpty =
+      template.template !== undefined &&
+      template.template.config?.onEmpty !== undefined &&
+      template.template.config.onEmpty !== QualityEmptyBehavior.UNSPECIFIED;
+    const templateOnEmpty = form.value.onEmpty;
     applyContractDefaults(form.value);
-    form.value.title = t(template.titleKey);
-    form.value.description = t(template.descriptionKey);
+    if (explicitOnEmpty) {
+      form.value.onEmpty = templateOnEmpty;
+    }
     prefillColumn.value = props.initialColumn.trim();
     applyColumn(form.value.ruleType, prefillColumn.value);
   } else {
@@ -873,9 +1174,162 @@ function reset(template?: RuleTemplate) {
   saving.value = false;
 }
 
-/** Fill the new-check form from a built-in template; saving is still manual. */
+/** Fill the new-check form from a template; saving is still manual. */
 function applyTemplate(template: RuleTemplate) {
   reset(template);
+}
+
+/** The title a template entry renders as: stored copy, else its i18n key. */
+function templateLabel(template: RuleTemplate): string {
+  return templateTitle(template, (key) => t(key));
+}
+
+/** The description a template entry renders as: stored copy, else its i18n key. */
+function templateSummary(template: RuleTemplate): string {
+  return templateDescription(template, (key) => t(key));
+}
+
+/**
+ * Read the workspace templates. A failed read is quiet: the dialog still opens
+ * with the built-ins and the form, and the aside offers a retry.
+ */
+async function loadWorkspaceTemplates() {
+  if (!canListTemplates.value) {
+    return;
+  }
+  workspaceTemplatesLoading.value = true;
+  workspaceTemplatesError.value = false;
+  try {
+    const templates = await listAllQualityRuleTemplates();
+    if (!props.open) {
+      return;
+    }
+    workspaceTemplateMessages.value = templates;
+  } catch {
+    if (props.open) {
+      workspaceTemplateMessages.value = [];
+      workspaceTemplatesError.value = true;
+    }
+  } finally {
+    if (props.open) {
+      workspaceTemplatesLoading.value = false;
+    }
+  }
+}
+
+/** Open the save-as-template dialog with the check's own copy as the seed. */
+function openSaveAsTemplate() {
+  saveTemplateTitle.value =
+    form.value.title.trim() || t(qualityRuleTypeKey(form.value.ruleType));
+  saveTemplateDescription.value = form.value.description.trim();
+  saveTemplateError.value = "";
+  saveTemplateOpen.value = true;
+}
+
+/**
+ * Create the template from the current form. It never saves the check: the form
+ * stays open and the catalogue refreshes in the aside.
+ */
+async function saveAsTemplate() {
+  const title = saveTemplateTitle.value.trim();
+  if (!title) {
+    saveTemplateError.value = t("dataQuality.composer.templateTitleRequired");
+    return;
+  }
+  saveTemplateSaving.value = true;
+  saveTemplateError.value = "";
+  try {
+    await createQualityRuleTemplate(
+      formToRuleTemplate(form.value, {
+        title,
+        description: saveTemplateDescription.value,
+      })
+    );
+    notify.success(t("dataQuality.composer.templateSaved"));
+    saveTemplateOpen.value = false;
+    if (canListTemplates.value) {
+      await loadWorkspaceTemplates();
+    }
+  } catch (e: unknown) {
+    saveTemplateError.value = formatError(
+      e,
+      "dataQuality.composer.templateSaveFailed"
+    );
+  } finally {
+    saveTemplateSaving.value = false;
+  }
+}
+
+/** The check type the manage dialog is editing, for its description line. */
+const templateTypeLabel = computed(() => {
+  const ruleType = managingTemplate.value?.ruleType;
+  return ruleType === undefined ? "" : t(qualityRuleTypeKey(ruleType));
+});
+
+/** Open the manage dialog for one stored template; built-ins are read-only. */
+function openManageTemplate(template: RuleTemplate) {
+  if (!template.template) {
+    return;
+  }
+  managingTemplate.value = template;
+  manageTemplateTitle.value = template.title ?? "";
+  manageTemplateDescription.value = template.description ?? "";
+  manageTemplateError.value = "";
+  manageTemplateOpen.value = true;
+}
+
+/** Rename the managed template, sending only its copy fields. */
+async function saveManagedTemplate() {
+  const template = managingTemplate.value?.template;
+  if (!template || !canUpdateTemplate.value) {
+    return;
+  }
+  const title = manageTemplateTitle.value.trim();
+  if (!title) {
+    manageTemplateError.value = t("dataQuality.composer.templateTitleRequired");
+    return;
+  }
+  const updated = create(QualityRuleTemplateSchema, template);
+  updated.title = title;
+  updated.description = manageTemplateDescription.value.trim();
+  manageTemplateSaving.value = true;
+  manageTemplateError.value = "";
+  try {
+    await updateQualityRuleTemplate(updated, ["title", "description"]);
+    notify.success(t("dataQuality.composer.templateUpdated"));
+    manageTemplateOpen.value = false;
+    await loadWorkspaceTemplates();
+  } catch (e: unknown) {
+    manageTemplateError.value = formatError(
+      e,
+      "dataQuality.composer.templateSaveFailed"
+    );
+  } finally {
+    manageTemplateSaving.value = false;
+  }
+}
+
+/** Delete the managed template. Checks created from it are unaffected. */
+async function deleteManagedTemplate() {
+  const template = managingTemplate.value?.template;
+  if (!template || !canDeleteTemplate.value) {
+    return;
+  }
+  manageTemplateDeleting.value = true;
+  manageTemplateError.value = "";
+  try {
+    await deleteQualityRuleTemplate(template.name);
+    notify.success(t("dataQuality.composer.templateDeleted"));
+    manageTemplateOpen.value = false;
+    await loadWorkspaceTemplates();
+  } catch (e: unknown) {
+    manageTemplateError.value = formatError(
+      e,
+      "dataQuality.composer.templateDeleteFailed"
+    );
+  } finally {
+    manageTemplateDeleting.value = false;
+  }
 }
 
 function changeRuleType(ruleType: QualityRuleType) {
@@ -1020,6 +1474,9 @@ watch(
     reset();
     if (isOpen) {
       void loadColumns();
+      if (!isEdit.value && !props.suggestion) {
+        void loadWorkspaceTemplates();
+      }
     }
   },
   { immediate: true }

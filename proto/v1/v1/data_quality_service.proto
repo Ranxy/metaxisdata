@@ -100,6 +100,102 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.delete";
   }
 
+  // List the workspace's custom rule templates, newest first. Built-in templates
+  // are served by the client catalogue and are not part of this resource.
+  rpc ListQualityRuleTemplates(ListQualityRuleTemplatesRequest) returns (ListQualityRuleTemplatesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityRuleTemplates"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.templates.list";
+  }
+
+  // Read one custom rule template.
+  rpc GetQualityRuleTemplate(GetQualityRuleTemplateRequest) returns (QualityRuleTemplate) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityRuleTemplates/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.templates.list";
+  }
+
+  // Create a custom rule template. A template is a check type and its parameters:
+  // target-bound fields (columns, filter) are cleared by the server before it is
+  // stored.
+  rpc CreateQualityRuleTemplate(CreateQualityRuleTemplateRequest) returns (QualityRuleTemplate) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityRuleTemplates"
+      body: "quality_rule_template"
+    };
+    option (google.api.method_signature) = "parent,quality_rule_template";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.templates.create";
+  }
+
+  // Update a custom rule template's title, description, severity, dimension or
+  // parameters. The same target-bound fields are cleared.
+  rpc UpdateQualityRuleTemplate(UpdateQualityRuleTemplateRequest) returns (QualityRuleTemplate) {
+    option (google.api.http) = {
+      patch: "/v1/{quality_rule_template.name=workspaces/*/qualityRuleTemplates/*}"
+      body: "quality_rule_template"
+    };
+    option (google.api.method_signature) = "quality_rule_template,update_mask";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.templates.update";
+  }
+
+  // Delete a custom rule template. Checks already created from it are unaffected.
+  rpc DeleteQualityRuleTemplate(DeleteQualityRuleTemplateRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityRuleTemplates/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.templates.delete";
+  }
+
+  // List the workspace's code tables. A list response carries each table's value
+  // count but not its values; read one table with GetQualityCodeTable.
+  rpc ListQualityCodeTables(ListQualityCodeTablesRequest) returns (ListQualityCodeTablesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityCodeTables"};
+    option (google.api.method_signature) = "parent";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.codeTables.list";
+  }
+
+  // Read one code table including its values.
+  rpc GetQualityCodeTable(GetQualityCodeTableRequest) returns (QualityCodeTable) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityCodeTables/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.codeTables.list";
+  }
+
+  // Create a workspace code table. Values are sorted, de-duplicated and capped by
+  // the server, so an import is idempotent.
+  rpc CreateQualityCodeTable(CreateQualityCodeTableRequest) returns (QualityCodeTable) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityCodeTables"
+      body: "quality_code_table"
+    };
+    option (google.api.method_signature) = "parent,quality_code_table";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.codeTables.create";
+  }
+
+  // Update a code table's title, description or values. Replacing the values is the
+  // import path.
+  rpc UpdateQualityCodeTable(UpdateQualityCodeTableRequest) returns (QualityCodeTable) {
+    option (google.api.http) = {
+      patch: "/v1/{quality_code_table.name=workspaces/*/qualityCodeTables/*}"
+      body: "quality_code_table"
+    };
+    option (google.api.method_signature) = "quality_code_table,update_mask";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.codeTables.update";
+  }
+
+  // Delete a code table. A table still referenced by a rule or a template is
+  // refused with FailedPrecondition rather than silently breaking those checks.
+  rpc DeleteQualityCodeTable(DeleteQualityCodeTableRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityCodeTables/*}"};
+    option (google.api.method_signature) = "name";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.codeTables.delete";
+  }
+
   // Validate and compile a rule without saving it: config validation, filter
   // validation and a `LIMIT 0` probe against the target's read-only data
   // source. It writes nothing and creates no run.
@@ -616,6 +712,10 @@ enum QualityStandardCode {
   // GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the
   // built-in classification table.
   QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION = 5;
+  // A workspace-defined code table: the value must exist in the referenced
+  // quality code table. Use it for standard code sets that are not bundled with
+  // the server (for example an industry or municipal code set).
+  QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE = 6;
 }
 
 // QualityDimension is the data quality dimension a rule measures. It is display
@@ -1206,6 +1306,11 @@ message StandardCodeConfig {
   int32 sample_rows = 4;
   optional double fail_threshold = 5;
   optional double warn_threshold = 6;
+  // Optional workspace code table the value must also exist in, as a
+  // "workspaces/{workspace}/qualityCodeTables/{quality_code_table}" resource name.
+  // Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it
+  // narrows the accepted values (for example a customer's current division list).
+  string code_table = 7;
 }
 
 // SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
@@ -3591,4 +3696,182 @@ message ExportQualityReportResponse {
   // A report carries failed-sample-derived data, so it must never enter the
   // permanent ledger.
   string html_content = 2;
+}
+
+// QualityRuleTemplate is a reusable check definition: a check type with its
+// parameters, without a target or the columns a target owns. Applying one
+// prefills a check editor; the check still has to be saved.
+message QualityRuleTemplate {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityRuleTemplate"
+    pattern: "workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}"
+  };
+
+  // Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}
+  string name = 1;
+
+  string title = 2;
+
+  string description = 3;
+
+  QualityRuleType rule_type = 4;
+
+  // The parameters to prefill. Target-bound fields (the checked column or columns,
+  // the filter, a schema-drift snapshot) are empty: a template names no table and no
+  // column. The config's oneof arm must match rule_type.
+  QualityRuleConfig config = 5;
+
+  QualitySeverity severity = 6;
+
+  QualityDimension dimension = 7;
+
+  google.protobuf.Timestamp create_time = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp update_time = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Format: users/{user}. Empty when the author is unknown.
+  string created_by = 10 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference) = {type: "metaxisdata/User"}
+  ];
+
+  // Format: users/{user}. Empty when the last editor is unknown.
+  string updated_by = 11 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference) = {type: "metaxisdata/User"}
+  ];
+}
+
+message ListQualityRuleTemplatesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of templates to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  string page_token = 3;
+}
+
+message ListQualityRuleTemplatesResponse {
+  repeated QualityRuleTemplate quality_rule_templates = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityRuleTemplateRequest {
+  // Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityRuleTemplate"}
+  ];
+}
+
+message CreateQualityRuleTemplateRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The template to create. Its name is assigned by the server.
+  QualityRuleTemplate quality_rule_template = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateQualityRuleTemplateRequest {
+  QualityRuleTemplate quality_rule_template = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The fields to replace: "title", "description", "severity", "dimension", "config".
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteQualityRuleTemplateRequest {
+  // Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityRuleTemplate"}
+  ];
+}
+
+// QualityCodeTable is a workspace-defined list of accepted codes used by a
+// standard-code check, for example an industry-standard code set that is not
+// bundled with the server.
+message QualityCodeTable {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityCodeTable"
+    pattern: "workspaces/{workspace}/qualityCodeTables/{quality_code_table}"
+  };
+
+  // Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}
+  string name = 1;
+
+  string title = 2;
+
+  string description = 3;
+
+  // The accepted codes, sorted and de-duplicated by the server. Empty in a list
+  // response, which carries value_count instead. At most 5000 values, each at most
+  // 256 bytes.
+  repeated string values = 4;
+
+  int32 value_count = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp create_time = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp update_time = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Format: users/{user}. Empty when the author is unknown.
+  string created_by = 8 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference) = {type: "metaxisdata/User"}
+  ];
+
+  // Format: users/{user}. Empty when the last editor is unknown.
+  string updated_by = 9 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference) = {type: "metaxisdata/User"}
+  ];
+}
+
+message ListQualityCodeTablesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The maximum number of tables to return. If unspecified, at most 50 are
+  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+  int32 page_size = 2;
+
+  string page_token = 3;
+}
+
+message ListQualityCodeTablesResponse {
+  repeated QualityCodeTable quality_code_tables = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityCodeTableRequest {
+  // Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityCodeTable"}
+  ];
+}
+
+message CreateQualityCodeTableRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The table to create. Its name is assigned by the server.
+  QualityCodeTable quality_code_table = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateQualityCodeTableRequest {
+  QualityCodeTable quality_code_table = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The fields to replace: "title", "description", "values".
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteQualityCodeTableRequest {
+  // Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityCodeTable"}
+  ];
 }

@@ -8,7 +8,10 @@ import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
-import { QualityLLMUsageSchema } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  QualityCodeTableSchema,
+  QualityLLMUsageSchema,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   DataQualitySettingSchema,
   DayOfWeek,
@@ -23,6 +26,11 @@ const mocks = vi.hoisted(() => ({
   updateDataQualitySetting: vi.fn(),
   listProfiles: vi.fn(),
   getQualityLLMUsage: vi.fn(),
+  listAllQualityCodeTables: vi.fn(),
+  getQualityCodeTable: vi.fn(),
+  createQualityCodeTable: vi.fn(),
+  updateQualityCodeTable: vi.fn(),
+  deleteQualityCodeTable: vi.fn(),
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -36,13 +44,58 @@ vi.mock("@/api/llm", () => ({
 
 vi.mock("@/api/data-quality", () => ({
   getQualityLLMUsage: mocks.getQualityLLMUsage,
+  listAllQualityCodeTables: mocks.listAllQualityCodeTables,
+  getQualityCodeTable: mocks.getQualityCodeTable,
+  createQualityCodeTable: mocks.createQualityCodeTable,
+  updateQualityCodeTable: mocks.updateQualityCodeTable,
+  deleteQualityCodeTable: mocks.deleteQualityCodeTable,
 }));
 
 const PERMISSIONS = [
   "metaxisdata.settings.get",
   "metaxisdata.settings.update",
   "metaxisdata.dataQuality.suggest",
+  "metaxisdata.dataQuality.codeTables.list",
+  "metaxisdata.dataQuality.codeTables.create",
+  "metaxisdata.dataQuality.codeTables.update",
+  "metaxisdata.dataQuality.codeTables.delete",
 ];
+
+const MUNICIPAL = "workspaces/ws/qualityCodeTables/municipal";
+
+function codeTableSummary() {
+  return create(QualityCodeTableSchema, {
+    name: MUNICIPAL,
+    title: "Municipal codes",
+    description: "Divisions of the municipality.",
+    valueCount: 12,
+  });
+}
+
+function setInput(selector: string, value: string) {
+  const element = document.querySelector(selector) as HTMLInputElement;
+  Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value"
+  )?.set?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function setTextarea(selector: string, value: string) {
+  const element = document.querySelector(selector) as HTMLTextAreaElement;
+  Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "value"
+  )?.set?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** A button inside one of the page's (teleported) dialogs, by its text. */
+function dialogButton(text: string): HTMLElement | undefined {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+  ].find((button) => button.textContent?.trim() === text);
+}
 
 async function mountPage(permissions = PERMISSIONS) {
   const pinia = createPinia();
@@ -115,6 +168,11 @@ describe("DataQualitySettingsPage", () => {
     mocks.updateDataQualitySetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {})
     );
+    mocks.listAllQualityCodeTables.mockResolvedValue([]);
+    mocks.getQualityCodeTable.mockResolvedValue(codeTableSummary());
+    mocks.createQualityCodeTable.mockImplementation(async (table) => table);
+    mocks.updateQualityCodeTable.mockImplementation(async (table) => table);
+    mocks.deleteQualityCodeTable.mockResolvedValue(undefined);
     mocks.getQualityLLMUsage.mockResolvedValue(
       create(QualityLLMUsageSchema, {
         dailyAnalysisUsed: 1200,
@@ -386,6 +444,174 @@ describe("DataQualitySettingsPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQualitySettings.llmDisabledHint")
     );
+  });
+
+  it("lists code tables with their value count and updated time", async () => {
+    mocks.listAllQualityCodeTables.mockResolvedValue([codeTableSummary()]);
+    const wrapper = await mountPage();
+
+    expect(mocks.listAllQualityCodeTables).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.codeTablesSection")
+    );
+    expect(wrapper.text()).toContain("Municipal codes");
+    expect(wrapper.text()).toContain("Divisions of the municipality.");
+    expect(wrapper.text()).toContain("12");
+  });
+
+  it("creates a code table from trimmed, de-duplicated values", async () => {
+    const wrapper = await mountPage();
+
+    await wrapper.find("[data-add-code-table]").trigger("click");
+    await flushPromises();
+    setInput("#dq-code-table-title", "Municipal codes");
+    setTextarea("#dq-code-table-description", "Divisions.");
+    setTextarea(
+      "#dq-code-table-values",
+      " 110000 \n# comment\n110000\n310000\n"
+    );
+    await flushPromises();
+    document.body.querySelector<HTMLElement>("[data-save-code-table]")?.click();
+    await flushPromises();
+
+    expect(mocks.createQualityCodeTable).toHaveBeenCalledTimes(1);
+    const [table] = mocks.createQualityCodeTable.mock.calls[0] as [
+      ReturnType<typeof codeTableSummary>,
+    ];
+    expect(table.title).toBe("Municipal codes");
+    expect(table.description).toBe("Divisions.");
+    expect(table.values).toEqual(["110000", "310000"]);
+    // The list refreshes so the new table is visible.
+    expect(mocks.listAllQualityCodeTables).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQualitySettings.codeTableValuesRequired")
+    );
+    wrapper.unmount();
+  });
+
+  it("loads a table's values before editing and replaces them on save", async () => {
+    mocks.listAllQualityCodeTables.mockResolvedValue([codeTableSummary()]);
+    mocks.getQualityCodeTable.mockResolvedValue(
+      create(QualityCodeTableSchema, {
+        name: MUNICIPAL,
+        title: "Municipal codes",
+        description: "Divisions of the municipality.",
+        values: ["110000", "310000"],
+        valueCount: 2,
+      })
+    );
+    const wrapper = await mountPage();
+    await flushPromises();
+
+    await wrapper
+      .find(`button[title="${i18n.global.t("common.edit")}"]`)
+      .trigger("click");
+    await flushPromises();
+
+    expect(mocks.getQualityCodeTable).toHaveBeenCalledWith(MUNICIPAL);
+    expect(
+      document.querySelector<HTMLTextAreaElement>("#dq-code-table-values")
+        ?.value
+    ).toBe("110000\n310000");
+
+    setInput("#dq-code-table-title", "Renamed codes");
+    setTextarea("#dq-code-table-values", "110000\n310000\n440000");
+    await flushPromises();
+    document.body.querySelector<HTMLElement>("[data-save-code-table]")?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityCodeTable).toHaveBeenCalledTimes(1);
+    const [table, mask] = mocks.updateQualityCodeTable.mock.calls[0] as [
+      ReturnType<typeof codeTableSummary>,
+      string[],
+    ];
+    expect(table.name).toBe(MUNICIPAL);
+    expect(table.title).toBe("Renamed codes");
+    expect(table.values).toEqual(["110000", "310000", "440000"]);
+    expect(mask).toEqual(["title", "description", "values"]);
+    wrapper.unmount();
+  });
+
+  it("appends CSV codes to the typed values, parsed in the browser", async () => {
+    const wrapper = await mountPage();
+
+    await wrapper.find("[data-add-code-table]").trigger("click");
+    await flushPromises();
+    setTextarea("#dq-code-table-values", "110000");
+    const input = document.querySelector(
+      "#dq-code-table-csv"
+    ) as HTMLInputElement;
+    const file = new File(
+      ["310000,Shanghai\n110000,Beijing\n# note\n440000,Shenzhen"],
+      "codes.csv",
+      { type: "text/csv" }
+    );
+    Object.defineProperty(input, "files", { value: [file] });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await flushPromises();
+
+    expect(
+      document.querySelector<HTMLTextAreaElement>("#dq-code-table-values")
+        ?.value
+    ).toBe("110000\n310000\n440000");
+    wrapper.unmount();
+  });
+
+  it("refuses to save a code table with no values", async () => {
+    const wrapper = await mountPage();
+
+    await wrapper.find("[data-add-code-table]").trigger("click");
+    await flushPromises();
+    setInput("#dq-code-table-title", "Empty table");
+    await flushPromises();
+    document.body.querySelector<HTMLElement>("[data-save-code-table]")?.click();
+    await flushPromises();
+
+    expect(mocks.createQualityCodeTable).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      i18n.global.t("dataQualitySettings.codeTableValuesRequired")
+    );
+    wrapper.unmount();
+  });
+
+  it("surfaces the server's refusal when a referenced table is deleted", async () => {
+    mocks.listAllQualityCodeTables.mockResolvedValue([codeTableSummary()]);
+    mocks.deleteQualityCodeTable.mockRejectedValue(
+      new ConnectError(
+        "code table is referenced by quality rule orders-have-rows",
+        Code.FailedPrecondition
+      )
+    );
+    const wrapper = await mountPage();
+
+    await wrapper
+      .find(`button[title="${i18n.global.t("common.delete")}"]`)
+      .trigger("click");
+    await flushPromises();
+    dialogButton(i18n.global.t("common.delete"))?.click();
+    await flushPromises();
+
+    expect(mocks.deleteQualityCodeTable).toHaveBeenCalledWith(MUNICIPAL);
+    expect(wrapper.text()).toContain(
+      "code table is referenced by quality rule orders-have-rows"
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.codeTableDeleteFailed")
+    );
+    wrapper.unmount();
+  });
+
+  it("hides the code-table card without the list permission", async () => {
+    const wrapper = await mountPage([
+      "metaxisdata.settings.get",
+      "metaxisdata.settings.update",
+    ]);
+
+    expect(mocks.listAllQualityCodeTables).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQualitySettings.codeTablesSection")
+    );
+    wrapper.unmount();
   });
 
   it("shows the stored weekly digest schedule", async () => {

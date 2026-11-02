@@ -207,6 +207,7 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | downstream impact | 下游影响 | Data Quality | What a target's data reaches downstream, read from recorded lineage; it is evidence of consumers, never a complete list of them. | dataQuality.impact. | — |
 | root cause candidate | 根因候选 | Data Quality | An upstream target whose failing checks or changed structure may explain a failure; a candidate is evidence to check, not a cause proven. | dataQuality.impact. | — |
 | consumption coverage | 消费覆盖率 | Data Quality | The share of recorded consumer assets — assets another object's lineage reads — that have an enabled check. Its denominator is not the coverage card's, which counts every monitorable object. | dataQuality.overview.consumption | — |
+| code table | 代码表 | Data Quality | A workspace-defined list of accepted codes a standard-code check validates against when the code set is not bundled with the server. | dataQuality., dataQualitySettings. | — |
 | standard code | 标准编码 | Data Quality | A check that validates one column against a national or industry code standard. | all keys | — |
 | rule template | 规则模板 | Data Quality | A ready-made check configuration a reader can start from in the rule composer. | all keys | — |
 | unified social credit code | 统一社会信用代码 | Data Quality | The 18-character national identifier issued to organizations in China. | all keys | — |

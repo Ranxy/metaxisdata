@@ -245,6 +245,38 @@
       "id": "metaxisdata.dataQuality.labels.update"
     },
     {
+      "name": "DataQualityTemplatesList",
+      "id": "metaxisdata.dataQuality.templates.list"
+    },
+    {
+      "name": "DataQualityTemplatesCreate",
+      "id": "metaxisdata.dataQuality.templates.create"
+    },
+    {
+      "name": "DataQualityTemplatesUpdate",
+      "id": "metaxisdata.dataQuality.templates.update"
+    },
+    {
+      "name": "DataQualityTemplatesDelete",
+      "id": "metaxisdata.dataQuality.templates.delete"
+    },
+    {
+      "name": "DataQualityCodeTablesList",
+      "id": "metaxisdata.dataQuality.codeTables.list"
+    },
+    {
+      "name": "DataQualityCodeTablesCreate",
+      "id": "metaxisdata.dataQuality.codeTables.create"
+    },
+    {
+      "name": "DataQualityCodeTablesUpdate",
+      "id": "metaxisdata.dataQuality.codeTables.update"
+    },
+    {
+      "name": "DataQualityCodeTablesDelete",
+      "id": "metaxisdata.dataQuality.codeTables.delete"
+    },
+    {
       "name": "UsersGet",
       "id": "metaxisdata.users.get"
     },
