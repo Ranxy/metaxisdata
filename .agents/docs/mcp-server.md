@@ -73,7 +73,7 @@
 | 输出渲染 | `protojson` + `EmitUnpopulated` + 2 空格缩进 | **省略未设字段 + 紧凑 JSON**；只共享字段名风格与 enum 名 |
 | 列表类结果 | 完整 `StoredMetadata` | 只回**投影行**（`guid`/`name`/`metaType`/`parentGuid`）；详情走 `get_metadata` |
 | 临时关系 | 默认隐藏，`--include-temp` 打开 | **一次返回**，分成 `relations` 与 `temporaryRelations` |
-| 图与列过滤 | 客户端 N+1 展开/过滤 | 服务端组合（调用方只给 `depth`）；`column` 在工具层过滤（`backend/mcp/tool.go:767` 的 `filterGraphByColumn`） |
+| 图与列过滤 | 客户端 N+1 展开/过滤 | 服务端组合（调用方只给 `depth`）；`column` 在工具层过滤（`backend/mcp/tool.go` 的 `filterGraphByColumn`） |
 | 分页 | 默认 1000 条，触顶给 `truncated` | `page_size`（默认 25、上限 200）+ `page_token`，响应给 `nextPageToken` |
 | 错误 | `code` + 文字 hint + 退出码 | 保留 `code` 词表（去掉退出码），加结构化 `details` |
 | 两层授权 | 退出码 1/2/4 | 传输层（401/403 + `WWW-Authenticate`）vs 工具层（`isError` + `permission_denied`） |
@@ -86,7 +86,7 @@
 
 ## 工具表
 
-15 个只读工具，实现在 `backend/mcp/tool.go`（表在 `toolDefinitions`，`backend/mcp/tool.go:36`）；权限必须等于 RPC 注解。
+15 个只读工具，实现在 `backend/mcp/tool.go` 的 `toolDefinitions`；权限必须等于 RPC 注解。行号会随代码增长而漂移，所以这里只指符号。
 
 | 工具 | RPC | 权限 | 入参要点 |
 | --- | --- | --- | --- |
@@ -106,7 +106,7 @@
 | `get_quality_execution` | `DataQualityService.GetQualityExecution` | `metaxisdata.dataQuality.executions.get` | `execution`(资源名)；单条执行完整证据（executed SQL/失败样本/阈值/基线/flags） |
 | `whoami` | `UserService.GetCurrentUser` | 无（该 RPC 无注解，已白名单） | 回显身份与 `permissions` |
 
-每条 `Description` 说明它回答什么问题、并指明什么时候该换另一个工具（`backend/mcp/tool.go:40` 起）；守卫测试要求非空（`backend/mcp/tool_guard_test.go:49`）。
+每条 `Description` 说明它回答什么问题、并指明什么时候该换另一个工具（`toolDefinitions` 的 `Description` 字段）；守卫测试要求非空（`backend/mcp/tool_guard_test.go` 的 `TestEveryToolMatchesItsRPC`）。
 
 **名字寻址（`object_ref`）** 是共用输入形状：`{"instance": "prod-mysql", "database": "shop", "schema": "public", "name": "orders"}`，每个字段接受名字或资源 id（`instances/1`）；`schema` 可省；也可直接给 `{"guid": "1;shop;;orders"}`（文档不要求模型构造）。`guid` 优先，否则拼路径；拼不出/歧义/不存在 → `not_found`/`ambiguous` 并在 `details.candidates` 列候选。解析器只有一个（`backend/mcp/ref.go`），解析结果同时驱动 scope 解析。
 

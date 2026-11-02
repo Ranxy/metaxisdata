@@ -121,8 +121,23 @@ thresholds it was judged against and the baseline it compared with. There is
 deliberately no tool that asks a model to explain a failure: the agent calling
 these tools is the model, so it reasons over the evidence itself. Failed sample
 values are real row data, shown to a caller the `executions.get` permission
-already entitles. An issue row's table is resolved from the target's stored path,
-so a problem names its table rather than only a GUID.
+already entitles.
+
+A table whose checks exist but are all paused is still monitored — `monitored` is
+true because the checks are there — but it answers `allPaused: true` with
+`enabledRuleCount: 0`, and the worst result it carries is the paused checks'
+history rather than a current verdict; the directory rows use the same flag and
+omit their `worstStatus` in that case. A run that produced no observation answers
+without `observedValue` in the execution listing (a present `0` is a real
+observation); `get_quality_execution` returns the whole record, whose
+non-optional `observedValue` is `0` when there is no observation, so read it
+together with `outcome`. An issue row's table comes from the path snapshot stored
+with its rule — display metadata, not identity — and is omitted when the target
+no longer has a live check or the best-effort lookup fails; `guid` and `metaType`
+always locate it. An `object` filter given by name must resolve to a check target
+(a table, external table, view or materialized view); the name of any other object
+type is refused rather than answered with an empty list, while a bare `guid` is
+passed through because it carries no type.
 
 Three rules decide whether a call works:
 
