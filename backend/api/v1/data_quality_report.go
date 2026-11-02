@@ -353,6 +353,7 @@ func qualityReportFailedChecks(executions []*store.QualityExecutionMessage, rule
 					Column: cell.GetColumn(),
 					Value:  cell.GetValue(),
 					IsNull: cell.GetIsNull(),
+					Masked: cell.GetMasked(),
 				})
 			}
 			check.Samples = append(check.Samples, converted)

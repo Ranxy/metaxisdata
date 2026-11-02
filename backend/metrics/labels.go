@@ -120,6 +120,8 @@ func qualityRuleTypeLabel(ruleType storepb.QualityRuleType) string {
 		return "aggregate"
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE:
 		return "cross_table"
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:
+		return "standard_code"
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return "unspecified"
 	default:

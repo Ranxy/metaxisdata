@@ -162,6 +162,14 @@ func qualityConfigCases() []struct {
 			FailThreshold: qualityTestPtr(1.5),
 			WarnThreshold: qualityTestPtr(0.5),
 		}}}},
+		{name: "standard_code", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{
+			Column:        "credit_code",
+			Standard:      storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE,
+			AllowNull:     true,
+			SampleRows:    500,
+			FailThreshold: qualityTestPtr(2.5),
+			WarnThreshold: qualityTestPtr(1.5),
+		}}}},
 	}
 }
 
@@ -338,6 +346,7 @@ func TestConvertQualityExecution(t *testing.T) {
 			{Column: "id", Value: "1", IsNull: proto.Bool(false)},
 			{Column: "amount", Value: "-5"},
 			{Column: "note", IsNull: proto.Bool(true)},
+			{Column: "id_card", Value: "110105********002X", Masked: proto.Bool(true)},
 			{Column: "legacy"},
 		}}}},
 		ExecutedSQL:   "SELECT COUNT(*) FROM orders",
@@ -376,12 +385,15 @@ func TestConvertQualityExecution(t *testing.T) {
 	require.Equal(t, int64(20), converted.GetSampleRows())
 	require.True(t, converted.GetTruncated())
 	require.Len(t, converted.GetSamples(), 1)
-	require.Len(t, converted.GetSamples()[0].GetColumns(), 4)
+	require.Len(t, converted.GetSamples()[0].GetColumns(), 5)
 	require.NotNil(t, converted.GetSamples()[0].GetColumns()[0].IsNull)
 	require.False(t, converted.GetSamples()[0].GetColumns()[0].GetIsNull(), "an explicit false marker survives the conversion")
 	require.Equal(t, "amount", converted.GetSamples()[0].GetColumns()[1].GetColumn())
 	require.Equal(t, "-5", converted.GetSamples()[0].GetColumns()[1].GetValue())
 	require.Nil(t, converted.GetSamples()[0].GetColumns()[1].IsNull, "a legacy value stays unmarked")
+	require.True(t, converted.GetSamples()[0].GetColumns()[3].GetMasked(), "a redacted value carries the masked marker")
+	require.Equal(t, "110105********002X", converted.GetSamples()[0].GetColumns()[3].GetValue())
+	require.Nil(t, converted.GetSamples()[0].GetColumns()[4].Masked, "a value without the marker is not marked as masked")
 	require.Equal(t, "note", converted.GetSamples()[0].GetColumns()[2].GetColumn())
 	require.True(t, converted.GetSamples()[0].GetColumns()[2].GetIsNull())
 	require.Nil(t, converted.GetSamples()[0].GetColumns()[3].IsNull, "a legacy row keeps its absence")
@@ -514,6 +526,7 @@ func TestQualityRuleReferencedColumns(t *testing.T) {
 		{name: "null_percent", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_NullPercent{NullPercent: &storepb.NullPercentConfig{Column: "email"}}}, expected: []string{"email", "dt"}},
 		{name: "unique_combination", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_UniqueCombination{UniqueCombination: &storepb.UniqueCombinationConfig{Columns: []string{"a", "b"}}}}, expected: []string{"a", "b", "dt", "email"}},
 		{name: "cross_column", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossColumn{CrossColumn: &storepb.CrossColumnConfig{LeftColumn: "started_at", RightColumn: "finished_at"}}}, expected: []string{"started_at", "finished_at", "dt", "email"}},
+		{name: "standard_code", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{Column: "credit_code"}}}, expected: []string{"credit_code", "dt", "email"}},
 		{name: "custom_sql_has_no_named_column", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CustomSql{CustomSql: &storepb.CustomSQLConfig{Sql: "SELECT 1"}}}, expected: []string{"dt", "email"}},
 	}
 	for _, testCase := range cases {

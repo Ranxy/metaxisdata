@@ -247,6 +247,31 @@ func TestRenderIsDeterministic(t *testing.T) {
 	require.Equal(t, first, second)
 }
 
+// A redacted sample value is rendered with the masked marker (the stored value is a
+// display form, not the data), and a NULL keeps its null rendering.
+func TestRenderMarksMaskedSampleValues(t *testing.T) {
+	t.Parallel()
+
+	report := reportFixture()
+	report.FailedChecks = []FailedCheck{{
+		RuleTitle:  "Standard code",
+		Column:     "id_card",
+		FailedRows: 1,
+		TotalRows:  10,
+		Samples: []FailureSample{{Cells: []SampleCell{
+			{Column: "id_card", Value: "110105********002X", Masked: true},
+		}}},
+	}}
+	english, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, english, "110105********002X")
+	require.Contains(t, english, "(masked)")
+
+	chinese, err := Render(LanguageChinese, report)
+	require.NoError(t, err)
+	require.Contains(t, chinese, "（已脱敏）")
+}
+
 // The documented caps are hard: a report with more failed checks and sample rows
 // than allowed lists at most 20 checks with at most 5 rows each, and it says what
 // it omitted.

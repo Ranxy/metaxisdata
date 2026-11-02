@@ -20,6 +20,7 @@ import {
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualityStandardCode,
   QualityStatus,
   QualityTargetPathSchema,
   QualityTargetSchema,
@@ -58,6 +59,7 @@ import {
   qualityRuleTypeKey,
   qualitySeverityKey,
   qualitySeverityVariant,
+  qualityStandardCodeKey,
   qualityStatusKey,
   qualityStatusVariant,
   qualityTargetMetadataRoute,
@@ -240,7 +242,7 @@ describe("qualityRuleTypeKey", () => {
       (value): value is QualityRuleType =>
         typeof value === "number" && value !== QualityRuleType.UNSPECIFIED
     );
-    expect(types).toHaveLength(18);
+    expect(types).toHaveLength(19);
     const keys = types.map((ruleType) => qualityRuleTypeKey(ruleType));
     expect(keys).not.toContain("dataQuality.ruleType.unspecified");
     expect(new Set(keys).size).toBe(types.length);
@@ -1147,7 +1149,7 @@ describe("data quality vocabulary catalogs", () => {
     const types = enumValues(QualityRuleType).filter(
       (value) => value !== QualityRuleType.UNSPECIFIED
     );
-    expect(types).toHaveLength(18);
+    expect(types).toHaveLength(19);
     for (const [locale, catalog] of Object.entries(CATALOGS)) {
       const labels = types.map((ruleType) =>
         label(catalog, qualityRuleTypeKey(ruleType))
@@ -1173,6 +1175,24 @@ describe("data quality vocabulary catalogs", () => {
         new Set(descriptions).size,
         `${locale} rule type descriptions`
       ).toBe(types.length);
+    }
+  });
+
+  it("names every standard code and its semantic label in both locales", () => {
+    const standards = enumValues(QualityStandardCode);
+    expect(standards).toHaveLength(6);
+    for (const [locale, catalog] of Object.entries(CATALOGS)) {
+      const labels = standards.map((standard) =>
+        label(catalog, qualityStandardCodeKey(standard))
+      );
+      for (const value of labels) {
+        expect(value, `${locale} standard code label`).toEqual(
+          expect.any(String)
+        );
+      }
+      expect(new Set(labels).size, `${locale} standard code labels`).toBe(
+        standards.length
+      );
     }
   });
 

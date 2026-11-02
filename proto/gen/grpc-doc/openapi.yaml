@@ -5874,6 +5874,7 @@ paths:
                         - QUALITY_RULE_TYPE_GROUP_CHECK
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
+                        - QUALITY_RULE_TYPE_STANDARD_CODE
                     type: string
                     format: enum
                 - name: severity
@@ -8503,6 +8504,11 @@ components:
                         - QUALITY_SEMANTIC_TYPE_ENUM
                         - QUALITY_SEMANTIC_TYPE_FREE_TEXT
                         - QUALITY_SEMANTIC_TYPE_UNKNOWN
+                        - QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE
+                        - QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE
+                        - QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD
+                        - QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION
+                        - QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION
                     type: string
                     format: enum
                 source:
@@ -8552,6 +8558,13 @@ components:
                     description: |-
                         Whether the value was SQL NULL. A sample recorded before this field existed
                          has no marker, and its NULLs are indistinguishable from empty strings.
+                masked:
+                    type: boolean
+                    description: |-
+                        Whether the server redacted the value before returning it. A masked value is a
+                         display form only: for a resident ID card number the division prefix and the
+                         last four characters stay visible while the birth date and sequence digits are
+                         replaced. The raw value is never returned.
             description: |-
                 ColumnValue is one column of a sampled failed row. Values are truncated before
                  they are returned, so a wide text column cannot bloat the response.
@@ -12573,6 +12586,7 @@ components:
                         - QUALITY_RULE_TYPE_GROUP_CHECK
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
+                        - QUALITY_RULE_TYPE_STANDARD_CODE
                     type: string
                     format: enum
                 severity:
@@ -13330,6 +13344,7 @@ components:
                         - QUALITY_RULE_TYPE_GROUP_CHECK
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
+                        - QUALITY_RULE_TYPE_STANDARD_CODE
                     type: string
                     format: enum
                 target:
@@ -13459,6 +13474,10 @@ components:
                     description: 'v1.1 second batch: aggregates and cross-table reconciliation.'
                 crossTable:
                     $ref: '#/components/schemas/CrossTableConfig'
+                standardCode:
+                    allOf:
+                        - $ref: '#/components/schemas/StandardCodeConfig'
+                    description: 'v1.2: national and industry standard codes.'
                 thresholdMetric:
                     enum:
                         - QUALITY_THRESHOLD_METRIC_UNSPECIFIED
@@ -14911,6 +14930,11 @@ components:
                         - QUALITY_SEMANTIC_TYPE_ENUM
                         - QUALITY_SEMANTIC_TYPE_FREE_TEXT
                         - QUALITY_SEMANTIC_TYPE_UNKNOWN
+                        - QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE
+                        - QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE
+                        - QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD
+                        - QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION
+                        - QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION
                     type: string
                     format: enum
                 confidence:
@@ -14941,6 +14965,7 @@ components:
                             - QUALITY_RULE_TYPE_GROUP_CHECK
                             - QUALITY_RULE_TYPE_AGGREGATE
                             - QUALITY_RULE_TYPE_CROSS_TABLE
+                            - QUALITY_RULE_TYPE_STANDARD_CODE
                         type: string
                         format: enum
                     description: |-
@@ -15027,6 +15052,42 @@ components:
                         type: string
                     description: Engine specific parameters.
             description: SpatialIndexConfig is the configuration of a spatial index.
+        StandardCodeConfig:
+            type: object
+            properties:
+                column:
+                    type: string
+                standard:
+                    enum:
+                        - QUALITY_STANDARD_CODE_UNSPECIFIED
+                        - QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE
+                        - QUALITY_STANDARD_CODE_ORGANIZATION_CODE
+                        - QUALITY_STANDARD_CODE_RESIDENT_ID_CARD
+                        - QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION
+                        - QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION
+                    type: string
+                    format: enum
+                allowNull:
+                    type: boolean
+                    description: When false (the default), a NULL value is a violation.
+                sampleRows:
+                    type: integer
+                    description: |-
+                        How many rows of the filtered relation one execution reads. 0 means the
+                         default (10000); the accepted range is 1-100000.
+                    format: int32
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                StandardCodeConfig validates one column against a national or industry
+                 standard code. The standard fixes the value shape, the check digit where one
+                 exists, and whether the value must exist in the standard's built-in code
+                 table. The rule reads a bounded sample of the column and validates every row
+                 in process, so its verdict is a sample verdict like cel_expression's.
         Status:
             type: object
             properties:
@@ -15735,6 +15796,11 @@ components:
                         - QUALITY_SEMANTIC_TYPE_ENUM
                         - QUALITY_SEMANTIC_TYPE_FREE_TEXT
                         - QUALITY_SEMANTIC_TYPE_UNKNOWN
+                        - QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE
+                        - QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE
+                        - QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD
+                        - QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION
+                        - QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION
                     type: string
                     description: The label to accept. Required by ACCEPT and ignored by CLEAR.
                     format: enum

@@ -27,6 +27,7 @@ import {
   QualityRuleTrendSchema,
   QualityRuleType,
   QualitySeverity,
+  QualityStandardCode,
   QualitySuggestionKind,
   QualitySuggestionSchema,
   QualitySuggestionStatus,
@@ -356,7 +357,7 @@ describe("TargetRuleComposer", () => {
     await nextTick();
 
     const buttons = typeButtons();
-    expect(buttons).toHaveLength(18);
+    expect(buttons).toHaveLength(19);
     expect(buttons.map(typeButtonLabel)).toContain(
       label(qualityRuleTypeKey(QualityRuleType.ROW_COUNT))
     );
@@ -522,6 +523,107 @@ describe("TargetRuleComposer", () => {
     expect((config?.value as { column?: string } | undefined)?.column).toBe(
       "email"
     );
+    wrapper.unmount();
+  });
+
+  it("creates a standard-code check with its own sample bound", async () => {
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "credit_code",
+    });
+    await nextTick();
+
+    typeButton(QualityRuleType.STANDARD_CODE)?.click();
+    await flushPromises();
+    await selectOption(
+      "#dq-field-standard",
+      label("dataQuality.codeStandard.unifiedSocialCreditCode")
+    );
+    setInput("#dq-composer-title", "Credit codes are valid");
+    setInput("#dq-field-sampleRows", "5000");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    const config = rule.config?.config;
+    expect(config?.case).toBe("standardCode");
+    expect(
+      config?.value as
+        | {
+            column?: string;
+            standard?: QualityStandardCode;
+            sampleRows?: number;
+          }
+        | undefined
+    ).toMatchObject({
+      column: "credit_code",
+      standard: QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE,
+      sampleRows: 5000,
+    });
+    wrapper.unmount();
+  });
+
+  it("fills the form from a built-in template without saving", async () => {
+    const wrapper = await mountComposer();
+    await nextTick();
+
+    const template = document.body.querySelector<HTMLElement>(
+      '[role="dialog"] [data-template="unifiedSocialCreditCode"]'
+    );
+    expect(template).toBeTruthy();
+    template?.click();
+    await flushPromises();
+
+    // The template seeds the type, the standard and the title; nothing is sent.
+    expect(
+      typeButton(QualityRuleType.STANDARD_CODE)?.getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-composer-title")?.value
+    ).toBe(label("dataQuality.ruleTemplate.unifiedSocialCreditCode.title"));
+    const config = wrapper.findComponent(RuleConfigForm).props("modelValue");
+    expect((config as { standard?: QualityStandardCode }).standard).toBe(
+      QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE
+    );
+    expect(mocks.createQualityRule).not.toHaveBeenCalled();
+    expect(mocks.previewQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("applies the contract's default severity to a template prefill", async () => {
+    const wrapper = await mountComposer({
+      scope: "column",
+      initialColumn: "credit_code",
+      defaultSeverity: QualitySeverity.ERROR,
+    });
+    await nextTick();
+
+    // The template fills the type, the standard and the column the workspace
+    // named; the contract's default severity must still apply.
+    document.body
+      .querySelector<HTMLElement>(
+        '[role="dialog"] [data-template="unifiedSocialCreditCode"]'
+      )
+      ?.click();
+    await flushPromises();
+    setInput("#dq-composer-title", "Credit codes are valid");
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    expect(rule.severity).toBe(QualitySeverity.ERROR);
+    wrapper.unmount();
+  });
+
+  it("offers templates only when starting a new check", async () => {
+    const wrapper = await mountComposer({ rule: ruleFixture() });
+    await nextTick();
+
+    expect(
+      document.body.querySelector('[role="dialog"] [data-template]')
+    ).toBeNull();
     wrapper.unmount();
   });
 

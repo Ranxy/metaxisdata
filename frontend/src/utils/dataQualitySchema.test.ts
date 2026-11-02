@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   QualityAggregateFunction,
   QualityRuleType,
+  QualityStandardCode,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
@@ -80,6 +81,10 @@ function completeForm(ruleType: QualityRuleType): RuleFormState {
     form.config.allColumns = false;
     form.config.columns = "amount";
   }
+  if (ruleType === QualityRuleType.STANDARD_CODE) {
+    // The standard is an enum-valued field, so the catalog does not fill it.
+    form.config.standard = QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE;
+  }
   if (ruleType === QualityRuleType.CROSS_TABLE) {
     form.config.leftAggFunction = QualityAggregateFunction.COUNT;
     form.config.rightAggFunction = QualityAggregateFunction.COUNT;
@@ -92,7 +97,7 @@ function completeForm(ruleType: QualityRuleType): RuleFormState {
 
 describe("rule field schema", () => {
   it("covers every editable rule type with labeled metadata", () => {
-    expect(EDITABLE_RULE_TYPES).toHaveLength(18);
+    expect(EDITABLE_RULE_TYPES).toHaveLength(19);
     for (const ruleType of EDITABLE_RULE_TYPES) {
       const schema = ruleFieldSchema(ruleType);
       expect(schema, `schema for ${ruleType}`).toBeTruthy();

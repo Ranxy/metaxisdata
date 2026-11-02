@@ -229,6 +229,10 @@ type SampleCell struct {
 	Column string
 	Value  string
 	IsNull bool
+	// Masked reports that the value was redacted before storage (a resident ID
+	// card number keeps its division prefix and check character). The stored value
+	// is a display form, not the data.
+	Masked bool
 }
 
 // Impact is the target's lineage impact: the assets its data reaches downstream,
@@ -598,6 +602,7 @@ type sampleTableView struct {
 type sampleCellView struct {
 	Value  string
 	IsNull bool
+	Masked bool
 }
 
 type basisView struct {
@@ -1028,7 +1033,7 @@ func newSampleTableView(samples []FailureSample, cellRunes int, nullLabel string
 			if cell.IsNull {
 				value = nullLabel
 			}
-			row[index[cell.Column]] = sampleCellView{Value: value, IsNull: cell.IsNull}
+			row[index[cell.Column]] = sampleCellView{Value: value, IsNull: cell.IsNull, Masked: cell.Masked && !cell.IsNull}
 		}
 		table.Rows = append(table.Rows, row)
 	}

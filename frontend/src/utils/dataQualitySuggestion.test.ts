@@ -237,6 +237,14 @@ describe("suggestion vocabulary", () => {
       [QualitySemanticType.ENUM, "enum"],
       [QualitySemanticType.FREE_TEXT, "freeText"],
       [QualitySemanticType.UNKNOWN, "unknown"],
+      [
+        QualitySemanticType.UNIFIED_SOCIAL_CREDIT_CODE,
+        "unifiedSocialCreditCode",
+      ],
+      [QualitySemanticType.ORGANIZATION_CODE, "organizationCode"],
+      [QualitySemanticType.RESIDENT_ID_CARD, "residentIdCard"],
+      [QualitySemanticType.ADMINISTRATIVE_DIVISION, "administrativeDivision"],
+      [QualitySemanticType.INDUSTRY_CLASSIFICATION, "industryClassification"],
       [QualitySemanticType.UNSPECIFIED, "unspecified"],
     ];
     for (const [label, suffix] of types) {

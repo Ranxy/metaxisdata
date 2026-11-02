@@ -96,6 +96,9 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.suggestions.diagnostic.hint",
   "dataQuality.suggestions.diagnostic.syncTruncatedHint",
   "dataQuality.semanticType",
+  // qualityStandardCodeKey() in src/utils/dataQuality.ts maps the standard a
+  // standard-code check validates to its label key.
+  "dataQuality.codeStandard",
   "dataQuality.labelSource",
   "dataQuality.labelStatus",
   // Error copy and availability reasons returned by src/utils/dataQualityLlm.ts.

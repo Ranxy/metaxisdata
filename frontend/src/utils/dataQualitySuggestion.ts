@@ -286,6 +286,16 @@ export function semanticTypeKey(label: QualitySemanticType): string {
       return "dataQuality.semanticType.freeText";
     case QualitySemanticType.UNKNOWN:
       return "dataQuality.semanticType.unknown";
+    case QualitySemanticType.UNIFIED_SOCIAL_CREDIT_CODE:
+      return "dataQuality.semanticType.unifiedSocialCreditCode";
+    case QualitySemanticType.ORGANIZATION_CODE:
+      return "dataQuality.semanticType.organizationCode";
+    case QualitySemanticType.RESIDENT_ID_CARD:
+      return "dataQuality.semanticType.residentIdCard";
+    case QualitySemanticType.ADMINISTRATIVE_DIVISION:
+      return "dataQuality.semanticType.administrativeDivision";
+    case QualitySemanticType.INDUSTRY_CLASSIFICATION:
+      return "dataQuality.semanticType.industryClassification";
     default:
       return "dataQuality.semanticType.unspecified";
   }

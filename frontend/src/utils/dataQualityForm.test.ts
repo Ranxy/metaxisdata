@@ -18,6 +18,7 @@ import {
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualityStandardCode,
   QualityThresholdMetric,
   QualityThresholdSuggestionSchema,
   QualityThresholdsSchema,
@@ -66,6 +67,7 @@ import {
   RULE_TYPES_BY_META_TYPE,
   resolveExpectedColumnNullability,
   ruleToForm,
+  ruleTypeForConfigCase,
   SAMPLEABLE_RULE_TYPES,
   samplingMethodsFor,
   scheduleMinutes,
@@ -206,6 +208,14 @@ const CONFIG_FIXTURES: Partial<
     failThreshold: "0",
     warnThreshold: "1",
   },
+  [QualityRuleType.STANDARD_CODE]: {
+    column: "credit_code",
+    standard: QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE,
+    allowNull: true,
+    sampleRows: "5000",
+    failThreshold: "2",
+    warnThreshold: "1",
+  },
   [QualityRuleType.CROSS_TABLE]: {
     rightTable: "public.orders_ref",
     leftAggFunction: QualityAggregateFunction.SUM,
@@ -237,6 +247,7 @@ const CONFIG_CASES: Record<string, QualityRuleType> = {
   aggregate: QualityRuleType.AGGREGATE,
   crossTable: QualityRuleType.CROSS_TABLE,
   celExpression: QualityRuleType.CEL_EXPRESSION,
+  standardCode: QualityRuleType.STANDARD_CODE,
 };
 
 const TARGET: TargetSelection = {
@@ -271,8 +282,8 @@ function ruleFor(ruleType: QualityRuleType): QualityRule {
 
 describe("rule type catalogs", () => {
   it("offers every editable type", () => {
-    expect(EDITABLE_RULE_TYPES).toHaveLength(18);
-    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(18);
+    expect(EDITABLE_RULE_TYPES).toHaveLength(19);
+    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(19);
     for (const ruleType of [
       QualityRuleType.CEL_EXPRESSION,
       QualityRuleType.SCHEMA_DRIFT,
@@ -298,6 +309,7 @@ describe("rule type catalogs", () => {
         QualityRuleType.CROSS_COLUMN,
         QualityRuleType.GROUP_CHECK,
         QualityRuleType.CEL_EXPRESSION,
+        QualityRuleType.STANDARD_CODE,
       ])
     );
     expect(THRESHOLD_METRIC_RULE_TYPES).not.toContain(
@@ -359,6 +371,7 @@ describe("rule type catalogs", () => {
       QualityRuleType.AGGREGATE,
       QualityRuleType.CROSS_TABLE,
       QualityRuleType.CEL_EXPRESSION,
+      QualityRuleType.STANDARD_CODE,
     ]) {
       expect(allowedRuleTypes(MetaType.VIEW)).not.toContain(ruleType);
     }
@@ -513,6 +526,9 @@ describe("target selection", () => {
     expect(columnsForConfig(validForm(QualityRuleType.CEL_EXPRESSION))).toEqual(
       ["amount"]
     );
+    expect(columnsForConfig(validForm(QualityRuleType.STANDARD_CODE))).toEqual([
+      "credit_code",
+    ]);
   });
 });
 
@@ -566,6 +582,13 @@ describe("config conversion", () => {
     }
   });
 
+  it("maps every config oneof case back to its rule type", () => {
+    for (const [configCase, ruleType] of Object.entries(CONFIG_CASES)) {
+      expect(ruleTypeForConfigCase(configCase), configCase).toBe(ruleType);
+    }
+    expect(ruleTypeForConfigCase("nope")).toBeUndefined();
+  });
+
   it("builds the filter with values only where the operator takes them", () => {
     const filter = buildFilter([
       { column: " region ", op: QualityFilterOperator.IN, values: "eu, us" },
@@ -610,6 +633,97 @@ describe("config conversion", () => {
       }),
     });
     expect(ruleToForm(rule).config.maxLagSeconds).toBe("");
+  });
+});
+
+describe("standard code checks", () => {
+  it("sends the standard, sample bound, null policy and thresholds", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "standardCode") {
+      throw new Error("expected a standard-code config arm");
+    }
+    const config = rule.config.config.value;
+    expect(config.column).toBe("credit_code");
+    expect(config.standard).toBe(
+      QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE
+    );
+    expect(config.allowNull).toBe(true);
+    expect(config.sampleRows).toBe(5000);
+    expect(config.failThreshold).toBe(2);
+    expect(config.warnThreshold).toBe(1);
+    // The rule is filed under the column it validates.
+    expect(rule.target?.columns).toEqual(["credit_code"]);
+    expect(rule.target?.path?.column).toBe("credit_code");
+
+    const back = ruleToForm(rule);
+    expect(back.config.standard).toBe(
+      QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE
+    );
+    expect(back.config.sampleRows).toBe("5000");
+  });
+
+  it("starts an unset standard at the server's default sample size", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    form.config.standard = QualityStandardCode.UNSPECIFIED;
+    form.config.sampleRows = "";
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "standardCode") {
+      throw new Error("expected a standard-code config arm");
+    }
+    // 0 asks the server for its own default (10000).
+    expect(rule.config.config.value.sampleRows).toBe(0);
+    expect(ruleToForm(rule).config.sampleRows).toBe("0");
+  });
+
+  it("requires a column and a standard", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    form.config.column = " ";
+    form.config.standard = QualityStandardCode.UNSPECIFIED;
+    const keys = validateRuleForm(form, TARGET).map((issue) => issue.key);
+    expect(keys).toContain(`${VALIDATION_PREFIX}columnRequired`);
+    expect(keys).toContain(`${VALIDATION_PREFIX}standardRequired`);
+  });
+
+  it("accepts the server's sample row range and refuses the rest", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    for (const sampleRows of ["0", "1", "100000", ""]) {
+      form.config.sampleRows = sampleRows;
+      expect(validateRuleForm(form, TARGET), sampleRows).toEqual([]);
+    }
+    for (const sampleRows of ["-1", "100001", "12.5", "many"]) {
+      form.config.sampleRows = sampleRows;
+      expect(
+        validateRuleForm(form, TARGET).map((issue) => issue.key),
+        sampleRows
+      ).toContain(`${VALIDATION_PREFIX}sampleRowsInvalid`);
+    }
+  });
+
+  it("refuses a warning threshold above the failure threshold", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    form.config.failThreshold = "2";
+    form.config.warnThreshold = "2";
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+    form.config.warnThreshold = "3";
+    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
+      `${VALIDATION_PREFIX}thresholdOrder`
+    );
+  });
+
+  it("reads a suggested threshold pair into the form", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    const next = applyThresholdSuggestion(
+      form,
+      create(QualityThresholdSuggestionSchema, {
+        thresholds: create(QualityThresholdsSchema, {
+          failValue: 0.2,
+          warnValue: 0.1,
+        }),
+      })
+    );
+    expect(next.config.failThreshold).toBe("0.2");
+    expect(next.config.warnThreshold).toBe("0.1");
   });
 });
 
@@ -760,6 +874,24 @@ describe("update mask", () => {
         form.tags = "only";
       })
     ).toEqual(["tags"]);
+  });
+
+  it("notices a standard-only change in the update mask", () => {
+    // The stored target snapshot records the columns the config reads, so it has
+    // to carry the same column for the target itself not to count as changed.
+    const target: TargetSelection = { ...TARGET, columns: ["credit_code"] };
+    const base = { form: validForm(QualityRuleType.STANDARD_CODE), target };
+    const next = {
+      form: {
+        ...base.form,
+        config: {
+          ...base.form.config,
+          standard: QualityStandardCode.ORGANIZATION_CODE,
+        },
+      },
+      target,
+    };
+    expect(computeUpdateMask(base, next)).toEqual(["config"]);
   });
 
   it("treats a config, filter, metric or empty-behaviour edit as a config change", () => {

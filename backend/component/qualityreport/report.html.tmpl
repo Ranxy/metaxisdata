@@ -269,7 +269,7 @@ footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--border
   <table>
     <thead><tr>{{range .Table.Columns}}<th>{{.}}</th>{{end}}</tr></thead>
     <tbody>
-    {{range .Table.Rows}}<tr>{{range .}}{{if .IsNull}}<td class="null">{{.Value}}</td>{{else}}<td>{{.Value}}</td>{{end}}{{end}}</tr>{{end}}
+    {{range .Table.Rows}}<tr>{{range .}}{{if .IsNull}}<td class="null">{{.Value}}</td>{{else if .Masked}}<td>{{.Value}} <span class="muted">{{$.Labels.SampleMasked}}</span></td>{{else}}<td>{{.Value}}</td>{{end}}{{end}}</tr>{{end}}
     </tbody>
   </table>
   {{else}}

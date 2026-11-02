@@ -16,7 +16,7 @@ import (
 // LabelPromptVersion identifies the label-analysis prompt and its output
 // contract. It is stamped on the cached result of every analysis, so a prompt
 // change invalidates old answers instead of mixing them with new ones.
-const LabelPromptVersion = "dq.column_label.v1"
+const LabelPromptVersion = "dq.column_label.v2"
 
 // Draft defaults. The deterministic mapping suggests a starting point for the
 // reviewer; none of these values is derived from the column's current data. A
@@ -71,6 +71,11 @@ var labelSemanticTypes = []storepb.QualitySemanticType{
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ENUM,
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_FREE_TEXT,
 	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNKNOWN,
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE,
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE,
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD,
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION,
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION,
 }
 
 // labelRuleTypes is the closed rule-type vocabulary of a label suggestion: the
@@ -211,6 +216,25 @@ var ruleTypesForSemantic = map[storepb.QualitySemanticType][]storepb.QualityRule
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+	},
+	storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION: {
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+	},
 }
 
 // DefaultRuleDraft builds the deterministic rule-draft default for a column's
@@ -237,8 +261,12 @@ func labelRuleDraft(ruleType storepb.QualityRuleType, label storepb.QualitySeman
 	if !ok || spec.LabelDraft == nil {
 		return nil
 	}
+	config := spec.LabelDraft(label, column, profile)
+	if config == nil {
+		return nil
+	}
 	return &storepb.QualityRuleDraftConfig{
-		Config:     spec.LabelDraft(label, column, profile),
+		Config:     config,
 		Severity:   storepb.QualitySeverity_QUALITY_SEVERITY_WARNING,
 		Title:      fmt.Sprintf("%s: %s", column, spec.Title),
 		Rationale:  fmt.Sprintf("The column is labeled %s, whose default check is %s. The parameters are defaults and must be reviewed.", labelSemanticTypeShortName(label), spec.Title),
@@ -294,6 +322,41 @@ func labelDraftRegex(label storepb.QualitySemanticType, column string, _ *storep
 	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Regex{Regex: &storepb.RegexConfig{
 		Column:        column,
 		Pattern:       labelDefaultPatterns[label],
+		FailThreshold: proto.Float64(0),
+	}}}
+}
+
+// standardCodeForSemantic maps a standard-shaped semantic label to the standard
+// a standard-code draft validates. The mapping is code, not model output: the
+// model only names the semantic type.
+func standardCodeForSemantic(label storepb.QualitySemanticType) (storepb.QualityStandardCode, bool) {
+	switch label {
+	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE:
+		return storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, true
+	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE:
+		return storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ORGANIZATION_CODE, true
+	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD:
+		return storepb.QualityStandardCode_QUALITY_STANDARD_CODE_RESIDENT_ID_CARD, true
+	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION:
+		return storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION, true
+	case storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION:
+		return storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION, true
+	default:
+		return storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED, false
+	}
+}
+
+// labelDraftStandardCode is the default config of a standard-code draft; the
+// label selects the standard. The check reads a bounded sample, so the draft
+// leaves sample_rows at the server default.
+func labelDraftStandardCode(label storepb.QualitySemanticType, column string, _ *storepb.ColumnProfile) *storepb.QualityRuleConfig {
+	standard, ok := standardCodeForSemantic(label)
+	if !ok {
+		return nil
+	}
+	return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{
+		Column:        column,
+		Standard:      standard,
 		FailThreshold: proto.Float64(0),
 	}}}
 }
@@ -417,6 +480,9 @@ func labelRuleMappingLines() []string {
 		"PERCENTAGE -> RANGE",
 		"TIMESTAMP, DATE -> FRESHNESS, RANGE",
 		"FREE_TEXT -> STRING_LENGTH, NULL_PERCENT",
+		"UNIFIED_SOCIAL_CREDIT_CODE -> STANDARD_CODE, UNIQUE, NULL_PERCENT",
+		"ORGANIZATION_CODE, RESIDENT_ID_CARD -> STANDARD_CODE, NULL_PERCENT",
+		"ADMINISTRATIVE_DIVISION, INDUSTRY_CLASSIFICATION -> STANDARD_CODE",
 		"UNKNOWN -> (none)",
 	}
 }

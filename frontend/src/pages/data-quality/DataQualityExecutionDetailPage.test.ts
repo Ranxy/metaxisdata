@@ -104,6 +104,7 @@ function executionFixture(
           { column: "email", value: "a@example.com" },
           { column: "note", value: "", isNull: true },
           { column: "title", value: "", isNull: false },
+          { column: "id_card", value: "110105********002X", masked: true },
           { column: "legacy", value: "" },
         ],
       },
@@ -226,6 +227,9 @@ describe("DataQualityExecutionDetailPage", () => {
     // one it was instead of printing a blank cell.
     expect(text).toContain(i18n.global.t("dataQuality.sampleNull"));
     expect(text).toContain(i18n.global.t("dataQuality.sampleEmpty"));
+    // A redacted value is shown as the display form with the masked marker.
+    expect(text).toContain("110105********002X");
+    expect(text).toContain(i18n.global.t("dataQuality.sampleMasked"));
     // A sample recorded before the marker existed cannot be either: it says so,
     // with the explanation on the cell.
     expect(text).toContain(i18n.global.t("dataQuality.sampleAmbiguous"));

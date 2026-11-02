@@ -9,12 +9,13 @@ import (
 // Read-only target-query purposes. They mirror the call sites in the data
 // quality executor, the profiler and the rule preview.
 const (
-	QueryPurposeRuleAggregate    = "rule_aggregate"
-	QueryPurposeRuleSample       = "rule_sample"
-	QueryPurposeRuleCELSample    = "rule_cel_sample"
-	QueryPurposeProfileAggregate = "profile_aggregate"
-	QueryPurposeProfileSample    = "profile_sample"
-	QueryPurposeDryRunProbe      = "dry_run_probe"
+	QueryPurposeRuleAggregate          = "rule_aggregate"
+	QueryPurposeRuleSample             = "rule_sample"
+	QueryPurposeRuleCELSample          = "rule_cel_sample"
+	QueryPurposeRuleStandardCodeSample = "rule_standard_code_sample"
+	QueryPurposeProfileAggregate       = "profile_aggregate"
+	QueryPurposeProfileSample          = "profile_sample"
+	QueryPurposeDryRunProbe            = "dry_run_probe"
 )
 
 type queryMetrics struct {

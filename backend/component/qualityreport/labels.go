@@ -103,6 +103,7 @@ type labels struct {
 	LabelErrorCode     string
 	LabelErrorMessage  string
 	LabelCheckTime     string
+	SampleMasked       string
 	LabelYes           string
 	LabelNo            string
 	LabelNullValue     string
@@ -250,6 +251,7 @@ var englishLabels = labels{
 	LabelErrorCode:     "Error code",
 	LabelErrorMessage:  "Error message",
 	LabelCheckTime:     "Finished at",
+	SampleMasked:       "(masked)",
 	LabelYes:           "yes",
 	LabelNo:            "no",
 	LabelNullValue:     "NULL",
@@ -377,6 +379,7 @@ var chineseLabels = labels{
 	LabelErrorCode:     "错误码",
 	LabelErrorMessage:  "错误信息",
 	LabelCheckTime:     "完成时间",
+	SampleMasked:       "（已脱敏）",
 	LabelYes:           "是",
 	LabelNo:            "否",
 	LabelNullValue:     "空",
@@ -496,6 +499,7 @@ var ruleTypeLabels = map[string]map[string]string{
 		"GROUP_CHECK":           "Group check",
 		"AGGREGATE":             "Aggregate",
 		"CROSS_TABLE":           "Cross table",
+		"STANDARD_CODE":         "Standard code",
 	},
 	LanguageChinese: {
 		"ROW_COUNT":             "行数",
@@ -516,6 +520,7 @@ var ruleTypeLabels = map[string]map[string]string{
 		"GROUP_CHECK":           "分组检查",
 		"AGGREGATE":             "聚合检查",
 		"CROSS_TABLE":           "跨表核对",
+		"STANDARD_CODE":         "标准编码",
 	},
 }
 

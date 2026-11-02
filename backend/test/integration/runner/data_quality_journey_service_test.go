@@ -37,8 +37,9 @@ import (
 // per-test MySQL database after the shared fixture reset, so it cannot collide
 // with another scenario. The defect counts are exact: two NULL emails, one
 // duplicated external_ref, one negative amount, one unaccepted status, one short
-// product_code, one orphan customer_id, one shipped_quantity above quantity, and
-// one heartbeat table whose rows are all stale.
+// product_code, one invalid unified social credit code, one orphan customer_id,
+// one shipped_quantity above quantity, and one heartbeat table whose rows are all
+// stale.
 const journeySeedDDL = `
 CREATE TABLE dq_reference_customers (
   id INT PRIMARY KEY,
@@ -49,6 +50,7 @@ INSERT INTO dq_reference_customers (id, name) VALUES (1, 'a'), (2, 'b'), (3, 'c'
 CREATE TABLE dq_orders (
   id INT PRIMARY KEY,
   customer_email VARCHAR(128) NULL,
+  credit_code VARCHAR(18) NOT NULL,
   external_ref VARCHAR(32) NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
   status VARCHAR(16) NOT NULL,
@@ -59,18 +61,18 @@ CREATE TABLE dq_orders (
   updated_at DATETIME NOT NULL
 );
 INSERT INTO dq_orders
-  (id, customer_email, external_ref, amount, status, product_code, customer_id, quantity, shipped_quantity, updated_at)
+  (id, customer_email, credit_code, external_ref, amount, status, product_code, customer_id, quantity, shipped_quantity, updated_at)
 VALUES
-  (1,  'alice@example.com', 'R-1',  10.00, 'paid',      'ABC',      1,   1,  1, NOW()),
-  (2,  NULL,                'R-2',  20.00, 'pending',   'ABCD',     2,   2,  2, NOW()),
-  (3,  NULL,                'R-3',  30.00, 'shipped',   'ABCDE',    1,   3,  3, NOW()),
-  (4,  'bob@example.com',   'R-4',  -5.00, 'paid',      'AB',       2,   4,  4, NOW()),
-  (5,  'carol@example.com', 'R-5',  50.00, 'cancelled', 'ABCDEF',   3,   5,  5, NOW()),
-  (6,  'dave@example.com',  'R-4',  60.00, 'paid',      'ABCDEFG',  1,   6,  7, NOW()),
-  (7,  'erin@example.com',  'R-7',  70.00, 'paid',      'ABCDEFGH', 999, 7,  7, NOW()),
-  (8,  'frank@example.com', 'R-8',  80.00, 'pending',   'ABC',      2,   8,  8, NOW()),
-  (9,  'grace@example.com', 'R-9',  90.00, 'shipped',   'ABC',      3,   9,  9, NOW()),
-  (10, 'heidi@example.com', 'R-10', 100.00,'paid',      'ABC',      1,   10, 10, NOW());
+  (1,  'alice@example.com', '91350100M000100Y43', 'R-1',  10.00, 'paid',      'ABC',      1,   1,  1, NOW()),
+  (2,  NULL,                '91330100799655058B', 'R-2',  20.00, 'pending',   'ABCD',     2,   2,  2, NOW()),
+  (3,  NULL,                '91440300708461136T', 'R-3',  30.00, 'shipped',   'ABCDE',    1,   3,  3, NOW()),
+  (4,  'bob@example.com',   '91350100M000100Y43', 'R-4',  -5.00, 'paid',      'AB',       2,   4,  4, NOW()),
+  (5,  'carol@example.com', '91330100799655058B', 'R-5',  50.00, 'cancelled', 'ABCDEF',   3,   5,  5, NOW()),
+  (6,  'dave@example.com',  '91440300708461136T', 'R-4',  60.00, 'paid',      'ABCDEFG',  1,   6,  7, NOW()),
+  (7,  'erin@example.com',  '91350100M000100Y43', 'R-7',  70.00, 'paid',      'ABCDEFGH', 999, 7,  7, NOW()),
+  (8,  'frank@example.com', '91330100799655058B', 'R-8',  80.00, 'pending',   'ABC',      2,   8,  8, NOW()),
+  (9,  'grace@example.com', '91440300708461136T', 'R-9',  90.00, 'shipped',   'ABC',      3,   9,  9, NOW()),
+  (10, 'heidi@example.com', '91350100M000100Y44', 'R-10', 100.00,'paid',      'ABC',      1,   10, 10, NOW());
 
 CREATE TABLE dq_heartbeat (
   id INT PRIMARY KEY,
@@ -100,6 +102,7 @@ UPDATE dq_orders SET status = 'paid' WHERE id = 5;
 UPDATE dq_orders SET product_code = 'ABC' WHERE id = 4;
 UPDATE dq_orders SET customer_id = 1 WHERE id = 7;
 UPDATE dq_orders SET shipped_quantity = 6 WHERE id = 6;
+UPDATE dq_orders SET credit_code = '914403001922038216' WHERE id = 10;
 INSERT INTO dq_heartbeat (id, updated_at) VALUES (3, NOW());
 `
 
@@ -144,7 +147,7 @@ func TestDataQualityJourneyMySQLRealServerIntegration(t *testing.T) {
 	for _, rule := range rules {
 		ruleNames[rule.label] = fixture.createJourneyRule(t, rule).GetName()
 	}
-	require.Len(t, ruleNames, 19, "the suite covers every rule type plus the empty-data path")
+	require.Len(t, ruleNames, 20, "the suite covers every rule type plus the empty-data path")
 
 	// P2: one manual batch, one execution per rule, every verdict exactly as the
 	// seeded data dictates.
@@ -263,7 +266,7 @@ func journeyRuleNameList(names map[string]string) []string {
 		"row_count", "row_count_change", "null_percent", "unique", "unique_combination",
 		"accepted_values", "range", "regex", "string_length", "referential_integrity",
 		"cross_column", "freshness", "custom_sql", "cel_expression", "schema_drift",
-		"group_check", "aggregate", "cross_table", "empty_null_percent",
+		"group_check", "aggregate", "cross_table", "standard_code", "empty_null_percent",
 	}
 	ruleNames := make([]string, 0, len(labels))
 	for _, label := range labels {
@@ -291,7 +294,7 @@ func seedJourneySource(t *testing.T, fixture *qualityFixture) journeySource {
 	}
 }
 
-// createJourneyRules builds the rule suite. Ten rules pass, one warns, seven fail
+// createJourneyRules builds the rule suite. Ten rules pass, one warns, eight fail
 // (kept below the ten-failure storm threshold so per-rule notifications are
 // deterministic), and one has no verdict; the empty target is that unevaluated
 // rule, while every evaluated rule recovers after the repair.
@@ -307,6 +310,7 @@ func createJourneyRules(t *testing.T, source journeySource) []journeyRuleSpec {
 	groupMax := int64(7)
 	aggregateMin, aggregateMax := 0.0, 10000.0
 	crossTableTolerance := 10.0
+	standardCodeFail := 0.0
 
 	return []journeyRuleSpec{
 		{
@@ -517,6 +521,19 @@ func createJourneyRules(t *testing.T, source journeySource) []journeyRuleSpec {
 			afterRepair: v1pb.QualityStatus_QUALITY_STATUS_PASS,
 		},
 		{
+			label: "standard_code", ruleType: v1pb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+			dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_VALIDITY,
+			severity:   v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+			targetGUID: source.orders,
+			config: &v1pb.QualityRuleConfig{Config: &v1pb.QualityRuleConfig_StandardCode{StandardCode: &v1pb.StandardCodeConfig{
+				Column:        "credit_code",
+				Standard:      v1pb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE,
+				FailThreshold: &standardCodeFail,
+			}}},
+			firstRun:    v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+			afterRepair: v1pb.QualityStatus_QUALITY_STATUS_PASS,
+		},
+		{
 			label: "empty_null_percent", ruleType: v1pb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
 			dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
 			severity:   v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
@@ -609,6 +626,7 @@ func assertJourneyEvidence(t *testing.T, byRule map[string]*v1pb.QualityExecutio
 		"referential_integrity": {1, 10},
 		"cross_column":          {1, 10},
 		"group_check":           {0, 4},
+		"standard_code":         {1, 10},
 	} {
 		execution := byRule[names[label]]
 		require.NotNilf(t, execution, "%s planned no execution", label)
@@ -664,6 +682,15 @@ func assertJourneySamples(t *testing.T, byRule map[string]*v1pb.QualityExecution
 	observed, err := strconv.ParseFloat(amount.GetValue(), 64)
 	require.NoErrorf(t, err, "parse the sampled amount %q", amount.GetValue())
 	require.Equal(t, -5.0, observed)
+
+	standardCode := byRule[names["standard_code"]]
+	require.Len(t, standardCode.GetSamples(), 1, "the one invalid code is the evidence")
+	code := journeySampleColumn(standardCode.GetSamples()[0], "credit_code")
+	require.NotNil(t, code)
+	require.Equal(t, "91350100M000100Y44", code.GetValue())
+	key := journeySampleColumn(standardCode.GetSamples()[0], "id")
+	require.NotNil(t, key, "the primary key identifies the sampled row")
+	require.Equal(t, "10", key.GetValue())
 }
 
 // journeySampleColumn returns one column of a failed-row sample, or nil.
@@ -706,7 +733,7 @@ func waitForJourneyIssues(t *testing.T, fixture *qualityFixture, rules []journey
 		require.Equal(t, int32(1), issue.GetOccurrenceCount())
 		issues[ruleName] = issue
 	}
-	require.Len(t, issues, 7)
+	require.Len(t, issues, 8)
 	return issues
 }
 
@@ -962,13 +989,14 @@ func assertJourneyTargetHealth(t *testing.T, fixture *qualityFixture, targetGUID
 	require.NotNil(t, summary.RecentPassRate, "the first batch judged every enabled rule")
 	require.InDelta(t, wantPassRate, summary.GetRecentPassRate(), 1e-9)
 	require.Equal(t, wantScored, summary.GetRecentExecutionCount(), "the first batch completed one execution per rule")
-	// Column coverage is one registry read: dq_orders has ten columns and six of
-	// them are named by an enabled check (customer_email, external_ref, status,
-	// amount, product_code, customer_id). Unique_combination, cross_column,
-	// group_check, cel and the table-level checks name no single checked column, so
-	// they cover none; the covered count can never exceed the denominator.
-	require.Equal(t, int32(10), summary.GetTotalColumnCount())
-	require.Equal(t, int32(6), summary.GetCoveredColumnCount())
+	// Column coverage is one registry read: dq_orders has eleven columns and seven
+	// of them are named by an enabled check (customer_email, credit_code,
+	// external_ref, status, amount, product_code, customer_id).
+	// Unique_combination, cross_column, group_check, cel and the table-level checks
+	// name no single checked column, so they cover none; the covered count can
+	// never exceed the denominator.
+	require.Equal(t, int32(11), summary.GetTotalColumnCount())
+	require.Equal(t, int32(7), summary.GetCoveredColumnCount())
 	require.LessOrEqual(t, summary.GetCoveredColumnCount(), summary.GetTotalColumnCount())
 
 	target, err := fixture.dataQuality.GetQualityTarget(fixture.ctx, withToken(fixture.env.AdminToken(), &v1pb.GetQualityTargetRequest{
@@ -1014,8 +1042,8 @@ func assertJourneyTargetSelection(t *testing.T, fixture *qualityFixture, source 
 	require.Equal(t, source.heartbeat, selected.Msg.GetQualityTargets()[1].GetTarget().GetMetaGuid())
 
 	orders := selected.Msg.GetQualityTargets()[0]
-	require.Equal(t, int32(10), orders.GetTotalColumnCount())
-	require.Equal(t, int32(6), orders.GetCoveredColumnCount())
+	require.Equal(t, int32(11), orders.GetTotalColumnCount())
+	require.Equal(t, int32(7), orders.GetCoveredColumnCount())
 	// dq_heartbeat has two columns and one freshness check on updated_at.
 	heartbeat := selected.Msg.GetQualityTargets()[1]
 	require.Equal(t, int32(2), heartbeat.GetTotalColumnCount())

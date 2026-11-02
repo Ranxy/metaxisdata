@@ -27,6 +27,41 @@
             ref="catalogue"
             class="w-64 shrink-0 space-y-4 overflow-auto border-r px-3 py-4"
           >
+            <!-- Built-in templates start a check from a ready-made config. They
+                 edit the form only; saving stays the reader's decision. -->
+            <div
+              v-if="templateGroups.length > 0"
+              class="space-y-2 border-b pb-4"
+            >
+              <p class="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {{ t("dataQuality.composer.templates") }}
+              </p>
+              <div
+                v-for="group in templateGroups"
+                :key="group.id"
+                class="space-y-1"
+              >
+                <p class="px-2 text-xs font-medium text-muted-foreground">
+                  {{ t(group.labelKey) }}
+                </p>
+                <button
+                  v-for="template in group.templates"
+                  :key="template.id"
+                  type="button"
+                  :data-template="template.id"
+                  class="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                  @click="applyTemplate(template)"
+                >
+                  <span class="block text-sm font-medium">
+                    {{ t(template.titleKey) }}
+                  </span>
+                  <span class="mt-0.5 block text-xs text-muted-foreground">
+                    {{ t(template.descriptionKey) }}
+                  </span>
+                </button>
+              </div>
+            </div>
+
             <p class="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {{ t("dataQuality.composer.chooseType") }}
             </p>
@@ -449,6 +484,11 @@ import {
 } from "@/utils/dataQualityForm";
 import { parseRuleError } from "@/utils/dataQualitySchema";
 import { suggestionToEditorPrefill } from "@/utils/dataQualitySuggestion";
+import {
+  RULE_TEMPLATE_GROUPS,
+  type RuleTemplate,
+  templateForm,
+} from "@/utils/dataQualityTemplate";
 
 /**
  * The one authoring surface for a quality check: a dialog fixed to the target the
@@ -482,6 +522,7 @@ const SINGLE_COLUMN_FIELD: Partial<
   [QualityRuleType.REFERENTIAL_INTEGRITY]: "childColumn",
   [QualityRuleType.AGGREGATE]: "aggregateColumn",
   [QualityRuleType.CROSS_COLUMN]: "leftColumn",
+  [QualityRuleType.STANDARD_CODE]: "column",
 };
 
 /** The types a reader reaches for first, in the order the left pane lists them. */
@@ -507,6 +548,7 @@ const COLUMN_TYPES = [
   QualityRuleType.REGEX,
   QualityRuleType.STRING_LENGTH,
   QualityRuleType.REFERENTIAL_INTEGRITY,
+  QualityRuleType.STANDARD_CODE,
 ];
 
 /** The remaining types: relations, grouping, aggregates and expressions. */
@@ -645,6 +687,24 @@ const checkGroups = computed(() => {
   })).filter((group) => group.types.length > 0);
 });
 
+/**
+ * The built-in templates the current target can use. A template is a starting
+ * point for a new check, so an edit and a prefilled draft keep their own form.
+ */
+const templateGroups = computed(() => {
+  if (isEdit.value || props.suggestion) {
+    return [];
+  }
+  const allowed = allowedRuleTypes(props.metaType);
+  return RULE_TEMPLATE_GROUPS.map((group) => ({
+    id: group.id,
+    labelKey: group.labelKey,
+    templates: group.templates.filter((template) =>
+      allowed.includes(template.ruleType)
+    ),
+  })).filter((group) => group.templates.length > 0);
+});
+
 /** The catalogue section headings; one literal key per group, translated. */
 const groupLabels = computed<Record<CheckGroupId, string>>(() => ({
   common: t("dataQuality.composer.commonGroup"),
@@ -728,9 +788,8 @@ function cloneForm(source: RuleFormState): RuleFormState {
   };
 }
 
-/** The form a new rule starts from: the contract's defaults, else the built-ins. */
-function initialForm(): RuleFormState {
-  const form = emptyRuleForm(initialRuleType());
+/** Applies the contract's defaults that every new form starts from. */
+function applyContractDefaults(form: RuleFormState) {
   if (props.defaultSeverity !== QualitySeverity.UNSPECIFIED) {
     form.severity = props.defaultSeverity;
   }
@@ -738,6 +797,12 @@ function initialForm(): RuleFormState {
   if (onEmpty !== undefined) {
     form.onEmpty = onEmpty;
   }
+}
+
+/** The form a new rule starts from: the contract's defaults, else the built-ins. */
+function initialForm(): RuleFormState {
+  const form = emptyRuleForm(initialRuleType());
+  applyContractDefaults(form);
   return form;
 }
 
@@ -777,7 +842,7 @@ function hasDetails(form: RuleFormState): boolean {
  * blank new one carrying the contract's defaults and the workspace's scope.
  * Closing resets too, so a reopened dialog never shows stale values or errors.
  */
-function reset() {
+function reset(template?: RuleTemplate) {
   const rule = props.rule;
   const prefill = suggestionPrefill.value;
   prefillColumn.value = "";
@@ -789,6 +854,13 @@ function reset() {
     originalTarget = targetSelectionFromRule(rule);
   } else if (prefill) {
     form.value = cloneForm(prefill.form);
+  } else if (template) {
+    form.value = cloneForm(templateForm(template));
+    applyContractDefaults(form.value);
+    form.value.title = t(template.titleKey);
+    form.value.description = t(template.descriptionKey);
+    prefillColumn.value = props.initialColumn.trim();
+    applyColumn(form.value.ruleType, prefillColumn.value);
   } else {
     prefillColumn.value = props.initialColumn.trim();
     form.value = initialForm();
@@ -799,6 +871,11 @@ function reset() {
   issues.value = [];
   saveError.value = "";
   saving.value = false;
+}
+
+/** Fill the new-check form from a built-in template; saving is still manual. */
+function applyTemplate(template: RuleTemplate) {
+  reset(template);
 }
 
 function changeRuleType(ruleType: QualityRuleType) {
