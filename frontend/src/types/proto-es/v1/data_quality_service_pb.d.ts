@@ -357,6 +357,14 @@ export declare type QualityRuleConfig = Message<"metaxisdata.v1.QualityRuleConfi
      */
     value: CrossTableConfig;
     case: "crossTable";
+  } | {
+    /**
+     * v1.2: national and industry standard codes.
+     *
+     * @generated from field: metaxisdata.v1.StandardCodeConfig standard_code = 19;
+     */
+    value: StandardCodeConfig;
+    case: "standardCode";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -998,6 +1006,58 @@ export declare type CelExpressionConfig = Message<"metaxisdata.v1.CelExpressionC
  * Use `create(CelExpressionConfigSchema)` to create a new message.
  */
 export declare const CelExpressionConfigSchema: GenMessage<CelExpressionConfig>;
+
+/**
+ * StandardCodeConfig validates one column against a national or industry
+ * standard code. The standard fixes the value shape, the check digit where one
+ * exists, and whether the value must exist in the standard's built-in code
+ * table. The rule reads a bounded sample of the column and validates every row
+ * in process, so its verdict is a sample verdict like cel_expression's.
+ *
+ * @generated from message metaxisdata.v1.StandardCodeConfig
+ */
+export declare type StandardCodeConfig = Message<"metaxisdata.v1.StandardCodeConfig"> & {
+  /**
+   * @generated from field: string column = 1;
+   */
+  column: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityStandardCode standard = 2;
+   */
+  standard: QualityStandardCode;
+
+  /**
+   * When false (the default), a NULL value is a violation.
+   *
+   * @generated from field: bool allow_null = 3;
+   */
+  allowNull: boolean;
+
+  /**
+   * How many rows of the filtered relation one execution reads. 0 means the
+   * default (10000); the accepted range is 1-100000.
+   *
+   * @generated from field: int32 sample_rows = 4;
+   */
+  sampleRows: number;
+
+  /**
+   * @generated from field: optional double fail_threshold = 5;
+   */
+  failThreshold?: number;
+
+  /**
+   * @generated from field: optional double warn_threshold = 6;
+   */
+  warnThreshold?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.StandardCodeConfig.
+ * Use `create(StandardCodeConfigSchema)` to create a new message.
+ */
+export declare const StandardCodeConfigSchema: GenMessage<StandardCodeConfig>;
 
 /**
  * SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
@@ -2630,6 +2690,16 @@ export declare type ColumnValue = Message<"metaxisdata.v1.ColumnValue"> & {
    * @generated from field: optional bool is_null = 3;
    */
   isNull?: boolean;
+
+  /**
+   * Whether the server redacted the value before returning it. A masked value is a
+   * display form only: for a resident ID card number the division prefix and the
+   * last four characters stay visible while the birth date and sequence digits are
+   * replaced. The raw value is never returned.
+   *
+   * @generated from field: optional bool masked = 4;
+   */
+  masked?: boolean;
 };
 
 /**
@@ -7356,12 +7426,77 @@ export enum QualityRuleType {
    * @generated from enum value: QUALITY_RULE_TYPE_CROSS_TABLE = 18;
    */
   CROSS_TABLE = 18,
+
+  /**
+   * v1.2: validates a column against a national or industry standard code. The
+   * rule reads a bounded sample of the column and checks the values in process.
+   *
+   * @generated from enum value: QUALITY_RULE_TYPE_STANDARD_CODE = 19;
+   */
+  STANDARD_CODE = 19,
 }
 
 /**
  * Describes the enum metaxisdata.v1.QualityRuleType.
  */
 export declare const QualityRuleTypeSchema: GenEnum<QualityRuleType>;
+
+/**
+ * QualityStandardCode is the standard a standard-code rule validates against.
+ * Each value fixes the value shape, the check digit (where the standard defines
+ * one) and whether membership in a built-in code table applies.
+ *
+ * @generated from enum metaxisdata.v1.QualityStandardCode
+ */
+export enum QualityStandardCode {
+  /**
+   * @generated from enum value: QUALITY_STANDARD_CODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * GB 32100-2015: 18 characters, MOD 31 check digit.
+   *
+   * @generated from enum value: QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE = 1;
+   */
+  UNIFIED_SOCIAL_CREDIT_CODE = 1,
+
+  /**
+   * GB/T 11714-1997: 8 characters plus a MOD 11 check digit; one hyphen before
+   * the check digit is accepted.
+   *
+   * @generated from enum value: QUALITY_STANDARD_CODE_ORGANIZATION_CODE = 2;
+   */
+  ORGANIZATION_CODE = 2,
+
+  /**
+   * GB 11643-1999: 18 digits, MOD 11 check digit, a real birth date and a valid
+   * administrative-division prefix.
+   *
+   * @generated from enum value: QUALITY_STANDARD_CODE_RESIDENT_ID_CARD = 3;
+   */
+  RESIDENT_ID_CARD = 3,
+
+  /**
+   * GB/T 2260: a 6-digit code that exists in the built-in division table.
+   *
+   * @generated from enum value: QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION = 4;
+   */
+  ADMINISTRATIVE_DIVISION = 4,
+
+  /**
+   * GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the
+   * built-in classification table.
+   *
+   * @generated from enum value: QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION = 5;
+   */
+  INDUSTRY_CLASSIFICATION = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityStandardCode.
+ */
+export declare const QualityStandardCodeSchema: GenEnum<QualityStandardCode>;
 
 /**
  * QualityDimension is the data quality dimension a rule measures. It is display
@@ -7813,6 +7948,31 @@ export enum QualitySemanticType {
    * @generated from enum value: QUALITY_SEMANTIC_TYPE_UNKNOWN = 17;
    */
   UNKNOWN = 17,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE = 18;
+   */
+  UNIFIED_SOCIAL_CREDIT_CODE = 18,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE = 19;
+   */
+  ORGANIZATION_CODE = 19,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD = 20;
+   */
+  RESIDENT_ID_CARD = 20,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION = 21;
+   */
+  ADMINISTRATIVE_DIVISION = 21,
+
+  /**
+   * @generated from enum value: QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION = 22;
+   */
+  INDUSTRY_CLASSIFICATION = 22,
 }
 
 /**

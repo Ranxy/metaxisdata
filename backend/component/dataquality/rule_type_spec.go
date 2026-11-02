@@ -606,6 +606,39 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Judge:     evaluateCrossTable,
 		Observe:   observeCrossTable,
 	},
+	{
+		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		Trend: trendPercentCapableShape,
+		Title: "standard code",
+		Arm:   armStandardCode,
+		CheckedColumn: func(config *storepb.QualityRuleConfig) string {
+			return strings.TrimSpace(config.GetStandardCode().GetColumn())
+		},
+		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
+			return singleColumn(config.GetStandardCode().GetColumn())
+		},
+		Discriminators: func(config *storepb.QualityRuleConfig) []string {
+			standard := config.GetStandardCode()
+			if standard == nil {
+				return nil
+			}
+			// The standard decides what the rule validates; allow_null is a
+			// behavior variant, not a different rule.
+			return []string{"standard=" + standard.GetStandard().String()}
+		},
+		Percent: true,
+		Thresholds: func(config *storepb.QualityRuleConfig) (fail, warn *float64) {
+			standard := config.GetStandardCode()
+			if standard == nil {
+				return nil, nil
+			}
+			return standard.FailThreshold, standard.WarnThreshold
+		},
+		CountsTotal: true,
+		Compiler:    compileStandardCode,
+		Validator:   validateStandardCodeConfig,
+		LabelDraft:  labelDraftStandardCode,
+	},
 }
 
 func armRowCount(config *storepb.QualityRuleConfig) bool {
@@ -695,5 +728,10 @@ func armAggregate(config *storepb.QualityRuleConfig) bool {
 
 func armCrossTable(config *storepb.QualityRuleConfig) bool {
 	_, ok := config.GetConfig().(*storepb.QualityRuleConfig_CrossTable)
+	return ok
+}
+
+func armStandardCode(config *storepb.QualityRuleConfig) bool {
+	_, ok := config.GetConfig().(*storepb.QualityRuleConfig_StandardCode)
 	return ok
 }

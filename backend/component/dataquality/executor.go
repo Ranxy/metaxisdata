@@ -96,7 +96,22 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION {
 		// A CEL rule reads a bounded sample of rows and evaluates the predicate in
 		// this process; the query is not an aggregate and its rows are the input.
-		return executeCELRule(ctx, queryer, resolution, rule, opts, compiled, e.Metrics)
+		execution, err := executeCELRule(ctx, queryer, resolution, rule, opts, compiled, e.Metrics)
+		if err != nil {
+			return nil, err
+		}
+		redactExecutionSamples(execution, rule, opts)
+		return execution, nil
+	}
+	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE {
+		// A standard-code rule likewise reads a bounded sample and validates every
+		// value against the standard in this process.
+		execution, err := executeStandardCodeRule(ctx, queryer, resolution, rule, opts, compiled, e.Metrics)
+		if err != nil {
+			return nil, err
+		}
+		redactExecutionSamples(execution, rule, opts)
+		return execution, nil
 	}
 	if compiled.Kind != QueryAggregate {
 		return nil, badData("the compiler returned query kind %d for a rule that is observed by an aggregate", compiled.Kind)
@@ -140,7 +155,45 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 			execution.Observation.SampleRows = execution.Observation.TotalRows
 		}
 	}
+	redactExecutionSamples(execution, rule, opts)
 	return execution, nil
+}
+
+// redactExecutionSamples replaces personal-data cells of an execution's failed-row
+// sample with their masked display forms. The columns come from the caller's
+// accepted semantic labels; a resident-ID standard-code rule also masks the column
+// it checks, so the verdict's evidence is redacted even when the column carries no
+// label.
+func redactExecutionSamples(execution *Execution, rule RuleSnapshot, opts ExecOptions) {
+	if execution == nil || execution.Samples == nil {
+		return
+	}
+	redactPersonalSamples(execution.Samples, personalSampleColumns(rule, opts))
+}
+
+// personalSampleColumns is the set of columns whose sampled values must be
+// redacted: the caller-named personal columns plus a resident-ID standard-code
+// rule's checked column.
+func personalSampleColumns(rule RuleSnapshot, opts ExecOptions) map[string]struct{} {
+	var columns map[string]struct{}
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if columns == nil {
+			columns = make(map[string]struct{}, len(opts.MaskColumns)+1)
+		}
+		columns[name] = struct{}{}
+	}
+	for _, name := range opts.MaskColumns {
+		add(name)
+	}
+	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE &&
+		rule.Config.GetStandardCode().GetStandard() == storepb.QualityStandardCode_QUALITY_STANDARD_CODE_RESIDENT_ID_CARD {
+		add(rule.Config.GetStandardCode().GetColumn())
+	}
+	return columns
 }
 
 // addSamples fetches the failed rows and attaches them to the execution. A rule
@@ -206,10 +259,6 @@ func sampleQueryOptions(opts ExecOptions, limit int, m *metrics.Metrics) db.Quer
 // rows. The sample query returns only the columns the expression reads, the
 // predicate runs in this process, and the observation is the count of rows that
 // did not satisfy it.
-//
-// The sample is all the rule ever sees, so the result records whether it was the
-// whole filtered table (fewer rows than the cap) or a sample (the cap was filled),
-// and how many rows were read.
 func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions, compiled CompiledQuery, m *metrics.Metrics) (*Execution, error) {
 	config := rule.Config.GetCelExpression()
 	if config == nil {
@@ -227,8 +276,64 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 	if err != nil {
 		return nil, err
 	}
+	return executeSampleEvaluatedRule(ctx, queryer, compiled, opts, m, sampleRows, metrics.QueryPurposeRuleCELSample,
+		func(rows [][]any, failingLimit int) (int64, int64, [][]any, error) {
+			return evaluateCELRows(program, columns, rows, failingLimit)
+		})
+}
+
+// executeStandardCodeRule runs one standard-code validation over a bounded
+// sample of the target's column. The values are checked in this process against
+// the standard's check-digit algorithm and code table, so the observation is the
+// count of sampled values that do not satisfy the standard.
+func executeStandardCodeRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution *Resolution, rule RuleSnapshot, opts ExecOptions, compiled CompiledQuery, m *metrics.Metrics) (*Execution, error) {
+	config := rule.Config.GetStandardCode()
+	if config == nil {
+		return nil, invalidConfig("the standard-code config is missing")
+	}
+	column, err := requireTextColumn(resolution.Target, config.GetColumn())
+	if err != nil {
+		return nil, err
+	}
+	sampleRows, err := standardCodeSampleRows(config.GetSampleRows())
+	if err != nil {
+		return nil, err
+	}
+	standard := config.GetStandard()
+	switch standard {
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED:
+		return nil, invalidConfig("a standard-code rule needs a standard")
+	default:
+		if !knownStandard(standard) {
+			return nil, invalidConfig("standard %s is not supported by this build", standard)
+		}
+	}
+	valueIndex, err := standardCodeValueIndex(compiled.Columns, column.Name)
+	if err != nil {
+		return nil, err
+	}
+	allowNull := config.GetAllowNull()
+	return executeSampleEvaluatedRule(ctx, queryer, compiled, opts, m, sampleRows, metrics.QueryPurposeRuleStandardCodeSample,
+		func(rows [][]any, failingLimit int) (int64, int64, [][]any, error) {
+			return evaluateStandardCodeRows(standard, allowNull, valueIndex, rows, failingLimit)
+		})
+}
+
+// sampleEvaluator validates one sample of rows. It returns how many rows it
+// evaluated, how many of them violated the rule, and, up to the limit, the
+// offending rows themselves.
+type sampleEvaluator func(rows [][]any, failingLimit int) (violations, evaluated int64, failing [][]any, err error)
+
+// executeSampleEvaluatedRule runs a rule whose compiled statement returns bounded
+// rows that are validated in this process (a CEL expression or a standard code),
+// and turns the verdicts into an Execution.
+//
+// The sample is all the rule ever sees, so the result records whether it was the
+// whole filtered table (fewer rows than the cap) or a sample (the cap was filled),
+// and how many rows were read.
+func executeSampleEvaluatedRule(ctx context.Context, queryer db.ReadOnlyQueryer, compiled CompiledQuery, opts ExecOptions, m *metrics.Metrics, sampleRows int, purpose string, evaluate sampleEvaluator) (*Execution, error) {
 	if compiled.Kind != QuerySample {
-		return nil, badData("the compiler returned query kind %d for a CEL rule, expect a sample query", compiled.Kind)
+		return nil, badData("the compiler returned query kind %d for a rule evaluated over a sample", compiled.Kind)
 	}
 
 	// MaxRows is the cap itself, not a page size: only by asking for exactly
@@ -237,7 +342,7 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 		MaxRows:  sampleRows,
 		MaxBytes: opts.MaxBytes,
 		Timeout:  opts.QueryTimeout,
-		Purpose:  metrics.QueryPurposeRuleCELSample,
+		Purpose:  purpose,
 		Metrics:  m,
 	})
 	if err != nil {
@@ -251,13 +356,15 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 	if opts.StoreSamples {
 		sampleLimit = normalizeSampleLimit(opts.SampleLimit)
 	}
-	violations, evaluated, failingRows, err := evaluateCELRows(program, columns, result.Rows, sampleLimit)
+	violations, evaluated, failingRows, err := evaluate(result.Rows, sampleLimit)
 	if err != nil {
 		return nil, err
 	}
 
 	rowsRead := int64(len(result.Rows))
-	sampled := rowsRead == int64(sampleRows)
+	// A byte-truncated result also means the rule did not see every filtered row:
+	// calling that a full scan would overstate a partial sample as exact.
+	sampled := result.Truncated || rowsRead == int64(sampleRows)
 	observation := Observation{
 		Observed:     float64(violations),
 		ObservedKind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
@@ -274,8 +381,8 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 		Truncated:   result.Truncated,
 	}
 	if sampleLimit > 0 && len(failingRows) > 0 {
-		// The failed-row sample is the rows the predicate rejected, already in
-		// memory: no second statement is needed for a CEL rule.
+		// The failed-row sample is the rows the evaluator rejected, already in
+		// memory: no second statement is needed.
 		execution.Samples = SamplesFromRows(compiled.Columns, failingRows, sampleLimit)
 	}
 	return execution, nil

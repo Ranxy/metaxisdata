@@ -97,6 +97,8 @@ func samplingUnsupported(ruleType storepb.QualityRuleType) error {
 		return invalidConfig("schema drift cannot be sampled: it reads the metadata registry, not rows")
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION:
 		return invalidConfig("a CEL expression has its own sample_rows setting; the check's sampling does not apply to it")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:
+		return invalidConfig("a standard-code check has its own sample_rows setting; the check's sampling does not apply to it")
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return invalidConfig("a rule type is required")
 	default:

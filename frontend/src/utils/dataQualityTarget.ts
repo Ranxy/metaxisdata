@@ -77,6 +77,7 @@ function configColumn(config: QualityRuleConfig | undefined): string {
     case "range":
     case "regex":
     case "stringLength":
+    case "standardCode":
     case "aggregate":
       return String(value.column ?? "").trim();
     case "freshness":

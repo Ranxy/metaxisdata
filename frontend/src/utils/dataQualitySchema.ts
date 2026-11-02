@@ -342,6 +342,19 @@ export const RULE_SCHEMAS: Record<number, RuleFieldSchema> = {
       },
     ],
   },
+  // The standard itself is an enum-valued field; like the aggregate function it
+  // is not part of this catalog (its value is checked by `validateRuleForm`).
+  [QualityRuleType.STANDARD_CODE]: {
+    ruleType: QualityRuleType.STANDARD_CODE,
+    fields: [
+      {
+        field: "column",
+        labelKey: "dataQuality.editor.column",
+        kind: "columns",
+        required: true,
+      },
+    ],
+  },
   [QualityRuleType.SCHEMA_DRIFT]: {
     ruleType: QualityRuleType.SCHEMA_DRIFT,
     fields: [

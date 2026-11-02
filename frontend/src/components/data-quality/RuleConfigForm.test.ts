@@ -76,6 +76,21 @@ describe("RuleConfigForm", () => {
     wrapper.unmount();
   });
 
+  it("renders the standard-code config under the shared threshold block", () => {
+    const wrapper = mountForm(QualityRuleType.STANDARD_CODE, {
+      column: "credit_code",
+    });
+    expect(wrapper.find("#dq-field-standard").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-sampleRows").exists()).toBe(true);
+    expect(wrapper.text()).toContain(label("dataQuality.editor.codeStandard"));
+    expect(wrapper.text()).toContain(label("dataQuality.editor.sampleRows"));
+    // The shared block owns fail/warn for a threshold-metric check.
+    expect(wrapper.find("#dq-field-failThreshold").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-warnThreshold").exists()).toBe(true);
+    expect(wrapper.text()).toContain(THRESHOLD_LABEL());
+    wrapper.unmount();
+  });
+
   it("renders the cross-table failure and warning thresholds", () => {
     const wrapper = mountForm(QualityRuleType.CROSS_TABLE, {
       rightTable: "public.orders_ref",

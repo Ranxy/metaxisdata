@@ -17,6 +17,7 @@ import {
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualityStandardCode,
   QualityStatus,
   type QualityTarget,
   QualityThresholdMetric,
@@ -214,6 +215,8 @@ export function qualityRuleTypeKey(ruleType: QualityRuleType): string {
       return "dataQuality.ruleType.customSql";
     case QualityRuleType.CEL_EXPRESSION:
       return "dataQuality.ruleType.celExpression";
+    case QualityRuleType.STANDARD_CODE:
+      return "dataQuality.ruleType.standardCode";
     case QualityRuleType.SCHEMA_DRIFT:
       return "dataQuality.ruleType.schemaDrift";
     case QualityRuleType.GROUP_CHECK:
@@ -224,6 +227,24 @@ export function qualityRuleTypeKey(ruleType: QualityRuleType): string {
       return "dataQuality.ruleType.crossTable";
     default:
       return "dataQuality.ruleType.unspecified";
+  }
+}
+
+/** The label key for the standard a standard-code check validates against. */
+export function qualityStandardCodeKey(standard: QualityStandardCode): string {
+  switch (standard) {
+    case QualityStandardCode.UNIFIED_SOCIAL_CREDIT_CODE:
+      return "dataQuality.codeStandard.unifiedSocialCreditCode";
+    case QualityStandardCode.ORGANIZATION_CODE:
+      return "dataQuality.codeStandard.organizationCode";
+    case QualityStandardCode.RESIDENT_ID_CARD:
+      return "dataQuality.codeStandard.residentIdCard";
+    case QualityStandardCode.ADMINISTRATIVE_DIVISION:
+      return "dataQuality.codeStandard.administrativeDivision";
+    case QualityStandardCode.INDUSTRY_CLASSIFICATION:
+      return "dataQuality.codeStandard.industryClassification";
+    default:
+      return "dataQuality.codeStandard.unspecified";
   }
 }
 

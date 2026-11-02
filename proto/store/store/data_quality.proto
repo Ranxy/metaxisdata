@@ -43,6 +43,29 @@ enum QualityRuleType {
   // v1.1: reconciles one aggregate of this table with one of another table in
   // the same instance and database.
   QUALITY_RULE_TYPE_CROSS_TABLE = 18;
+  // v1.2: validates a column against a national or industry standard code. The
+  // rule reads a bounded sample of the column and checks the values in process.
+  QUALITY_RULE_TYPE_STANDARD_CODE = 19;
+}
+
+// QualityStandardCode is the standard a standard-code rule validates against.
+// Each value fixes the value shape, the check digit (where the standard defines
+// one) and whether membership in a built-in code table applies.
+enum QualityStandardCode {
+  QUALITY_STANDARD_CODE_UNSPECIFIED = 0;
+  // GB 32100-2015: 18 characters, MOD 31 check digit.
+  QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE = 1;
+  // GB/T 11714-1997: 8 characters plus a MOD 11 check digit; one hyphen before
+  // the check digit is accepted.
+  QUALITY_STANDARD_CODE_ORGANIZATION_CODE = 2;
+  // GB 11643-1999: 18 digits, MOD 11 check digit, a real birth date and a valid
+  // administrative-division prefix.
+  QUALITY_STANDARD_CODE_RESIDENT_ID_CARD = 3;
+  // GB/T 2260: a 6-digit code that exists in the built-in division table.
+  QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION = 4;
+  // GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the
+  // built-in classification table.
+  QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION = 5;
 }
 
 // QualityDimension is the data quality dimension a rule measures. It is display
@@ -232,6 +255,11 @@ enum QualitySemanticType {
   QUALITY_SEMANTIC_TYPE_ENUM = 15;
   QUALITY_SEMANTIC_TYPE_FREE_TEXT = 16;
   QUALITY_SEMANTIC_TYPE_UNKNOWN = 17;
+  QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE = 18;
+  QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE = 19;
+  QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD = 20;
+  QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION = 21;
+  QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION = 22;
 }
 
 // QualitySuggestionKind is what a suggestion proposes.
@@ -360,6 +388,12 @@ message ColumnValue {
   // Whether the value was SQL NULL. A sample recorded before this field existed
   // has no marker, and its NULLs are indistinguishable from empty strings.
   optional bool is_null = 3;
+
+  // Whether the server redacted the value before storing it. A masked value is a
+  // display form only: for a resident ID card number the division prefix and the
+  // last four characters stay visible while the birth date and sequence digits are
+  // replaced. The raw value is never stored.
+  optional bool masked = 4;
 }
 
 // ColumnProfile is the deterministic statistics of one column. It is computed
@@ -531,12 +565,14 @@ message QualityRuleConfig {
     // v1.1 second batch: aggregates and cross-table reconciliation.
     AggregateConfig aggregate = 17;
     CrossTableConfig cross_table = 18;
+    // v1.2: national and industry standard codes.
+    StandardCodeConfig standard_code = 19;
   }
   // How a count-type rule's thresholds are measured: failed rows, or failed rows
   // divided by total rows. Ignored by types whose config already names the unit.
-  // Numbers 15-27 are reserved for future rule configs; the v1 message uses the
+  // Numbers 20-27 are reserved for future rule configs; the v1 message uses the
   // same numbers so the two definitions stay structurally identical.
-  reserved 19 to 27;
+  reserved 20 to 27;
   QualityThresholdMetric threshold_metric = 28;
   QualityFilter filter = 29;
   QualityEmptyBehavior on_empty = 30;
@@ -715,6 +751,23 @@ message CelExpressionConfig {
   int32 sample_rows = 3;
   optional double fail_threshold = 4;
   optional double warn_threshold = 5;
+}
+
+// StandardCodeConfig validates one column against a national or industry
+// standard code. The standard fixes the value shape, the check digit where one
+// exists, and whether the value must exist in the standard's built-in code
+// table. The rule reads a bounded sample of the column and validates every row
+// in process, so its verdict is a sample verdict like cel_expression's.
+message StandardCodeConfig {
+  string column = 1;
+  QualityStandardCode standard = 2;
+  // When false (the default), a NULL value is a violation.
+  bool allow_null = 3;
+  // How many rows of the filtered relation one execution reads. 0 means the
+  // default (10000); the accepted range is 1-100000.
+  int32 sample_rows = 4;
+  optional double fail_threshold = 5;
+  optional double warn_threshold = 6;
 }
 
 // SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.

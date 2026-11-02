@@ -160,6 +160,13 @@
       :column-details="columnDetails"
       :field-errors="fieldErrors"
     />
+    <StandardCodeConfig
+      v-else-if="ruleType === QualityRuleType.STANDARD_CODE"
+      v-model="config"
+      :rule-type="ruleType"
+      :column-details="columnDetails"
+      :field-errors="fieldErrors"
+    />
   </div>
 </template>
 
@@ -203,6 +210,7 @@ import {
 } from "./rule-configs/ruleConfigField";
 import ScalarConfig from "./rule-configs/ScalarConfig.vue";
 import SchemaDriftConfig from "./rule-configs/SchemaDriftConfig.vue";
+import StandardCodeConfig from "./rule-configs/StandardCodeConfig.vue";
 import UniquenessConfig from "./rule-configs/UniquenessConfig.vue";
 
 /**

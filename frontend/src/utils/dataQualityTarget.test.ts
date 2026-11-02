@@ -30,6 +30,7 @@ import {
   ReferentialIntegrityConfigSchema,
   RegexConfigSchema,
   RowCountConfigSchema,
+  StandardCodeConfigSchema,
   StringLengthConfigSchema,
   UniqueCombinationConfigSchema,
   UniqueConfigSchema,
@@ -277,6 +278,26 @@ describe("ruleColumn / isCrossColumnRule / ruleSectionKey", () => {
     });
     expect(isCrossColumnRule(cross)).toBe(true);
     expect(ruleSectionKey(cross)).toBe("multi");
+  });
+
+  it("files a standard-code rule under the column it validates", () => {
+    const standard = create(QualityRuleSchema, {
+      name: "workspaces/ws/qualityRules/standard",
+      title: "Credit code",
+      ruleType: QualityRuleType.STANDARD_CODE,
+      target: target("g1", "orders"),
+      config: create(QualityRuleConfigSchema, {
+        config: {
+          case: "standardCode",
+          value: create(StandardCodeConfigSchema, { column: "credit_code" }),
+        },
+      }),
+      severity: QualitySeverity.WARNING,
+      state: QualityRuleState.ENABLED,
+    });
+    expect(ruleColumn(standard)).toBe("credit_code");
+    expect(isCrossColumnRule(standard)).toBe(false);
+    expect(ruleSectionKey(standard)).toBe("column:credit_code");
   });
 
   it("does not read filter or snapshot columns as the checked column set", () => {

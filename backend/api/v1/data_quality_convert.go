@@ -305,6 +305,11 @@ func convertQualityFailureSamplesToV1(samples *storepb.QualityFailureSamples) []
 			if value.IsNull != nil {
 				cell.IsNull = proto.Bool(*value.IsNull)
 			}
+			// A redacted value says so; an older sample without the marker is not
+			// retroactively marked as masked.
+			if value.Masked != nil {
+				cell.Masked = proto.Bool(*value.Masked)
+			}
 			row.Columns = append(row.Columns, cell)
 		}
 		converted = append(converted, row)
@@ -724,6 +729,8 @@ func qualityRuleReferencedColumns(config *storepb.QualityRuleConfig) []string {
 		for _, column := range arm.CelExpression.GetColumns() {
 			columns = appendColumn(columns, column)
 		}
+	case *storepb.QualityRuleConfig_StandardCode:
+		columns = appendColumn(columns, arm.StandardCode.GetColumn())
 	default:
 	}
 	for _, clause := range config.GetFilter().GetClauses() {
@@ -940,6 +947,15 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			FailThreshold: copyPtr(arm.CrossTable.FailThreshold),
 			WarnThreshold: copyPtr(arm.CrossTable.WarnThreshold),
 		}}
+	case *storepb.QualityRuleConfig_StandardCode:
+		converted.Config = &v1pb.QualityRuleConfig_StandardCode{StandardCode: &v1pb.StandardCodeConfig{
+			Column:        arm.StandardCode.GetColumn(),
+			Standard:      v1pb.QualityStandardCode(arm.StandardCode.GetStandard()),
+			AllowNull:     arm.StandardCode.GetAllowNull(),
+			SampleRows:    arm.StandardCode.GetSampleRows(),
+			FailThreshold: copyPtr(arm.StandardCode.FailThreshold),
+			WarnThreshold: copyPtr(arm.StandardCode.WarnThreshold),
+		}}
 	case nil:
 	default:
 	}
@@ -1125,6 +1141,15 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			Tolerance:     copyPtr(arm.CrossTable.Tolerance),
 			FailThreshold: copyPtr(arm.CrossTable.FailThreshold),
 			WarnThreshold: copyPtr(arm.CrossTable.WarnThreshold),
+		}}
+	case *v1pb.QualityRuleConfig_StandardCode:
+		converted.Config = &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{
+			Column:        arm.StandardCode.GetColumn(),
+			Standard:      storepb.QualityStandardCode(arm.StandardCode.GetStandard()),
+			AllowNull:     arm.StandardCode.GetAllowNull(),
+			SampleRows:    arm.StandardCode.GetSampleRows(),
+			FailThreshold: copyPtr(arm.StandardCode.FailThreshold),
+			WarnThreshold: copyPtr(arm.StandardCode.WarnThreshold),
 		}}
 	case nil:
 	default:

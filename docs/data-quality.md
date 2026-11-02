@@ -1,12 +1,13 @@
 # Data quality
 
 Data quality watches the **data** in your databases, not just its schema. A check
-is a typed assertion over a table or column (row count, nulls, uniqueness,
+is a typed assertion over a table or column; this build has 19 check types — row
+count, row count change, null rate, single-column and combination uniqueness,
 accepted values, ranges, regex, string length, referential integrity, cross-column
 relations, freshness, aggregates, grouped row counts, schema drift, cross-table
-reconciliation, custom SQL or a CEL expression). A scheduler runs the checks, and
-each execution records a status, the observed value, the thresholds it was
-judged against, and (optionally) the rows that failed.
+reconciliation, custom SQL, CEL expressions and standard codes. A scheduler runs
+the checks, and each execution records a status, the observed value, the thresholds
+it was judged against, and (optionally) the rows that failed.
 
 Everything is in the **Data Quality** section of the sidebar. The check engine is
 fully offline; three model-assisted features are opt-in.
@@ -47,6 +48,14 @@ checks and advanced types; picking one shows its parameters on the right with a
 one-line description. A column section's add button pre-selects that column and
 the column-scoped types.
 
+When you start a new check, the catalogue opens with **Templates**: five
+standard-code presets, one per standard, followed by a few common presets
+(primary-key uniqueness, timestamp freshness, email format). Only the presets that
+fit the target's object type and allowed check types are listed. Picking one fills
+the type, title, description and parameters in the form; it writes nothing until
+you save the check. The list is built in — this build has no workspace-saved
+templates.
+
 Fill in the parameters; the dialog compiles the check server-side and shows the
 SQL it will run before you save. Saving validates the target, the columns and the
 parameters; a check that cannot compile is refused. Filters, owner, tags and the
@@ -63,11 +72,14 @@ type authority. Editing a check opens the same dialog from its row or drawer.
 - **Thresholds**: a count-type check compares failed rows (or the failed
   percentage) with a warning and a failure level; an aggregate compares its value
   with a range; freshness compares the lag in seconds. Custom SQL checks always
-  count failed rows — they have no row total to take a percentage of.
+  count failed rows — they have no row total to take a percentage of. A
+  standard-code check's percentage is taken over the rows its sample read, and an
+  execution that filled the sample cap is marked as sampled.
 - **Empty data**: by default a query that returns nothing is `NOT_EVALUATED`,
   not a pass. Choose pass or fail per check if that is the intent; row count,
   custom SQL and schema drift always produce a value, so the setting does not
-  apply to them.
+  apply to them. A standard-code sample follows the same setting: an empty sample
+  is `NOT_EVALUATED` unless the check says pass or fail.
 - **Row count change**: compares the current row count with the check's most
   recent completed execution that measured a non-zero count — whatever that
   run's verdict was — within the last seven days and two target intervals (for a
@@ -88,6 +100,12 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   created. Columns recorded by an older snapshot that did not store nullability
   stay unjudged until the check is saved again. Use *Fill from target* to record
   the current definition.
+- **Standard code** validates a text column against a national or industry code
+  standard — unified social credit code, organization code, resident ID card,
+  administrative division or industry classification. It reads a bounded sample
+  of its own (`sample_rows`, 10,000 by default, at most 100,000) and checks every
+  returned value in the server, so the shared *Sampling* setting does not apply.
+  See [Standard codes](#standard-codes).
 
 ### Check run cadence
 
@@ -199,6 +217,87 @@ one or more tables and describe the check once. A queued draft appears inline in
 its target's workspace, where it can be accepted or adjusted in the check dialog;
 multi-target drafting runs as a background job, so you do not have to keep the
 page open.
+
+## Standard codes
+
+A **standard code** check validates one text column against a national or industry
+code standard. The server carries the standards' rules and the division and
+industry code tables; nothing is fetched at run time and no model is involved.
+Like a CEL expression, the check reads a bounded sample and validates the rows in
+process, so its verdict is a sample verdict.
+
+| Standard | A value is valid when |
+| --- | --- |
+| Unified social credit code (GB 32100-2015) | It has 18 characters from the standard's set (I, O, S, V and Z excluded), a two-character registration-authority/type prefix, a six-digit division segment and the correct MOD 31 check character. |
+| Organization code (GB/T 11714-1997) | It has eight body characters (digits and A–Z) followed by the MOD 11 check character; one hyphen before that character is accepted. |
+| Resident ID card (GB 11643-1999) | It has 17 digits, a real birth date, a province-level division prefix and the MOD 11 check character (`X` is allowed, and a lowercase `x` is accepted). |
+| Administrative division (GB/T 2260) | It is a six-digit code present in the built-in division table; province and city aggregate rows are accepted. |
+| Industry classification (GB/T 4754-2017) | It is an optional section letter `A`–`T` plus two, three or four digits present in the built-in table; a written section must own the numeric code, and a bare section letter is accepted. |
+
+- **Configuration**: *Column* (required, text), *Standard* (one of the five),
+  *Allow NULL* (off by default, so a NULL is a violation), *Sample rows* (0 keeps
+  the default of 10,000; 1–100,000) and the failure and warning thresholds in
+  failing rows or percent of rows. A percentage threshold divides by the rows the
+  sample read, not by the table's rows. The sample belongs to the check: the shared
+  *Sampling* setting under **Details** does not apply, and an empty sample follows
+  the usual empty-data setting.
+- **Execution**: one statement selects the target's key columns and the checked
+  column, capped at `sample_rows` rows; the server validates every returned value
+  and records how many rows it read. An execution that filled the cap — or whose
+  read was cut short by the server's value budget — is marked as sampled and
+  carries `sample_rows`; its failed and total counts, and its share of the quality
+  score, describe the sample.
+- **Engines and objects**: it runs on MySQL/TiDB/MariaDB/OceanBase, PostgreSQL,
+  SQL Server, StarRocks and Doris. It is a column-level check, so a view or
+  materialized view cannot carry it (the same restriction as regex).
+- **Labels**: the five standards are also semantic labels
+  (`UNIFIED_SOCIAL_CREDIT_CODE`, `ORGANIZATION_CODE`, `RESIDENT_ID_CARD`,
+  `ADMINISTRATIVE_DIVISION`, `INDUSTRY_CLASSIFICATION`). Once a column carries one
+  — accepted from *AI label fields* (the label API can also set one directly) —
+  *Recommend checks* proposes a
+  pending standard-code check for that standard, and a label suggestion's default
+  draft is the same check. Nothing is created or enabled until a person accepts
+  the proposal.
+- **Templates**: the editor's **Templates** block offers one preset per standard.
+  Applying one fills the form; saving the check remains the only way to create it.
+- **Quality score**: a standard-code check is a row/unit-level check in the
+  quality score, scored as `1 - failed rows / rows read` (see
+  [Coverage and quality score](#coverage-and-quality-score)).
+
+A few limits are worth stating plainly:
+
+- **Snapshot tables**: the division and industry tables are compiled into the
+  server, so updating them needs a new release and no lookup touches the network.
+  Division data is the 2023-06-30 division snapshot (source:
+  modood/Administrative-divisions-of-China 2.7.0) with statistics-bureau
+  development-zone pseudo-codes removed, so retired codes from earlier revisions
+  may be absent and newer ones may be missing; industry data follows GB/T 4754-2017
+  including the 2019 No.1 amendment.
+- **What is not checked**: SG 3-2021 code sets (enterprise status, registration
+  authority) are not bundled — use *Accepted values* or *Referential integrity*
+  against a customer code table for those. The unified social credit code's
+  internal organization-code check digit is not verified, because early and
+  individually owned business codes legitimately fail it. The resident ID card
+  check compares the province-level prefix only, not the full historical division
+  code of the issuing place; it accepts sequence code 000 and rejects 15-digit
+  legacy (GB 11643-1989) numbers, which need 18 digits.
+- **Value normalization and privacy**: values are upper-cased and trailing ASCII
+  spaces are removed (fixed-width `CHAR` padding) before comparison; leading
+  whitespace is a violation. Personal data is redacted before it is stored: on a
+  column labeled **resident ID card** every check's failed-row evidence keeps only
+  the division prefix and the last four characters, marks the cell as masked, and
+  the full number is never stored; a standard-code resident-ID check does the same
+  even when the column carries no label. A cached column profile of such a column
+  also drops its observed extremes to the masked form and its frequent values, and
+  accepting the label redacts an already-cached profile. Clearing the label does not
+  restore redacted values; profile the column again. Evidence recorded before the
+  label was accepted is not rewritten (execution samples age out with their
+  retention). Columns without that label (and other labels such as email or phone)
+  are not treated as personal data yet.
+- **Sample verdicts**: a sampled result is a sample verdict, not a full-table
+  claim. When a report must declare its method (DB3205/T allows full-table,
+  quantitative or sampling), read `sampled` and `sample_rows` from the execution
+  and state which one was used.
 
 ## Browsing targets and checks
 
@@ -379,7 +478,7 @@ showing stale bounds. A percentage check is plotted in percent; a row count
 change is plotted as rows, without a band, because its thresholds bound a
 percentage change against a baseline rather than the count; a sampled check
 marks its sample points. Click a point to open that execution. The series stops
-at a rule-type change and says so, because values measured by a different kind
+at a check-type change and says so, because values measured by a different kind
 of check are not comparable. Editing the check's filter changes which rows it
 measures: the line still spans both regimes, so read across a filter change
 with care.
@@ -481,7 +580,7 @@ enabled check**. Paused and archived checks do not enter it.
 
 | Check kind | Score of one check |
 | --- | --- |
-| Row/unit checks — nulls, uniqueness (single and combination), accepted values, ranges, regex, string length, referential integrity, cross-column, CEL expression, schema drift, group check | `1 - failed rows / total rows`, clamped to 0–1; an execution with no total rows falls back to the status scale |
+| Row/unit checks — nulls, uniqueness (single and combination), accepted values, ranges, regex, string length, referential integrity, cross-column, CEL expression, standard code, schema drift, group check | `1 - failed rows / total rows`, clamped to 0–1; an execution with no total rows falls back to the status scale |
 | The other six — row count, row count change, freshness, custom SQL, aggregate, cross-table | `PASS` = 1, `WARN` = 0.5, `FAIL` = 0 |
 | `ERROR`, `SKIPPED`, `NOT_EVALUATED` | Not judged: left out of both the numerator and the denominator |
 
@@ -864,6 +963,8 @@ pruned.
 | I cannot change one check's schedule | Scheduling is per target: all enabled checks on the target run together on the schedule in its workspace header. To make one check run less often, open it and change its **Run cadence** (follow target, hourly, daily, weekly); a cadence can only be coarser than the target, and there is no per-check cron expression. For a rhythm independent of the target, move the check to its own target. **Run now** always runs it regardless of cadence. |
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. A scheduled check is retried on a later tick of the same target cycle (at most three attempts); a manual execution is not retried, so use **Run now** again. |
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
+| A valid-looking code is reported invalid | The check enforces one exact standard and edition. Compare the value with that standard: a division code must be in the 2023-06-30 snapshot (codes retired after an earlier revision may be absent, newer ones may be missing, and statistics-bureau development-zone pseudo-codes are not accepted), industry codes follow GB/T 4754-2017 plus the 2019 amendment, a 15-digit legacy resident ID is rejected, and a NULL is a violation unless *Allow NULL* is on. Values are compared after upper-casing and trimming trailing spaces. The USCC check does not verify the internal organization-code check digit, so a code that fails it is not reported for that reason. |
+| An enterprise-status or registration-authority value is rejected | SG 3-2021 code sets are not bundled. Use an *Accepted values* check for one column, or *Referential integrity* against a customer code table, and keep standard code for the five standards it carries. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in one target's scan batch and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | An AI drafting job failed | Open the **AI drafting jobs** panel and expand the target. A job-level error means the provider became unavailable or the daily analysis quota ran out after it started; a target-level diagnostic names the failure class. *Output limit* means the model hit the output-token budget before finishing its JSON: retry with a narrower intent or fewer columns (the budget is the provider profile's Max output tokens, default 32,768). Provider errors carry the provider/model and stop reason but not the provider's body; the server retries once at 4,096 tokens when a model rejects the requested budget, and if it is still rejected, lower the profile's Max output tokens or use a model that supports that output budget; quote the **correlation ID** to an operator, who can find the matching server log line (and, with runtime debug on, the raw request/response within seven days). Queued suggestions from earlier targets are kept. |
@@ -883,9 +984,10 @@ pruned.
 | "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |
 | The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |
 | The digest email has no recipients | The digest has no per-person audience: an email channel must carry fixed addresses; "include the audience" cannot resolve anyone for it. |
-| A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample. Remove the sampling or pick another check type. |
+| A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample; a standard-code check has its own *Sample rows* setting instead. Remove the sampling or pick another check type. |
 | *By percentage* is unavailable | The target is a view, or its engine has no reliable table sampling clause (MySQL, TiDB, MariaDB, OceanBase, StarRocks, Doris). Use *By row limit*. |
 | A sampled check returned no failure sample | The failed rows are read from the same sample as the counts. If the sample held no failing row the evidence is empty while the verdict still stands — the counts decide it, not the evidence rows. |
+| A standard-code execution says it was sampled | The sample cap was reached, or the server's value budget cut the read short, so the failed and total counts and the quality score describe the rows read, not the table. Raise *Sample rows* (up to 100,000) or narrow the check's filter, then run the check again; the execution shows how many rows the sample read. On very wide rows the value budget can bind first, in which case a larger *Sample rows* will not help until the column values are narrower. |
 | A filter value with a time variable is rejected | A filter value must be one whole variable (`${today-7d}`); quoting it or mixing it with text is refused. Check the name (`now`/`today`/`yesterday`), the unit (`m`/`h`/`d`) and the size (at most 366 days). A date variable cannot be compared with a numeric column. |
 | The partition window looks a day off | Time variables resolve in the workspace's check time zone (Settings → Data Quality; empty means UTC). An integer partition column (`20261101`) is not a date to the engine — use a custom SQL check with an explicit cast. |
 | A long timeout still ended abandoned | The 15-minute batch deadline is the hard limit for one target's scan; a per-check timeout only bounds that check's own query. |

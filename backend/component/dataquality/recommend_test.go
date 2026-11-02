@@ -178,6 +178,45 @@ func TestRecommendChecksCandidateKey(t *testing.T) {
 	require.Equal(t, float64(0), unique.Config.GetUnique().GetFailThreshold())
 }
 
+// A standard-shaped label is a deterministic standard-code candidate: the
+// standard follows from the label, and no threshold is guessed.
+func TestRecommendChecksStandardCode(t *testing.T) {
+	t.Parallel()
+
+	target := recommendTestTarget(
+		ColumnInfo{Name: "credit_code", Type: "varchar(18)", Kind: ColumnKindString},
+		ColumnInfo{Name: "division", Type: "varchar(6)", Kind: ColumnKindString},
+	)
+	profiles := map[string]*storepb.ColumnProfile{
+		"credit_code": recommendTestProfile(0, 900),
+		"division":    recommendTestProfile(0, 40),
+	}
+	input := recommendTestInput(target, profiles)
+	input.Labels = map[string]storepb.QualitySemanticType{
+		"credit_code": storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE,
+		"division":    storepb.QualitySemanticType_QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION,
+	}
+	recommendations := recommendChecksForTest(t, input)
+
+	standardCode := recommendFind(recommendations, storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE)
+	require.NotNil(t, standardCode)
+	require.Equal(t, "credit_code", standardCode.Config.GetStandardCode().GetColumn())
+	require.Equal(t, storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE,
+		standardCode.Config.GetStandardCode().GetStandard())
+	require.Equal(t, "credit_code: standard code", standardCode.Title)
+	require.Contains(t, standardCode.Rationale, "GB 32100")
+
+	// The per-type budget is two, so both labeled columns are proposed and the
+	// table-level row count still comes first.
+	require.Len(t, recommendations, 3)
+	require.Equal(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, recommendations[0].RuleType)
+	division := recommendations[2]
+	require.Equal(t, "division", division.Config.GetStandardCode().GetColumn())
+	require.Equal(t, storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION,
+		division.Config.GetStandardCode().GetStandard())
+	require.Contains(t, division.Rationale, "GB/T 2260")
+}
+
 func TestRecommendChecksRange(t *testing.T) {
 	t.Parallel()
 

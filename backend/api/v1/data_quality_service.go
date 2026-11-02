@@ -2187,6 +2187,9 @@ func (s *DataQualityService) decideQualitySuggestion(ctx context.Context, name s
 			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(err,
 				"the suggestion was accepted but its label could not be stored; retry the column label with UpdateColumnLabel"))
 		}
+		if err := s.redactProfileForLabel(ctx, label.TableGUID, label.TableType, label.ColumnName, label.Label); err != nil {
+			return nil, err
+		}
 	}
 	// Accepting a rule draft only records the decision: the reviewer creates the
 	// rule through the normal rule path (optionally in the same request, see
@@ -2381,6 +2384,9 @@ func (s *DataQualityService) UpdateColumnLabel(ctx context.Context, req *connect
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to store the column label")
 		}
+		if err := s.redactProfileForLabel(ctx, update.tableGUID, update.metaType, update.column, update.label); err != nil {
+			return nil, err
+		}
 		// The label is now a fact, so a pending proposal for this column is stale.
 		// This also covers a proposal the reviewer never opened, which would otherwise
 		// keep asking to assert a label that is already there.
@@ -2440,6 +2446,14 @@ func (s *DataQualityService) ProfileColumns(ctx context.Context, req *connect.Re
 		return nil, connectErrorInvalid("at most %d columns may be profiled at once", settings.MaxColumnsPerAnalysis)
 	}
 
+	// Profiling stores observed values. Refuse to profile when the personal-data
+	// labels cannot be read, rather than risk storing raw values as "not labeled".
+	personal, err := s.personalColumnsForTarget(ctx, resolution.Target.GUID, resolution.Target.MetaType)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal,
+			errors.Wrap(err, "failed to read the column labels before profiling"))
+	}
+
 	queryer, release, err := s.qualityReadOnlyQueryer(ctx, resolution, "profiling columns")
 	if err != nil {
 		return nil, err
@@ -2464,6 +2478,9 @@ func (s *DataQualityService) ProfileColumns(ctx context.Context, req *connect.Re
 		stats, ok := table.Columns[column]
 		if !ok {
 			continue
+		}
+		if _, isPersonal := personal[column]; isPersonal {
+			dataquality.RedactPersonalProfile(stats)
 		}
 		stored, err := s.store.UpsertColumnProfile(ctx, &store.ColumnProfileMessage{
 			TableGUID:     resolution.Target.GUID,

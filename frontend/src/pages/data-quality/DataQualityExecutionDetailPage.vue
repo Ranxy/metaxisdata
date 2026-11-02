@@ -377,7 +377,11 @@
                   <span
                     v-else-if="cell.value !== ''"
                     class="min-w-0 break-all"
-                  >{{ cell.value }}</span>
+                  >{{ cell.value
+                    }}<span
+                      v-if="cell.masked"
+                      class="ml-1 font-mono text-muted-foreground"
+                    >{{ t("dataQuality.sampleMasked") }}</span></span>
                   <span
                     v-else-if="cell.isNull === false"
                     class="min-w-0 font-mono text-muted-foreground italic"

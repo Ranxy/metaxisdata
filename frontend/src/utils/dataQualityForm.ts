@@ -30,6 +30,7 @@ import {
   QualityRuleState,
   QualityRuleType,
   QualitySeverity,
+  QualityStandardCode,
   type QualityTarget,
   QualityTargetPathSchema,
   QualityTargetSchema,
@@ -42,6 +43,7 @@ import {
   RowCountConfigSchema,
   SchemaDriftColumnSchema,
   SchemaDriftConfigSchema,
+  StandardCodeConfigSchema,
   StringLengthConfigSchema,
   UniqueCombinationConfigSchema,
   UniqueConfigSchema,
@@ -106,6 +108,12 @@ export const MAX_CEL_COLUMNS = 20;
 export const MAX_CEL_SAMPLE_ROWS = 100_000;
 export const DEFAULT_CEL_SAMPLE_ROWS = 10_000;
 
+/**
+ * A standard-code check validates a bounded sample in process, like a CEL
+ * expression: its own row limit, 1-100000 with 0 meaning the server default.
+ */
+export const MAX_STANDARD_CODE_SAMPLE_ROWS = 100_000;
+
 /** The aggregates the aggregate rule offers. COUNT is the run's total_rows. */
 export const AGGREGATE_FUNCTIONS: QualityAggregateFunction[] = [
   QualityAggregateFunction.SUM,
@@ -126,7 +134,7 @@ export const CROSS_TABLE_FUNCTIONS: QualityAggregateFunction[] = [
 ];
 
 /**
- * The 18 rule types the editor offers. Every one has a config form;
+ * The 19 rule types the editor offers. Every one has a config form;
  * CEL_EXPRESSION included now that the API accepts it.
  */
 export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
@@ -148,6 +156,7 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.AGGREGATE,
   QualityRuleType.CROSS_TABLE,
   QualityRuleType.CEL_EXPRESSION,
+  QualityRuleType.STANDARD_CODE,
 ];
 
 /**
@@ -170,6 +179,7 @@ export const THRESHOLD_METRIC_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.CROSS_COLUMN,
   QualityRuleType.GROUP_CHECK,
   QualityRuleType.CEL_EXPRESSION,
+  QualityRuleType.STANDARD_CODE,
 ];
 
 /** One section of the rule-type select: an i18n group key and its types. */
@@ -204,6 +214,7 @@ export const RULE_TYPE_GROUPS: RuleTypeGroup[] = [
       QualityRuleType.STRING_LENGTH,
       QualityRuleType.CROSS_COLUMN,
       QualityRuleType.REFERENTIAL_INTEGRITY,
+      QualityRuleType.STANDARD_CODE,
     ],
   },
   {
@@ -371,6 +382,7 @@ const DIMENSION_BY_RULE_TYPE: Partial<
   [QualityRuleType.AGGREGATE]: QualityDimension.ACCURACY,
   [QualityRuleType.CROSS_TABLE]: QualityDimension.CONSISTENCY,
   [QualityRuleType.CEL_EXPRESSION]: QualityDimension.ACCURACY,
+  [QualityRuleType.STANDARD_CODE]: QualityDimension.VALIDITY,
 };
 
 // ---- form state ----
@@ -427,6 +439,10 @@ export interface RuleConfigForm {
   pattern?: string;
   minLen?: string;
   maxLen?: string;
+  // standard_code (column, allowNull, fail/warn thresholds are shared)
+  standard?: QualityStandardCode;
+  /** A whole row count; 0 asks for the server default (10000). */
+  sampleRows?: string;
   // referential_integrity
   childColumn?: string;
   parentTable?: string;
@@ -614,6 +630,8 @@ export function emptyConfig(): RuleConfigForm {
     pattern: "",
     minLen: "",
     maxLen: "",
+    standard: QualityStandardCode.UNSPECIFIED,
+    sampleRows: "0",
     childColumn: "",
     parentTable: "",
     parentColumn: "",
@@ -858,6 +876,7 @@ export function columnsForConfig(form: RuleFormState): string[] {
     case QualityRuleType.RANGE:
     case QualityRuleType.REGEX:
     case QualityRuleType.STRING_LENGTH:
+    case QualityRuleType.STANDARD_CODE:
       return uniqueValues([c.column ?? ""]);
     case QualityRuleType.UNIQUE_COMBINATION:
       return c.allColumns ? [] : uniqueValues(parseValueList(c.columns ?? ""));
@@ -975,6 +994,8 @@ export function ruleTypeForConfigCase(
       return QualityRuleType.CUSTOM_SQL;
     case "celExpression":
       return QualityRuleType.CEL_EXPRESSION;
+    case "standardCode":
+      return QualityRuleType.STANDARD_CODE;
     case "schemaDrift":
       return QualityRuleType.SCHEMA_DRIFT;
     case "groupCheck":
@@ -1156,6 +1177,18 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
             columns: parseValueList(c.celColumns ?? ""),
             sampleRows:
               optionalIntegerValue(c.celSampleRows) ?? DEFAULT_CEL_SAMPLE_ROWS,
+            ...optionalDouble("failThreshold", c.failThreshold),
+            ...optionalDouble("warnThreshold", c.warnThreshold),
+          }),
+        };
+      case QualityRuleType.STANDARD_CODE:
+        return {
+          case: "standardCode" as const,
+          value: create(StandardCodeConfigSchema, {
+            column: trimmed(c.column),
+            standard: c.standard ?? QualityStandardCode.UNSPECIFIED,
+            allowNull: c.allowNull ?? false,
+            sampleRows: optionalIntegerValue(c.sampleRows) ?? 0,
             ...optionalDouble("failThreshold", c.failThreshold),
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
@@ -1490,6 +1523,16 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
       break;
     }
+    case "standardCode": {
+      const value = config.value;
+      form.column = value.column;
+      form.standard = value.standard;
+      form.allowNull = value.allowNull;
+      form.sampleRows = value.sampleRows > 0 ? String(value.sampleRows) : "0";
+      form.failThreshold = optionalStringFromDouble(value.failThreshold);
+      form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
+      break;
+    }
     case "schemaDrift": {
       const value = config.value;
       form.expectedColumns = value.expectedColumns.map((column) => ({
@@ -1647,6 +1690,7 @@ export function applyThresholdSuggestion(
     case QualityRuleType.CROSS_COLUMN:
     case QualityRuleType.GROUP_CHECK:
     case QualityRuleType.CEL_EXPRESSION:
+    case QualityRuleType.STANDARD_CODE:
     case QualityRuleType.CUSTOM_SQL:
     case QualityRuleType.CROSS_TABLE:
       setSingleBounds();
@@ -1778,7 +1822,7 @@ function normalizeConfigForm(form: RuleFormState): Record<string, unknown> {
       if (text !== "") {
         out[key] = text;
       }
-    } else if (typeof value === "boolean") {
+    } else if (typeof value === "boolean" || typeof value === "number") {
       out[key] = value;
     } else if (Array.isArray(value)) {
       // The schema-drift snapshot is the only list of rows; a row with no name
@@ -2037,6 +2081,36 @@ export function validateRuleForm(
             params: { max: MAX_CEL_SAMPLE_ROWS },
           });
         }
+      }
+      break;
+    }
+    case QualityRuleType.STANDARD_CODE: {
+      if (!trimmed(c.column)) {
+        issues.push({ key: VALIDATION_PREFIX + "columnRequired" });
+      }
+      if (
+        (c.standard ?? QualityStandardCode.UNSPECIFIED) ===
+        QualityStandardCode.UNSPECIFIED
+      ) {
+        issues.push({ key: VALIDATION_PREFIX + "standardRequired" });
+      }
+      if (trimmed(c.sampleRows) !== "") {
+        const sampleRows = optionalIntegerValue(c.sampleRows);
+        if (
+          sampleRows === undefined ||
+          sampleRows < 0 ||
+          sampleRows > MAX_STANDARD_CODE_SAMPLE_ROWS
+        ) {
+          issues.push({
+            key: VALIDATION_PREFIX + "sampleRowsInvalid",
+            params: { max: MAX_STANDARD_CODE_SAMPLE_ROWS },
+          });
+        }
+      }
+      const fail = optionalNumberValue(c.failThreshold);
+      const warn = optionalNumberValue(c.warnThreshold);
+      if (fail !== undefined && warn !== undefined && warn > fail) {
+        issues.push({ key: VALIDATION_PREFIX + "thresholdOrder" });
       }
       break;
     }

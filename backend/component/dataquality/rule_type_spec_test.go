@@ -44,7 +44,7 @@ func TestRuleTypeSpecsCoverTheEnum(t *testing.T) {
 		}
 		realTypes++
 	}
-	require.Equal(t, 18, realTypes, "the rule type enum has 18 real values")
+	require.Equal(t, 19, realTypes, "the rule type enum has 19 real values")
 	require.Len(t, ruleTypeSpecs, realTypes)
 
 	seen := make(map[storepb.QualityRuleType]bool, len(ruleTypeSpecs))
@@ -99,8 +99,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Title != "" }),
-		"the label-suggestion vocabulary is 14 types, in proto order")
+		"the label-suggestion vocabulary is 15 types, in proto order")
 
 	require.Equal(t, "unique", testSpecFor(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE).Title)
 	require.Equal(t, "format", testSpecFor(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX).Title)
@@ -131,8 +132,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_COLUMN,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Percent }),
-		"10 types carry a denominator for a PERCENT threshold")
+		"11 types carry a denominator for a PERCENT threshold")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
@@ -179,8 +181,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.CheckedColumn != nil }),
-		"9 types check one named column")
+		"10 types check one named column")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
@@ -197,8 +200,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.IdentityColumns != nil }),
-		"14 types feed the suggestion identity with columns")
+		"15 types feed the suggestion identity with columns")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
@@ -212,8 +216,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Discriminators != nil }),
-		"11 types fold config values into the suggestion identity")
+		"12 types fold config values into the suggestion identity")
 
 	// CountsTotal is meaningful only for a count-shaped rule; custom_sql is the
 	// one count-shaped rule whose observation has no denominator.
@@ -230,7 +235,7 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		require.True(t, spec.CountsTotal, "%s carries a filtered total for a PERCENT threshold", spec.Type)
 		countsTotal++
 	}
-	require.Equal(t, 11, countsTotal)
+	require.Equal(t, 12, countsTotal)
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
@@ -241,8 +246,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.LabelDraft != nil }),
-		"8 types have a deterministic label draft")
+		"9 types have a deterministic label draft")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
@@ -401,6 +407,9 @@ func TestRuleTypeForConfigRoundTrip(t *testing.T) {
 		},
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE: {
 			Config: &storepb.QualityRuleConfig_CrossTable{CrossTable: &storepb.CrossTableConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE: {
+			Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{}},
 		},
 	}
 	require.Len(t, configs, len(ruleTypeSpecs))

@@ -368,6 +368,14 @@
     "clearRuleFilter": "Clear check filter",
     "clearRunFilter": "Clear batch filter",
     "clearTargetFilter": "Clear target filter",
+    "codeStandard": {
+      "administrativeDivision": "Administrative division code",
+      "industryClassification": "Industry classification code",
+      "organizationCode": "Organization code",
+      "residentIdCard": "Resident ID card",
+      "unifiedSocialCreditCode": "Unified social credit code",
+      "unspecified": "Unspecified"
+    },
     "columns": "Columns",
     "comparisonOperator": {
       "eq": "=",
@@ -388,6 +396,11 @@
       "editTitle": "Edit {title}",
       "saving": "Saving…",
       "targetScheduleHint": "Scheduling is per target: every enabled check runs on the target’s schedule.",
+      "templateGroup": {
+        "preset": "Common presets",
+        "standardCode": "Standard code"
+      },
+      "templates": "Templates",
       "title": "New check on {target}"
     },
     "consumptionGaps": {
@@ -509,6 +522,9 @@
       "checkParametersHint": "Check that the filter values and parameters match the column types.",
       "checkTypes": "Type or nullability changes are drift",
       "childColumn": "Child column",
+      "codeStandard": "Standard",
+      "codeStandardHint": "The standard fixes the accepted shape, the check digit and the built-in code table.",
+      "codeStandardPlaceholder": "Choose a standard",
       "column": "Column",
       "columnHint": "Free text; the target's columns are suggested.",
       "columnName": "Name",
@@ -598,6 +614,8 @@
       "samplePercent": "Percent of rows",
       "samplePercentHint": "Uses the engine's approximate random sampling; the verdict is judged on the sample and the execution is marked as sampled.",
       "samplePercentUnsupported": "This target cannot sample by percentage. Choose by row limit or no sampling before saving.",
+      "sampleRows": "Sample rows",
+      "sampleRowsHint": "Rows to validate, 0–100000; 0 uses 10000.",
       "sampling": "Sampling",
       "samplingHint": "How much of the target one execution reads. Without sampling the check reads every row the filter selects.",
       "samplingMaxRows": "By row limit",
@@ -667,13 +685,16 @@
         "sampleMaxRowsInvalid": "Enter a whole number of rows between 1 and {max}.",
         "samplePercentInvalid": "Enter a percentage between 1 and 99.",
         "samplePercentUnsupported": "This target cannot sample by percentage; choose by row limit or no sampling.",
+        "sampleRowsInvalid": "Sample rows must be a whole number between 0 and {max}.",
         "samplingUnsupportedRuleType": "This check cannot be sampled; remove the sampling before saving.",
         "scheduleInvalid": "The schedule must be between 15 minutes and 7 days.",
         "schemaDriftColumnRequired": "Add at least one expected column.",
         "schemaDriftDuplicateColumn": "Column {name} is listed twice.",
         "sqlRequired": "Enter the SQL this check runs.",
         "sqlTooLong": "The SQL exceeds {max} bytes.",
+        "standardRequired": "Choose the code standard this check validates.",
         "targetRequired": "Select a target table or view.",
+        "thresholdOrder": "The warning threshold must not be greater than the failure threshold.",
         "timeoutInvalid": "Enter a whole number of seconds between 1 and 300, or leave it blank.",
         "timezoneInvalid": "Choose a valid IANA time zone.",
         "titleRequired": "A title is required.",
@@ -780,7 +801,7 @@
     "exportingCsv": "Exporting...",
     "failedRows": "Failed rows",
     "failureSamples": "Failure samples",
-    "failureSamplesHint": "Failed rows kept as evidence, truncated per value; a column check on a table whose registry records a primary key also shows the key columns.",
+    "failureSamplesHint": "Failed rows kept as evidence, truncated per value; a column check on a table whose registry records a primary key also shows the key columns. Values the server redacted, such as resident ID card numbers, are marked as masked.",
     "fetchExecutionError": "Failed to load the execution.",
     "fetchExecutionsError": "Failed to load the quality executions.",
     "fetchIssueError": "Failed to load the issue.",
@@ -1065,6 +1086,40 @@
       "unspecified": "Unspecified"
     },
     "ruleTarget": "Check target",
+    "ruleTemplate": {
+      "administrativeDivision": {
+        "description": "Checks that a column carries a code from the built-in administrative division table.",
+        "title": "Administrative division code"
+      },
+      "emailFormat": {
+        "description": "Checks that a column's values look like email addresses.",
+        "title": "Email format"
+      },
+      "industryClassification": {
+        "description": "Checks that a column carries a code from the built-in industry classification table.",
+        "title": "Industry classification code"
+      },
+      "organizationCode": {
+        "description": "Validates a column of organization codes, including the check digit.",
+        "title": "Organization code"
+      },
+      "primaryKeyUniqueness": {
+        "description": "Checks that the chosen key column has no duplicates and no NULLs.",
+        "title": "Primary key uniqueness"
+      },
+      "residentIdCard": {
+        "description": "Validates a column of 18-digit resident ID card numbers, including the check digit.",
+        "title": "Resident ID card"
+      },
+      "timestampFreshness": {
+        "description": "Flags rows whose timestamp column is older than one day.",
+        "title": "Timestamp freshness"
+      },
+      "unifiedSocialCreditCode": {
+        "description": "Validates a column of unified social credit codes, including the check digit.",
+        "title": "Unified social credit code"
+      }
+    },
     "ruleType": {
       "acceptedValues": "Accepted values",
       "aggregate": "Aggregate value",
@@ -1081,6 +1136,7 @@
       "rowCount": "Row count",
       "rowCountChange": "Row count change",
       "schemaDrift": "Schema drift",
+      "standardCode": "Standard code",
       "stringLength": "String length",
       "unique": "Uniqueness",
       "uniqueCombination": "Unique combination",
@@ -1102,6 +1158,7 @@
       "rowCount": "Checks that the filtered row count falls inside the expected range.",
       "rowCountChange": "Checks whether the row count changed more than the allowed percentage since the previous run.",
       "schemaDrift": "Compares the live column list with the snapshot saved when the check was created.",
+      "standardCode": "Validates values against a national or industry code standard, including its check digit.",
       "stringLength": "Checks that a text column's length stays between the bounds.",
       "unique": "Checks that a column's values are unique; NULLs are ignored by default.",
       "uniqueCombination": "Checks that a combination of columns is unique; NULLs are ignored by default."
@@ -1116,6 +1173,7 @@
     "sampleAmbiguous": "\"\"",
     "sampleEmpty": "empty string",
     "sampleLegacyHint": "Recorded before NULL markers existed: the value was SQL NULL or an empty string.",
+    "sampleMasked": "masked",
     "sampleNull": "NULL",
     "sampleNumber": "Sample {index}",
     "sampled": "Sampled",
@@ -1126,6 +1184,7 @@
     "search": "Search",
     "searchPlaceholder": "Search checks by title or description...",
     "semanticType": {
+      "administrativeDivision": "Administrative division code",
       "amount": "Amount",
       "businessKey": "Business key",
       "countryCode": "Country code",
@@ -1135,11 +1194,15 @@
       "enum": "Enum",
       "freeText": "Free text",
       "id": "ID",
+      "industryClassification": "Industry classification code",
       "ip": "IP address",
+      "organizationCode": "Organization code",
       "percentage": "Percentage",
       "phone": "Phone",
       "quantity": "Quantity",
+      "residentIdCard": "Resident ID card",
       "timestamp": "Timestamp",
+      "unifiedSocialCreditCode": "Unified social credit code",
       "unknown": "Unknown",
       "unspecified": "Unspecified",
       "url": "URL",

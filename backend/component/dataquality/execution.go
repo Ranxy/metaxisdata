@@ -48,6 +48,10 @@ type ExecOptions struct {
 	// StoreSamples asks for the failed-row sample. When false no second query is
 	// issued, which is what the workspace setting controls.
 	StoreSamples bool
+	// MaskColumns names the target columns whose accepted semantic label marks them
+	// as personal data. Their sampled values are redacted before the execution
+	// stores them; the raw value is never persisted as evidence.
+	MaskColumns []string
 	// Variables is the instant and zone the rule's time variables resolve in. The
 	// runner sets it from the execution's start time; the zero value is fine for a
 	// rule that uses none.

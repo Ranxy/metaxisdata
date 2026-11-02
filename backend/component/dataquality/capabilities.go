@@ -472,6 +472,24 @@ func requireLengthColumn(target ResolvedTarget, name string) (ColumnInfo, error)
 	return column, nil
 }
 
+// requireTextColumn resolves a column whose values render as text. Unlike
+// requireRegexColumn it needs no regular-expression operator: a standard-code
+// rule reads the values and validates them in process, so SQL Server text is
+// usable.
+func requireTextColumn(target ResolvedTarget, name string) (ColumnInfo, error) {
+	column, err := requireColumn(target, name)
+	if err != nil {
+		return ColumnInfo{}, err
+	}
+	if column.Kind == ColumnKindUnknown {
+		return ColumnInfo{}, invalidConfig("column %q has a type this build cannot classify", column.Name)
+	}
+	if column.Kind != ColumnKindString || !capabilitiesFor(target.Engine, column).text {
+		return ColumnInfo{}, invalidConfig("column %q is %s; this rule needs a text column", column.Name, column.Type)
+	}
+	return column, nil
+}
+
 // requireComparisonColumn resolves a column and requires the engine to compare its
 // values by equality.
 func requireComparisonColumn(target ResolvedTarget, name string) (ColumnInfo, error) {

@@ -84,6 +84,9 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	// next run) but cached for the batch, so a target with many rules costs one read
 	// rather than one per execution.
 	contracts := newBatchContractFilters(r.loadBatchContractFilter())
+	// The personal-data columns are likewise read once per target: the executor
+	// redacts their sampled values before the execution row is written.
+	personal := newBatchPersonalColumns(r.loadBatchPersonalColumns())
 
 	executions := make([]*ruleExecution, 0, len(tasks))
 	aborted := false
@@ -119,7 +122,7 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 		}
 
 		r.metrics.IncQualityExecutionsInProgress()
-		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission, contracts)
+		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission, contracts, personal)
 		if execution == nil {
 			r.metrics.DecQualityExecutionsInProgress()
 			continue
@@ -228,7 +231,7 @@ func loadPlannedExecution(ctx context.Context, st batchExecutionStore, batchID i
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a
 // driver turns into an ERROR verdict for that execution instead of killing the
 // batch (or the runner, which would lose every remaining execution).
-func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters) (execution *ruleExecution) {
+func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters, personal *batchPersonalColumns) (execution *ruleExecution) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("quality rule execution panicked",
@@ -243,14 +246,17 @@ func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecu
 			}
 		}
 	}()
-	return r.executeOne(ctx, planned, startedAt, admission, contracts)
+	return r.executeOne(ctx, planned, startedAt, admission, contracts, personal)
 }
 
 // executeOne resolves, validates and executes one rule, returning the completed
 // execution row it produces. It never returns nil: every failure path is an ERROR
 // or SKIPPED verdict, because a batch has to account for every execution it
 // planned.
-func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters) *ruleExecution {
+func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters, personal *batchPersonalColumns) *ruleExecution {
+	if personal == nil {
+		personal = newBatchPersonalColumns(r.loadBatchPersonalColumns())
+	}
 	if !r.acquireInflight(planned.RuleID) {
 		return &ruleExecution{
 			result: failureExecutionMessage(planned, nil, startedAt, storepb.QualityStatus_QUALITY_STATUS_SKIPPED,
@@ -347,6 +353,20 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 	}
 
 	options := r.execOptions(snapshot.Config)
+	// A personal-data column's sampled values are redacted before they are stored.
+	// If the labels cannot be read, the verdict still runs but no failure sample is
+	// stored: a privacy guarantee must not degrade into storing raw values on a
+	// transient store error.
+	personalColumns, err := personal.forTarget(ctx, snapshot.Target.GUID, snapshot.Target.MetaType)
+	if err != nil {
+		slog.Warn("could not read personal-data labels; the execution keeps its verdict but stores no failure sample",
+			slog.Int64("execution", planned.ID),
+			slog.String("target", snapshot.Target.GUID),
+			log.WithError(err))
+		options.StoreSamples = false
+	} else {
+		options.MaskColumns = personalColumns
+	}
 	options.Variables = dataquality.NewTimeVariables(startedAt, r.currentSettings().TimeZoneLocation())
 	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, options)
 	if err != nil {

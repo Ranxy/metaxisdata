@@ -1722,6 +1722,69 @@
       "scope": [
         "dataQuality.overview.consumption"
       ]
+    },
+    {
+      "id": "standard-code",
+      "category": "Data Quality",
+      "definition": "A check that validates one column against a national or industry code standard.",
+      "translations": {
+        "en-US": "standard code",
+        "zh-CN": "标准编码"
+      }
+    },
+    {
+      "id": "rule-template",
+      "category": "Data Quality",
+      "definition": "A ready-made check configuration a reader can start from in the rule composer.",
+      "translations": {
+        "en-US": "rule template",
+        "zh-CN": "规则模板"
+      }
+    },
+    {
+      "id": "unified-social-credit-code",
+      "category": "Data Quality",
+      "definition": "The 18-character national identifier issued to organizations in China.",
+      "translations": {
+        "en-US": "unified social credit code",
+        "zh-CN": "统一社会信用代码"
+      }
+    },
+    {
+      "id": "organization-code",
+      "category": "Data Quality",
+      "definition": "The nine-character national identifier for an organization, with a check digit.",
+      "translations": {
+        "en-US": "organization code",
+        "zh-CN": "组织机构代码"
+      }
+    },
+    {
+      "id": "resident-id-card",
+      "category": "Data Quality",
+      "definition": "An 18-character Chinese resident identity card number, with a check digit.",
+      "translations": {
+        "en-US": "resident ID card",
+        "zh-CN": "居民身份证"
+      }
+    },
+    {
+      "id": "administrative-division",
+      "category": "Data Quality",
+      "definition": "A code from the national administrative division table identifying a region.",
+      "translations": {
+        "en-US": "administrative division code",
+        "zh-CN": "行政区划代码"
+      }
+    },
+    {
+      "id": "industry-classification",
+      "category": "Data Quality",
+      "definition": "A code from the national industry classification table identifying an economic activity.",
+      "translations": {
+        "en-US": "industry classification code",
+        "zh-CN": "行业分类代码"
+      }
     }
   ]
 }

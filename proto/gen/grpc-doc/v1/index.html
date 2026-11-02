@@ -1573,6 +1573,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.StandardCodeConfig"><span class="badge">M</span>StandardCodeConfig</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.StringLengthConfig"><span class="badge">M</span>StringLengthConfig</a>
                 </li>
               
@@ -1703,6 +1707,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualitySeverity"><span class="badge">E</span>QualitySeverity</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityStandardCode"><span class="badge">E</span>QualityStandardCode</a>
                 </li>
               
                 <li>
@@ -13418,6 +13426,16 @@ string; is_null tells the two apart. </p></td>
 has no marker, and its NULLs are indistinguishable from empty strings. </p></td>
                 </tr>
               
+                <tr>
+                  <td>masked</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>optional</td>
+                  <td><p>Whether the server redacted the value before returning it. A masked value is a
+display form only: for a resident ID card number the division prefix and the
+last four characters stay visible while the birth date and sequence digits are
+replaced. The raw value is never returned. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -18360,6 +18378,13 @@ editing it does not append a revision. </p></td>
                 </tr>
               
                 <tr>
+                  <td>standard_code</td>
+                  <td><a href="#metaxisdata.v1.StandardCodeConfig">StandardCodeConfig</a></td>
+                  <td></td>
+                  <td><p>v1.2: national and industry standard codes. </p></td>
+                </tr>
+              
+                <tr>
                   <td>threshold_metric</td>
                   <td><a href="#metaxisdata.v1.QualityThresholdMetric">QualityThresholdMetric</a></td>
                   <td></td>
@@ -20509,6 +20534,66 @@ display order. The model may rank types but may not invent one. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.StandardCodeConfig">StandardCodeConfig</h3>
+        <p>StandardCodeConfig validates one column against a national or industry</p><p>standard code. The standard fixes the value shape, the check digit where one</p><p>exists, and whether the value must exist in the standard's built-in code</p><p>table. The rule reads a bounded sample of the column and validates every row</p><p>in process, so its verdict is a sample verdict like cel_expression's.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>standard</td>
+                  <td><a href="#metaxisdata.v1.QualityStandardCode">QualityStandardCode</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>allow_null</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>When false (the default), a NULL value is a violation. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sample_rows</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many rows of the filtered relation one execution reads. 0 means the
+default (10000); the accepted range is 1-100000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fail_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.StringLengthConfig">StringLengthConfig</h3>
         <p>StringLengthConfig counts rows whose string length is outside the bounds.</p>
 
@@ -21972,6 +22057,13 @@ saved. It reads metadata only and never queries the target database.</p></td>
 the same instance and database.</p></td>
               </tr>
             
+              <tr>
+                <td>QUALITY_RULE_TYPE_STANDARD_CODE</td>
+                <td>19</td>
+                <td><p>v1.2: validates a column against a national or industry standard code. The
+rule reads a bounded sample of the column and checks the values in process.</p></td>
+              </tr>
+            
           </tbody>
         </table>
       
@@ -22091,6 +22183,36 @@ the same instance and database.</p></td>
                 <td><p></p></td>
               </tr>
             
+              <tr>
+                <td>QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE</td>
+                <td>18</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE</td>
+                <td>19</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD</td>
+                <td>20</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION</td>
+                <td>21</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION</td>
+                <td>22</td>
+                <td><p></p></td>
+              </tr>
+            
           </tbody>
         </table>
       
@@ -22124,6 +22246,56 @@ the same instance and database.</p></td>
                 <td>QUALITY_SEVERITY_CRITICAL</td>
                 <td>3</td>
                 <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityStandardCode">QualityStandardCode</h3>
+        <p>QualityStandardCode is the standard a standard-code rule validates against.</p><p>Each value fixes the value shape, the check digit (where the standard defines</p><p>one) and whether membership in a built-in code table applies.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE</td>
+                <td>1</td>
+                <td><p>GB 32100-2015: 18 characters, MOD 31 check digit.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_ORGANIZATION_CODE</td>
+                <td>2</td>
+                <td><p>GB/T 11714-1997: 8 characters plus a MOD 11 check digit; one hyphen before
+the check digit is accepted.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_RESIDENT_ID_CARD</td>
+                <td>3</td>
+                <td><p>GB 11643-1999: 18 digits, MOD 11 check digit, a real birth date and a valid
+administrative-division prefix.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION</td>
+                <td>4</td>
+                <td><p>GB/T 2260: a 6-digit code that exists in the built-in division table.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION</td>
+                <td>5</td>
+                <td><p>GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the
+built-in classification table.</p></td>
               </tr>
             
           </tbody>

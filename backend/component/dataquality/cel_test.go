@@ -562,6 +562,10 @@ func TestExecuteCELRuleCarriesTruncation(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, execution.Observation.Truncated)
 	require.True(t, execution.Truncated)
+	// A byte-truncated read did not see every filtered row; it is a sample even
+	// though fewer rows than sample_rows were returned.
+	require.True(t, execution.Sampled)
+	require.True(t, execution.Observation.Sampled)
 }
 
 // An empty sample follows on_empty: it was never judged, so it is not a pass by

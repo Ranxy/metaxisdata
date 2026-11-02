@@ -83,6 +83,7 @@ const (
 	recommendConfidenceStringLength  = 0.4
 	recommendConfidenceRowCount      = 0.4
 	recommendConfidenceDefaultFormat = 0.8
+	recommendConfidenceStandardCode  = 0.8
 )
 
 // Recommendation is one candidate check, ready to be queued as a PENDING rule
@@ -136,6 +137,7 @@ var recommendSelection = []struct {
 	{storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, 3},
 	{storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, 3},
 	{storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, 2},
+	{storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE, 2},
 	{storepb.QualityRuleType_QUALITY_RULE_TYPE_REGEX, 2},
 	{storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE, 2},
 	{storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH, 2},
@@ -374,6 +376,9 @@ func (b *recommendBuilder) addColumnChecks(columns []recommendColumn) {
 		b.addCandidateKey(column)
 	}
 	for _, column := range columns {
+		b.addLabeledStandardCode(column)
+	}
+	for _, column := range columns {
 		b.addLabeledFormat(column)
 	}
 	for _, column := range columns {
@@ -509,6 +514,30 @@ func (b *recommendBuilder) addCandidateKey(column recommendColumn) {
 		recommendConfidenceCandidateKey,
 		recommendRationale(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, b.language, recommendFacts{
 			column: column.info.Name, rows: recommendRows(profile), label: label,
+		}))
+}
+
+// addLabeledStandardCode proposes a standard-code check when a column carries a
+// standard-shaped semantic label. The standard is the deterministic consequence of
+// the label, so no threshold is guessed.
+func (b *recommendBuilder) addLabeledStandardCode(column recommendColumn) {
+	standard, ok := standardCodeForSemantic(column.label)
+	if !ok {
+		return
+	}
+	// The validator reads the values as text; a column the engine does not render
+	// as text cannot be validated this way.
+	if column.info.Kind != ColumnKindString || !column.caps.text {
+		return
+	}
+	b.add(storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		&storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{
+			Column: column.info.Name, Standard: standard, FailThreshold: proto.Float64(0),
+		}}},
+		column.info.Name,
+		recommendConfidenceStandardCode,
+		recommendRationale(storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE, b.language, recommendFacts{
+			column: column.info.Name, label: column.label, standard: standard,
 		}))
 }
 
@@ -841,6 +870,7 @@ type recommendFacts struct {
 	parentTable     string
 	parentColumn    string
 	label           storepb.QualitySemanticType
+	standard        storepb.QualityStandardCode
 }
 
 // recommendTitle names one draft the way the label drafts name theirs: the column
@@ -874,6 +904,7 @@ var recommendRuleTypeNamesEN = map[storepb.QualityRuleType]string{
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:         "string length",
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: "referential integrity",
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:             "freshness",
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:         "standard code",
 }
 
 var recommendRuleTypeNamesZH = map[storepb.QualityRuleType]string{
@@ -887,6 +918,44 @@ var recommendRuleTypeNamesZH = map[storepb.QualityRuleType]string{
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_STRING_LENGTH:         "字符串长度",
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: "引用完整性",
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS:             "时效性",
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:         "标准编码",
+}
+
+// standardCodeName renders a standard as the prose a rationale cites. The standard
+// number is part of the name because a report must state its monitoring basis.
+func standardCodeName(standard storepb.QualityStandardCode, language string) string {
+	zh := language == "zh-CN"
+	switch standard {
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE:
+		if zh {
+			return "统一社会信用代码（GB 32100-2015）"
+		}
+		return "a unified social credit code (GB 32100-2015)"
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ORGANIZATION_CODE:
+		if zh {
+			return "组织机构代码（GB/T 11714-1997）"
+		}
+		return "an organization code (GB/T 11714-1997)"
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_RESIDENT_ID_CARD:
+		if zh {
+			return "公民身份号码（GB 11643-1999）"
+		}
+		return "a resident identity card number (GB 11643-1999)"
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION:
+		if zh {
+			return "行政区划代码（GB/T 2260）"
+		}
+		return "an administrative division code (GB/T 2260)"
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION:
+		if zh {
+			return "行业分类代码（GB/T 4754-2017）"
+		}
+		return "an industry classification code (GB/T 4754-2017)"
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED:
+		return ""
+	default:
+		return ""
+	}
 }
 
 // recommendRationale explains a candidate in the draft's language: the observation it
@@ -937,6 +1006,9 @@ var recommendRationaleEN = map[storepb.QualityRuleType]func(recommendFacts) stri
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: func(facts recommendFacts) string {
 		return fmt.Sprintf("The foreign key on %s references %s(%s); the check reports child rows with no matching parent.", facts.column, facts.parentTable, facts.parentColumn)
 	},
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE: func(facts recommendFacts) string {
+		return fmt.Sprintf("The column is labeled %s; the check validates every value against %s.", labelSemanticTypeShortName(facts.label), standardCodeName(facts.standard, "en"))
+	},
 }
 
 var recommendRationaleZH = map[storepb.QualityRuleType]func(recommendFacts) string{
@@ -970,6 +1042,9 @@ var recommendRationaleZH = map[storepb.QualityRuleType]func(recommendFacts) stri
 	},
 	storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY: func(facts recommendFacts) string {
 		return fmt.Sprintf("字段 %s 的外键引用 %s(%s)；检查会报告找不到父行的子行。", facts.column, facts.parentTable, facts.parentColumn)
+	},
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE: func(facts recommendFacts) string {
+		return fmt.Sprintf("该字段标注为 %s；检查会按%s校验每个取值。", labelSemanticTypeShortName(facts.label), standardCodeName(facts.standard, "zh-CN"))
 	},
 }
 

@@ -360,6 +360,7 @@
     - [SchemaDriftConfig](#metaxisdata-v1-SchemaDriftConfig)
     - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
+    - [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig)
     - [StringLengthConfig](#metaxisdata-v1-StringLengthConfig)
     - [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest)
     - [SuggestColumnLabelsResponse](#metaxisdata-v1-SuggestColumnLabelsResponse)
@@ -394,6 +395,7 @@
     - [QualityRuleType](#metaxisdata-v1-QualityRuleType)
     - [QualitySemanticType](#metaxisdata-v1-QualitySemanticType)
     - [QualitySeverity](#metaxisdata-v1-QualitySeverity)
+    - [QualityStandardCode](#metaxisdata-v1-QualityStandardCode)
     - [QualityStatus](#metaxisdata-v1-QualityStatus)
     - [QualitySuggestionJobStatus](#metaxisdata-v1-QualitySuggestionJobStatus)
     - [QualitySuggestionJobTargetState](#metaxisdata-v1-QualitySuggestionJobTargetState)
@@ -4479,6 +4481,7 @@ they are returned, so a wide text column cannot bloat the response.
 | column | [string](#string) |  |  |
 | value | [string](#string) |  | The value rendered as display text. Empty for a SQL NULL and for an empty string; is_null tells the two apart. |
 | is_null | [bool](#bool) | optional | Whether the value was SQL NULL. A sample recorded before this field existed has no marker, and its NULLs are indistinguishable from empty strings. |
+| masked | [bool](#bool) | optional | Whether the server redacted the value before returning it. A masked value is a display form only: for a resident ID card number the division prefix and the last four characters stay visible while the birth date and sequence digits are replaced. The raw value is never returned. |
 
 
 
@@ -6210,6 +6213,7 @@ behavior and the count/percent metric are shared by every type.
 | group_check | [GroupCheckConfig](#metaxisdata-v1-GroupCheckConfig) |  |  |
 | aggregate | [AggregateConfig](#metaxisdata-v1-AggregateConfig) |  | v1.1 second batch: aggregates and cross-table reconciliation. |
 | cross_table | [CrossTableConfig](#metaxisdata-v1-CrossTableConfig) |  |  |
+| standard_code | [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig) |  | v1.2: national and industry standard codes. |
 | threshold_metric | [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric) |  |  |
 | filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior) |  |  |
@@ -6945,6 +6949,30 @@ SemanticLabelSuggestion is a model-proposed semantic label for one column.
 
 
 
+<a name="metaxisdata-v1-StandardCodeConfig"></a>
+
+### StandardCodeConfig
+StandardCodeConfig validates one column against a national or industry
+standard code. The standard fixes the value shape, the check digit where one
+exists, and whether the value must exist in the standard&#39;s built-in code
+table. The rule reads a bounded sample of the column and validates every row
+in process, so its verdict is a sample verdict like cel_expression&#39;s.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| column | [string](#string) |  |  |
+| standard | [QualityStandardCode](#metaxisdata-v1-QualityStandardCode) |  |  |
+| allow_null | [bool](#bool) |  | When false (the default), a NULL value is a violation. |
+| sample_rows | [int32](#int32) |  | How many rows of the filtered relation one execution reads. 0 means the default (10000); the accepted range is 1-100000. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-StringLengthConfig"></a>
 
 ### StringLengthConfig
@@ -7485,6 +7513,7 @@ rule: changing the type is a different rule and a new revision.
 | QUALITY_RULE_TYPE_GROUP_CHECK | 16 | v1.1: groups rows and bounds each group&#39;s row count. |
 | QUALITY_RULE_TYPE_AGGREGATE | 17 | v1.1: aggregates one column and bounds the value. |
 | QUALITY_RULE_TYPE_CROSS_TABLE | 18 | v1.1: reconciles one aggregate of this table with one of another table in the same instance and database. |
+| QUALITY_RULE_TYPE_STANDARD_CODE | 19 | v1.2: validates a column against a national or industry standard code. The rule reads a bounded sample of the column and checks the values in process. |
 
 
 
@@ -7515,6 +7544,11 @@ only choose from these values.
 | QUALITY_SEMANTIC_TYPE_ENUM | 15 |  |
 | QUALITY_SEMANTIC_TYPE_FREE_TEXT | 16 |  |
 | QUALITY_SEMANTIC_TYPE_UNKNOWN | 17 |  |
+| QUALITY_SEMANTIC_TYPE_UNIFIED_SOCIAL_CREDIT_CODE | 18 |  |
+| QUALITY_SEMANTIC_TYPE_ORGANIZATION_CODE | 19 |  |
+| QUALITY_SEMANTIC_TYPE_RESIDENT_ID_CARD | 20 |  |
+| QUALITY_SEMANTIC_TYPE_ADMINISTRATIVE_DIVISION | 21 |  |
+| QUALITY_SEMANTIC_TYPE_INDUSTRY_CLASSIFICATION | 22 |  |
 
 
 
@@ -7529,6 +7563,24 @@ QualitySeverity is how much an issue on this rule matters.
 | QUALITY_SEVERITY_WARNING | 1 |  |
 | QUALITY_SEVERITY_ERROR | 2 |  |
 | QUALITY_SEVERITY_CRITICAL | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityStandardCode"></a>
+
+### QualityStandardCode
+QualityStandardCode is the standard a standard-code rule validates against.
+Each value fixes the value shape, the check digit (where the standard defines
+one) and whether membership in a built-in code table applies.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_STANDARD_CODE_UNSPECIFIED | 0 |  |
+| QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE | 1 | GB 32100-2015: 18 characters, MOD 31 check digit. |
+| QUALITY_STANDARD_CODE_ORGANIZATION_CODE | 2 | GB/T 11714-1997: 8 characters plus a MOD 11 check digit; one hyphen before the check digit is accepted. |
+| QUALITY_STANDARD_CODE_RESIDENT_ID_CARD | 3 | GB 11643-1999: 18 digits, MOD 11 check digit, a real birth date and a valid administrative-division prefix. |
+| QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION | 4 | GB/T 2260: a 6-digit code that exists in the built-in division table. |
+| QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION | 5 | GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the built-in classification table. |
 
 
 
