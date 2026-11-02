@@ -196,7 +196,7 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 
 		tools, err := session.ListTools(ctx, nil)
 		require.NoError(t, err)
-		require.Len(t, tools.Tools, 10)
+		require.Len(t, tools.Tools, 15)
 
 		expected, err := admin.user.GetCurrentUser(ctx, connect.NewRequest(&emptypb.Empty{}))
 		require.NoError(t, err)
@@ -210,6 +210,12 @@ func TestMCPAuthorizationAndToolsRealServerIntegration(t *testing.T) {
 		instances, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: "list_instances", Arguments: map[string]any{}})
 		require.NoError(t, err)
 		require.False(t, instances.IsError, "list_instances failed: %s", toolText(t, instances))
+
+		// The quality tools read tables the smoke fixture may leave empty; the
+		// call has to answer either way.
+		issues, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: "list_quality_issues", Arguments: map[string]any{}})
+		require.NoError(t, err)
+		require.False(t, issues.IsError, "list_quality_issues failed: %s", toolText(t, issues))
 	})
 
 	t.Run("a refresh token rotates the grant and is single use", func(t *testing.T) {

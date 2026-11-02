@@ -1,9 +1,10 @@
 # Connecting an MCP client
 
 Metaxisdata can serve its metadata registry, its lineage and its data-quality
-signals to a Model Context Protocol client as a set of read-only tools. The
-endpoint is `/mcp`, and the same server acts as the OAuth 2.1 authorization server
-those clients register and authorize against. Nothing here writes.
+targets, problems and evidence to a Model Context Protocol client as a set of
+read-only tools. The endpoint is `/mcp`, and the same server acts as the OAuth 2.1
+authorization server those clients register and authorize against. Nothing here
+writes.
 
 ## Before it will answer
 
@@ -88,6 +89,11 @@ browser flow again.
 | `get_metadata` | one object's full shape: columns, indexes, keys, partitions |
 | `get_ddl` | the object's definition as its source engine reports it |
 | `get_quality_signal` | whether an object is watched by data quality checks, and how healthy it is |
+| `list_quality_targets` | which tables data quality checks watch, and which need attention |
+| `get_quality_target` | one table's checks, health, schedule and unresolved problems |
+| `list_quality_issues` | the problem ledger: what is open, acknowledged, resolved or muted |
+| `list_quality_executions` | recent check runs with their verdicts, thresholds and evidence flags |
+| `get_quality_execution` | one run's full evidence: the SQL that ran, the failed rows, thresholds and baseline |
 | `analyze_sql` | what one SQL statement reads and writes, column by column |
 | `get_lineage_graph` | the multi-level lineage around an object |
 | `whoami` | who the caller is and what they may read |
@@ -102,6 +108,41 @@ nothing is being verified until one is resumed. For a monitored object it report
 `recentPassRate` with `recentExecutionCount`, `coveredColumnCount` with
 `totalColumnCount`, `openIssueCount`, `enabledRuleCount`, `schemaChanged` and
 `orphaned`; the judged fields are absent until a check has produced a verdict.
+
+The quality directory tools answer what the signal cannot. `list_quality_targets`
+walks the monitored tables — filtered by a name substring, by the worst latest
+result, or to those with unresolved problems — and reports each one's health,
+score, column coverage, latest run and schedule. `get_quality_target` opens one
+table: every check with its configuration and latest result, its schedule and its
+unresolved problems. `list_quality_issues` reads the problem ledger;
+`list_quality_executions` lists runs with their verdicts; `get_quality_execution`
+returns one run's whole evidence — the SQL that ran, the failed sample rows, the
+thresholds it was judged against and the baseline it compared with. There is
+deliberately no tool that asks a model to explain a failure: the agent calling
+these tools is the model, so it reasons over the evidence itself. Failed sample
+values are real row data, shown to a caller the `executions.get` permission
+already entitles.
+
+A table whose checks exist but are all paused is still monitored — `monitored` is
+true because the checks are there — but it answers `allPaused: true` and carries
+no current verdict: the summary omits the zero `enabledRuleCount`, and its
+`worstStatus` is the paused checks' history rather than a current claim; the
+directory rows use the same flag and omit their `worstStatus` in that case (a
+`worst_status` filter still matches that paused history, so it can return such a
+row). A run that produced no observation answers without `observedValue` in the
+execution listing, where a present `0` is a real observation. The detail tool,
+`get_quality_execution`, returns the whole record as protoJSON, and that rendering
+omits zero-valued fields too: an absent `observedValue` means `0` when `outcome`
+is PASS, WARN or FAIL, and "no observation at all" when it is ERROR, SKIPPED or
+NOT_EVALUATED — read the two together. The same omission applies to other zero
+scalars (`failedRows: 0`, `sampled: false`) in that record and in a target
+summary. An issue row's table comes from the path snapshot stored with its rule —
+display metadata, not identity — and is omitted when the target no longer has a
+live check or the best-effort lookup fails; `guid` and `metaType` always locate
+it. An `object` filter given by name must resolve to a check target (a table,
+external table, view or materialized view); the name of any other object type is
+refused rather than answered with an empty list, while a bare `guid` is passed
+through because it carries no type.
 
 Three rules decide whether a call works:
 

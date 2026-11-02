@@ -509,7 +509,12 @@ materialized-view page:
   the column or the badge.
 - Integrations that read the registry over MCP get the same fields from the
   `get_quality_signal` tool, which answers `monitored: false` for an object no
-  check watches.
+  check watches. The same read-only surface exposes the quality directory, one
+  target's checks and problems, the problem ledger, the execution list and one
+  execution's full evidence (`list_quality_targets`, `get_quality_target`,
+  `list_quality_issues`, `list_quality_executions`, `get_quality_execution`);
+  none of these asks a model to explain a failure — the calling agent reads the
+  evidence and reasons about it itself.
 
 ## Problems and notifications
 

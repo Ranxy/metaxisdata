@@ -56,6 +56,10 @@ type (
 	}
 	// QualityReader is the slice of DataQualityService the tools use.
 	QualityReader interface {
+		ListQualityIssues(context.Context, *connect.Request[v1pb.ListQualityIssuesRequest]) (*connect.Response[v1pb.ListQualityIssuesResponse], error)
+		GetQualityTarget(context.Context, *connect.Request[v1pb.GetQualityTargetRequest]) (*connect.Response[v1pb.GetQualityTargetResponse], error)
+		ListQualityExecutions(context.Context, *connect.Request[v1pb.ListQualityExecutionsRequest]) (*connect.Response[v1pb.ListQualityExecutionsResponse], error)
+		GetQualityExecution(context.Context, *connect.Request[v1pb.GetQualityExecutionRequest]) (*connect.Response[v1pb.QualityExecution], error)
 		ListQualityTargets(context.Context, *connect.Request[v1pb.ListQualityTargetsRequest]) (*connect.Response[v1pb.ListQualityTargetsResponse], error)
 	}
 )
@@ -100,7 +104,7 @@ Three rules decide whether a call works:
 2. Analyze a SQL statement against an explicit scope. A statement's unqualified names cannot say which instance they belong to, so analyze_sql takes scopes: [{instance, database, schema?}]. Without one it answers with the databases that exist rather than guessing.
 3. A failure is a question to rephrase, not a change to undo: the error envelope carries a code, a hint, and — when a name was unknown or ambiguous — the candidates it could have meant.
 
-Which tool answers what: analyze_sql for a statement you have in hand; get_lineage_graph for an object already in the registry; search_metadata when you only have a name; get_metadata and get_ddl for its shape; get_quality_signal for whether an object is watched by data quality checks and how healthy it is — a table with no live check is not monitored, which it reports as monitored: false rather than failing.`
+Which tool answers what: analyze_sql for a statement you have in hand; get_lineage_graph for an object already in the registry; search_metadata when you only have a name; get_metadata and get_ddl for its shape; get_quality_signal for whether an object is watched by data quality checks and how healthy it is — a table with no live check is not monitored, which it reports as monitored: false rather than failing. The quality detail lives there too: list_quality_targets finds which tables need attention, get_quality_target opens one table's checks and problems, list_quality_issues reads the problem ledger, and list_quality_executions with get_quality_execution carries a run's verdict and evidence.`
 )
 
 // Config is everything the MCP server needs. Services are required; Stores and
