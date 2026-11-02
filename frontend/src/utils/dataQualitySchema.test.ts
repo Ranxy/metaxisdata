@@ -272,6 +272,16 @@ describe("schema catalog edge cases", () => {
     ).toContain("percentile");
   });
 
+  it("requires a workspace table for a custom standard", () => {
+    const form = completeForm(QualityRuleType.STANDARD_CODE);
+    form.config.standard = QualityStandardCode.CUSTOM_CODE_TABLE;
+    expect(
+      missingRequiredFields(form, TARGET).map((field) => field.field)
+    ).toEqual(["codeTable"]);
+    form.config.codeTable = "workspaces/-/qualityCodeTables/municipal";
+    expect(missingRequiredFields(form, TARGET)).toEqual([]);
+  });
+
   it("reports both conditional cross-table columns", () => {
     const form = completeForm(QualityRuleType.CROSS_TABLE);
     form.config.leftAggFunction = QualityAggregateFunction.AVG;

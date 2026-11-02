@@ -470,7 +470,7 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if target == nil {
 		return nil, connectErrorInvalid("target is required")
 	}
-	validated, _, err := s.validateRuleInput(ctx, storepb.QualityRuleType(rule.GetRuleType()),
+	validated, _, err := s.validateRuleInput(ctx, workspaceID, storepb.QualityRuleType(rule.GetRuleType()),
 		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
 		return nil, err
@@ -666,7 +666,7 @@ func (s *DataQualityService) applyQualityRuleUpdate(ctx context.Context, msg *v1
 	}
 	update.Patch.UpdatedBy = principalIDPointer(currentUserID(ctx))
 
-	if err := s.revalidateQualityRuleDefinition(ctx, update, current); err != nil {
+	if err := s.revalidateQualityRuleDefinition(ctx, workspaceID, update, current); err != nil {
 		return "", nil, err
 	}
 
@@ -693,8 +693,14 @@ func (s *DataQualityService) applyQualityRuleUpdate(ctx context.Context, msg *v1
 //
 // The target's contract filter is part of the compiled statement, so validation
 // loads it too: a save or a dry run must compile exactly what the runner will run.
-func (s *DataQualityService) validateRuleInput(ctx context.Context, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig) (*dataquality.ValidatedRule, bool, error) {
+func (s *DataQualityService) validateRuleInput(ctx context.Context, workspaceID string, ruleType storepb.QualityRuleType, guid string, metaType storepb.MetaType, config *storepb.QualityRuleConfig) (*dataquality.ValidatedRule, bool, error) {
 	filled := false
+	// A standard-code rule may reference a workspace code table. Resolve and
+	// canonicalize the reference before validation so a saved rule always carries a
+	// name the delete path can find.
+	if err := s.resolveQualityCodeTableReference(ctx, workspaceID, config); err != nil {
+		return nil, false, err
+	}
 	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT && config != nil {
 		resolution, err := dataquality.ResolveTarget(ctx, s.store, guid, metaType)
 		if err != nil {
@@ -764,12 +770,12 @@ func requireReadOnlySourceForNewRule(ruleType storepb.QualityRuleType, resolutio
 // revalidateQualityRuleDefinition runs the save pipeline on the merged
 // definition when the mask changes it, and refreshes the target snapshot the
 // store keeps beside it.
-func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context, update *qualityRuleUpdate, current *store.QualityRuleMessage) error {
+func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context, workspaceID string, update *qualityRuleUpdate, current *store.QualityRuleMessage) error {
 	if !update.DefinitionChanged {
 		return nil
 	}
 	ruleType, guid, metaType, config := mergedQualityRuleDefinition(current, update.Patch)
-	validated, filledSnapshot, err := s.validateRuleInput(ctx, ruleType, guid, metaType, config)
+	validated, filledSnapshot, err := s.validateRuleInput(ctx, workspaceID, ruleType, guid, metaType, config)
 	if err != nil {
 		return err
 	}
@@ -841,7 +847,8 @@ func (s *DataQualityService) DeleteQualityRule(ctx context.Context, req *connect
 
 // PreviewQualityRule validates, compiles and probes a rule without saving it.
 func (s *DataQualityService) PreviewQualityRule(ctx context.Context, req *connect.Request[v1pb.PreviewQualityRuleRequest]) (*connect.Response[v1pb.PreviewQualityRuleResponse], error) {
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
 		return nil, err
 	}
 	rule := req.Msg.GetRule()
@@ -854,7 +861,7 @@ func (s *DataQualityService) PreviewQualityRule(ctx context.Context, req *connec
 	}
 	config := convertQualityRuleConfigFromV1(rule.GetConfig())
 	ruleType := storepb.QualityRuleType(rule.GetRuleType())
-	validated, _, err := s.validateRuleInput(ctx, ruleType,
+	validated, _, err := s.validateRuleInput(ctx, workspaceID, ruleType,
 		strings.TrimSpace(target.GetMetaGuid()), storepb.MetaType(target.GetMetaType()), config)
 	if err != nil {
 		return nil, err

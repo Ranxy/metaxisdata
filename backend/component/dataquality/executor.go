@@ -313,9 +313,13 @@ func executeStandardCodeRule(ctx context.Context, queryer db.ReadOnlyQueryer, re
 		return nil, err
 	}
 	allowNull := config.GetAllowNull()
+	codeTable, err := standardCodeTableSet(standard, config.GetCodeTable(), opts.CodeTableValues)
+	if err != nil {
+		return nil, err
+	}
 	return executeSampleEvaluatedRule(ctx, queryer, compiled, opts, m, sampleRows, metrics.QueryPurposeRuleStandardCodeSample,
 		func(rows [][]any, failingLimit int) (int64, int64, [][]any, error) {
-			return evaluateStandardCodeRows(standard, allowNull, valueIndex, rows, failingLimit)
+			return evaluateStandardCodeRows(standard, allowNull, valueIndex, rows, failingLimit, codeTable)
 		})
 }
 

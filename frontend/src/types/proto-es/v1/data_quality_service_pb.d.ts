@@ -1051,6 +1051,16 @@ export declare type StandardCodeConfig = Message<"metaxisdata.v1.StandardCodeCon
    * @generated from field: optional double warn_threshold = 6;
    */
   warnThreshold?: number;
+
+  /**
+   * Optional workspace code table the value must also exist in, as a
+   * "workspaces/{workspace}/qualityCodeTables/{quality_code_table}" resource name.
+   * Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it
+   * narrows the accepted values (for example a customer's current division list).
+   *
+   * @generated from field: string code_table = 7;
+   */
+  codeTable: string;
 };
 
 /**
@@ -7313,6 +7323,428 @@ export declare type ExportQualityReportResponse = Message<"metaxisdata.v1.Export
 export declare const ExportQualityReportResponseSchema: GenMessage<ExportQualityReportResponse>;
 
 /**
+ * QualityRuleTemplate is a reusable check definition: a check type with its
+ * parameters, without a target or the columns a target owns. Applying one
+ * prefills a check editor; the check still has to be saved.
+ *
+ * @generated from message metaxisdata.v1.QualityRuleTemplate
+ */
+export declare type QualityRuleTemplate = Message<"metaxisdata.v1.QualityRuleTemplate"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityRuleType rule_type = 4;
+   */
+  ruleType: QualityRuleType;
+
+  /**
+   * The parameters to prefill. Target-bound fields (the checked column or columns,
+   * the filter, a schema-drift snapshot) are empty: a template names no table and no
+   * column. The config's oneof arm must match rule_type.
+   *
+   * @generated from field: metaxisdata.v1.QualityRuleConfig config = 5;
+   */
+  config?: QualityRuleConfig;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualitySeverity severity = 6;
+   */
+  severity: QualitySeverity;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityDimension dimension = 7;
+   */
+  dimension: QualityDimension;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 8;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 9;
+   */
+  updateTime?: Timestamp;
+
+  /**
+   * Format: users/{user}. Empty when the author is unknown.
+   *
+   * @generated from field: string created_by = 10;
+   */
+  createdBy: string;
+
+  /**
+   * Format: users/{user}. Empty when the last editor is unknown.
+   *
+   * @generated from field: string updated_by = 11;
+   */
+  updatedBy: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityRuleTemplate.
+ * Use `create(QualityRuleTemplateSchema)` to create a new message.
+ */
+export declare const QualityRuleTemplateSchema: GenMessage<QualityRuleTemplate>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityRuleTemplatesRequest
+ */
+export declare type ListQualityRuleTemplatesRequest = Message<"metaxisdata.v1.ListQualityRuleTemplatesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of templates to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityRuleTemplatesRequest.
+ * Use `create(ListQualityRuleTemplatesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityRuleTemplatesRequestSchema: GenMessage<ListQualityRuleTemplatesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityRuleTemplatesResponse
+ */
+export declare type ListQualityRuleTemplatesResponse = Message<"metaxisdata.v1.ListQualityRuleTemplatesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityRuleTemplate quality_rule_templates = 1;
+   */
+  qualityRuleTemplates: QualityRuleTemplate[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityRuleTemplatesResponse.
+ * Use `create(ListQualityRuleTemplatesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityRuleTemplatesResponseSchema: GenMessage<ListQualityRuleTemplatesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityRuleTemplateRequest
+ */
+export declare type GetQualityRuleTemplateRequest = Message<"metaxisdata.v1.GetQualityRuleTemplateRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityRuleTemplateRequest.
+ * Use `create(GetQualityRuleTemplateRequestSchema)` to create a new message.
+ */
+export declare const GetQualityRuleTemplateRequestSchema: GenMessage<GetQualityRuleTemplateRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityRuleTemplateRequest
+ */
+export declare type CreateQualityRuleTemplateRequest = Message<"metaxisdata.v1.CreateQualityRuleTemplateRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The template to create. Its name is assigned by the server.
+   *
+   * @generated from field: metaxisdata.v1.QualityRuleTemplate quality_rule_template = 2;
+   */
+  qualityRuleTemplate?: QualityRuleTemplate;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityRuleTemplateRequest.
+ * Use `create(CreateQualityRuleTemplateRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityRuleTemplateRequestSchema: GenMessage<CreateQualityRuleTemplateRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualityRuleTemplateRequest
+ */
+export declare type UpdateQualityRuleTemplateRequest = Message<"metaxisdata.v1.UpdateQualityRuleTemplateRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityRuleTemplate quality_rule_template = 1;
+   */
+  qualityRuleTemplate?: QualityRuleTemplate;
+
+  /**
+   * The fields to replace: "title", "description", "severity", "dimension", "config".
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityRuleTemplateRequest.
+ * Use `create(UpdateQualityRuleTemplateRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityRuleTemplateRequestSchema: GenMessage<UpdateQualityRuleTemplateRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteQualityRuleTemplateRequest
+ */
+export declare type DeleteQualityRuleTemplateRequest = Message<"metaxisdata.v1.DeleteQualityRuleTemplateRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteQualityRuleTemplateRequest.
+ * Use `create(DeleteQualityRuleTemplateRequestSchema)` to create a new message.
+ */
+export declare const DeleteQualityRuleTemplateRequestSchema: GenMessage<DeleteQualityRuleTemplateRequest>;
+
+/**
+ * QualityCodeTable is a workspace-defined list of accepted codes used by a
+ * standard-code check, for example an industry-standard code set that is not
+ * bundled with the server.
+ *
+ * @generated from message metaxisdata.v1.QualityCodeTable
+ */
+export declare type QualityCodeTable = Message<"metaxisdata.v1.QualityCodeTable"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * The accepted codes, sorted and de-duplicated by the server. Empty in a list
+   * response, which carries value_count instead. At most 5000 values, each at most
+   * 256 bytes.
+   *
+   * @generated from field: repeated string values = 4;
+   */
+  values: string[];
+
+  /**
+   * @generated from field: int32 value_count = 5;
+   */
+  valueCount: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 6;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 7;
+   */
+  updateTime?: Timestamp;
+
+  /**
+   * Format: users/{user}. Empty when the author is unknown.
+   *
+   * @generated from field: string created_by = 8;
+   */
+  createdBy: string;
+
+  /**
+   * Format: users/{user}. Empty when the last editor is unknown.
+   *
+   * @generated from field: string updated_by = 9;
+   */
+  updatedBy: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityCodeTable.
+ * Use `create(QualityCodeTableSchema)` to create a new message.
+ */
+export declare const QualityCodeTableSchema: GenMessage<QualityCodeTable>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityCodeTablesRequest
+ */
+export declare type ListQualityCodeTablesRequest = Message<"metaxisdata.v1.ListQualityCodeTablesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of tables to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityCodeTablesRequest.
+ * Use `create(ListQualityCodeTablesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityCodeTablesRequestSchema: GenMessage<ListQualityCodeTablesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityCodeTablesResponse
+ */
+export declare type ListQualityCodeTablesResponse = Message<"metaxisdata.v1.ListQualityCodeTablesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityCodeTable quality_code_tables = 1;
+   */
+  qualityCodeTables: QualityCodeTable[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityCodeTablesResponse.
+ * Use `create(ListQualityCodeTablesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityCodeTablesResponseSchema: GenMessage<ListQualityCodeTablesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityCodeTableRequest
+ */
+export declare type GetQualityCodeTableRequest = Message<"metaxisdata.v1.GetQualityCodeTableRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityCodeTableRequest.
+ * Use `create(GetQualityCodeTableRequestSchema)` to create a new message.
+ */
+export declare const GetQualityCodeTableRequestSchema: GenMessage<GetQualityCodeTableRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityCodeTableRequest
+ */
+export declare type CreateQualityCodeTableRequest = Message<"metaxisdata.v1.CreateQualityCodeTableRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The table to create. Its name is assigned by the server.
+   *
+   * @generated from field: metaxisdata.v1.QualityCodeTable quality_code_table = 2;
+   */
+  qualityCodeTable?: QualityCodeTable;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityCodeTableRequest.
+ * Use `create(CreateQualityCodeTableRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityCodeTableRequestSchema: GenMessage<CreateQualityCodeTableRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualityCodeTableRequest
+ */
+export declare type UpdateQualityCodeTableRequest = Message<"metaxisdata.v1.UpdateQualityCodeTableRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityCodeTable quality_code_table = 1;
+   */
+  qualityCodeTable?: QualityCodeTable;
+
+  /**
+   * The fields to replace: "title", "description", "values".
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityCodeTableRequest.
+ * Use `create(UpdateQualityCodeTableRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityCodeTableRequestSchema: GenMessage<UpdateQualityCodeTableRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteQualityCodeTableRequest
+ */
+export declare type DeleteQualityCodeTableRequest = Message<"metaxisdata.v1.DeleteQualityCodeTableRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteQualityCodeTableRequest.
+ * Use `create(DeleteQualityCodeTableRequestSchema)` to create a new message.
+ */
+export declare const DeleteQualityCodeTableRequestSchema: GenMessage<DeleteQualityCodeTableRequest>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -7491,6 +7923,15 @@ export enum QualityStandardCode {
    * @generated from enum value: QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION = 5;
    */
   INDUSTRY_CLASSIFICATION = 5,
+
+  /**
+   * A workspace-defined code table: the value must exist in the referenced
+   * quality code table. Use it for standard code sets that are not bundled with
+   * the server (for example an industry or municipal code set).
+   *
+   * @generated from enum value: QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE = 6;
+   */
+  CUSTOM_CODE_TABLE = 6,
 }
 
 /**
@@ -8864,6 +9305,114 @@ export declare const DataQualityService: GenService<{
   deleteQualityRule: {
     methodKind: "unary";
     input: typeof DeleteQualityRuleRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * List the workspace's custom rule templates, newest first. Built-in templates
+   * are served by the client catalogue and are not part of this resource.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityRuleTemplates
+   */
+  listQualityRuleTemplates: {
+    methodKind: "unary";
+    input: typeof ListQualityRuleTemplatesRequestSchema;
+    output: typeof ListQualityRuleTemplatesResponseSchema;
+  },
+  /**
+   * Read one custom rule template.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityRuleTemplate
+   */
+  getQualityRuleTemplate: {
+    methodKind: "unary";
+    input: typeof GetQualityRuleTemplateRequestSchema;
+    output: typeof QualityRuleTemplateSchema;
+  },
+  /**
+   * Create a custom rule template. A template is a check type and its parameters:
+   * target-bound fields (columns, filter) are cleared by the server before it is
+   * stored.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate
+   */
+  createQualityRuleTemplate: {
+    methodKind: "unary";
+    input: typeof CreateQualityRuleTemplateRequestSchema;
+    output: typeof QualityRuleTemplateSchema;
+  },
+  /**
+   * Update a custom rule template's title, description, severity, dimension or
+   * parameters. The same target-bound fields are cleared.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate
+   */
+  updateQualityRuleTemplate: {
+    methodKind: "unary";
+    input: typeof UpdateQualityRuleTemplateRequestSchema;
+    output: typeof QualityRuleTemplateSchema;
+  },
+  /**
+   * Delete a custom rule template. Checks already created from it are unaffected.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate
+   */
+  deleteQualityRuleTemplate: {
+    methodKind: "unary";
+    input: typeof DeleteQualityRuleTemplateRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * List the workspace's code tables. A list response carries each table's value
+   * count but not its values; read one table with GetQualityCodeTable.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityCodeTables
+   */
+  listQualityCodeTables: {
+    methodKind: "unary";
+    input: typeof ListQualityCodeTablesRequestSchema;
+    output: typeof ListQualityCodeTablesResponseSchema;
+  },
+  /**
+   * Read one code table including its values.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityCodeTable
+   */
+  getQualityCodeTable: {
+    methodKind: "unary";
+    input: typeof GetQualityCodeTableRequestSchema;
+    output: typeof QualityCodeTableSchema;
+  },
+  /**
+   * Create a workspace code table. Values are sorted, de-duplicated and capped by
+   * the server, so an import is idempotent.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityCodeTable
+   */
+  createQualityCodeTable: {
+    methodKind: "unary";
+    input: typeof CreateQualityCodeTableRequestSchema;
+    output: typeof QualityCodeTableSchema;
+  },
+  /**
+   * Update a code table's title, description or values. Replacing the values is the
+   * import path.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityCodeTable
+   */
+  updateQualityCodeTable: {
+    methodKind: "unary";
+    input: typeof UpdateQualityCodeTableRequestSchema;
+    output: typeof QualityCodeTableSchema;
+  },
+  /**
+   * Delete a code table. A table still referenced by a rule or a template is
+   * refused with FailedPrecondition rather than silently breaking those checks.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.DeleteQualityCodeTable
+   */
+  deleteQualityCodeTable: {
+    methodKind: "unary";
+    input: typeof DeleteQualityCodeTableRequestSchema;
     output: typeof EmptySchema;
   },
   /**

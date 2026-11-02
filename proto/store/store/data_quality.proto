@@ -66,6 +66,10 @@ enum QualityStandardCode {
   // GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the
   // built-in classification table.
   QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION = 5;
+  // A workspace-defined code table: the value must exist in the referenced
+  // quality code table. Use it for standard code sets that are not bundled with
+  // the server (for example an industry or municipal code set).
+  QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE = 6;
 }
 
 // QualityDimension is the data quality dimension a rule measures. It is display
@@ -768,6 +772,17 @@ message StandardCodeConfig {
   int32 sample_rows = 4;
   optional double fail_threshold = 5;
   optional double warn_threshold = 6;
+  // Optional workspace code table the value must also exist in, as a
+  // "workspaces/{workspace}/qualityCodeTables/{quality_code_table}" resource name.
+  // Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it
+  // narrows the accepted values (for example a customer's current division list).
+  string code_table = 7;
+}
+
+// QualityCodeTableValues is the JSONB payload of one code table: the accepted
+// codes, sorted and de-duplicated by the server.
+message QualityCodeTableValues {
+  repeated string values = 1;
 }
 
 // SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
