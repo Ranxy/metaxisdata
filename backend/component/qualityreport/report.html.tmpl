@@ -279,6 +279,64 @@ footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--border
 {{end}}
 {{end}}
 
+<h2>{{.Labels.SectionImpact}}</h2>
+<p class="muted">{{.Impact.Description}}</p>
+{{if .Impact.WindowNote}}<p class="muted">{{.Impact.WindowNote}}</p>{{end}}
+<h3>{{.Impact.CausesTitle}}</h3>
+{{if .Impact.CausesEmpty}}
+<p class="muted">{{.Impact.CausesNote}}</p>
+{{else}}
+<table>
+  <thead>
+  <tr>
+    <th>{{.Labels.ColumnImpactPath}}</th>
+    <th class="num">{{.Labels.ColumnImpactLevelsUp}}</th>
+    <th>{{.Labels.ColumnImpactEvidence}}</th>
+  </tr>
+  </thead>
+  <tbody>
+  {{range .Impact.Causes}}
+  <tr>
+    <td>{{.Path}}</td>
+    <td class="num">{{.LevelsUp}}</td>
+    <td>{{.Evidence}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .Impact.CausesNote}}<p class="note">{{.Impact.CausesNote}}</p>{{end}}
+{{end}}
+<h3>{{.Impact.DownstreamTitle}}</h3>
+{{if .Impact.DownstreamEmpty}}
+<p class="muted">{{.Impact.DownstreamNote}}</p>
+{{else}}
+<table>
+  <thead>
+  <tr>
+    <th>{{.Labels.ColumnImpactPath}}</th>
+    <th>{{.Labels.ColumnImpactType}}</th>
+    <th class="num">{{.Labels.ColumnImpactHops}}</th>
+    <th>{{.Labels.ColumnImpactMonitoring}}</th>
+    <th class="num">{{.Labels.ColumnImpactOpenIssues}}</th>
+    <th>{{.Labels.ColumnImpactLastRun}}</th>
+  </tr>
+  </thead>
+  <tbody>
+  {{range .Impact.Downstream}}
+  <tr>
+    <td>{{.Path}}</td>
+    <td>{{.Type}}</td>
+    <td class="num">{{.Hops}}</td>
+    <td>{{if .MonitoringClass}}<span class="badge {{.MonitoringClass}}">{{.Monitoring}}</span>{{else}}{{.Monitoring}}{{end}}</td>
+    <td class="num">{{.OpenIssues}}</td>
+    <td>{{.LastRun}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{if .Impact.DownstreamNote}}<p class="note">{{.Impact.DownstreamNote}}</p>{{end}}
+{{end}}
+
 <h2>{{.Labels.SectionBasis}}</h2>
 <dl class="facts">
   <div><dt>{{.Labels.BasisPath}}</dt><dd>{{.Basis.Path}}</dd></div>

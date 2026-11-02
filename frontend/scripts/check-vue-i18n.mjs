@@ -109,6 +109,12 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.issueStatus",
   "dataQuality.resolutionReason",
   "dataQuality.aggregateFunction",
+  // The lineage-impact distance wording, its window caption and its truncation
+  // footnotes come back as {key, params} from src/utils/dataQualityImpact.ts,
+  // so the checker cannot follow them.
+  "dataQuality.impact.distance",
+  "dataQuality.impact.window",
+  "dataQuality.impact.footnote",
   // CODE_MESSAGE_KEYS in src/utils/error.ts maps every Connect status code to an
   // "error.*" sentence. The table is exhaustive by type (Record<Code, …>) and its
   // values are checked against the locale schema at compile time, so a stray key

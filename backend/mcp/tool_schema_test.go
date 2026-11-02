@@ -43,6 +43,8 @@ func TestToolSchemasMatchTheirArgumentStructs(t *testing.T) {
 		{tool: "list_quality_issues", args: listQualityIssuesArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "list_quality_executions", args: listQualityExecutionsArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "get_quality_execution", args: getQualityExecutionArgs{}},
+		{tool: "get_quality_impact", args: getQualityImpactArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "get_quality_consumption_coverage", args: getQualityConsumptionCoverageArgs{}},
 		{tool: "analyze_sql", args: analyzeSQLArgs{}, nested: map[string]any{"scopes": analysisScope{}}},
 		{tool: "get_lineage_graph", args: getLineageGraphArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "whoami", args: struct{}{}},

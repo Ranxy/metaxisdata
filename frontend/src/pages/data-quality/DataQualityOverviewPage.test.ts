@@ -6,6 +6,8 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  GetQualityConsumptionCoverageResponseSchema,
+  QualityConsumptionGapSchema,
   QualityCoverageBreakdownSchema,
   QualityDimension,
   QualityDimensionScoreSchema,
@@ -27,6 +29,7 @@ import DataQualityOverviewPage from "./DataQualityOverviewPage.vue";
 
 const mocks = vi.hoisted(() => ({
   getQualityOverview: vi.fn(),
+  getQualityConsumptionCoverage: vi.fn(),
   listAllQualityRules: vi.fn(),
   listQualityIssues: vi.fn(),
   listQualityTargets: vi.fn(),
@@ -35,6 +38,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityOverview: mocks.getQualityOverview,
+  getQualityConsumptionCoverage: mocks.getQualityConsumptionCoverage,
   listAllQualityRules: mocks.listAllQualityRules,
   listQualityIssues: mocks.listQualityIssues,
   listQualityTargets: mocks.listQualityTargets,
@@ -200,6 +204,30 @@ function targetFixture(
   });
 }
 
+/** The consumption coverage the independent card reads for itself. */
+function consumptionFixture() {
+  return create(GetQualityConsumptionCoverageResponseSchema, {
+    consumedAssetCount: 40,
+    monitoredAssetCount: 12,
+    gapCount: 28,
+    gaps: [
+      create(QualityConsumptionGapSchema, {
+        target: create(QualityTargetSchema, {
+          metaGuid: TARGET_GUID,
+          metaType: MetaType.TABLE,
+          path: create(QualityTargetPathSchema, {
+            instance: "prod",
+            database: "shop",
+            schema: "public",
+            object: "orders",
+          }),
+        }),
+        downstreamAssetCount: 9,
+      }),
+    ],
+  });
+}
+
 async function mountPage() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -264,6 +292,7 @@ describe("DataQualityOverviewPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.getQualityOverview.mockResolvedValue(overviewFixture());
+    mocks.getQualityConsumptionCoverage.mockResolvedValue(consumptionFixture());
     mocks.listAllQualityRules.mockResolvedValue([
       create(QualityRuleSchema, {
         name: RULE,
@@ -603,5 +632,57 @@ describe("DataQualityOverviewPage", () => {
       );
     expect(targets?.attributes("href")).toBe("/data-quality/targets?new=1");
     expect(wrapper.find("svg[role='img']").exists()).toBe(false);
+  });
+
+  it("renders consumption coverage from its own read", async () => {
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.consumptionTitle")
+    );
+    expect(wrapper.text()).toContain("30.0%");
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.consumptionGapHint", { count: 28 })
+    );
+    expect(mocks.getQualityConsumptionCoverage).toHaveBeenCalledWith({
+      pageSize: 5,
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it("keeps a consumption failure inside its card", async () => {
+    mocks.getQualityConsumptionCoverage.mockRejectedValue(
+      new Error("lineage down")
+    );
+    const wrapper = await mountPage();
+
+    // The overview itself still rendered.
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.attentionTitle")
+    );
+    expect(wrapper.find("svg[role='img']").exists()).toBe(true);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.overview.fetchError")
+    );
+    // The failure is shown, in the card that owns it.
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.consumptionFetchError")
+    );
+  });
+
+  it("re-reads the consumption card with the page refresh", async () => {
+    const wrapper = await mountPage();
+    expect(mocks.getQualityConsumptionCoverage).toHaveBeenCalledTimes(1);
+
+    const refresh = wrapper
+      .findAll("button")
+      .find((button) =>
+        button.text().includes(i18n.global.t("common.refresh"))
+      );
+    expect(refresh).toBeTruthy();
+    await refresh?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.getQualityConsumptionCoverage).toHaveBeenCalledTimes(2);
   });
 });

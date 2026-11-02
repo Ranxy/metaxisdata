@@ -477,3 +477,126 @@ func TestRenderCronScheduleBasis(t *testing.T) {
 	require.Contains(t, interval, "every 2h", "an interval target's basis is unchanged")
 	require.NotContains(t, interval, "cron ")
 }
+
+// The impact section says what the target feeds and what may explain a failure. An
+// asset nobody watches renders as unmonitored — never as a status, which would read
+// as a verdict — and the omitted/truncated counts are stated instead of silently
+// shortening the list.
+func TestRenderImpactSection(t *testing.T) {
+	t.Parallel()
+
+	lastRun := time.Date(2026, time.October, 31, 8, 0, 0, 0, time.UTC)
+	failureAt := time.Date(2026, time.October, 31, 7, 0, 0, 0, time.UTC)
+	changedAt := time.Date(2026, time.October, 30, 22, 0, 0, 0, time.UTC)
+	pausedSummary := ImpactAsset{
+		Path:      "instance-1/shop/orders",
+		TypeKey:   "TABLE",
+		Distance:  1,
+		Monitored: true,
+		AllPaused: true,
+	}
+	report := reportFixture()
+	report.Impact = &Impact{
+		DownstreamOmitted:   2,
+		DownstreamTruncated: true,
+		RootCausesOmitted:   1,
+		UpstreamTruncated:   true,
+		WindowStart:         failureAt.Add(-24 * time.Hour),
+		WindowEnd:           failureAt,
+		Downstream: []ImpactAsset{
+			{
+				Path:           "instance-1/shop;public;order_summary",
+				TypeKey:        "VIEW",
+				Distance:       1,
+				Monitored:      true,
+				WorstStatusKey: StatusFail,
+				OpenIssueCount: 1,
+				LastRunTime:    &lastRun,
+			},
+			pausedSummary,
+			{Path: "instance-1/shop;public;reporting", TypeKey: "TABLE", Distance: 2},
+			{
+				Path:      "instance-1/shop;public;never_run",
+				TypeKey:   "TABLE",
+				Distance:  2,
+				Monitored: true,
+			},
+		},
+		RootCauses: []ImpactCause{{
+			Path:                  "instance-1/shop;public;raw_orders",
+			Distance:              -1,
+			FailingRuleCount:      2,
+			FailingExecutionCount: 5,
+			LatestFailureTime:     &failureAt,
+			StructureChangedTime:  &changedAt,
+		}},
+	}
+	report.Impact.Downstream[0].Path = "instance-1/shop/public/order_summary"
+
+	document, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	for _, want := range []string{
+		"Impact",
+		"This is not a complete list of consumers.",
+		"Downstream assets",
+		"Possible upstream causes",
+		"order_summary",
+		"All checks paused",
+		"Unmonitored",
+		"Never run",
+		"Fail",
+		"Failed checks in the window: 2 · failed runs: 5",
+		"structure changed",
+		"Objects walked through but not listed because a check cannot watch them: 2.",
+		"The lineage walk was cut short; more objects may be affected.",
+		"The upstream walk was cut short; other causes may be missing.",
+		"More candidates not shown: 1.",
+	} {
+		require.Contains(t, document, want, "english report")
+	}
+
+	chinese, err := Render(LanguageChinese, report)
+	require.NoError(t, err)
+	for _, want := range []string{
+		"影响面",
+		"并非全部消费方",
+		"下游受影响资产",
+		"可能的上游原因",
+		"检查已全部暂停",
+		"未监控",
+		"未运行",
+		"窗口内失败检查：2 条 · 失败执行：5 次",
+		"上游遍历被截断，可能还有其他原因未列出",
+		"另有候选未显示：1 个。",
+	} {
+		require.Contains(t, chinese, want, "chinese report")
+	}
+}
+
+// Without a failing check to anchor it, the report still lists what the target
+// feeds but states that the upstream window has no anchor; it must not silently
+// present a now-anchored window as if it explained a failure.
+func TestRenderImpactWithoutAnchor(t *testing.T) {
+	t.Parallel()
+
+	report := reportFixture()
+	report.Impact = &Impact{
+		Downstream: []ImpactAsset{{Path: "instance-1/shop/public/orders_report", TypeKey: "VIEW", Distance: 1}},
+	}
+	document, err := Render(LanguageEnglish, report)
+	require.NoError(t, err)
+	require.Contains(t, document, "No failing check anchors an upstream window.")
+	require.Contains(t, document, "No upstream check failed or changed structure in the window.")
+	require.Contains(t, document, "orders_report")
+}
+
+// A report that computed no impact at all renders the section's honest reasons
+// rather than an empty heading or a blank table.
+func TestRenderWithoutImpact(t *testing.T) {
+	t.Parallel()
+
+	document, err := Render(LanguageEnglish, reportFixture())
+	require.NoError(t, err)
+	require.Contains(t, document, "No downstream assets are recorded in lineage.")
+	require.Contains(t, document, "No upstream check failed or changed structure in the window.")
+}

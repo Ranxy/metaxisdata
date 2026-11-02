@@ -56,9 +56,11 @@ const (
 	DataQualityService_RecommendQualityChecks_FullMethodName             = "/metaxisdata.v1.DataQualityService/RecommendQualityChecks"
 	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
 	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	DataQualityService_GetQualityConsumptionCoverage_FullMethodName      = "/metaxisdata.v1.DataQualityService/GetQualityConsumptionCoverage"
 	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
 	DataQualityService_ExportQualityTargets_FullMethodName               = "/metaxisdata.v1.DataQualityService/ExportQualityTargets"
 	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	DataQualityService_GetQualityTargetImpact_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityTargetImpact"
 	DataQualityService_AcknowledgeQualityTargetSchema_FullMethodName     = "/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema"
 	DataQualityService_ExportQualityReport_FullMethodName                = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
 	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
@@ -222,6 +224,15 @@ type DataQualityServiceClient interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(ctx context.Context, in *GetQualityOverviewRequest, opts ...grpc.CallOption) (*QualityOverview, error)
+	// Read how much of the data other assets consume is watched. Unlike the
+	// overview's coverage, whose denominator is every monitorable registry object,
+	// this answers a consumption question: of the assets whose lineage shows
+	// another object reading them, how many have an enabled check? The two ratios
+	// have different denominators and are deliberately not combined.
+	//
+	// It is a separate read because answering it costs one grouped scan of the
+	// lineage table, which the overview must not pay on every load.
+	GetQualityConsumptionCoverage(ctx context.Context, in *GetQualityConsumptionCoverageRequest, opts ...grpc.CallOption) (*GetQualityConsumptionCoverageResponse, error)
 	// List the targets (tables or views) that have quality rules, one row per
 	// target. The counts, the worst latest result and the pending draft tally are
 	// aggregated by the database, so the directory does not page through every
@@ -244,6 +255,12 @@ type DataQualityServiceClient interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(ctx context.Context, in *GetQualityTargetRequest, opts ...grpc.CallOption) (*GetQualityTargetResponse, error)
+	// Explain a target's quality state by its lineage: the assets its data
+	// reaches downstream, and the upstream targets whose checks failed or whose
+	// structure changed in the window before a reference instant. Both lists are
+	// bounded walks over the recorded lineage, so a target with no recorded edges
+	// has no impact to report — which is not the same as having no consumers.
+	GetQualityTargetImpact(ctx context.Context, in *GetQualityTargetImpactRequest, opts ...grpc.CallOption) (*GetQualityTargetImpactResponse, error)
 	// Acknowledge that a target's structure changed and re-baseline its checks.
 	// Every non-archived check whose saved structure snapshot differs from the
 	// target's current fingerprint gets the current fingerprint, which clears the
@@ -689,6 +706,16 @@ func (c *dataQualityServiceClient) GetQualityOverview(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityConsumptionCoverage(ctx context.Context, in *GetQualityConsumptionCoverageRequest, opts ...grpc.CallOption) (*GetQualityConsumptionCoverageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQualityConsumptionCoverageResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityConsumptionCoverage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ListQualityTargets(ctx context.Context, in *ListQualityTargetsRequest, opts ...grpc.CallOption) (*ListQualityTargetsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityTargetsResponse)
@@ -722,6 +749,16 @@ func (c *dataQualityServiceClient) GetQualityTarget(ctx context.Context, in *Get
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetQualityTargetResponse)
 	err := c.cc.Invoke(ctx, DataQualityService_GetQualityTarget_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityTargetImpact(ctx context.Context, in *GetQualityTargetImpactRequest, opts ...grpc.CallOption) (*GetQualityTargetImpactResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetQualityTargetImpactResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityTargetImpact_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -979,6 +1016,15 @@ type DataQualityServiceServer interface {
 	// Read the workspace's quality summary: how many rules and issues exist, how
 	// the last day went, and the per-day tallies the overview chart draws.
 	GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error)
+	// Read how much of the data other assets consume is watched. Unlike the
+	// overview's coverage, whose denominator is every monitorable registry object,
+	// this answers a consumption question: of the assets whose lineage shows
+	// another object reading them, how many have an enabled check? The two ratios
+	// have different denominators and are deliberately not combined.
+	//
+	// It is a separate read because answering it costs one grouped scan of the
+	// lineage table, which the overview must not pay on every load.
+	GetQualityConsumptionCoverage(context.Context, *GetQualityConsumptionCoverageRequest) (*GetQualityConsumptionCoverageResponse, error)
 	// List the targets (tables or views) that have quality rules, one row per
 	// target. The counts, the worst latest result and the pending draft tally are
 	// aggregated by the database, so the directory does not page through every
@@ -1001,6 +1047,12 @@ type DataQualityServiceServer interface {
 	// part of the response (reading them needs the suggest permission). The target
 	// is named by GUID because a target is not a resource of its own.
 	GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error)
+	// Explain a target's quality state by its lineage: the assets its data
+	// reaches downstream, and the upstream targets whose checks failed or whose
+	// structure changed in the window before a reference instant. Both lists are
+	// bounded walks over the recorded lineage, so a target with no recorded edges
+	// has no impact to report — which is not the same as having no consumers.
+	GetQualityTargetImpact(context.Context, *GetQualityTargetImpactRequest) (*GetQualityTargetImpactResponse, error)
 	// Acknowledge that a target's structure changed and re-baseline its checks.
 	// Every non-archived check whose saved structure snapshot differs from the
 	// target's current fingerprint gets the current fingerprint, which clears the
@@ -1167,6 +1219,9 @@ func (UnimplementedDataQualityServiceServer) ExplainQualityExecution(*ExplainQua
 func (UnimplementedDataQualityServiceServer) GetQualityOverview(context.Context, *GetQualityOverviewRequest) (*QualityOverview, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityOverview not implemented")
 }
+func (UnimplementedDataQualityServiceServer) GetQualityConsumptionCoverage(context.Context, *GetQualityConsumptionCoverageRequest) (*GetQualityConsumptionCoverageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityConsumptionCoverage not implemented")
+}
 func (UnimplementedDataQualityServiceServer) ListQualityTargets(context.Context, *ListQualityTargetsRequest) (*ListQualityTargetsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityTargets not implemented")
 }
@@ -1175,6 +1230,9 @@ func (UnimplementedDataQualityServiceServer) ExportQualityTargets(*ExportQuality
 }
 func (UnimplementedDataQualityServiceServer) GetQualityTarget(context.Context, *GetQualityTargetRequest) (*GetQualityTargetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityTarget not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityTargetImpact(context.Context, *GetQualityTargetImpactRequest) (*GetQualityTargetImpactResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityTargetImpact not implemented")
 }
 func (UnimplementedDataQualityServiceServer) AcknowledgeQualityTargetSchema(context.Context, *AcknowledgeQualityTargetSchemaRequest) (*AcknowledgeQualityTargetSchemaResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AcknowledgeQualityTargetSchema not implemented")
@@ -1854,6 +1912,24 @@ func _DataQualityService_GetQualityOverview_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityConsumptionCoverage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityConsumptionCoverageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityConsumptionCoverage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityConsumptionCoverage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityConsumptionCoverage(ctx, req.(*GetQualityConsumptionCoverageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ListQualityTargets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQualityTargetsRequest)
 	if err := dec(in); err != nil {
@@ -1897,6 +1973,24 @@ func _DataQualityService_GetQualityTarget_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).GetQualityTarget(ctx, req.(*GetQualityTargetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityTargetImpact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityTargetImpactRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityTargetImpact(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityTargetImpact_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityTargetImpact(ctx, req.(*GetQualityTargetImpactRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2221,12 +2315,20 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_GetQualityOverview_Handler,
 		},
 		{
+			MethodName: "GetQualityConsumptionCoverage",
+			Handler:    _DataQualityService_GetQualityConsumptionCoverage_Handler,
+		},
+		{
 			MethodName: "ListQualityTargets",
 			Handler:    _DataQualityService_ListQualityTargets_Handler,
 		},
 		{
 			MethodName: "GetQualityTarget",
 			Handler:    _DataQualityService_GetQualityTarget_Handler,
+		},
+		{
+			MethodName: "GetQualityTargetImpact",
+			Handler:    _DataQualityService_GetQualityTargetImpact_Handler,
 		},
 		{
 			MethodName: "AcknowledgeQualityTargetSchema",

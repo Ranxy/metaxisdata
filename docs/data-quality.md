@@ -368,6 +368,39 @@ of check are not comparable. Editing the check's filter changes which rows it
 measures: the line still spans both regimes, so read across a filter change
 with care.
 
+## Lineage impact and possible causes
+
+A failing check is one symptom; the question that follows is who depends on the
+table and what else may be wrong around it. The execution detail and the issue
+detail carry an **Impact** section built from the lineage this deployment has
+recorded:
+
+- **Affected downstream** lists the tables, views and external tables the target's
+  data reaches, nearest first — directly, or through one more derivation — with
+  each asset's own quality state: unmonitored, all checks paused, or its worst
+  latest result together with its unresolved problem count and last run.
+- **Possible upstream causes** lists the upstream targets whose checks failed or
+  whose structure changed in the 24 hours before the run, strongest first. A
+  failing check on a source outranks a structure change, then the nearer source
+  wins, then the more recent evidence. Each candidate links to the failing run, so
+  the hypothesis can be checked rather than trusted.
+
+Both lists come from the **recorded** lineage — view and materialized-view
+definitions, manual and reported SQL, and ingested OpenLineage events — and are
+*not* a complete list of consumers: a BI tool, a script or an application that
+reads the table without reporting its SQL is invisible here. An empty list means
+"nothing is recorded", not "nothing depends on it". The walk is bounded: two
+levels downstream, at most a hundred assets, and the section says when it was cut
+short or when objects that cannot carry a check (reported statements, external
+datasets, deleted objects) were passed through without being listed. The upstream
+question is about the run being explained: the window ends when that run started
+and reaches 24 hours back (on an issue page it ends when the problem was first
+seen, and the caption says so). A panel with no failing run says so instead of
+implying a cause.
+
+The target report includes the same section, anchored at the newest failure in
+the report window, so a forwarded file answers the question too.
+
 ## Coverage and quality score
 
 Two read-only numbers answer different questions: coverage says how much of the
@@ -410,6 +443,20 @@ A target whose checks have never produced a verdict is **monitored but not
 judged**. Coverage is not a health measure: no check on a table means it counts
 in the denominator and not in the numerator, so a workspace without checks is at
 0% coverage, never 100%.
+
+### Consumption coverage
+
+Coverage above counts every monitorable object as a denominator. A second,
+narrower read answers "how much of the data other assets actually read is
+watched?": among registry tables and views whose lineage shows another object
+reading them, how many have at least one enabled check. The overview page shows
+that share and lists the unmonitored consumed assets with the most consumers, so
+the next table to monitor is visible. The two ratios have different denominators
+and are not interchangeable: an unmonitored table that nothing reads lowers the
+first only, and a consumed table with no check is never reported as covered by
+the second. The read is a separate request rather than part of the overview
+summary, because it takes one grouped scan of the lineage table; it writes
+nothing and is not audit-logged.
 
 ### Quality score
 
@@ -580,8 +627,10 @@ the network) that you can open anywhere or forward as an attachment. It covers
 the last 30 days by default (up to 90) and contains the report scope, the current
 result summary and pass rate, the target's **quality score** (with how many
 checks were judged and how many were not), the daily trend, the check list, the
-unresolved problems, a capped sample summary of failed checks, and the monitoring
-basis (target, instance, schedule, rule revisions, engine versions). It is
+unresolved problems, a capped sample summary of failed checks, the lineage impact
+(downstream assets and possible upstream causes, anchored at the newest failure
+in the window), and the monitoring basis (target, instance, schedule, rule
+revisions, engine versions). It is
 generated in the interface language you are using. The score card uses the same
 formula as the workspace (see
 [Coverage and quality score](#coverage-and-quality-score)); the score and the

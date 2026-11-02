@@ -16,7 +16,7 @@
         <Button
           variant="outline"
           :disabled="isLoading"
-          @click="load"
+          @click="refresh"
         >
           <RefreshCcw
             class="mr-2 h-4 w-4"
@@ -458,6 +458,11 @@
         </div>
       </div>
     </PageState>
+
+    <!-- Consumption coverage reads its own RPC, so it stays outside PageState:
+         the overview's load or failure must not block or hide this card, and
+         this card's failure stays inside it. -->
+    <QualityConsumptionCard :refresh-key="refreshKey" />
   </div>
 </template>
 
@@ -489,6 +494,7 @@ import {
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import StatCard, { type StatCardTone } from "@/components/common/StatCard.vue";
+import QualityConsumptionCard from "@/components/data-quality/QualityConsumptionCard.vue";
 import QualityTrendChart from "@/components/data-quality/QualityTrendChart.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
@@ -578,6 +584,8 @@ const ruleTitles = ref<Record<string, string>>({});
 const isLoading = ref(true);
 const trendLoading = ref(false);
 const error = ref("");
+/** Bumped by the refresh action so the independent consumption card re-reads. */
+const refreshKey = ref(0);
 
 const isEmptyWorkspace = computed(
   () =>
@@ -840,6 +848,16 @@ async function load() {
   } finally {
     isLoading.value = false;
   }
+}
+
+/**
+ * The refresh action re-reads the page and the independent consumption card.
+ * The card is not part of this page's load path: it keeps its own request and
+ * state so a failure on either side cannot take the other down.
+ */
+async function refresh() {
+  refreshKey.value += 1;
+  await load();
 }
 
 async function selectWindow(days: TrendWindow) {

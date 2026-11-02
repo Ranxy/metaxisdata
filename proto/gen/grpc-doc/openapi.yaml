@@ -5100,6 +5100,48 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityConsumptionCoverage:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read how much of the data other assets consume is watched. Unlike the
+                 overview's coverage, whose denominator is every monitorable registry object,
+                 this answers a consumption question: of the assets whose lineage shows
+                 another object reading them, how many have an enabled check? The two ratios
+                 have different denominators and are deliberately not combined.
+
+                 It is a separate read because answering it costs one grouped scan of the
+                 lineage table, which the overview must not pay on every load.
+            operationId: DataQualityService_GetQualityConsumptionCoverage
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    How many gaps to return, 0-100. Zero means 20; a larger value is coerced to
+                     100. The counts always cover the whole workspace.
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetQualityConsumptionCoverageResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityContractRevisions:
         get:
             tags:
@@ -7203,6 +7245,94 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityTargetSchedule'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityTargets:impact:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Explain a target's quality state by its lineage: the assets its data
+                 reaches downstream, and the upstream targets whose checks failed or whose
+                 structure changed in the window before a reference instant. Both lists are
+                 bounded walks over the recorded lineage, so a target with no recorded edges
+                 has no impact to report — which is not the same as having no consumers.
+            operationId: DataQualityService_GetQualityTargetImpact
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: target.targetGuid
+                  in: query
+                  description: The target's metadata GUID. Required.
+                  schema:
+                    type: string
+                - name: target.metaType
+                  in: query
+                  description: |-
+                    The target's object type. Required, because a GUID alone does not identify a
+                     registry row across object types.
+                  schema:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                - name: depth
+                  in: query
+                  description: |-
+                    How many lineage levels downstream to walk, 0-3. Zero means two; a larger
+                     value is coerced to three. The upstream walk behind the root causes is always
+                     two levels.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: asOf
+                  in: query
+                  description: |-
+                    The instant the root-cause window ends: the start of the failure being
+                     explained. Zero means now; a value in the future is read as now.
+                  schema:
+                    type: string
+                    format: date-time
+                - name: windowHours
+                  in: query
+                  description: |-
+                    How far back root-cause evidence is looked for, in hours 0-168. Zero means
+                     24; a larger value is coerced to 168.
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetQualityTargetImpactResponse'
                 default:
                     description: Default error response
                     content:
@@ -9806,6 +9936,29 @@ components:
             properties:
                 metadata:
                     $ref: '#/components/schemas/StoredMetadata'
+        GetQualityConsumptionCoverageResponse:
+            type: object
+            properties:
+                consumedAssetCount:
+                    type: integer
+                    description: |-
+                        Registry assets that at least one other object's lineage reads, under a live
+                         instance and of the four object types a check can watch. This denominator is
+                         not the overview's: there, every monitorable object counts.
+                    format: int32
+                monitoredAssetCount:
+                    type: integer
+                    description: Of those, assets with at least one enabled check.
+                    format: int32
+                gapCount:
+                    type: integer
+                    description: How many consumed assets have no enabled check.
+                    format: int32
+                gaps:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityConsumptionGap'
+                    description: The gaps with the most direct readers, highest first, at most page_size.
         GetQualityContractRevisionResponse:
             type: object
             properties:
@@ -9834,6 +9987,55 @@ components:
                     description: |-
                         The classifier code of the failure, so the client can show its hint even
                          when the raw bodies are gone.
+        GetQualityTargetImpactResponse:
+            type: object
+            properties:
+                downstreamAssets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityImpactAsset'
+                    description: |-
+                        The assets the target's data reaches downstream, nearest first. Only the
+                         object types a check can watch are listed; a reported statement, an external
+                         dataset or an object that no longer exists is walked through but counted in
+                         omitted_downstream_count instead.
+                rootCauses:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRootCauseCandidate'
+                    description: |-
+                        Upstream targets with root-cause evidence inside the window, strongest
+                         first: a target with failing checks outranks one whose structure changed,
+                         then the nearer one wins, then the more recent evidence.
+                depthReached:
+                    type: integer
+                    description: |-
+                        The largest distance a downstream asset was found at; 0 when nothing is
+                         recorded downstream.
+                    format: int32
+                downstreamTruncated:
+                    type: boolean
+                    description: Whether the node or time budget cut the downstream walk short.
+                omittedDownstreamCount:
+                    type: integer
+                    description: |-
+                        How many walked downstream objects are not listed as assets. A floor when
+                         downstream_truncated is true.
+                    format: int32
+                upstreamTruncated:
+                    type: boolean
+                    description: Whether the two-level upstream walk was cut short by its node budget.
+                omittedRootCauseCount:
+                    type: integer
+                    description: How many root-cause candidates were found beyond the twenty returned.
+                    format: int32
+                windowStart:
+                    type: string
+                    description: 'The window the root causes were read from: [window_start, window_end].'
+                    format: date-time
+                windowEnd:
+                    type: string
+                    format: date-time
         GetQualityTargetResponse:
             type: object
             properties:
@@ -12191,6 +12393,22 @@ components:
                     description: |-
                         True when the live state already matched the newest published version, so no
                          new version was created.
+        QualityConsumptionGap:
+            type: object
+            properties:
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: The unwatched asset.
+                downstreamAssetCount:
+                    type: integer
+                    description: |-
+                        How many distinct assets its lineage reaches directly. It ranks how much
+                         depends on the asset, not how important the asset is.
+                    format: int32
+            description: |-
+                QualityConsumptionGap is an asset another asset's lineage reads with no
+                 enabled check watching it.
         QualityContract:
             type: object
             properties:
@@ -12643,6 +12861,32 @@ components:
                         type: string
                     description: Unused by IS_NULL / IS_NOT_NULL, at most 100 values for IN / NOT_IN.
             description: QualityFilterClause is one comparison in a QualityFilter.
+        QualityImpactAsset:
+            type: object
+            properties:
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: |-
+                        The asset. Its path is built from the GUID, so it names where the object
+                         lives now rather than a value a rule once saved.
+                distance:
+                    type: integer
+                    description: |-
+                        How many lineage hops downstream of the target it sits: 1 is a direct
+                         dependent, 2 a dependent of a dependent.
+                    format: int32
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTargetSummary'
+                    description: |-
+                        The asset's quality state, read through the same exact-target selection the
+                         metadata browser uses. Unset when the asset has no non-archived check, which
+                         is "unmonitored", not "healthy"; a target whose checks are all paused is
+                         present with enabled_rule_count = 0.
+            description: |-
+                QualityImpactAsset is one asset downstream of a target, with its monitoring
+                 state.
         QualityIssue:
             type: object
             properties:
@@ -12924,6 +13168,48 @@ components:
                     description: 0-100; unset when none of the owner's rules has a judged result.
                     format: double
             description: QualityOwnerScore is the quality score rolled up by rule owner.
+        QualityRootCauseCandidate:
+            type: object
+            properties:
+                target:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityTarget'
+                    description: The upstream target.
+                distance:
+                    type: integer
+                    description: |-
+                        How many lineage hops upstream: -1 is a direct source, -2 a source of a
+                         source.
+                    format: int32
+                failingRuleCount:
+                    type: integer
+                    description: The target's checks that completed with a FAIL verdict inside the window.
+                    format: int32
+                failingExecutionCount:
+                    type: integer
+                    format: int32
+                recentFailingExecutions:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The newest failing executions inside the window, newest first, at most
+                         three. Format: workspaces/{workspace}/qualityExecutions/{quality_execution}
+                latestFailureTime:
+                    type: string
+                    description: |-
+                        When the newest of those failures started. Unset when no check of the
+                         target failed in the window.
+                    format: date-time
+                structureChangedTime:
+                    type: string
+                    description: |-
+                        When the target's structure fingerprint last changed, inside the window.
+                         Unset when its shape did not change in the window; an object created inside
+                         the window is a new object rather than a structure change, and is not
+                         reported here.
+                    format: date-time
+            description: QualityRootCauseCandidate is one upstream target that may explain a failure.
         QualityRule:
             type: object
             properties:

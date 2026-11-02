@@ -320,6 +320,16 @@
           </AlertDescription>
         </Alert>
 
+        <!-- Only a failed or warned verdict has an outcome worth explaining;
+             the root-cause window then ends at the run's start time, so a
+             candidate is evidence from before this run, not after it. -->
+        <QualityImpactCard
+          v-if="impactTarget"
+          :target-guid="impactTarget.targetGuid"
+          :meta-type="impactTarget.metaType"
+          :as-of="execution.startTime"
+        />
+
         <Card v-if="execution.samples.length > 0">
           <CardHeader class="border-b">
             <CardTitle class="text-base">
@@ -455,6 +465,7 @@ import {
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageState from "@/components/common/PageState.vue";
 import QualityExplainDrawer from "@/components/data-quality/QualityExplainDrawer.vue";
+import QualityImpactCard from "@/components/data-quality/QualityImpactCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -477,6 +488,7 @@ import {
   QualityRuleType,
   QualityStatus,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   describeThreshold,
   executionDurationSeconds,
@@ -530,6 +542,28 @@ const targetWorkspaceTo = computed(() => {
       highlight: execution.value?.rule ?? "",
     },
   };
+});
+/**
+ * The target the impact card reads, when the verdict makes its lineage worth
+ * explaining (FAIL or WARN) and the target still carries an address. A passing
+ * run needs no downstream/cause story and an errored check never produced a
+ * data verdict, so neither gets the card.
+ */
+const impactTarget = computed(() => {
+  const current = execution.value;
+  if (
+    !current ||
+    isExecutionInProgress(current.state) ||
+    (current.outcome !== QualityStatus.FAIL &&
+      current.outcome !== QualityStatus.WARN)
+  ) {
+    return undefined;
+  }
+  const target = current.target;
+  if (!target?.metaGuid || target.metaType === MetaType.UNSPECIFIED) {
+    return undefined;
+  }
+  return { targetGuid: target.metaGuid, metaType: target.metaType };
 });
 const ruleTitle = ref("");
 /** The check's type; only the execution's own record cannot tell it. */

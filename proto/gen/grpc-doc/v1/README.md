@@ -252,6 +252,8 @@
     - [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
+    - [GetQualityConsumptionCoverageResponse](#metaxisdata-v1-GetQualityConsumptionCoverageResponse)
     - [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest)
     - [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest)
     - [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse)
@@ -266,6 +268,8 @@
     - [GetQualitySuggestionJobTargetDebugRequest](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugRequest)
     - [GetQualitySuggestionJobTargetDebugResponse](#metaxisdata-v1-GetQualitySuggestionJobTargetDebugResponse)
     - [GetQualitySuggestionRequest](#metaxisdata-v1-GetQualitySuggestionRequest)
+    - [GetQualityTargetImpactRequest](#metaxisdata-v1-GetQualityTargetImpactRequest)
+    - [GetQualityTargetImpactResponse](#metaxisdata-v1-GetQualityTargetImpactResponse)
     - [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest)
     - [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse)
     - [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest)
@@ -298,6 +302,7 @@
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
+    - [QualityConsumptionGap](#metaxisdata-v1-QualityConsumptionGap)
     - [QualityContract](#metaxisdata-v1-QualityContract)
     - [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary)
     - [QualityContractCheck](#metaxisdata-v1-QualityContractCheck)
@@ -309,11 +314,13 @@
     - [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary)
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
+    - [QualityImpactAsset](#metaxisdata-v1-QualityImpactAsset)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
+    - [QualityRootCauseCandidate](#metaxisdata-v1-QualityRootCauseCandidate)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
@@ -4742,6 +4749,40 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityConsumptionCoverageRequest"></a>
+
+### GetQualityConsumptionCoverageRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | How many gaps to return, 0-100. Zero means 20; a larger value is coerced to 100. The counts always cover the whole workspace. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityConsumptionCoverageResponse"></a>
+
+### GetQualityConsumptionCoverageResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| consumed_asset_count | [int32](#int32) |  | Registry assets that at least one other object&#39;s lineage reads, under a live instance and of the four object types a check can watch. This denominator is not the overview&#39;s: there, every monitorable object counts. |
+| monitored_asset_count | [int32](#int32) |  | Of those, assets with at least one enabled check. |
+| gap_count | [int32](#int32) |  | How many consumed assets have no enabled check. |
+| gaps | [QualityConsumptionGap](#metaxisdata-v1-QualityConsumptionGap) | repeated | The gaps with the most direct readers, highest first, at most page_size. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityContractRequest"></a>
 
 ### GetQualityContractRequest
@@ -4959,6 +5000,48 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityTargetImpactRequest"></a>
+
+### GetQualityTargetImpactRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target | [QualityTargetKey](#metaxisdata-v1-QualityTargetKey) |  | The target whose impact to read. The target does not have to be monitored or to still resolve: lineage recorded before it disappeared is still walked. |
+| depth | [int32](#int32) |  | How many lineage levels downstream to walk, 0-3. Zero means two; a larger value is coerced to three. The upstream walk behind the root causes is always two levels. |
+| as_of | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The instant the root-cause window ends: the start of the failure being explained. Zero means now; a value in the future is read as now. |
+| window_hours | [int32](#int32) |  | How far back root-cause evidence is looked for, in hours 0-168. Zero means 24; a larger value is coerced to 168. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityTargetImpactResponse"></a>
+
+### GetQualityTargetImpactResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| downstream_assets | [QualityImpactAsset](#metaxisdata-v1-QualityImpactAsset) | repeated | The assets the target&#39;s data reaches downstream, nearest first. Only the object types a check can watch are listed; a reported statement, an external dataset or an object that no longer exists is walked through but counted in omitted_downstream_count instead. |
+| root_causes | [QualityRootCauseCandidate](#metaxisdata-v1-QualityRootCauseCandidate) | repeated | Upstream targets with root-cause evidence inside the window, strongest first: a target with failing checks outranks one whose structure changed, then the nearer one wins, then the more recent evidence. |
+| depth_reached | [int32](#int32) |  | The largest distance a downstream asset was found at; 0 when nothing is recorded downstream. |
+| downstream_truncated | [bool](#bool) |  | Whether the node or time budget cut the downstream walk short. |
+| omitted_downstream_count | [int32](#int32) |  | How many walked downstream objects are not listed as assets. A floor when downstream_truncated is true. |
+| upstream_truncated | [bool](#bool) |  | Whether the two-level upstream walk was cut short by its node budget. |
+| omitted_root_cause_count | [int32](#int32) |  | How many root-cause candidates were found beyond the twenty returned. |
+| window_start | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The window the root causes were read from: [window_start, window_end]. |
+| window_end | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -5573,6 +5656,23 @@ ProfileValue is one frequent value of a low-cardinality column.
 
 
 
+<a name="metaxisdata-v1-QualityConsumptionGap"></a>
+
+### QualityConsumptionGap
+QualityConsumptionGap is an asset another asset&#39;s lineage reads with no
+enabled check watching it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The unwatched asset. |
+| downstream_asset_count | [int32](#int32) |  | How many distinct assets its lineage reaches directly. It ranks how much depends on the asset, not how important the asset is. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityContract"></a>
 
 ### QualityContract
@@ -5816,6 +5916,24 @@ QualityFilterClause is one comparison in a QualityFilter.
 
 
 
+<a name="metaxisdata-v1-QualityImpactAsset"></a>
+
+### QualityImpactAsset
+QualityImpactAsset is one asset downstream of a target, with its monitoring
+state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The asset. Its path is built from the GUID, so it names where the object lives now rather than a value a rule once saved. |
+| distance | [int32](#int32) |  | How many lineage hops downstream of the target it sits: 1 is a direct dependent, 2 a dependent of a dependent. |
+| summary | [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary) |  | The asset&#39;s quality state, read through the same exact-target selection the metadata browser uses. Unset when the asset has no non-archived check, which is &#34;unmonitored&#34;, not &#34;healthy&#34;; a target whose checks are all paused is present with enabled_rule_count = 0. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityIssue"></a>
 
 ### QualityIssue
@@ -5953,6 +6071,27 @@ QualityOwnerScore is the quality score rolled up by rule owner.
 | scored_rule_count | [int32](#int32) |  |  |
 | failing_rule_count | [int32](#int32) |  |  |
 | quality_score | [double](#double) | optional | 0-100; unset when none of the owner&#39;s rules has a judged result. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityRootCauseCandidate"></a>
+
+### QualityRootCauseCandidate
+QualityRootCauseCandidate is one upstream target that may explain a failure.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The upstream target. |
+| distance | [int32](#int32) |  | How many lineage hops upstream: -1 is a direct source, -2 a source of a source. |
+| failing_rule_count | [int32](#int32) |  | The target&#39;s checks that completed with a FAIL verdict inside the window. |
+| failing_execution_count | [int32](#int32) |  |  |
+| recent_failing_executions | [string](#string) | repeated | The newest failing executions inside the window, newest first, at most three. Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
+| latest_failure_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the newest of those failures started. Unset when no check of the target failed in the window. |
+| structure_changed_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the target&#39;s structure fingerprint last changed, inside the window. Unset when its shape did not change in the window; an object created inside the window is a new object rather than a structure change, and is not reported here. |
 
 
 
@@ -7591,6 +7730,9 @@ No (google.api.http) annotation, for the same reason as ExportQualityExecutions.
 
 No (google.api.http) annotation: this is a server-streaming method, and the REST gateway cannot carry one. The browser reaches the Connect endpoint directly, the way it does for ExplainSQL. |
 | GetQualityOverview | [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest) | [QualityOverview](#metaxisdata-v1-QualityOverview) | Read the workspace&#39;s quality summary: how many rules and issues exist, how the last day went, and the per-day tallies the overview chart draws. |
+| GetQualityConsumptionCoverage | [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest) | [GetQualityConsumptionCoverageResponse](#metaxisdata-v1-GetQualityConsumptionCoverageResponse) | Read how much of the data other assets consume is watched. Unlike the overview&#39;s coverage, whose denominator is every monitorable registry object, this answers a consumption question: of the assets whose lineage shows another object reading them, how many have an enabled check? The two ratios have different denominators and are deliberately not combined.
+
+It is a separate read because answering it costs one grouped scan of the lineage table, which the overview must not pay on every load. |
 | ListQualityTargets | [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest) | [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse) | List the targets (tables or views) that have quality rules, one row per target. The counts, the worst latest result and the pending draft tally are aggregated by the database, so the directory does not page through every rule to answer &#34;which table needs attention?&#34;. |
 | ExportQualityTargets | [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest) | [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk) stream | Export the targets the same filters select as ListQualityTargets as one CSV document, streamed in slices. This is a file download, not a list: it stops at max_rows and reports the running row count on every slice.
 
@@ -7598,6 +7740,7 @@ Rows are read page by page, so the file is not a consistent snapshot: a row writ
 
 No (google.api.http) annotation, for the same reason as ExportQualityExecutions. |
 | GetQualityTarget | [GetQualityTargetRequest](#metaxisdata-v1-GetQualityTargetRequest) | [GetQualityTargetResponse](#metaxisdata-v1-GetQualityTargetResponse) | Read one target&#39;s workspace: its rules (with their latest results), the unresolved issues and the target&#39;s columns, in one call. AI drafts are not part of the response (reading them needs the suggest permission). The target is named by GUID because a target is not a resource of its own. |
+| GetQualityTargetImpact | [GetQualityTargetImpactRequest](#metaxisdata-v1-GetQualityTargetImpactRequest) | [GetQualityTargetImpactResponse](#metaxisdata-v1-GetQualityTargetImpactResponse) | Explain a target&#39;s quality state by its lineage: the assets its data reaches downstream, and the upstream targets whose checks failed or whose structure changed in the window before a reference instant. Both lists are bounded walks over the recorded lineage, so a target with no recorded edges has no impact to report — which is not the same as having no consumers. |
 | AcknowledgeQualityTargetSchema | [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest) | [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse) | Acknowledge that a target&#39;s structure changed and re-baseline its checks. Every non-archived check whose saved structure snapshot differs from the target&#39;s current fingerprint gets the current fingerprint, which clears the schema-changed signal. The checks themselves are untouched: re-baselining is a fact about which shape the checks were reviewed against, not a change to their definition, so it does not write a rule revision. Idempotent: a second call with nothing to do returns zero. |
 | ExportQualityReport | [ExportQualityReportRequest](#metaxisdata-v1-ExportQualityReportRequest) | [ExportQualityReportResponse](#metaxisdata-v1-ExportQualityReportResponse) | Render one target&#39;s quality report as a self-contained HTML document: the current state, the recent trend, the checks, the unresolved problems, a capped sample summary and the monitoring basis. The document carries its own styles and chart and loads nothing external, so it can be forwarded as a file. The export is audited because it is a bulk read of quality evidence.
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
@@ -70,7 +71,7 @@ func TestBuildQualityReport(t *testing.T) {
 	windowStart := time.Date(2026, time.October, 29, 0, 0, 0, 0, time.UTC)
 	generatedAt := time.Date(2026, time.October, 31, 9, 30, 0, 0, time.UTC)
 
-	report := buildQualityReport(workspace, points, failed, windowStart, generatedAt, "admin@example.com")
+	report := buildQualityReport(workspace, points, failed, nil, windowStart, generatedAt, "admin@example.com")
 
 	require.Equal(t, "instance-1;shop;;orders", report.Target.GUID)
 	require.Equal(t, "TABLE", report.Target.TypeKey)
@@ -182,7 +183,7 @@ func TestQualityReportFailedCheckTotalBoundary(t *testing.T) {
 	// The cap+1 boundary: 21 failures in the window, the newest 20 in the model.
 	points := qualityReportTrendPointsFixture()
 	points[2].Fail = 20 // total window fail = 1 + 0 + 20 = 21
-	report := buildQualityReport(workspace, points, failedChecks(20), windowStart, generatedAt, "")
+	report := buildQualityReport(workspace, points, failedChecks(20), nil, windowStart, generatedAt, "")
 	require.Len(t, report.FailedChecks, 20)
 	require.Equal(t, int32(21), report.FailedCheckTotal)
 	document, err := qualityreport.Render(qualityreport.LanguageEnglish, report)
@@ -194,7 +195,7 @@ func TestQualityReportFailedCheckTotalBoundary(t *testing.T) {
 	points = qualityReportTrendPointsFixture()
 	points[0].Fail = 2
 	points[2].Fail = 1
-	racy := buildQualityReport(workspace, points, failedChecks(5), windowStart, generatedAt, "")
+	racy := buildQualityReport(workspace, points, failedChecks(5), nil, windowStart, generatedAt, "")
 	require.Equal(t, int32(5), racy.FailedCheckTotal)
 	require.Len(t, racy.FailedChecks, 5)
 }
@@ -205,7 +206,7 @@ func TestBuildQualityReportRenders(t *testing.T) {
 	t.Parallel()
 
 	report := buildQualityReport(qualityReportWorkspaceFixture(), qualityReportTrendPointsFixture(),
-		qualityReportFailedExecutionsFixture(), time.Date(2026, time.October, 29, 0, 0, 0, 0, time.UTC),
+		qualityReportFailedExecutionsFixture(), nil, time.Date(2026, time.October, 29, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, time.October, 31, 9, 30, 0, 0, time.UTC), "admin@example.com")
 	for _, language := range []string{"en-US", "zh-CN"} {
 		document, err := qualityreport.Render(language, report)
@@ -230,7 +231,7 @@ func TestBuildQualityReportOrphaned(t *testing.T) {
 	workspace := qualityReportWorkspaceFixture()
 	workspace.resolution = nil
 	workspace.orphanedReason = "the target table was dropped"
-	report := buildQualityReport(workspace, qualityReportTrendPointsFixture(), nil,
+	report := buildQualityReport(workspace, qualityReportTrendPointsFixture(), nil, nil,
 		time.Date(2026, time.October, 29, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, time.October, 31, 9, 30, 0, 0, time.UTC), "")
 	require.True(t, report.Orphaned)
@@ -397,4 +398,119 @@ func qualityReportFailedExecutionsFixture() []*store.QualityExecutionMessage {
 			ErrorCode:  "SQL_SYNTAX",
 		},
 	}
+}
+
+// The impact answer maps onto the renderer's model with the same monitoring
+// three-state the panel uses — no summary means unmonitored, and an all-paused
+// target stays a separate state — and root causes are only carried when a failure
+// anchored the window.
+func TestQualityReportImpactOf(t *testing.T) {
+	t.Parallel()
+
+	anchor := time.Date(2026, time.October, 31, 7, 0, 0, 0, time.UTC)
+	lastRun := time.Date(2026, time.October, 31, 8, 0, 0, 0, time.UTC)
+	changedAt := time.Date(2026, time.October, 30, 22, 0, 0, 0, time.UTC)
+	response := &v1pb.GetQualityTargetImpactResponse{
+		DownstreamAssets: []*v1pb.QualityImpactAsset{
+			{
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "instance-1;shop;public;order_summary",
+					MetaType: v1pb.MetaType_VIEW,
+					Path: &v1pb.QualityTargetPath{
+						Instance: "instance-1", Database: "shop", Schema: "public", Object: "order_summary",
+					},
+				},
+				Distance: 1,
+				Summary: &v1pb.QualityTargetSummary{
+					EnabledRuleCount: 2,
+					WorstStatus:      v1pb.QualityStatus_QUALITY_STATUS_FAIL,
+					OpenIssueCount:   1,
+					LastRunTime:      timestamppb.New(lastRun),
+				},
+			},
+			{
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "instance-1;shop;public;orders_report",
+					MetaType: v1pb.MetaType_TABLE,
+					Path: &v1pb.QualityTargetPath{
+						Instance: "instance-1", Database: "shop", Schema: "public", Object: "orders_report",
+					},
+				},
+				Distance: 2,
+			},
+			{
+				// Monitored but never judged: the report must say "never run", not
+				// leak the raw UNSPECIFIED enum.
+				Target: &v1pb.QualityTarget{
+					MetaGuid: "instance-1;shop;public;never_run",
+					MetaType: v1pb.MetaType_TABLE,
+					Path: &v1pb.QualityTargetPath{
+						Instance: "instance-1", Database: "shop", Schema: "public", Object: "never_run",
+					},
+				},
+				Distance: 2,
+				Summary: &v1pb.QualityTargetSummary{
+					EnabledRuleCount: 1,
+					WorstStatus:      v1pb.QualityStatus_QUALITY_STATUS_UNSPECIFIED,
+				},
+			},
+		},
+		RootCauses: []*v1pb.QualityRootCauseCandidate{{
+			Target: &v1pb.QualityTarget{
+				MetaGuid: "instance-1;shop;public;raw_orders",
+				MetaType: v1pb.MetaType_TABLE,
+				Path: &v1pb.QualityTargetPath{
+					Instance: "instance-1", Database: "shop", Schema: "public", Object: "raw_orders",
+				},
+			},
+			Distance:              -1,
+			FailingRuleCount:      2,
+			FailingExecutionCount: 5,
+			LatestFailureTime:     timestamppb.New(anchor),
+			StructureChangedTime:  timestamppb.New(changedAt),
+		}},
+		OmittedDownstreamCount: 1,
+		DownstreamTruncated:    true,
+		OmittedRootCauseCount:  2,
+		UpstreamTruncated:      true,
+		WindowStart:            timestamppb.New(anchor.Add(-24 * time.Hour)),
+		WindowEnd:              timestamppb.New(anchor),
+	}
+
+	impact := qualityReportImpactOf(response, &anchor)
+	require.Len(t, impact.Downstream, 3)
+	require.Equal(t, "instance-1/shop/public/order_summary", impact.Downstream[0].Path)
+	require.Equal(t, "VIEW", impact.Downstream[0].TypeKey)
+	require.True(t, impact.Downstream[0].Monitored)
+	require.False(t, impact.Downstream[0].AllPaused)
+	require.Equal(t, "FAIL", impact.Downstream[0].WorstStatusKey)
+	require.Equal(t, int32(1), impact.Downstream[0].OpenIssueCount)
+	require.Equal(t, lastRun, *impact.Downstream[0].LastRunTime)
+
+	require.False(t, impact.Downstream[1].Monitored)
+	require.Nil(t, impact.Downstream[1].LastRunTime)
+
+	require.True(t, impact.Downstream[2].Monitored)
+	require.Empty(t, impact.Downstream[2].WorstStatusKey, "a never-run asset must not map the raw UNSPECIFIED enum")
+
+	require.Equal(t, int32(1), impact.DownstreamOmitted)
+	require.True(t, impact.DownstreamTruncated)
+	require.True(t, impact.UpstreamTruncated)
+	require.Equal(t, int32(2), impact.RootCausesOmitted)
+	require.Len(t, impact.RootCauses, 1)
+	require.Equal(t, "instance-1/shop/public/raw_orders", impact.RootCauses[0].Path)
+	require.Equal(t, int32(-1), impact.RootCauses[0].Distance)
+	require.Equal(t, int32(2), impact.RootCauses[0].FailingRuleCount)
+	require.Equal(t, int32(5), impact.RootCauses[0].FailingExecutionCount)
+	require.Equal(t, anchor, *impact.RootCauses[0].LatestFailureTime)
+	require.Equal(t, changedAt, *impact.RootCauses[0].StructureChangedTime)
+	require.Equal(t, anchor.Add(-24*time.Hour), impact.WindowStart)
+	require.Equal(t, anchor, impact.WindowEnd)
+
+	// Without an anchor the root causes are dropped: a window ending "now" does not
+	// explain a failure the report cannot point at.
+	unanchored := qualityReportImpactOf(response, nil)
+	require.Empty(t, unanchored.RootCauses)
+	require.Zero(t, unanchored.WindowStart)
+	require.Len(t, unanchored.Downstream, 3)
 }

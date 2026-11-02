@@ -119,6 +119,32 @@ type labels struct {
 	ScheduleNone       string
 	RevisionRange      string
 	ColumnCount        string
+
+	SectionImpact           string
+	ImpactDescription       string
+	ImpactWindowNote        string
+	ImpactNoWindow          string
+	ImpactDownstreamTitle   string
+	ImpactRootCausesTitle   string
+	ImpactNoDownstream      string
+	ImpactNoRootCauses      string
+	ImpactUnmonitored       string
+	ImpactAllPaused         string
+	ImpactFailingChecks     string
+	ImpactStructureChanged  string
+	ImpactTruncated         string
+	ImpactUpstreamTruncated string
+	ImpactOmitted           string
+	ImpactMoreAssets        string
+	ImpactMoreCauses        string
+	ColumnImpactPath        string
+	ColumnImpactType        string
+	ColumnImpactHops        string
+	ColumnImpactMonitoring  string
+	ColumnImpactOpenIssues  string
+	ColumnImpactLastRun     string
+	ColumnImpactLevelsUp    string
+	ColumnImpactEvidence    string
 }
 
 // catalogFor returns the report vocabulary for one normalized language.
@@ -240,6 +266,32 @@ var englishLabels = labels{
 	ScheduleNone:       "no schedule",
 	RevisionRange:      "%d – %d",
 	ColumnCount:        "%d columns",
+
+	SectionImpact:           "Impact",
+	ImpactDescription:       "Derived from the recorded lineage. This is not a complete list of consumers.",
+	ImpactWindowNote:        "Upstream evidence covers %s to %s.",
+	ImpactNoWindow:          "No failing check anchors an upstream window.",
+	ImpactDownstreamTitle:   "Downstream assets",
+	ImpactRootCausesTitle:   "Possible upstream causes",
+	ImpactNoDownstream:      "No downstream assets are recorded in lineage.",
+	ImpactNoRootCauses:      "No upstream check failed or changed structure in the window.",
+	ImpactUnmonitored:       "Unmonitored",
+	ImpactAllPaused:         "All checks paused",
+	ImpactFailingChecks:     "Failed checks in the window: %d · failed runs: %d",
+	ImpactStructureChanged:  "structure changed %s",
+	ImpactTruncated:         "The lineage walk was cut short; more objects may be affected.",
+	ImpactUpstreamTruncated: "The upstream walk was cut short; other causes may be missing.",
+	ImpactOmitted:           "Objects walked through but not listed because a check cannot watch them: %d.",
+	ImpactMoreAssets:        "More assets not shown: %d.",
+	ImpactMoreCauses:        "More candidates not shown: %d.",
+	ColumnImpactPath:        "Asset",
+	ColumnImpactType:        "Type",
+	ColumnImpactHops:        "Hops",
+	ColumnImpactMonitoring:  "Monitoring",
+	ColumnImpactOpenIssues:  "Open issues",
+	ColumnImpactLastRun:     "Last run",
+	ColumnImpactLevelsUp:    "Levels up",
+	ColumnImpactEvidence:    "Evidence",
 }
 
 var chineseLabels = labels{
@@ -341,6 +393,32 @@ var chineseLabels = labels{
 	ScheduleNone:       "无调度",
 	RevisionRange:      "%d – %d",
 	ColumnCount:        "%d 列",
+
+	SectionImpact:           "影响面",
+	ImpactDescription:       "来自已记录的血缘，并非全部消费方。",
+	ImpactWindowNote:        "上游证据的时间窗口为 %s 至 %s。",
+	ImpactNoWindow:          "没有失败的检查可作为上游窗口的锚点。",
+	ImpactDownstreamTitle:   "下游受影响资产",
+	ImpactRootCausesTitle:   "可能的上游原因",
+	ImpactNoDownstream:      "血缘中没有记录任何下游资产。",
+	ImpactNoRootCauses:      "该时间窗内没有上游检查失败或结构变更。",
+	ImpactUnmonitored:       "未监控",
+	ImpactAllPaused:         "检查已全部暂停",
+	ImpactFailingChecks:     "窗口内失败检查：%d 条 · 失败执行：%d 次",
+	ImpactStructureChanged:  "结构变更于 %s",
+	ImpactTruncated:         "血缘遍历被截断，可能还有更多对象受影响。",
+	ImpactUpstreamTruncated: "上游遍历被截断，可能还有其他原因未列出。",
+	ImpactOmitted:           "遍历到但无法挂检查、未列出的对象：%d 个。",
+	ImpactMoreAssets:        "另有资产未显示：%d 个。",
+	ImpactMoreCauses:        "另有候选未显示：%d 个。",
+	ColumnImpactPath:        "资产",
+	ColumnImpactType:        "类型",
+	ColumnImpactHops:        "跳数",
+	ColumnImpactMonitoring:  "监控状态",
+	ColumnImpactOpenIssues:  "未解决问题",
+	ColumnImpactLastRun:     "最近运行",
+	ColumnImpactLevelsUp:    "上游层级",
+	ColumnImpactEvidence:    "证据",
 }
 
 // statusLabels is the six-state vocabulary plus the "no verdict yet" case.

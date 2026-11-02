@@ -189,6 +189,32 @@ func (s *Server) toolDefinitions() []toolDefinition {
 			Run: s.runGetQualityExecution,
 		},
 		{
+			Name:        "get_quality_impact",
+			Description: "Explain one table's quality state by its lineage: the downstream assets its data reaches, and the upstream targets whose checks failed or whose structure changed in the window before now. It is derived from the recorded lineage, so an empty answer means the lineage records no such object, not that nothing consumes it. Use get_quality_target for the checks themselves and get_quality_execution for one run's evidence.",
+			RPC:         "metaxisdata.v1.DataQualityService.GetQualityTargetImpact",
+			Permission:  permission.DataQualityRulesList,
+			Schema: objectSchema(map[string]any{
+				"object":       objectRefSchema("the table or view to explain; give a guid, or {instance, database, schema?, name}"),
+				"meta_type":    stringProperty("the object's type, when the reference is a bare guid"),
+				"depth":        map[string]any{"type": "integer", "description": "how many lineage levels downstream to walk (1-3, default 2)"},
+				"window_hours": map[string]any{"type": "integer", "description": "how far back upstream evidence is looked for, in hours (1-168, default 24)"},
+			}, "object"),
+			Run: s.runGetQualityImpact,
+		},
+		{
+			Name:        "get_quality_consumption_coverage",
+			Description: "Measure how much of the data other assets consume is watched: registry assets that another object's lineage reads, how many of them have an enabled check, and the unmonitored ones with the most consumers. Its denominator is only the objects something reads, so it is not the overview's object coverage (which this surface does not expose) and not get_quality_signal's per-object column coverage. Use list_quality_targets or get_quality_signal to look at one of the gaps.",
+			RPC:         "metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage",
+			Permission:  permission.DataQualityRulesList,
+			Schema: objectSchema(map[string]any{
+				// Not pageSizeProperty(): this RPC's ceiling is 100 and its default is
+				// 20, so advertising the general 25/200 shape would mislead a caller
+				// about whether the gap list it received is complete.
+				"page_size": map[string]any{"type": "integer", "description": "how many gaps to return (1-100; zero means the server default of 20, and a larger value is coerced to 100)"},
+			}),
+			Run: s.runGetQualityConsumptionCoverage,
+		},
+		{
 			Name:        "analyze_sql",
 			Description: "Analyze one SQL statement and report, column by column, what it reads and what it writes. Use this for a statement you have in hand; use get_lineage_graph for an object already in the registry. Each scope is analyzed on its own and reported separately.",
 			RPC:         "metaxisdata.v1.LineageService.AnalyzeSQL",
@@ -1459,6 +1485,79 @@ func (s *Server) runGetQualityExecution(ctx context.Context, _ *store.UserMessag
 	}
 	// The whole execution is the answer: this is the evidence tool, so nothing is
 	// projected away.
+	return protoJSON(response.Msg)
+}
+
+// --- get_quality_impact ---
+
+type getQualityImpactArgs struct {
+	Object      objectRef `json:"object"`
+	MetaType    string    `json:"meta_type"`
+	Depth       int32     `json:"depth"`
+	WindowHours int32     `json:"window_hours"`
+}
+
+func (s *Server) runGetQualityImpact(ctx context.Context, _ *store.UserMessage, raw json.RawMessage) (any, error) {
+	var args getQualityImpactArgs
+	if err := decodeArguments(raw, &args); err != nil {
+		return nil, err
+	}
+	metaType, err := parseMetaType(args.MetaType)
+	if err != nil {
+		return nil, err
+	}
+	if metaType == v1pb.MetaType_UNSPECIFIED && args.Object.GUID != "" {
+		return nil, newToolError(codeInvalidArgument, "meta_type is required when the reference is a bare guid",
+			"list_metadata and search_metadata return metaType with every object, or address the object by name instead")
+	}
+	object, err := s.resolveObject(ctx, args.Object, metaType)
+	if err != nil {
+		return nil, err
+	}
+	if !qualitySignalMetaTypes[object.MetaType] {
+		// Only the four object types a check can watch carry an impact: a walk from
+		// a reported statement or a schema has no assets to answer with.
+		return nil, newToolError(codeInvalidArgument,
+			"impact can only be read for a table, external table, view or materialized view",
+			"list_metadata and search_metadata return metaType with every object")
+	}
+	response, err := s.config.Quality.GetQualityTargetImpact(ctx, connect.NewRequest(&v1pb.GetQualityTargetImpactRequest{
+		Parent: qualityListParent,
+		Target: &v1pb.QualityTargetKey{
+			TargetGuid: object.GUID,
+			MetaType:   object.MetaType,
+		},
+		Depth:       args.Depth,
+		WindowHours: args.WindowHours,
+	}))
+	if err != nil {
+		return nil, toolErrorFromRPC(err)
+	}
+	// The whole answer is evidence: the model decides what matters, so nothing is
+	// projected away.
+	return protoJSON(response.Msg)
+}
+
+// --- get_quality_consumption_coverage ---
+
+type getQualityConsumptionCoverageArgs struct {
+	PageSize int32 `json:"page_size"`
+}
+
+func (s *Server) runGetQualityConsumptionCoverage(ctx context.Context, _ *store.UserMessage, raw json.RawMessage) (any, error) {
+	var args getQualityConsumptionCoverageArgs
+	if err := decodeArguments(raw, &args); err != nil {
+		return nil, err
+	}
+	// The RPC owns this bound (0 means 20, above 100 is coerced), so the raw value
+	// goes through; the tool's schema documents the same range.
+	response, err := s.config.Quality.GetQualityConsumptionCoverage(ctx, connect.NewRequest(&v1pb.GetQualityConsumptionCoverageRequest{
+		Parent:   qualityListParent,
+		PageSize: args.PageSize,
+	}))
+	if err != nil {
+		return nil, toolErrorFromRPC(err)
+	}
 	return protoJSON(response.Msg)
 }
 

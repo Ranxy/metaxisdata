@@ -40,6 +40,8 @@ type fakeReaders struct {
 	getQualityTarget      func(*v1pb.GetQualityTargetRequest) (*v1pb.GetQualityTargetResponse, error)
 	listQualityExecutions func(*v1pb.ListQualityExecutionsRequest) (*v1pb.ListQualityExecutionsResponse, error)
 	getQualityExecution   func(*v1pb.GetQualityExecutionRequest) (*v1pb.QualityExecution, error)
+	getQualityImpact      func(*v1pb.GetQualityTargetImpactRequest) (*v1pb.GetQualityTargetImpactResponse, error)
+	getQualityCoverage    func(*v1pb.GetQualityConsumptionCoverageRequest) (*v1pb.GetQualityConsumptionCoverageResponse, error)
 }
 
 func (f *fakeReaders) unexpected(method string) error {
@@ -196,6 +198,28 @@ func (f *fakeReaders) GetQualityExecution(_ context.Context, request *connect.Re
 		return nil, f.unexpected("GetQualityExecution")
 	}
 	response, err := f.getQualityExecution(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (f *fakeReaders) GetQualityTargetImpact(_ context.Context, request *connect.Request[v1pb.GetQualityTargetImpactRequest]) (*connect.Response[v1pb.GetQualityTargetImpactResponse], error) {
+	if f.getQualityImpact == nil {
+		return nil, f.unexpected("GetQualityTargetImpact")
+	}
+	response, err := f.getQualityImpact(request.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (f *fakeReaders) GetQualityConsumptionCoverage(_ context.Context, request *connect.Request[v1pb.GetQualityConsumptionCoverageRequest]) (*connect.Response[v1pb.GetQualityConsumptionCoverageResponse], error) {
+	if f.getQualityCoverage == nil {
+		return nil, f.unexpected("GetQualityConsumptionCoverage")
+	}
+	response, err := f.getQualityCoverage(request.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -1911,4 +1935,108 @@ func mustDirection(t *testing.T, value string) v1pb.LineageType {
 	direction, err := parseDirection(value)
 	require.NoError(t, err)
 	return direction
+}
+
+func TestGetQualityImpactPassesTheWalkThrough(t *testing.T) {
+	t.Parallel()
+
+	var seen *v1pb.GetQualityTargetImpactRequest
+	readers := &fakeReaders{
+		getQualityImpact: func(request *v1pb.GetQualityTargetImpactRequest) (*v1pb.GetQualityTargetImpactResponse, error) {
+			seen = request
+			return &v1pb.GetQualityTargetImpactResponse{
+				DownstreamAssets: []*v1pb.QualityImpactAsset{{
+					Target:   &v1pb.QualityTarget{MetaGuid: "1;shop;;order_summary", MetaType: v1pb.MetaType_VIEW},
+					Distance: 1,
+				}},
+				RootCauses: []*v1pb.QualityRootCauseCandidate{{
+					Target:                &v1pb.QualityTarget{MetaGuid: "1;shop;;raw_orders", MetaType: v1pb.MetaType_TABLE},
+					Distance:              -1,
+					FailingRuleCount:      2,
+					FailingExecutionCount: 3,
+					RecentFailingExecutions: []string{
+						"workspaces/1/qualityExecutions/7",
+					},
+				}},
+				DepthReached: 1,
+				WindowStart:  timestamppb.New(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)),
+				WindowEnd:    timestamppb.New(time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)),
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_impact", map[string]any{
+		"object":       map[string]string{"guid": "1;shop;;orders"},
+		"meta_type":    "TABLE",
+		"depth":        2,
+		"window_hours": 48,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "workspaces/-", seen.GetParent())
+	require.Equal(t, "1;shop;;orders", seen.GetTarget().GetTargetGuid())
+	require.Equal(t, v1pb.MetaType_TABLE, seen.GetTarget().GetMetaType())
+	require.Equal(t, int32(2), seen.GetDepth())
+	require.Equal(t, int32(48), seen.GetWindowHours())
+
+	payload := asMap(t, value)
+	require.Equal(t, float64(1), payload["depthReached"])
+	require.Equal(t, "2026-11-01T00:00:00Z", payload["windowStart"])
+	asset := firstOf(t, payload, "downstreamAssets")
+	require.Equal(t, float64(1), asset["distance"])
+	require.Equal(t, "1;shop;;order_summary", asObject(t, asset["target"])["metaGuid"])
+	cause := firstOf(t, payload, "rootCauses")
+	require.Equal(t, float64(-1), cause["distance"], "an upstream candidate keeps its negative distance")
+	require.Equal(t, float64(2), cause["failingRuleCount"])
+	require.Equal(t, float64(3), cause["failingExecutionCount"])
+	require.Equal(t, []any{"workspaces/1/qualityExecutions/7"}, cause["recentFailingExecutions"])
+}
+
+// Impact is a quality read of a table or view; a column or a reported statement has
+// no assets to answer with, and the tool says so before reaching the RPC.
+func TestGetQualityImpactRefusesAnObjectWithoutAssets(t *testing.T) {
+	t.Parallel()
+
+	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
+	_, err := callTool(t, server, "get_quality_impact", map[string]any{
+		"object":    map[string]string{"guid": "1;shop;;amount"},
+		"meta_type": "COLUMN",
+	})
+	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
+}
+
+func TestGetQualityConsumptionCoverageProjectsCounts(t *testing.T) {
+	t.Parallel()
+
+	var seen *v1pb.GetQualityConsumptionCoverageRequest
+	readers := &fakeReaders{
+		getQualityCoverage: func(request *v1pb.GetQualityConsumptionCoverageRequest) (*v1pb.GetQualityConsumptionCoverageResponse, error) {
+			seen = request
+			return &v1pb.GetQualityConsumptionCoverageResponse{
+				ConsumedAssetCount:  7,
+				MonitoredAssetCount: 5,
+				GapCount:            2,
+				Gaps: []*v1pb.QualityConsumptionGap{{
+					Target:               &v1pb.QualityTarget{MetaGuid: "1;shop;;orders", MetaType: v1pb.MetaType_TABLE},
+					DownstreamAssetCount: 3,
+				}},
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_consumption_coverage", map[string]any{
+		"page_size": 5,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "workspaces/-", seen.GetParent())
+	require.Equal(t, int32(5), seen.GetPageSize())
+
+	payload := asMap(t, value)
+	require.Equal(t, float64(7), payload["consumedAssetCount"])
+	require.Equal(t, float64(5), payload["monitoredAssetCount"])
+	require.Equal(t, float64(2), payload["gapCount"])
+	gap := firstOf(t, payload, "gaps")
+	require.Equal(t, "1;shop;;orders", asObject(t, gap["target"])["metaGuid"])
+	require.Equal(t, float64(3), gap["downstreamAssetCount"])
 }

@@ -323,6 +323,8 @@
 | **P1-7** | **血缘影响面与根因** | 我们**已经有列级血缘**，这是最便宜的差异化；竞品里也只有 Databricks/Snowflake/MC 做好了 | Databricks 事故根因走血缘 + 影响 H/M/L、Snowflake 受影响资产、MC impact analysis + RCA、Sifflet impacted dashboards | ① 执行详情/问题页显示"下游受影响资产"（复用 lineage 查询，限制 N 层/M 个节点）；② 失败时在同一时间窗内查上游检查失败/上游 schema 变更，作为"根因候选"；③ 按消费关系算覆盖率（有下游的表必须有检查） | 5–8 |
 | **P1-8** | **MCP 质量工具** | 我们已有 MCP 与读服务，暴露 DQ 几乎零成本，且是"agent 可运维"的差异化 | MC/Metaplane/Sifflet/Bigeye 都有 MCP server | 新增 4 个只读工具：`list_quality_issues`、`get_quality_target`、`list_quality_executions`、`explain_quality_execution`（复用权限与审计） | 2–3 |
 
+> **P1-7 实施记录（2026-11）**：已收敛为两个只读 RPC——`GetQualityTargetImpact`（下游影响面 + 上游根因候选，[D-92](../docs/data-quality.md)）与 `GetQualityConsumptionCoverage`（按消费关系的覆盖率，[D-93](../docs/data-quality.md)）；出口为执行详情、问题详情、概览页、单目标 HTML 报告与两个 MCP 只读工具（`get_quality_impact`/`get_quality_consumption_coverage`）。口径、边界与测试见 [.agents/docs/data-quality.md](../docs/data-quality.md) §3.16、§7 #40/#41；无迁移、无新表、无新权限。
+>
 > **P1-8 实施记录（2026-11）**：已按 [D-91](../docs/data-quality.md) 收敛为 5 个只读工具（`list_quality_targets`/`get_quality_target`/`list_quality_issues`/`list_quality_executions`/`get_quality_execution`），**不含** `explain_quality_execution`——调用 MCP 的本身就是 LLM agent，工具只提供证据；实现与复验见 [dq-mcp-quality-tools-review.md](dq-mcp-quality-tools-review.md)。
 
 ### P2 — 规模化与治理（按客户/场景触发）

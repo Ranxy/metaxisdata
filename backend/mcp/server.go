@@ -61,6 +61,8 @@ type (
 		ListQualityExecutions(context.Context, *connect.Request[v1pb.ListQualityExecutionsRequest]) (*connect.Response[v1pb.ListQualityExecutionsResponse], error)
 		GetQualityExecution(context.Context, *connect.Request[v1pb.GetQualityExecutionRequest]) (*connect.Response[v1pb.QualityExecution], error)
 		ListQualityTargets(context.Context, *connect.Request[v1pb.ListQualityTargetsRequest]) (*connect.Response[v1pb.ListQualityTargetsResponse], error)
+		GetQualityTargetImpact(context.Context, *connect.Request[v1pb.GetQualityTargetImpactRequest]) (*connect.Response[v1pb.GetQualityTargetImpactResponse], error)
+		GetQualityConsumptionCoverage(context.Context, *connect.Request[v1pb.GetQualityConsumptionCoverageRequest]) (*connect.Response[v1pb.GetQualityConsumptionCoverageResponse], error)
 	}
 )
 

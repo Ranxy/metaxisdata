@@ -1141,6 +1141,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityConsumptionCoverageRequest"><span class="badge">M</span>GetQualityConsumptionCoverageRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityConsumptionCoverageResponse"><span class="badge">M</span>GetQualityConsumptionCoverageResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityContractRequest"><span class="badge">M</span>GetQualityContractRequest</a>
                 </li>
               
@@ -1194,6 +1202,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetQualitySuggestionRequest"><span class="badge">M</span>GetQualitySuggestionRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityTargetImpactRequest"><span class="badge">M</span>GetQualityTargetImpactRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityTargetImpactResponse"><span class="badge">M</span>GetQualityTargetImpactResponse</a>
                 </li>
               
                 <li>
@@ -1325,6 +1341,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityConsumptionGap"><span class="badge">M</span>QualityConsumptionGap</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityContract"><span class="badge">M</span>QualityContract</a>
                 </li>
               
@@ -1369,6 +1389,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityImpactAsset"><span class="badge">M</span>QualityImpactAsset</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityIssue"><span class="badge">M</span>QualityIssue</a>
                 </li>
               
@@ -1386,6 +1410,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityOwnerScore"><span class="badge">M</span>QualityOwnerScore</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityRootCauseCandidate"><span class="badge">M</span>QualityRootCauseCandidate</a>
                 </li>
               
                 <li>
@@ -14149,6 +14177,85 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityConsumptionCoverageRequest">GetQualityConsumptionCoverageRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many gaps to return, 0-100. Zero means 20; a larger value is coerced to
+100. The counts always cover the whole workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityConsumptionCoverageResponse">GetQualityConsumptionCoverageResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>consumed_asset_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Registry assets that at least one other object&#39;s lineage reads, under a live
+instance and of the four object types a check can watch. This denominator is
+not the overview&#39;s: there, every monitorable object counts. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>monitored_asset_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Of those, assets with at least one enabled check. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>gap_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many consumed assets have no enabled check. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>gaps</td>
+                  <td><a href="#metaxisdata.v1.QualityConsumptionGap">QualityConsumptionGap</a></td>
+                  <td>repeated</td>
+                  <td><p>The gaps with the most direct readers, highest first, at most page_size. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityContractRequest">GetQualityContractRequest</h3>
         <p></p>
 
@@ -14571,6 +14678,150 @@ when the raw bodies are gone. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityTargetImpactRequest">GetQualityTargetImpactRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetKey">QualityTargetKey</a></td>
+                  <td></td>
+                  <td><p>The target whose impact to read. The target does not have to be monitored
+or to still resolve: lineage recorded before it disappeared is still walked. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>depth</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many lineage levels downstream to walk, 0-3. Zero means two; a larger
+value is coerced to three. The upstream walk behind the root causes is always
+two levels. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>as_of</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The instant the root-cause window ends: the start of the failure being
+explained. Zero means now; a value in the future is read as now. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>window_hours</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How far back root-cause evidence is looked for, in hours 0-168. Zero means
+24; a larger value is coerced to 168. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityTargetImpactResponse">GetQualityTargetImpactResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>downstream_assets</td>
+                  <td><a href="#metaxisdata.v1.QualityImpactAsset">QualityImpactAsset</a></td>
+                  <td>repeated</td>
+                  <td><p>The assets the target&#39;s data reaches downstream, nearest first. Only the
+object types a check can watch are listed; a reported statement, an external
+dataset or an object that no longer exists is walked through but counted in
+omitted_downstream_count instead. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>root_causes</td>
+                  <td><a href="#metaxisdata.v1.QualityRootCauseCandidate">QualityRootCauseCandidate</a></td>
+                  <td>repeated</td>
+                  <td><p>Upstream targets with root-cause evidence inside the window, strongest
+first: a target with failing checks outranks one whose structure changed,
+then the nearer one wins, then the more recent evidence. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>depth_reached</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The largest distance a downstream asset was found at; 0 when nothing is
+recorded downstream. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>downstream_truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the node or time budget cut the downstream walk short. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>omitted_downstream_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many walked downstream objects are not listed as assets. A floor when
+downstream_truncated is true. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>upstream_truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the two-level upstream walk was cut short by its node budget. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>omitted_root_cause_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many root-cause candidates were found beyond the twenty returned. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>window_start</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>The window the root causes were read from: [window_start, window_end]. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>window_end</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -16264,6 +16515,38 @@ new version was created. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityConsumptionGap">QualityConsumptionGap</h3>
+        <p>QualityConsumptionGap is an asset another asset's lineage reads with no</p><p>enabled check watching it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p>The unwatched asset. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>downstream_asset_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many distinct assets its lineage reaches directly. It ranks how much
+depends on the asset, not how important the asset is. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityContract">QualityContract</h3>
         <p>QualityContract is the target-level layer above the rules: defaults, the</p><p>published version and whether the live rules have drifted from it. It is a</p><p>projection, not a second source of truth: editing a rule changes the live</p><p>contract immediately, and publishing records that state as a version.</p>
 
@@ -17008,6 +17291,49 @@ check defaults to PASS so the first run only records the baseline. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityImpactAsset">QualityImpactAsset</h3>
+        <p>QualityImpactAsset is one asset downstream of a target, with its monitoring</p><p>state.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p>The asset. Its path is built from the GUID, so it names where the object
+lives now rather than a value a rule once saved. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>distance</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many lineage hops downstream of the target it sits: 1 is a direct
+dependent, 2 a dependent of a dependent. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#metaxisdata.v1.QualityTargetSummary">QualityTargetSummary</a></td>
+                  <td></td>
+                  <td><p>The asset&#39;s quality state, read through the same exact-target selection the
+metadata browser uses. Unset when the asset has no non-archived check, which
+is &#34;unmonitored&#34;, not &#34;healthy&#34;; a target whose checks are all paused is
+present with enabled_rule_count = 0. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityIssue">QualityIssue</h3>
         <p>QualityIssue is the durable problem behind a rule's failures. A rule has at</p><p>most one unresolved issue; a later failing run touches it instead of opening</p><p>another, and a resolved issue is never reopened.</p>
 
@@ -17548,6 +17874,78 @@ were planned (any lifecycle state), and how the completed ones tallied. </p></td
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p>0-100; unset when none of the owner&#39;s rules has a judged result. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityRootCauseCandidate">QualityRootCauseCandidate</h3>
+        <p>QualityRootCauseCandidate is one upstream target that may explain a failure.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p>The upstream target. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>distance</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many lineage hops upstream: -1 is a direct source, -2 a source of a
+source. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failing_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s checks that completed with a FAIL verdict inside the window. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failing_execution_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>recent_failing_executions</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The newest failing executions inside the window, newest first, at most
+three. Format: workspaces/{workspace}/qualityExecutions/{quality_execution} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>latest_failure_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the newest of those failures started. Unset when no check of the
+target failed in the window. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>structure_changed_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the target&#39;s structure fingerprint last changed, inside the window.
+Unset when its shape did not change in the window; an object created inside
+the window is a new object rather than a structure change, and is not
+reported here. </p></td>
                 </tr>
               
             </tbody>
@@ -22402,6 +22800,20 @@ the last day went, and the per-day tallies the overview chart draws.</p></td>
               </tr>
             
               <tr>
+                <td>GetQualityConsumptionCoverage</td>
+                <td><a href="#metaxisdata.v1.GetQualityConsumptionCoverageRequest">GetQualityConsumptionCoverageRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetQualityConsumptionCoverageResponse">GetQualityConsumptionCoverageResponse</a></td>
+                <td><p>Read how much of the data other assets consume is watched. Unlike the
+overview&#39;s coverage, whose denominator is every monitorable registry object,
+this answers a consumption question: of the assets whose lineage shows
+another object reading them, how many have an enabled check? The two ratios
+have different denominators and are deliberately not combined.
+
+It is a separate read because answering it costs one grouped scan of the
+lineage table, which the overview must not pay on every load.</p></td>
+              </tr>
+            
+              <tr>
                 <td>ListQualityTargets</td>
                 <td><a href="#metaxisdata.v1.ListQualityTargetsRequest">ListQualityTargetsRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListQualityTargetsResponse">ListQualityTargetsResponse</a></td>
@@ -22436,6 +22848,17 @@ ExportQualityExecutions.</p></td>
 unresolved issues and the target&#39;s columns, in one call. AI drafts are not
 part of the response (reading them needs the suggest permission). The target
 is named by GUID because a target is not a resource of its own.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityTargetImpact</td>
+                <td><a href="#metaxisdata.v1.GetQualityTargetImpactRequest">GetQualityTargetImpactRequest</a></td>
+                <td><a href="#metaxisdata.v1.GetQualityTargetImpactResponse">GetQualityTargetImpactResponse</a></td>
+                <td><p>Explain a target&#39;s quality state by its lineage: the assets its data
+reaches downstream, and the upstream targets whose checks failed or whose
+structure changed in the window before a reference instant. Both lists are
+bounded walks over the recorded lineage, so a target with no recorded edges
+has no impact to report — which is not the same as having no consumers.</p></td>
               </tr>
             
               <tr>
@@ -22887,6 +23310,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
               
               
               <tr>
+                <td>GetQualityConsumptionCoverage</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityConsumptionCoverage</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
                 <td>ListQualityTargets</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityTargets</td>
@@ -22900,6 +23333,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityTarget</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityTargets:get</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityTargetImpact</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityTargets:impact</td>
                 <td></td>
               </tr>
               
