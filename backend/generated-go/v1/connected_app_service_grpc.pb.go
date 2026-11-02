@@ -27,10 +27,12 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// ConnectedAppService manages the MCP OAuth connections a user established by
-// authorizing a client against the deployment's MCP endpoint. One connected app
-// is one authorization (one user, one client), not one transport session: the
-// MCP endpoint itself is stateless.
+// ConnectedAppService manages the connections a user established by authorizing
+// a client against this deployment: an MCP client through the OAuth browser flow,
+// or the `mxd` CLI through a device login. One connected app is one authorization
+// (one user, one client, one ceremony), not one transport session: the MCP
+// endpoint itself is stateless, and a CLI session is the rotating grant behind its
+// stored tokens.
 //
 // No method here carries a (metaxisdata.v1.permission) annotation, because the
 // same call serves two audiences: a workspace administrator listing every
@@ -87,10 +89,12 @@ func (c *connectedAppServiceClient) RevokeConnectedApp(ctx context.Context, in *
 // All implementations must embed UnimplementedConnectedAppServiceServer
 // for forward compatibility.
 //
-// ConnectedAppService manages the MCP OAuth connections a user established by
-// authorizing a client against the deployment's MCP endpoint. One connected app
-// is one authorization (one user, one client), not one transport session: the
-// MCP endpoint itself is stateless.
+// ConnectedAppService manages the connections a user established by authorizing
+// a client against this deployment: an MCP client through the OAuth browser flow,
+// or the `mxd` CLI through a device login. One connected app is one authorization
+// (one user, one client, one ceremony), not one transport session: the MCP
+// endpoint itself is stateless, and a CLI session is the rotating grant behind its
+// stored tokens.
 //
 // No method here carries a (metaxisdata.v1.permission) annotation, because the
 // same call serves two audiences: a workspace administrator listing every

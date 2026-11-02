@@ -33,6 +33,11 @@ func TestOAuthGrantQueriesBindTheHashAndScopeTheClient(t *testing.T) {
 	require.Contains(t, touchOAuthGrantQuery, "last_tool_call_at < $3",
 		"the tool-call touch is throttled by a predicate, never an unconditional write")
 	require.Contains(t, deleteExpiredOAuthGrantsQuery, "WHERE expires_at < $1")
+	// A CLI session is a grant too: the insert carries the ceremony and the device
+	// facts, and every read returns them so the management page can label the row.
+	require.Contains(t, createOAuthGrantQuery, "kind, client_version, request_ip")
+	require.Contains(t, createOAuthGrantQuery, "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)")
+	require.Contains(t, getOAuthGrantQuery, "kind, client_version, request_ip")
 
 	for _, query := range []string{
 		createOAuthGrantQuery,

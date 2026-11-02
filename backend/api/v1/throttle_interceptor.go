@@ -109,6 +109,11 @@ func (in *ThrottleInterceptor) limiterFor(procedure string) (*state.WindowLimite
 		// that spends a database round trip on caller-supplied input, and the
 		// budget is loose enough that a user with several tabs open is unaffected.
 		return in.stateCfg.LoginRequestLimiter, false
+	case v1connect.AuthServiceExchangeRefreshTokenProcedure:
+		// The CLI's refresh path is the same anonymous, hash-lookup-shaped entry
+		// point as Refresh, so it shares the same budget: one caller cannot spend
+		// the deployment's database on guessed token hashes.
+		return in.stateCfg.LoginRequestLimiter, false
 	case v1connect.UserServiceCreateUserProcedure:
 		return in.stateCfg.CreateUserRequestLimiter, true
 	case v1connect.AuthServiceLogoutProcedure:

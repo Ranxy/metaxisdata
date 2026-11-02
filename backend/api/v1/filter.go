@@ -480,12 +480,15 @@ func connectedAppStateValue(variable string, value any) (string, error) {
 }
 
 // connectedAppStateCase renders the same precedence the list conversion uses:
-// revoked, expired, inactive, then re-authorization required.
+// revoked, expired, inactive, then re-authorization required. The resource clause
+// applies to an MCP grant only; a CLI session targets the user API and is not
+// pinned to the endpoint, so a moved external URL must not mark it for
+// re-authorization.
 func connectedAppStateCase(args *filterArgs, now time.Time, resource string) string {
 	nowPlaceholder := args.add(now.UTC())
 	reauthorize := "g.created_at < NULLIF(p.profile->>'lastChangePasswordTime', '')::timestamptz"
 	if resource != "" {
-		reauthorize += fmt.Sprintf(" OR g.resource <> %s", args.add(resource))
+		reauthorize += fmt.Sprintf(" OR (g.kind <> %s AND g.resource <> %s)", args.add(store.OAuthGrantKindCLI), args.add(resource))
 	}
 	return fmt.Sprintf(`CASE
 		WHEN g.revoked_at IS NOT NULL THEN 'REVOKED'

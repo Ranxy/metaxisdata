@@ -40,6 +40,9 @@ const (
 	AuthServiceLogoutProcedure = "/metaxisdata.v1.AuthService/Logout"
 	// AuthServiceRefreshProcedure is the fully-qualified name of the AuthService's Refresh RPC.
 	AuthServiceRefreshProcedure = "/metaxisdata.v1.AuthService/Refresh"
+	// AuthServiceExchangeRefreshTokenProcedure is the fully-qualified name of the AuthService's
+	// ExchangeRefreshToken RPC.
+	AuthServiceExchangeRefreshTokenProcedure = "/metaxisdata.v1.AuthService/ExchangeRefreshToken"
 	// AuthServiceCreateSSOStateProcedure is the fully-qualified name of the AuthService's
 	// CreateSSOState RPC.
 	AuthServiceCreateSSOStateProcedure = "/metaxisdata.v1.AuthService/CreateSSOState"
@@ -70,6 +73,15 @@ type AuthServiceClient interface {
 	// holder refreshes.
 	// Permissions required: None
 	Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error)
+	// ExchangeRefreshToken rotates a CLI session from the refresh token in the
+	// body. The CLI has no cookie jar, so it presents the opaque refresh token the
+	// device login issued instead of the browser's cookie; the session itself is
+	// the same rotating grant row an MCP client gets, which is what makes a CLI
+	// login a visible, revocable connected app. Each call consumes the presented
+	// token and returns a replacement, so a stolen copy is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	ExchangeRefreshToken(context.Context, *connect.Request[v1.ExchangeRefreshTokenRequest]) (*connect.Response[v1.ExchangeRefreshTokenResponse], error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -126,6 +138,12 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("Refresh")),
 			connect.WithClientOptions(opts...),
 		),
+		exchangeRefreshToken: connect.NewClient[v1.ExchangeRefreshTokenRequest, v1.ExchangeRefreshTokenResponse](
+			httpClient,
+			baseURL+AuthServiceExchangeRefreshTokenProcedure,
+			connect.WithSchema(authServiceMethods.ByName("ExchangeRefreshToken")),
+			connect.WithClientOptions(opts...),
+		),
 		createSSOState: connect.NewClient[emptypb.Empty, v1.CreateSSOStateResponse](
 			httpClient,
 			baseURL+AuthServiceCreateSSOStateProcedure,
@@ -161,14 +179,15 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	login               *connect.Client[v1.LoginRequest, v1.LoginResponse]
-	logout              *connect.Client[v1.LogoutRequest, emptypb.Empty]
-	refresh             *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
-	createSSOState      *connect.Client[emptypb.Empty, v1.CreateSSOStateResponse]
-	createDeviceLogin   *connect.Client[v1.CreateDeviceLoginRequest, v1.CreateDeviceLoginResponse]
-	getDeviceLogin      *connect.Client[v1.GetDeviceLoginRequest, v1.DeviceLogin]
-	approveDeviceLogin  *connect.Client[v1.ApproveDeviceLoginRequest, emptypb.Empty]
-	exchangeDeviceLogin *connect.Client[v1.ExchangeDeviceLoginRequest, v1.ExchangeDeviceLoginResponse]
+	login                *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	logout               *connect.Client[v1.LogoutRequest, emptypb.Empty]
+	refresh              *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
+	exchangeRefreshToken *connect.Client[v1.ExchangeRefreshTokenRequest, v1.ExchangeRefreshTokenResponse]
+	createSSOState       *connect.Client[emptypb.Empty, v1.CreateSSOStateResponse]
+	createDeviceLogin    *connect.Client[v1.CreateDeviceLoginRequest, v1.CreateDeviceLoginResponse]
+	getDeviceLogin       *connect.Client[v1.GetDeviceLoginRequest, v1.DeviceLogin]
+	approveDeviceLogin   *connect.Client[v1.ApproveDeviceLoginRequest, emptypb.Empty]
+	exchangeDeviceLogin  *connect.Client[v1.ExchangeDeviceLoginRequest, v1.ExchangeDeviceLoginResponse]
 }
 
 // Login calls metaxisdata.v1.AuthService.Login.
@@ -184,6 +203,11 @@ func (c *authServiceClient) Logout(ctx context.Context, req *connect.Request[v1.
 // Refresh calls metaxisdata.v1.AuthService.Refresh.
 func (c *authServiceClient) Refresh(ctx context.Context, req *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error) {
 	return c.refresh.CallUnary(ctx, req)
+}
+
+// ExchangeRefreshToken calls metaxisdata.v1.AuthService.ExchangeRefreshToken.
+func (c *authServiceClient) ExchangeRefreshToken(ctx context.Context, req *connect.Request[v1.ExchangeRefreshTokenRequest]) (*connect.Response[v1.ExchangeRefreshTokenResponse], error) {
+	return c.exchangeRefreshToken.CallUnary(ctx, req)
 }
 
 // CreateSSOState calls metaxisdata.v1.AuthService.CreateSSOState.
@@ -224,6 +248,15 @@ type AuthServiceHandler interface {
 	// holder refreshes.
 	// Permissions required: None
 	Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error)
+	// ExchangeRefreshToken rotates a CLI session from the refresh token in the
+	// body. The CLI has no cookie jar, so it presents the opaque refresh token the
+	// device login issued instead of the browser's cookie; the session itself is
+	// the same rotating grant row an MCP client gets, which is what makes a CLI
+	// login a visible, revocable connected app. Each call consumes the presented
+	// token and returns a replacement, so a stolen copy is worthless once the real
+	// holder refreshes.
+	// Permissions required: None
+	ExchangeRefreshToken(context.Context, *connect.Request[v1.ExchangeRefreshTokenRequest]) (*connect.Response[v1.ExchangeRefreshTokenResponse], error)
 	// CreateSSOState issues a one-time OAuth2 state value. A client must fetch it
 	// before redirecting to the identity provider, pass it back to the provider
 	// and then send it with the login request; the server consumes it there.
@@ -276,6 +309,12 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("Refresh")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceExchangeRefreshTokenHandler := connect.NewUnaryHandler(
+		AuthServiceExchangeRefreshTokenProcedure,
+		svc.ExchangeRefreshToken,
+		connect.WithSchema(authServiceMethods.ByName("ExchangeRefreshToken")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authServiceCreateSSOStateHandler := connect.NewUnaryHandler(
 		AuthServiceCreateSSOStateProcedure,
 		svc.CreateSSOState,
@@ -314,6 +353,8 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceLogoutHandler.ServeHTTP(w, r)
 		case AuthServiceRefreshProcedure:
 			authServiceRefreshHandler.ServeHTTP(w, r)
+		case AuthServiceExchangeRefreshTokenProcedure:
+			authServiceExchangeRefreshTokenHandler.ServeHTTP(w, r)
 		case AuthServiceCreateSSOStateProcedure:
 			authServiceCreateSSOStateHandler.ServeHTTP(w, r)
 		case AuthServiceCreateDeviceLoginProcedure:
@@ -343,6 +384,10 @@ func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[
 
 func (UnimplementedAuthServiceHandler) Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.Refresh is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) ExchangeRefreshToken(context.Context, *connect.Request[v1.ExchangeRefreshTokenRequest]) (*connect.Response[v1.ExchangeRefreshTokenResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.AuthService.ExchangeRefreshToken is not implemented"))
 }
 
 func (UnimplementedAuthServiceHandler) CreateSSOState(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[v1.CreateSSOStateResponse], error) {

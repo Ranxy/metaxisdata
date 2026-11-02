@@ -213,6 +213,66 @@ export declare type RefreshResponse = Message<"metaxisdata.v1.RefreshResponse"> 
 export declare const RefreshResponseSchema: GenMessage<RefreshResponse>;
 
 /**
+ * @generated from message metaxisdata.v1.ExchangeRefreshTokenRequest
+ */
+export declare type ExchangeRefreshTokenRequest = Message<"metaxisdata.v1.ExchangeRefreshTokenRequest"> & {
+  /**
+   * The opaque refresh token this session was last issued. It is a credential of
+   * its own: the server accepts it only through this method, and only for a CLI
+   * session it minted.
+   *
+   * @generated from field: string refresh_token = 1;
+   */
+  refreshToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExchangeRefreshTokenRequest.
+ * Use `create(ExchangeRefreshTokenRequestSchema)` to create a new message.
+ */
+export declare const ExchangeRefreshTokenRequestSchema: GenMessage<ExchangeRefreshTokenRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ExchangeRefreshTokenResponse
+ */
+export declare type ExchangeRefreshTokenResponse = Message<"metaxisdata.v1.ExchangeRefreshTokenResponse"> & {
+  /**
+   * The rotated access token, addressed to the user API.
+   *
+   * @generated from field: string access_token = 1;
+   */
+  accessToken: string;
+
+  /**
+   * The replacement refresh token. The presented one is consumed by this call.
+   *
+   * @generated from field: string refresh_token = 2;
+   */
+  refreshToken: string;
+
+  /**
+   * The access token's lifetime in seconds.
+   *
+   * @generated from field: int64 expires_in = 3;
+   */
+  expiresIn: bigint;
+
+  /**
+   * The refresh token's remaining lifetime in seconds. The session slides: every
+   * rotation restarts it, so a CLI in use does not have to sign in again.
+   *
+   * @generated from field: int64 refresh_expires_in = 4;
+   */
+  refreshExpiresIn: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ExchangeRefreshTokenResponse.
+ * Use `create(ExchangeRefreshTokenResponseSchema)` to create a new message.
+ */
+export declare const ExchangeRefreshTokenResponseSchema: GenMessage<ExchangeRefreshTokenResponse>;
+
+/**
  * @generated from message metaxisdata.v1.CreateDeviceLoginRequest
  */
 export declare type CreateDeviceLoginRequest = Message<"metaxisdata.v1.CreateDeviceLoginRequest"> & {
@@ -434,7 +494,10 @@ export declare type ExchangeDeviceLoginResponse = Message<"metaxisdata.v1.Exchan
 
   /**
    * The access token, returned only when the request was approved. The device
-   * login is consumed at the same time, so a second exchange finds nothing.
+   * login is consumed at the same time, so a second exchange finds nothing. The
+   * token belongs to the CLI session the exchange creates (a connected app), so
+   * a revocation of that connection refuses it within the grant-revocation
+   * cache's window.
    *
    * @generated from field: string token = 2;
    */
@@ -453,6 +516,22 @@ export declare type ExchangeDeviceLoginResponse = Message<"metaxisdata.v1.Exchan
    * @generated from field: metaxisdata.v1.User user = 4;
    */
   user?: User;
+
+  /**
+   * The CLI session's rotating refresh token. Only its digest is stored, and
+   * every use must go through ExchangeRefreshToken, which consumes it. Empty
+   * only on a response that answered a state other than APPROVED.
+   *
+   * @generated from field: string refresh_token = 5;
+   */
+  refreshToken: string;
+
+  /**
+   * The refresh token's lifetime in seconds.
+   *
+   * @generated from field: int64 refresh_expires_in = 6;
+   */
+  refreshExpiresIn: bigint;
 };
 
 /**
@@ -534,6 +613,23 @@ export declare const AuthService: GenService<{
     methodKind: "unary";
     input: typeof RefreshRequestSchema;
     output: typeof RefreshResponseSchema;
+  },
+  /**
+   * ExchangeRefreshToken rotates a CLI session from the refresh token in the
+   * body. The CLI has no cookie jar, so it presents the opaque refresh token the
+   * device login issued instead of the browser's cookie; the session itself is
+   * the same rotating grant row an MCP client gets, which is what makes a CLI
+   * login a visible, revocable connected app. Each call consumes the presented
+   * token and returns a replacement, so a stolen copy is worthless once the real
+   * holder refreshes.
+   * Permissions required: None
+   *
+   * @generated from rpc metaxisdata.v1.AuthService.ExchangeRefreshToken
+   */
+  exchangeRefreshToken: {
+    methodKind: "unary";
+    input: typeof ExchangeRefreshTokenRequestSchema;
+    output: typeof ExchangeRefreshTokenResponseSchema;
   },
   /**
    * CreateSSOState issues a one-time OAuth2 state value. A client must fetch it

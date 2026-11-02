@@ -57,7 +57,12 @@ type Options struct {
 type Result struct {
 	Token     string
 	ExpiresIn int64
-	User      *v1pb.User
+	// RefreshToken and RefreshExpiresIn describe the session's renewable half. The
+	// server issues it with the access token; a CLI that predates this field
+	// ignores it and simply signs in again when the access token expires.
+	RefreshToken     string
+	RefreshExpiresIn int64
+	User             *v1pb.User
 }
 
 // Progress receives the lines meant for a person. They never go to stdout.
@@ -191,9 +196,11 @@ func Run(ctx context.Context, api DeviceLoginClient, progress Progress, opts Opt
 		switch exchanged.Msg.GetState() {
 		case v1pb.DeviceLoginState_APPROVED:
 			return &Result{
-				Token:     exchanged.Msg.GetToken(),
-				ExpiresIn: exchanged.Msg.GetExpiresIn(),
-				User:      exchanged.Msg.GetUser(),
+				Token:            exchanged.Msg.GetToken(),
+				ExpiresIn:        exchanged.Msg.GetExpiresIn(),
+				RefreshToken:     exchanged.Msg.GetRefreshToken(),
+				RefreshExpiresIn: exchanged.Msg.GetRefreshExpiresIn(),
+				User:             exchanged.Msg.GetUser(),
 			}, nil
 		case v1pb.DeviceLoginState_DENIED:
 			return nil, ErrDenied

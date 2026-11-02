@@ -17,5 +17,5 @@ import "time"
 // token belongs to; the MCP endpoint checks it per request, so revoking the
 // connection invalidates tokens that were minted before the revocation.
 func GenerateMCPAccessToken(userName string, userID int, clientID string, grantID int64, audience, scope, secret string, tokenDuration time.Duration) (string, error) {
-	return generateToken(userName, userID, audience, scope, time.Now().Add(tokenDuration), []byte(secret), "", clientID, grantID)
+	return GenerateGrantAccessToken(userName, userID, clientID, grantID, audience, scope, secret, tokenDuration)
 }

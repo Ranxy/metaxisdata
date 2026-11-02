@@ -194,13 +194,14 @@ type AccessTokenIdentity struct {
 	IssuedAt  time.Time
 	// Scopes are the scopes the token was minted with.
 	Scopes []string
-	// ClientID is the OAuth client an MCP token was issued to, empty for a web,
-	// CLI or API token. Logout uses it to retire the grants that client holds,
-	// which is what makes revoking one MCP token end the whole connection.
+	// ClientID is the OAuth client the token was issued to: an MCP client, or the
+	// built-in `mxd` client for a CLI session; empty for a web or API token. Logout
+	// uses it to decide what a sign-out ends: an MCP token retires every grant its
+	// client holds, while a CLI token ends only the session it names.
 	ClientID string
-	// GrantID is the connected app (OAuth grant row) an MCP access token belongs
-	// to, empty for every other token. The resolution chain uses it to refuse a
-	// token whose connection has been revoked.
+	// GrantID is the connected app (OAuth grant row) an access token belongs to — an
+	// MCP grant or a CLI session — and empty for a web or API token. The resolution
+	// chain uses it to refuse a token whose connection has been revoked.
 	GrantID int64
 	// Restriction is empty for a full-access token.
 	Restriction TokenRestriction
@@ -280,16 +281,16 @@ func audienceContains(audience jwt.ClaimStrings, token string) bool {
 
 type claimsMessage struct {
 	Name string `json:"name"`
-	// Scope is the space-delimited OAuth scope set the token was minted with.
-	// User-API tokens carry none; an MCP token carries the one scope the MCP
+	// Scope is the space-delimited OAuth scope set the token was minted with. A web,
+	// CLI or API token carries none; an MCP token carries the one scope the MCP
 	// endpoint requires.
 	Scope string `json:"scope,omitempty"`
-	// ClientID is the OAuth client the token was issued to. Absent from a web,
-	// CLI or API token.
+	// ClientID is the OAuth client the token was issued to: an MCP client, or the
+	// built-in `mxd` client for a CLI session. Absent from a web or API token.
 	ClientID string `json:"cid,omitempty"`
-	// GrantID is the connected app (OAuth grant row) an MCP token belongs to. It
-	// is what lets the MCP endpoint check, per request, that the connection has
-	// not been revoked since the token was minted.
+	// GrantID is the connected app the token belongs to (an MCP grant or a CLI
+	// session). The resolution chain checks it per request, so revoking the
+	// connection refuses tokens minted before the revocation.
 	GrantID int64 `json:"gid,omitempty"`
 	jwt.RegisteredClaims
 	// IssuedAtNanos mirrors iat with the precision jwt's NumericDate drops
@@ -320,7 +321,8 @@ func GenerateAccessToken(userName string, userID int, mode common.ReleaseMode, s
 }
 
 // Pay attention to this function. It holds the main JWT token generation logic.
-// clientID and grantID are empty/zero for every token but an MCP one.
+// clientID and grantID are empty/zero for every token but a connected one (an MCP
+// grant or a CLI session).
 func generateToken(userName string, userID int, aud, scope string, expirationTime time.Time, secret []byte, restriction TokenRestriction, clientID string, grantID int64) (string, error) {
 	// The iat claim only has second granularity, so two logins in the same
 	// second would otherwise produce byte-identical tokens. Logout revokes a

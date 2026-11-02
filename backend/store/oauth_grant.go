@@ -14,23 +14,33 @@ import (
 )
 
 // A grant row is the durable record of one connected app: one user's
-// authorization of one MCP client. The refresh credential rotates in place, so
-// the row id is a stable handle an access token can carry and an administrator
-// can revoke; the table name is historical (the row used to hold only the
-// refresh credential).
+// authorization of one client, either an MCP client authorized in the browser or
+// the CLI authorized through a device login. The refresh credential rotates in
+// place, so the row id is a stable handle an access token can carry and an
+// administrator can revoke; the table name is historical (the row used to hold
+// only the refresh credential).
 //
 // The queries are constants so a guard test can pin their shape. The token hash
 // is caller-supplied (it is the digest of a string from outside), so it must stay
 // a parameter, and every lookup is scoped to the client the grant was issued to,
 // so a hash leaked from one registration cannot be redeemed by another.
 const (
+	// OAuthGrantKindMCP is an MCP client authorized through the OAuth browser
+	// flow; OAuthGrantKindCLI is the `mxd` CLI authorized through a device login.
+	// The two rotate and revoke identically; the kind is what the token minting
+	// paths and the management surface branch on.
+	OAuthGrantKindMCP = "mcp"
+	OAuthGrantKindCLI = "cli"
+)
+
+const (
 	createOAuthGrantQuery = `
-		INSERT INTO oauth_refresh_token (token_hash, client_id, user_id, resource, scope, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO oauth_refresh_token (token_hash, client_id, user_id, resource, scope, expires_at, created_at, kind, client_version, request_ip)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`
 
 	getOAuthGrantQuery = `
-		SELECT id, token_hash, client_id, user_id, resource, scope, expires_at, created_at, last_tool_call_at, revoked_at, revoked_by
+		SELECT id, token_hash, client_id, user_id, resource, scope, expires_at, created_at, last_tool_call_at, revoked_at, revoked_by, kind, client_version, request_ip
 		FROM oauth_refresh_token
 		WHERE token_hash = $1 AND client_id = $2`
 
@@ -88,7 +98,7 @@ const (
 	// connectedAppColumns is the joined projection the management page reads. The
 	// aliases (g, p, c) are what the filter parser renders against (see
 	// backend/api/v1/filter.go).
-	connectedAppColumns = `g.id, g.token_hash, g.client_id, g.user_id, g.resource, g.scope, g.expires_at, g.created_at, g.last_tool_call_at, g.revoked_at, g.revoked_by, p.email, p.name, p.deleted, p.profile, COALESCE(c.client_name, '')`
+	connectedAppColumns = `g.id, g.token_hash, g.client_id, g.user_id, g.resource, g.scope, g.expires_at, g.created_at, g.last_tool_call_at, g.revoked_at, g.revoked_by, p.email, p.name, p.deleted, p.profile, COALESCE(c.client_name, ''), g.kind, g.client_version, g.request_ip`
 
 	connectedAppFrom = `
 		FROM oauth_refresh_token g
@@ -96,8 +106,8 @@ const (
 		JOIN principal p ON p.id = g.user_id`
 )
 
-// OAuthGrant is one connected app: a user's authorization of one MCP client and
-// the rotation state of the refresh credential behind it.
+// OAuthGrant is one connected app: a user's authorization of one client and the
+// rotation state of the refresh credential behind it.
 type OAuthGrant struct {
 	ID int64
 	// TokenHash is the SHA-256 hex digest of the opaque refresh token. The
@@ -106,11 +116,20 @@ type OAuthGrant struct {
 	TokenHash string
 	ClientID  string
 	UserID    int
+	// Kind is the ceremony that created the connection: OAuthGrantKindMCP or
+	// OAuthGrantKindCLI. Required on create; empty defaults to MCP so the paths
+	// that predate the column keep their meaning.
+	Kind string
+	// ClientVersion and RequestIP describe the device a CLI session was opened
+	// from. Display only, and empty for an MCP grant.
+	ClientVersion string
+	RequestIP     string
 	// Resource is the MCP resource identifier the user consented to. A refresh is
-	// refused when it no longer matches the current endpoint.
+	// refused when it no longer matches the current endpoint. Empty for a CLI
+	// session, which is not bound to the MCP endpoint.
 	Resource string
 	// Scope is the consented scope, carried forward verbatim: a refresh re-issues
-	// the grant as consented and never widens it.
+	// the grant as consented and never widens it. Empty for a CLI session.
 	Scope     string
 	ExpiresAt time.Time
 	// CreatedAt is when the first access token was issued (the authorization
@@ -118,7 +137,8 @@ type OAuthGrant struct {
 	// so it stays ordered against the user's last password change.
 	CreatedAt time.Time
 	// LastToolCallAt is the most recent tool call made with this connection, or nil
-	// when the client has been authorized but has not called one.
+	// when the client has been authorized but has not called one. A CLI session
+	// does not record tool calls, so it stays nil there.
 	LastToolCallAt *time.Time
 	// RevokedAt is a soft revocation. No path may clear it: authorizing again
 	// creates a new row.
@@ -151,9 +171,14 @@ type FindOAuthGrantMessage struct {
 // CreateOAuthGrant stores a newly issued grant and returns its id, which the
 // access token carries and the management API addresses.
 func (s *Store) CreateOAuthGrant(ctx context.Context, create *OAuthGrant) (int64, error) {
+	kind := create.Kind
+	if kind == "" {
+		kind = OAuthGrantKindMCP
+	}
 	var id int64
 	if err := s.GetDB().QueryRowContext(ctx, createOAuthGrantQuery,
 		create.TokenHash, create.ClientID, create.UserID, create.Resource, create.Scope, create.ExpiresAt.UTC(), create.CreatedAt.UTC(),
+		kind, create.ClientVersion, create.RequestIP,
 	).Scan(&id); err != nil {
 		return 0, errors.Wrap(err, "failed to create OAuth grant")
 	}
@@ -171,6 +196,7 @@ func (s *Store) GetOAuthGrant(ctx context.Context, clientID, tokenHash string) (
 	if err := s.GetDB().QueryRowContext(ctx, getOAuthGrantQuery, tokenHash, clientID).Scan(
 		&msg.ID, &msg.TokenHash, &msg.ClientID, &msg.UserID, &msg.Resource, &msg.Scope,
 		&msg.ExpiresAt, &msg.CreatedAt, &lastToolCallAt, &revokedAt, &revokedBy,
+		&msg.Kind, &msg.ClientVersion, &msg.RequestIP,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -369,6 +395,7 @@ func scanConnectedApp(row rowScanner) (*OAuthGrant, error) {
 		&grant.ID, &grant.TokenHash, &grant.ClientID, &grant.UserID, &grant.Resource, &grant.Scope,
 		&grant.ExpiresAt, &grant.CreatedAt, &lastToolCallAt, &revokedAt, &revokedBy,
 		&grant.UserEmail, &grant.UserName, &grant.UserDeleted, &profileBytes, &grant.ClientName,
+		&grant.Kind, &grant.ClientVersion, &grant.RequestIP,
 	); err != nil {
 		return nil, err
 	}

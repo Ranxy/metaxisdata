@@ -73,6 +73,8 @@
     - [DeviceLogin](#metaxisdata-v1-DeviceLogin)
     - [ExchangeDeviceLoginRequest](#metaxisdata-v1-ExchangeDeviceLoginRequest)
     - [ExchangeDeviceLoginResponse](#metaxisdata-v1-ExchangeDeviceLoginResponse)
+    - [ExchangeRefreshTokenRequest](#metaxisdata-v1-ExchangeRefreshTokenRequest)
+    - [ExchangeRefreshTokenResponse](#metaxisdata-v1-ExchangeRefreshTokenResponse)
     - [GetDeviceLoginRequest](#metaxisdata-v1-GetDeviceLoginRequest)
     - [IdentityProviderContext](#metaxisdata-v1-IdentityProviderContext)
     - [LoginRequest](#metaxisdata-v1-LoginRequest)
@@ -92,6 +94,7 @@
     - [ListConnectedAppsResponse](#metaxisdata-v1-ListConnectedAppsResponse)
     - [RevokeConnectedAppRequest](#metaxisdata-v1-RevokeConnectedAppRequest)
   
+    - [ConnectedApp.Kind](#metaxisdata-v1-ConnectedApp-Kind)
     - [ConnectedApp.State](#metaxisdata-v1-ConnectedApp-State)
   
     - [ConnectedAppService](#metaxisdata-v1-ConnectedAppService)
@@ -1608,9 +1611,44 @@ page needs nothing else.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | state | [DeviceLoginState](#metaxisdata-v1-DeviceLoginState) |  |  |
-| token | [string](#string) |  | The access token, returned only when the request was approved. The device login is consumed at the same time, so a second exchange finds nothing. |
+| token | [string](#string) |  | The access token, returned only when the request was approved. The device login is consumed at the same time, so a second exchange finds nothing. The token belongs to the CLI session the exchange creates (a connected app), so a revocation of that connection refuses it within the grant-revocation cache&#39;s window. |
 | expires_in | [int64](#int64) |  | The remaining lifetime of the token in seconds. |
 | user | [User](#metaxisdata-v1-User) |  | The user who approved the request. |
+| refresh_token | [string](#string) |  | The CLI session&#39;s rotating refresh token. Only its digest is stored, and every use must go through ExchangeRefreshToken, which consumes it. Empty only on a response that answered a state other than APPROVED. |
+| refresh_expires_in | [int64](#int64) |  | The refresh token&#39;s lifetime in seconds. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExchangeRefreshTokenRequest"></a>
+
+### ExchangeRefreshTokenRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| refresh_token | [string](#string) |  | The opaque refresh token this session was last issued. It is a credential of its own: the server accepts it only through this method, and only for a CLI session it minted. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ExchangeRefreshTokenResponse"></a>
+
+### ExchangeRefreshTokenResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| access_token | [string](#string) |  | The rotated access token, addressed to the user API. |
+| refresh_token | [string](#string) |  | The replacement refresh token. The presented one is consumed by this call. |
+| expires_in | [int64](#int64) |  | The access token&#39;s lifetime in seconds. |
+| refresh_expires_in | [int64](#int64) |  | The refresh token&#39;s remaining lifetime in seconds. The session slides: every rotation restarts it, so a CLI in use does not have to sign in again. |
 
 
 
@@ -1763,6 +1801,7 @@ HttpOnly cookies, so no token ever reaches page JavaScript.
 | Login | [LoginRequest](#metaxisdata-v1-LoginRequest) | [LoginResponse](#metaxisdata-v1-LoginResponse) | Permissions required: None |
 | Logout | [LogoutRequest](#metaxisdata-v1-LogoutRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Permissions required: None |
 | Refresh | [RefreshRequest](#metaxisdata-v1-RefreshRequest) | [RefreshResponse](#metaxisdata-v1-RefreshResponse) | Refresh rotates the web session: it consumes the refresh-token cookie and sets a new access token and a new refresh token cookie. It needs no credential because it is called exactly when the access token has expired, and it rotates the pair so a stolen refresh token is worthless once the real holder refreshes. Permissions required: None |
+| ExchangeRefreshToken | [ExchangeRefreshTokenRequest](#metaxisdata-v1-ExchangeRefreshTokenRequest) | [ExchangeRefreshTokenResponse](#metaxisdata-v1-ExchangeRefreshTokenResponse) | ExchangeRefreshToken rotates a CLI session from the refresh token in the body. The CLI has no cookie jar, so it presents the opaque refresh token the device login issued instead of the browser&#39;s cookie; the session itself is the same rotating grant row an MCP client gets, which is what makes a CLI login a visible, revocable connected app. Each call consumes the presented token and returns a replacement, so a stolen copy is worthless once the real holder refreshes. Permissions required: None |
 | CreateSSOState | [.google.protobuf.Empty](#google-protobuf-Empty) | [CreateSSOStateResponse](#metaxisdata-v1-CreateSSOStateResponse) | CreateSSOState issues a one-time OAuth2 state value. A client must fetch it before redirecting to the identity provider, pass it back to the provider and then send it with the login request; the server consumes it there. Without it an attacker can complete an authorization-code flow in a victim&#39;s browser and bind the victim&#39;s session to the attacker&#39;s identity. Permissions required: None |
 | CreateDeviceLogin | [CreateDeviceLoginRequest](#metaxisdata-v1-CreateDeviceLoginRequest) | [CreateDeviceLoginResponse](#metaxisdata-v1-CreateDeviceLoginResponse) | CreateDeviceLogin starts a device login (RFC 8628 style). The caller gets a polling secret plus a short human-readable code; a signed-in user approves the request from the web confirmation page and the CLI then exchanges the secret for an access token bound to that user. Permissions required: None |
 | GetDeviceLogin | [GetDeviceLoginRequest](#metaxisdata-v1-GetDeviceLoginRequest) | [DeviceLogin](#metaxisdata-v1-DeviceLogin) | GetDeviceLogin returns one pending device login so the confirmation page can show what is being approved. Permissions required: None |
@@ -1783,26 +1822,31 @@ HttpOnly cookies, so no token ever reaches page JavaScript.
 <a name="metaxisdata-v1-ConnectedApp"></a>
 
 ### ConnectedApp
-ConnectedApp is one user&#39;s authorization of one MCP client. It is derived from
-the grant record the OAuth token endpoint rotates in place, not from the
-client registration: the same client may be authorized several times, and each
-authorization is its own row.
+ConnectedApp is one user&#39;s authorization of one client: an MCP client through
+the OAuth browser flow, or the `mxd` CLI through a device login. Both are the
+same rotating grant record, so both are listed, revocable and labeled here; the
+kind field says which ceremony produced the row. It is derived from that record,
+not from the client registration: the same client may be authorized several
+times, and each authorization is its own row.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | The resource name of the connected app, in the form `connectedApps/{id}`. |
-| client_id | [string](#string) |  | The registered client identifier (RFC 7591). Opaque. |
-| client_name | [string](#string) |  | The client&#39;s self-reported name at registration. It is not verified, so it is display text only. |
+| client_id | [string](#string) |  | The client identifier: a dynamic registration&#39;s identifier (RFC 7591) for an MCP client, or the built-in `mxd` client for a CLI session. Opaque. |
+| client_name | [string](#string) |  | The client&#39;s self-reported name at registration. It is not verified, so it is display text only. A CLI row shows the built-in client&#39;s name. |
 | user | [string](#string) |  | The user whose identity the client acts as, in the form `users/{id}`. |
 | user_email | [string](#string) |  | The user&#39;s email. It is filled only for the caller&#39;s own rows or when the caller may read users; a connected-apps reader is not thereby a user reader. |
-| resource | [string](#string) |  | The MCP resource identifier the authorization was granted for. |
-| scopes | [string](#string) | repeated | The OAuth scopes the user consented to. |
+| resource | [string](#string) |  | The MCP resource identifier the authorization was granted for. Empty for a CLI session, which is not bound to the MCP endpoint and is refused there because its access token carries the user API audience. |
+| scopes | [string](#string) | repeated | The OAuth scopes the user consented to. Empty for a CLI session. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the authorization completed (the first token pair was issued). |
-| last_tool_call_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The most recent tool call made with this connection. Empty when the client has been authorized but has not called a tool yet. |
-| expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the refresh credential expires. A connection past this instant cannot mint another access token. |
+| last_tool_call_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The most recent tool call made with an MCP connection. Empty for a client that has not called a tool yet and for a CLI session, whose activity is not a tool call. |
+| expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the refresh credential expires. A connection past this instant cannot mint another access token. The lifetime slides on every rotation, so an actively used connection keeps moving this instant out. |
 | state | [ConnectedApp.State](#metaxisdata-v1-ConnectedApp-State) |  | The connection&#39;s current state. |
 | revoke_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the connection was revoked. Set only for REVOKED. |
+| kind | [ConnectedApp.Kind](#metaxisdata-v1-ConnectedApp-Kind) |  | Which authorization ceremony created the connection. |
+| client_version | [string](#string) |  | The CLI build that created the session, e.g. &#34;0.1.0&#34; (display only; empty for an MCP connection). |
+| request_ip | [string](#string) |  | The source address the CLI device login came from, as the server resolved it (trusted-proxy rules applied; empty for an MCP connection). It is personal data, so it lives only as long as the grant row. |
 
 
 
@@ -1864,6 +1908,20 @@ The filter only narrows the rows the caller is already allowed to see. |
  
 
 
+<a name="metaxisdata-v1-ConnectedApp-Kind"></a>
+
+### ConnectedApp.Kind
+Kind is what produced the grant. Both kinds rotate and revoke identically;
+only the authorization ceremony and the token audience differ.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| KIND_UNSPECIFIED | 0 |  |
+| MCP | 1 | Authorized through the OAuth browser flow (authorization code &#43; PKCE). |
+| CLI | 2 | Authorized through a CLI device login. |
+
+
+
 <a name="metaxisdata-v1-ConnectedApp-State"></a>
 
 ### ConnectedApp.State
@@ -1876,7 +1934,7 @@ surface&#39;s current configuration, and the user&#39;s account, so it is not st
 | ACTIVE | 1 | Usable: not revoked or expired, and a refresh would be accepted. |
 | REVOKED | 2 | Explicitly revoked. Outstanding access tokens are refused within the revocation cache&#39;s window. |
 | EXPIRED | 3 | The refresh credential expired; no new access token can be minted. |
-| REAUTH_REQUIRED | 4 | Re-authorization is required before the connection can work: the MCP resource identifier changed, or the grant predates the user&#39;s last password change. |
+| REAUTH_REQUIRED | 4 | Re-authorization is required before the connection can work: the MCP resource identifier changed (MCP only), or the grant predates the user&#39;s last password change. |
 | INACTIVE | 5 | The user&#39;s account is deactivated. The connection resumes if the account is restored; it is not revoked automatically. |
 
 
@@ -1888,10 +1946,12 @@ surface&#39;s current configuration, and the user&#39;s account, so it is not st
 <a name="metaxisdata-v1-ConnectedAppService"></a>
 
 ### ConnectedAppService
-ConnectedAppService manages the MCP OAuth connections a user established by
-authorizing a client against the deployment&#39;s MCP endpoint. One connected app
-is one authorization (one user, one client), not one transport session: the
-MCP endpoint itself is stateless.
+ConnectedAppService manages the connections a user established by authorizing
+a client against this deployment: an MCP client through the OAuth browser flow,
+or the `mxd` CLI through a device login. One connected app is one authorization
+(one user, one client, one ceremony), not one transport session: the MCP
+endpoint itself is stateless, and a CLI session is the rotating grant behind its
+stored tokens.
 
 No method here carries a (metaxisdata.v1.permission) annotation, because the
 same call serves two audiences: a workspace administrator listing every

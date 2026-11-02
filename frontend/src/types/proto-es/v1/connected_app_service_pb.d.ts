@@ -12,10 +12,12 @@ import type { Timestamp } from "@bufbuild/protobuf/wkt";
 export declare const file_v1_connected_app_service: GenFile;
 
 /**
- * ConnectedApp is one user's authorization of one MCP client. It is derived from
- * the grant record the OAuth token endpoint rotates in place, not from the
- * client registration: the same client may be authorized several times, and each
- * authorization is its own row.
+ * ConnectedApp is one user's authorization of one client: an MCP client through
+ * the OAuth browser flow, or the `mxd` CLI through a device login. Both are the
+ * same rotating grant record, so both are listed, revocable and labeled here; the
+ * kind field says which ceremony produced the row. It is derived from that record,
+ * not from the client registration: the same client may be authorized several
+ * times, and each authorization is its own row.
  *
  * @generated from message metaxisdata.v1.ConnectedApp
  */
@@ -28,7 +30,8 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
   name: string;
 
   /**
-   * The registered client identifier (RFC 7591). Opaque.
+   * The client identifier: a dynamic registration's identifier (RFC 7591) for an
+   * MCP client, or the built-in `mxd` client for a CLI session. Opaque.
    *
    * @generated from field: string client_id = 2;
    */
@@ -36,7 +39,7 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
 
   /**
    * The client's self-reported name at registration. It is not verified, so it is
-   * display text only.
+   * display text only. A CLI row shows the built-in client's name.
    *
    * @generated from field: string client_name = 3;
    */
@@ -58,14 +61,16 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
   userEmail: string;
 
   /**
-   * The MCP resource identifier the authorization was granted for.
+   * The MCP resource identifier the authorization was granted for. Empty for a
+   * CLI session, which is not bound to the MCP endpoint and is refused there
+   * because its access token carries the user API audience.
    *
    * @generated from field: string resource = 6;
    */
   resource: string;
 
   /**
-   * The OAuth scopes the user consented to.
+   * The OAuth scopes the user consented to. Empty for a CLI session.
    *
    * @generated from field: repeated string scopes = 7;
    */
@@ -79,8 +84,9 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
   createTime?: Timestamp;
 
   /**
-   * The most recent tool call made with this connection. Empty when the client
-   * has been authorized but has not called a tool yet.
+   * The most recent tool call made with an MCP connection. Empty for a client that
+   * has not called a tool yet and for a CLI session, whose activity is not a tool
+   * call.
    *
    * @generated from field: google.protobuf.Timestamp last_tool_call_time = 9;
    */
@@ -88,7 +94,8 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
 
   /**
    * When the refresh credential expires. A connection past this instant cannot
-   * mint another access token.
+   * mint another access token. The lifetime slides on every rotation, so an
+   * actively used connection keeps moving this instant out.
    *
    * @generated from field: google.protobuf.Timestamp expire_time = 10;
    */
@@ -107,6 +114,30 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
    * @generated from field: google.protobuf.Timestamp revoke_time = 12;
    */
   revokeTime?: Timestamp;
+
+  /**
+   * Which authorization ceremony created the connection.
+   *
+   * @generated from field: metaxisdata.v1.ConnectedApp.Kind kind = 13;
+   */
+  kind: ConnectedApp_Kind;
+
+  /**
+   * The CLI build that created the session, e.g. "0.1.0" (display only; empty for
+   * an MCP connection).
+   *
+   * @generated from field: string client_version = 14;
+   */
+  clientVersion: string;
+
+  /**
+   * The source address the CLI device login came from, as the server resolved it
+   * (trusted-proxy rules applied; empty for an MCP connection). It is personal
+   * data, so it lives only as long as the grant row.
+   *
+   * @generated from field: string request_ip = 15;
+   */
+  requestIp: string;
 };
 
 /**
@@ -114,6 +145,38 @@ export declare type ConnectedApp = Message<"metaxisdata.v1.ConnectedApp"> & {
  * Use `create(ConnectedAppSchema)` to create a new message.
  */
 export declare const ConnectedAppSchema: GenMessage<ConnectedApp>;
+
+/**
+ * Kind is what produced the grant. Both kinds rotate and revoke identically;
+ * only the authorization ceremony and the token audience differ.
+ *
+ * @generated from enum metaxisdata.v1.ConnectedApp.Kind
+ */
+export enum ConnectedApp_Kind {
+  /**
+   * @generated from enum value: KIND_UNSPECIFIED = 0;
+   */
+  KIND_UNSPECIFIED = 0,
+
+  /**
+   * Authorized through the OAuth browser flow (authorization code + PKCE).
+   *
+   * @generated from enum value: MCP = 1;
+   */
+  MCP = 1,
+
+  /**
+   * Authorized through a CLI device login.
+   *
+   * @generated from enum value: CLI = 2;
+   */
+  CLI = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.ConnectedApp.Kind.
+ */
+export declare const ConnectedApp_KindSchema: GenEnum<ConnectedApp_Kind>;
 
 /**
  * State is a derived value: it is computed from the stored grant, the MCP
@@ -151,8 +214,8 @@ export enum ConnectedApp_State {
 
   /**
    * Re-authorization is required before the connection can work: the MCP
-   * resource identifier changed, or the grant predates the user's last password
-   * change.
+   * resource identifier changed (MCP only), or the grant predates the user's
+   * last password change.
    *
    * @generated from enum value: REAUTH_REQUIRED = 4;
    */
@@ -273,10 +336,12 @@ export declare type RevokeConnectedAppRequest = Message<"metaxisdata.v1.RevokeCo
 export declare const RevokeConnectedAppRequestSchema: GenMessage<RevokeConnectedAppRequest>;
 
 /**
- * ConnectedAppService manages the MCP OAuth connections a user established by
- * authorizing a client against the deployment's MCP endpoint. One connected app
- * is one authorization (one user, one client), not one transport session: the
- * MCP endpoint itself is stateless.
+ * ConnectedAppService manages the connections a user established by authorizing
+ * a client against this deployment: an MCP client through the OAuth browser flow,
+ * or the `mxd` CLI through a device login. One connected app is one authorization
+ * (one user, one client, one ceremony), not one transport session: the MCP
+ * endpoint itself is stateless, and a CLI session is the rotating grant behind its
+ * stored tokens.
  *
  * No method here carries a (metaxisdata.v1.permission) annotation, because the
  * same call serves two audiences: a workspace administrator listing every

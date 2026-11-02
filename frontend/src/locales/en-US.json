@@ -233,11 +233,11 @@
     "viewFullContent": "View full content"
   },
   "connectedApps": {
-    "adminDescription": "Every MCP client authorized to act on behalf of a user in this workspace. Revoking one cuts its access immediately.",
+    "adminDescription": "Every client authorized to act on behalf of a user in this workspace: MCP clients and mxd CLI logins. Revoking one cuts its access immediately.",
     "app": "App",
     "authorizedAt": "Authorized",
-    "emptyAdminDescription": "No MCP client has been authorized in this workspace yet.",
-    "emptySelfDescription": "You have not authorized any MCP client yet.",
+    "emptyAdminDescription": "No client has been authorized in this workspace yet.",
+    "emptySelfDescription": "You have not authorized an MCP client or signed in with mxd yet.",
     "emptyTitle": "No connected apps",
     "expiresAt": "Expires",
     "fetchError": "Failed to load connected apps.",
@@ -253,7 +253,7 @@
     "revokeTitle": "Revoke connected app",
     "revoked": "Connected app revoked",
     "searchPlaceholder": "Search client, client ID or email",
-    "selfDescription": "The MCP clients you authorized to act as you. Revoking one cuts its access immediately.",
+    "selfDescription": "The clients you authorized to act as you: MCP clients and mxd CLI logins. Revoking one cuts its access immediately.",
     "status": "Status",
     "statusActive": "Active",
     "statusExpired": "Expired",

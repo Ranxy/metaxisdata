@@ -1,9 +1,10 @@
 // Package config reads and writes the CLI's credentials file.
 //
-// The file holds a server address and a token, and nothing else. Analysis
-// scopes are not stored: they come from the process environment (see the env
-// package), because several agents can share a machine while serving different
-// projects.
+// The file holds a server address, the credentials of one session (an access
+// token and, when the session is renewable, its rotating refresh token), and
+// nothing else. Analysis scopes are not stored: they come from the process
+// environment (see the env package), because several agents can share a machine
+// while serving different projects.
 package config
 
 import (
@@ -17,14 +18,21 @@ import (
 	"github.com/Ranxy/metaxisdata/cli/env"
 )
 
-// Credentials is the on-disk shape. The token is written in clear text: the CLI
-// treats a credential file as equivalent to a seven day session, and hiding it
-// from a local file was not worth a keychain dependency.
+// Credentials is the on-disk shape. Both tokens are written in clear text: the
+// file is a 0600 credential store, and hiding it behind a keychain dependency was
+// not worth it. The refresh token is a rotating credential — a copy is worthless
+// once the real holder rotates it — but it does outlive the access token, which is
+// why the file must stay owner-only.
 type Credentials struct {
-	Server         string    `json:"server"`
-	Token          string    `json:"token"`
-	User           *User     `json:"user,omitempty"`
-	TokenExpiresAt time.Time `json:"tokenExpiresAt,omitzero"`
+	Server string `json:"server"`
+	Token  string `json:"token"`
+	// RefreshToken is the session's rotating credential. Empty for a credential
+	// that cannot be renewed: an API token from `--service-account`, or a file
+	// written by a CLI that predates refresh support.
+	RefreshToken     string    `json:"refreshToken,omitempty"`
+	User             *User     `json:"user,omitempty"`
+	TokenExpiresAt   time.Time `json:"tokenExpiresAt,omitzero"`
+	RefreshExpiresAt time.Time `json:"refreshExpiresAt,omitzero"`
 }
 
 // User is the signed-in identity, kept for `auth status` and for the
@@ -112,6 +120,8 @@ func Save(path string, credentials *Credentials) error {
 // same as pointing at another server, and the address does not change.
 func (c *Credentials) Clear() {
 	c.Token = ""
+	c.RefreshToken = ""
 	c.User = nil
 	c.TokenExpiresAt = time.Time{}
+	c.RefreshExpiresAt = time.Time{}
 }

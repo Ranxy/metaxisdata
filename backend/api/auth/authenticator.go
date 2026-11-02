@@ -137,7 +137,8 @@ type UserStore interface {
 }
 
 // GrantStore is the part of the store a TokenAuthenticator needs to decide
-// whether an MCP token's connected app is still live. *store.Store implements it;
+// whether a token's connected app (an MCP grant or a CLI session) is still live.
+// *store.Store implements it;
 // a nil grants skips the check (only tests that do not exercise it do that).
 type GrantStore interface {
 	// IsOAuthGrantLive reports whether the connection is neither revoked nor

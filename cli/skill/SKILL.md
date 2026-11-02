@@ -40,8 +40,13 @@ described below.
 the request in a browser.** An agent cannot complete this alone.
 
 - `mxd auth status` says who the CLI is signed in as, if anyone.
-- If a command exits **2**, the token is gone: ask the user to run
-  `mxd auth login`, then retry. Do not retry in a loop.
+- A CLI login renews itself: it is a connected app whose rotating refresh
+  credential `mxd` exchanges when the access token expires, so a signed-in
+  machine keeps working without another approval.
+- If a command exits **2**, the session is gone — expired, revoked from the
+  server's Connected apps page, ended by a password change, or the device login
+  was denied: ask the user to run `mxd auth login`, then retry. Do not retry in a
+  loop.
 
 ### 2. Analysis scopes come from the user, never from you
 
@@ -171,7 +176,7 @@ those edges. An object whose SQL yields no column-level relation at all — a ba
 | 1 | `server_required` | no server address yet | ask the user to run `mxd auth login --server <url>` |
 | 1 | `invalid_argument` | bad flags, or an empty/oversized statement | fix the call; the envelope carries a `hint` |
 | 1 | `config_invalid` | the credentials file is unreadable | report the path; the user must fix or remove it |
-| 2 | `unauthenticated` | token missing, expired, or revoked | `mxd auth login` (a human approves) |
+| 2 | `unauthenticated` | session missing, expired, revoked, or ended by a password change | `mxd auth login` (a human approves) |
 | 2 | `device_session_expired` | the login request expired or was denied | start a new `mxd auth login` |
 | 3 | `not_found` | no such GUID, or a wrong `--type` | re-run `meta search`; check the type |
 | 4 | `permission_denied` | the account lacks the permission | tell the user; do not retry |

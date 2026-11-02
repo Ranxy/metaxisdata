@@ -113,14 +113,18 @@ func TestACLInterceptorAuthorize(t *testing.T) {
 // cannot be expressed as one permission. Every other method must be gated,
 // reads included, so this allowlist is the only way to add an unguarded RPC.
 var unannotatedMethods = map[string]bool{
-	"metaxisdata.v1.AuthService.Login":               true,
-	"metaxisdata.v1.AuthService.Logout":              true,
-	"metaxisdata.v1.AuthService.Refresh":             true,
-	"metaxisdata.v1.AuthService.CreateSSOState":      true,
-	"metaxisdata.v1.AuthService.CreateDeviceLogin":   true,
-	"metaxisdata.v1.AuthService.GetDeviceLogin":      true,
-	"metaxisdata.v1.AuthService.ApproveDeviceLogin":  true,
-	"metaxisdata.v1.AuthService.ExchangeDeviceLogin": true,
+	"metaxisdata.v1.AuthService.Login":   true,
+	"metaxisdata.v1.AuthService.Logout":  true,
+	"metaxisdata.v1.AuthService.Refresh": true,
+	// The CLI's refresh path is anonymous like Refresh: the opaque refresh token in
+	// the body is the credential, and the handler scopes everything to the session
+	// that token names. A permission cannot express that.
+	"metaxisdata.v1.AuthService.ExchangeRefreshToken": true,
+	"metaxisdata.v1.AuthService.CreateSSOState":       true,
+	"metaxisdata.v1.AuthService.CreateDeviceLogin":    true,
+	"metaxisdata.v1.AuthService.GetDeviceLogin":       true,
+	"metaxisdata.v1.AuthService.ApproveDeviceLogin":   true,
+	"metaxisdata.v1.AuthService.ExchangeDeviceLogin":  true,
 	// The consent page is a self-service path: a signed-in user decides whether
 	// to grant a client access to their own identity, so no permission expresses
 	// it. The protocol endpoints (/oauth/*) are plain HTTP and never reach this

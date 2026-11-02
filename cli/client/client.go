@@ -17,6 +17,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
+	"github.com/Ranxy/metaxisdata/cli/config"
 )
 
 // Exit codes. They are part of the CLI's contract: an agent decides what to do
@@ -168,6 +169,13 @@ type Options struct {
 	Insecure bool
 	// Timeout bounds one request.
 	Timeout time.Duration
+	// RefreshToken, Credentials and CredentialsPath tie the access token to the
+	// CLI session stored in the credentials file. They are set only when the token
+	// came from that file: a --token or METAXISDATA_TOKEN value is never rotated
+	// and never written back.
+	RefreshToken    string
+	Credentials     *config.Credentials
+	CredentialsPath string
 }
 
 // Client holds one connection per service the CLI uses.
@@ -180,6 +188,30 @@ type Client struct {
 	Instance v1connect.InstanceServiceClient
 	Database v1connect.DatabaseServiceClient
 	Lineage  v1connect.LineageServiceClient
+
+	// tokens is the live bearer token; a rotation replaces it for every later
+	// request in the same process.
+	tokens *tokenSource
+	// session is nil when the token cannot be renewed (it came from a flag or the
+	// environment, or no refresh credential is stored).
+	session *sessionRefresher
+}
+
+// HasSession reports whether this invocation holds a stored session it can renew.
+// It is false for a --token or METAXISDATA_TOKEN value, and for a stored session
+// whose server is not the one this invocation talks to.
+func (c *Client) HasSession() bool {
+	return c.session != nil
+}
+
+// RefreshSession rotates the stored session so a caller about to present the
+// access token has a live one. It is a no-op when the token cannot be renewed.
+func (c *Client) RefreshSession(ctx context.Context) error {
+	if c.session == nil {
+		return nil
+	}
+	_, err := c.session.refresh(ctx)
+	return err
 }
 
 // maxRedirects is how many redirects the client follows before giving up. It
@@ -197,53 +229,115 @@ func New(server string, options Options) (*Client, error) {
 		return nil, err
 	}
 
-	transport, err := newTransport(baseURL, options)
+	tokens := &tokenSource{token: options.Token}
+	transport, err := newTransport(baseURL, options, tokens)
 	if err != nil {
 		return nil, err
 	}
-	httpClient := &http.Client{
-		Transport: transport,
-		// The token belongs to the configured server and this client puts it
-		// back on every hop, so a redirect is not a way to reach another host:
-		// the standard library drops Authorization when a redirect leaves the
-		// server's domain, but this client re-attaches it, and the library
-		// counts a subdomain of that domain as the same domain anyway.
-		//
-		// Setting CheckRedirect replaces the standard library's own, so the
-		// cap it applies has to be kept here: without it a server that keeps
-		// redirecting to itself would be followed until the timeout (and
-		// forever with --timeout 0), turning a misconfigured entry point into
-		// unbounded work.
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			// The policy comes first so a redirect that breaks it is reported
-			// as such, even on the one hop where the cap would also apply. The
-			// host is quoted because it is caller-chosen text: the message ends
-			// up on someone's terminal.
-			if req.URL.Host != baseURL.Host {
-				return fmt.Errorf("the server redirected the request to another host (%q); refusing to follow a redirect off %q", req.URL.Host, baseURL.Host)
-			}
-			if baseURL.Scheme == "https" && req.URL.Scheme != "https" {
-				return fmt.Errorf("the server redirected the request from https to %s; refusing to downgrade the connection", req.URL.Scheme)
-			}
-			if len(via) >= maxRedirects {
-				return fmt.Errorf("stopped after %d redirects", maxRedirects)
-			}
-			return nil
-		},
+	// The token belongs to the configured server and this client puts it back on
+	// every hop, so a redirect is not a way to reach another host: the standard
+	// library drops Authorization when a redirect leaves the server's domain, but
+	// this client re-attaches it, and the library counts a subdomain of that
+	// domain as the same domain anyway.
+	//
+	// Setting CheckRedirect replaces the standard library's own, so the cap it
+	// applies has to be kept here: without it a server that keeps redirecting to
+	// itself would be followed until the timeout (and forever with --timeout 0),
+	// turning a misconfigured entry point into unbounded work.
+	redirectPolicy := func(req *http.Request, via []*http.Request) error {
+		// The policy comes first so a redirect that breaks it is reported as such,
+		// even on the one hop where the cap would also apply. The host is quoted
+		// because it is caller-chosen text: the message ends up on someone's
+		// terminal.
+		if req.URL.Host != baseURL.Host {
+			return fmt.Errorf("the server redirected the request to another host (%q); refusing to follow a redirect off %q", req.URL.Host, baseURL.Host)
+		}
+		if baseURL.Scheme == "https" && req.URL.Scheme != "https" {
+			return fmt.Errorf("the server redirected the request from https to %s; refusing to downgrade the connection", req.URL.Scheme)
+		}
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		return nil
 	}
+	httpClient := &http.Client{Transport: transport, CheckRedirect: redirectPolicy}
 	if options.Timeout > 0 {
 		httpClient.Timeout = options.Timeout
 	}
 
 	base := baseURL.String()
+	var session *sessionRefresher
+	var clientOptions []connect.ClientOption
+	if options.RefreshToken != "" && options.Credentials != nil && options.CredentialsPath != "" {
+		// The refresh call must not carry the access token it is replacing: an
+		// expired bearer in the header would only be ignored, but a second client
+		// keeps the rule explicit.
+		bareTransport, err := newTransport(baseURL, options, &tokenSource{})
+		if err != nil {
+			return nil, err
+		}
+		bareClient := &http.Client{Transport: bareTransport, CheckRedirect: redirectPolicy}
+		if options.Timeout > 0 {
+			bareClient.Timeout = options.Timeout
+		}
+		session = &sessionRefresher{
+			endpoint:     v1connect.NewAuthServiceClient(bareClient, base),
+			tokens:       tokens,
+			path:         options.CredentialsPath,
+			credentials:  options.Credentials,
+			refreshToken: options.RefreshToken,
+			now:          time.Now,
+			sleep:        time.Sleep,
+		}
+		clientOptions = append(clientOptions, connect.WithInterceptors(session.interceptor()))
+	}
+
 	return &Client{
 		Server:   base,
+		tokens:   tokens,
+		session:  session,
 		Auth:     v1connect.NewAuthServiceClient(httpClient, base),
-		User:     v1connect.NewUserServiceClient(httpClient, base),
-		Instance: v1connect.NewInstanceServiceClient(httpClient, base),
-		Database: v1connect.NewDatabaseServiceClient(httpClient, base),
-		Lineage:  v1connect.NewLineageServiceClient(httpClient, base),
+		User:     v1connect.NewUserServiceClient(httpClient, base, clientOptions...),
+		Instance: v1connect.NewInstanceServiceClient(httpClient, base, clientOptions...),
+		Database: v1connect.NewDatabaseServiceClient(httpClient, base, clientOptions...),
+		Lineage:  v1connect.NewLineageServiceClient(httpClient, base, clientOptions...),
 	}, nil
+}
+
+// SameServer reports whether two addresses name the same server. The stored
+// session's refresh credential belongs to the server that issued it, so an
+// invocation pointed elsewhere must not be allowed to send it away.
+//
+// The comparison is on the identity a request actually reaches, not on the
+// spelling: host names are case-insensitive and an explicit default port does not
+// name a different server, so respelling --server must not silently disable
+// renewal for the stored session.
+func SameServer(a, b string) bool {
+	first, err := normalizeServer(a)
+	if err != nil {
+		return false
+	}
+	second, err := normalizeServer(b)
+	if err != nil {
+		return false
+	}
+	return first.Scheme == second.Scheme &&
+		strings.EqualFold(first.Hostname(), second.Hostname()) &&
+		effectivePort(first) == effectivePort(second) &&
+		first.Path == second.Path
+}
+
+// effectivePort is the port the URL actually connects to, so "https://mx" and
+// "https://mx:443" compare equal. normalizeServer has already restricted the
+// scheme to http or https.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
 }
 
 // normalizeServer validates the address and returns the form the clients are
@@ -282,7 +376,7 @@ func normalizeServer(server string) (*url.URL, error) {
 // newTransport wraps the default transport so every request carries the token.
 // The server is passed along so the token layer can tell which requests are
 // actually going to it.
-func newTransport(server *url.URL, options Options) (http.RoundTripper, error) {
+func newTransport(server *url.URL, options Options, tokens *tokenSource) (http.RoundTripper, error) {
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, errors.New("the default HTTP transport has an unexpected type")
@@ -310,26 +404,28 @@ func newTransport(server *url.URL, options Options) (http.RoundTripper, error) {
 		transport.TLSClientConfig = tlsConfig
 	}
 
-	if options.Token == "" {
+	if tokens == nil || tokens.get() == "" {
 		return transport, nil
 	}
-	return &bearerTransport{base: transport, token: options.Token, server: server}, nil
+	return &bearerTransport{base: transport, tokens: tokens, server: server}, nil
 }
 
 // bearerTransport attaches the access token to requests for the server it was
 // built for, and to those only.
 type bearerTransport struct {
 	base   http.RoundTripper
-	token  string
+	tokens *tokenSource
 	server *url.URL
 }
 
 func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Header.Get("Authorization") == "" && t.carriesCredentials(req.URL) {
+	// The token is read per request, not captured at construction: a rotation
+	// replaces it and every later request in this process must carry the new one.
+	if token := t.tokens.get(); token != "" && req.Header.Get("Authorization") == "" && t.carriesCredentials(req.URL) {
 		// The request is cloned because a RoundTripper must not modify the one
 		// it was handed.
 		cloned := req.Clone(req.Context())
-		cloned.Header.Set("Authorization", "Bearer "+t.token)
+		cloned.Header.Set("Authorization", "Bearer "+token)
 		req = cloned
 	}
 	return t.base.RoundTrip(req)

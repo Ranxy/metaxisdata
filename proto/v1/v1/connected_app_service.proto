@@ -10,10 +10,12 @@ import "v1/annotation.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
-// ConnectedAppService manages the MCP OAuth connections a user established by
-// authorizing a client against the deployment's MCP endpoint. One connected app
-// is one authorization (one user, one client), not one transport session: the
-// MCP endpoint itself is stateless.
+// ConnectedAppService manages the connections a user established by authorizing
+// a client against this deployment: an MCP client through the OAuth browser flow,
+// or the `mxd` CLI through a device login. One connected app is one authorization
+// (one user, one client, one ceremony), not one transport session: the MCP
+// endpoint itself is stateless, and a CLI session is the rotating grant behind its
+// stored tokens.
 //
 // No method here carries a (metaxisdata.v1.permission) annotation, because the
 // same call serves two audiences: a workspace administrator listing every
@@ -47,10 +49,12 @@ service ConnectedAppService {
   }
 }
 
-// ConnectedApp is one user's authorization of one MCP client. It is derived from
-// the grant record the OAuth token endpoint rotates in place, not from the
-// client registration: the same client may be authorized several times, and each
-// authorization is its own row.
+// ConnectedApp is one user's authorization of one client: an MCP client through
+// the OAuth browser flow, or the `mxd` CLI through a device login. Both are the
+// same rotating grant record, so both are listed, revocable and labeled here; the
+// kind field says which ceremony produced the row. It is derived from that record,
+// not from the client registration: the same client may be authorized several
+// times, and each authorization is its own row.
 message ConnectedApp {
   option (google.api.resource) = {
     type: "metaxisdata/ConnectedApp"
@@ -60,11 +64,12 @@ message ConnectedApp {
   // The resource name of the connected app, in the form `connectedApps/{id}`.
   string name = 1;
 
-  // The registered client identifier (RFC 7591). Opaque.
+  // The client identifier: a dynamic registration's identifier (RFC 7591) for an
+  // MCP client, or the built-in `mxd` client for a CLI session. Opaque.
   string client_id = 2;
 
   // The client's self-reported name at registration. It is not verified, so it is
-  // display text only.
+  // display text only. A CLI row shows the built-in client's name.
   string client_name = 3;
 
   // The user whose identity the client acts as, in the form `users/{id}`.
@@ -74,21 +79,25 @@ message ConnectedApp {
   // caller may read users; a connected-apps reader is not thereby a user reader.
   string user_email = 5;
 
-  // The MCP resource identifier the authorization was granted for.
+  // The MCP resource identifier the authorization was granted for. Empty for a
+  // CLI session, which is not bound to the MCP endpoint and is refused there
+  // because its access token carries the user API audience.
   string resource = 6;
 
-  // The OAuth scopes the user consented to.
+  // The OAuth scopes the user consented to. Empty for a CLI session.
   repeated string scopes = 7;
 
   // When the authorization completed (the first token pair was issued).
   google.protobuf.Timestamp create_time = 8;
 
-  // The most recent tool call made with this connection. Empty when the client
-  // has been authorized but has not called a tool yet.
+  // The most recent tool call made with an MCP connection. Empty for a client that
+  // has not called a tool yet and for a CLI session, whose activity is not a tool
+  // call.
   google.protobuf.Timestamp last_tool_call_time = 9;
 
   // When the refresh credential expires. A connection past this instant cannot
-  // mint another access token.
+  // mint another access token. The lifetime slides on every rotation, so an
+  // actively used connection keeps moving this instant out.
   google.protobuf.Timestamp expire_time = 10;
 
   // The connection's current state.
@@ -96,6 +105,30 @@ message ConnectedApp {
 
   // When the connection was revoked. Set only for REVOKED.
   google.protobuf.Timestamp revoke_time = 12;
+
+  // Which authorization ceremony created the connection.
+  Kind kind = 13;
+
+  // The CLI build that created the session, e.g. "0.1.0" (display only; empty for
+  // an MCP connection).
+  string client_version = 14;
+
+  // The source address the CLI device login came from, as the server resolved it
+  // (trusted-proxy rules applied; empty for an MCP connection). It is personal
+  // data, so it lives only as long as the grant row.
+  string request_ip = 15;
+
+  // Kind is what produced the grant. Both kinds rotate and revoke identically;
+  // only the authorization ceremony and the token audience differ.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+
+    // Authorized through the OAuth browser flow (authorization code + PKCE).
+    MCP = 1;
+
+    // Authorized through a CLI device login.
+    CLI = 2;
+  }
 
   // State is a derived value: it is computed from the stored grant, the MCP
   // surface's current configuration, and the user's account, so it is not stored.
@@ -113,8 +146,8 @@ message ConnectedApp {
     EXPIRED = 3;
 
     // Re-authorization is required before the connection can work: the MCP
-    // resource identifier changed, or the grant predates the user's last password
-    // change.
+    // resource identifier changed (MCP only), or the grant predates the user's
+    // last password change.
     REAUTH_REQUIRED = 4;
 
     // The user's account is deactivated. The connection resumes if the account is

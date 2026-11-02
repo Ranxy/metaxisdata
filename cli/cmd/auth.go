@@ -102,7 +102,7 @@ func runAuthLogin(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	return storeLogin(server, result.Token, result.ExpiresIn, result.User.GetEmail(), result.User.GetTitle())
+	return storeLogin(server, result.Token, result.ExpiresIn, result.RefreshToken, result.RefreshExpiresIn, result.User.GetEmail(), result.User.GetTitle())
 }
 
 // runServiceAccountLogin exchanges a service account's key for an API token.
@@ -128,20 +128,32 @@ func runServiceAccountLogin(ctx context.Context, server string) error {
 		return errors.New("the server did not return a token for the service account")
 	}
 	user := response.Msg.GetUser()
-	return storeLogin(server, response.Msg.GetToken(), int64(time.Hour.Seconds()), user.GetEmail(), user.GetTitle())
+	// A service account's API token has no refresh credential: it is a one-hour
+	// automation credential, not an interactive session. Passing an empty pair also
+	// clears any session a previous interactive login left in the file, so a later
+	// 401 cannot silently rotate into the wrong identity.
+	return storeLogin(server, response.Msg.GetToken(), int64(time.Hour.Seconds()), "", 0, user.GetEmail(), user.GetTitle())
 }
 
-// storeLogin persists the address and the token together. Keeping them a pair
-// matters: a token is issued by one server, so remembering it next to another
+// storeLogin persists the address and the session together. Keeping them a pair
+// matters: a credential is issued by one server, so remembering it next to another
 // address would fail every later request for no visible reason.
-func storeLogin(server, token string, expiresIn int64, email, name string) error {
+//
+// refreshToken is empty for a credential that cannot be renewed; storing it anyway
+// clears a session a previous interactive login left behind.
+func storeLogin(server, token string, expiresIn int64, refreshToken string, refreshExpiresIn int64, email, name string) error {
 	if previous := current.credentials.Server; previous != "" && previous != server {
 		current.out.Progress("server changed: %s -> %s", previous, server)
 	}
 	current.credentials.Server = server
 	current.credentials.Token = token
+	current.credentials.RefreshToken = refreshToken
 	current.credentials.User = &config.User{Email: email, Name: name}
 	current.credentials.TokenExpiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
+	current.credentials.RefreshExpiresAt = time.Time{}
+	if refreshToken != "" {
+		current.credentials.RefreshExpiresAt = time.Now().Add(time.Duration(refreshExpiresIn) * time.Second)
+	}
 
 	if err := config.Save(current.configPath, current.credentials); err != nil {
 		return err
@@ -152,6 +164,9 @@ func storeLogin(server, token string, expiresIn int64, email, name string) error
 		"status":         "approved",
 		"server":         server,
 		"tokenExpiresAt": current.credentials.TokenExpiresAt.UTC().Format(time.RFC3339),
+	}
+	if !current.credentials.RefreshExpiresAt.IsZero() {
+		envelope["refreshExpiresAt"] = current.credentials.RefreshExpiresAt.UTC().Format(time.RFC3339)
 	}
 	if user := describeUser(email, name); user != nil {
 		envelope["user"] = user
@@ -185,6 +200,9 @@ func newAuthStatusCmd() *cobra.Command {
 			if !current.credentials.TokenExpiresAt.IsZero() {
 				envelope["tokenExpiresAt"] = current.credentials.TokenExpiresAt.UTC().Format(time.RFC3339)
 			}
+			if !current.credentials.RefreshExpiresAt.IsZero() {
+				envelope["refreshExpiresAt"] = current.credentials.RefreshExpiresAt.UTC().Format(time.RFC3339)
+			}
 			return current.out.JSON(envelope)
 		},
 	}
@@ -193,16 +211,36 @@ func newAuthStatusCmd() *cobra.Command {
 func newAuthLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
-		Short: "Revoke the stored token",
-		Long: `Revoke the stored token on the server and forget it locally.
+		Short: "Sign out and revoke this machine's session",
+		Long: `Revoke the stored credentials on the server and forget them locally.
 
-The server address is kept, so signing in again does not need --server.`,
+A CLI login is a connected app, so this ends this machine's session only; the same
+connection can also be revoked from the Connected apps page. The server address is
+kept, so signing in again does not need --server.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var revokeErr error
 			if _, err := current.requireServer(); err == nil {
 				if connection, err := current.connect(); err == nil {
 					_, revokeErr = connection.Auth.Logout(cmd.Context(), connect.NewRequest(&v1pb.LogoutRequest{}))
+					// Logout only accepts a live access token. If that one has expired,
+					// rotate the session once and retry, so the logout still reaches the
+					// server and cuts the refresh chain.
+					if revokeErr != nil && connect.CodeOf(revokeErr) == connect.CodeUnauthenticated && connection.HasSession() {
+						refreshErr := connection.RefreshSession(cmd.Context())
+						switch {
+						case refreshErr == nil:
+							_, revokeErr = connection.Auth.Logout(cmd.Context(), connect.NewRequest(&v1pb.LogoutRequest{}))
+						case errors.Is(refreshErr, client.ErrSessionExpired):
+							// The session is already gone; the local clear below is the whole
+							// job.
+						default:
+							// The renewal failed for a transport or disk reason. Leaving the
+							// original 401 would report a sign-out that may not have reached
+							// the server, so report why it could not.
+							revokeErr = refreshErr
+						}
+					}
 				}
 			}
 

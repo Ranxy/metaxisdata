@@ -444,6 +444,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/auth/refreshTokens:exchange:
+        post:
+            tags:
+                - AuthService
+            description: |-
+                ExchangeRefreshToken rotates a CLI session from the refresh token in the
+                 body. The CLI has no cookie jar, so it presents the opaque refresh token the
+                 device login issued instead of the browser's cookie; the session itself is
+                 the same rotating grant row an MCP client gets, which is what makes a CLI
+                 login a visible, revocable connected app. Each call consumes the presented
+                 token and returns a replacement, so a stolen copy is worthless once the real
+                 holder refreshes.
+                 Permissions required: None
+            operationId: AuthService_ExchangeRefreshToken
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExchangeRefreshTokenRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExchangeRefreshTokenResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/auth/ssoState:
         post:
             tags:
@@ -8323,12 +8356,14 @@ components:
                     description: The resource name of the connected app, in the form `connectedApps/{id}`.
                 clientId:
                     type: string
-                    description: The registered client identifier (RFC 7591). Opaque.
+                    description: |-
+                        The client identifier: a dynamic registration's identifier (RFC 7591) for an
+                         MCP client, or the built-in `mxd` client for a CLI session. Opaque.
                 clientName:
                     type: string
                     description: |-
                         The client's self-reported name at registration. It is not verified, so it is
-                         display text only.
+                         display text only. A CLI row shows the built-in client's name.
                 user:
                     type: string
                     description: The user whose identity the client acts as, in the form `users/{id}`.
@@ -8339,12 +8374,15 @@ components:
                          caller may read users; a connected-apps reader is not thereby a user reader.
                 resource:
                     type: string
-                    description: The MCP resource identifier the authorization was granted for.
+                    description: |-
+                        The MCP resource identifier the authorization was granted for. Empty for a
+                         CLI session, which is not bound to the MCP endpoint and is refused there
+                         because its access token carries the user API audience.
                 scopes:
                     type: array
                     items:
                         type: string
-                    description: The OAuth scopes the user consented to.
+                    description: The OAuth scopes the user consented to. Empty for a CLI session.
                 createTime:
                     type: string
                     description: When the authorization completed (the first token pair was issued).
@@ -8352,14 +8390,16 @@ components:
                 lastToolCallTime:
                     type: string
                     description: |-
-                        The most recent tool call made with this connection. Empty when the client
-                         has been authorized but has not called a tool yet.
+                        The most recent tool call made with an MCP connection. Empty for a client that
+                         has not called a tool yet and for a CLI session, whose activity is not a tool
+                         call.
                     format: date-time
                 expireTime:
                     type: string
                     description: |-
                         When the refresh credential expires. A connection past this instant cannot
-                         mint another access token.
+                         mint another access token. The lifetime slides on every rotation, so an
+                         actively used connection keeps moving this instant out.
                     format: date-time
                 state:
                     enum:
@@ -8376,11 +8416,32 @@ components:
                     type: string
                     description: When the connection was revoked. Set only for REVOKED.
                     format: date-time
+                kind:
+                    enum:
+                        - KIND_UNSPECIFIED
+                        - MCP
+                        - CLI
+                    type: string
+                    description: Which authorization ceremony created the connection.
+                    format: enum
+                clientVersion:
+                    type: string
+                    description: |-
+                        The CLI build that created the session, e.g. "0.1.0" (display only; empty for
+                         an MCP connection).
+                requestIp:
+                    type: string
+                    description: |-
+                        The source address the CLI device login came from, as the server resolved it
+                         (trusted-proxy rules applied; empty for an MCP connection). It is personal
+                         data, so it lives only as long as the grant row.
             description: |-
-                ConnectedApp is one user's authorization of one MCP client. It is derived from
-                 the grant record the OAuth token endpoint rotates in place, not from the
-                 client registration: the same client may be authorized several times, and each
-                 authorization is its own row.
+                ConnectedApp is one user's authorization of one client: an MCP client through
+                 the OAuth browser flow, or the `mxd` CLI through a device login. Both are the
+                 same rotating grant record, so both are listed, revocable and labeled here; the
+                 kind field says which ceremony produced the row. It is derived from that record,
+                 not from the client registration: the same client may be authorized several
+                 times, and each authorization is its own row.
         CreateAPIKeyRequest:
             required:
                 - description
@@ -9255,7 +9316,10 @@ components:
                     type: string
                     description: |-
                         The access token, returned only when the request was approved. The device
-                         login is consumed at the same time, so a second exchange finds nothing.
+                         login is consumed at the same time, so a second exchange finds nothing. The
+                         token belongs to the CLI session the exchange creates (a connected app), so
+                         a revocation of that connection refuses it within the grant-revocation
+                         cache's window.
                 expiresIn:
                     type: string
                     description: The remaining lifetime of the token in seconds.
@@ -9263,6 +9327,43 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/User'
                     description: The user who approved the request.
+                refreshToken:
+                    type: string
+                    description: |-
+                        The CLI session's rotating refresh token. Only its digest is stored, and
+                         every use must go through ExchangeRefreshToken, which consumes it. Empty
+                         only on a response that answered a state other than APPROVED.
+                refreshExpiresIn:
+                    type: string
+                    description: The refresh token's lifetime in seconds.
+        ExchangeRefreshTokenRequest:
+            required:
+                - refreshToken
+            type: object
+            properties:
+                refreshToken:
+                    type: string
+                    description: |-
+                        The opaque refresh token this session was last issued. It is a credential of
+                         its own: the server accepts it only through this method, and only for a CLI
+                         session it minted.
+        ExchangeRefreshTokenResponse:
+            type: object
+            properties:
+                accessToken:
+                    type: string
+                    description: The rotated access token, addressed to the user API.
+                refreshToken:
+                    type: string
+                    description: The replacement refresh token. The presented one is consumed by this call.
+                expiresIn:
+                    type: string
+                    description: The access token's lifetime in seconds.
+                refreshExpiresIn:
+                    type: string
+                    description: |-
+                        The refresh token's remaining lifetime in seconds. The session slides: every
+                         rotation restarts it, so a CLI in use does not have to sign in again.
         ExcludeConstraintMetadata:
             type: object
             properties:
@@ -15641,10 +15742,12 @@ tags:
     - name: AuthService
     - name: ConnectedAppService
       description: |-
-        ConnectedAppService manages the MCP OAuth connections a user established by
-         authorizing a client against the deployment's MCP endpoint. One connected app
-         is one authorization (one user, one client), not one transport session: the
-         MCP endpoint itself is stateless.
+        ConnectedAppService manages the connections a user established by authorizing
+         a client against this deployment: an MCP client through the OAuth browser flow,
+         or the `mxd` CLI through a device login. One connected app is one authorization
+         (one user, one client, one ceremony), not one transport session: the MCP
+         endpoint itself is stateless, and a CLI session is the rotating grant behind its
+         stored tokens.
 
          No method here carries a (metaxisdata.v1.permission) annotation, because the
          same call serves two audiences: a workspace administrator listing every

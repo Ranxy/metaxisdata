@@ -46,6 +46,7 @@ type fakeTokenStore struct {
 	rotateErr error
 
 	getErr    error
+	userErr   error
 	revokeErr error
 
 	getCalls    int
@@ -97,6 +98,9 @@ func (f *fakeTokenStore) RevokeOAuthGrant(_ context.Context, id int64, _ time.Ti
 }
 
 func (f *fakeTokenStore) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {
+	if f.userErr != nil {
+		return nil, f.userErr
+	}
 	if f.user == nil || f.user.ID != id {
 		return nil, nil
 	}
@@ -155,6 +159,7 @@ func activeGrant(now time.Time) *store.OAuthGrant {
 		TokenHash: auth.HashToken("refresh-1"),
 		ClientID:  "client-1",
 		UserID:    7,
+		Kind:      store.OAuthGrantKindMCP,
 		Resource:  testResource,
 		Scope:     MCPReadScope,
 		ExpiresAt: now.Add(time.Hour),
@@ -408,4 +413,27 @@ func TestRefreshGrantPropagatesStoreFailure(t *testing.T) {
 	recorder := postToken(t, server, refreshForm(MCPReadScope))
 	require.Equal(t, http.StatusInternalServerError, recorder.Code)
 	require.Zero(t, fake.rotateCalls, "a lookup failure must not rotate")
+}
+
+// A read failure while re-checking the principal is a server fault, not a verdict
+// on the account: the token endpoint reports it and leaves the live grant alone.
+func TestRefreshGrantSurfacesAPrincipalReadFailure(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	fake := &fakeTokenStore{
+		grant:    activeGrant(now),
+		userErr:  errors.New("store unavailable"),
+		rotateID: 42,
+		rotateOK: true,
+	}
+	server, _ := newTokenTestServer(t, fake, now)
+
+	recorder := postToken(t, server, refreshForm(MCPReadScope))
+	require.Equal(t, http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+
+	var response oauthError
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "server_error", response.Error)
+	require.Empty(t, fake.revokedIDs, "a read failure must not revoke a live connection")
 }

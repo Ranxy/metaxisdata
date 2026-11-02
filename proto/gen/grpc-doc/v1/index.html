@@ -446,6 +446,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ExchangeRefreshTokenRequest"><span class="badge">M</span>ExchangeRefreshTokenRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ExchangeRefreshTokenResponse"><span class="badge">M</span>ExchangeRefreshTokenResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetDeviceLoginRequest"><span class="badge">M</span>GetDeviceLoginRequest</a>
                 </li>
               
@@ -512,6 +520,10 @@
                   <a href="#metaxisdata.v1.RevokeConnectedAppRequest"><span class="badge">M</span>RevokeConnectedAppRequest</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.v1.ConnectedApp.Kind"><span class="badge">E</span>ConnectedApp.Kind</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.v1.ConnectedApp.State"><span class="badge">E</span>ConnectedApp.State</a>
@@ -5173,7 +5185,10 @@ follows the trusted-proxy rules). </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The access token, returned only when the request was approved. The device
-login is consumed at the same time, so a second exchange finds nothing. </p></td>
+login is consumed at the same time, so a second exchange finds nothing. The
+token belongs to the CLI session the exchange creates (a connected app), so
+a revocation of that connection refuses it within the grant-revocation
+cache&#39;s window. </p></td>
                 </tr>
               
                 <tr>
@@ -5188,6 +5203,94 @@ login is consumed at the same time, so a second exchange finds nothing. </p></td
                   <td><a href="#metaxisdata.v1.User">User</a></td>
                   <td></td>
                   <td><p>The user who approved the request. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>refresh_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The CLI session&#39;s rotating refresh token. Only its digest is stored, and
+every use must go through ExchangeRefreshToken, which consumes it. Empty
+only on a response that answered a state other than APPROVED. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>refresh_expires_in</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The refresh token&#39;s lifetime in seconds. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ExchangeRefreshTokenRequest">ExchangeRefreshTokenRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>refresh_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The opaque refresh token this session was last issued. It is a credential of
+its own: the server accepts it only through this method, and only for a CLI
+session it minted. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ExchangeRefreshTokenResponse">ExchangeRefreshTokenResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>access_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The rotated access token, addressed to the user API. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>refresh_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The replacement refresh token. The presented one is consumed by this call. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_in</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The access token&#39;s lifetime in seconds. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>refresh_expires_in</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The refresh token&#39;s remaining lifetime in seconds. The session slides: every
+rotation restarts it, so a CLI in use does not have to sign in again. </p></td>
                 </tr>
               
             </tbody>
@@ -5496,6 +5599,20 @@ Permissions required: None</p></td>
               </tr>
             
               <tr>
+                <td>ExchangeRefreshToken</td>
+                <td><a href="#metaxisdata.v1.ExchangeRefreshTokenRequest">ExchangeRefreshTokenRequest</a></td>
+                <td><a href="#metaxisdata.v1.ExchangeRefreshTokenResponse">ExchangeRefreshTokenResponse</a></td>
+                <td><p>ExchangeRefreshToken rotates a CLI session from the refresh token in the
+body. The CLI has no cookie jar, so it presents the opaque refresh token the
+device login issued instead of the browser&#39;s cookie; the session itself is
+the same rotating grant row an MCP client gets, which is what makes a CLI
+login a visible, revocable connected app. Each call consumes the presented
+token and returns a replacement, so a stolen copy is worthless once the real
+holder refreshes.
+Permissions required: None</p></td>
+              </tr>
+            
+              <tr>
                 <td>CreateSSOState</td>
                 <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
                 <td><a href="#metaxisdata.v1.CreateSSOStateResponse">CreateSSOStateResponse</a></td>
@@ -5596,6 +5713,16 @@ Permissions required: None</p></td>
               
               
               <tr>
+                <td>ExchangeRefreshToken</td>
+                <td>POST</td>
+                <td>/v1/auth/refreshTokens:exchange</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
                 <td>CreateSSOState</td>
                 <td>POST</td>
                 <td>/v1/auth/ssoState</td>
@@ -5656,7 +5783,7 @@ Permissions required: None</p></td>
 
       
         <h3 id="metaxisdata.v1.ConnectedApp">ConnectedApp</h3>
-        <p>ConnectedApp is one user's authorization of one MCP client. It is derived from</p><p>the grant record the OAuth token endpoint rotates in place, not from the</p><p>client registration: the same client may be authorized several times, and each</p><p>authorization is its own row.</p>
+        <p>ConnectedApp is one user's authorization of one client: an MCP client through</p><p>the OAuth browser flow, or the `mxd` CLI through a device login. Both are the</p><p>same rotating grant record, so both are listed, revocable and labeled here; the</p><p>kind field says which ceremony produced the row. It is derived from that record,</p><p>not from the client registration: the same client may be authorized several</p><p>times, and each authorization is its own row.</p>
 
         
           <table class="field-table">
@@ -5676,7 +5803,8 @@ Permissions required: None</p></td>
                   <td>client_id</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The registered client identifier (RFC 7591). Opaque. </p></td>
+                  <td><p>The client identifier: a dynamic registration&#39;s identifier (RFC 7591) for an
+MCP client, or the built-in `mxd` client for a CLI session. Opaque. </p></td>
                 </tr>
               
                 <tr>
@@ -5684,7 +5812,7 @@ Permissions required: None</p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The client&#39;s self-reported name at registration. It is not verified, so it is
-display text only. </p></td>
+display text only. A CLI row shows the built-in client&#39;s name. </p></td>
                 </tr>
               
                 <tr>
@@ -5706,14 +5834,16 @@ caller may read users; a connected-apps reader is not thereby a user reader. </p
                   <td>resource</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The MCP resource identifier the authorization was granted for. </p></td>
+                  <td><p>The MCP resource identifier the authorization was granted for. Empty for a
+CLI session, which is not bound to the MCP endpoint and is refused there
+because its access token carries the user API audience. </p></td>
                 </tr>
               
                 <tr>
                   <td>scopes</td>
                   <td><a href="#string">string</a></td>
                   <td>repeated</td>
-                  <td><p>The OAuth scopes the user consented to. </p></td>
+                  <td><p>The OAuth scopes the user consented to. Empty for a CLI session. </p></td>
                 </tr>
               
                 <tr>
@@ -5727,8 +5857,9 @@ caller may read users; a connected-apps reader is not thereby a user reader. </p
                   <td>last_tool_call_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
-                  <td><p>The most recent tool call made with this connection. Empty when the client
-has been authorized but has not called a tool yet. </p></td>
+                  <td><p>The most recent tool call made with an MCP connection. Empty for a client that
+has not called a tool yet and for a CLI session, whose activity is not a tool
+call. </p></td>
                 </tr>
               
                 <tr>
@@ -5736,7 +5867,8 @@ has been authorized but has not called a tool yet. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p>When the refresh credential expires. A connection past this instant cannot
-mint another access token. </p></td>
+mint another access token. The lifetime slides on every rotation, so an
+actively used connection keeps moving this instant out. </p></td>
                 </tr>
               
                 <tr>
@@ -5751,6 +5883,30 @@ mint another access token. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p>When the connection was revoked. Set only for REVOKED. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.ConnectedApp.Kind">ConnectedApp.Kind</a></td>
+                  <td></td>
+                  <td><p>Which authorization ceremony created the connection. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>client_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The CLI build that created the session, e.g. &#34;0.1.0&#34; (display only; empty for
+an MCP connection). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_ip</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The source address the CLI device login came from, as the server resolved it
+(trusted-proxy rules applied; empty for an MCP connection). It is personal
+data, so it lives only as long as the grant row. </p></td>
                 </tr>
               
             </tbody>
@@ -5880,6 +6036,35 @@ field is omitted, there are no subsequent pages. </p></td>
       
 
       
+        <h3 id="metaxisdata.v1.ConnectedApp.Kind">ConnectedApp.Kind</h3>
+        <p>Kind is what produced the grant. Both kinds rotate and revoke identically;</p><p>only the authorization ceremony and the token audience differ.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>MCP</td>
+                <td>1</td>
+                <td><p>Authorized through the OAuth browser flow (authorization code &#43; PKCE).</p></td>
+              </tr>
+            
+              <tr>
+                <td>CLI</td>
+                <td>2</td>
+                <td><p>Authorized through a CLI device login.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.ConnectedApp.State">ConnectedApp.State</h3>
         <p>State is a derived value: it is computed from the stored grant, the MCP</p><p>surface's current configuration, and the user's account, so it is not stored.</p>
         <table class="enum-table">
@@ -5917,8 +6102,8 @@ revocation cache&#39;s window.</p></td>
                 <td>REAUTH_REQUIRED</td>
                 <td>4</td>
                 <td><p>Re-authorization is required before the connection can work: the MCP
-resource identifier changed, or the grant predates the user&#39;s last password
-change.</p></td>
+resource identifier changed (MCP only), or the grant predates the user&#39;s
+last password change.</p></td>
               </tr>
             
               <tr>
@@ -5936,7 +6121,7 @@ restored; it is not revoked automatically.</p></td>
 
       
         <h3 id="metaxisdata.v1.ConnectedAppService">ConnectedAppService</h3>
-        <p>ConnectedAppService manages the MCP OAuth connections a user established by</p><p>authorizing a client against the deployment's MCP endpoint. One connected app</p><p>is one authorization (one user, one client), not one transport session: the</p><p>MCP endpoint itself is stateless.</p><p>No method here carries a (metaxisdata.v1.permission) annotation, because the</p><p>same call serves two audiences: a workspace administrator listing every</p><p>connection and an ordinary user managing their own. Each handler therefore</p><p>scopes its query and authorizes the widen itself, the way NotificationService</p><p>and UserService's self-service paths do. The permission catalog still defines</p><p>connectedApps.list and connectedApps.revoke, which are what the handler checks</p><p>before returning another user's rows or revoking another user's connection.</p>
+        <p>ConnectedAppService manages the connections a user established by authorizing</p><p>a client against this deployment: an MCP client through the OAuth browser flow,</p><p>or the `mxd` CLI through a device login. One connected app is one authorization</p><p>(one user, one client, one ceremony), not one transport session: the MCP</p><p>endpoint itself is stateless, and a CLI session is the rotating grant behind its</p><p>stored tokens.</p><p>No method here carries a (metaxisdata.v1.permission) annotation, because the</p><p>same call serves two audiences: a workspace administrator listing every</p><p>connection and an ordinary user managing their own. Each handler therefore</p><p>scopes its query and authorizes the widen itself, the way NotificationService</p><p>and UserService's self-service paths do. The permission catalog still defines</p><p>connectedApps.list and connectedApps.revoke, which are what the handler checks</p><p>before returning another user's rows or revoking another user's connection.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
