@@ -1724,6 +1724,19 @@
       ]
     },
     {
+      "id": "code-table",
+      "category": "Data Quality",
+      "definition": "A workspace-defined list of accepted codes a standard-code check validates against when the code set is not bundled with the server.",
+      "translations": {
+        "en-US": "code table",
+        "zh-CN": "代码表"
+      },
+      "scope": [
+        "dataQuality.",
+        "dataQualitySettings."
+      ]
+    },
+    {
       "id": "standard-code",
       "category": "Data Quality",
       "definition": "A check that validates one column against a national or industry code standard.",

@@ -49,12 +49,20 @@ one-line description. A column section's add button pre-selects that column and
 the column-scoped types.
 
 When you start a new check, the catalogue opens with **Templates**: five
-standard-code presets, one per standard, followed by a few common presets
+standard-code presets, one per built-in standard, followed by a few common presets
 (primary-key uniqueness, timestamp freshness, email format). Only the presets that
 fit the target's object type and allowed check types are listed. Picking one fills
 the type, title, description and parameters in the form; it writes nothing until
-you save the check. The list is built in — this build has no workspace-saved
-templates.
+you save the check. Below the built-in presets, **Workspace templates** lists the
+templates your team saved (a template is a check type with its parameters, not a
+table or column): applying one prefills the form and never saves or dry-runs a
+check. With *templates.create* a **Save as template** action stores the current
+form's type, parameters, title, description, severity and dimension; with
+*templates.update* / *templates.delete* you can rename or delete a workspace
+template from its manage dialog. Built-in presets are read-only. A template never
+stores a target or a column, and a custom SQL template is refused because the
+statement names its own tables and columns; create that check on its target
+instead.
 
 Fill in the parameters; the dialog compiles the check server-side and shows the
 SQL it will run before you save. Saving validates the target, the columns and the
@@ -221,8 +229,9 @@ page open.
 ## Standard codes
 
 A **standard code** check validates one text column against a national or industry
-code standard. The server carries the standards' rules and the division and
-industry code tables; nothing is fetched at run time and no model is involved.
+code standard. The server carries the built-in standards' rules and the division
+and industry code tables, and a workspace **code table** can add your own code set.
+Nothing is fetched at run time and no model is involved.
 Like a CEL expression, the check reads a bounded sample and validates the rows in
 process, so its verdict is a sample verdict.
 
@@ -233,11 +242,14 @@ process, so its verdict is a sample verdict.
 | Resident ID card (GB 11643-1999) | It has 17 digits, a real birth date, a province-level division prefix and the MOD 11 check character (`X` is allowed, and a lowercase `x` is accepted). |
 | Administrative division (GB/T 2260) | It is a six-digit code present in the built-in division table; province and city aggregate rows are accepted. |
 | Industry classification (GB/T 4754-2017) | It is an optional section letter `A`–`T` plus two, three or four digits present in the built-in table; a written section must own the numeric code, and a bare section letter is accepted. |
+| Custom code table | It exists in the workspace code table selected for the check. There is no built-in algorithm, so membership alone decides. |
 
-- **Configuration**: *Column* (required, text), *Standard* (one of the five),
-  *Allow NULL* (off by default, so a NULL is a violation), *Sample rows* (0 keeps
-  the default of 10,000; 1–100,000) and the failure and warning thresholds in
-  failing rows or percent of rows. A percentage threshold divides by the rows the
+- **Configuration**: *Column* (required, text), *Standard* (one of the five built-in standards, or
+  *Custom code table*), *Code table* (required for *Custom code table*, optional
+  for the built-in standards — a built-in standard then requires both its own
+  algorithm and membership), *Allow NULL* (off by default, so a NULL is a
+  violation), *Sample rows* (0 keeps the default of 10,000; 1–100,000) and the
+  failure and warning thresholds in failing rows or percent of rows. A percentage threshold divides by the rows the
   sample read, not by the table's rows. The sample belongs to the check: the shared
   *Sampling* setting under **Details** does not apply, and an empty sample follows
   the usual empty-data setting.
@@ -250,7 +262,7 @@ process, so its verdict is a sample verdict.
 - **Engines and objects**: it runs on MySQL/TiDB/MariaDB/OceanBase, PostgreSQL,
   SQL Server, StarRocks and Doris. It is a column-level check, so a view or
   materialized view cannot carry it (the same restriction as regex).
-- **Labels**: the five standards are also semantic labels
+- **Labels**: the five built-in standards are also semantic labels
   (`UNIFIED_SOCIAL_CREDIT_CODE`, `ORGANIZATION_CODE`, `RESIDENT_ID_CARD`,
   `ADMINISTRATIVE_DIVISION`, `INDUSTRY_CLASSIFICATION`). Once a column carries one
   — accepted from *AI label fields* (the label API can also set one directly) —
@@ -258,8 +270,22 @@ process, so its verdict is a sample verdict.
   pending standard-code check for that standard, and a label suggestion's default
   draft is the same check. Nothing is created or enabled until a person accepts
   the proposal.
-- **Templates**: the editor's **Templates** block offers one preset per standard.
-  Applying one fills the form; saving the check remains the only way to create it.
+- **Workspace code tables**: a code table is a named list of accepted codes you
+  maintain in Settings → Data Quality (type or paste one code per line, or import a
+  CSV whose first column is the code). Server-side the list is trimmed,
+  de-duplicated, sorted and capped (5,000 codes, each at most 256 bytes). A
+  built-in standard with a code table keeps its own check digit/format rules and
+  additionally requires membership — useful when your authoritative division or
+  industry list is newer than the bundled snapshot, or for an industry code set that
+  is not bundled at all. A built-in standard normalizes case on both sides of the
+  membership check; a custom table is an exact, case-sensitive match. An empty table
+  is not offered in the picker (a check already pointing at one shows it so the
+  reference can be cleared). *Custom code table* requires one. Deleting a table that
+  a check or a rule template still references is refused; clear the references
+  first.
+- **Templates**: the editor's **Templates** block offers one preset per standard,
+  plus the workspace templates your team saved. Applying one fills the form;
+  saving the check remains the only way to create it.
 - **Quality score**: a standard-code check is a row/unit-level check in the
   quality score, scored as `1 - failed rows / rows read` (see
   [Coverage and quality score](#coverage-and-quality-score)).
@@ -274,8 +300,9 @@ A few limits are worth stating plainly:
   may be absent and newer ones may be missing; industry data follows GB/T 4754-2017
   including the 2019 No.1 amendment.
 - **What is not checked**: SG 3-2021 code sets (enterprise status, registration
-  authority) are not bundled — use *Accepted values* or *Referential integrity*
-  against a customer code table for those. The unified social credit code's
+  authority) are not bundled — import them as a workspace code table and use
+  *Custom code table*, or use *Accepted values* / *Referential integrity* against a
+  customer code table. The unified social credit code's
   internal organization-code check digit is not verified, because early and
   individually owned business codes legitimately fail it. The resident ID card
   check compares the province-level prefix only, not the full historical division
@@ -928,7 +955,12 @@ values may be sent to the model, and the **weekly digest** schedule (see
 [Reports, exports and the weekly digest](#reports-exports-and-the-weekly-digest)).
 A read-only **Today's AI usage** card shows
 used/limit for both analysis buckets, in-flight/concurrency and when the counters
-reset (00:00 UTC). The counters are process-local: a restart starts them at zero.
+reset (00:00 UTC). The **Code tables** card lists the workspace code tables used by
+standard-code checks and lets you create, edit (title, description, values) and
+delete them; the editor accepts a pasted list or a CSV upload parsed in the
+browser (a header row is imported as a value, so remove it before importing).
+Deleting a table that a check or rule template still references is refused with
+the reason. The counters are process-local: a restart starts them at zero.
 Zero in a field means the server default; the page shows the effective values.
 The daily execution ceiling only pauses the *scheduled* scans — **Run now** still
 works when it is reached.
@@ -964,7 +996,13 @@ pruned.
 | An execution stays pending, or ends abandoned | The instance's connection budget stayed busy past the runner's wait, or the server restarted mid-run. A scheduled check is retried on a later tick of the same target cycle (at most three attempts); a manual execution is not retried, so use **Run now** again. |
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
 | A valid-looking code is reported invalid | The check enforces one exact standard and edition. Compare the value with that standard: a division code must be in the 2023-06-30 snapshot (codes retired after an earlier revision may be absent, newer ones may be missing, and statistics-bureau development-zone pseudo-codes are not accepted), industry codes follow GB/T 4754-2017 plus the 2019 amendment, a 15-digit legacy resident ID is rejected, and a NULL is a violation unless *Allow NULL* is on. Values are compared after upper-casing and trimming trailing spaces. The USCC check does not verify the internal organization-code check digit, so a code that fails it is not reported for that reason. |
-| An enterprise-status or registration-authority value is rejected | SG 3-2021 code sets are not bundled. Use an *Accepted values* check for one column, or *Referential integrity* against a customer code table, and keep standard code for the five standards it carries. |
+| An enterprise-status or registration-authority value is rejected | SG 3-2021 code sets are not bundled. Import the code set as a workspace code table and use *Custom code table*, or use an *Accepted values* check for one column or *Referential integrity* against a customer code table. |
+| A workspace template is missing from the check editor | The editor lists workspace templates only when the user has *templates.list* and only while starting a new check; editing a check or opening the dialog from an AI draft keeps its own form. A failed list load shows a Retry in the Templates block. |
+| "Save as template" is missing | It needs *templates.create*. The built-in presets are read-only; workspace templates can be renamed or deleted by a user with *templates.update* / *templates.delete*. |
+| "Save as template" refuses a custom SQL check | A custom SQL template is not supported: the statement names its own tables and columns, so a template would keep reading the original table under a new target. Create the check directly on its target instead. |
+| A code table cannot be deleted | A check or a rule template still references it (archived checks do not count). Clear the reference — edit the check's *Code table* or delete the template — and delete the table again. |
+| A custom-code-table check ends `ERROR(UNSUPPORTED)` | The referenced code table is gone or empty after the check was saved; restore it or re-point the check. A code table with no values cannot be selected at save time. |
+| A code is rejected although it is in my table | Workspace code-table membership is an exact, case-sensitive match (trailing spaces are ignored). A built-in standard with a code table must also pass that standard's own algorithm. |
 | No notification for a failure | The issue was already open (notifications fire on transitions), the check is muted, or more than ten checks failed in one target's scan batch and a summary was sent instead. |
 | Model buttons are disabled | Model analysis is off, no allowed provider profile exists, or the caller lacks `suggest`/`explain`. |
 | An AI drafting job failed | Open the **AI drafting jobs** panel and expand the target. A job-level error means the provider became unavailable or the daily analysis quota ran out after it started; a target-level diagnostic names the failure class. *Output limit* means the model hit the output-token budget before finishing its JSON: retry with a narrower intent or fewer columns (the budget is the provider profile's Max output tokens, default 32,768). Provider errors carry the provider/model and stop reason but not the provider's body; the server retries once at 4,096 tokens when a model rejects the requested budget, and if it is still rejected, lower the profile's Max output tokens or use a model that supports that output budget; quote the **correlation ID** to an operator, who can find the matching server log line (and, with runtime debug on, the raw request/response within seven days). Queued suggestions from earlier targets are kept. |

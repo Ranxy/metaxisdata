@@ -16,6 +16,7 @@ import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   QualityComparison,
+  QualityDimension,
   QualityEmptyBehavior,
   QualityFilterOperator,
   QualityFrequencyTier,
@@ -24,6 +25,7 @@ import {
   QualityRuleSamplingSchema,
   QualityRuleSchema,
   QualityRuleState,
+  QualityRuleTemplateSchema,
   QualityRuleTrendSchema,
   QualityRuleType,
   QualitySeverity,
@@ -39,6 +41,7 @@ import {
   QualityTrendUnit,
   RowCountChangeConfigSchema,
   RowCountConfigSchema,
+  StandardCodeConfigSchema,
   UniqueConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
@@ -63,6 +66,10 @@ const mocks = vi.hoisted(() => ({
   previewQualityRule: vi.fn(),
   getQualityRuleTrend: vi.fn(),
   listAllMetadata: vi.fn(),
+  listAllQualityRuleTemplates: vi.fn(),
+  createQualityRuleTemplate: vi.fn(),
+  updateQualityRuleTemplate: vi.fn(),
+  deleteQualityRuleTemplate: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -70,6 +77,10 @@ vi.mock("@/api/data-quality", () => ({
   updateQualityRule: mocks.updateQualityRule,
   previewQualityRule: mocks.previewQualityRule,
   getQualityRuleTrend: mocks.getQualityRuleTrend,
+  listAllQualityRuleTemplates: mocks.listAllQualityRuleTemplates,
+  createQualityRuleTemplate: mocks.createQualityRuleTemplate,
+  updateQualityRuleTemplate: mocks.updateQualityRuleTemplate,
+  deleteQualityRuleTemplate: mocks.deleteQualityRuleTemplate,
 }));
 
 vi.mock("@/api/database", () => ({
@@ -237,6 +248,53 @@ function suggestionFixture() {
   });
 }
 
+/** A stored workspace template: a check definition with no target. */
+function workspaceTemplateFixture(
+  options: {
+    name?: string;
+    title?: string;
+    ruleType?: QualityRuleType;
+    onEmpty?: QualityEmptyBehavior;
+  } = {}
+) {
+  const ruleType = options.ruleType ?? QualityRuleType.STANDARD_CODE;
+  const config =
+    ruleType === QualityRuleType.ROW_COUNT_CHANGE
+      ? {
+          case: "rowCountChange" as const,
+          value: create(RowCountChangeConfigSchema, { maxIncreasePct: 10 }),
+        }
+      : {
+          case: "standardCode" as const,
+          value: create(StandardCodeConfigSchema, {
+            standard: QualityStandardCode.CUSTOM_CODE_TABLE,
+            codeTable: "workspaces/ws/qualityCodeTables/municipal",
+            sampleRows: 500,
+          }),
+        };
+  return create(QualityRuleTemplateSchema, {
+    name: options.name ?? "workspaces/ws/qualityRuleTemplates/template-1",
+    title: options.title ?? "Credit code check",
+    description: "Validates a municipal credit code.",
+    ruleType,
+    severity: QualitySeverity.CRITICAL,
+    dimension: QualityDimension.VALIDITY,
+    config: create(QualityRuleConfigSchema, {
+      config,
+      onEmpty: options.onEmpty ?? QualityEmptyBehavior.UNSPECIFIED,
+    }),
+  });
+}
+
+/** The workspace template entry the aside renders for `name`. */
+function workspaceTemplateEntry(name: string): HTMLElement | undefined {
+  return (
+    document.body.querySelector<HTMLElement>(
+      `[role="dialog"] [data-template="${name}"]`
+    ) ?? undefined
+  );
+}
+
 /** Open a Radix select by its trigger id and pick an option by its label. */
 async function selectOption(triggerId: string, optionText: string) {
   // Radix opens a select on a left-button pointerdown and selects on pointerup.
@@ -324,6 +382,14 @@ describe("TargetRuleComposer", () => {
       parameters: [],
     });
     mocks.getQualityRuleTrend.mockResolvedValue(suggestedTrendFixture());
+    mocks.listAllQualityRuleTemplates.mockResolvedValue([]);
+    mocks.createQualityRuleTemplate.mockImplementation(
+      async (template: ReturnType<typeof workspaceTemplateFixture>) => template
+    );
+    mocks.updateQualityRuleTemplate.mockImplementation(
+      async (template: ReturnType<typeof workspaceTemplateFixture>) => template
+    );
+    mocks.deleteQualityRuleTemplate.mockResolvedValue(undefined);
     mocks.createQualityRule.mockResolvedValue(
       create(QualityRuleSchema, {
         name: CREATED,
@@ -614,6 +680,33 @@ describe("TargetRuleComposer", () => {
 
     const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
     expect(rule.severity).toBe(QualitySeverity.ERROR);
+    wrapper.unmount();
+  });
+
+  it("keeps a template's explicit on_empty instead of the type default", async () => {
+    const template = workspaceTemplateFixture({
+      ruleType: QualityRuleType.ROW_COUNT_CHANGE,
+      onEmpty: QualityEmptyBehavior.FAIL,
+    });
+    mocks.listAllQualityRuleTemplates.mockResolvedValue([template]);
+    const wrapper = await mountComposer({
+      permissions: [
+        "metaxisdata.dataQuality.rules.create",
+        "metaxisdata.dataQuality.templates.list",
+      ],
+    });
+    await nextTick();
+    await flushPromises();
+
+    workspaceTemplateEntry(template.name)?.click();
+    await flushPromises();
+    dialogButton(label("dataQuality.editor.create"))?.click();
+    await flushPromises();
+
+    const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
+    // The type default for row_count_change is PASS; the template stated FAIL, so
+    // applying it must not silently replace that statement.
+    expect(rule.config?.onEmpty).toBe(QualityEmptyBehavior.FAIL);
     wrapper.unmount();
   });
 
@@ -1088,6 +1181,190 @@ describe("TargetRuleComposer", () => {
     expect(mocks.createQualityRule).toHaveBeenCalledTimes(1);
     const [rule] = mocks.createQualityRule.mock.calls[0] as [QualityRule];
     expect(rule.frequencyTier).toBe(QualityFrequencyTier.WEEKLY);
+    wrapper.unmount();
+  });
+
+  it("lists a workspace template and applies it without saving", async () => {
+    const template = workspaceTemplateFixture();
+    mocks.listAllQualityRuleTemplates.mockResolvedValue([template]);
+    const wrapper = await mountComposer({
+      permissions: [
+        "metaxisdata.dataQuality.rules.create",
+        "metaxisdata.dataQuality.templates.list",
+      ],
+      initialColumn: "credit_code",
+    });
+    await flushPromises();
+
+    expect(mocks.listAllQualityRuleTemplates).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.workspaceTemplates")
+    );
+    const entry = workspaceTemplateEntry(template.name);
+    expect(entry).toBeDefined();
+    expect(entry?.textContent).toContain("Credit code check");
+
+    entry?.click();
+    await flushPromises();
+
+    // The stored type, parameters and copy reached the form; the workspace named
+    // column is still seeded because a template never names one.
+    expect(
+      typeButton(QualityRuleType.STANDARD_CODE)?.getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-composer-title")?.value
+    ).toBe("Credit code check");
+    const config = wrapper.findComponent(RuleConfigForm).props("modelValue");
+    expect(config).toMatchObject({
+      standard: QualityStandardCode.CUSTOM_CODE_TABLE,
+      codeTable: "workspaces/ws/qualityCodeTables/municipal",
+      column: "credit_code",
+    });
+    // Applying a template is a form edit: nothing is written or dry-run.
+    expect(mocks.createQualityRule).not.toHaveBeenCalled();
+    expect(mocks.previewQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps the built-ins usable when the workspace template read fails", async () => {
+    mocks.listAllQualityRuleTemplates.mockRejectedValue(new Error("offline"));
+    const wrapper = await mountComposer({
+      permissions: [
+        "metaxisdata.dataQuality.rules.create",
+        "metaxisdata.dataQuality.templates.list",
+      ],
+    });
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.composer.workspaceTemplatesError")
+    );
+    // The built-in catalogue and the form are unaffected.
+    expect(
+      document.body.querySelector(
+        '[role="dialog"] [data-template="emailFormat"]'
+      )
+    ).toBeTruthy();
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-composer-title")?.value
+    ).toBe("");
+    wrapper.unmount();
+  });
+
+  it("saves the form as a template without saving the check", async () => {
+    const created = workspaceTemplateFixture({
+      name: "workspaces/ws/qualityRuleTemplates/template-2",
+      title: "Reusable row count",
+    });
+    mocks.createQualityRuleTemplate.mockResolvedValue(created);
+    const wrapper = await mountComposer({
+      permissions: [
+        "metaxisdata.dataQuality.rules.create",
+        "metaxisdata.dataQuality.templates.list",
+        "metaxisdata.dataQuality.templates.create",
+      ],
+    });
+
+    setInput("#dq-composer-title", "Orders have rows");
+    setInput("#dq-field-minRows", "1");
+    await flushPromises();
+    document.body.querySelector<HTMLElement>("[data-save-template]")?.click();
+    await flushPromises();
+
+    // The dialog seeds its title from the check's title.
+    expect(
+      document.querySelector<HTMLInputElement>("#dq-save-template-title")?.value
+    ).toBe("Orders have rows");
+    setInput("#dq-save-template-title", "Reusable row count");
+    await flushPromises();
+    document.body.querySelector<HTMLElement>("[data-submit-template]")?.click();
+    await flushPromises();
+
+    expect(mocks.createQualityRuleTemplate).toHaveBeenCalledTimes(1);
+    const [template] = mocks.createQualityRuleTemplate.mock.calls[0] as [
+      ReturnType<typeof workspaceTemplateFixture>,
+    ];
+    expect(template.title).toBe("Reusable row count");
+    expect(template.ruleType).toBe(QualityRuleType.ROW_COUNT);
+    expect(template.severity).toBe(QualitySeverity.WARNING);
+    expect(template.config?.config.case).toBe("rowCount");
+    // Saving a template is not saving the check: no write, no dry run, no close.
+    expect(mocks.createQualityRule).not.toHaveBeenCalled();
+    expect(mocks.previewQualityRule).not.toHaveBeenCalled();
+    expect(wrapper.emitted("saved")).toBeUndefined();
+    // The aside refreshes so the new template is listed.
+    expect(mocks.listAllQualityRuleTemplates).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it("renames and deletes a workspace template from the manage dialog", async () => {
+    const template = workspaceTemplateFixture();
+    mocks.listAllQualityRuleTemplates.mockResolvedValue([template]);
+    const wrapper = await mountComposer({
+      permissions: [
+        "metaxisdata.dataQuality.rules.create",
+        "metaxisdata.dataQuality.templates.list",
+        "metaxisdata.dataQuality.templates.update",
+        "metaxisdata.dataQuality.templates.delete",
+      ],
+    });
+    await flushPromises();
+
+    document.body
+      .querySelector<HTMLElement>(`[data-manage-template="${template.name}"]`)
+      ?.click();
+    await flushPromises();
+    setInput("#dq-manage-template-title", "Renamed credit code");
+    await flushPromises();
+    document.body
+      .querySelector<HTMLElement>("[data-save-template-copy]")
+      ?.click();
+    await flushPromises();
+
+    expect(mocks.updateQualityRuleTemplate).toHaveBeenCalledTimes(1);
+    const [updated, mask] = mocks.updateQualityRuleTemplate.mock.calls[0] as [
+      ReturnType<typeof workspaceTemplateFixture>,
+      string[],
+    ];
+    expect(updated.name).toBe(template.name);
+    expect(updated.title).toBe("Renamed credit code");
+    expect(mask).toEqual(["title", "description"]);
+
+    // Reopen and delete: the delete is a resource call, not a check archive.
+    await flushPromises();
+    document.body
+      .querySelector<HTMLElement>(`[data-manage-template="${template.name}"]`)
+      ?.click();
+    await flushPromises();
+    document.body.querySelector<HTMLElement>("[data-delete-template]")?.click();
+    await flushPromises();
+
+    expect(mocks.deleteQualityRuleTemplate).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteQualityRuleTemplate).toHaveBeenCalledWith(template.name);
+    expect(mocks.createQualityRule).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("does not offer template management without the catalogue permissions", async () => {
+    mocks.listAllQualityRuleTemplates.mockResolvedValue([
+      workspaceTemplateFixture(),
+    ]);
+    const wrapper = await mountComposer({
+      permissions: [
+        "metaxisdata.dataQuality.rules.create",
+        "metaxisdata.dataQuality.templates.list",
+      ],
+    });
+    await flushPromises();
+
+    expect(document.body.querySelector("[data-manage-template]")).toBeNull();
+    // Built-ins are never manageable either.
+    expect(
+      document.body.querySelector(
+        '[data-template="unifiedSocialCreditCode"] [data-manage-template]'
+      )
+    ).toBeNull();
     wrapper.unmount();
   });
 

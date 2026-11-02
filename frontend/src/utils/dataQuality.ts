@@ -243,6 +243,8 @@ export function qualityStandardCodeKey(standard: QualityStandardCode): string {
       return "dataQuality.codeStandard.administrativeDivision";
     case QualityStandardCode.INDUSTRY_CLASSIFICATION:
       return "dataQuality.codeStandard.industryClassification";
+    case QualityStandardCode.CUSTOM_CODE_TABLE:
+      return "dataQuality.codeStandard.customCodeTable";
     default:
       return "dataQuality.codeStandard.unspecified";
   }

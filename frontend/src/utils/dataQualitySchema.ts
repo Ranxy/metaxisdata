@@ -1,6 +1,7 @@
 import {
   QualityAggregateFunction,
   QualityRuleType,
+  QualityStandardCode,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
   parseValueList,
@@ -611,6 +612,20 @@ export function missingRequiredFields(
         missing.push({
           field: "percentile",
           labelKey: "dataQuality.editor.percentile",
+        });
+      }
+      break;
+    case QualityRuleType.STANDARD_CODE:
+      // A custom standard has no built-in table, so the workspace table is a
+      // required field only in that arm; a built-in standard may narrow itself
+      // with one, but does not need it.
+      if (
+        config.standard === QualityStandardCode.CUSTOM_CODE_TABLE &&
+        !filled(config.codeTable)
+      ) {
+        missing.push({
+          field: "codeTable",
+          labelKey: "dataQuality.editor.codeTable",
         });
       }
       break;

@@ -1089,7 +1089,15 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateQualityCodeTableRequest"><span class="badge">M</span>CreateQualityCodeTableRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateQualityRuleRequest"><span class="badge">M</span>CreateQualityRuleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateQualityRuleTemplateRequest"><span class="badge">M</span>CreateQualityRuleTemplateRequest</a>
                 </li>
               
                 <li>
@@ -1109,7 +1117,15 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.DeleteQualityCodeTableRequest"><span class="badge">M</span>DeleteQualityCodeTableRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.DeleteQualityRuleRequest"><span class="badge">M</span>DeleteQualityRuleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteQualityRuleTemplateRequest"><span class="badge">M</span>DeleteQualityRuleTemplateRequest</a>
                 </li>
               
                 <li>
@@ -1153,6 +1169,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityCodeTableRequest"><span class="badge">M</span>GetQualityCodeTableRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityConsumptionCoverageRequest"><span class="badge">M</span>GetQualityConsumptionCoverageRequest</a>
                 </li>
               
@@ -1190,6 +1210,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetQualityRuleRequest"><span class="badge">M</span>GetQualityRuleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityRuleTemplateRequest"><span class="badge">M</span>GetQualityRuleTemplateRequest</a>
                 </li>
               
                 <li>
@@ -1257,6 +1281,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListQualityCodeTablesRequest"><span class="badge">M</span>ListQualityCodeTablesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityCodeTablesResponse"><span class="badge">M</span>ListQualityCodeTablesResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListQualityContractRevisionsRequest"><span class="badge">M</span>ListQualityContractRevisionsRequest</a>
                 </li>
               
@@ -1278,6 +1310,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListQualityIssuesResponse"><span class="badge">M</span>ListQualityIssuesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityRuleTemplatesRequest"><span class="badge">M</span>ListQualityRuleTemplatesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityRuleTemplatesResponse"><span class="badge">M</span>ListQualityRuleTemplatesResponse</a>
                 </li>
               
                 <li>
@@ -1350,6 +1390,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.PublishQualityContractResponse"><span class="badge">M</span>PublishQualityContractResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityCodeTable"><span class="badge">M</span>QualityCodeTable</a>
                 </li>
               
                 <li>
@@ -1446,6 +1490,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityRuleSampling"><span class="badge">M</span>QualityRuleSampling</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityRuleTemplate"><span class="badge">M</span>QualityRuleTemplate</a>
                 </li>
               
                 <li>
@@ -1613,6 +1661,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.UpdateQualityCodeTableRequest"><span class="badge">M</span>UpdateQualityCodeTableRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.UpdateQualityContractRequest"><span class="badge">M</span>UpdateQualityContractRequest</a>
                 </li>
               
@@ -1622,6 +1674,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.UpdateQualityRuleRequest"><span class="badge">M</span>UpdateQualityRuleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.UpdateQualityRuleTemplateRequest"><span class="badge">M</span>UpdateQualityRuleTemplateRequest</a>
                 </li>
               
                 <li>
@@ -13443,6 +13499,37 @@ replaced. The raw value is never returned. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateQualityCodeTableRequest">CreateQualityCodeTableRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_code_table</td>
+                  <td><a href="#metaxisdata.v1.QualityCodeTable">QualityCodeTable</a></td>
+                  <td></td>
+                  <td><p>The table to create. Its name is assigned by the server. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateQualityRuleRequest">CreateQualityRuleRequest</h3>
         <p></p>
 
@@ -13478,6 +13565,37 @@ cannot create a rule for one table while accepting another table&#39;s draft.
 The suggestion is marked accepted once the rule exists. A decision that
 cannot be written does not roll the created rule back; it is logged and the
 suggestion can be decided explicitly. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateQualityRuleTemplateRequest">CreateQualityRuleTemplateRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>quality_rule_template</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</a></td>
+                  <td></td>
+                  <td><p>The template to create. Its name is assigned by the server. </p></td>
                 </tr>
               
             </tbody>
@@ -13718,6 +13836,30 @@ The fail threshold defaults to zero. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.DeleteQualityCodeTableRequest">DeleteQualityCodeTableRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.DeleteQualityRuleRequest">DeleteQualityRuleRequest</h3>
         <p></p>
 
@@ -13733,6 +13875,30 @@ The fail threshold defaults to zero. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteQualityRuleTemplateRequest">DeleteQualityRuleTemplateRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} </p></td>
                 </tr>
               
             </tbody>
@@ -14304,6 +14470,30 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityCodeTableRequest">GetQualityCodeTableRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityConsumptionCoverageRequest">GetQualityConsumptionCoverageRequest</h3>
         <p></p>
 
@@ -14615,6 +14805,30 @@ not the overview&#39;s: there, every monitorable object counts. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityRuleTemplateRequest">GetQualityRuleTemplateRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} </p></td>
                 </tr>
               
             </tbody>
@@ -15340,6 +15554,76 @@ to retrieve the subsequent page. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ListQualityCodeTablesRequest">ListQualityCodeTablesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of tables to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityCodeTablesResponse">ListQualityCodeTablesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_code_tables</td>
+                  <td><a href="#metaxisdata.v1.QualityCodeTable">QualityCodeTable</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListQualityContractRevisionsRequest">ListQualityContractRevisionsRequest</h3>
         <p></p>
 
@@ -15670,6 +15954,76 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>quality_issues</td>
                   <td><a href="#metaxisdata.v1.QualityIssue">QualityIssue</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityRuleTemplatesRequest">ListQualityRuleTemplatesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The maximum number of templates to return. If unspecified, at most 50 are
+returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityRuleTemplatesResponse">ListQualityRuleTemplatesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_rule_templates</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -16633,6 +16987,88 @@ placeholders appear in compiled_sql. </p></td>
                   <td></td>
                   <td><p>True when the live state already matched the newest published version, so no
 new version was created. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityCodeTable">QualityCodeTable</h3>
+        <p>QualityCodeTable is a workspace-defined list of accepted codes used by a</p><p>standard-code check, for example an industry-standard code set that is not</p><p>bundled with the server.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>values</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The accepted codes, sorted and de-duplicated by the server. Empty in a list
+response, which carries value_count instead. At most 5000 values, each at most
+256 bytes. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the author is unknown. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the last editor is unknown. </p></td>
                 </tr>
               
             </tbody>
@@ -18539,6 +18975,102 @@ prefix, so the sample is not random. </p></td>
                   <td><p>Read approximately this percent (1-99) of the relation. The engine&#39;s own
 sampling clause decides the exact behavior; it is approximately random,
 and its cost depends on the engine. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</h3>
+        <p>QualityRuleTemplate is a reusable check definition: a check type with its</p><p>parameters, without a target or the columns a target owns. Applying one</p><p>prefills a check editor; the check still has to be saved.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rule_type</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleType">QualityRuleType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>config</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleConfig">QualityRuleConfig</a></td>
+                  <td></td>
+                  <td><p>The parameters to prefill. Target-bound fields (the checked column or columns,
+the filter, a schema-drift snapshot) are empty: a template names no table and no
+column. The config&#39;s oneof arm must match rule_type. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>severity</td>
+                  <td><a href="#metaxisdata.v1.QualitySeverity">QualitySeverity</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dimension</td>
+                  <td><a href="#metaxisdata.v1.QualityDimension">QualityDimension</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the author is unknown. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the last editor is unknown. </p></td>
                 </tr>
               
             </tbody>
@@ -20587,6 +21119,16 @@ default (10000); the accepted range is 1-100000. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>code_table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional workspace code table the value must also exist in, as a
+&#34;workspaces/{workspace}/qualityCodeTables/{quality_code_table}&#34; resource name.
+Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it
+narrows the accepted values (for example a customer&#39;s current division list). </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -21022,6 +21564,37 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.UpdateQualityCodeTableRequest">UpdateQualityCodeTableRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_code_table</td>
+                  <td><a href="#metaxisdata.v1.QualityCodeTable">QualityCodeTable</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The fields to replace: &#34;title&#34;, &#34;description&#34;, &#34;values&#34;. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.UpdateQualityContractRequest">UpdateQualityContractRequest</h3>
         <p></p>
 
@@ -21132,6 +21705,37 @@ update_mask are written. </p></td>
                   <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.UpdateQualityRuleTemplateRequest">UpdateQualityRuleTemplateRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_rule_template</td>
+                  <td><a href="#metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_mask</td>
+                  <td><a href="#google.protobuf.FieldMask">google.protobuf.FieldMask</a></td>
+                  <td></td>
+                  <td><p>The fields to replace: &#34;title&#34;, &#34;description&#34;, &#34;severity&#34;, &#34;dimension&#34;, &#34;config&#34;. </p></td>
                 </tr>
               
             </tbody>
@@ -22298,6 +22902,14 @@ administrative-division prefix.</p></td>
 built-in classification table.</p></td>
               </tr>
             
+              <tr>
+                <td>QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE</td>
+                <td>6</td>
+                <td><p>A workspace-defined code table: the value must exist in the referenced
+quality code table. Use it for standard code sets that are not bundled with
+the server (for example an industry or municipal code set).</p></td>
+              </tr>
+            
           </tbody>
         </table>
       
@@ -22823,6 +23435,84 @@ physically removed, so history stays readable.</p></td>
               </tr>
             
               <tr>
+                <td>ListQualityRuleTemplates</td>
+                <td><a href="#metaxisdata.v1.ListQualityRuleTemplatesRequest">ListQualityRuleTemplatesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityRuleTemplatesResponse">ListQualityRuleTemplatesResponse</a></td>
+                <td><p>List the workspace&#39;s custom rule templates, newest first. Built-in templates
+are served by the client catalogue and are not part of this resource.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityRuleTemplate</td>
+                <td><a href="#metaxisdata.v1.GetQualityRuleTemplateRequest">GetQualityRuleTemplateRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</a></td>
+                <td><p>Read one custom rule template.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateQualityRuleTemplate</td>
+                <td><a href="#metaxisdata.v1.CreateQualityRuleTemplateRequest">CreateQualityRuleTemplateRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</a></td>
+                <td><p>Create a custom rule template. A template is a check type and its parameters:
+target-bound fields (columns, filter) are cleared by the server before it is
+stored.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateQualityRuleTemplate</td>
+                <td><a href="#metaxisdata.v1.UpdateQualityRuleTemplateRequest">UpdateQualityRuleTemplateRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityRuleTemplate">QualityRuleTemplate</a></td>
+                <td><p>Update a custom rule template&#39;s title, description, severity, dimension or
+parameters. The same target-bound fields are cleared.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteQualityRuleTemplate</td>
+                <td><a href="#metaxisdata.v1.DeleteQualityRuleTemplateRequest">DeleteQualityRuleTemplateRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete a custom rule template. Checks already created from it are unaffected.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityCodeTables</td>
+                <td><a href="#metaxisdata.v1.ListQualityCodeTablesRequest">ListQualityCodeTablesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityCodeTablesResponse">ListQualityCodeTablesResponse</a></td>
+                <td><p>List the workspace&#39;s code tables. A list response carries each table&#39;s value
+count but not its values; read one table with GetQualityCodeTable.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityCodeTable</td>
+                <td><a href="#metaxisdata.v1.GetQualityCodeTableRequest">GetQualityCodeTableRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityCodeTable">QualityCodeTable</a></td>
+                <td><p>Read one code table including its values.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CreateQualityCodeTable</td>
+                <td><a href="#metaxisdata.v1.CreateQualityCodeTableRequest">CreateQualityCodeTableRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityCodeTable">QualityCodeTable</a></td>
+                <td><p>Create a workspace code table. Values are sorted, de-duplicated and capped by
+the server, so an import is idempotent.</p></td>
+              </tr>
+            
+              <tr>
+                <td>UpdateQualityCodeTable</td>
+                <td><a href="#metaxisdata.v1.UpdateQualityCodeTableRequest">UpdateQualityCodeTableRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityCodeTable">QualityCodeTable</a></td>
+                <td><p>Update a code table&#39;s title, description or values. Replacing the values is the
+import path.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteQualityCodeTable</td>
+                <td><a href="#metaxisdata.v1.DeleteQualityCodeTableRequest">DeleteQualityCodeTableRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete a code table. A table still referenced by a rule or a template is
+refused with FailedPrecondition rather than silently breaking those checks.</p></td>
+              </tr>
+            
+              <tr>
                 <td>PreviewQualityRule</td>
                 <td><a href="#metaxisdata.v1.PreviewQualityRuleRequest">PreviewQualityRuleRequest</a></td>
                 <td><a href="#metaxisdata.v1.PreviewQualityRuleResponse">PreviewQualityRuleResponse</a></td>
@@ -23334,6 +24024,106 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>DeleteQualityRule</td>
                 <td>DELETE</td>
                 <td>/v1/{name=workspaces/*/qualityRules/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityRuleTemplates</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityRuleTemplates</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityRuleTemplate</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityRuleTemplates/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityRuleTemplate</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityRuleTemplates</td>
+                <td>quality_rule_template</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateQualityRuleTemplate</td>
+                <td>PATCH</td>
+                <td>/v1/{quality_rule_template.name=workspaces/*/qualityRuleTemplates/*}</td>
+                <td>quality_rule_template</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteQualityRuleTemplate</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/qualityRuleTemplates/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityCodeTables</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityCodeTables</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityCodeTable</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityCodeTables/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityCodeTable</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityCodeTables</td>
+                <td>quality_code_table</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>UpdateQualityCodeTable</td>
+                <td>PATCH</td>
+                <td>/v1/{quality_code_table.name=workspaces/*/qualityCodeTables/*}</td>
+                <td>quality_code_table</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteQualityCodeTable</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/qualityCodeTables/*}</td>
                 <td></td>
               </tr>
               

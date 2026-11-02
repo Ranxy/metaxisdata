@@ -441,6 +441,12 @@ export interface RuleConfigForm {
   maxLen?: string;
   // standard_code (column, allowNull, fail/warn thresholds are shared)
   standard?: QualityStandardCode;
+  /**
+   * A workspace code table the value must also exist in, as a resource name.
+   * Required when `standard` is CUSTOM_CODE_TABLE; optional for a built-in
+   * standard, where it narrows the accepted values.
+   */
+  codeTable?: string;
   /** A whole row count; 0 asks for the server default (10000). */
   sampleRows?: string;
   // referential_integrity
@@ -631,6 +637,7 @@ export function emptyConfig(): RuleConfigForm {
     minLen: "",
     maxLen: "",
     standard: QualityStandardCode.UNSPECIFIED,
+    codeTable: "",
     sampleRows: "0",
     childColumn: "",
     parentTable: "",
@@ -1187,6 +1194,7 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
           value: create(StandardCodeConfigSchema, {
             column: trimmed(c.column),
             standard: c.standard ?? QualityStandardCode.UNSPECIFIED,
+            codeTable: trimmed(c.codeTable),
             allowNull: c.allowNull ?? false,
             sampleRows: optionalIntegerValue(c.sampleRows) ?? 0,
             ...optionalDouble("failThreshold", c.failThreshold),
@@ -1527,6 +1535,7 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       const value = config.value;
       form.column = value.column;
       form.standard = value.standard;
+      form.codeTable = value.codeTable;
       form.allowNull = value.allowNull;
       form.sampleRows = value.sampleRows > 0 ? String(value.sampleRows) : "0";
       form.failThreshold = optionalStringFromDouble(value.failThreshold);
@@ -2093,6 +2102,14 @@ export function validateRuleForm(
         QualityStandardCode.UNSPECIFIED
       ) {
         issues.push({ key: VALIDATION_PREFIX + "standardRequired" });
+      }
+      // A custom standard has no built-in table: without a workspace table the
+      // check has no accepted value set to validate against.
+      if (
+        c.standard === QualityStandardCode.CUSTOM_CODE_TABLE &&
+        !trimmed(c.codeTable)
+      ) {
+        issues.push({ key: VALIDATION_PREFIX + "codeTableRequired" });
       }
       if (trimmed(c.sampleRows) !== "") {
         const sampleRows = optionalIntegerValue(c.sampleRows);

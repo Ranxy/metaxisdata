@@ -1180,7 +1180,8 @@ describe("data quality vocabulary catalogs", () => {
 
   it("names every standard code and its semantic label in both locales", () => {
     const standards = enumValues(QualityStandardCode);
-    expect(standards).toHaveLength(6);
+    // UNSPECIFIED plus the five built-in standards and CUSTOM_CODE_TABLE.
+    expect(standards).toHaveLength(7);
     for (const [locale, catalog] of Object.entries(CATALOGS)) {
       const labels = standards.map((standard) =>
         label(catalog, qualityStandardCodeKey(standard))

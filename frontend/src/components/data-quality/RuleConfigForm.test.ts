@@ -1,12 +1,16 @@
+import { create } from "@bufbuild/protobuf";
 import { mount } from "@vue/test-utils";
+import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it } from "vitest";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { i18n } from "@/locales";
+import { useAuthStore } from "@/store/modules/auth";
 import {
   QualityAggregateFunction,
   QualityRuleType,
   QualityThresholdMetric,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
 import {
   emptyConfig,
   type RuleConfigForm as RuleConfigState,
@@ -22,13 +26,22 @@ function mountForm(
   ruleType: QualityRuleType,
   config: Partial<RuleConfigState> = {}
 ) {
+  // The standard-code section reads the code-table picker's permission from the
+  // auth store, so every mount needs an active Pinia even when this suite does
+  // not use code tables.
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().user = create(UserSchema, { permissions: [] });
   return mount(RuleConfigForm, {
     props: {
       ruleType,
       modelValue: { ...emptyConfig(), ...config },
       thresholdMetric: QualityThresholdMetric.COUNT,
     },
-    global: { plugins: [i18n] },
+    global: {
+      plugins: [i18n, pinia],
+      stubs: { RouterLink: { template: "<a><slot /></a>" } },
+    },
   });
 }
 

@@ -13,9 +13,13 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
+  CreateQualityCodeTableRequestSchema,
   CreateQualityRuleRequestSchema,
+  CreateQualityRuleTemplateRequestSchema,
   CreateQualitySuggestionJobRequestSchema,
+  DeleteQualityCodeTableRequestSchema,
   DeleteQualityRuleRequestSchema,
+  DeleteQualityRuleTemplateRequestSchema,
   ExplainQualityExecutionRequestSchema,
   type ExplainQualityExecutionResponse,
   ExportQualityExecutionsRequestSchema,
@@ -23,6 +27,7 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
+  GetQualityCodeTableRequestSchema,
   GetQualityConsumptionCoverageRequestSchema,
   type GetQualityConsumptionCoverageResponse,
   GetQualityContractRequestSchema,
@@ -33,6 +38,7 @@ import {
   GetQualityLLMUsageRequestSchema,
   GetQualityOverviewRequestSchema,
   GetQualityRuleRequestSchema,
+  GetQualityRuleTemplateRequestSchema,
   GetQualityRuleTrendRequestSchema,
   GetQualityRunRequestSchema,
   GetQualitySuggestionJobRequestSchema,
@@ -46,10 +52,12 @@ import {
   GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityCodeTablesRequestSchema,
   ListQualityContractRevisionsRequestSchema,
   ListQualityExecutionsRequestSchema,
   ListQualityIssuesRequestSchema,
   ListQualityRulesRequestSchema,
+  ListQualityRuleTemplatesRequestSchema,
   ListQualityRunsRequestSchema,
   ListQualitySuggestionJobsRequestSchema,
   ListQualitySuggestionsRequestSchema,
@@ -58,6 +66,7 @@ import {
   ProfileColumnsRequestSchema,
   PublishQualityContractRequestSchema,
   type PublishQualityContractResponse,
+  type QualityCodeTable,
   type QualityContract,
   type QualityContractRevision,
   type QualityContractSettings,
@@ -73,6 +82,7 @@ import {
   QualityResolutionReason,
   type QualityRule,
   QualityRuleState,
+  type QualityRuleTemplate,
   type QualityRuleTrend,
   QualityRuleType,
   type QualityRun,
@@ -98,10 +108,12 @@ import {
   SuggestQualityRuleRequestSchema,
   type SuggestQualityRuleResponse,
   UpdateColumnLabelRequestSchema,
+  UpdateQualityCodeTableRequestSchema,
   UpdateQualityContractRequestSchema,
   UpdateQualityIssueRequestSchema,
   type UpdateQualityRuleRequest,
   UpdateQualityRuleRequestSchema,
+  UpdateQualityRuleTemplateRequestSchema,
   UpdateQualitySuggestionRequestSchema,
   UpdateQualityTargetScheduleRequestSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -588,6 +600,147 @@ export async function batchUpdateQualityRules(
 export async function deleteQualityRule(name: string): Promise<void> {
   const request = create(DeleteQualityRuleRequestSchema, { name });
   await dataQualityClient.deleteQualityRule(request);
+}
+
+// ---- rule templates and code tables ----
+
+/** One page of the workspace's custom rule templates, newest first. */
+export async function listQualityRuleTemplates(
+  options: { pageSize?: number; pageToken?: string; signal?: AbortSignal } = {}
+): Promise<ListPage<QualityRuleTemplate>> {
+  const request = create(ListQualityRuleTemplatesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityRuleTemplates(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityRuleTemplates,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Every custom rule template the caller can see, walking the cursor pages. */
+export async function listAllQualityRuleTemplates(
+  options: { pageSize?: number } = {}
+): Promise<QualityRuleTemplate[]> {
+  return await listAll((pageToken) =>
+    listQualityRuleTemplates({ pageSize: options.pageSize ?? 1000, pageToken })
+  );
+}
+
+/** Read one custom rule template by resource name. */
+export async function getQualityRuleTemplate(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualityRuleTemplate> {
+  const request = create(GetQualityRuleTemplateRequestSchema, { name });
+  return await dataQualityClient.getQualityRuleTemplate(request, { signal });
+}
+
+/**
+ * Create a custom rule template. The server assigns its name and clears the
+ * target-bound fields (columns, filter, schema-drift snapshot) from the config.
+ */
+export async function createQualityRuleTemplate(
+  template: QualityRuleTemplate
+): Promise<QualityRuleTemplate> {
+  const request = create(CreateQualityRuleTemplateRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    qualityRuleTemplate: template,
+  });
+  return await dataQualityClient.createQualityRuleTemplate(request);
+}
+
+/** Update exactly the fields named by `updateMask`. */
+export async function updateQualityRuleTemplate(
+  template: QualityRuleTemplate,
+  updateMask: string[]
+): Promise<QualityRuleTemplate> {
+  const request = create(UpdateQualityRuleTemplateRequestSchema, {
+    qualityRuleTemplate: template,
+    updateMask: create(FieldMaskSchema, { paths: updateMask }),
+  });
+  return await dataQualityClient.updateQualityRuleTemplate(request);
+}
+
+/** Delete a custom template. Checks already created from it are unaffected. */
+export async function deleteQualityRuleTemplate(name: string): Promise<void> {
+  const request = create(DeleteQualityRuleTemplateRequestSchema, { name });
+  await dataQualityClient.deleteQualityRuleTemplate(request);
+}
+
+/**
+ * One page of the workspace's code tables, newest first. A summary carries each
+ * table's value count but not its values; read one with GetQualityCodeTable.
+ */
+export async function listQualityCodeTables(
+  options: { pageSize?: number; pageToken?: string; signal?: AbortSignal } = {}
+): Promise<ListPage<QualityCodeTable>> {
+  const request = create(ListQualityCodeTablesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityCodeTables(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityCodeTables,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Every code table summary the caller can see, walking the cursor pages. */
+export async function listAllQualityCodeTables(
+  options: { pageSize?: number } = {}
+): Promise<QualityCodeTable[]> {
+  return await listAll((pageToken) =>
+    listQualityCodeTables({ pageSize: options.pageSize ?? 1000, pageToken })
+  );
+}
+
+/** Read one code table including its values. */
+export async function getQualityCodeTable(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualityCodeTable> {
+  const request = create(GetQualityCodeTableRequestSchema, { name });
+  return await dataQualityClient.getQualityCodeTable(request, { signal });
+}
+
+/** Create a code table. The server sorts, de-duplicates and caps the values. */
+export async function createQualityCodeTable(
+  table: QualityCodeTable
+): Promise<QualityCodeTable> {
+  const request = create(CreateQualityCodeTableRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    qualityCodeTable: table,
+  });
+  return await dataQualityClient.createQualityCodeTable(request);
+}
+
+/** Update exactly the fields named by `updateMask`; replacing values is the import path. */
+export async function updateQualityCodeTable(
+  table: QualityCodeTable,
+  updateMask: string[]
+): Promise<QualityCodeTable> {
+  const request = create(UpdateQualityCodeTableRequestSchema, {
+    qualityCodeTable: table,
+    updateMask: create(FieldMaskSchema, { paths: updateMask }),
+  });
+  return await dataQualityClient.updateQualityCodeTable(request);
+}
+
+/**
+ * Delete a code table. A table still referenced by a rule or a template is
+ * refused with FailedPrecondition rather than silently breaking those checks.
+ */
+export async function deleteQualityCodeTable(name: string): Promise<void> {
+  const request = create(DeleteQualityCodeTableRequestSchema, { name });
+  await dataQualityClient.deleteQualityCodeTable(request);
 }
 
 /** Compile and probe a rule without saving it or creating an execution. */

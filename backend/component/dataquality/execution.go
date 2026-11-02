@@ -56,6 +56,10 @@ type ExecOptions struct {
 	// runner sets it from the execution's start time; the zero value is fine for a
 	// rule that uses none.
 	Variables TimeVariables
+	// CodeTableValues is the accepted-code list of the workspace code table the
+	// rule references, loaded by the caller. A rule with no code table gets nil.
+	// The list is the whole table: the executor never reads the store itself.
+	CodeTableValues []string
 }
 
 // Execution is everything one execution measured: the observation the evaluator
