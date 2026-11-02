@@ -130,7 +130,9 @@ fail":
   attention.
 - `get_quality_target` opens one table: its health summary, every check with its
   configuration and latest result, its schedule, and its unresolved problems. It
-  is the workspace a person would open.
+  is the workspace a person would open. A watchable table with no live check
+  answers with `monitored: false` and an empty `rules` list, not an error — the
+  same "not monitored is an answer" rule as `get_quality_signal`.
 - `list_quality_issues` is the problem ledger: one row per unresolved or resolved
   problem, with its severity, when it was first and last seen, how many runs
   observed it, and who acknowledged, muted or resolved it. An issue row names its
@@ -141,7 +143,10 @@ fail":
   data, not a page's.
 - `get_quality_execution` returns all of it: the SQL that executed, the failed
   sample rows, the thresholds the run was judged against, any baseline value and
-  time, and the sampling and truncation flags.
+  time, and the sampling and truncation flags. It returns the whole execution as
+  protoJSON, so its nested field names follow the proto
+  (`target.metaGuid`, `executedSql`, `samples[].columns[].value`, `ruleRevision`)
+  rather than the projected `target.guid` shape the listing tools use.
 
 There is no tool that asks a model to explain a failure. The agent calling these
 tools is the model: it reads the evidence — the executed SQL, the observed value,
