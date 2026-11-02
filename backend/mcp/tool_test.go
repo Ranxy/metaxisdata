@@ -1272,6 +1272,44 @@ func TestGetQualityExecutionReturnsItsWholeEvidence(t *testing.T) {
 	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
 }
 
+// TestGetQualityExecutionPinsZeroValueOmission pins the documented contract that
+// the whole-execution protoJSON omits zero-valued fields (the default marshal
+// options, not EmitUnpopulated), so a future marshal change cannot silently
+// invalidate the guide and docs that promise it.
+func TestGetQualityExecutionPinsZeroValueOmission(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{
+		getQualityExecution: func(request *v1pb.GetQualityExecutionRequest) (*v1pb.QualityExecution, error) {
+			return &v1pb.QualityExecution{
+				Name:          request.GetName(),
+				State:         v1pb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+				Outcome:       v1pb.QualityStatus_QUALITY_STATUS_PASS,
+				Attempt:       1,
+				ObservedValue: 0,
+				FailedRows:    0,
+				TotalRows:     0,
+				Sampled:       false,
+				SampleRows:    0,
+				Truncated:     false,
+			}, nil
+		},
+	}
+	server := newTestServer(t, readers, &fakeChecker{allow: true})
+	value, err := callTool(t, server, "get_quality_execution", map[string]any{
+		"execution": "workspaces/1/qualityExecutions/7",
+	})
+	require.NoError(t, err)
+
+	payload := asMap(t, value)
+	require.Equal(t, "workspaces/1/qualityExecutions/7", payload["name"])
+	// A non-zero field still travels, so the omissions below are not vacuous.
+	require.Equal(t, float64(1), payload["attempt"])
+	for _, omitted := range []string{"observedValue", "failedRows", "sampled", "truncated"} {
+		require.NotContains(t, payload, omitted, "%s is a zero scalar and must be omitted", omitted)
+	}
+}
+
 func TestListQualityTargetsProjectsTheDirectory(t *testing.T) {
 	t.Parallel()
 
