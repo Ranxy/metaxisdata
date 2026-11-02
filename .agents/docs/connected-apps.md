@@ -34,7 +34,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 | D3 | 撤销对**已签发** access token 生效(本副本立即,其他副本 ≤30s) | access token 带 `gid`,共享校验链查授权存活;升级时拒绝无 `gid` 的旧令牌,一次 refresh 即可恢复 |
 | D4 | `last_tool_call_at` 只记录**工具调用尝试**,签发/刷新不写 | 「应用还在用吗」与「刚换了令牌」是两件事;条件 UPDATE 每授权每 5 分钟最多写一次 |
 | D5 | 实体名 Connected app / 已连接应用 | proto `metaxisdata/ConnectedApp`、`connectedApps/{id}`、权限 `connectedApps.list`/`.revoke` |
-| D6 | 不暴露成 MCP 工具,也不加 CLI 命令 | 管理动作是人做的;MCP 能力面保持只读 9 工具 |
+| D6 | 不暴露成 MCP 工具,也不加 CLI 命令 | 管理动作是人做的;MCP 能力面保持只读(工具清单见 [mcp-server.md](mcp-server.md)) |
 | D7 | 行保留到 `expires_at` 之后 7 天再清理 | 状态与「谁撤销的」可见;永久历史在审计账本 |
 | D8 | 一条记录 = 一次授权,逐条撤销,不按用户/客户端批量 | 同一 (user, client) 可以有多条授权;「按连接」而非「按应用」 |
 | D9 | 复用授权行 + 原地轮换,按**一次性切换**发布 | 不需要回填映射;代价是不支持滚动升级(旧副本会 DELETE+INSERT 并复活已撤销行) |
