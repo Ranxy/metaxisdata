@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
@@ -116,13 +117,59 @@ const UserSelectStub = defineComponent({
 
 const Dummy = { template: "<div />" };
 
+/**
+ * The batch dialog is tested on its own; this stub exposes the props it
+ * receives and the two events the page wires (open toggle and done).
+ */
+const BatchEditChecksDialogStub = defineComponent({
+  name: "BatchEditChecksDialog",
+  props: { open: Boolean, rules: Array, users: Array },
+  emits: ["update:open", "done"],
+  setup(props, { emit }) {
+    return () =>
+      h("div", { class: "batch-edit-stub" }, [
+        h(
+          "button",
+          {
+            class: "batch-edit-close-stub",
+            type: "button",
+            onClick: () => emit("update:open", false),
+          },
+          "close"
+        ),
+        h(
+          "button",
+          {
+            class: "batch-edit-done-stub",
+            type: "button",
+            onClick: () =>
+              emit(
+                "done",
+                (props.rules ?? []).map(
+                  (rule) => (rule as { name: string }).name
+                )
+              ),
+          },
+          "done"
+        ),
+      ]);
+  },
+});
+
 const PERMISSIONS = [
   "metaxisdata.dataQuality.rules.list",
   "metaxisdata.dataQuality.rules.run",
   "metaxisdata.users.list",
 ];
 
+/** The permissions a caller needs to see and use the bulk-edit affordances. */
+const EDIT_PERMISSIONS = [
+  ...PERMISSIONS,
+  "metaxisdata.dataQuality.rules.update",
+];
+
 const RULE = "workspaces/default/qualityRules/rule-1";
+const SECOND_RULE = "workspaces/default/qualityRules/rule-2";
 const TARGET_GUID = "inst1;shop;public;orders";
 
 let activeRouter: ReturnType<typeof createRouter> | undefined;
@@ -169,6 +216,7 @@ async function mountPage(
       stubs: {
         TargetScopeFilter: TargetScopeFilterStub,
         UserSelect: UserSelectStub,
+        BatchEditChecksDialog: BatchEditChecksDialogStub,
       },
     },
   });
@@ -207,6 +255,48 @@ function ruleFixture(): QualityRule {
     lastResult: create(QualityExecutionSummarySchema, {
       status: QualityStatus.PASS,
     }),
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET_GUID,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "prod",
+        database: "shop",
+        schema: "public",
+        object: "orders",
+      }),
+    }),
+  });
+}
+
+/** A second check, so a selection can cover more than one row. */
+function secondRuleFixture(): QualityRule {
+  return create(QualityRuleSchema, {
+    name: SECOND_RULE,
+    title: "orders must be unique",
+    ruleType: QualityRuleType.UNIQUE,
+    severity: QualitySeverity.WARNING,
+    state: QualityRuleState.PAUSED,
+    target: create(QualityTargetSchema, {
+      metaGuid: TARGET_GUID,
+      metaType: MetaType.TABLE,
+      path: create(QualityTargetPathSchema, {
+        instance: "prod",
+        database: "shop",
+        schema: "public",
+        object: "orders",
+      }),
+    }),
+  });
+}
+
+/** An archived check: readable history, but the store refuses to update it. */
+function archivedRuleFixture(): QualityRule {
+  return create(QualityRuleSchema, {
+    name: "workspaces/default/qualityRules/rule-archived",
+    title: "an archived check",
+    ruleType: QualityRuleType.ROW_COUNT,
+    severity: QualitySeverity.WARNING,
+    state: QualityRuleState.ARCHIVED,
     target: create(QualityTargetSchema, {
       metaGuid: TARGET_GUID,
       metaType: MetaType.TABLE,
@@ -823,5 +913,195 @@ describe("DataQualityChecksPage empty and creation", () => {
           button.text().includes(i18n.global.t("dataQuality.newRule"))
         )
     ).toBe(false);
+  });
+});
+
+describe("DataQualityChecksPage bulk edit", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    mocks.listAllUsers.mockResolvedValue(USERS);
+    mocks.listQualityRules.mockResolvedValue({
+      items: [ruleFixture(), secondRuleFixture()],
+      nextPageToken: "",
+    });
+  });
+
+  it("shows the selection column only to a caller who may update rules", async () => {
+    const readOnly = await mountPage(PERMISSIONS);
+    expect(readOnly.findAll('[role="checkbox"]')).toHaveLength(0);
+    expect(readOnly.find(".batch-edit-stub").exists()).toBe(false);
+    readOnly.unmount();
+
+    const editor = await mountPage(EDIT_PERMISSIONS);
+    // Select-all plus one box per row.
+    expect(editor.findAll('[role="checkbox"]')).toHaveLength(3);
+    expect(editor.find(".batch-edit-stub").exists()).toBe(true);
+    editor.unmount();
+  });
+
+  it("selects rows on the page and opens the dialog with them", async () => {
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    const rowChecks = wrapper.findAll(
+      `[aria-label="${i18n.global.t("dataQuality.checks.batchEdit.selectCheck")}"]`
+    );
+    await rowChecks[0]?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    // One of two rows selected: select-all reports the indeterminate state.
+    expect(wrapper.findAllComponents(Checkbox)[0]?.props("checked")).toBe(
+      "indeterminate"
+    );
+
+    const edit = wrapper
+      .findAll("button")
+      .find(
+        (button) =>
+          button.text().trim() ===
+          i18n.global.t("dataQuality.checks.batchEdit.edit")
+      );
+    expect(edit).toBeTruthy();
+    await edit?.trigger("click");
+    await flushPromises();
+
+    const dialog = wrapper.findComponent(BatchEditChecksDialogStub);
+    expect(dialog.props("open")).toBe(true);
+    expect(
+      (dialog.props("rules") as QualityRule[]).map((rule) => rule.name)
+    ).toEqual([RULE]);
+    wrapper.unmount();
+  });
+
+  it("selects the whole page and clears the selection from the bar", async () => {
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    await wrapper.findAll('[role="checkbox"]')[0]?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 2 })
+    );
+    expect(wrapper.findAllComponents(Checkbox)[0]?.props("checked")).toBe(true);
+
+    const clear = wrapper
+      .findAll("button")
+      .find(
+        (button) =>
+          button.text().trim() ===
+          i18n.global.t("dataQuality.checks.batchEdit.clearSelection")
+      );
+    await clear?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 2 })
+    );
+    expect(wrapper.findAllComponents(Checkbox)[0]?.props("checked")).toBe(
+      false
+    );
+    wrapper.unmount();
+  });
+
+  it("leaves archived checks out of a bulk edit", async () => {
+    mocks.listQualityRules.mockResolvedValue({
+      items: [ruleFixture(), archivedRuleFixture()],
+      nextPageToken: "",
+    });
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    const rowChecks = wrapper.findAll(
+      `[aria-label="${i18n.global.t("dataQuality.checks.batchEdit.selectCheck")}"]`
+    );
+    // The archived row keeps its box, but it is disabled: the store refuses to
+    // update a soft-deleted rule, so it is not an edit target.
+    expect(rowChecks).toHaveLength(2);
+    expect(rowChecks[1]?.attributes("disabled")).toBeDefined();
+
+    await wrapper.findAll('[role="checkbox"]')[0]?.trigger("click");
+    await flushPromises();
+
+    // Select-all covers the editable row only.
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    wrapper.unmount();
+  });
+
+  it("drops the selection when the filters change", async () => {
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    await wrapper
+      .findAll(
+        `[aria-label="${i18n.global.t("dataQuality.checks.batchEdit.selectCheck")}"]`
+      )[0]
+      ?.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+
+    await applyButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    wrapper.unmount();
+  });
+
+  it("prunes a selected row that a reload no longer lists", async () => {
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    await wrapper
+      .findAll(
+        `[aria-label="${i18n.global.t("dataQuality.checks.batchEdit.selectCheck")}"]`
+      )[0]
+      ?.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+
+    mocks.listQualityRules.mockResolvedValue({
+      items: [secondRuleFixture()],
+      nextPageToken: "",
+    });
+    const refresh = wrapper
+      .findAll("button")
+      .find(
+        (button) => button.text().trim() === i18n.global.t("common.refresh")
+      );
+    await refresh?.trigger("click");
+    await flushPromises();
+
+    // The refresh dropped the selected row, so nothing is selected any more.
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    wrapper.unmount();
+  });
+
+  it("refreshes the page and drops only the rows the batch updated", async () => {
+    const wrapper = await mountPage(EDIT_PERMISSIONS);
+    await wrapper.findAll('[role="checkbox"]')[0]?.trigger("click");
+    await flushPromises();
+
+    const calls = mocks.listQualityRules.mock.calls.length;
+    wrapper.findComponent(BatchEditChecksDialogStub).vm.$emit("done", [RULE]);
+    await flushPromises();
+
+    expect(mocks.listQualityRules.mock.calls.length).toBe(calls + 1);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+
+    wrapper
+      .findComponent(BatchEditChecksDialogStub)
+      .vm.$emit("done", [SECOND_RULE]);
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.checks.batchEdit.selected", { count: 1 })
+    );
+    wrapper.unmount();
   });
 });

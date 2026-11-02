@@ -46,6 +46,9 @@ const (
 	// DataQualityServiceBatchCreateQualityRulesProcedure is the fully-qualified name of the
 	// DataQualityService's BatchCreateQualityRules RPC.
 	DataQualityServiceBatchCreateQualityRulesProcedure = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
+	// DataQualityServiceBatchUpdateQualityRulesProcedure is the fully-qualified name of the
+	// DataQualityService's BatchUpdateQualityRules RPC.
+	DataQualityServiceBatchUpdateQualityRulesProcedure = "/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules"
 	// DataQualityServiceUpdateQualityRuleProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityRule RPC.
 	DataQualityServiceUpdateQualityRuleProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
@@ -203,6 +206,11 @@ type DataQualityServiceClient interface {
 	// came from. Each item is validated and stored independently: a failure is
 	// reported in its own result and does not abort the other items.
 	BatchCreateQualityRules(context.Context, *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error)
+	// Update a batch of rules in one call. Each item is applied independently:
+	// a failure is reported in its own result and does not abort the other items.
+	// An item that names a stale revision fails on its own rather than
+	// overwriting a concurrent edit.
+	BatchUpdateQualityRules(context.Context, *connect.Request[v1.BatchUpdateQualityRulesRequest]) (*connect.Response[v1.BatchUpdateQualityRulesResponse], error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(context.Context, *connect.Request[v1.UpdateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error)
@@ -447,6 +455,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceBatchCreateQualityRulesProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("BatchCreateQualityRules")),
+			connect.WithClientOptions(opts...),
+		),
+		batchUpdateQualityRules: connect.NewClient[v1.BatchUpdateQualityRulesRequest, v1.BatchUpdateQualityRulesResponse](
+			httpClient,
+			baseURL+DataQualityServiceBatchUpdateQualityRulesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("BatchUpdateQualityRules")),
 			connect.WithClientOptions(opts...),
 		),
 		updateQualityRule: connect.NewClient[v1.UpdateQualityRuleRequest, v1.QualityRule](
@@ -740,6 +754,7 @@ type dataQualityServiceClient struct {
 	getQualityRule                     *connect.Client[v1.GetQualityRuleRequest, v1.QualityRule]
 	createQualityRule                  *connect.Client[v1.CreateQualityRuleRequest, v1.QualityRule]
 	batchCreateQualityRules            *connect.Client[v1.BatchCreateQualityRulesRequest, v1.BatchCreateQualityRulesResponse]
+	batchUpdateQualityRules            *connect.Client[v1.BatchUpdateQualityRulesRequest, v1.BatchUpdateQualityRulesResponse]
 	updateQualityRule                  *connect.Client[v1.UpdateQualityRuleRequest, v1.QualityRule]
 	deleteQualityRule                  *connect.Client[v1.DeleteQualityRuleRequest, emptypb.Empty]
 	previewQualityRule                 *connect.Client[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse]
@@ -807,6 +822,11 @@ func (c *dataQualityServiceClient) CreateQualityRule(ctx context.Context, req *c
 // BatchCreateQualityRules calls metaxisdata.v1.DataQualityService.BatchCreateQualityRules.
 func (c *dataQualityServiceClient) BatchCreateQualityRules(ctx context.Context, req *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error) {
 	return c.batchCreateQualityRules.CallUnary(ctx, req)
+}
+
+// BatchUpdateQualityRules calls metaxisdata.v1.DataQualityService.BatchUpdateQualityRules.
+func (c *dataQualityServiceClient) BatchUpdateQualityRules(ctx context.Context, req *connect.Request[v1.BatchUpdateQualityRulesRequest]) (*connect.Response[v1.BatchUpdateQualityRulesResponse], error) {
+	return c.batchUpdateQualityRules.CallUnary(ctx, req)
 }
 
 // UpdateQualityRule calls metaxisdata.v1.DataQualityService.UpdateQualityRule.
@@ -1063,6 +1083,11 @@ type DataQualityServiceHandler interface {
 	// came from. Each item is validated and stored independently: a failure is
 	// reported in its own result and does not abort the other items.
 	BatchCreateQualityRules(context.Context, *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error)
+	// Update a batch of rules in one call. Each item is applied independently:
+	// a failure is reported in its own result and does not abort the other items.
+	// An item that names a stale revision fails on its own rather than
+	// overwriting a concurrent edit.
+	BatchUpdateQualityRules(context.Context, *connect.Request[v1.BatchUpdateQualityRulesRequest]) (*connect.Response[v1.BatchUpdateQualityRulesResponse], error)
 	// Update a rule. Every semantic edit appends a revision, so a historical
 	// result always stays explainable by the definition that produced it.
 	UpdateQualityRule(context.Context, *connect.Request[v1.UpdateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error)
@@ -1303,6 +1328,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceBatchCreateQualityRulesProcedure,
 		svc.BatchCreateQualityRules,
 		connect.WithSchema(dataQualityServiceMethods.ByName("BatchCreateQualityRules")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceBatchUpdateQualityRulesHandler := connect.NewUnaryHandler(
+		DataQualityServiceBatchUpdateQualityRulesProcedure,
+		svc.BatchUpdateQualityRules,
+		connect.WithSchema(dataQualityServiceMethods.ByName("BatchUpdateQualityRules")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServiceUpdateQualityRuleHandler := connect.NewUnaryHandler(
@@ -1597,6 +1628,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceCreateQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceBatchCreateQualityRulesProcedure:
 			dataQualityServiceBatchCreateQualityRulesHandler.ServeHTTP(w, r)
+		case DataQualityServiceBatchUpdateQualityRulesProcedure:
+			dataQualityServiceBatchUpdateQualityRulesHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityRuleProcedure:
 			dataQualityServiceUpdateQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceDeleteQualityRuleProcedure:
@@ -1714,6 +1747,10 @@ func (UnimplementedDataQualityServiceHandler) CreateQualityRule(context.Context,
 
 func (UnimplementedDataQualityServiceHandler) BatchCreateQualityRules(context.Context, *connect.Request[v1.BatchCreateQualityRulesRequest]) (*connect.Response[v1.BatchCreateQualityRulesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.BatchCreateQualityRules is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) BatchUpdateQualityRules(context.Context, *connect.Request[v1.BatchUpdateQualityRulesRequest]) (*connect.Response[v1.BatchUpdateQualityRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.BatchUpdateQualityRules is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityRule(context.Context, *connect.Request[v1.UpdateQualityRuleRequest]) (*connect.Response[v1.QualityRule], error) {

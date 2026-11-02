@@ -2902,6 +2902,85 @@ export declare type BatchCreateQualityRuleResult = Message<"metaxisdata.v1.Batch
 export declare const BatchCreateQualityRuleResultSchema: GenMessage<BatchCreateQualityRuleResult>;
 
 /**
+ * @generated from message metaxisdata.v1.BatchUpdateQualityRulesRequest
+ */
+export declare type BatchUpdateQualityRulesRequest = Message<"metaxisdata.v1.BatchUpdateQualityRulesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The updates to apply, at most 200, in submission order. Each item names one
+   * rule and is applied independently, so one rejected update does not block
+   * the others.
+   *
+   * @generated from field: repeated metaxisdata.v1.UpdateQualityRuleRequest requests = 2;
+   */
+  requests: UpdateQualityRuleRequest[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateQualityRulesRequest.
+ * Use `create(BatchUpdateQualityRulesRequestSchema)` to create a new message.
+ */
+export declare const BatchUpdateQualityRulesRequestSchema: GenMessage<BatchUpdateQualityRulesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchUpdateQualityRulesResponse
+ */
+export declare type BatchUpdateQualityRulesResponse = Message<"metaxisdata.v1.BatchUpdateQualityRulesResponse"> & {
+  /**
+   * One result per request, in request order.
+   *
+   * @generated from field: repeated metaxisdata.v1.BatchUpdateQualityRuleResult results = 1;
+   */
+  results: BatchUpdateQualityRuleResult[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateQualityRulesResponse.
+ * Use `create(BatchUpdateQualityRulesResponseSchema)` to create a new message.
+ */
+export declare const BatchUpdateQualityRulesResponseSchema: GenMessage<BatchUpdateQualityRulesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.BatchUpdateQualityRuleResult
+ */
+export declare type BatchUpdateQualityRuleResult = Message<"metaxisdata.v1.BatchUpdateQualityRuleResult"> & {
+  /**
+   * The updated rule; unset when this item failed.
+   *
+   * @generated from field: metaxisdata.v1.QualityRule rule = 1;
+   */
+  rule?: QualityRule;
+
+  /**
+   * Empty on success; otherwise why this rule could not be updated.
+   *
+   * @generated from field: string error = 2;
+   */
+  error: string;
+
+  /**
+   * The rule name named by the request item, echoed so a client does not have
+   * to trust the index alone.
+   * Format: workspaces/{workspace}/qualityRules/{quality_rule}
+   *
+   * @generated from field: string name = 3;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.BatchUpdateQualityRuleResult.
+ * Use `create(BatchUpdateQualityRuleResultSchema)` to create a new message.
+ */
+export declare const BatchUpdateQualityRuleResultSchema: GenMessage<BatchUpdateQualityRuleResult>;
+
+/**
  * @generated from message metaxisdata.v1.UpdateQualityRuleRequest
  */
 export declare type UpdateQualityRuleRequest = Message<"metaxisdata.v1.UpdateQualityRuleRequest"> & {
@@ -8591,6 +8670,19 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof BatchCreateQualityRulesRequestSchema;
     output: typeof BatchCreateQualityRulesResponseSchema;
+  },
+  /**
+   * Update a batch of rules in one call. Each item is applied independently:
+   * a failure is reported in its own result and does not abort the other items.
+   * An item that names a stale revision fails on its own rather than
+   * overwriting a concurrent edit.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.BatchUpdateQualityRules
+   */
+  batchUpdateQualityRules: {
+    methodKind: "unary";
+    input: typeof BatchUpdateQualityRulesRequestSchema;
+    output: typeof BatchUpdateQualityRulesResponseSchema;
   },
   /**
    * Update a rule. Every semantic edit appends a revision, so a historical

@@ -240,10 +240,19 @@ address bar, so refreshing or sharing a link returns to the same view.
 Data Quality → **Checks** is the cross-target directory for audit and search:
 every check with its target and latest execution, narrowed by the same target
 scope, text search, check type, dimension, severity, state and owner filters.
-It is read-only by design — a check is created and edited inside its target. Its
-**Target scope** filter follows the metadata tree: pick an instance, then drill
-into a database, schema or table/view, and apply at any level. Filters take
-effect when you press **Apply**.
+Checks are still authored one at a time inside their target, but the directory
+also supports **bulk editing** for existing checks: tick rows on the current page
+(up to 200) and choose **Edit checks** to set their severity, quality dimension,
+owner, run state (enabled or paused), empty-data behavior, or fail/warn
+thresholds in one action. The edit is applied check by check, and the result
+panel lists what changed, what failed and why. A check that someone else edited
+in the meantime fails on its own instead of overwriting that edit, and archived
+checks stay out of the selection because they can no longer be changed. Thresholds can
+be set in bulk only for selected checks of the same type, and empty-data behavior
+does not apply to row-count, custom SQL or schema-drift checks, which the dialog
+leaves untouched. Its **Target scope** filter follows the metadata tree: pick an
+instance, then drill into a database, schema or table/view, and apply at any
+level. Filters take effect when you press **Apply**.
 
 ## Contracts and target-level settings
 

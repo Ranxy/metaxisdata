@@ -76,6 +76,40 @@ func (s *DataQualityService) BatchCreateQualityRules(ctx context.Context, req *c
 	return connect.NewResponse(&v1pb.BatchCreateQualityRulesResponse{Results: results}), nil
 }
 
+// BatchUpdateQualityRules applies many rule updates in one call. Each item is
+// applied independently: a failure (including a stale revision) is reported in
+// its own result and does not abort the rest.
+func (s *DataQualityService) BatchUpdateQualityRules(ctx context.Context, req *connect.Request[v1pb.BatchUpdateQualityRulesRequest]) (*connect.Response[v1pb.BatchUpdateQualityRulesResponse], error) {
+	if req == nil {
+		return nil, connectErrorInvalid("a request is required")
+	}
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	if err := validateQualityBatchSize(len(req.Msg.GetRequests())); err != nil {
+		return nil, err
+	}
+
+	results := make([]*v1pb.BatchUpdateQualityRuleResult, 0, len(req.Msg.GetRequests()))
+	for _, item := range req.Msg.GetRequests() {
+		result := &v1pb.BatchUpdateQualityRuleResult{}
+		if item == nil || item.GetRule() == nil {
+			result.Error = connectErrorInvalid("the rule is required").Error()
+			results = append(results, result)
+			continue
+		}
+		result.Name = strings.TrimSpace(item.GetRule().GetName())
+		updated, err := s.UpdateQualityRule(ctx, connect.NewRequest(item))
+		if err != nil {
+			result.Error = err.Error()
+		} else {
+			result.Rule = updated.Msg
+		}
+		results = append(results, result)
+	}
+	return connect.NewResponse(&v1pb.BatchUpdateQualityRulesResponse{Results: results}), nil
+}
+
 // BatchUpdateQualitySuggestions accepts or rejects many queued suggestions in one
 // call. Each decision is independent: a failure (including an already decided
 // suggestion) is reported in its own result and does not abort the rest.

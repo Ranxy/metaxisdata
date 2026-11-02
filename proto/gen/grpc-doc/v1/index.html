@@ -1041,6 +1041,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.BatchUpdateQualityRuleResult"><span class="badge">M</span>BatchUpdateQualityRuleResult</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchUpdateQualityRulesRequest"><span class="badge">M</span>BatchUpdateQualityRulesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.BatchUpdateQualityRulesResponse"><span class="badge">M</span>BatchUpdateQualityRulesResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.BatchUpdateQualitySuggestionResult"><span class="badge">M</span>BatchUpdateQualitySuggestionResult</a>
                 </li>
               
@@ -12840,6 +12852,103 @@ independently, so one rejected rule does not block the others. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.BatchUpdateQualityRuleResult">BatchUpdateQualityRuleResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>rule</td>
+                  <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
+                  <td></td>
+                  <td><p>The updated rule; unset when this item failed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty on success; otherwise why this rule could not be updated. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The rule name named by the request item, echoed so a client does not have
+to trust the index alone.
+Format: workspaces/{workspace}/qualityRules/{quality_rule} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchUpdateQualityRulesRequest">BatchUpdateQualityRulesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>requests</td>
+                  <td><a href="#metaxisdata.v1.UpdateQualityRuleRequest">UpdateQualityRuleRequest</a></td>
+                  <td>repeated</td>
+                  <td><p>The updates to apply, at most 200, in submission order. Each item names one
+rule and is applied independently, so one rejected update does not block
+the others. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.BatchUpdateQualityRulesResponse">BatchUpdateQualityRulesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.v1.BatchUpdateQualityRuleResult">BatchUpdateQualityRuleResult</a></td>
+                  <td>repeated</td>
+                  <td><p>One result per request, in request order. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.BatchUpdateQualitySuggestionResult">BatchUpdateQualitySuggestionResult</h3>
         <p></p>
 
@@ -22516,6 +22625,16 @@ reported in its own result and does not abort the other items.</p></td>
               </tr>
             
               <tr>
+                <td>BatchUpdateQualityRules</td>
+                <td><a href="#metaxisdata.v1.BatchUpdateQualityRulesRequest">BatchUpdateQualityRulesRequest</a></td>
+                <td><a href="#metaxisdata.v1.BatchUpdateQualityRulesResponse">BatchUpdateQualityRulesResponse</a></td>
+                <td><p>Update a batch of rules in one call. Each item is applied independently:
+a failure is reported in its own result and does not abort the other items.
+An item that names a stale revision fails on its own rather than
+overwriting a concurrent edit.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualityRule</td>
                 <td><a href="#metaxisdata.v1.UpdateQualityRuleRequest">UpdateQualityRuleRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityRule">QualityRule</a></td>
@@ -23013,6 +23132,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>BatchCreateQualityRules</td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualityRules:batchCreate</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>BatchUpdateQualityRules</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityRules:batchUpdate</td>
                 <td>*</td>
               </tr>
               

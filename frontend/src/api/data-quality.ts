@@ -5,6 +5,8 @@ import {
   AcknowledgeQualityTargetSchemaRequestSchema,
   type BatchCreateQualityRuleResult,
   BatchCreateQualityRulesRequestSchema,
+  type BatchUpdateQualityRuleResult,
+  BatchUpdateQualityRulesRequestSchema,
   type BatchUpdateQualitySuggestionResult,
   BatchUpdateQualitySuggestionsRequestSchema,
   CancelQualitySuggestionJobRequestSchema,
@@ -98,6 +100,7 @@ import {
   UpdateColumnLabelRequestSchema,
   UpdateQualityContractRequestSchema,
   UpdateQualityIssueRequestSchema,
+  type UpdateQualityRuleRequest,
   UpdateQualityRuleRequestSchema,
   UpdateQualitySuggestionRequestSchema,
   UpdateQualityTargetScheduleRequestSchema,
@@ -562,6 +565,23 @@ export async function updateQualityRule(
     updateMask: create(FieldMaskSchema, { paths: updateMask }),
   });
   return await dataQualityClient.updateQualityRule(request);
+}
+
+/**
+ * Update up to 200 rules in one call. Every item carries its own mask, so one
+ * batch can edit different fields, and its rule's revision, so a stale item is
+ * rejected instead of overwriting a newer definition. Results are aligned with
+ * `requests`; a failed item carries its error and does not stop the rest.
+ */
+export async function batchUpdateQualityRules(
+  requests: UpdateQualityRuleRequest[]
+): Promise<BatchUpdateQualityRuleResult[]> {
+  const request = create(BatchUpdateQualityRulesRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    requests,
+  });
+  const response = await dataQualityClient.batchUpdateQualityRules(request);
+  return response.results;
 }
 
 /** Archive a rule. Its revisions and executions stay readable. */

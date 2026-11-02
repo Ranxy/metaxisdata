@@ -834,6 +834,9 @@ func TestBatchQualityHandlersRequireARequest(t *testing.T) {
 	_, err := service.BatchCreateQualityRules(t.Context(), nil)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
+	_, err = service.BatchUpdateQualityRules(t.Context(), nil)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
 	_, err = service.BatchUpdateQualitySuggestions(t.Context(), nil)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

@@ -258,9 +258,51 @@
         </EmptyState>
 
         <div v-else>
+          <!-- A selection is page-local: it never spans a cursor walk, so the
+               bar says how many rows on this page an edit covers. -->
+          <div
+            v-if="canEdit && selectedRules.length > 0"
+            class="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2"
+          >
+            <span class="text-sm font-medium">
+              {{
+                t("dataQuality.checks.batchEdit.selected", {
+                  count: selectedRules.length,
+                })
+              }}
+            </span>
+            <Button
+              size="sm"
+              @click="batchEditOpen = true"
+            >
+              {{ t("dataQuality.checks.batchEdit.edit") }}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              @click="clearSelection"
+            >
+              {{ t("dataQuality.checks.batchEdit.clearSelection") }}
+            </Button>
+          </div>
+
           <Table class="[&_th]:whitespace-nowrap">
             <TableHeader>
               <TableRow>
+                <TableHead
+                  v-if="canEdit"
+                  class="w-10"
+                >
+                  <Checkbox
+                    :checked="selectionState"
+                    :disabled="selectableRules.length === 0"
+                    :aria-label="t('common.selectAll')"
+                    @update:checked="
+                      (checked: boolean | 'indeterminate') =>
+                        toggleAll(checked === true)
+                    "
+                  />
+                </TableHead>
                 <TableHead>{{ t("dataQuality.rule") }}</TableHead>
                 <TableHead class="hidden lg:table-cell">
                   {{ t("dataQuality.type") }}
@@ -292,6 +334,21 @@
                 v-for="rule in rules"
                 :key="rule.name"
               >
+                <TableCell
+                  v-if="canEdit"
+                  class="align-top"
+                >
+                  <Checkbox
+                    :checked="selectedNames.includes(rule.name)"
+                    :disabled="rule.state === QualityRuleState.ARCHIVED"
+                    class="mt-1"
+                    :aria-label="t('dataQuality.checks.batchEdit.selectCheck')"
+                    @update:checked="
+                      (checked: boolean | 'indeterminate') =>
+                        toggleRule(rule.name, checked === true)
+                    "
+                  />
+                </TableCell>
                 <TableCell>
                   <div class="flex max-w-[14rem] min-w-0 items-center gap-2 md:max-w-md">
                     <!-- The title is the way into the check's target workspace,
@@ -469,13 +526,21 @@
               :has-previous="hasPrevious"
               :has-next="hasNext"
               :disabled="isLoading"
-              @previous="goPreviousPage"
-              @next="goNextPage"
+              @previous="previousPage"
+              @next="nextPage"
             />
           </div>
         </div>
       </PageState>
     </Card>
+
+    <BatchEditChecksDialog
+      v-if="canEdit"
+      v-model:open="batchEditOpen"
+      :rules="selectedRules"
+      :users="canListUsers ? userDirectory : undefined"
+      @done="onBatchEditDone"
+    />
   </div>
 </template>
 
@@ -500,11 +565,13 @@ import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import TablePager from "@/components/common/TablePager.vue";
 import UserSelect from "@/components/common/UserSelect.vue";
+import BatchEditChecksDialog from "@/components/data-quality/BatchEditChecksDialog.vue";
 import TargetScopeFilter from "@/components/data-quality/TargetScopeFilter.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -561,9 +628,9 @@ import {
 
 /**
  * The cross-target check directory: every check the workspace holds, for audit
- * and search. It is read-only — a check is authored inside its target's
- * contract workspace — so a row names its target and links there; the only
- * action besides "run now" is opening that workspace.
+ * and search. A check's definition is authored inside its target's contract
+ * workspace, so a row names its target and links there; the directory itself
+ * offers "run now" and a page-local bulk edit of the shared fields.
  */
 
 const { t, locale } = useI18n();
@@ -579,6 +646,15 @@ const canRun = computed(() =>
 );
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
+);
+// Bulk editing writes rules, so the selection column only exists for a caller
+// who may write them. Without the member directory the dialog's owner picker
+// still degrades to a read-only value, as it does in the editor.
+const canEdit = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.rules.update")
+);
+const canListUsers = computed(() =>
+  authStore.hasPermission("metaxisdata.users.list")
 );
 // The directory feeds both the owner column and the filter picker, so the page
 // loads it once; the picker receives it and issues no request of its own.
@@ -836,9 +912,86 @@ const {
   },
 });
 
+// ---- page selection ----
+
+// A bulk edit covers the rows on the current page only: a page holds at most
+// 100 rows, well under the server's 200-item batch cap.
+const selectedNames = ref<string[]>([]);
+const batchEditOpen = ref(false);
+
+const selectedRules = computed(() =>
+  selectedNames.value
+    .map((name) => rules.value.find((rule) => rule.name === name))
+    .filter((rule): rule is QualityRule => rule !== undefined)
+);
+
+// Archiving is a soft delete and the store refuses to update a deleted row, so
+// an archived check cannot be part of a bulk edit. The directory lists archived
+// rows only under the ARCHIVED state filter; those rows stay unselectable.
+const selectableRules = computed(() =>
+  rules.value.filter((rule) => rule.state !== QualityRuleState.ARCHIVED)
+);
+
+/** The select-all control's three states: all, some, or none of this page. */
+const selectionState = computed<boolean | "indeterminate">(() => {
+  const selected = selectedRules.value.length;
+  if (selected === 0) {
+    return false;
+  }
+  return selected === selectableRules.value.length ? true : "indeterminate";
+});
+
+function clearSelection() {
+  selectedNames.value = [];
+}
+
+function toggleRule(name: string, checked: boolean) {
+  if (checked && !selectedNames.value.includes(name)) {
+    selectedNames.value = [...selectedNames.value, name];
+  } else if (!checked) {
+    selectedNames.value = selectedNames.value.filter((item) => item !== name);
+  }
+}
+
+function toggleAll(checked: boolean) {
+  selectedNames.value = checked
+    ? selectableRules.value.map((rule) => rule.name)
+    : [];
+}
+
+// A re-fetch can drop the rows a stale selection points at, and a row that has
+// been archived since the selection was made can no longer be edited.
+watch(rules, () => {
+  const present = new Set(selectableRules.value.map((rule) => rule.name));
+  selectedNames.value = selectedNames.value.filter((name) => present.has(name));
+});
+
+/** A cursor step lands on another page, so the selection does not travel. */
+function previousPage() {
+  clearSelection();
+  void goPreviousPage();
+}
+
+function nextPage() {
+  clearSelection();
+  void goNextPage();
+}
+
+/** A batch edit was written: refresh the rows and drop the ones it updated. */
+function onBatchEditDone(ruleNames: string[]) {
+  const updated = new Set(ruleNames);
+  selectedNames.value = selectedNames.value.filter(
+    (name) => !updated.has(name)
+  );
+  void refreshPage();
+}
+
 // A cursor belongs to the query that produced it, so a new page size restarts
 // the walk at the first page.
-watch(pageSize, () => void resetPage());
+watch(pageSize, () => {
+  clearSelection();
+  void resetPage();
+});
 
 // A reload, a shared link or back/forward changes the query from outside; the
 // page adopts those filters. The replace this composable performs matches the
@@ -861,6 +1014,7 @@ urlFilters.watchExternal((next) => {
   appliedState.value = next.state;
   appliedScope.value = next.scope ? { ...next.scope } : undefined;
   appliedOwner.value = next.owner;
+  clearSelection();
   void resetPage();
 });
 
@@ -872,6 +1026,7 @@ function applyFilters() {
   appliedState.value = state.value;
   appliedScope.value = scope.value ? { ...scope.value } : undefined;
   appliedOwner.value = owner.value;
+  clearSelection();
   // The URL is written first: the watcher then sees the applied set already
   // agrees with it, so adopting the route costs no second request.
   urlFilters.write(appliedFilters());
