@@ -1,4 +1,5 @@
 import {
+  type QualityRuleTemplate,
   QualityRuleType,
   QualityStandardCode,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -15,8 +16,9 @@ import {
  * fields it pre-fills; applying one edits the form and never saves it.
  *
  * The catalog is plain data (no Vue, no Pinia, no request) so its completeness
- * can be asserted without mounting the composer. Custom templates are a later
- * phase; this build ships the read-only built-ins only.
+ * can be asserted without mounting the composer. The same shape carries a
+ * workspace template: it has stored copy instead of i18n keys and a complete
+ * `template` message instead of a `fields` patch.
  */
 
 export interface RuleTemplate {
@@ -29,6 +31,15 @@ export interface RuleTemplate {
   ruleType: QualityRuleType;
   /** The config fields the template fills; the rest keep their defaults. */
   fields: Partial<RuleConfigForm>;
+  /** A workspace template's own title, used instead of `titleKey`. */
+  title?: string;
+  /** A workspace template's own description, used instead of `descriptionKey`. */
+  description?: string;
+  /**
+   * The stored template a workspace entry was mapped from. Applying it uses the
+   * whole config, so `fields` stays empty for these entries.
+   */
+  template?: QualityRuleTemplate;
 }
 
 /** One section of the template catalogue: an i18n heading and its templates. */

@@ -87,6 +87,9 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	// The personal-data columns are likewise read once per target: the executor
 	// redacts their sampled values before the execution row is written.
 	personal := newBatchPersonalColumns(r.loadBatchPersonalColumns())
+	// A standard-code rule that names a workspace code table reads it once per table
+	// per batch and judges the sampled values against it.
+	codeTables := newBatchCodeTables(r.loadBatchCodeTables())
 
 	executions := make([]*ruleExecution, 0, len(tasks))
 	aborted := false
@@ -122,7 +125,7 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 		}
 
 		r.metrics.IncQualityExecutionsInProgress()
-		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission, contracts, personal)
+		execution := r.executeOneSafe(batchCtx, planned, startedAt, admission, contracts, personal, codeTables)
 		if execution == nil {
 			r.metrics.DecQualityExecutionsInProgress()
 			continue
@@ -231,7 +234,7 @@ func loadPlannedExecution(ctx context.Context, st batchExecutionStore, batchID i
 // executeOneSafe isolates one rule's execution: a panic in the rule engine or a
 // driver turns into an ERROR verdict for that execution instead of killing the
 // batch (or the runner, which would lose every remaining execution).
-func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters, personal *batchPersonalColumns) (execution *ruleExecution) {
+func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters, personal *batchPersonalColumns, codeTables *batchCodeTables) (execution *ruleExecution) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			slog.Error("quality rule execution panicked",
@@ -246,16 +249,19 @@ func (r *Runner) executeOneSafe(ctx context.Context, planned *store.QualityExecu
 			}
 		}
 	}()
-	return r.executeOne(ctx, planned, startedAt, admission, contracts, personal)
+	return r.executeOne(ctx, planned, startedAt, admission, contracts, personal, codeTables)
 }
 
 // executeOne resolves, validates and executes one rule, returning the completed
 // execution row it produces. It never returns nil: every failure path is an ERROR
 // or SKIPPED verdict, because a batch has to account for every execution it
 // planned.
-func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters, personal *batchPersonalColumns) *ruleExecution {
+func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecutionMessage, startedAt time.Time, admission batchAdmission, contracts *batchContractFilters, personal *batchPersonalColumns, codeTables *batchCodeTables) *ruleExecution {
 	if personal == nil {
 		personal = newBatchPersonalColumns(r.loadBatchPersonalColumns())
+	}
+	if codeTables == nil {
+		codeTables = newBatchCodeTables(r.loadBatchCodeTables())
 	}
 	if !r.acquireInflight(planned.RuleID) {
 		return &ruleExecution{
@@ -366,6 +372,17 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		options.StoreSamples = false
 	} else {
 		options.MaskColumns = personalColumns
+	}
+	// A standard-code rule that names a code table loads it here; an unresolvable
+	// reference is a stored-definition defect, reported as ERROR(UNSUPPORTED)
+	// instead of judging every value against an empty table.
+	if reference := codeTableReference(snapshot.Type, snapshot.Config); reference != "" {
+		values, err := codeTables.forRule(ctx, reference)
+		if err != nil {
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported,
+				fmt.Sprintf("the code table %q referenced by this check could not be loaded: %v", reference, err))
+		}
+		options.CodeTableValues = values
 	}
 	options.Variables = dataquality.NewTimeVariables(startedAt, r.currentSettings().TimeZoneLocation())
 	execution, err := r.exec.Execute(ctx, queryer, resolution, *snapshot, options)

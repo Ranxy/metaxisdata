@@ -55,6 +55,36 @@ const (
 	// DataQualityServiceDeleteQualityRuleProcedure is the fully-qualified name of the
 	// DataQualityService's DeleteQualityRule RPC.
 	DataQualityServiceDeleteQualityRuleProcedure = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
+	// DataQualityServiceListQualityRuleTemplatesProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityRuleTemplates RPC.
+	DataQualityServiceListQualityRuleTemplatesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityRuleTemplates"
+	// DataQualityServiceGetQualityRuleTemplateProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityRuleTemplate RPC.
+	DataQualityServiceGetQualityRuleTemplateProcedure = "/metaxisdata.v1.DataQualityService/GetQualityRuleTemplate"
+	// DataQualityServiceCreateQualityRuleTemplateProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityRuleTemplate RPC.
+	DataQualityServiceCreateQualityRuleTemplateProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityRuleTemplate"
+	// DataQualityServiceUpdateQualityRuleTemplateProcedure is the fully-qualified name of the
+	// DataQualityService's UpdateQualityRuleTemplate RPC.
+	DataQualityServiceUpdateQualityRuleTemplateProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityRuleTemplate"
+	// DataQualityServiceDeleteQualityRuleTemplateProcedure is the fully-qualified name of the
+	// DataQualityService's DeleteQualityRuleTemplate RPC.
+	DataQualityServiceDeleteQualityRuleTemplateProcedure = "/metaxisdata.v1.DataQualityService/DeleteQualityRuleTemplate"
+	// DataQualityServiceListQualityCodeTablesProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityCodeTables RPC.
+	DataQualityServiceListQualityCodeTablesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityCodeTables"
+	// DataQualityServiceGetQualityCodeTableProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityCodeTable RPC.
+	DataQualityServiceGetQualityCodeTableProcedure = "/metaxisdata.v1.DataQualityService/GetQualityCodeTable"
+	// DataQualityServiceCreateQualityCodeTableProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityCodeTable RPC.
+	DataQualityServiceCreateQualityCodeTableProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityCodeTable"
+	// DataQualityServiceUpdateQualityCodeTableProcedure is the fully-qualified name of the
+	// DataQualityService's UpdateQualityCodeTable RPC.
+	DataQualityServiceUpdateQualityCodeTableProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityCodeTable"
+	// DataQualityServiceDeleteQualityCodeTableProcedure is the fully-qualified name of the
+	// DataQualityService's DeleteQualityCodeTable RPC.
+	DataQualityServiceDeleteQualityCodeTableProcedure = "/metaxisdata.v1.DataQualityService/DeleteQualityCodeTable"
 	// DataQualityServicePreviewQualityRuleProcedure is the fully-qualified name of the
 	// DataQualityService's PreviewQualityRule RPC.
 	DataQualityServicePreviewQualityRuleProcedure = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
@@ -217,6 +247,34 @@ type DataQualityServiceClient interface {
 	// Delete a rule. The rule, its revisions and results are only archived, never
 	// physically removed, so history stays readable.
 	DeleteQualityRule(context.Context, *connect.Request[v1.DeleteQualityRuleRequest]) (*connect.Response[emptypb.Empty], error)
+	// List the workspace's custom rule templates, newest first. Built-in templates
+	// are served by the client catalogue and are not part of this resource.
+	ListQualityRuleTemplates(context.Context, *connect.Request[v1.ListQualityRuleTemplatesRequest]) (*connect.Response[v1.ListQualityRuleTemplatesResponse], error)
+	// Read one custom rule template.
+	GetQualityRuleTemplate(context.Context, *connect.Request[v1.GetQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error)
+	// Create a custom rule template. A template is a check type and its parameters:
+	// target-bound fields (columns, filter) are cleared by the server before it is
+	// stored.
+	CreateQualityRuleTemplate(context.Context, *connect.Request[v1.CreateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error)
+	// Update a custom rule template's title, description, severity, dimension or
+	// parameters. The same target-bound fields are cleared.
+	UpdateQualityRuleTemplate(context.Context, *connect.Request[v1.UpdateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error)
+	// Delete a custom rule template. Checks already created from it are unaffected.
+	DeleteQualityRuleTemplate(context.Context, *connect.Request[v1.DeleteQualityRuleTemplateRequest]) (*connect.Response[emptypb.Empty], error)
+	// List the workspace's code tables. A list response carries each table's value
+	// count but not its values; read one table with GetQualityCodeTable.
+	ListQualityCodeTables(context.Context, *connect.Request[v1.ListQualityCodeTablesRequest]) (*connect.Response[v1.ListQualityCodeTablesResponse], error)
+	// Read one code table including its values.
+	GetQualityCodeTable(context.Context, *connect.Request[v1.GetQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error)
+	// Create a workspace code table. Values are sorted, de-duplicated and capped by
+	// the server, so an import is idempotent.
+	CreateQualityCodeTable(context.Context, *connect.Request[v1.CreateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error)
+	// Update a code table's title, description or values. Replacing the values is the
+	// import path.
+	UpdateQualityCodeTable(context.Context, *connect.Request[v1.UpdateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error)
+	// Delete a code table. A table still referenced by a rule or a template is
+	// refused with FailedPrecondition rather than silently breaking those checks.
+	DeleteQualityCodeTable(context.Context, *connect.Request[v1.DeleteQualityCodeTableRequest]) (*connect.Response[emptypb.Empty], error)
 	// Validate and compile a rule without saving it: config validation, filter
 	// validation and a `LIMIT 0` probe against the target's read-only data
 	// source. It writes nothing and creates no run.
@@ -473,6 +531,66 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			httpClient,
 			baseURL+DataQualityServiceDeleteQualityRuleProcedure,
 			connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityRule")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityRuleTemplates: connect.NewClient[v1.ListQualityRuleTemplatesRequest, v1.ListQualityRuleTemplatesResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityRuleTemplatesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityRuleTemplates")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityRuleTemplate: connect.NewClient[v1.GetQualityRuleTemplateRequest, v1.QualityRuleTemplate](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityRuleTemplateProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityRuleTemplate")),
+			connect.WithClientOptions(opts...),
+		),
+		createQualityRuleTemplate: connect.NewClient[v1.CreateQualityRuleTemplateRequest, v1.QualityRuleTemplate](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityRuleTemplateProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityRuleTemplate")),
+			connect.WithClientOptions(opts...),
+		),
+		updateQualityRuleTemplate: connect.NewClient[v1.UpdateQualityRuleTemplateRequest, v1.QualityRuleTemplate](
+			httpClient,
+			baseURL+DataQualityServiceUpdateQualityRuleTemplateProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityRuleTemplate")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteQualityRuleTemplate: connect.NewClient[v1.DeleteQualityRuleTemplateRequest, emptypb.Empty](
+			httpClient,
+			baseURL+DataQualityServiceDeleteQualityRuleTemplateProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityRuleTemplate")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityCodeTables: connect.NewClient[v1.ListQualityCodeTablesRequest, v1.ListQualityCodeTablesResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityCodeTablesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityCodeTables")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityCodeTable: connect.NewClient[v1.GetQualityCodeTableRequest, v1.QualityCodeTable](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityCodeTableProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityCodeTable")),
+			connect.WithClientOptions(opts...),
+		),
+		createQualityCodeTable: connect.NewClient[v1.CreateQualityCodeTableRequest, v1.QualityCodeTable](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityCodeTableProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityCodeTable")),
+			connect.WithClientOptions(opts...),
+		),
+		updateQualityCodeTable: connect.NewClient[v1.UpdateQualityCodeTableRequest, v1.QualityCodeTable](
+			httpClient,
+			baseURL+DataQualityServiceUpdateQualityCodeTableProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityCodeTable")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteQualityCodeTable: connect.NewClient[v1.DeleteQualityCodeTableRequest, emptypb.Empty](
+			httpClient,
+			baseURL+DataQualityServiceDeleteQualityCodeTableProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityCodeTable")),
 			connect.WithClientOptions(opts...),
 		),
 		previewQualityRule: connect.NewClient[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse](
@@ -757,6 +875,16 @@ type dataQualityServiceClient struct {
 	batchUpdateQualityRules            *connect.Client[v1.BatchUpdateQualityRulesRequest, v1.BatchUpdateQualityRulesResponse]
 	updateQualityRule                  *connect.Client[v1.UpdateQualityRuleRequest, v1.QualityRule]
 	deleteQualityRule                  *connect.Client[v1.DeleteQualityRuleRequest, emptypb.Empty]
+	listQualityRuleTemplates           *connect.Client[v1.ListQualityRuleTemplatesRequest, v1.ListQualityRuleTemplatesResponse]
+	getQualityRuleTemplate             *connect.Client[v1.GetQualityRuleTemplateRequest, v1.QualityRuleTemplate]
+	createQualityRuleTemplate          *connect.Client[v1.CreateQualityRuleTemplateRequest, v1.QualityRuleTemplate]
+	updateQualityRuleTemplate          *connect.Client[v1.UpdateQualityRuleTemplateRequest, v1.QualityRuleTemplate]
+	deleteQualityRuleTemplate          *connect.Client[v1.DeleteQualityRuleTemplateRequest, emptypb.Empty]
+	listQualityCodeTables              *connect.Client[v1.ListQualityCodeTablesRequest, v1.ListQualityCodeTablesResponse]
+	getQualityCodeTable                *connect.Client[v1.GetQualityCodeTableRequest, v1.QualityCodeTable]
+	createQualityCodeTable             *connect.Client[v1.CreateQualityCodeTableRequest, v1.QualityCodeTable]
+	updateQualityCodeTable             *connect.Client[v1.UpdateQualityCodeTableRequest, v1.QualityCodeTable]
+	deleteQualityCodeTable             *connect.Client[v1.DeleteQualityCodeTableRequest, emptypb.Empty]
 	previewQualityRule                 *connect.Client[v1.PreviewQualityRuleRequest, v1.PreviewQualityRuleResponse]
 	runQualityRules                    *connect.Client[v1.RunQualityRulesRequest, v1.RunQualityRulesResponse]
 	listQualityExecutions              *connect.Client[v1.ListQualityExecutionsRequest, v1.ListQualityExecutionsResponse]
@@ -837,6 +965,56 @@ func (c *dataQualityServiceClient) UpdateQualityRule(ctx context.Context, req *c
 // DeleteQualityRule calls metaxisdata.v1.DataQualityService.DeleteQualityRule.
 func (c *dataQualityServiceClient) DeleteQualityRule(ctx context.Context, req *connect.Request[v1.DeleteQualityRuleRequest]) (*connect.Response[emptypb.Empty], error) {
 	return c.deleteQualityRule.CallUnary(ctx, req)
+}
+
+// ListQualityRuleTemplates calls metaxisdata.v1.DataQualityService.ListQualityRuleTemplates.
+func (c *dataQualityServiceClient) ListQualityRuleTemplates(ctx context.Context, req *connect.Request[v1.ListQualityRuleTemplatesRequest]) (*connect.Response[v1.ListQualityRuleTemplatesResponse], error) {
+	return c.listQualityRuleTemplates.CallUnary(ctx, req)
+}
+
+// GetQualityRuleTemplate calls metaxisdata.v1.DataQualityService.GetQualityRuleTemplate.
+func (c *dataQualityServiceClient) GetQualityRuleTemplate(ctx context.Context, req *connect.Request[v1.GetQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error) {
+	return c.getQualityRuleTemplate.CallUnary(ctx, req)
+}
+
+// CreateQualityRuleTemplate calls metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate.
+func (c *dataQualityServiceClient) CreateQualityRuleTemplate(ctx context.Context, req *connect.Request[v1.CreateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error) {
+	return c.createQualityRuleTemplate.CallUnary(ctx, req)
+}
+
+// UpdateQualityRuleTemplate calls metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate.
+func (c *dataQualityServiceClient) UpdateQualityRuleTemplate(ctx context.Context, req *connect.Request[v1.UpdateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error) {
+	return c.updateQualityRuleTemplate.CallUnary(ctx, req)
+}
+
+// DeleteQualityRuleTemplate calls metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate.
+func (c *dataQualityServiceClient) DeleteQualityRuleTemplate(ctx context.Context, req *connect.Request[v1.DeleteQualityRuleTemplateRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteQualityRuleTemplate.CallUnary(ctx, req)
+}
+
+// ListQualityCodeTables calls metaxisdata.v1.DataQualityService.ListQualityCodeTables.
+func (c *dataQualityServiceClient) ListQualityCodeTables(ctx context.Context, req *connect.Request[v1.ListQualityCodeTablesRequest]) (*connect.Response[v1.ListQualityCodeTablesResponse], error) {
+	return c.listQualityCodeTables.CallUnary(ctx, req)
+}
+
+// GetQualityCodeTable calls metaxisdata.v1.DataQualityService.GetQualityCodeTable.
+func (c *dataQualityServiceClient) GetQualityCodeTable(ctx context.Context, req *connect.Request[v1.GetQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error) {
+	return c.getQualityCodeTable.CallUnary(ctx, req)
+}
+
+// CreateQualityCodeTable calls metaxisdata.v1.DataQualityService.CreateQualityCodeTable.
+func (c *dataQualityServiceClient) CreateQualityCodeTable(ctx context.Context, req *connect.Request[v1.CreateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error) {
+	return c.createQualityCodeTable.CallUnary(ctx, req)
+}
+
+// UpdateQualityCodeTable calls metaxisdata.v1.DataQualityService.UpdateQualityCodeTable.
+func (c *dataQualityServiceClient) UpdateQualityCodeTable(ctx context.Context, req *connect.Request[v1.UpdateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error) {
+	return c.updateQualityCodeTable.CallUnary(ctx, req)
+}
+
+// DeleteQualityCodeTable calls metaxisdata.v1.DataQualityService.DeleteQualityCodeTable.
+func (c *dataQualityServiceClient) DeleteQualityCodeTable(ctx context.Context, req *connect.Request[v1.DeleteQualityCodeTableRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteQualityCodeTable.CallUnary(ctx, req)
 }
 
 // PreviewQualityRule calls metaxisdata.v1.DataQualityService.PreviewQualityRule.
@@ -1094,6 +1272,34 @@ type DataQualityServiceHandler interface {
 	// Delete a rule. The rule, its revisions and results are only archived, never
 	// physically removed, so history stays readable.
 	DeleteQualityRule(context.Context, *connect.Request[v1.DeleteQualityRuleRequest]) (*connect.Response[emptypb.Empty], error)
+	// List the workspace's custom rule templates, newest first. Built-in templates
+	// are served by the client catalogue and are not part of this resource.
+	ListQualityRuleTemplates(context.Context, *connect.Request[v1.ListQualityRuleTemplatesRequest]) (*connect.Response[v1.ListQualityRuleTemplatesResponse], error)
+	// Read one custom rule template.
+	GetQualityRuleTemplate(context.Context, *connect.Request[v1.GetQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error)
+	// Create a custom rule template. A template is a check type and its parameters:
+	// target-bound fields (columns, filter) are cleared by the server before it is
+	// stored.
+	CreateQualityRuleTemplate(context.Context, *connect.Request[v1.CreateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error)
+	// Update a custom rule template's title, description, severity, dimension or
+	// parameters. The same target-bound fields are cleared.
+	UpdateQualityRuleTemplate(context.Context, *connect.Request[v1.UpdateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error)
+	// Delete a custom rule template. Checks already created from it are unaffected.
+	DeleteQualityRuleTemplate(context.Context, *connect.Request[v1.DeleteQualityRuleTemplateRequest]) (*connect.Response[emptypb.Empty], error)
+	// List the workspace's code tables. A list response carries each table's value
+	// count but not its values; read one table with GetQualityCodeTable.
+	ListQualityCodeTables(context.Context, *connect.Request[v1.ListQualityCodeTablesRequest]) (*connect.Response[v1.ListQualityCodeTablesResponse], error)
+	// Read one code table including its values.
+	GetQualityCodeTable(context.Context, *connect.Request[v1.GetQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error)
+	// Create a workspace code table. Values are sorted, de-duplicated and capped by
+	// the server, so an import is idempotent.
+	CreateQualityCodeTable(context.Context, *connect.Request[v1.CreateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error)
+	// Update a code table's title, description or values. Replacing the values is the
+	// import path.
+	UpdateQualityCodeTable(context.Context, *connect.Request[v1.UpdateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error)
+	// Delete a code table. A table still referenced by a rule or a template is
+	// refused with FailedPrecondition rather than silently breaking those checks.
+	DeleteQualityCodeTable(context.Context, *connect.Request[v1.DeleteQualityCodeTableRequest]) (*connect.Response[emptypb.Empty], error)
 	// Validate and compile a rule without saving it: config validation, filter
 	// validation and a `LIMIT 0` probe against the target's read-only data
 	// source. It writes nothing and creates no run.
@@ -1346,6 +1552,66 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		DataQualityServiceDeleteQualityRuleProcedure,
 		svc.DeleteQualityRule,
 		connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityRule")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityRuleTemplatesHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityRuleTemplatesProcedure,
+		svc.ListQualityRuleTemplates,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityRuleTemplates")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityRuleTemplateHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityRuleTemplateProcedure,
+		svc.GetQualityRuleTemplate,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityRuleTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceCreateQualityRuleTemplateHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityRuleTemplateProcedure,
+		svc.CreateQualityRuleTemplate,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityRuleTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceUpdateQualityRuleTemplateHandler := connect.NewUnaryHandler(
+		DataQualityServiceUpdateQualityRuleTemplateProcedure,
+		svc.UpdateQualityRuleTemplate,
+		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityRuleTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceDeleteQualityRuleTemplateHandler := connect.NewUnaryHandler(
+		DataQualityServiceDeleteQualityRuleTemplateProcedure,
+		svc.DeleteQualityRuleTemplate,
+		connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityRuleTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityCodeTablesHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityCodeTablesProcedure,
+		svc.ListQualityCodeTables,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityCodeTables")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityCodeTableHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityCodeTableProcedure,
+		svc.GetQualityCodeTable,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityCodeTable")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceCreateQualityCodeTableHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityCodeTableProcedure,
+		svc.CreateQualityCodeTable,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityCodeTable")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceUpdateQualityCodeTableHandler := connect.NewUnaryHandler(
+		DataQualityServiceUpdateQualityCodeTableProcedure,
+		svc.UpdateQualityCodeTable,
+		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityCodeTable")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceDeleteQualityCodeTableHandler := connect.NewUnaryHandler(
+		DataQualityServiceDeleteQualityCodeTableProcedure,
+		svc.DeleteQualityCodeTable,
+		connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityCodeTable")),
 		connect.WithHandlerOptions(opts...),
 	)
 	dataQualityServicePreviewQualityRuleHandler := connect.NewUnaryHandler(
@@ -1634,6 +1900,26 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceDeleteQualityRuleProcedure:
 			dataQualityServiceDeleteQualityRuleHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityRuleTemplatesProcedure:
+			dataQualityServiceListQualityRuleTemplatesHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityRuleTemplateProcedure:
+			dataQualityServiceGetQualityRuleTemplateHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityRuleTemplateProcedure:
+			dataQualityServiceCreateQualityRuleTemplateHandler.ServeHTTP(w, r)
+		case DataQualityServiceUpdateQualityRuleTemplateProcedure:
+			dataQualityServiceUpdateQualityRuleTemplateHandler.ServeHTTP(w, r)
+		case DataQualityServiceDeleteQualityRuleTemplateProcedure:
+			dataQualityServiceDeleteQualityRuleTemplateHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityCodeTablesProcedure:
+			dataQualityServiceListQualityCodeTablesHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityCodeTableProcedure:
+			dataQualityServiceGetQualityCodeTableHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityCodeTableProcedure:
+			dataQualityServiceCreateQualityCodeTableHandler.ServeHTTP(w, r)
+		case DataQualityServiceUpdateQualityCodeTableProcedure:
+			dataQualityServiceUpdateQualityCodeTableHandler.ServeHTTP(w, r)
+		case DataQualityServiceDeleteQualityCodeTableProcedure:
+			dataQualityServiceDeleteQualityCodeTableHandler.ServeHTTP(w, r)
 		case DataQualityServicePreviewQualityRuleProcedure:
 			dataQualityServicePreviewQualityRuleHandler.ServeHTTP(w, r)
 		case DataQualityServiceRunQualityRulesProcedure:
@@ -1759,6 +2045,46 @@ func (UnimplementedDataQualityServiceHandler) UpdateQualityRule(context.Context,
 
 func (UnimplementedDataQualityServiceHandler) DeleteQualityRule(context.Context, *connect.Request[v1.DeleteQualityRuleRequest]) (*connect.Response[emptypb.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DeleteQualityRule is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityRuleTemplates(context.Context, *connect.Request[v1.ListQualityRuleTemplatesRequest]) (*connect.Response[v1.ListQualityRuleTemplatesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityRuleTemplates is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityRuleTemplate(context.Context, *connect.Request[v1.GetQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityRuleTemplate is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityRuleTemplate(context.Context, *connect.Request[v1.CreateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) UpdateQualityRuleTemplate(context.Context, *connect.Request[v1.UpdateQualityRuleTemplateRequest]) (*connect.Response[v1.QualityRuleTemplate], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) DeleteQualityRuleTemplate(context.Context, *connect.Request[v1.DeleteQualityRuleTemplateRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityCodeTables(context.Context, *connect.Request[v1.ListQualityCodeTablesRequest]) (*connect.Response[v1.ListQualityCodeTablesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityCodeTables is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityCodeTable(context.Context, *connect.Request[v1.GetQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityCodeTable is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityCodeTable(context.Context, *connect.Request[v1.CreateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityCodeTable is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) UpdateQualityCodeTable(context.Context, *connect.Request[v1.UpdateQualityCodeTableRequest]) (*connect.Response[v1.QualityCodeTable], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateQualityCodeTable is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) DeleteQualityCodeTable(context.Context, *connect.Request[v1.DeleteQualityCodeTableRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DeleteQualityCodeTable is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) PreviewQualityRule(context.Context, *connect.Request[v1.PreviewQualityRuleRequest]) (*connect.Response[v1.PreviewQualityRuleResponse], error) {

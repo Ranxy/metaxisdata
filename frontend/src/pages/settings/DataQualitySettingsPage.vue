@@ -283,6 +283,145 @@
           </CardContent>
         </Card>
 
+        <!-- Code tables are workspace data, not settings, but they are authored
+             next to the checks that use them and share this page's write model. -->
+        <Card v-if="canListCodeTables">
+          <CardHeader>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="space-y-1.5">
+                <CardTitle>{{ t("dataQualitySettings.codeTablesSection") }}</CardTitle>
+                <CardDescription>
+                  {{ t("dataQualitySettings.codeTablesSectionDescription") }}
+                </CardDescription>
+              </div>
+              <Button
+                v-if="canCreateCodeTable"
+                size="sm"
+                class="shrink-0"
+                data-add-code-table
+                @click="openCreateCodeTable"
+              >
+                <Plus class="mr-2 h-4 w-4" />
+                {{ t("dataQualitySettings.addCodeTable") }}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Alert
+              v-if="codeTableActionError"
+              variant="destructive"
+              class="mb-4"
+            >
+              <AlertTriangle class="h-4 w-4" />
+              <AlertTitle>{{ t("dataQualitySettings.codeTableDeleteFailed") }}</AlertTitle>
+              <AlertDescription class="break-words">
+                {{ codeTableActionError }}
+              </AlertDescription>
+            </Alert>
+            <PageState :loading="codeTablesLoading">
+              <div
+                v-if="codeTablesError"
+                class="space-y-2 text-sm text-muted-foreground"
+              >
+                <p>{{ t("dataQualitySettings.codeTableLoadFailed") }}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="loadCodeTables"
+                >
+                  {{ t("common.refresh") }}
+                </Button>
+              </div>
+              <EmptyState
+                v-else-if="codeTables.length === 0"
+                :icon="ListChecks"
+                :title="t('dataQualitySettings.codeTableEmpty')"
+                :description="t('dataQualitySettings.codeTableEmptyHint')"
+              />
+              <Table
+                v-else
+                class="table-fixed"
+              >
+                <TableHeader>
+                  <TableRow>
+                    <TableHead class="w-[28%]">
+                      {{ t("dataQualitySettings.codeTableColumnTitle") }}
+                    </TableHead>
+                    <TableHead class="w-[32%]">
+                      {{ t("dataQualitySettings.codeTableColumnDescription") }}
+                    </TableHead>
+                    <TableHead class="w-[14%]">
+                      {{ t("dataQualitySettings.codeTableColumnValues") }}
+                    </TableHead>
+                    <TableHead class="w-[16%]">
+                      {{ t("dataQualitySettings.codeTableColumnUpdatedAt") }}
+                    </TableHead>
+                    <TableHead class="w-[10%] text-right">
+                      {{ t("common.actions") }}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow
+                    v-for="table in codeTables"
+                    :key="table.name"
+                  >
+                    <TableCell>
+                      <div
+                        class="truncate font-medium"
+                        :title="table.title"
+                      >
+                        {{ table.title || "-" }}
+                      </div>
+                    </TableCell>
+                    <TableCell class="text-muted-foreground">
+                      <div
+                        class="truncate"
+                        :title="table.description"
+                      >
+                        {{ table.description || "-" }}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {{ table.valueCount }}
+                    </TableCell>
+                    <TableCell class="text-muted-foreground">
+                      <div
+                        class="truncate"
+                        :title="formatDateTime(table.updateTime, locale)"
+                      >
+                        {{ formatDateTime(table.updateTime, locale) }}
+                      </div>
+                    </TableCell>
+                    <TableCell class="text-right">
+                      <div class="flex items-center justify-end gap-1">
+                        <Button
+                          v-if="canUpdateCodeTable"
+                          variant="ghost"
+                          size="icon"
+                          :title="t('common.edit')"
+                          @click="openEditCodeTable(table)"
+                        >
+                          <Pencil class="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          v-if="canDeleteCodeTable"
+                          variant="ghost"
+                          size="icon"
+                          :title="t('common.delete')"
+                          @click="confirmDeleteCodeTable(table)"
+                        >
+                          <Trash2 class="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </PageState>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>{{ t("dataQualitySettings.digestSection") }}</CardTitle>
@@ -447,19 +586,140 @@
         </Card>
       </div>
     </PageState>
+
+    <!-- Create or edit one code table. The values are edited as text or imported
+         from a CSV client-side; both paths trim, skip blanks/comments and
+         de-duplicate before anything is sent. -->
+    <Dialog v-model:open="codeTableDialogOpen">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {{
+              editingCodeTable
+                ? t("dataQualitySettings.editCodeTable")
+                : t("dataQualitySettings.addCodeTable")
+            }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ t("dataQualitySettings.codeTablesSectionDescription") }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-4">
+          <FormField
+            id="dq-code-table-title"
+            v-model="codeTableForm.title"
+            required
+            :error="codeTableTitleError"
+            :label="t('dataQualitySettings.codeTableTitle')"
+            :placeholder="t('dataQualitySettings.codeTableTitlePlaceholder')"
+          />
+          <div class="space-y-2">
+            <Label for="dq-code-table-description">
+              {{ t("dataQualitySettings.codeTableDescription") }}
+            </Label>
+            <textarea
+              id="dq-code-table-description"
+              v-model="codeTableForm.description"
+              class="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              :placeholder="t('dataQualitySettings.codeTableDescriptionPlaceholder')"
+            />
+          </div>
+          <div class="space-y-2">
+            <Label for="dq-code-table-values">
+              {{ t("dataQualitySettings.codeTableValues") }}
+            </Label>
+            <textarea
+              id="dq-code-table-values"
+              v-model="codeTableForm.values"
+              class="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+              :placeholder="t('dataQualitySettings.codeTableValuesPlaceholder')"
+              :disabled="codeTableLoading"
+            />
+            <p class="text-sm text-muted-foreground">
+              {{ t("dataQualitySettings.codeTableValuesHint") }}
+            </p>
+          </div>
+          <div class="space-y-2">
+            <Label for="dq-code-table-csv">
+              {{ t("dataQualitySettings.codeTableImportCsv") }}
+            </Label>
+            <Input
+              id="dq-code-table-csv"
+              type="file"
+              accept=".csv,text/csv"
+              :disabled="codeTableLoading"
+              @change="onCodeTableCsv"
+            />
+            <p class="text-sm text-muted-foreground">
+              {{ t("dataQualitySettings.codeTableImportHint") }}
+            </p>
+          </div>
+          <p
+            v-if="codeTableDialogError"
+            class="text-sm text-destructive"
+          >
+            {{ codeTableDialogError }}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            :disabled="codeTableSaving"
+            @click="codeTableDialogOpen = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="codeTableSaving || codeTableLoading"
+            data-save-code-table
+            @click="saveCodeTable"
+          >
+            {{ codeTableSaving ? t("common.loading") : t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- A referenced table is refused server-side; the card shows that message
+         instead of pretending the delete succeeded. -->
+    <ConfirmDeleteDialog
+      v-model="codeTableDeleteOpen"
+      :title="t('dataQualitySettings.deleteCodeTable')"
+      :message="t('dataQualitySettings.deleteCodeTableConfirm')"
+      :item-name="codeTableToDelete?.title ?? ''"
+      :loading="codeTableDeleting"
+      @confirm="deleteCodeTable"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { AlertTriangle, Loader2 } from "lucide-vue-next";
+import { create } from "@bufbuild/protobuf";
+import {
+  AlertTriangle,
+  ListChecks,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { getQualityLLMUsage } from "@/api/data-quality";
+import {
+  createQualityCodeTable,
+  deleteQualityCodeTable,
+  getQualityCodeTable,
+  getQualityLLMUsage,
+  listAllQualityCodeTables,
+  updateQualityCodeTable,
+} from "@/api/data-quality";
 import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
   updateDataQualitySetting,
 } from "@/api/setting";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -472,7 +732,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import FormField from "@/components/ui/form-field/FormField.vue";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -481,10 +750,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
-import type { QualityLLMUsage } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  type QualityCodeTable,
+  QualityCodeTableSchema,
+  type QualityLLMUsage,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import { DayOfWeek } from "@/types/proto-es/v1/setting_service_pb";
 import { formatRowCount } from "@/utils/dataQuality";
 import type { ScheduleUnit } from "@/utils/dataQualityForm";
@@ -498,6 +779,12 @@ import {
 } from "@/utils/dataQualitySettings";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { isProviderAllowed } from "@/utils/llmProvider";
+import {
+  joinCodeTableValues,
+  mergeCodeTableValues,
+  parseCodeTableCsv,
+  parseCodeTableLines,
+} from "@/utils/qualityCodeTable";
 
 /**
  * The data quality subsystem's workspace configuration. Every field is part of
@@ -521,12 +808,43 @@ const usage = ref<QualityLLMUsage>();
 const usageLoading = ref(false);
 const usageError = ref("");
 
+/** The code-table card: the list, its dialogs, and their own failures. */
+const codeTables = ref<QualityCodeTable[]>([]);
+const codeTablesLoading = ref(false);
+const codeTablesError = ref(false);
+const codeTableActionError = ref("");
+const codeTableDialogOpen = ref(false);
+const editingCodeTable = ref<QualityCodeTable>();
+const codeTableForm = ref({ title: "", description: "", values: "" });
+const codeTableTitleError = ref("");
+const codeTableDialogError = ref("");
+const codeTableSaving = ref(false);
+/** Whether one table's values are still being read into the edit dialog. */
+const codeTableLoading = ref(false);
+const codeTableDeleteOpen = ref(false);
+const codeTableToDelete = ref<QualityCodeTable>();
+const codeTableDeleting = ref(false);
+
 const canUpdate = computed(() =>
   authStore.hasPermission("metaxisdata.settings.update")
 );
 // The usage RPC is part of the data-quality suggest surface, not settings.
 const canSuggest = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.suggest")
+);
+// Code tables are a data-quality resource, not a settings field: each action has
+// its own permission, and the card only exists for a reader who may list them.
+const canListCodeTables = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.codeTables.list")
+);
+const canCreateCodeTable = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.codeTables.create")
+);
+const canUpdateCodeTable = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.codeTables.update")
+);
+const canDeleteCodeTable = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.codeTables.delete")
 );
 
 const isDirty = computed(() => JSON.stringify(form.value) !== original.value);
@@ -581,6 +899,7 @@ async function load() {
   isLoading.value = true;
   error.value = "";
   saveError.value = "";
+  codeTableActionError.value = "";
   try {
     const profile = await getWorkspaceProfileSetting();
     form.value = settingsToForm(profile.dataQuality);
@@ -588,6 +907,7 @@ async function load() {
     issues.value = [];
     await loadProfiles(profile.allowedLlmProviderProfiles ?? []);
     void loadUsage();
+    void loadCodeTables();
   } catch (e: unknown) {
     error.value = formatError(e, "dataQualitySettings.fetchError");
   } finally {
@@ -651,6 +971,184 @@ function ratio(used: number, limit: number): string {
     used: formatRowCount(used, locale.value),
     limit: formatRowCount(limit, locale.value),
   });
+}
+
+/**
+ * Read the code-table summaries. A failed read stays inside the card so the
+ * settings form, which loaded fine, remains editable.
+ */
+async function loadCodeTables() {
+  if (!canListCodeTables.value) {
+    codeTables.value = [];
+    return;
+  }
+  codeTablesLoading.value = true;
+  codeTablesError.value = false;
+  try {
+    codeTables.value = await listAllQualityCodeTables();
+  } catch {
+    codeTables.value = [];
+    codeTablesError.value = true;
+  } finally {
+    codeTablesLoading.value = false;
+  }
+}
+
+function openCreateCodeTable() {
+  editingCodeTable.value = undefined;
+  codeTableForm.value = { title: "", description: "", values: "" };
+  codeTableTitleError.value = "";
+  codeTableDialogError.value = "";
+  codeTableDialogOpen.value = true;
+}
+
+/**
+ * Open one table for editing. The list carries summaries only, so the values
+ * arrive from GetQualityCodeTable; a failed read leaves the dialog explaining
+ * why it cannot save rather than sending an empty value list over the old one.
+ */
+async function openEditCodeTable(table: QualityCodeTable) {
+  editingCodeTable.value = table;
+  codeTableForm.value = {
+    title: table.title,
+    description: table.description,
+    values: "",
+  };
+  codeTableTitleError.value = "";
+  codeTableDialogError.value = "";
+  codeTableDialogOpen.value = true;
+  codeTableLoading.value = true;
+  try {
+    const full = await getQualityCodeTable(table.name);
+    if (
+      !codeTableDialogOpen.value ||
+      editingCodeTable.value?.name !== full.name
+    ) {
+      return;
+    }
+    codeTableForm.value = {
+      title: full.title,
+      description: full.description,
+      values: joinCodeTableValues(full.values),
+    };
+  } catch (e: unknown) {
+    if (
+      codeTableDialogOpen.value &&
+      editingCodeTable.value?.name === table.name
+    ) {
+      codeTableDialogError.value = formatError(
+        e,
+        "dataQualitySettings.codeTableLoadFailed"
+      );
+    }
+  } finally {
+    codeTableLoading.value = false;
+  }
+}
+
+/**
+ * Append the codes a CSV contributed to the textarea. The parse is client-side
+ * and never uploads the file: only the resulting list is sent with the table.
+ */
+async function onCodeTableCsv(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) {
+    return;
+  }
+  try {
+    const text = await file.text();
+    codeTableForm.value.values = mergeCodeTableValues(
+      codeTableForm.value.values,
+      parseCodeTableCsv(text)
+    );
+    codeTableDialogError.value = "";
+  } catch {
+    codeTableDialogError.value = t("dataQualitySettings.codeTableCsvFailed");
+  } finally {
+    input.value = "";
+  }
+}
+
+async function saveCodeTable() {
+  const title = codeTableForm.value.title.trim();
+  codeTableTitleError.value = "";
+  codeTableDialogError.value = "";
+  if (!title) {
+    codeTableTitleError.value = t("dataQualitySettings.codeTableTitleRequired");
+    return;
+  }
+  const values = parseCodeTableLines(codeTableForm.value.values);
+  if (values.length === 0) {
+    codeTableDialogError.value = t(
+      "dataQualitySettings.codeTableValuesRequired"
+    );
+    return;
+  }
+  codeTableSaving.value = true;
+  try {
+    const editing = editingCodeTable.value;
+    if (editing) {
+      const updated = create(QualityCodeTableSchema, editing);
+      updated.title = title;
+      updated.description = codeTableForm.value.description.trim();
+      updated.values = values;
+      await updateQualityCodeTable(updated, ["title", "description", "values"]);
+      notify.success(t("dataQualitySettings.codeTableUpdated"));
+    } else {
+      await createQualityCodeTable(
+        create(QualityCodeTableSchema, {
+          title,
+          description: codeTableForm.value.description.trim(),
+          values,
+        })
+      );
+      notify.success(t("dataQualitySettings.codeTableCreated"));
+    }
+    codeTableDialogOpen.value = false;
+    await loadCodeTables();
+  } catch (e: unknown) {
+    codeTableDialogError.value = formatError(
+      e,
+      "dataQualitySettings.codeTableSaveFailed"
+    );
+  } finally {
+    codeTableSaving.value = false;
+  }
+}
+
+function confirmDeleteCodeTable(table: QualityCodeTable) {
+  codeTableToDelete.value = table;
+  codeTableDeleteOpen.value = true;
+}
+
+/**
+ * Delete one table. The server refuses one that a rule or template still
+ * references (FailedPrecondition); that wording is surfaced in the card because
+ * it names the checks that must be dealt with first.
+ */
+async function deleteCodeTable() {
+  const table = codeTableToDelete.value;
+  if (!table) {
+    return;
+  }
+  codeTableDeleting.value = true;
+  codeTableActionError.value = "";
+  try {
+    await deleteQualityCodeTable(table.name);
+    notify.success(t("dataQualitySettings.codeTableDeleted"));
+    codeTableDeleteOpen.value = false;
+    codeTableToDelete.value = undefined;
+    await loadCodeTables();
+  } catch (e: unknown) {
+    codeTableActionError.value = formatError(
+      e,
+      "dataQualitySettings.codeTableDeleteFailed"
+    );
+    codeTableDeleteOpen.value = false;
+  } finally {
+    codeTableDeleting.value = false;
+  }
 }
 
 async function handleSave() {

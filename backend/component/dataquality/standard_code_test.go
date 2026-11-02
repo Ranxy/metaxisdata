@@ -303,7 +303,7 @@ func TestEvaluateStandardCodeRows(t *testing.T) {
 		{int64(4), "91330100799655058B"},
 	}
 	violations, evaluated, failing, err := evaluateStandardCodeRows(
-		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, false, 1, rows, 1)
+		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, false, 1, rows, 1, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), violations)
 	require.Equal(t, int64(4), evaluated)
@@ -313,7 +313,7 @@ func TestEvaluateStandardCodeRows(t *testing.T) {
 
 	// allow_null turns a NULL row into a pass but leaves every other violation.
 	violations, evaluated, _, err = evaluateStandardCodeRows(
-		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, true, 1, rows, 10)
+		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, true, 1, rows, 10, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), violations)
 	require.Equal(t, int64(4), evaluated)
@@ -324,7 +324,7 @@ func TestEvaluateStandardCodeRowsRejectsNonText(t *testing.T) {
 
 	_, _, _, err := evaluateStandardCodeRows(
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, false, 1,
-		[][]any{{int64(1), int64(42)}}, 0)
+		[][]any{{int64(1), int64(42)}}, 0, nil)
 	require.Error(t, err)
 }
 
@@ -397,6 +397,13 @@ func runStandardCodeExecution(t *testing.T, config *storepb.QualityRuleConfig, r
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE, config),
 		opts)
 	return execution, queryer, err
+}
+
+// runStandardCodeExecutionWithOptions is runStandardCodeExecution with an explicit
+// ExecOptions, for tests that need the code table or masking configuration.
+func runStandardCodeExecutionWithOptions(t *testing.T, config *storepb.QualityRuleConfig, result *db.QueryResult, opts ExecOptions) (*Execution, *execFakeQueryer, error) {
+	t.Helper()
+	return runStandardCodeExecution(t, config, result, opts)
 }
 
 func TestExecuteStandardCodeRuleCountsInvalidValues(t *testing.T) {

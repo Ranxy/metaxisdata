@@ -685,6 +685,39 @@ describe("standard code checks", () => {
     expect(keys).toContain(`${VALIDATION_PREFIX}standardRequired`);
   });
 
+  it("sends and re-reads the workspace table a custom standard validates against", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    form.config.standard = QualityStandardCode.CUSTOM_CODE_TABLE;
+    form.config.codeTable = "workspaces/-/qualityCodeTables/municipal";
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "standardCode") {
+      throw new Error("expected a standard-code config arm");
+    }
+    expect(rule.config.config.value.codeTable).toBe(
+      "workspaces/-/qualityCodeTables/municipal"
+    );
+    expect(ruleToForm(rule).config.codeTable).toBe(
+      "workspaces/-/qualityCodeTables/municipal"
+    );
+  });
+
+  it("requires a workspace table only for a custom standard", () => {
+    const form = validForm(QualityRuleType.STANDARD_CODE);
+    form.config.standard = QualityStandardCode.CUSTOM_CODE_TABLE;
+    form.config.codeTable = "";
+    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
+      `${VALIDATION_PREFIX}codeTableRequired`
+    );
+
+    // A built-in standard brings its own table; a workspace one only narrows it.
+    form.config.standard = QualityStandardCode.ORGANIZATION_CODE;
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+
+    form.config.standard = QualityStandardCode.CUSTOM_CODE_TABLE;
+    form.config.codeTable = "workspaces/-/qualityCodeTables/municipal";
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+  });
+
   it("accepts the server's sample row range and refuses the rest", () => {
     const form = validForm(QualityRuleType.STANDARD_CODE);
     for (const sampleRows of ["0", "1", "100000", ""]) {

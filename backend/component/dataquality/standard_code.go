@@ -85,6 +85,12 @@ func validateStandardCodeConfig(target ResolvedTarget, config *storepb.QualityRu
 	switch standard.GetStandard() {
 	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED:
 		return invalidConfig("a standard-code rule needs a standard")
+	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE:
+		// The reference is resolved and canonicalized by the API; validation only
+		// proves one was supplied, because the component has no store to look it up.
+		if strings.TrimSpace(standard.GetCodeTable()) == "" {
+			return invalidConfig("a custom code table standard requires a code_table reference")
+		}
 	default:
 		if !knownStandard(standard.GetStandard()) {
 			return invalidConfig("standard %s is not supported by this build", standard.GetStandard())
@@ -109,8 +115,9 @@ func standardCodeValueIndex(columns []string, column string) (int, error) {
 
 // evaluateStandardCodeRows validates the checked value of every sampled row. It
 // records how many rows it read and, up to failingLimit, the offending rows
-// themselves (including their key columns).
-func evaluateStandardCodeRows(standard storepb.QualityStandardCode, allowNull bool, valueIndex int, rows [][]any, failingLimit int) (violations, evaluated int64, failing [][]any, err error) {
+// themselves (including their key columns). codeTable is nil when the rule names
+// no workspace code table; when it is set, a value must also be a member.
+func evaluateStandardCodeRows(standard storepb.QualityStandardCode, allowNull bool, valueIndex int, rows [][]any, failingLimit int, codeTable map[string]struct{}) (violations, evaluated int64, failing [][]any, err error) {
 	for rowIndex, row := range rows {
 		if valueIndex < 0 || valueIndex >= len(row) {
 			return 0, 0, nil, badData("sample row %d has %d values, expect the checked value at %d", rowIndex, len(row), valueIndex)
@@ -123,7 +130,7 @@ func evaluateStandardCodeRows(standard storepb.QualityStandardCode, allowNull bo
 		if isNull && allowNull {
 			continue
 		}
-		if !isNull && validStandardCode(standard, value) {
+		if !isNull && standardCodeAccepts(standard, value, codeTable) {
 			continue
 		}
 		violations++
@@ -157,13 +164,72 @@ func knownStandard(standard storepb.QualityStandardCode) bool {
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ORGANIZATION_CODE,
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_RESIDENT_ID_CARD,
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION,
-		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION:
+		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION,
+		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE:
 		return true
 	case storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNSPECIFIED:
 		return false
 	default:
 		return false
 	}
+}
+
+// standardCodeTableSet builds the accepted-value set of one rule's code table. A
+// rule without a reference has no set, and a built-in standard stays valid on its
+// own. A reference with no loaded values is a defect rather than an empty
+// allow-list: for a custom code table it means the table is empty or was not
+// loaded, and for a built-in standard the narrowing filter would silently reject
+// every value.
+func standardCodeTableSet(standard storepb.QualityStandardCode, reference string, values []string) (map[string]struct{}, error) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		if standard == storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE {
+			return nil, invalidConfig("a custom code table standard requires a code_table reference")
+		}
+		return nil, nil
+	}
+	if len(values) == 0 {
+		return nil, invalidConfig("the code table %q has no values; add codes or clear the rule's code table", reference)
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		// A built-in standard normalizes case in its own validator, so its narrowing
+		// set must be normalized the same way; a workspace custom table is
+		// case-sensitive and its codes are authoritative.
+		if standard != storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE {
+			value = strings.ToUpper(strings.TrimRight(value, " "))
+		}
+		set[value] = struct{}{}
+	}
+	return set, nil
+}
+
+// standardCodeAccepts reports whether one sampled value satisfies the rule. A
+// custom code table has no built-in algorithm, so membership alone decides. A
+// built-in standard always checks its own algorithm and, when the rule narrows it
+// with a code table, must also be a member of that table.
+func standardCodeAccepts(standard storepb.QualityStandardCode, value string, codeTable map[string]struct{}) bool {
+	if standard != storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE && !validStandardCode(standard, value) {
+		return false
+	}
+	if codeTable == nil {
+		return true
+	}
+	return standardCodeTableContains(standard, codeTable, value)
+}
+
+// standardCodeTableContains looks one value up in the accepted-value set. The code
+// table's stored values are trimmed; the sampled value keeps its leading
+// whitespace (padding on a fixed-width CHAR is tolerated, a leading space is not). A
+// built-in standard normalizes case the way its validator does, while a custom
+// table is case-sensitive: the workspace's codes are authoritative.
+func standardCodeTableContains(standard storepb.QualityStandardCode, codeTable map[string]struct{}, value string) bool {
+	value = strings.TrimRight(value, " ")
+	if standard != storepb.QualityStandardCode_QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE {
+		value = strings.ToUpper(value)
+	}
+	_, ok := codeTable[value]
+	return ok
 }
 
 // validStandardCode dispatches one value to its standard's pure validator.

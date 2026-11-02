@@ -289,6 +289,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityCodeTableValues"><span class="badge">M</span>QualityCodeTableValues</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityContractCheck"><span class="badge">M</span>QualityContractCheck</a>
                 </li>
               
@@ -2291,6 +2295,30 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
 
         
       
+        <h3 id="metaxisdata.store.QualityCodeTableValues">QualityCodeTableValues</h3>
+        <p>QualityCodeTableValues is the JSONB payload of one code table: the accepted</p><p>codes, sorted and de-duplicated by the server.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>values</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityContractCheck">QualityContractCheck</h3>
         <p>QualityContractCheck is one rule as a published contract records it.</p>
 
@@ -3829,6 +3857,16 @@ default (10000); the accepted range is 1-100000. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>code_table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Optional workspace code table the value must also exist in, as a
+&#34;workspaces/{workspace}/qualityCodeTables/{quality_code_table}&#34; resource name.
+Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it
+narrows the accepted values (for example a customer&#39;s current division list). </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -5007,6 +5045,14 @@ administrative-division prefix.</p></td>
                 <td>5</td>
                 <td><p>GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the
 built-in classification table.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE</td>
+                <td>6</td>
+                <td><p>A workspace-defined code table: the value must exist in the referenced
+quality code table. Use it for standard code sets that are not bundled with
+the server (for example an industry or municipal code set).</p></td>
               </tr>
             
           </tbody>

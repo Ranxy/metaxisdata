@@ -32,6 +32,7 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityCodeTableValues](#metaxisdata-store-QualityCodeTableValues)
     - [QualityContractCheck](#metaxisdata-store-QualityContractCheck)
     - [QualityContractSettings](#metaxisdata-store-QualityContractSettings)
     - [QualityContractSnapshot](#metaxisdata-store-QualityContractSnapshot)
@@ -709,6 +710,22 @@ value the column holds.
 
 
 
+<a name="metaxisdata-store-QualityCodeTableValues"></a>
+
+### QualityCodeTableValues
+QualityCodeTableValues is the JSONB payload of one code table: the accepted
+codes, sorted and de-duplicated by the server.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| values | [string](#string) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityContractCheck"></a>
 
 ### QualityContractCheck
@@ -1287,6 +1304,7 @@ in process, so its verdict is a sample verdict like cel_expression&#39;s.
 | sample_rows | [int32](#int32) |  | How many rows of the filtered relation one execution reads. 0 means the default (10000); the accepted range is 1-100000. |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+| code_table | [string](#string) |  | Optional workspace code table the value must also exist in, as a &#34;workspaces/{workspace}/qualityCodeTables/{quality_code_table}&#34; resource name. Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it narrows the accepted values (for example a customer&#39;s current division list). |
 
 
 
@@ -1693,6 +1711,7 @@ one) and whether membership in a built-in code table applies.
 | QUALITY_STANDARD_CODE_RESIDENT_ID_CARD | 3 | GB 11643-1999: 18 digits, MOD 11 check digit, a real birth date and a valid administrative-division prefix. |
 | QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION | 4 | GB/T 2260: a 6-digit code that exists in the built-in division table. |
 | QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION | 5 | GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the built-in classification table. |
+| QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE | 6 | A workspace-defined code table: the value must exist in the referenced quality code table. Use it for standard code sets that are not bundled with the server (for example an industry or municipal code set). |
 
 
 

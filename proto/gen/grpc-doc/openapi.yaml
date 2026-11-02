@@ -5100,6 +5100,186 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityCodeTables:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the workspace's code tables. A list response carries each table's value
+                 count but not its values; read one table with GetQualityCodeTable.
+            operationId: DataQualityService_ListQualityCodeTables
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of tables to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityCodeTablesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create a workspace code table. Values are sorted, de-duplicated and capped by
+                 the server, so an import is idempotent.
+            operationId: DataQualityService_CreateQualityCodeTable
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityCodeTable'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityCodeTable'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityCodeTables/{qualityCodeTable}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one code table including its values.
+            operationId: DataQualityService_GetQualityCodeTable
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityCodeTable
+                  in: path
+                  description: The qualityCodeTable id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityCodeTable'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - DataQualityService
+            description: |-
+                Delete a code table. A table still referenced by a rule or a template is
+                 refused with FailedPrecondition rather than silently breaking those checks.
+            operationId: DataQualityService_DeleteQualityCodeTable
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityCodeTable
+                  in: path
+                  description: The qualityCodeTable id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - DataQualityService
+            description: |-
+                Update a code table's title, description or values. Replacing the values is the
+                 import path.
+            operationId: DataQualityService_UpdateQualityCodeTable
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityCodeTable
+                  in: path
+                  description: The qualityCodeTable id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: 'The fields to replace: "title", "description", "values".'
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityCodeTable'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityCodeTable'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityConsumptionCoverage:
         get:
             tags:
@@ -5778,6 +5958,185 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityOverview'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuleTemplates:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the workspace's custom rule templates, newest first. Built-in templates
+                 are served by the client catalogue and are not part of this resource.
+            operationId: DataQualityService_ListQualityRuleTemplates
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of templates to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityRuleTemplatesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create a custom rule template. A template is a check type and its parameters:
+                 target-bound fields (columns, filter) are cleared by the server before it is
+                 stored.
+            operationId: DataQualityService_CreateQualityRuleTemplate
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityRuleTemplate'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRuleTemplate'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityRuleTemplates/{qualityRuleTemplate}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one custom rule template.
+            operationId: DataQualityService_GetQualityRuleTemplate
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRuleTemplate
+                  in: path
+                  description: The qualityRuleTemplate id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRuleTemplate'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - DataQualityService
+            description: Delete a custom rule template. Checks already created from it are unaffected.
+            operationId: DataQualityService_DeleteQualityRuleTemplate
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRuleTemplate
+                  in: path
+                  description: The qualityRuleTemplate id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - DataQualityService
+            description: |-
+                Update a custom rule template's title, description, severity, dimension or
+                 parameters. The same target-bound fields are cleared.
+            operationId: DataQualityService_UpdateQualityRuleTemplate
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityRuleTemplate
+                  in: path
+                  description: The qualityRuleTemplate id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: 'The fields to replace: "title", "description", "severity", "dimension", "config".'
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityRuleTemplate'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityRuleTemplate'
                 default:
                     description: Default error response
                     content:
@@ -10997,6 +11356,15 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityCodeTablesResponse:
+            type: object
+            properties:
+                qualityCodeTables:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityCodeTable'
+                nextPageToken:
+                    type: string
         ListQualityContractRevisionsResponse:
             type: object
             properties:
@@ -11022,6 +11390,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityIssue'
+                nextPageToken:
+                    type: string
+        ListQualityRuleTemplatesResponse:
+            type: object
+            properties:
+                qualityRuleTemplates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityRuleTemplate'
                 nextPageToken:
                     type: string
         ListQualityRulesResponse:
@@ -12483,6 +12860,48 @@ components:
                     description: |-
                         True when the live state already matched the newest published version, so no
                          new version was created.
+        QualityCodeTable:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table}'
+                title:
+                    type: string
+                description:
+                    type: string
+                values:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        The accepted codes, sorted and de-duplicated by the server. Empty in a list
+                         response, which carries value_count instead. At most 5000 values, each at most
+                         256 bytes.
+                valueCount:
+                    readOnly: true
+                    type: integer
+                    format: int32
+                createTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                updateTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                createdBy:
+                    readOnly: true
+                    type: string
+                    description: 'Format: users/{user}. Empty when the author is unknown.'
+                updatedBy:
+                    readOnly: true
+                    type: string
+                    description: 'Format: users/{user}. Empty when the last editor is unknown.'
+            description: |-
+                QualityCodeTable is a workspace-defined list of accepted codes used by a
+                 standard-code check, for example an industry-standard code set that is not
+                 bundled with the server.
         QualityConsumptionGap:
             type: object
             properties:
@@ -13570,6 +13989,86 @@ components:
                  many rows". The editor only offers the methods the target engine can express,
                  and the server refuses one it cannot, so a check never silently degrades to a
                  different sample.
+        QualityRuleTemplate:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template}'
+                title:
+                    type: string
+                description:
+                    type: string
+                ruleType:
+                    enum:
+                        - QUALITY_RULE_TYPE_UNSPECIFIED
+                        - QUALITY_RULE_TYPE_ROW_COUNT
+                        - QUALITY_RULE_TYPE_ROW_COUNT_CHANGE
+                        - QUALITY_RULE_TYPE_NULL_PERCENT
+                        - QUALITY_RULE_TYPE_UNIQUE
+                        - QUALITY_RULE_TYPE_UNIQUE_COMBINATION
+                        - QUALITY_RULE_TYPE_ACCEPTED_VALUES
+                        - QUALITY_RULE_TYPE_RANGE
+                        - QUALITY_RULE_TYPE_REGEX
+                        - QUALITY_RULE_TYPE_STRING_LENGTH
+                        - QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY
+                        - QUALITY_RULE_TYPE_CROSS_COLUMN
+                        - QUALITY_RULE_TYPE_FRESHNESS
+                        - QUALITY_RULE_TYPE_CUSTOM_SQL
+                        - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                        - QUALITY_RULE_TYPE_SCHEMA_DRIFT
+                        - QUALITY_RULE_TYPE_GROUP_CHECK
+                        - QUALITY_RULE_TYPE_AGGREGATE
+                        - QUALITY_RULE_TYPE_CROSS_TABLE
+                        - QUALITY_RULE_TYPE_STANDARD_CODE
+                    type: string
+                    format: enum
+                config:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityRuleConfig'
+                    description: |-
+                        The parameters to prefill. Target-bound fields (the checked column or columns,
+                         the filter, a schema-drift snapshot) are empty: a template names no table and no
+                         column. The config's oneof arm must match rule_type.
+                severity:
+                    enum:
+                        - QUALITY_SEVERITY_UNSPECIFIED
+                        - QUALITY_SEVERITY_WARNING
+                        - QUALITY_SEVERITY_ERROR
+                        - QUALITY_SEVERITY_CRITICAL
+                    type: string
+                    format: enum
+                dimension:
+                    enum:
+                        - QUALITY_DIMENSION_UNSPECIFIED
+                        - QUALITY_DIMENSION_COMPLETENESS
+                        - QUALITY_DIMENSION_VALIDITY
+                        - QUALITY_DIMENSION_UNIQUENESS
+                        - QUALITY_DIMENSION_CONSISTENCY
+                        - QUALITY_DIMENSION_TIMELINESS
+                        - QUALITY_DIMENSION_ACCURACY
+                    type: string
+                    format: enum
+                createTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                updateTime:
+                    readOnly: true
+                    type: string
+                    format: date-time
+                createdBy:
+                    readOnly: true
+                    type: string
+                    description: 'Format: users/{user}. Empty when the author is unknown.'
+                updatedBy:
+                    readOnly: true
+                    type: string
+                    description: 'Format: users/{user}. Empty when the last editor is unknown.'
+            description: |-
+                QualityRuleTemplate is a reusable check definition: a check type with its
+                 parameters, without a target or the columns a target owns. Applying one
+                 prefills a check editor; the check still has to be saved.
         QualityRuleTrend:
             type: object
             properties:
@@ -15065,6 +15564,7 @@ components:
                         - QUALITY_STANDARD_CODE_RESIDENT_ID_CARD
                         - QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION
                         - QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION
+                        - QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE
                     type: string
                     format: enum
                 allowNull:
@@ -15082,6 +15582,13 @@ components:
                 warnThreshold:
                     type: number
                     format: double
+                codeTable:
+                    type: string
+                    description: |-
+                        Optional workspace code table the value must also exist in, as a
+                         "workspaces/{workspace}/qualityCodeTables/{quality_code_table}" resource name.
+                         Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it
+                         narrows the accepted values (for example a customer's current division list).
             description: |-
                 StandardCodeConfig validates one column against a national or industry
                  standard code. The standard fixes the value shape, the check digit where one

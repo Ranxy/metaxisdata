@@ -97,7 +97,7 @@ test-integration-mysql:
 # The regex anchor needs a doubled dollar: make would otherwise read `$'` as a
 # one-character variable and hand the shell an unterminated quote.
 test-integration-data-quality:
-	go test -v -count=1 -tags=integration -run '^(TestDataQualityJourneyMySQLRealServerIntegration|TestDataQualityScheduleTiersRealServerIntegration|TestDataQualityIntervalCadenceSlotsRealServerIntegration|TestDataQualityTargetWithoutScheduleRowRealServerIntegration|TestDataQualityPersonalDataRedactionRealServerIntegration)$$' ./backend/test/integration/runner
+	go test -v -count=1 -tags=integration -run '^(TestDataQualityJourneyMySQLRealServerIntegration|TestDataQualityScheduleTiersRealServerIntegration|TestDataQualityIntervalCadenceSlotsRealServerIntegration|TestDataQualityTargetWithoutScheduleRowRealServerIntegration|TestDataQualityPersonalDataRedactionRealServerIntegration|TestDataQualityRuleTemplateRealServerIntegration|TestDataQualityCodeTableRealServerIntegration)$$' ./backend/test/integration/runner
 
 # The integration gate: every real-server scenario in this package plus the
 # migrator paths. Selection is by package, not by test-name substring: a test

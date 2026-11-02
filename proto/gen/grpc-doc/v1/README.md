@@ -239,12 +239,16 @@
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
+    - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
+    - [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest)
     - [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest)
     - [CrossColumnConfig](#metaxisdata-v1-CrossColumnConfig)
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
+    - [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
+    - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
     - [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest)
     - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
     - [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk)
@@ -255,6 +259,7 @@
     - [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
     - [GetQualityConsumptionCoverageResponse](#metaxisdata-v1-GetQualityConsumptionCoverageResponse)
     - [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest)
@@ -265,6 +270,7 @@
     - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
     - [GetQualityRuleRequest](#metaxisdata-v1-GetQualityRuleRequest)
+    - [GetQualityRuleTemplateRequest](#metaxisdata-v1-GetQualityRuleTemplateRequest)
     - [GetQualityRuleTrendRequest](#metaxisdata-v1-GetQualityRuleTrendRequest)
     - [GetQualityRunRequest](#metaxisdata-v1-GetQualityRunRequest)
     - [GetQualitySuggestionJobRequest](#metaxisdata-v1-GetQualitySuggestionJobRequest)
@@ -281,12 +287,16 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityCodeTablesRequest](#metaxisdata-v1-ListQualityCodeTablesRequest)
+    - [ListQualityCodeTablesResponse](#metaxisdata-v1-ListQualityCodeTablesResponse)
     - [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest)
     - [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse)
     - [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest)
     - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
+    - [ListQualityRuleTemplatesRequest](#metaxisdata-v1-ListQualityRuleTemplatesRequest)
+    - [ListQualityRuleTemplatesResponse](#metaxisdata-v1-ListQualityRuleTemplatesResponse)
     - [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest)
     - [ListQualityRulesResponse](#metaxisdata-v1-ListQualityRulesResponse)
     - [ListQualityRunsRequest](#metaxisdata-v1-ListQualityRunsRequest)
@@ -305,6 +315,7 @@
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
+    - [QualityCodeTable](#metaxisdata-v1-QualityCodeTable)
     - [QualityConsumptionGap](#metaxisdata-v1-QualityConsumptionGap)
     - [QualityContract](#metaxisdata-v1-QualityContract)
     - [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary)
@@ -329,6 +340,7 @@
     - [QualityRuleDraftConfig](#metaxisdata-v1-QualityRuleDraftConfig)
     - [QualityRuleHistory](#metaxisdata-v1-QualityRuleHistory)
     - [QualityRuleSampling](#metaxisdata-v1-QualityRuleSampling)
+    - [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate)
     - [QualityRuleTrend](#metaxisdata-v1-QualityRuleTrend)
     - [QualityRuleTrendPoint](#metaxisdata-v1-QualityRuleTrendPoint)
     - [QualityRun](#metaxisdata-v1-QualityRun)
@@ -370,9 +382,11 @@
     - [UniqueConfig](#metaxisdata-v1-UniqueConfig)
     - [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest)
     - [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse)
+    - [UpdateQualityCodeTableRequest](#metaxisdata-v1-UpdateQualityCodeTableRequest)
     - [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest)
     - [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest)
     - [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest)
+    - [UpdateQualityRuleTemplateRequest](#metaxisdata-v1-UpdateQualityRuleTemplateRequest)
     - [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest)
     - [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest)
   
@@ -4488,6 +4502,22 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
+<a name="metaxisdata-v1-CreateQualityCodeTableRequest"></a>
+
+### CreateQualityCodeTableRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| quality_code_table | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) |  | The table to create. Its name is assigned by the server. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateQualityRuleRequest"></a>
 
 ### CreateQualityRuleRequest
@@ -4499,6 +4529,22 @@ they are returned, so a wide text column cannot bloat the response.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The rule to create. Its name is assigned by the server. |
 | suggestion | [string](#string) |  | The suggestion this rule is created from, if any. When set, the rule&#39;s target is taken from the suggestion: a request target that names a different target is rejected rather than silently ignored, so a caller cannot create a rule for one table while accepting another table&#39;s draft. The suggestion is marked accepted once the rule exists. A decision that cannot be written does not roll the created rule back; it is logged and the suggestion can be decided explicitly. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateQualityRuleTemplateRequest"></a>
+
+### CreateQualityRuleTemplateRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| quality_rule_template | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) |  | The template to create. Its name is assigned by the server. |
 
 
 
@@ -4586,6 +4632,21 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 
 
 
+<a name="metaxisdata-v1-DeleteQualityCodeTableRequest"></a>
+
+### DeleteQualityCodeTableRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-DeleteQualityRuleRequest"></a>
 
 ### DeleteQualityRuleRequest
@@ -4595,6 +4656,21 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteQualityRuleTemplateRequest"></a>
+
+### DeleteQualityRuleTemplateRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} |
 
 
 
@@ -4803,6 +4879,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityCodeTableRequest"></a>
+
+### GetQualityCodeTableRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityConsumptionCoverageRequest"></a>
 
 ### GetQualityConsumptionCoverageRequest
@@ -4958,6 +5049,21 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRules/{quality_rule} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityRuleTemplateRequest"></a>
+
+### GetQualityRuleTemplateRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} |
 
 
 
@@ -5249,6 +5355,39 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityCodeTablesRequest"></a>
+
+### ListQualityCodeTablesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of tables to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityCodeTablesResponse"></a>
+
+### ListQualityCodeTablesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_code_tables | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityContractRevisionsRequest"></a>
 
 ### ListQualityContractRevisionsRequest
@@ -5360,6 +5499,39 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_issues | [QualityIssue](#metaxisdata-v1-QualityIssue) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityRuleTemplatesRequest"></a>
+
+### ListQualityRuleTemplatesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of templates to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityRuleTemplatesResponse"></a>
+
+### ListQualityRuleTemplatesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_rule_templates | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -5704,6 +5876,31 @@ ProfileValue is one frequent value of a low-cardinality column.
 | contract | [QualityContract](#metaxisdata-v1-QualityContract) |  |  |
 | revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
 | no_changes | [bool](#bool) |  | True when the live state already matched the newest published version, so no new version was created. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityCodeTable"></a>
+
+### QualityCodeTable
+QualityCodeTable is a workspace-defined list of accepted codes used by a
+standard-code check, for example an industry-standard code set that is not
+bundled with the server.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} |
+| title | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+| values | [string](#string) | repeated | The accepted codes, sorted and de-duplicated by the server. Empty in a list response, which carries value_count instead. At most 5000 values, each at most 256 bytes. |
+| value_count | [int32](#int32) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| created_by | [string](#string) |  | Format: users/{user}. Empty when the author is unknown. |
+| updated_by | [string](#string) |  | Format: users/{user}. Empty when the last editor is unknown. |
 
 
 
@@ -6275,6 +6472,33 @@ different sample.
 | ----- | ---- | ----- | ----------- |
 | max_rows | [int64](#int64) |  | Read at most this many rows of the filtered relation. Every engine can express it, and the read cost is bounded; the rows are an arbitrary prefix, so the sample is not random. |
 | percent | [double](#double) |  | Read approximately this percent (1-99) of the relation. The engine&#39;s own sampling clause decides the exact behavior; it is approximately random, and its cost depends on the engine. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityRuleTemplate"></a>
+
+### QualityRuleTemplate
+QualityRuleTemplate is a reusable check definition: a check type with its
+parameters, without a target or the columns a target owns. Applying one
+prefills a check editor; the check still has to be saved.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} |
+| title | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+| rule_type | [QualityRuleType](#metaxisdata-v1-QualityRuleType) |  |  |
+| config | [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig) |  | The parameters to prefill. Target-bound fields (the checked column or columns, the filter, a schema-drift snapshot) are empty: a template names no table and no column. The config&#39;s oneof arm must match rule_type. |
+| severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
+| dimension | [QualityDimension](#metaxisdata-v1-QualityDimension) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| created_by | [string](#string) |  | Format: users/{user}. Empty when the author is unknown. |
+| updated_by | [string](#string) |  | Format: users/{user}. Empty when the last editor is unknown. |
 
 
 
@@ -6967,6 +7191,7 @@ in process, so its verdict is a sample verdict like cel_expression&#39;s.
 | sample_rows | [int32](#int32) |  | How many rows of the filtered relation one execution reads. 0 means the default (10000); the accepted range is 1-100000. |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+| code_table | [string](#string) |  | Optional workspace code table the value must also exist in, as a &#34;workspaces/{workspace}/qualityCodeTables/{quality_code_table}&#34; resource name. Required for QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE; for a built-in standard it narrows the accepted values (for example a customer&#39;s current division list). |
 
 
 
@@ -7139,6 +7364,22 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
+<a name="metaxisdata-v1-UpdateQualityCodeTableRequest"></a>
+
+### UpdateQualityCodeTableRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_code_table | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The fields to replace: &#34;title&#34;, &#34;description&#34;, &#34;values&#34;. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-UpdateQualityContractRequest"></a>
 
 ### UpdateQualityContractRequest
@@ -7184,6 +7425,22 @@ measured per threshold_metric; the default fail threshold is zero.
 | ----- | ---- | ----- | ----------- |
 | rule | [QualityRule](#metaxisdata-v1-QualityRule) |  | The rule to update. Its name identifies it; only the fields named by update_mask are written. |
 | update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-UpdateQualityRuleTemplateRequest"></a>
+
+### UpdateQualityRuleTemplateRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_rule_template | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) |  |  |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | The fields to replace: &#34;title&#34;, &#34;description&#34;, &#34;severity&#34;, &#34;dimension&#34;, &#34;config&#34;. |
 
 
 
@@ -7581,6 +7838,7 @@ one) and whether membership in a built-in code table applies.
 | QUALITY_STANDARD_CODE_RESIDENT_ID_CARD | 3 | GB 11643-1999: 18 digits, MOD 11 check digit, a real birth date and a valid administrative-division prefix. |
 | QUALITY_STANDARD_CODE_ADMINISTRATIVE_DIVISION | 4 | GB/T 2260: a 6-digit code that exists in the built-in division table. |
 | QUALITY_STANDARD_CODE_INDUSTRY_CLASSIFICATION | 5 | GB/T 4754-2017: a section letter plus 2 to 4 digits that exists in the built-in classification table. |
+| QUALITY_STANDARD_CODE_CUSTOM_CODE_TABLE | 6 | A workspace-defined code table: the value must exist in the referenced quality code table. Use it for standard code sets that are not bundled with the server (for example an industry or municipal code set). |
 
 
 
@@ -7792,6 +8050,16 @@ scheduling is an internal concern and is not exposed as a resource.
 | BatchUpdateQualityRules | [BatchUpdateQualityRulesRequest](#metaxisdata-v1-BatchUpdateQualityRulesRequest) | [BatchUpdateQualityRulesResponse](#metaxisdata-v1-BatchUpdateQualityRulesResponse) | Update a batch of rules in one call. Each item is applied independently: a failure is reported in its own result and does not abort the other items. An item that names a stale revision fails on its own rather than overwriting a concurrent edit. |
 | UpdateQualityRule | [UpdateQualityRuleRequest](#metaxisdata-v1-UpdateQualityRuleRequest) | [QualityRule](#metaxisdata-v1-QualityRule) | Update a rule. Every semantic edit appends a revision, so a historical result always stays explainable by the definition that produced it. |
 | DeleteQualityRule | [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a rule. The rule, its revisions and results are only archived, never physically removed, so history stays readable. |
+| ListQualityRuleTemplates | [ListQualityRuleTemplatesRequest](#metaxisdata-v1-ListQualityRuleTemplatesRequest) | [ListQualityRuleTemplatesResponse](#metaxisdata-v1-ListQualityRuleTemplatesResponse) | List the workspace&#39;s custom rule templates, newest first. Built-in templates are served by the client catalogue and are not part of this resource. |
+| GetQualityRuleTemplate | [GetQualityRuleTemplateRequest](#metaxisdata-v1-GetQualityRuleTemplateRequest) | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) | Read one custom rule template. |
+| CreateQualityRuleTemplate | [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest) | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) | Create a custom rule template. A template is a check type and its parameters: target-bound fields (columns, filter) are cleared by the server before it is stored. |
+| UpdateQualityRuleTemplate | [UpdateQualityRuleTemplateRequest](#metaxisdata-v1-UpdateQualityRuleTemplateRequest) | [QualityRuleTemplate](#metaxisdata-v1-QualityRuleTemplate) | Update a custom rule template&#39;s title, description, severity, dimension or parameters. The same target-bound fields are cleared. |
+| DeleteQualityRuleTemplate | [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a custom rule template. Checks already created from it are unaffected. |
+| ListQualityCodeTables | [ListQualityCodeTablesRequest](#metaxisdata-v1-ListQualityCodeTablesRequest) | [ListQualityCodeTablesResponse](#metaxisdata-v1-ListQualityCodeTablesResponse) | List the workspace&#39;s code tables. A list response carries each table&#39;s value count but not its values; read one table with GetQualityCodeTable. |
+| GetQualityCodeTable | [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest) | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) | Read one code table including its values. |
+| CreateQualityCodeTable | [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest) | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) | Create a workspace code table. Values are sorted, de-duplicated and capped by the server, so an import is idempotent. |
+| UpdateQualityCodeTable | [UpdateQualityCodeTableRequest](#metaxisdata-v1-UpdateQualityCodeTableRequest) | [QualityCodeTable](#metaxisdata-v1-QualityCodeTable) | Update a code table&#39;s title, description or values. Replacing the values is the import path. |
+| DeleteQualityCodeTable | [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a code table. A table still referenced by a rule or a template is refused with FailedPrecondition rather than silently breaking those checks. |
 | PreviewQualityRule | [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest) | [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse) | Validate and compile a rule without saving it: config validation, filter validation and a `LIMIT 0` probe against the target&#39;s read-only data source. It writes nothing and creates no run. |
 | RunQualityRules | [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest) | [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse) | Execute rules now. One execution is planned per selected rule; the call returns them all as PENDING after queueing them. Clients poll GetQualityExecution for each execution&#39;s state and outcome. |
 | ListQualityExecutions | [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest) | [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse) | List executions, newest first. |
