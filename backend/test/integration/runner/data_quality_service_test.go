@@ -535,6 +535,7 @@ func TestDataQualityBatchUpdateRulesRealServerIntegration(t *testing.T) {
 		if err != nil {
 			return false
 		}
+		matched := 0
 		for _, entry := range response.Msg.GetAuditLogs() {
 			if entry.GetMethod() != v1connect.DataQualityServiceBatchUpdateQualityRulesProcedure {
 				continue
@@ -545,11 +546,11 @@ func TestDataQualityBatchUpdateRulesRealServerIntegration(t *testing.T) {
 			if len(entry.GetRequest().GetFields()["requests"].GetListValue().GetValues()) != 6 {
 				continue
 			}
+			matched++
 			auditLog = entry
-			return true
 		}
-		return false
-	}, 30*time.Second, 250*time.Millisecond, "the batch update never reached the audit ledger: %s", fixture.env.ServerLogs())
+		return matched == 1
+	}, 30*time.Second, 250*time.Millisecond, "the batch update must write exactly one audit row: %s", fixture.env.ServerLogs())
 	require.Equal(t, 6, len(auditLog.GetResponse().GetFields()["results"].GetListValue().GetValues()),
 		"the single audit row carries the per-item results")
 
@@ -616,7 +617,8 @@ func TestDataQualityBatchUpdateRulesRealServerIntegration(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.Len(t, archivedBatch.Msg.GetResults(), 1)
-	require.NotEmpty(t, archivedBatch.Msg.GetResults()[0].GetError(), "an archived rule is not updatable")
+	require.Contains(t, archivedBatch.Msg.GetResults()[0].GetError(), "not_found:",
+		"an archived rule's refusal keeps its Connect code so the client can localize it")
 	require.Nil(t, archivedBatch.Msg.GetResults()[0].GetRule())
 
 	// Only rules.update may batch-edit: a workspace member has the read baseline

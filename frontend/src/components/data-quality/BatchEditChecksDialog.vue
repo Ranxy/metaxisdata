@@ -218,7 +218,7 @@
             id="dq-batch-edit-owner"
             v-model="ownerValue"
             :label="t('dataQuality.filterOwner')"
-            :placeholder="t('dataQuality.checks.batchEdit.mixedPlaceholder')"
+            :placeholder="t('dataQuality.checks.batchEdit.ownerPlaceholder')"
             :no-owner-value="UNASSIGNED_OWNER"
             :no-owner-label="t('dataQuality.unassignedOwner')"
             :hint="t('dataQuality.checks.batchEdit.ownerHint')"
@@ -290,6 +290,14 @@
               :hint="t('dataQuality.editor.thresholdHint')"
               :error="thresholdValidation.fail"
             />
+            <!-- The required-field error would hide the FormField hint, so the
+                 mixed-fail explanation sits beside the control. -->
+            <p
+              v-if="failPrefillMixed"
+              class="text-xs text-muted-foreground"
+            >
+              {{ t("dataQuality.checks.batchEdit.thresholdFailMixedHint") }}
+            </p>
             <FormField
               id="dq-batch-edit-warn-threshold"
               v-model="warnThreshold"
@@ -502,6 +510,12 @@ const metricValue = ref("");
 const failThreshold = ref("");
 const warnThreshold = ref("");
 const clearWarn = ref(false);
+/** True when the selection's stored failure thresholds differ, so a warn-only
+ *  edit has to supply a failure threshold explicitly. */
+const failPrefillMixed = ref(false);
+/** The metric the selection prefilled, so a caller's unit switch can be told
+ *  apart from the prefill itself. */
+let prefilledMetric = "";
 const submitting = ref(false);
 const error = ref("");
 const results = ref<BatchUpdateQualityRuleResult[]>([]);
@@ -643,7 +657,7 @@ const canSubmit = computed(() => {
     case "on_empty":
       return applicable.value.length > 0 && onEmptyValue.value !== "";
     case "threshold":
-      return thresholdValidation.value.valid;
+      return thresholdAvailable.value && thresholdValidation.value.valid;
     default:
       return false;
   }
@@ -718,6 +732,21 @@ watch(
 // prefilled from the selection, or left for the operator when it disagrees.
 watch(field, () => applyFieldDefaults());
 
+// The unit and the amounts belong together: switching the metric drops the
+// prefilled amounts instead of carrying them over as a silent reinterpretation.
+// The prefill itself is not a switch.
+watch(metricValue, (value, previous) => {
+  if (
+    field.value !== "threshold" ||
+    value === previous ||
+    value === prefilledMetric
+  ) {
+    return;
+  }
+  failThreshold.value = "";
+  warnThreshold.value = "";
+});
+
 function reset() {
   snapshot.value = props.rules.slice(0, MAX_BATCH);
   fieldsReset();
@@ -737,9 +766,11 @@ function fieldsReset() {
   ownerValue.value = "";
   onEmptyValue.value = "";
   metricValue.value = "";
+  prefilledMetric = "";
   failThreshold.value = "";
   warnThreshold.value = "";
   clearWarn.value = false;
+  failPrefillMixed.value = false;
 }
 
 /**
@@ -786,10 +817,12 @@ function applyFieldDefaults() {
         agreedValue(forms.map((form) => form.thresholdMetric)),
         metricOptions
       );
-      failThreshold.value =
-        agreedValue(
-          forms.map((form) => (form.config.failThreshold ?? "").trim())
-        ) ?? "";
+      prefilledMetric = metricValue.value;
+      const agreedFail = agreedValue(
+        forms.map((form) => (form.config.failThreshold ?? "").trim())
+      );
+      failPrefillMixed.value = agreedFail === undefined;
+      failThreshold.value = agreedFail ?? "";
       // A blank warning means "keep each check's current one", so a mixed
       // selection prefills blank by design.
       warnThreshold.value =

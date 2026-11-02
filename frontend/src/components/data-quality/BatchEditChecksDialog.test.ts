@@ -515,12 +515,89 @@ describe("BatchEditChecksDialog", () => {
     expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
 
     await pick("dq-batch-edit-metric", String(QualityThresholdMetric.PERCENT));
+    // The unit change clears the amounts read in the mixed units, so the
+    // operator has to restate the failure threshold.
+    expect(inputValue("#dq-batch-edit-fail-threshold")).toBe("");
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+    setInput("#dq-batch-edit-fail-threshold", "1");
+    await nextTick();
+    await flushPromises();
     expect(submitButton(2)?.hasAttribute("disabled")).toBe(false);
     submitButton(2)?.click();
     await flushPromises();
     expect(lastRequests()[0]?.rule.config?.thresholdMetric).toBe(
       QualityThresholdMetric.PERCENT
     );
+  });
+
+  it("requires an explicit failure threshold when the selection's values differ", async () => {
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        warn: 0.5,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 2,
+        warn: 0.5,
+        revision: 4,
+      }),
+    ]);
+    await pick("dq-batch-edit-field", "threshold");
+    // The fail values differ, so the operator has to supply the replacement;
+    // the hint says why a warn-only edit still needs it.
+    expect(inputValue("#dq-batch-edit-fail-threshold")).toBe("");
+    expect(document.body.textContent).toContain(
+      label("dataQuality.checks.batchEdit.thresholdFailMixedHint")
+    );
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+
+    setInput("#dq-batch-edit-fail-threshold", "1.5");
+    await nextTick();
+    await flushPromises();
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(false);
+    submitButton(2)?.click();
+    await flushPromises();
+    for (const request of lastRequests()) {
+      expect(request.rule.config?.config?.value).toMatchObject({
+        failThreshold: 1.5,
+        warnThreshold: 0.5,
+      });
+    }
+  });
+
+  it("drops the prefilled amounts when the metric changes", async () => {
+    await mountDialog([
+      regexRule(REGEX_RULE, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        warn: 0.5,
+      }),
+      regexRule(REGEX_RULE_TWO, {
+        metric: QualityThresholdMetric.PERCENT,
+        fail: 1,
+        warn: 0.5,
+        revision: 4,
+      }),
+    ]);
+    await pick("dq-batch-edit-field", "threshold");
+    expect(inputValue("#dq-batch-edit-fail-threshold")).toBe("1");
+    expect(inputValue("#dq-batch-edit-warn-threshold")).toBe("0.5");
+
+    // A unit change is deliberate; the old numbers must not be reinterpreted.
+    await pick("dq-batch-edit-metric", String(QualityThresholdMetric.COUNT));
+    expect(inputValue("#dq-batch-edit-fail-threshold")).toBe("");
+    expect(inputValue("#dq-batch-edit-warn-threshold")).toBe("");
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("does not enter threshold editing for mixed or unsupported types", async () => {
+    await mountDialog([nullPercentRule(), regexRule(REGEX_RULE)]);
+    // The menu item is disabled, but a caller could still force the model; the
+    // submit guard must refuse it too.
+    await pick("dq-batch-edit-field", "threshold");
+    expect(submitButton(2)?.hasAttribute("disabled")).toBe(true);
   });
 
   it("clears warning thresholds only when the clear affordance is ticked", async () => {

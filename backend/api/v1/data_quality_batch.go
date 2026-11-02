@@ -2,10 +2,12 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"connectrpc.com/connect"
 
+	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -106,7 +108,10 @@ func (s *DataQualityService) BatchUpdateQualityRules(ctx context.Context, req *c
 		result.Name = strings.TrimSpace(item.GetRule().GetName())
 		_, updated, err := s.applyQualityRuleUpdate(ctx, item)
 		if err != nil {
-			result.Error = err.Error()
+			// A per-item error is a string, so the Connect interceptor cannot map
+			// it; map here or a wrapped NotFound (an archived row) would reach the
+			// client as a raw English sentence with no code to localize on.
+			result.Error = mapCommonError(err).Error()
 			continue
 		}
 		updatedRules = append(updatedRules, updated)
@@ -117,7 +122,13 @@ func (s *DataQualityService) BatchUpdateQualityRules(ctx context.Context, req *c
 	// three batch reads, not three per item.
 	converted, err := s.enrichQualityRules(ctx, workspaceID, updatedRules)
 	if err != nil {
-		return nil, err
+		// The writes already committed. Report them without the read-only
+		// projections instead of failing the call and losing the outcome.
+		slog.Warn("failed to enrich updated quality rules", "count", len(updatedRules), clog.WithError(err))
+		converted = make([]*v1pb.QualityRule, len(updatedRules))
+		for i, rule := range updatedRules {
+			converted[i] = convertQualityRule(workspaceID, rule)
+		}
 	}
 	for i, index := range updatedAt {
 		results[index].Rule = converted[i]

@@ -275,7 +275,7 @@ func ResolveParent(defaultParent string, requestMap, responseMap map[string]any)
 		GetNestedString(requestMap, "parent"),
 		GetNestedString(responseMap, "parent"),
 	} {
-		// A wildcard parent ("workspaces/-" and any other "*/−") names no concrete
+		// A wildcard parent ("workspaces/-" and any other "*/-") names no concrete
 		// scope, so the row would be filed where the audit search cannot reach it.
 		// Keep the resolved default instead.
 		if candidate == "" || strings.HasSuffix(candidate, "/-") {
