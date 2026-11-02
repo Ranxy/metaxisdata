@@ -46,6 +46,7 @@ type fakeTokenStore struct {
 	rotateErr error
 
 	getErr    error
+	userErr   error
 	revokeErr error
 
 	getCalls    int
@@ -97,6 +98,9 @@ func (f *fakeTokenStore) RevokeOAuthGrant(_ context.Context, id int64, _ time.Ti
 }
 
 func (f *fakeTokenStore) GetUserByID(_ context.Context, id int) (*store.UserMessage, error) {
+	if f.userErr != nil {
+		return nil, f.userErr
+	}
 	if f.user == nil || f.user.ID != id {
 		return nil, nil
 	}
@@ -155,6 +159,7 @@ func activeGrant(now time.Time) *store.OAuthGrant {
 		TokenHash: auth.HashToken("refresh-1"),
 		ClientID:  "client-1",
 		UserID:    7,
+		Kind:      store.OAuthGrantKindMCP,
 		Resource:  testResource,
 		Scope:     MCPReadScope,
 		ExpiresAt: now.Add(time.Hour),

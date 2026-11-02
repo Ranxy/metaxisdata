@@ -641,9 +641,12 @@ CREATE INDEX idx_llm_debug_log_correlation_id ON llm_debug_log(correlation_id);
 
 
 -- oauth_client stores RFC 7591 dynamic client registrations for the MCP OAuth
--- 2.1 authorization server. A registration is a governance object -- "which
--- application has connected to this workspace" -- so it survives a restart,
--- unlike the process-local pending authorization requests.
+-- 2.1 authorization server, plus the built-in `mxd` row the CLI device login
+-- points at (inserted idempotently by EnsureCLIClient; it has no redirect URIs
+-- because the device flow, not the browser flow, is its ceremony). A registration
+-- is a governance object -- "which application has connected to this workspace" --
+-- so it survives a restart, unlike the process-local pending authorization
+-- requests.
 --
 -- client_id is the unique public identifier; the surrogate id is internal. The
 -- column names follow the table conventions here: created_at, and last_used_at

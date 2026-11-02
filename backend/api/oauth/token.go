@@ -199,6 +199,13 @@ func (s *Server) exchangeRefreshToken(w http.ResponseWriter, r *http.Request, re
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the refresh token is unknown, already used or was issued to another client")
 		return
 	}
+	// The kind is part of the binding: a CLI session has the same row shape but is
+	// redeemed only through the CLI refresh endpoint. Its empty resource already
+	// refuses it below; this makes the rule explicit rather than a side effect.
+	if stored.Kind != store.OAuthGrantKindMCP {
+		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "the refresh token belongs to another kind of connection")
+		return
+	}
 	now := s.now()
 	// An expired row is left for the maintenance runner: it is what the
 	// connected-apps page shows as EXPIRED, and it can issue nothing.

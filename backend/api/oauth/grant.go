@@ -55,12 +55,16 @@ func rotateGrantToken(ctx context.Context, tokenStore TokenStore, clientID, oldH
 // explicitly: the row is revoked (it is not deleted, so the management page shows
 // what ended), and the caller reports the refusal.
 //
-// A read failure is treated like a missing user, matching the refresh path's
-// fail-closed rule: a principal that cannot be confirmed is not one that may mint
-// tokens.
+// A read failure is different: it is not proof that the account is gone, and the
+// credential is already burned, so revoking would only destroy a live connection
+// (an operator watching the page would see it ended for no reason). The caller
+// fails the issuance instead, without touching the row.
 func recheckGrantPrincipal(ctx context.Context, tokenStore TokenStore, stateCfg *state.State, stored *store.OAuthGrant, grantID int64, now time.Time) (*store.UserMessage, error) {
 	user, err := tokenStore.GetUserByID(ctx, stored.UserID)
-	if err != nil || user == nil {
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to re-read the connection's user")
+	}
+	if user == nil {
 		revokeUnusableGrant(ctx, tokenStore, stateCfg, grantID, now)
 		return nil, ErrGrantUserMissing
 	}

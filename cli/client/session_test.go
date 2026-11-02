@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/cli/config"
@@ -126,8 +127,8 @@ func TestSessionRefusalIsNotWrittenBack(t *testing.T) {
 
 	_, err := refresher.refreshIfStale(context.Background(), "old-token")
 	require.ErrorIs(t, err, ErrSessionExpired)
-	require.Len(t, endpoint.requests, sessionReloadAttempts,
-		"a refusal is retried while a concurrent rotation may still be writing")
+	require.Len(t, endpoint.requests, 1,
+		"a deterministic refusal is not re-presented; only the file re-read is retried")
 
 	stored, loadErr := config.Load(path)
 	require.NoError(t, loadErr)
@@ -159,4 +160,169 @@ func TestRefreshSessionIsANoOpWithoutAStoredSession(t *testing.T) {
 
 	connection := &Client{}
 	require.NoError(t, connection.RefreshSession(context.Background()))
+}
+
+// A different login (another account or another server) written to the same file
+// must not be adopted: replaying the caller's request under it would be a
+// confused deputy.
+func TestSessionDoesNotAdoptADifferentLogin(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name     string
+		rotated  *config.Credentials
+		wantFail bool
+	}{
+		{
+			name: "another user's login",
+			rotated: &config.Credentials{
+				Server:       "https://mx.example.com",
+				Token:        "other-token",
+				RefreshToken: "other-refresh",
+				User:         &config.User{Email: "someone@example.com"},
+			},
+			wantFail: true,
+		},
+		{
+			name: "a login against another server",
+			rotated: &config.Credentials{
+				Server:       "https://other.example.com",
+				Token:        "other-token",
+				RefreshToken: "other-refresh",
+				User:         &config.User{Email: "dev@example.com"},
+			},
+			wantFail: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "config.json")
+			credentials := &config.Credentials{
+				Server:       "https://mx.example.com",
+				Token:        "old-token",
+				RefreshToken: "old-refresh",
+				User:         &config.User{Email: "dev@example.com"},
+			}
+			endpoint := &fakeRefreshEndpoint{handler: func(string) (*v1pb.ExchangeRefreshTokenResponse, error) {
+				return nil, connect.NewError(connect.CodeUnauthenticated, context.Canceled)
+			}}
+			refresher := newTestSession(t, endpoint, path, credentials)
+			refresher.now = func() time.Time { return now }
+
+			require.NoError(t, config.Save(path, tc.rotated))
+
+			_, err := refresher.refreshIfStale(context.Background(), "old-token")
+			require.ErrorIs(t, err, ErrSessionExpired)
+			require.Equal(t, "old-token", refresher.tokens.get(),
+				"a different login must never become the live credential of this process")
+			require.Equal(t, "dev@example.com", credentials.User.Email)
+		})
+	}
+}
+
+// The interceptor replays a refused request once after renewing the session, and
+// the replay carries the rotated token.
+func TestInterceptorRefreshesAndReplaysOnce(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	credentials := &config.Credentials{
+		Server:       "https://mx.example.com",
+		Token:        "old-token",
+		RefreshToken: "old-refresh",
+		User:         &config.User{Email: "dev@example.com"},
+	}
+	endpoint := &fakeRefreshEndpoint{handler: func(string) (*v1pb.ExchangeRefreshTokenResponse, error) {
+		return &v1pb.ExchangeRefreshTokenResponse{
+			AccessToken:      "new-token",
+			RefreshToken:     "new-refresh",
+			ExpiresIn:        3600,
+			RefreshExpiresIn: 7200,
+		}, nil
+	}}
+	refresher := newTestSession(t, endpoint, path, credentials)
+
+	var calls int
+	var authorization []string
+	next := func(_ context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		calls++
+		authorization = append(authorization, request.Header().Get("Authorization"))
+		if calls == 1 {
+			return nil, connect.NewError(connect.CodeUnauthenticated, context.Canceled)
+		}
+		return connect.NewResponse(&emptypb.Empty{}), nil
+	}
+
+	response, err := refresher.interceptor()(next)(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Equal(t, 2, calls, "one refresh, one replay")
+	require.Len(t, endpoint.requests, 1)
+	require.Equal(t, "Bearer new-token", authorization[1])
+}
+
+// A refused renewal returns the transport's own 401 (exit code 2), and the
+// interceptor does not retry it a second time.
+func TestInterceptorReturnsTheOriginalRefusal(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	credentials := &config.Credentials{
+		Server:       "https://mx.example.com",
+		Token:        "old-token",
+		RefreshToken: "old-refresh",
+		User:         &config.User{Email: "dev@example.com"},
+	}
+	endpoint := &fakeRefreshEndpoint{handler: func(string) (*v1pb.ExchangeRefreshTokenResponse, error) {
+		return nil, connect.NewError(connect.CodeUnauthenticated, context.Canceled)
+	}}
+	refresher := newTestSession(t, endpoint, path, credentials)
+
+	refusal := connect.NewError(connect.CodeUnauthenticated, context.Canceled)
+	var calls int
+	next := func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
+		calls++
+		return nil, refusal
+	}
+	_, err := refresher.interceptor()(next)(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+	require.Same(t, refusal, err, "the caller sees the server's refusal, not a synthetic one")
+	require.Equal(t, 1, calls, "a refused renewal is not retried")
+}
+
+// A renewal that fails for a transport or disk reason is reported as itself, so a
+// broken config directory is not mistaken for a signed-out session.
+func TestInterceptorSurfacesARenewalFailure(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	credentials := &config.Credentials{
+		Server:       "https://mx.example.com",
+		Token:        "old-token",
+		RefreshToken: "old-refresh",
+		User:         &config.User{Email: "dev@example.com"},
+	}
+	endpoint := &fakeRefreshEndpoint{handler: func(string) (*v1pb.ExchangeRefreshTokenResponse, error) {
+		return nil, connect.NewError(connect.CodeUnavailable, context.Canceled)
+	}}
+	refresher := newTestSession(t, endpoint, path, credentials)
+
+	next := func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
+		return nil, connect.NewError(connect.CodeUnauthenticated, context.Canceled)
+	}
+	_, err := refresher.interceptor()(next)(context.Background(), connect.NewRequest(&emptypb.Empty{}))
+	require.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+}
+
+// The AuthService is exempt: its Unauthenticated answers are a form error or a
+// login problem, not an expired session, and the refresh call itself must not
+// recurse.
+func TestAuthServiceProceduresAreExemptFromRenewal(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isAuthServiceProcedure("/metaxisdata.v1.AuthService/Login"))
+	require.True(t, isAuthServiceProcedure("/metaxisdata.v1.AuthService/ExchangeRefreshToken"))
+	require.False(t, isAuthServiceProcedure("/metaxisdata.v1.UserService/GetCurrentUser"))
 }

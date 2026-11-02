@@ -138,36 +138,39 @@ func (r *sessionRefresher) refresh(ctx context.Context) (string, error) {
 // rotateLocked consumes the current refresh token and adopts the replacement.
 //
 // A refusal is only believed after the credentials file is re-read: another
-// process sharing the file may have won the rotation and written its pair. When
-// nothing replaced the token, the session is genuinely gone and the refusal is
-// reported; the file is deliberately left alone, because clearing it here could
-// destroy a concurrent process's freshly written session.
+// process sharing the file may have won the rotation and written its pair. The
+// endpoint is called once — a consumed or revoked hash is refused deterministically,
+// so re-presenting it could only spend the shared login budget — and the retries
+// wait for the concurrent writer's file update. When nothing replaced the token,
+// the session is genuinely gone and the refusal is reported; the file is
+// deliberately left alone, because clearing it here could destroy a concurrent
+// process's freshly written session.
 func (r *sessionRefresher) rotateLocked(ctx context.Context) (string, error) {
 	presented := r.refreshToken
 	if r.dead || presented == "" {
 		return "", ErrSessionExpired
 	}
-	for attempt := 0; ; attempt++ {
-		response, err := r.endpoint.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: presented}))
-		if err == nil {
-			token := response.Msg.GetAccessToken()
-			if saveErr := r.adopt(token, response.Msg.GetRefreshToken(), response.Msg.GetExpiresIn(), response.Msg.GetRefreshExpiresIn()); saveErr != nil {
-				return "", saveErr
-			}
-			return token, nil
+	response, err := r.endpoint.ExchangeRefreshToken(ctx, connect.NewRequest(&v1pb.ExchangeRefreshTokenRequest{RefreshToken: presented}))
+	if err == nil {
+		token := response.Msg.GetAccessToken()
+		if saveErr := r.adopt(token, response.Msg.GetRefreshToken(), response.Msg.GetExpiresIn(), response.Msg.GetRefreshExpiresIn()); saveErr != nil {
+			return "", saveErr
 		}
-		if connect.CodeOf(err) != connect.CodeUnauthenticated {
-			return "", err
-		}
+		return token, nil
+	}
+	if connect.CodeOf(err) != connect.CodeUnauthenticated {
+		return "", err
+	}
+	for attempt := 0; attempt < sessionReloadAttempts; attempt++ {
 		if token, ok := r.adoptFromDisk(presented); ok {
 			return token, nil
 		}
-		if attempt == sessionReloadAttempts-1 {
-			r.dead = true
-			return "", ErrSessionExpired
+		if attempt < sessionReloadAttempts-1 {
+			r.sleep(sessionReloadInterval)
 		}
-		r.sleep(sessionReloadInterval)
 	}
+	r.dead = true
+	return "", ErrSessionExpired
 }
 
 // adopt makes the rotated pair the live one and persists it. The in-memory pair
@@ -195,10 +198,26 @@ func (r *sessionRefresher) adoptFromDisk(presented string) (string, bool) {
 	if err != nil || loaded.Token == "" || loaded.RefreshToken == "" || loaded.RefreshToken == presented {
 		return "", false
 	}
+	// The file may have been overwritten by a different login — another account, or
+	// a login against another server — rather than by a concurrent rotation of this
+	// session. Adopting that token would replay the caller's request as somebody
+	// else, so only a rotation that preserves the session's identity is taken over.
+	if loaded.Server != r.credentials.Server || !sameCredentialsUser(loaded.User, r.credentials.User) {
+		return "", false
+	}
 	r.tokens.set(loaded.Token)
 	r.refreshToken = loaded.RefreshToken
 	*r.credentials = *loaded
 	return loaded.Token, true
+}
+
+// sameCredentialsUser reports whether two stored identities are the same account.
+// A rotation preserves the file's user; a different login replaces it.
+func sameCredentialsUser(a, b *config.User) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Email == b.Email
 }
 
 // isAuthServiceProcedure reports whether the procedure belongs to the AuthService,

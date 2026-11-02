@@ -231,6 +231,12 @@ func (s *AuthService) issueDeviceLoginToken(ctx context.Context, login state.Dev
 
 	token, err := auth.GenerateCLIAccessToken(user.Name, user.ID, oauth.CLIClientID, grantID, s.profile.Mode, s.secret, tokenDuration)
 	if err != nil {
+		// The device login is already consumed and no client will ever hold this
+		// grant, so end it rather than leave an active connection with no holder for
+		// its 30-day lifetime.
+		if _, revokeErr := s.store.RevokeOAuthGrant(ctx, grantID, time.Now(), nil); revokeErr != nil {
+			slog.Error("failed to revoke an unusable CLI session", log.WithError(revokeErr), slog.Int64("grant_id", grantID))
+		}
 		return nil, "", "", connect.NewError(connect.CodeInternal, errors.New("failed to generate API access token"))
 	}
 

@@ -204,10 +204,12 @@ func resolve(cmd *cobra.Command) (*app, error) {
 		resolved.tokenSource = "none"
 	}
 
-	// A stored session can be rotated only when the token is also the stored one: a
-	// --token or METAXISDATA_TOKEN value is never persisted, so refreshing it would
-	// silently replace the caller's credential choice with the file's identity.
-	if resolved.tokenSource == "file:"+configPath && credentials.RefreshToken != "" {
+	// A stored session can be rotated only when the token is also the stored one and
+	// the invocation talks to the server that issued it: a --token or
+	// METAXISDATA_TOKEN value is never persisted (refreshing it would replace the
+	// caller's choice with the file's identity), and the refresh credential must not
+	// be sent to a --server/METAXISDATA_SERVER override naming another host.
+	if resolved.tokenSource == "file:"+configPath && credentials.RefreshToken != "" && client.SameServer(resolved.server, credentials.Server) {
 		resolved.options.RefreshToken = credentials.RefreshToken
 		resolved.options.Credentials = credentials
 		resolved.options.CredentialsPath = configPath

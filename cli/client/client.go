@@ -297,6 +297,21 @@ func New(server string, options Options) (*Client, error) {
 	}, nil
 }
 
+// SameServer reports whether two addresses name the same normalized server. The
+// stored session's refresh credential belongs to the server that issued it, so an
+// invocation pointed elsewhere must not be allowed to send it away.
+func SameServer(a, b string) bool {
+	first, err := normalizeServer(a)
+	if err != nil {
+		return false
+	}
+	second, err := normalizeServer(b)
+	if err != nil {
+		return false
+	}
+	return first.String() == second.String()
+}
+
 // normalizeServer validates the address and returns the form the clients are
 // built from, so what is checked is what is used. A trailing slash is dropped
 // because the Connect paths already start with one.

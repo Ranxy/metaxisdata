@@ -46,8 +46,8 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 
 ### 授权与轮换
 
-- **首发**:`exchangeAuthorizationCode` 先 `CreateOAuthGrant`(`INSERT ... RETURNING id`,`token.go:273`),再用该 id 签 access token(`writeGrantResponse`);行在插入时 `last_tool_call_at`/`revoked_at` 均为 NULL,`created_at` = 首次签发时间(≈授权完成,不是 consent 批准时刻;两者最多差授权码 TTL)。
-- **刷新**:全部可从行判断的检查先跑(客户端绑定、行存在、过期、`revoked_at`、resource、scope),然后单条原子语句放行(`store/oauth_grant.go:43-48`):
+- **首发**:`exchangeAuthorizationCode` 先 `CreateOAuthGrant`(`INSERT ... RETURNING id`),再用该 id 签 access token(`writeGrantResponse`);行在插入时 `last_tool_call_at`/`revoked_at` 均为 NULL,`created_at` = 首次签发时间(≈授权完成,不是 consent 批准时刻;两者最多差授权码 TTL)。
+- **刷新**:全部可从行判断的检查先跑(客户端绑定、行存在、过期、`revoked_at`、resource、scope),然后单条原子语句放行(`store/oauth_grant.go` 的 `rotateOAuthGrantQuery`):
 
   ```sql
   UPDATE oauth_refresh_token
@@ -57,7 +57,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
   RETURNING id
   ```
 
-  0 行 = 并发输了/已撤销/已过期/换错客户端 → `invalid_grant`。id 不变,所以 `gid` 与资源名跨轮换稳定。过期**不再删行**(留给 maintenance,页面可显示 EXPIRED);轮换后 principal 复核失败(用户不存在、已停用、早于上次改密)由 `revokeFailedGrant`(`token.go:309`)显式置撤销,不再靠删除行隐式结束。
+  0 行 = 并发输了/已撤销/已过期/换错客户端 → `invalid_grant`。id 不变,所以 `gid` 与资源名跨轮换稳定。过期**不再删行**(留给 maintenance,页面可显示 EXPIRED);轮换后 principal 复核失败(用户不存在、已停用、早于上次改密)由 `revokeUnusableGrant`(`backend/api/oauth/grant.go`)显式置撤销,不再靠删除行隐式结束。
 - **并发正确性**:本仓库使用 Postgres 默认 READ COMMITTED,后到的 UPDATE 等锁后重新评估 WHERE,先到者已改 `token_hash` 或写入 `revoked_at`,故恰好一个赢家;撤销与轮换在同一行上串行化。集成用例覆盖并发刷新与「撤销后 `/mcp` 401」;没有单独的「撤销 vs 轮换」竞态用例。
 
 ### CLI 会话
@@ -69,7 +69,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 ### 授权存活检查(gid + 30s 缓存)
 
 - access token 新增 `gid` claim(int64,`omitempty`;`backend/api/auth/auth.go`),`AccessTokenIdentity.GrantID` 携带它;MCP 与 CLI 令牌都带,web/API 令牌为 0。
-- `TokenAuthenticator.Resolve` 在 jti 吊销检查之后、用户读取之前,仅当 `GrantID != 0` 时检查(`authenticator.go:196-203`):先查 `state.GrantRevocationCache`(30s TTL,**独立实例**,避免 jti 流量把它挤掉),未命中再查 `IsOAuthGrantLive`(`oauth_grant.go:248`)——查询绑定令牌自带的 `id + user_id + client_id` 且 `revoked_at IS NULL AND expires_at > NOW()`;**行不存在 = 不存活**,DB 读失败按失败关闭处理。
+- `TokenAuthenticator.Resolve` 在 jti 吊销检查之后、用户读取之前,仅当 `GrantID != 0` 时检查(`authenticator.go:196-203`):先查 `state.GrantRevocationCache`(30s TTL,**独立实例**,避免 jti 流量把它挤掉),未命中再查 `IsOAuthGrantLive`(`oauth_grant.go`)——查询绑定令牌自带的 `id + user_id + client_id` 且 `revoked_at IS NULL AND expires_at > NOW()`;**行不存在 = 不存活**,DB 读失败按失败关闭处理。
 - **`/mcp` verifier 拒绝没有 `gid` 的 MCP access token**(`mcp/auth.go:60`)——升级前签发的令牌无法对应授权,拒绝后客户端 refresh 一次即得带 `gid` 的新令牌;refresh 也过期才重新走浏览器。
 - verifier 把 grant id 放进 `TokenInfo.Extra` 的 `"metaxisdata.grant"`,工具路径据此记活动。
 
@@ -155,6 +155,8 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 | `oauth_client.last_used_at` 仍只写不读;`ListOAuthClients`/`DeleteOAuthClient` 零调用方;注册无总量上限 | 仍开放,见 [security-open-items.md](security-open-items.md) D11(Connected apps 管的是授权,不是注册) |
 | 没有「撤销 vs 轮换」并发竞态用例 | 集成已分别覆盖并发刷新(恰好一个赢家)与撤销(撤销后 401);竞态用例属可选补强 |
 | 授权行保留到 `expires_at` 后 7 天 | 已接受:撤销行的 `expires_at` 停在最后一次轮换 +30 天,所以撤销后可存在约 37 天;永久历史在审计账本 |
+| 重新 `mxd auth login` 不撤销上一次 CLI 会话 | 已接受:旧行仍是 ACTIVE 直到过期,但它是可见、可撤销的;登录动作不替用户决定要不要断掉另一台机器。用户可在本页撤销 |
+| 混合版本窗口(旧副本未升级) | 旧副本的 `Logout` 没有 CLI 分支,会用 `RevokeOAuthGrantsByUserAndClient(user, "mxd")` 撤销该用户**全部** CLI 会话;`ExchangeRefreshToken` 返回 Unimplemented;列表把 CLI 行渲染成 `REAUTH_REQUIRED`/「无调用」。部署按单副本(见根 `AGENTS.md`)或先停旧副本再升级 |
 
 ## Where things live
 

@@ -222,12 +222,16 @@ kept, so signing in again does not need --server.`,
 			var revokeErr error
 			if _, err := current.requireServer(); err == nil {
 				if connection, err := current.connect(); err == nil {
-					// The access token may already have expired, and Logout only accepts
-					// a live one. Rotating first is what lets the logout reach the server
-					// and cut the session; a refusal means the session is already gone, so
-					// there is nothing left to revoke and the local clear is the whole job.
-					_ = connection.RefreshSession(cmd.Context())
 					_, revokeErr = connection.Auth.Logout(cmd.Context(), connect.NewRequest(&v1pb.LogoutRequest{}))
+					// Logout only accepts a live access token. If that one has expired,
+					// rotate the session once and retry, so the logout still reaches the
+					// server and cuts the refresh chain. A refused rotation means the
+					// session is already gone; the local clear below is then the whole job.
+					if revokeErr != nil && connect.CodeOf(revokeErr) == connect.CodeUnauthenticated && current.credentials.RefreshToken != "" {
+						if refreshErr := connection.RefreshSession(cmd.Context()); refreshErr == nil {
+							_, revokeErr = connection.Auth.Logout(cmd.Context(), connect.NewRequest(&v1pb.LogoutRequest{}))
+						}
+					}
 				}
 			}
 
