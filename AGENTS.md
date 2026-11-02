@@ -29,7 +29,7 @@ Product surface (routes in `frontend/src/router/index.ts`, sidebar in `frontend/
 - **Device** — the `/device` page approves a command line client's device login.
 - **MCP** — when `mcp_enabled` is on, `/mcp` serves the registry as read-only tools over the Model Context Protocol, and the same server is the OAuth 2.1 authorization server those clients register and authorize against (`/oauth/consent` is the page that records a user's decision). **Connected apps** (Settings for an administrator, the avatar menu for a user's own) lists those authorizations and revokes them.
 
-Feature design documents live in `.agents/docs/`, as maintenance references to the shipped feature. Read the matching one before reworking a subsystem, and write a new one there for a new subsystem-scale feature — there is no separate `plan/` or `spec/` tree.
+Feature design documents live in `.agents/docs/`, as maintenance references to the shipped feature. Read the matching one before reworking a subsystem, and write a new one there for a new subsystem-scale feature — there is no separate `plan/` or `spec/` tree. Review reports, implementation records and phase plans are not committed: they describe a moment in time, not shipped behavior, so keep them in the pull request or the ignored `temp/` tree; if one still matters after the work lands, fold its conclusions into the subsystem reference and let git hold the rest.
 
 ## Documentation
 
