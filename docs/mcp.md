@@ -124,20 +124,25 @@ values are real row data, shown to a caller the `executions.get` permission
 already entitles.
 
 A table whose checks exist but are all paused is still monitored — `monitored` is
-true because the checks are there — but it answers `allPaused: true` with
-`enabledRuleCount: 0`, and the worst result it carries is the paused checks'
-history rather than a current verdict; the directory rows use the same flag and
-omit their `worstStatus` in that case. A run that produced no observation answers
-without `observedValue` in the execution listing (a present `0` is a real
-observation); `get_quality_execution` returns the whole record, whose
-non-optional `observedValue` is `0` when there is no observation, so read it
-together with `outcome`. An issue row's table comes from the path snapshot stored
-with its rule — display metadata, not identity — and is omitted when the target
-no longer has a live check or the best-effort lookup fails; `guid` and `metaType`
-always locate it. An `object` filter given by name must resolve to a check target
-(a table, external table, view or materialized view); the name of any other object
-type is refused rather than answered with an empty list, while a bare `guid` is
-passed through because it carries no type.
+true because the checks are there — but it answers `allPaused: true` and carries
+no current verdict: the summary omits the zero `enabledRuleCount`, and its
+`worstStatus` is the paused checks' history rather than a current claim; the
+directory rows use the same flag and omit their `worstStatus` in that case (a
+`worst_status` filter still matches that paused history, so it can return such a
+row). A run that produced no observation answers without `observedValue` in the
+execution listing, where a present `0` is a real observation. The detail tool,
+`get_quality_execution`, returns the whole record as protoJSON, and that rendering
+omits zero-valued fields too: an absent `observedValue` means `0` when `outcome`
+is PASS, WARN or FAIL, and "no observation at all" when it is ERROR, SKIPPED or
+NOT_EVALUATED — read the two together. The same omission applies to other zero
+scalars (`failedRows: 0`, `sampled: false`) in that record and in a target
+summary. An issue row's table comes from the path snapshot stored with its rule —
+display metadata, not identity — and is omitted when the target no longer has a
+live check or the best-effort lookup fails; `guid` and `metaType` always locate
+it. An `object` filter given by name must resolve to a check target (a table,
+external table, view or materialized view); the name of any other object type is
+refused rather than answered with an empty list, while a bare `guid` is passed
+through because it carries no type.
 
 Three rules decide whether a call works:
 

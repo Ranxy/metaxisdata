@@ -39,14 +39,14 @@
 | --- | --- | --- |
 | 决策 #9：输出用 `outputSchema` + `structuredContent` | 只声明 `InputSchema`，输出只走 `structuredContent`（`backend/mcp/server.go:276-279`） | 结果里嵌的是 proto 消息的 protojson，手写 output schema 会成为第二个会漂移的真源；要做应从 proto 生成 |
 | 不变量 8：注册后按 client 计数 | 只按来源地址计数（`backend/server/oauth_endpoints.go`） | 匿名注册下 `client_id` 是调用方自报的，按它分桶等于给攻击者一把新钥匙 |
-| 分页返回 `hasMore` | 只回 `nextPageToken`（`backend/mcp/tool.go:217`） | token 非空即「还有」，多一个字段没有信息量 |
+| 分页返回 `hasMore` | 只回 `nextPageToken`（各列表工具原样透传 RPC 的 `next_page_token`） | token 非空即「还有」，多一个字段没有信息量 |
 | consent 页展示客户端名**与版本** | 只展示客户端名（`proto/v1/v1/oauth_service.proto` 的 `client_name`） | RFC 7591 的客户端元数据没有版本字段 |
 | 审计记录 response 摘要 | 只记 status（code + message，`backend/mcp/server.go:402-431`） | 行里已写明结果；把模型看到的载荷再抄进永久账本等于双写 |
 | 工具调用审计只在成功路径 | 含**被拒的调用**（`dispatch` 在 `invoke` 之后无条件写行，`backend/mcp/server.go:302-311`） | 拒绝恰恰是最该留痕的 |
 | MCP 令牌可吊销 | 按签发来源（签名/kid/issuer/expiry，不带 audience）校验 | 原 `Logout` 只认 user audience，MCP 令牌就没有自助补救 |
 | 授权响应「含错误响应」带 `iss` | 错误路径也带（`RedirectWithError`，`backend/api/oauth/authorize.go:175`） | 拒绝路径可能是客户端唯一看到的那次响应；RFC 9207 的 mix-up 防护必须在那里成立 |
 
-其余 review 修复已并入代码，不再是待办：`authorization_code` 脱敏补齐（含 snake_case）、工具参数按 8 KiB 单串 / 256 KiB 整体截断（参数树 >64 KiB 只记 marker）、被禁用部署的 404 不写账本、`/oauth/authorize` 与 `/oauth/authorize/complete` 纳入按地址限流、consent 拒绝后导航到 complete（客户端才收得到 `access_denied`）、`external_url` 的重复 `/` 与 `:0443` 归一化、redirect URI 拒绝 userinfo、注册时重复 `redirect_uri` 去重、`last_used_at` 在兑换成功后更新、`resolveDatabase` 拒绝跨实例 GUID、`analyze_sql` 图展开上限 20（`backend/mcp/tool.go:688`）、列表型字段空值输出 `[]` 而非 `null`、MCP 实现不广播空版本、守卫测试钉住工具集合。
+其余 review 修复已并入代码，不再是待办：`authorization_code` 脱敏补齐（含 snake_case）、工具参数按 8 KiB 单串 / 256 KiB 整体截断（参数树 >64 KiB 只记 marker）、被禁用部署的 404 不写账本、`/oauth/authorize` 与 `/oauth/authorize/complete` 纳入按地址限流、consent 拒绝后导航到 complete（客户端才收得到 `access_denied`）、`external_url` 的重复 `/` 与 `:0443` 归一化、redirect URI 拒绝 userinfo、注册时重复 `redirect_uri` 去重、`last_used_at` 在兑换成功后更新、`resolveDatabase` 拒绝跨实例 GUID、`analyze_sql` 图展开上限 20（`backend/mcp/tool.go` 的 `maxExpandedTargets`）、列表型字段空值输出 `[]` 而非 `null`、MCP 实现不广播空版本、守卫测试钉住工具集合。
 
 ## SDK 契约（实测）
 
@@ -198,7 +198,7 @@
 | --- | --- |
 | 工具未声明 `OutputSchema`（只走 `structuredContent`） | `backend/mcp/server.go:276-279` 只设 `InputSchema`。理由：结果是 protojson，手写 schema 会成第二真源；真要做应从 proto 生成 |
 | 注册后按 client 计数未做（只按 IP） | `backend/server/oauth_endpoints.go` 与 `backend/api/oauth/register.go:83-90` 都只按地址；`client_id` 是自报的，按它分桶等于给攻击者新钥匙 |
-| 分页未回 `hasMore`（只回 `nextPageToken`） | `backend/mcp/tool.go:217` 起；token 非空即「还有」 |
+| 分页未回 `hasMore`（只回 `nextPageToken`） | 各列表工具原样透传 RPC 的 next-page token；token 非空即「还有」 |
 | CIMD 未做 | 全仓库无实现；DCR 是 v1 路径 |
 | 多副本未测 | `backend/component/state/oauth_authorization_request.go:105-109` 明确进程内，需要粘性路由；集成套件只跑单实例 |
 | `Cacheable`/`ttlMs` 未启用 | 全仓库无实现；`cacheScope` 默认 `public`，与按调用者的 IAM 冲突 |
