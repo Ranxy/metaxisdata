@@ -121,7 +121,11 @@ type authority. Editing a check opens the same dialog from its row or drawer.
   the same statement as the target side, so both aggregates come from one
   snapshot; a reference in another database or another instance is read over its
   own read-only connection, which means **both instances need a Read-only data
-  source**. The check's own filter and the target contract's filter bound the
+  source** — and, when the reference is a second database on the target's own
+  PostgreSQL or SQL Server instance, that instance needs **at least two
+  connections** (the target's scan holds one for its whole query phase; a check
+  that could never open the second one is refused when you save it). The check's
+  own filter and the target contract's filter bound the
   target side only; the reference side has its own filter, whose columns are taken
   from the reference table. *Preview* proves both statements, and an execution
   records both of them. The reference has to be synced metadata: a relation the
@@ -1040,7 +1044,7 @@ pruned.
 | A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample; a standard-code check has its own *Sample rows* setting instead. Remove the sampling or pick another check type. |
 | A reconciliation cannot be saved because the reference table does not exist | The reference side must be a table, view or external table the workspace has already synced into its metadata. Connect its instance and sync that database first; a relation that only exists in the database is not visible to the check. |
 | A reconciliation ends `ERROR(NO_READ_ONLY_SOURCE)` | One of the two instances has no **Read-only** data source. Add one on the target instance and on the reference instance — each side of the comparison is read over a read-only connection. |
-| A reconciliation against another instance was skipped | The reference instance's connection budget was fully used when the check needed its own connection, so the run was skipped rather than failed and repeats on the next cycle. Raise that instance's **Maximum connections**, or keep the reference on the same instance (a same-instance reference needs no second connection unless it is another PostgreSQL/SQL Server database). |
+| A reconciliation was skipped | The check needed a second read-only connection for its reference side and the instance's connection budget was fully used at that moment, so the run was skipped rather than failed and repeats on the next cycle. Raise that instance's **Maximum connections**, or point the reference at a table in the target's own database (a reference there shares the target's connection). A PostgreSQL or SQL Server reference in *another database of the same instance* needs at least two connections on that instance: with a ceiling of one the check is refused when you save it, because the target's own scan holds the only slot for its whole query phase. |
 | The execution of a reconciliation shows two statements | The reference lives in another database or instance, so it is read over its own connection: `executed sql` is the target side and `reference executed sql` is the reference side. A reference in the target's database compiles to one statement and only `executed sql` is recorded. |
 | *By percentage* is unavailable | The target is a view, or its engine has no reliable table sampling clause (MySQL, TiDB, MariaDB, OceanBase, StarRocks, Doris). Use *By row limit*. |
 | A sampled check returned no failure sample | The failed rows are read from the same sample as the counts. If the sample held no failing row the evidence is empty while the verdict still stands — the counts decide it, not the evidence rows. |

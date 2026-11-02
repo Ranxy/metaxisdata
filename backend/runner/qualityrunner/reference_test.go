@@ -2,7 +2,6 @@ package qualityrunner
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -231,7 +230,8 @@ func TestReferenceResolutionFailureIsUnsupported(t *testing.T) {
 	t.Parallel()
 
 	runner := &Runner{
-		resolveReferenceTarget: staticReferenceResolver(nil, errors.New("reference relation is gone")),
+		resolveReferenceTarget: staticReferenceResolver(nil,
+			common.Errorf(common.NotFound, "reference relation is gone")),
 	}
 	_, err := runner.prepareReferenceExecution(context.Background(),
 		crossTableRuleSnapshot("inst-a;shop;public;customers"), batchAdmission{})
@@ -242,6 +242,25 @@ func TestReferenceResolutionFailureIsUnsupported(t *testing.T) {
 	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, status)
 	require.Equal(t, dataquality.ErrCodeUnsupported, code)
 	require.Contains(t, message, "reference relation is gone")
+}
+
+// A transient store failure while resolving the reference is not a definition that
+// cannot execute: it keeps ERROR(EXECUTION) instead of being reported as unsupported.
+func TestReferenceResolutionTransientFailureKeepsItsClassification(t *testing.T) {
+	t.Parallel()
+
+	runner := &Runner{
+		resolveReferenceTarget: staticReferenceResolver(nil,
+			common.Errorf(common.Internal, "the metadata store is unavailable")),
+	}
+	_, err := runner.prepareReferenceExecution(context.Background(),
+		crossTableRuleSnapshot("inst-a;shop;public;customers"), batchAdmission{})
+	require.Equal(t, common.Internal, common.ErrorCode(err),
+		"a transient failure must not be rewritten as an invalid definition")
+
+	status, code, _ := executionErrorVerdict(err)
+	require.Equal(t, storepb.QualityStatus_QUALITY_STATUS_ERROR, status)
+	require.Equal(t, dataquality.ErrCodeExecution, code)
 }
 
 // TestOpenReferenceSessionReleasesTheLeaseOnce pins the session's lifecycle: the

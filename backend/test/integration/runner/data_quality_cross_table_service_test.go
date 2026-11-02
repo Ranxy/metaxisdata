@@ -144,6 +144,27 @@ INSERT INTO public.cross_remote_ref (amount) VALUES (10), (20), (30);
 	require.Contains(t, localExecution.GetExecutedSql(), "cross_local_ref")
 	require.Empty(t, localExecution.GetReferenceExecutedSql())
 
+	// The reference reads a second connection on the target's own instance, and the
+	// target's scan holds one slot for its whole query phase. With a ceiling of one the
+	// check could never open that session, so saving it is refused instead of being
+	// skipped forever.
+	require.NoError(t, env.SetInstanceMaximumConnections(ctx, common.FormatInstance(instanceID), 1))
+	_, err = fixture.dataQuality.CreateQualityRule(ctx, withToken(env.AdminToken(), &v1pb.CreateQualityRuleRequest{
+		Parent: "workspaces/-",
+		Rule: &v1pb.QualityRule{
+			Title:     "reconciliation without a second connection slot",
+			Dimension: v1pb.QualityDimension_QUALITY_DIMENSION_CONSISTENCY,
+			RuleType:  v1pb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+			Target:    &v1pb.QualityTarget{MetaGuid: ordersGUID, MetaType: v1pb.MetaType_TABLE},
+			Config:    reconciliation(remoteRefGUID),
+			Severity:  v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		},
+	}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "at least 2")
+	require.NoError(t, env.SetInstanceMaximumConnections(ctx, common.FormatInstance(instanceID), 10))
+
 	// A reference the registry does not have is refused when the rule is saved: a
 	// rule that could only ever record ERROR(UNSUPPORTED) never reaches the queue.
 	missingGUID := fmt.Sprintf("%s;%s;public;cross_missing", instanceID, referenceDatabase)

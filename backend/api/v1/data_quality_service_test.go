@@ -1080,6 +1080,86 @@ func TestRequireReadOnlySourceForNewRule(t *testing.T) {
 	require.Contains(t, err.Error(), "rule target")
 }
 
+// A reconciliation whose reference needs a second connection on the target's own
+// instance cannot run when that instance allows only one connection: the batch holds
+// the only slot for its whole query phase. It is refused at save time instead of being
+// skipped forever.
+func TestRequireReferenceConnectionBudget(t *testing.T) {
+	t.Parallel()
+
+	single := &dataquality.Resolution{Instance: &store.InstanceMessage{
+		ResourceID: "instances/ins1",
+		Metadata:   &storepb.Instance{MaximumConnections: 1},
+	}}
+	roomy := &dataquality.Resolution{Instance: &store.InstanceMessage{
+		ResourceID: "instances/ins1",
+		Metadata:   &storepb.Instance{MaximumConnections: 2},
+	}}
+	otherInstance := &dataquality.Resolution{Instance: &store.InstanceMessage{
+		ResourceID: "instances/ins2",
+		Metadata:   &storepb.Instance{MaximumConnections: 1},
+	}}
+
+	require.NoError(t, requireReferenceConnectionBudget(&dataquality.ValidatedRule{
+		Resolution: roomy,
+		Reference:  &dataquality.ValidatedReference{Separate: true, Resolution: roomy},
+	}))
+	require.NoError(t, requireReferenceConnectionBudget(&dataquality.ValidatedRule{
+		Resolution: single,
+		Reference:  &dataquality.ValidatedReference{Separate: true, Resolution: otherInstance},
+	}), "another instance has its own connection budget")
+	require.NoError(t, requireReferenceConnectionBudget(&dataquality.ValidatedRule{
+		Resolution: single,
+		Reference:  &dataquality.ValidatedReference{Separate: false, Resolution: single},
+	}), "a shared connection needs no second slot")
+	require.NoError(t, requireReferenceConnectionBudget(&dataquality.ValidatedRule{Resolution: single}),
+		"a rule that is not a reconciliation has no reference")
+
+	err := requireReferenceConnectionBudget(&dataquality.ValidatedRule{
+		Resolution: single,
+		Reference:  &dataquality.ValidatedReference{Separate: true, Resolution: single},
+	})
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	require.Contains(t, err.Error(), "at least 2")
+}
+
+// The reference's display path is a snapshot the service owns: a caller that omits it
+// (an API client) gets the resolved path written back so the editor can show where the
+// reference lives.
+func TestNormalizeReconciliationReferencePath(t *testing.T) {
+	t.Parallel()
+
+	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_CrossTable{
+		CrossTable: &storepb.CrossTableConfig{
+			Reference: &storepb.CrossTableReference{
+				MetaGuid: "instances/ins2;warehouse;public;customers",
+				MetaType: storepb.MetaType_TABLE,
+			},
+		},
+	}}
+	path := &storepb.QualityTargetPath{
+		Instance: "instances/ins2", Database: "warehouse", Schema: "public", Object: "customers",
+	}
+	validated := &dataquality.ValidatedRule{Reference: &dataquality.ValidatedReference{
+		Resolution: &dataquality.Resolution{Target: dataquality.ResolvedTarget{
+			Target: dataquality.Target{Path: path},
+		}},
+	}}
+	require.True(t, normalizeReconciliationReferencePath(config, validated))
+	require.Equal(t, path, config.GetCrossTable().GetReference().GetPath())
+	require.False(t, normalizeReconciliationReferencePath(config, validated), "a normalized path is not a change")
+
+	// A different resolved place replaces the stale snapshot.
+	moved := &storepb.QualityTargetPath{
+		Instance: "instances/ins2", Database: "warehouse", Schema: "public", Object: "customers_v2",
+	}
+	validated.Reference.Resolution.Target.Path = moved
+	require.True(t, normalizeReconciliationReferencePath(config, validated))
+	require.Equal(t, moved, config.GetCrossTable().GetReference().GetPath())
+
+	require.False(t, normalizeReconciliationReferencePath(&storepb.QualityRuleConfig{}, validated))
+}
+
 // A preview's reference-side probe opens the reference instance's READ_ONLY source
 // and reports a missing one as a configuration mistake that names the reference,
 // not as an invalid rule.

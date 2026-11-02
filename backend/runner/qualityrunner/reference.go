@@ -46,7 +46,14 @@ func (r *Runner) prepareReferenceExecution(ctx context.Context, snapshot *dataqu
 	reference := snapshot.Config.GetCrossTable().GetReference()
 	resolved, err := r.resolveReferenceTarget(ctx, reference.GetMetaGuid(), reference.GetMetaType())
 	if err != nil {
-		return nil, common.Errorf(common.Invalid, "%s", err)
+		// A reference the registry no longer has is a stored definition that cannot
+		// execute: ERROR(UNSUPPORTED), like a target that lost a named column. A
+		// transient store failure is not the definition's fault, so it keeps its own
+		// classification (ERROR(EXECUTION)) instead of being reported as unsupported.
+		if common.ErrorCode(err) == common.NotFound {
+			return nil, common.Errorf(common.Invalid, "%s", err)
+		}
+		return nil, err
 	}
 	return &dataquality.ReferenceExecution{
 		Resolution: resolved,
@@ -72,10 +79,18 @@ func (r *Runner) openReferenceSession(ctx context.Context, reference *dataqualit
 	if !ok {
 		return nil, nil, errReferenceConnectionUnavailable
 	}
+	// The lease is released on every path that does not hand it to the caller: the
+	// driver factory is not expected to panic, but a panic there must not leak the
+	// slot. The lease function is a sync.Once, so this safety net and
+	// releaseReferenceSession cannot free two slots.
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			release()
+		}
+	}()
 	driver, err := r.dbFactory.GetReadOnlyDatabaseDriver(ctx, reference.Instance, reference.Database)
 	if err != nil {
-		// The lease never reached the executor, so this path hands it back itself.
-		release()
 		return nil, nil, err
 	}
 	queryer, ok := driver.(db.ReadOnlyQueryer)
@@ -83,6 +98,7 @@ func (r *Runner) openReferenceSession(ctx context.Context, reference *dataqualit
 		releaseReferenceSession(ctx, driver, release)
 		return nil, nil, common.Errorf(common.Invalid, "this database engine does not support read-only query execution")
 	}
+	handedOff = true
 	var once sync.Once
 	return queryer, func() {
 		once.Do(func() { releaseReferenceSession(ctx, driver, release) })

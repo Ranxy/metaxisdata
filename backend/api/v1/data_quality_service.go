@@ -478,6 +478,9 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 	if err := requireReadOnlySourceForNewRule(storepb.QualityRuleType(rule.GetRuleType()), validated); err != nil {
 		return nil, err
 	}
+	if err := requireReferenceConnectionBudget(validated); err != nil {
+		return nil, err
+	}
 	if err := s.checkQualityRuleLimits(ctx, validated.Target); err != nil {
 		return nil, err
 	}
@@ -723,7 +726,37 @@ func (s *DataQualityService) validateRuleInput(ctx context.Context, workspaceID 
 	if err != nil {
 		return nil, filled, err
 	}
+	// A reconciliation names its reference by identity; the display path is a
+	// snapshot of where that reference lived. A caller that left it out (an API
+	// client) or sent a stale one gets the resolved path written back, so the editor
+	// and the execution detail show the same place. It is display metadata only:
+	// validation never reads it back.
+	if normalizeReconciliationReferencePath(config, validated) {
+		filled = true
+	}
 	return validated, filled, nil
+}
+
+// normalizeReconciliationReferencePath replaces a reconciliation's display path with
+// the resolved reference's, and reports whether it changed.
+func normalizeReconciliationReferencePath(config *storepb.QualityRuleConfig, validated *dataquality.ValidatedRule) bool {
+	cross := config.GetCrossTable()
+	if cross == nil || cross.GetReference() == nil || validated == nil || validated.Reference == nil ||
+		validated.Reference.Resolution == nil {
+		return false
+	}
+	resolved := validated.Reference.Resolution.Target.Path
+	if sameQualityTargetPath(cross.GetReference().GetPath(), resolved) {
+		return false
+	}
+	cross.GetReference().Path = resolved
+	return true
+}
+
+// sameQualityTargetPath compares two display path snapshots.
+func sameQualityTargetPath(a, b *storepb.QualityTargetPath) bool {
+	return a.GetInstance() == b.GetInstance() && a.GetDatabase() == b.GetDatabase() &&
+		a.GetSchema() == b.GetSchema() && a.GetObject() == b.GetObject() && a.GetColumn() == b.GetColumn()
 }
 
 // checkQualityRuleLimits refuses a create that would exceed the workspace's or
@@ -788,6 +821,43 @@ func requireReadOnlySource(instance *store.InstanceMessage, role string) error {
 	return nil
 }
 
+// requireReferenceConnectionBudget refuses a reconciliation whose reference needs a
+// second connection on the target's own instance when that instance cannot provide
+// one. A batch holds one of the instance's connections for its whole query phase, so
+// with a ceiling of one the reference side could never open a session and every
+// execution would be skipped forever - a rule that can never run must not be saved.
+func requireReferenceConnectionBudget(validated *dataquality.ValidatedRule) error {
+	if validated == nil || validated.Resolution == nil || validated.Reference == nil {
+		return nil
+	}
+	reference := validated.Reference
+	if !reference.Separate || reference.Resolution == nil || reference.Resolution.Instance == nil {
+		return nil
+	}
+	targetInstance := validated.Resolution.Instance
+	if targetInstance == nil || targetInstance.ResourceID != reference.Resolution.Instance.ResourceID {
+		// Another instance has its own connection budget.
+		return nil
+	}
+	limit := qualityInstanceConnectionLimit(targetInstance)
+	if limit >= 2 {
+		return nil
+	}
+	return connect.NewError(connect.CodeFailedPrecondition, errors.Errorf(
+		"instance %q allows %d connection(s); this reconciliation reads its reference table over a second connection on the same instance, so it needs at least 2. Raise the instance's maximum connections, or point the reference at a table in the target's own database",
+		targetInstance.ResourceID, limit))
+}
+
+// qualityInstanceConnectionLimit reads an instance's connection ceiling, with the
+// deployment default when it does not set one.
+func qualityInstanceConnectionLimit(instance *store.InstanceMessage) int {
+	maximumConnections := int(instance.Metadata.GetMaximumConnections())
+	if maximumConnections <= 0 {
+		maximumConnections = common.DefaultInstanceMaximumConnections
+	}
+	return maximumConnections
+}
+
 // revalidateQualityRuleDefinition runs the save pipeline on the merged
 // definition when the mask changes it, and refreshes the target snapshot the
 // store keeps beside it.
@@ -798,6 +868,9 @@ func (s *DataQualityService) revalidateQualityRuleDefinition(ctx context.Context
 	ruleType, guid, metaType, config := mergedQualityRuleDefinition(current, update.Patch)
 	validated, filledSnapshot, err := s.validateRuleInput(ctx, workspaceID, ruleType, guid, metaType, config)
 	if err != nil {
+		return err
+	}
+	if err := requireReferenceConnectionBudget(validated); err != nil {
 		return err
 	}
 	if filledSnapshot {

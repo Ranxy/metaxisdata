@@ -242,6 +242,45 @@ func TestCrossTableReferenceFilter(t *testing.T) {
 	}
 }
 
+// TestCrossTableReferenceFilterAfterContractFilter pins the argument order when the
+// target side already binds the rule's filter and the target contract's filter: the
+// reference-side placeholders must continue after both, not restart at 1.
+func TestCrossTableReferenceFilterAfterContractFilter(t *testing.T) {
+	t.Parallel()
+
+	reference := crossReferenceTarget(storepb.Engine_POSTGRES, "instances/ins1", "shop")
+	config := withRightFilter(crossTableConfig(crossReferenceGUID,
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "",
+		storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "", nil),
+		&storepb.QualityFilterClause{
+			Column: "status",
+			Op:     storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
+			Values: []string{"active"},
+		},
+	)
+	dialect, err := DialectFor(storepb.Engine_POSTGRES)
+	require.NoError(t, err)
+	query, err := Compile(CompileInput{
+		Dialect: dialect,
+		Target:  compileTestTarget(storepb.Engine_POSTGRES),
+		Type:    storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		Config:  config,
+		Filter: Filter{Clauses: []FilterClause{
+			{Column: "status", Op: FilterEQ, Values: []string{"paid"}},
+		}},
+		ContractFilter: Filter{Clauses: []FilterClause{
+			{Column: "amount", Op: FilterGT, Values: []string{"10"}},
+		}},
+		Reference: &reference,
+	})
+	require.NoError(t, err)
+	require.Equal(t,
+		`SELECT (SELECT COUNT(*) FROM "public"."orders" WHERE "status" = $1 AND "amount" > $2) AS left_value, `+
+			`(SELECT COUNT(*) FROM "public"."customers" WHERE "status" = $3) AS right_value`,
+		query.SQL)
+	require.Equal(t, []any{"paid", int64(10), "active"}, query.Args)
+}
+
 // TestCrossTableSeparateConnection pins the two-statement form: the reference is
 // read over its own connection, so the rule's statement carries the target side
 // only and the reference statement carries its own filter with its own numbering.
@@ -345,6 +384,18 @@ func TestCompileCrossTableReferenceRefusals(t *testing.T) {
 				storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "",
 				storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_SUM, "nope", nil),
 			wantMessage: `column "nope" does not exist`,
+		},
+		{
+			name: "right filter names a column the reference does not have",
+			config: withRightFilter(crossTableConfig(crossReferenceGUID,
+				storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "",
+				storepb.QualityAggregateFunction_QUALITY_AGGREGATE_FUNCTION_COUNT, "", nil),
+				&storepb.QualityFilterClause{
+					Column: "nope",
+					Op:     storepb.QualityFilterOperator_QUALITY_FILTER_OPERATOR_EQ,
+					Values: []string{"active"},
+				}),
+			wantMessage: `filter column "nope" does not exist`,
 		},
 	}
 	for _, test := range tests {
@@ -620,6 +671,24 @@ func TestExecuteCrossTableSeparateConnection(t *testing.T) {
 			ExecOptions{Reference: newReference(referenceQueryer, &released)})
 		require.Error(t, err)
 		require.Equal(t, 1, released, "a failed reference query still releases the session")
+	})
+
+	t.Run("either side truncated marks the execution truncated", func(t *testing.T) {
+		t.Parallel()
+		left := aggregateRow([]string{"left_value"}, int64(100))
+		left.Truncated = true
+		targetQueryer := &execFakeQueryer{results: []*db.QueryResult{left}}
+		referenceQueryer := &execFakeQueryer{results: []*db.QueryResult{
+			aggregateRow([]string{"right_value"}, int64(95)),
+		}}
+		released := 0
+		execution, err := NewExecutor().Execute(context.Background(), targetQueryer,
+			execTestResolution(storepb.Engine_POSTGRES),
+			execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE, config),
+			ExecOptions{Reference: newReference(referenceQueryer, &released)})
+		require.NoError(t, err)
+		require.True(t, execution.Truncated, "a truncated target side marks the whole execution")
+		require.True(t, execution.Observation.Truncated)
 	})
 
 	t.Run("a reconciliation without a reference is an invalid rule", func(t *testing.T) {

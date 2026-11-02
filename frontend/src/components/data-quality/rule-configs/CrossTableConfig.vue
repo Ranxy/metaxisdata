@@ -254,7 +254,17 @@ const referencePathText = computed(() => {
   const label = [path?.instance, path?.database, path?.schema, path?.object]
     .filter(Boolean)
     .join(" > ");
-  return label || t("dataQuality.editor.referenceTablePlaceholder");
+  if (label) {
+    return label;
+  }
+  // A rule created through the API may carry the identity without the display
+  // snapshot; the GUID still names the place, so its segments are shown instead of
+  // the "select a table" prompt next to a live clear button.
+  const guid = trimmed(config.value.referenceGuid);
+  return (
+    guid.split(";").filter(Boolean).join(" > ") ||
+    t("dataQuality.editor.referenceTablePlaceholder")
+  );
 });
 
 const referenceError = computed(() =>

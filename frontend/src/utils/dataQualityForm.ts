@@ -1891,6 +1891,12 @@ function configKey(form: RuleFormState): unknown {
 function normalizeConfigForm(form: RuleFormState): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(form.config)) {
+    if (key === "referencePath") {
+      // Display metadata, not identity: the reference GUID and its meta type are what
+      // the rule resolves, so a moved relation's path is not a config change. Every
+      // other structured value participates below rather than being skipped silently.
+      continue;
+    }
     if (key === "rightFilter") {
       // A second clause list, compared with the same semantics as the check's
       // own filter; treating it as a schema-drift row list would drop it.
@@ -1916,10 +1922,12 @@ function normalizeConfigForm(form: RuleFormState): Record<string, unknown> {
       out[key] = value
         .map((row) => normalizeConfigRow(row))
         .filter((row) => row.name !== "");
+    } else if (value && typeof value === "object") {
+      // A structured field added later must show up in change detection instead of
+      // being silently ignored; `referencePath` is the one display-only exception
+      // handled above.
+      out[key] = value;
     }
-    // `referencePath` is display metadata, not identity: the reference GUID and
-    // its meta type are what the rule resolves, so a moved relation's path is
-    // not a config change. Objects are skipped here for that reason.
   }
   return out;
 }
