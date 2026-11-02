@@ -197,6 +197,13 @@ type Client struct {
 	session *sessionRefresher
 }
 
+// HasSession reports whether this invocation holds a stored session it can renew.
+// It is false for a --token or METAXISDATA_TOKEN value, and for a stored session
+// whose server is not the one this invocation talks to.
+func (c *Client) HasSession() bool {
+	return c.session != nil
+}
+
 // RefreshSession rotates the stored session so a caller about to present the
 // access token has a live one. It is a no-op when the token cannot be renewed.
 func (c *Client) RefreshSession(ctx context.Context) error {
@@ -297,9 +304,14 @@ func New(server string, options Options) (*Client, error) {
 	}, nil
 }
 
-// SameServer reports whether two addresses name the same normalized server. The
-// stored session's refresh credential belongs to the server that issued it, so an
+// SameServer reports whether two addresses name the same server. The stored
+// session's refresh credential belongs to the server that issued it, so an
 // invocation pointed elsewhere must not be allowed to send it away.
+//
+// The comparison is on the identity a request actually reaches, not on the
+// spelling: host names are case-insensitive and an explicit default port does not
+// name a different server, so respelling --server must not silently disable
+// renewal for the stored session.
 func SameServer(a, b string) bool {
 	first, err := normalizeServer(a)
 	if err != nil {
@@ -309,7 +321,23 @@ func SameServer(a, b string) bool {
 	if err != nil {
 		return false
 	}
-	return first.String() == second.String()
+	return first.Scheme == second.Scheme &&
+		strings.EqualFold(first.Hostname(), second.Hostname()) &&
+		effectivePort(first) == effectivePort(second) &&
+		first.Path == second.Path
+}
+
+// effectivePort is the port the URL actually connects to, so "https://mx" and
+// "https://mx:443" compare equal. normalizeServer has already restricted the
+// scheme to http or https.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
 }
 
 // normalizeServer validates the address and returns the form the clients are

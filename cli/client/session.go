@@ -202,7 +202,7 @@ func (r *sessionRefresher) adoptFromDisk(presented string) (string, bool) {
 	// a login against another server — rather than by a concurrent rotation of this
 	// session. Adopting that token would replay the caller's request as somebody
 	// else, so only a rotation that preserves the session's identity is taken over.
-	if loaded.Server != r.credentials.Server || !sameCredentialsUser(loaded.User, r.credentials.User) {
+	if !SameServer(loaded.Server, r.credentials.Server) || !sameCredentialsUser(loaded.User, r.credentials.User) {
 		return "", false
 	}
 	r.tokens.set(loaded.Token)
@@ -212,7 +212,9 @@ func (r *sessionRefresher) adoptFromDisk(presented string) (string, bool) {
 }
 
 // sameCredentialsUser reports whether two stored identities are the same account.
-// A rotation preserves the file's user; a different login replaces it.
+// A rotation preserves the file's user; a different login replaces it. A legacy
+// file with no stored user (nil on both sides) is still adopted on the server
+// match alone: there is no identity to contradict.
 func sameCredentialsUser(a, b *config.User) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil

@@ -91,17 +91,24 @@ func TestSessionAdoptsAConcurrentRotationFromDisk(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "config.json")
-	credentials := &config.Credentials{Server: "https://mx.example.com", Token: "old-token", RefreshToken: "old-refresh"}
+	credentials := &config.Credentials{
+		Server:       "https://mx.example.com",
+		Token:        "old-token",
+		RefreshToken: "old-refresh",
+		User:         &config.User{Email: "dev@example.com"},
+	}
 	endpoint := &fakeRefreshEndpoint{handler: func(string) (*v1pb.ExchangeRefreshTokenResponse, error) {
 		return nil, connect.NewError(connect.CodeUnauthenticated, context.Canceled)
 	}}
 	refresher := newTestSession(t, endpoint, path, credentials)
 
-	// The other process already rotated and wrote its pair.
+	// The other process already rotated and wrote its pair. The identity is
+	// preserved, which is what distinguishes a rotation from a different login.
 	rotated := &config.Credentials{
 		Server:           "https://mx.example.com",
 		Token:            "winner-token",
 		RefreshToken:     "winner-refresh",
+		User:             &config.User{Email: "dev@example.com"},
 		RefreshExpiresAt: refresher.now().Add(time.Hour),
 	}
 	require.NoError(t, config.Save(path, rotated))
@@ -160,6 +167,44 @@ func TestRefreshSessionIsANoOpWithoutAStoredSession(t *testing.T) {
 
 	connection := &Client{}
 	require.NoError(t, connection.RefreshSession(context.Background()))
+}
+
+// The re-read loop exists for a writer that lands while this process waits, not
+// only for one that already finished before the refusal.
+func TestSessionAdoptsAWriterThatLandsDuringTheWait(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	credentials := &config.Credentials{
+		Server:       "https://mx.example.com",
+		Token:        "old-token",
+		RefreshToken: "old-refresh",
+		User:         &config.User{Email: "dev@example.com"},
+	}
+	endpoint := &fakeRefreshEndpoint{handler: func(string) (*v1pb.ExchangeRefreshTokenResponse, error) {
+		return nil, connect.NewError(connect.CodeUnauthenticated, context.Canceled)
+	}}
+	refresher := newTestSession(t, endpoint, path, credentials)
+
+	rotated := &config.Credentials{
+		Server:       "https://mx.example.com",
+		Token:        "winner-token",
+		RefreshToken: "winner-refresh",
+		User:         &config.User{Email: "dev@example.com"},
+	}
+	writes := 0
+	refresher.sleep = func(time.Duration) {
+		if writes == 0 {
+			writes++
+			require.NoError(t, config.Save(path, rotated))
+		}
+	}
+
+	token, err := refresher.refreshIfStale(context.Background(), "old-token")
+	require.NoError(t, err)
+	require.Equal(t, "winner-token", token)
+	require.Equal(t, 1, writes)
+	require.Len(t, endpoint.requests, 1, "the refusal is not re-presented while waiting")
 }
 
 // A different login (another account or another server) written to the same file
@@ -316,10 +361,10 @@ func TestInterceptorSurfacesARenewalFailure(t *testing.T) {
 	require.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 }
 
-// The AuthService is exempt: its Unauthenticated answers are a form error or a
-// login problem, not an expired session, and the refresh call itself must not
-// recurse.
-func TestAuthServiceProceduresAreExemptFromRenewal(t *testing.T) {
+// The interceptor's early return uses this classifier. A behavior-level test
+// cannot stub connect.AnyRequest (it has unexported methods), so this pins the
+// classifier itself; the other interceptor tests pin the refresh/replay behavior.
+func TestAuthServiceProcedureClassification(t *testing.T) {
 	t.Parallel()
 
 	require.True(t, isAuthServiceProcedure("/metaxisdata.v1.AuthService/Login"))

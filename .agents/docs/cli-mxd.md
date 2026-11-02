@@ -86,11 +86,11 @@ stdout 恰好一个 JSON 对象（protojson lowerCamelCase，2 空格缩进）�
 | --- | --- | --- |
 | server | `--server` > `METAXISDATA_SERVER` > 凭据文件 > **`server_required`(退出码 1)** | `auth login` 写入（与 token 原子写入） |
 | token | `--token` > `METAXISDATA_TOKEN` > 凭据文件 | `auth login` 写入 |
-| refresh token | **只来自凭据文件**（`--token`/env 覆盖时不续期） | `auth login` / 每次轮换写入 |
+| refresh token | **只来自凭据文件，且只在当前 server 与凭据文件记录的 server 一致时启用**（`--token`/env 覆盖、或 `--server` 指向别处时不续期） | `auth login` / 每次轮换写入 |
 | **scope** | `--scope` > `METAXISDATA_SCOPES` | **从不写入任何文件** |
 | `--ca-cert` / `--insecure` | flag / env | 不持久化（描述当前网络路径） |
 
-解析实现在 `cli/cmd/root.go` 的 `resolve`。续期只在 token 来源是凭据文件时启用：`--token` / `METAXISDATA_TOKEN` 的值从不落盘，拿它去续期会悄悄把调用者指定的身份换成文件里的身份。地址在 `client.New` 里规范化：必须带 `http`/`https` scheme、去尾 `/`、拒绝 userinfo/query/fragment（`cli/client/client.go:252-280`）；非法 → `invalid_argument`(退出码 1)。没有「默认 localhost」，也不探测端口。
+解析实现在 `cli/cmd/root.go` 的 `resolve`。续期只在 token 来源是凭据文件、且生效 server 与凭据文件记录的 server 是同一个时启用：`--token` / `METAXISDATA_TOKEN` 的值从不落盘，拿它去续期会悄悄把调用者指定的身份换成文件里的身份；`--server` / `METAXISDATA_SERVER` 指到别的 host 时，把 30 天的 refresh token 发过去同样不对。地址在 `client.New` 里规范化：必须带 `http`/`https` scheme、去尾 `/`、拒绝 userinfo/query/fragment（`cli/client/client.go:252-280`）；非法 → `invalid_argument`(退出码 1)。没有「默认 localhost」，也不探测端口。
 
 **凭据文件**：默认 `$XDG_CONFIG_HOME/metaxisdata/config.json`（`cli/config/config.go` 的 `Path`），`--config`/`METAXISDATA_CONFIG` 指向另一份；创建即 `chmod 0600`，先写临时文件再 rename，临时文件也带最终权限（`Save`）。内容只有 `{"server","token","refreshToken","user","tokenExpiresAt","refreshExpiresAt"}` —— **没有 scope 字段**；旧版本文件没有 refresh 字段，行为退化为「7 天后重新登录一次」。
 
@@ -101,7 +101,7 @@ stdout 恰好一个 JSON 对象（protojson lowerCamelCase，2 空格缩进）�
 - 把实际写入的凭据文件路径打印到 stderr（便于同机多 agent 排查），且**不读写 scope**。
 - 成功时 stdout 输出一个对象 `{"status":"approved","server","user","tokenExpiresAt","refreshExpiresAt"}`（API token 没有 refresh 时省略后者）。
 - `--service-account` 路径改走 `AuthService.Login`，token 有效期固定 1 小时，key 来自 `METAXISDATA_SERVICE_KEY`；写入时显式清空 refresh 字段，避免 401 时续期成另一个身份。
-- **`auth logout` 先尽力续期一次（access 可能已过期，Logout 只接受有效 token），再带当前 token 调 `Logout`；服务端删掉这条 `gid` 的 grant，最后清 token/refresh/user/expiry，保留 server。**
+- **`auth logout` 先用当前 token 调 `Logout`；只有它返回 401（access 已过期/不可验证）且本调用持有可续期会话时，才续期一次并重试，然后清 token/refresh/user/expiry，保留 server。** 续期被拒（`ErrSessionExpired`，会话已消失）时本地清理就是全部工作；续期因网络/写盘失败则照实上报，不谎报「已登出」。
 
 **`config show`**（只读）回显 `server{value,source}`（source = `flag`/`env:METAXISDATA_SERVER`/`file:<path>`）、`token{value:"[REDACTED]",source}`、`refreshToken{value:"[REDACTED]",source}`（未启用续期时为 `none`）、`configFile`、`scopes[{name?,guid}]`、`scopeSource`（`env:METAXISDATA_SCOPES` 或 `none`）。
 

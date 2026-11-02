@@ -21,8 +21,9 @@ import (
 // decision itself lives here, so the two cannot disagree about a deactivated
 // account or a pre-password-change grant.
 var (
-	// ErrGrantUserMissing means the grant's user no longer exists, or could not be
-	// read. The grant is revoked before this is returned.
+	// ErrGrantUserMissing means the grant's user no longer exists. The grant is
+	// revoked before this is returned; a read failure is a different error and does
+	// not end the connection.
 	ErrGrantUserMissing = errors.New("the grant's user no longer exists")
 	// ErrGrantUserDeactivated means the account was soft-deleted. The grant is
 	// revoked before this is returned.

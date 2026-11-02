@@ -225,11 +225,20 @@ kept, so signing in again does not need --server.`,
 					_, revokeErr = connection.Auth.Logout(cmd.Context(), connect.NewRequest(&v1pb.LogoutRequest{}))
 					// Logout only accepts a live access token. If that one has expired,
 					// rotate the session once and retry, so the logout still reaches the
-					// server and cuts the refresh chain. A refused rotation means the
-					// session is already gone; the local clear below is then the whole job.
-					if revokeErr != nil && connect.CodeOf(revokeErr) == connect.CodeUnauthenticated && current.credentials.RefreshToken != "" {
-						if refreshErr := connection.RefreshSession(cmd.Context()); refreshErr == nil {
+					// server and cuts the refresh chain.
+					if revokeErr != nil && connect.CodeOf(revokeErr) == connect.CodeUnauthenticated && connection.HasSession() {
+						refreshErr := connection.RefreshSession(cmd.Context())
+						switch {
+						case refreshErr == nil:
 							_, revokeErr = connection.Auth.Logout(cmd.Context(), connect.NewRequest(&v1pb.LogoutRequest{}))
+						case errors.Is(refreshErr, client.ErrSessionExpired):
+							// The session is already gone; the local clear below is the whole
+							// job.
+						default:
+							// The renewal failed for a transport or disk reason. Leaving the
+							// original 401 would report a sign-out that may not have reached
+							// the server, so report why it could not.
+							revokeErr = refreshErr
 						}
 					}
 				}

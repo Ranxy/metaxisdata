@@ -69,7 +69,7 @@ grant 行:created_at(授权时间)/expires_at(滑动 30 天)/
 ### 授权存活检查(gid + 30s 缓存)
 
 - access token 新增 `gid` claim(int64,`omitempty`;`backend/api/auth/auth.go`),`AccessTokenIdentity.GrantID` 携带它;MCP 与 CLI 令牌都带,web/API 令牌为 0。
-- `TokenAuthenticator.Resolve` 在 jti 吊销检查之后、用户读取之前,仅当 `GrantID != 0` 时检查(`authenticator.go:196-203`):先查 `state.GrantRevocationCache`(30s TTL,**独立实例**,避免 jti 流量把它挤掉),未命中再查 `IsOAuthGrantLive`(`oauth_grant.go`)——查询绑定令牌自带的 `id + user_id + client_id` 且 `revoked_at IS NULL AND expires_at > NOW()`;**行不存在 = 不存活**,DB 读失败按失败关闭处理。
+- `TokenAuthenticator.Resolve` 在 jti 吊销检查之后、用户读取之前,仅当 `GrantID != 0` 时检查(`authenticator.go` 的 `grantRevoked` 之前):先查 `state.GrantRevocationCache`(30s TTL,**独立实例**,避免 jti 流量把它挤掉),未命中再查 `IsOAuthGrantLive`(`oauth_grant.go`)——查询绑定令牌自带的 `id + user_id + client_id` 且 `revoked_at IS NULL AND expires_at > NOW()`;**行不存在 = 不存活**,DB 读失败按失败关闭处理。
 - **`/mcp` verifier 拒绝没有 `gid` 的 MCP access token**(`mcp/auth.go:60`)——升级前签发的令牌无法对应授权,拒绝后客户端 refresh 一次即得带 `gid` 的新令牌;refresh 也过期才重新走浏览器。
 - verifier 把 grant id 放进 `TokenInfo.Extra` 的 `"metaxisdata.grant"`,工具路径据此记活动。
 

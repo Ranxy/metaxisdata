@@ -100,6 +100,36 @@ func TestNormalizeServerReturnsTheValidatedForm(t *testing.T) {
 	}
 }
 
+// Renewal is only allowed against the server that issued the stored session. The
+// comparison is on the address a request reaches, not on its spelling, so a
+// respelled --server must not silently disable renewal for a healthy session.
+func TestSameServer(t *testing.T) {
+	t.Parallel()
+
+	same := [][2]string{
+		{"https://mx.example.com", "https://mx.example.com/"},
+		{"https://mx.example.com/base", "https://mx.example.com/base/"},
+		{"https://MX.example.com", "https://mx.example.com"},
+		{"https://mx.example.com:443", "https://mx.example.com"},
+		{"http://mx.example.com:80", "http://mx.example.com"},
+		{"http://mx.example.com", "http://MX.EXAMPLE.COM:80"},
+	}
+	for _, pair := range same {
+		require.True(t, SameServer(pair[0], pair[1]), "%q and %q name the same server", pair[0], pair[1])
+	}
+
+	different := [][2]string{
+		{"https://mx.example.com", "http://mx.example.com"},
+		{"https://mx.example.com", "https://other.example.com"},
+		{"https://mx.example.com/base", "https://mx.example.com/other"},
+		{"https://mx.example.com", "https://mx.example.com:8443"},
+		{"", "https://mx.example.com"},
+	}
+	for _, pair := range different {
+		require.False(t, SameServer(pair[0], pair[1]), "%q and %q name different servers", pair[0], pair[1])
+	}
+}
+
 // The token has to reach the wire as a bearer credential: that is what exempts
 // the CLI from the cookie-based CSRF protection and what the server's auth
 // interceptor reads.
