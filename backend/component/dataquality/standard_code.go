@@ -117,28 +117,28 @@ func standardCodeValueIndex(columns []string, column string) (int, error) {
 // records how many rows it read and, up to failingLimit, the offending rows
 // themselves (including their key columns). codeTable is nil when the rule names
 // no workspace code table; when it is set, a value must also be a member.
-func evaluateStandardCodeRows(standard storepb.QualityStandardCode, allowNull bool, valueIndex int, rows [][]any, failingLimit int, codeTable map[string]struct{}) (violations, evaluated int64, failing [][]any, err error) {
+func evaluateStandardCodeRows(standard storepb.QualityStandardCode, allowNull bool, valueIndex int, rows [][]any, sampleLimit int, codeTable map[string]struct{}) (violations, evaluated int64, failing, passing [][]any, err error) {
 	for rowIndex, row := range rows {
 		if valueIndex < 0 || valueIndex >= len(row) {
-			return 0, 0, nil, badData("sample row %d has %d values, expect the checked value at %d", rowIndex, len(row), valueIndex)
+			return 0, 0, nil, nil, badData("sample row %d has %d values, expect the checked value at %d", rowIndex, len(row), valueIndex)
 		}
 		value, isNull, err := standardCodeCell(row[valueIndex])
 		if err != nil {
-			return 0, 0, nil, err
+			return 0, 0, nil, nil, err
 		}
 		evaluated++
-		if isNull && allowNull {
-			continue
-		}
-		if !isNull && standardCodeAccepts(standard, value, codeTable) {
+		if (isNull && allowNull) || (!isNull && standardCodeAccepts(standard, value, codeTable)) {
+			if sampleLimit > 0 && len(passing) < sampleLimit {
+				passing = append(passing, row)
+			}
 			continue
 		}
 		violations++
-		if failingLimit > 0 && len(failing) < failingLimit {
+		if sampleLimit > 0 && len(failing) < sampleLimit {
 			failing = append(failing, row)
 		}
 	}
-	return violations, evaluated, failing, nil
+	return violations, evaluated, failing, passing, nil
 }
 
 // standardCodeCell reads one selected cell of a sample row.

@@ -39,6 +39,11 @@ func ValidateRuleTemplateConfig(ruleType storepb.QualityRuleType, config *storep
 	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL {
 		return invalidConfig("a custom SQL template is not supported: the statement names tables and columns, so create the check on its target instead")
 	}
+	// A segment check's segments are the target's own columns; a template would
+	// carry a grouping key the editor's new target may not have.
+	if ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK {
+		return invalidConfig("a segment-check template is not supported: its segments are the table's columns, so create the check on that table instead")
+	}
 	if config == nil {
 		return invalidConfig("a rule config is required")
 	}
@@ -109,7 +114,7 @@ func validateTemplateParameters(ruleType storepb.QualityRuleType, config *storep
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
 		values := config.GetAcceptedValues().GetValues()
 		if len(values) == 0 {
-			return invalidConfig("an accepted-values rule needs at least one value")
+			return invalidConfig("an accepted-values template needs at least one value: a dynamic value source (another column or a query) is bound to one target and cannot be templated")
 		}
 		if len(values) > compileMaxAcceptedValues {
 			return invalidConfig("an accepted-values rule allows at most %d values, got %d", compileMaxAcceptedValues, len(values))
@@ -211,6 +216,11 @@ func ClearRuleConfigTargetScope(config *storepb.QualityRuleConfig) {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES:
 		if accepted := config.GetAcceptedValues(); accepted != nil {
 			accepted.Column = ""
+			// The dynamic sources name a column or a statement, so they are
+			// target-bound too. A template can only carry the fixed value list; the
+			// parameter check reports the empty list it is left with.
+			accepted.Field = ""
+			accepted.Query = nil
 		}
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE:
 		if rangeConfig := config.GetRange(); rangeConfig != nil {
@@ -250,6 +260,10 @@ func ClearRuleConfigTargetScope(config *storepb.QualityRuleConfig) {
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:
 		if group := config.GetGroupCheck(); group != nil {
 			group.Columns = nil
+		}
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK:
+		if segment := config.GetSegmentCheck(); segment != nil {
+			segment.Columns = nil
 		}
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE:
 		if aggregate := config.GetAggregate(); aggregate != nil {

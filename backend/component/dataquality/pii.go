@@ -70,21 +70,30 @@ func RedactPersonalProfile(profile *storepb.ColumnProfile) {
 
 // redactPersonalSamples replaces the cells of the named columns with their masked
 // display forms and marks them. NULL cells keep their null marker; only a stored
-// value is redacted.
-func redactPersonalSamples(samples *storepb.QualityExecutionEvidence, columns map[string]struct{}) {
-	if samples == nil || len(columns) == 0 {
+// value is redacted. Failed and passing rows are redacted alike: the comparison
+// must not become a way around the failed-row redaction.
+func redactPersonalSamples(evidence *storepb.QualityExecutionEvidence, columns map[string]struct{}) {
+	if evidence == nil || len(columns) == 0 {
 		return
 	}
-	for _, sample := range samples.GetSamples() {
-		for _, cell := range sample.GetColumns() {
-			if cell == nil || cell.GetIsNull() {
-				continue
-			}
-			if _, ok := columns[cell.GetColumn()]; !ok {
-				continue
-			}
-			cell.Value = MaskPersonalValue(cell.GetValue())
-			cell.Masked = proto.Bool(true)
+	for _, sample := range evidence.GetSamples() {
+		redactSampleRow(sample, columns)
+	}
+	for _, sample := range evidence.GetPassingSamples() {
+		redactSampleRow(sample, columns)
+	}
+}
+
+// redactSampleRow redacts one stored row's personal cells.
+func redactSampleRow(sample *storepb.FailureSample, columns map[string]struct{}) {
+	for _, cell := range sample.GetColumns() {
+		if cell == nil || cell.GetIsNull() {
+			continue
 		}
+		if _, ok := columns[cell.GetColumn()]; !ok {
+			continue
+		}
+		cell.Value = MaskPersonalValue(cell.GetValue())
+		cell.Masked = proto.Bool(true)
 	}
 }

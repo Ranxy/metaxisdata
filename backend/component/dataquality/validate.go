@@ -549,29 +549,21 @@ func validateUniqueCombinationConfig(target ResolvedTarget, config *storepb.Qual
 	return validateCountThresholds(config, combination.FailThreshold, combination.WarnThreshold)
 }
 
-// validateAcceptedValuesConfig checks the accepted-values rule: the column exists,
-// the set is non-empty and bounded, and every value can be converted to the
-// column's type before it becomes a parameter.
+// validateAcceptedValuesConfig checks the accepted-values rule: the checked
+// column exists with the capability its source needs, the source names exactly one
+// of the three value sources, and that source's parameters are usable.
 func validateAcceptedValuesConfig(target ResolvedTarget, config *storepb.QualityRuleConfig) error {
 	accepted := config.GetAcceptedValues()
-	if accepted == nil {
-		return invalidConfig("the accepted-values config is missing")
-	}
-	column, err := requireValueComparisonColumn(target, accepted.GetColumn())
+	source, err := acceptedValuesSourceOf(accepted)
 	if err != nil {
 		return err
 	}
-	values := accepted.GetValues()
-	if len(values) == 0 {
-		return invalidConfig("an accepted-values rule needs at least one value")
+	column, err := acceptedValuesColumn(target, accepted, source)
+	if err != nil {
+		return err
 	}
-	if len(values) > compileMaxAcceptedValues {
-		return invalidConfig("an accepted-values rule allows at most %d values, got %d", compileMaxAcceptedValues, len(values))
-	}
-	for _, value := range values {
-		if _, err := convertFilterValue(column, value); err != nil {
-			return err
-		}
+	if err := validateAcceptedValuesSource(target, accepted, source, column); err != nil {
+		return err
 	}
 	return validateCountThresholds(config, accepted.FailThreshold, accepted.WarnThreshold)
 }

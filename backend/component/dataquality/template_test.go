@@ -376,6 +376,24 @@ var templateScopeCases = map[storepb.QualityRuleType]templateScopeCase{
 			}},
 		},
 	},
+	storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK: {
+		input: &storepb.QualityRuleConfig{
+			Config: &storepb.QualityRuleConfig_SegmentCheck{SegmentCheck: &storepb.SegmentCheckConfig{
+				Columns:        []string{"region", "tier"},
+				BaselineRuns:   5,
+				MinOccurrences: 4,
+				FailThreshold:  proto.Float64(1),
+			}},
+			Filter: templateFilter(),
+		},
+		want: &storepb.QualityRuleConfig{
+			Config: &storepb.QualityRuleConfig_SegmentCheck{SegmentCheck: &storepb.SegmentCheckConfig{
+				BaselineRuns:   5,
+				MinOccurrences: 4,
+				FailThreshold:  proto.Float64(1),
+			}},
+		},
+	},
 }
 
 // The clear function is the only thing standing between a user's editor state and
@@ -406,6 +424,11 @@ func TestClearRuleConfigTargetScopeContract(t *testing.T) {
 			if spec.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_CUSTOM_SQL {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "custom SQL template is not supported")
+				return
+			}
+			if spec.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "segment-check template is not supported")
 				return
 			}
 			require.NoError(t, err, "the cleared %s config is a valid template", spec.Type)

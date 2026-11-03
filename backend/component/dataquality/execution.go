@@ -65,15 +65,26 @@ type ExecOptions struct {
 	// reference's own session only when the two sides cannot share the target's
 	// connection.
 	Reference *ReferenceExecution
+	// Segments is the baseline a segment check compares against, derived by the
+	// caller from the check's recent executions. Nil means there is no usable
+	// baseline yet, which the executor records as "not judged".
+	Segments *SegmentBaseline
 }
 
 // Execution is everything one execution measured: the observation the evaluator
 // judges, the optional failed-row sample, and the SQL that produced it.
 type Execution struct {
 	Observation Observation
-	// Samples is the failed-row sample, or nil when none was requested, none was
-	// possible for this rule type, or the sample query failed.
-	Samples *storepb.QualityExecutionEvidence
+	// Evidence is what the execution keeps beyond its observation: the failed-row
+	// sample, the passing rows a comparison keeps, and a segment check's segment
+	// observation. Nil when none was requested, none was possible for this rule
+	// type, or the evidence query failed.
+	Evidence *storepb.QualityExecutionEvidence
+	// PassingRows is the compiled statement that reads rows the check does not
+	// count as failures. The executor compiles it for the types that keep passing
+	// rows; running it is the caller's decision because a passing verdict has no
+	// failed rows to compare against.
+	PassingRows *CompiledQuery
 	// ExecutedSQL is the aggregate statement, truncated for storage.
 	ExecutedSQL string
 	// ReferenceExecutedSQL is the statement that read a reconciliation's reference

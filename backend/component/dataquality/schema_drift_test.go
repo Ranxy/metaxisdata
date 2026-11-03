@@ -356,7 +356,7 @@ func TestExecuteSchemaDriftWithoutQueryer(t *testing.T) {
 	require.Equal(t, float64(2), execution.Observation.Observed)
 	require.Equal(t, storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT, execution.Observation.ObservedKind)
 	// The sample is capped at one row, and the execution says it was truncated.
-	require.Len(t, execution.Samples.GetSamples(), 1)
+	require.Len(t, execution.Evidence.GetSamples(), 1)
 	require.True(t, execution.Truncated)
 	require.Equal(t, int64(1), execution.Observation.SampleRows)
 
@@ -364,7 +364,7 @@ func TestExecuteSchemaDriftWithoutQueryer(t *testing.T) {
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, snapshotConfig),
 		ExecOptions{})
 	require.NoError(t, err)
-	require.Nil(t, execution.Samples)
+	require.Nil(t, execution.Evidence)
 	require.False(t, execution.Truncated)
 }
 

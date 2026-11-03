@@ -145,6 +145,11 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 		redactExecutionSamples(execution, rule, opts)
 		return execution, nil
 	}
+	if rule.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK {
+		// A segment check reads the current segment set and compares it with the
+		// baseline the caller derived from the check's previous executions.
+		return executeSegmentCheckRule(ctx, queryer, resolution, rule, opts, compiled, e.Metrics)
+	}
 	if compiled.Kind != QueryAggregate {
 		return nil, badData("the compiler returned query kind %d for a rule that is observed by an aggregate", compiled.Kind)
 	}
@@ -176,6 +181,9 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 		if err := addSamples(ctx, queryer, input, execution, opts, e.Metrics); err != nil {
 			return nil, err
 		}
+		if err := compilePassingRows(input, execution, opts); err != nil {
+			return nil, err
+		}
 	}
 	// A sampled aggregate is judged on the rows the sample read, and the count of
 	// those rows is its own denominator. The failure sample query must not
@@ -189,6 +197,67 @@ func (e *Executor) Execute(ctx context.Context, queryer db.ReadOnlyQueryer, reso
 	}
 	redactExecutionSamples(execution, rule, opts)
 	return execution, nil
+}
+
+// compilePassingRows compiles the statement that reads the rows a failed check
+// counted as passing, so a reviewer can compare the two populations. It is only
+// compiled for a check that actually failed at least one row and only for a type
+// that has a passing statement; running it is the caller's job, so a passing
+// verdict pays nothing for a comparison it has no use for.
+func compilePassingRows(input CompileInput, execution *Execution, opts ExecOptions) error {
+	if execution == nil || execution.Observation.FailedRows <= 0 {
+		return nil
+	}
+	spec, ok := ruleTypeSpecFor(input.Type)
+	if !ok || spec.Passing == nil {
+		return nil
+	}
+	passing, err := spec.Passing(input, normalizeSampleLimit(opts.SampleLimit))
+	if err != nil {
+		// Compiling a sample is not a user-data condition: it means the stored rule
+		// and this build disagree, which is a defect like a failed sample compile.
+		return err
+	}
+	if passing.SQL == "" {
+		return nil
+	}
+	execution.PassingRows = &passing
+	return nil
+}
+
+// AttachPassingRows runs the compiled passing-rows statement and stores the rows
+// as evidence. A failed query leaves the comparison empty: the passing rows are
+// context, never the verdict, exactly like the failed-row sample. The caller runs
+// this only for a WARN or FAIL verdict, so a healthy check never spends the extra
+// query.
+func AttachPassingRows(ctx context.Context, queryer db.ReadOnlyQueryer, execution *Execution, rule RuleSnapshot, opts ExecOptions) error {
+	if execution == nil || execution.PassingRows == nil || queryer == nil {
+		return nil
+	}
+	limit := normalizeSampleLimit(opts.SampleLimit)
+	result, err := queryer.QueryReadOnly(ctx, execution.PassingRows.SQL, execution.PassingRows.Args, sampleQueryOptions(opts, limit, nil))
+	if err != nil {
+		// The verdict stands; only the comparison is missing. A canceled context is
+		// the caller asking to stop, which is returned.
+		return ctx.Err()
+	}
+	passing := SamplesFromRows(result.Columns, result.Rows, limit)
+	if execution.Evidence == nil {
+		execution.Evidence = &storepb.QualityExecutionEvidence{}
+	}
+	execution.Evidence.PassingSamples = passing.GetSamples()
+	redactPersonalSamples(execution.Evidence, personalSampleColumns(rule, opts))
+	return nil
+}
+
+// DropPassingRows removes the passing rows a verdict does not warrant keeping. An
+// in-process check collects them while it evaluates its sample, and a passing
+// verdict has no failed rows to compare them against.
+func DropPassingRows(execution *Execution) {
+	if execution == nil || execution.Evidence == nil {
+		return
+	}
+	execution.Evidence.PassingSamples = nil
 }
 
 // executeReconciliationSides runs the two halves of a reconciliation whose
@@ -285,10 +354,10 @@ func sideValue(result *db.QueryResult, column string) (float64, bool, error) {
 	return aggregateFloat(result, indexes, column)
 }
 func redactExecutionSamples(execution *Execution, rule RuleSnapshot, opts ExecOptions) {
-	if execution == nil || execution.Samples == nil {
+	if execution == nil || execution.Evidence == nil {
 		return
 	}
-	redactPersonalSamples(execution.Samples, personalSampleColumns(rule, opts))
+	redactPersonalSamples(execution.Evidence, personalSampleColumns(rule, opts))
 }
 
 // personalSampleColumns is the set of columns whose sampled values must be
@@ -354,9 +423,9 @@ func addSamples(ctx context.Context, queryer db.ReadOnlyQueryer, input CompileIn
 		// exception is cancellation, which is the caller asking to stop.
 		return ctx.Err()
 	}
-	execution.Samples = SamplesFromRows(sampleResult.Columns, sampleResult.Rows, sampleLimit)
-	if execution.Samples != nil {
-		execution.Observation.SampleRows = int64(len(execution.Samples.GetSamples()))
+	execution.Evidence = SamplesFromRows(sampleResult.Columns, sampleResult.Rows, sampleLimit)
+	if execution.Evidence != nil {
+		execution.Observation.SampleRows = int64(len(execution.Evidence.GetSamples()))
 	}
 	execution.Truncated = execution.Truncated || sampleResult.Truncated
 	execution.Observation.Truncated = execution.Truncated
@@ -397,8 +466,8 @@ func executeCELRule(ctx context.Context, queryer db.ReadOnlyQueryer, resolution 
 		return nil, err
 	}
 	return executeSampleEvaluatedRule(ctx, queryer, compiled, opts, m, sampleRows, metrics.QueryPurposeRuleCELSample,
-		func(rows [][]any, failingLimit int) (int64, int64, [][]any, error) {
-			return evaluateCELRows(program, columns, rows, failingLimit)
+		func(rows [][]any, sampleLimit int) (int64, int64, [][]any, [][]any, error) {
+			return evaluateCELRows(program, columns, rows, sampleLimit)
 		})
 }
 
@@ -438,15 +507,16 @@ func executeStandardCodeRule(ctx context.Context, queryer db.ReadOnlyQueryer, re
 		return nil, err
 	}
 	return executeSampleEvaluatedRule(ctx, queryer, compiled, opts, m, sampleRows, metrics.QueryPurposeRuleStandardCodeSample,
-		func(rows [][]any, failingLimit int) (int64, int64, [][]any, error) {
-			return evaluateStandardCodeRows(standard, allowNull, valueIndex, rows, failingLimit, codeTable)
+		func(rows [][]any, sampleLimit int) (int64, int64, [][]any, [][]any, error) {
+			return evaluateStandardCodeRows(standard, allowNull, valueIndex, rows, sampleLimit, codeTable)
 		})
 }
 
 // sampleEvaluator validates one sample of rows. It returns how many rows it
-// evaluated, how many of them violated the rule, and, up to the limit, the
-// offending rows themselves.
-type sampleEvaluator func(rows [][]any, failingLimit int) (violations, evaluated int64, failing [][]any, err error)
+// evaluated, how many of them violated the rule and, up to the limit, both the
+// offending rows and the rows that passed — the two populations a reviewer
+// compares.
+type sampleEvaluator func(rows [][]any, sampleLimit int) (violations, evaluated int64, failing, passing [][]any, err error)
 
 // executeSampleEvaluatedRule runs a rule whose compiled statement returns bounded
 // rows that are validated in this process (a CEL expression or a standard code),
@@ -480,7 +550,7 @@ func executeSampleEvaluatedRule(ctx context.Context, queryer db.ReadOnlyQueryer,
 	if opts.StoreSamples {
 		sampleLimit = normalizeSampleLimit(opts.SampleLimit)
 	}
-	violations, evaluated, failingRows, err := evaluate(result.Rows, sampleLimit)
+	violations, evaluated, failingRows, passingRows, err := evaluate(result.Rows, sampleLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -505,9 +575,15 @@ func executeSampleEvaluatedRule(ctx context.Context, queryer db.ReadOnlyQueryer,
 		Truncated:   result.Truncated,
 	}
 	if sampleLimit > 0 && len(failingRows) > 0 {
-		// The failed-row sample is the rows the evaluator rejected, already in
-		// memory: no second statement is needed.
-		execution.Samples = SamplesFromRows(compiled.Columns, failingRows, sampleLimit)
+		// Both populations are in memory: the sample already read them, so no
+		// second statement is needed. The passing rows are kept only beside a
+		// failure — a check nothing failed has nothing to compare with.
+		evidence := SamplesFromRows(compiled.Columns, failingRows, sampleLimit)
+		if evidence == nil {
+			evidence = &storepb.QualityExecutionEvidence{}
+		}
+		evidence.PassingSamples = SamplesFromRows(compiled.Columns, passingRows, sampleLimit).GetSamples()
+		execution.Evidence = evidence
 	}
 	return execution, nil
 }
@@ -942,9 +1018,9 @@ func executeMetadataRule(resolution *Resolution, rule RuleSnapshot, opts ExecOpt
 		return execution, nil
 	}
 	limit := normalizeSampleLimit(opts.SampleLimit)
-	execution.Samples = schemaDriftSamples(items, limit)
-	if execution.Samples != nil {
-		execution.Observation.SampleRows = int64(len(execution.Samples.GetSamples()))
+	execution.Evidence = schemaDriftSamples(items, limit)
+	if execution.Evidence != nil {
+		execution.Observation.SampleRows = int64(len(execution.Evidence.GetSamples()))
 	}
 	if len(items) > limit {
 		// The observation is complete; only the sample was capped, and the result

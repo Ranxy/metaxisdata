@@ -501,7 +501,7 @@ func TestBuildExecutionMessageStoresTheVerdictAndItsEvidence(t *testing.T) {
 		},
 	}
 	execution := &dataquality.Execution{
-		Samples:     &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{}}},
+		Evidence:    &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{}}},
 		ExecutedSQL: "SELECT COUNT(*) FROM orders",
 		Sampled:     true,
 		Truncated:   true,
@@ -1287,4 +1287,39 @@ func TestNextTargetRun(t *testing.T) {
 	require.Equal(t, time.Date(2026, time.November, 2, 2, 0, 0, 0, time.UTC),
 		nextTargetRun(now, schedule.Spec{Cron: "0 2 * * *", TimeZone: "UTC"}))
 	require.Equal(t, now.Add(minRuleScheduleInterval), nextTargetRun(now, schedule.Spec{}))
+}
+
+// TestSegmentBaselineFromExecutions pins the history read: only executions that
+// carry segment evidence count, and the derived baseline is the expected set the
+// check will compare against.
+func TestSegmentBaselineFromExecutions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.November, 3, 12, 0, 0, 0, time.UTC)
+	observed := func(revision int32, values ...string) *store.QualityExecutionMessage {
+		return &store.QualityExecutionMessage{
+			StartedAt:    now,
+			RuleRevision: revision,
+			Sample: &storepb.QualityExecutionEvidence{Segments: &storepb.SegmentObservation{
+				Observed: []*storepb.SegmentRecord{{Values: []string{values[0]}, RowCount: 10}},
+			}},
+		}
+	}
+	executions := []*store.QualityExecutionMessage{
+		observed(2, "open"),
+		// No evidence: an execution from before the type existed, or one whose
+		// observation was never kept.
+		{StartedAt: now.Add(-time.Hour)},
+		observed(2, "open"),
+		// Another revision: editing the check can change the grouping key, so its
+		// observations do not describe the current shape.
+		observed(1, "closed"),
+	}
+	baseline := segmentBaselineFromExecutions(executions, 2, 3, 1)
+	require.NotNil(t, baseline)
+	require.Equal(t, 2, baseline.Runs, "only the current revision's evidenced executions count")
+	require.Len(t, baseline.Expected, 1)
+	require.Equal(t, []string{"open"}, baseline.Expected[0].Key)
+
+	require.Nil(t, segmentBaselineFromExecutions(nil, 1, 3, 1), "no history means no baseline")
 }

@@ -10,12 +10,12 @@ import (
 
 // TestScoreModeForCoversEveryRuleType is the contract test: every rule type in
 // the catalog has a score mode, and exactly the thirteen row-level types score by
-// passed rows while the other six score by verdict. Adding a rule type without
+// passed rows while the other score by verdict. Adding a rule type without
 // deciding its mode fails here.
 func TestScoreModeForCoversEveryRuleType(t *testing.T) {
 	t.Parallel()
 
-	require.Len(t, ruleTypeSpecs, 19, "the catalog carries nineteen rule types")
+	require.Len(t, ruleTypeSpecs, 20, "the catalog carries twenty rule types")
 	rowLevel := map[storepb.QualityRuleType]bool{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT:          true,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE:                true,
@@ -30,8 +30,9 @@ func TestScoreModeForCoversEveryRuleType(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT:          true,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK:           true,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:         true,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK:         true,
 	}
-	require.Len(t, rowLevel, 13)
+	require.Len(t, rowLevel, 14)
 
 	rowCount, statusCount := 0, 0
 	for _, spec := range ruleTypeSpecs {
@@ -44,7 +45,7 @@ func TestScoreModeForCoversEveryRuleType(t *testing.T) {
 		}
 		require.Equal(t, want, ScoreModeFor(spec.Type), spec.Type.String())
 	}
-	require.Equal(t, 13, rowCount)
+	require.Equal(t, 14, rowCount)
 	require.Equal(t, 6, statusCount)
 
 	require.Equal(t, ScoreModeNone, ScoreModeFor(storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED))

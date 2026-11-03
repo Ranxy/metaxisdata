@@ -241,6 +241,25 @@ func TestRuleSignatureIncludesSemanticConfigValues(t *testing.T) {
 		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"CA", "US"}, false)),
 		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"US", "CA"}, false)),
 		"the accepted set is order-insensitive")
+	// A dynamic value source is a different rule from the same checked column with
+	// a fixed list, and the two dynamic sources differ from each other too.
+	acceptedField := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
+		AcceptedValues: &storepb.AcceptedValuesConfig{Column: "country", Field: "region"},
+	}}
+	acceptedQuery := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
+		AcceptedValues: &storepb.AcceptedValuesConfig{
+			Column: "country",
+			Query:  &storepb.AcceptedValuesQuery{Sql: "SELECT code FROM regions", ValueColumn: "code"},
+		},
+	}}
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, accepted([]string{"US"}, false)),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, acceptedField),
+		"a reference column is a different rule from a fixed list")
+	require.NotEqual(t,
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, acceptedField),
+		RuleSignature(storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, acceptedQuery),
+		"a reference column is a different rule from a query")
 
 	unique := func(countNulls bool) *storepb.QualityRuleConfig {
 		return &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Unique{

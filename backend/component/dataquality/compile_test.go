@@ -183,6 +183,48 @@ func compileRuleGoldens() []compileGolden {
 				"THEN 1 ELSE 0 END) AS failed_rows FROM [public].[orders]",
 		},
 		{
+			name:     "accepted_values_field",
+			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
+				AcceptedValues: &storepb.AcceptedValuesConfig{Column: "status", Field: "name"},
+			}},
+			wantColumns: []string{"total_rows", "failed_rows"},
+			wantKind:    QueryAggregate,
+			mysqlSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` NOT IN " +
+				"(SELECT `name` FROM `shop`.`orders` WHERE `name` IS NOT NULL) " +
+				"THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
+			postgresSQL: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "status" IS NULL OR "status" NOT IN ` +
+				`(SELECT "name" FROM "public"."orders" WHERE "name" IS NOT NULL) ` +
+				`THEN 1 ELSE 0 END) AS failed_rows FROM "public"."orders"`,
+			mssqlSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN [status] IS NULL OR [status] NOT IN " +
+				"(SELECT [name] FROM [public].[orders] WHERE [name] IS NOT NULL) " +
+				"THEN 1 ELSE 0 END) AS failed_rows FROM [public].[orders]",
+		},
+		{
+			name:     "accepted_values_query",
+			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
+				AcceptedValues: &storepb.AcceptedValuesConfig{
+					Column: "status",
+					Query: &storepb.AcceptedValuesQuery{
+						Sql:         "SELECT DISTINCT name FROM orders",
+						ValueColumn: "name",
+					},
+				},
+			}},
+			wantColumns: []string{"total_rows", "failed_rows"},
+			wantKind:    QueryAggregate,
+			mysqlSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` NOT IN " +
+				"(SELECT dq_values.`name` FROM (SELECT DISTINCT name FROM orders) dq_values " +
+				"WHERE dq_values.`name` IS NOT NULL) THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
+			postgresSQL: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "status" IS NULL OR "status" NOT IN ` +
+				`(SELECT dq_values."name" FROM (SELECT DISTINCT name FROM orders) dq_values ` +
+				`WHERE dq_values."name" IS NOT NULL) THEN 1 ELSE 0 END) AS failed_rows FROM "public"."orders"`,
+			mssqlSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN [status] IS NULL OR [status] NOT IN " +
+				"(SELECT dq_values.[name] FROM (SELECT DISTINCT name FROM orders) dq_values " +
+				"WHERE dq_values.[name] IS NOT NULL) THEN 1 ELSE 0 END) AS failed_rows FROM [public].[orders]",
+		},
+		{
 			name:     "range",
 			ruleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_RANGE,
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{
@@ -309,7 +351,7 @@ func compileTestDialects(golden compileGolden) []struct {
 }
 
 // TestCompileRuleGoldens pins the complete SQL, arguments, result columns and
-// query kind of all 13 rule types on all four dialect families.
+// query kind of every rule type on all four dialect families.
 func TestCompileRuleGoldens(t *testing.T) {
 	t.Parallel()
 
@@ -761,7 +803,7 @@ func TestCompileValidationRejectsBadConfigs(t *testing.T) {
 			config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{
 				AcceptedValues: &storepb.AcceptedValuesConfig{Column: "status"},
 			}},
-			wantMessage: "at least one value",
+			wantMessage: "needs a value source",
 		},
 		{
 			name:     "accepted value not numeric",

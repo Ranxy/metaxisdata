@@ -529,10 +529,10 @@ func TestExecuteCELRuleCountsTheSampleRows(t *testing.T) {
 	require.Contains(t, queryer.queries[0], "LIMIT 100")
 	require.Equal(t, queryer.queries[0], execution.ExecutedSQL)
 
-	require.NotNil(t, execution.Samples)
-	require.Len(t, execution.Samples.GetSamples(), 1)
-	require.Equal(t, "amount", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
-	require.Equal(t, "50", execution.Samples.GetSamples()[0].GetColumns()[0].GetValue())
+	require.NotNil(t, execution.Evidence)
+	require.Len(t, execution.Evidence.GetSamples(), 1)
+	require.Equal(t, "amount", execution.Evidence.GetSamples()[0].GetColumns()[0].GetColumn())
+	require.Equal(t, "50", execution.Evidence.GetSamples()[0].GetColumns()[0].GetValue())
 }
 
 func TestExecuteCELRuleMarksACappedSample(t *testing.T) {
@@ -616,8 +616,8 @@ func TestExecuteCELRuleLimitsTheFailureSample(t *testing.T) {
 		Rows:    [][]any{{float64(150)}, {float64(200)}, {float64(300)}},
 	}, ExecOptions{StoreSamples: true, SampleLimit: 2})
 	require.NoError(t, err)
-	require.NotNil(t, execution.Samples)
-	require.Len(t, execution.Samples.GetSamples(), 2)
+	require.NotNil(t, execution.Evidence)
+	require.Len(t, execution.Evidence.GetSamples(), 2)
 }
 
 func TestExecuteCELRuleSkipsSamplesWhenNotRequested(t *testing.T) {
@@ -629,7 +629,7 @@ func TestExecuteCELRuleSkipsSamplesWhenNotRequested(t *testing.T) {
 		Rows:    [][]any{{float64(50)}},
 	}, ExecOptions{})
 	require.NoError(t, err)
-	require.Nil(t, execution.Samples)
+	require.Nil(t, execution.Evidence)
 }
 
 func TestExecuteCELRuleRejectsAMismatchedSampleShape(t *testing.T) {
