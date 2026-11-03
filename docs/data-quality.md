@@ -1,13 +1,14 @@
 # Data quality
 
 Data quality watches the **data** in your databases, not just its schema. A check
-is a typed assertion over a table or column; this build has 19 check types — row
+is a typed assertion over a table or column; this build has 20 check types — row
 count, row count change, null rate, single-column and combination uniqueness,
 accepted values, ranges, regex, string length, referential integrity, cross-column
-relations, freshness, aggregates, grouped row counts, schema drift, cross-table
-reconciliation, custom SQL, CEL expressions and standard codes. A scheduler runs
-the checks, and each execution records a status, the observed value, the thresholds
-it was judged against, and (optionally) the rows that failed.
+relations, freshness, aggregates, grouped row counts, segment checks, schema drift,
+cross-table reconciliation, custom SQL, CEL expressions and standard codes. A
+scheduler runs the checks, and each execution records a status, the observed value,
+the thresholds it was judged against, and (optionally) the rows that failed and the
+rows that passed.
 
 Everything is in the **Data Quality** section of the sidebar. The check engine is
 fully offline; three model-assisted features are opt-in.
@@ -98,6 +99,38 @@ type authority. Editing a check opens the same dialog from its row or drawer.
 - **Filters** narrow the rows the check reads (structured AND conditions only);
   write a custom-SQL check when the condition needs more. A target-level filter
   from the contract is ANDed on top.
+- **Accepted values** takes its set from exactly one of three places: a fixed
+  list (typed in, at most 200 values), **another column of the same table** (the
+  checked value must match one of that column's distinct values), or a
+  **one-column query**. The other column has to be a different column of the same
+  table whose type compares with the checked one. The query is a single
+  `SELECT`/`WITH` statement (at most 8 KiB, time variables allowed) read over the
+  target's read-only data source, so it may name another database or schema of the
+  same instance but not another instance — use a cross-table reconciliation for
+  that; it must return the column you name as its value column. The server drops
+  NULLs from a dynamic set (a NULL in the set would make every row compare
+  unknown and silently pass the whole check), and *Allow NULL* still controls the
+  checked column's NULL values only. The check's filter and the contract filter
+  narrow the rows being checked, never the reference set. A query's returned
+  column type is only known when the statement runs, so **Preview** before saving
+  is what proves the query fits the checked column. Workspace templates can only
+  carry the fixed list.
+- **Segment check** groups rows by one to five columns and fails when a segment
+  its recent runs saw is gone — the "a whole region/category quietly
+  disappeared" case. The baseline is the check's last three completed runs
+  against its current table by default (1–10; runs without segment evidence, or
+  whose observation was cut off at the 500-segment cap or by the server's value
+  budget, are skipped), and a segment is expected when at least two of those
+  runs saw it (adjustable, and clamped to the runs available, so a young check
+  starts judging early). A segment that is missing now is one failure, and the
+  percentage is taken over the expected segments. New segments are reported as
+  context but never fail the check. The first run only records the set — nothing
+  is judged until a baseline exists — and the execution shows the disappeared
+  and new segments. Editing the check restarts its baseline (the runs judged
+  under another revision can describe a different grouping key), so the first
+  run after an edit only records the set again. Sampling, views and workspace
+  templates do not apply to it, and the HTML report does not include segment
+  evidence.
 - **Preview** runs the compiled statement with `LIMIT 0` against the read-only
   source: it proves syntax and permission without scanning the table. If it is
   refused, the error shows the statement and its bound values; a successful dry
@@ -497,7 +530,16 @@ then the checked column(s), so two failures on the same column do not look like
 one row repeated; a grouped check returns the grouping key instead. A sample
 recorded after this release shows SQL `NULL` and an empty string as different
 values rather than a blank cell; samples stored before it cannot tell the two
-apart and are labelled as such. The execution detail also shows the check
+apart and are labelled as such. When a row-level check that has a meaningful
+passing row ends `WARN` or `FAIL`, the execution also keeps a bounded sample of
+the rows that **passed**, so the failed rows can be compared with the rest of the
+population; it costs one extra bounded read (checks that validate an in-process
+sample reuse the rows they already read), uses the same sample limit and the same
+personal-data redaction as the failed rows, and is absent for a `PASS`, for
+`ERROR`/`SKIPPED`/`NOT_EVALUATED`, and for check types whose result is a
+measurement, a grouped shape, a duplicate key, a segment set or custom SQL. The single-target
+HTML report includes failed rows only — the passing comparison is
+execution-detail evidence. The execution detail also shows the check
 revision, engine version, duration, trigger, instance and, for a manual run, who
 started it. Executions are the durable record: batching checks together for
 scheduling is an internal detail.
@@ -799,7 +841,9 @@ six-status pass rate are different measures.
 
 The report is the one export that contains **real values from your data** — up to
 5 sample rows per failed check (at most 20 checks), capped at 2 MiB in total, with
-an explicit note when anything was cut. Treat the file as sensitive: forwarding it
+an explicit note when anything was cut. It prints failed rows only: a check's
+passing-row comparison and a segment check's segment evidence stay in the
+execution detail. Treat the file as sensitive: forwarding it
 forwards those rows. Generating it is audited; the HTML body itself is never
 written to the audit log.
 
@@ -1016,6 +1060,7 @@ pruned.
 | A check that used to run now ends `ERROR(UNSUPPORTED)` | The check uses a configuration this build no longer accepts, for example an aggregate `COUNT` (use a row count check instead) or a column type the engine cannot express. Re-create the check with the supported type. |
 | A valid-looking code is reported invalid | The check enforces one exact standard and edition. Compare the value with that standard: a division code must be in the 2023-06-30 snapshot (codes retired after an earlier revision may be absent, newer ones may be missing, and statistics-bureau development-zone pseudo-codes are not accepted), industry codes follow GB/T 4754-2017 plus the 2019 amendment, a 15-digit legacy resident ID is rejected, and a NULL is a violation unless *Allow NULL* is on. Values are compared after upper-casing and trimming trailing spaces. The USCC check does not verify the internal organization-code check digit, so a code that fails it is not reported for that reason. |
 | An enterprise-status or registration-authority value is rejected | SG 3-2021 code sets are not bundled. Import the code set as a workspace code table and use *Custom code table*, or use an *Accepted values* check for one column or *Referential integrity* against a customer code table. |
+| An *Accepted values* query source errors or matches nothing | Preview it first: the query must be one `SELECT`/`WITH` statement (at most 8 KiB) that returns the column you name as the value column, and it is read over the target's read-only source, so it can name another database or schema of the same instance but not another instance. The server filters NULLs out of the returned set automatically, so a NULL in the reference data never makes the check pass. A returned column whose type does not fit the checked column is only reported when the statement runs, so Preview (or the first execution) is where it surfaces. |
 | A workspace template is missing from the check editor | The editor lists workspace templates only when the user has *templates.list* and only while starting a new check; editing a check or opening the dialog from an AI draft keeps its own form. A failed list load shows a Retry in the Templates block. |
 | "Save as template" is missing | It needs *templates.create*. The built-in presets are read-only; workspace templates can be renamed or deleted by a user with *templates.update* / *templates.delete*. |
 | "Save as template" refuses a custom SQL check | A custom SQL template is not supported: the statement names its own tables and columns, so a template would keep reading the original table under a new target. Create the check directly on its target instead. |
@@ -1035,13 +1080,14 @@ pruned.
 | The trend has no threshold band | The check was edited after its last judged run, so its current thresholds never judged the drawn points; the row count change is plotted without a band on purpose, because its thresholds bound a percentage change against a baseline. |
 | Suggested thresholds are unavailable | The check has fewer than five judged executions; aggregate, row count change and schema drift checks have no suggestion; a row count check with an exact row count has nothing to suggest; and if the form's check type or measurement unit was changed, the suggestion describes the saved check and is disabled. |
 | A row count change check reports `NOT_EVALUATED` on its first run | It has no baseline yet: the first completed run records it and the comparison starts with the second. Newly created checks default *empty data* to pass so the first run does not look like a problem; an older check keeps its saved setting, which can be changed under Details. |
+| A segment check reports `NOT_EVALUATED` | It has no usable baseline yet (the first run, or the first run after the check was edited — an edit restarts the baseline), or this run's segment set was truncated. The first run only records the observed set and is not judged; from the second run on the check judges against the runs it has (a baseline run whose observation was cut off at the 500-segment cap is skipped). If the segment set is larger than 500, narrow the check's filter or group by fewer/coarser columns, then wait for the next runs. |
 | The row count change baseline seems stale | The baseline is the most recent completed execution with a non-zero measured count within seven days and two target intervals (for a cron target, the expression's nominal interval); zero-row and unmeasured executions are skipped, and the check falls back to its empty-data behavior when no baseline qualifies. A target that runs less often than once every seven days — a monthly or yearly cron schedule, for example — never has a fresh enough baseline. |
 | Running *AI label fields* changed the recommendation thresholds | It should not: a pending recommendation is not overwritten by a label-pass draft. If a draft shows the default parameters instead, the recommendation was rejected/decided first, or *Regenerate* was used on the label pass. |
 | A CSV export stops early | The selection is capped at 100,000 rows; the app warns when the file was cut. Narrow the filters (especially the time window) and export again. |
 | "Too many concurrent exports" | Four exports already stream from this server. Wait for one to finish; a refused export writes nothing. |
 | The weekly digest did not arrive | Check that the digest is enabled with a weekday/time/time zone, that at least one **enabled** notification channel has **Data quality digest** ticked (email channels also need a fixed address and a working SMTP setting), and that the server was up within 24 hours after the scheduled minute. A longer outage skips that week on purpose. |
 | The digest email has no recipients | The digest has no per-person audience: an email channel must carry fixed addresses; "include the audience" cannot resolve anyone for it. |
-| A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift and CEL checks never sample; a standard-code check has its own *Sample rows* setting instead. Remove the sampling or pick another check type. |
+| A check says it cannot be sampled | The method does not apply to this check: row count, row count change and freshness describe the whole table; referential integrity and cross-table checks read two relations; custom SQL, schema drift, CEL and segment checks never sample (a sampled segment set would look like vanished segments, and a CEL or standard-code check has its own *Sample rows* setting instead). Remove the sampling or pick another check type. |
 | A reconciliation cannot be saved because the reference table does not exist | The reference side must be a table, view or external table the workspace has already synced into its metadata. Connect its instance and sync that database first; a relation that only exists in the database is not visible to the check. |
 | A reconciliation ends `ERROR(NO_READ_ONLY_SOURCE)` | One of the two instances has no **Read-only** data source. Add one on the target instance and on the reference instance — each side of the comparison is read over a read-only connection. |
 | A reconciliation was skipped | The check needed a second read-only connection for its reference side and the instance's connection budget was fully used at that moment, so the run was skipped rather than failed and repeats on the next cycle. Raise that instance's **Maximum connections**, or point the reference at a table in the target's own database (a reference there shares the target's connection). A PostgreSQL or SQL Server reference in *another database of the same instance* needs at least two connections on that instance: with a ceiling of one the check is refused when you save it, because the target's own scan holds the only slot for its whole query phase. |

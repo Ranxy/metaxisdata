@@ -158,9 +158,12 @@ fail":
   always carries its counts and booleans — `failedRows: 0` and `sampled: false`
   are real values here.
 - `get_quality_execution` returns all of it: the SQL that executed, the failed
-  sample rows, the thresholds the run was judged against, any baseline value and
-  time, and the sampling and truncation flags. It returns the whole execution as
-  protoJSON, so its nested field names follow the proto
+  sample rows, the rows that passed when the check keeps that comparison
+  (`passingSamples`, only for a WARN or FAIL row-level check), a segment check's
+  segment evidence (`segmentEvidence`: observed, new and disappeared segments),
+  the thresholds the run was judged against, any baseline value and time, and the
+  sampling and truncation flags. It returns the whole execution as protoJSON, so
+  its nested field names follow the proto
   (`target.metaGuid`, `executedSql`, `samples[].columns[].value`, `ruleRevision`)
   rather than the projected `target.guid` shape the listing tools use. That raw
   protoJSON omits zero-valued fields: an absent `observedValue` means 0 when
@@ -177,9 +180,10 @@ a bare `guid` is accepted because the filter then carries no type.
 
 There is no tool that asks a model to explain a failure. The agent calling these
 tools is the model: it reads the evidence — the executed SQL, the observed value,
-the thresholds, the failed rows — and forms the explanation itself. Failed sample
-values are real row data, returned to a caller the `executions.get` permission
-already entitles.
+the thresholds, the failed rows, the passing rows and a segment check's
+disappeared/new segments — and forms the explanation itself. Sample values (failed
+and passing alike) are real row data, returned to a caller the `executions.get`
+permission already entitles.
 
 ## What a failure means
 
