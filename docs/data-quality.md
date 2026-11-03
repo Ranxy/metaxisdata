@@ -549,8 +549,12 @@ population; it costs one extra bounded read (checks that validate an in-process
 sample reuse the rows they already read), uses the same sample limit and the same
 personal-data redaction as the failed rows, and is absent for a `PASS`, for
 `ERROR`/`SKIPPED`/`NOT_EVALUATED`, and for check types whose result is a
-measurement, a grouped shape, a duplicate key, a segment set or custom SQL. The single-target
-HTML report includes failed rows only — the passing comparison is
+measurement, a grouped shape, a duplicate key, a segment set or custom SQL. A
+row whose comparison is unknown (a NULL in a range, length or cross-column
+comparison, for example) is neither a failure nor a pass and appears in neither
+sample; the one exception is a referential-integrity check with *Allow NULL*, where
+a NULL child value counts as passing and therefore appears among the passing rows.
+The single-target HTML report includes failed rows only — the passing comparison is
 execution-detail evidence. The execution detail also shows the check
 revision, engine version, duration, trigger, instance and, for a manual run, who
 started it. Executions are the durable record: batching checks together for
