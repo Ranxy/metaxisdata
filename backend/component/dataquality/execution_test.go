@@ -107,6 +107,14 @@ func TestExecuteInterpretsEveryRuleType(t *testing.T) {
 			total: 100, failed: 5, observed: 5,
 			kind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
 		},
+		"accepted_values_field": {
+			total: 100, failed: 5, observed: 5,
+			kind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		},
+		"accepted_values_query": {
+			total: 100, failed: 5, observed: 5,
+			kind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
+		},
 		"range": {
 			total: 100, failed: 7, observed: 7,
 			kind: storepb.QualityObservedKind_QUALITY_OBSERVED_KIND_COUNT,
@@ -142,6 +150,8 @@ func TestExecuteInterpretsEveryRuleType(t *testing.T) {
 		"unique":                {int64(8), int64(2), int64(1200)},
 		"unique_combination":    {int64(4), int64(2), int64(900)},
 		"accepted_values":       {int64(100), int64(5)},
+		"accepted_values_field": {int64(100), int64(5)},
+		"accepted_values_query": {int64(100), int64(5)},
 		"range":                 {int64(100), int64(7)},
 		"string_length":         {int64(100), int64(2)},
 		"referential_integrity": {int64(50), int64(3)},
@@ -183,7 +193,7 @@ func TestExecuteInterpretsEveryRuleType(t *testing.T) {
 				require.True(t, want.maxTS.Equal(*observation.MaxTimestamp))
 			}
 			require.False(t, execution.Sampled, "v1 has no sampling rule")
-			require.Nil(t, execution.Samples)
+			require.Nil(t, execution.Evidence)
 		})
 	}
 }
@@ -447,15 +457,15 @@ func TestExecuteFetchesFailedRowSamples(t *testing.T) {
 	require.Contains(t, queryer.queries[1], "`email` IS NULL")
 	require.Contains(t, queryer.queries[1], "LIMIT 2")
 	require.Equal(t, 2, queryer.options[1].MaxRows)
-	require.NotNil(t, execution.Samples)
-	require.Len(t, execution.Samples.GetSamples(), 2)
-	require.Equal(t, "7", execution.Samples.GetSamples()[0].GetColumns()[0].GetValue())
-	require.Equal(t, "id", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
-	require.Equal(t, "a@example.com", execution.Samples.GetSamples()[0].GetColumns()[1].GetValue())
-	require.Equal(t, "email", execution.Samples.GetSamples()[0].GetColumns()[1].GetColumn())
+	require.NotNil(t, execution.Evidence)
+	require.Len(t, execution.Evidence.GetSamples(), 2)
+	require.Equal(t, "7", execution.Evidence.GetSamples()[0].GetColumns()[0].GetValue())
+	require.Equal(t, "id", execution.Evidence.GetSamples()[0].GetColumns()[0].GetColumn())
+	require.Equal(t, "a@example.com", execution.Evidence.GetSamples()[0].GetColumns()[1].GetValue())
+	require.Equal(t, "email", execution.Evidence.GetSamples()[0].GetColumns()[1].GetColumn())
 	// A NULL is marked, not left as an empty value that reads like an empty string.
-	require.True(t, execution.Samples.GetSamples()[1].GetColumns()[1].GetIsNull())
-	require.Empty(t, execution.Samples.GetSamples()[1].GetColumns()[1].GetValue())
+	require.True(t, execution.Evidence.GetSamples()[1].GetColumns()[1].GetIsNull())
+	require.Empty(t, execution.Evidence.GetSamples()[1].GetColumns()[1].GetValue())
 	require.Equal(t, int64(2), execution.Observation.SampleRows)
 	require.False(t, execution.Sampled)
 }
@@ -488,10 +498,10 @@ func TestExecuteSampleFallsBackWithoutKeyColumns(t *testing.T) {
 	require.Len(t, queryer.queries, 3)
 	require.Contains(t, queryer.queries[1], "`id`, `email`")
 	require.Equal(t, "SELECT `email` FROM `shop`.`orders` WHERE (`email` IS NULL) LIMIT 20", queryer.queries[2])
-	require.NotNil(t, execution.Samples)
-	require.Len(t, execution.Samples.GetSamples(), 1)
-	require.Equal(t, "email", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
-	require.True(t, execution.Samples.GetSamples()[0].GetColumns()[0].GetIsNull())
+	require.NotNil(t, execution.Evidence)
+	require.Len(t, execution.Evidence.GetSamples(), 1)
+	require.Equal(t, "email", execution.Evidence.GetSamples()[0].GetColumns()[0].GetColumn())
+	require.True(t, execution.Evidence.GetSamples()[0].GetColumns()[0].GetIsNull())
 }
 
 // A timed-out sample is not retried without the key columns: the key is not what
@@ -517,7 +527,7 @@ func TestExecuteSampleDoesNotRetryAfterTimeout(t *testing.T) {
 		ExecOptions{StoreSamples: true})
 	require.NoError(t, err)
 	require.Len(t, queryer.queries, 2, "only the aggregate and the keyed sample ran")
-	require.Nil(t, execution.Samples)
+	require.Nil(t, execution.Evidence)
 }
 
 // The sample limit follows the workspace rules: unset reads as the default, a
@@ -549,7 +559,7 @@ func TestExecuteNormalizesTheSampleLimit(t *testing.T) {
 				ExecOptions{StoreSamples: true, SampleLimit: test.limit})
 			require.NoError(t, err)
 			require.Contains(t, queryer.queries[1], test.wantLimit)
-			require.NotNil(t, execution.Samples)
+			require.NotNil(t, execution.Evidence)
 		})
 	}
 }
@@ -570,7 +580,7 @@ func TestExecuteSkipsSamplesWhenNotRequested(t *testing.T) {
 		ExecOptions{})
 	require.NoError(t, err)
 	require.Len(t, queryer.queries, 1)
-	require.Nil(t, execution.Samples)
+	require.Nil(t, execution.Evidence)
 	require.Zero(t, execution.Observation.SampleRows)
 }
 
@@ -613,7 +623,7 @@ func TestExecuteSkipsSamplesWithoutFailedRows(t *testing.T) {
 				ExecOptions{StoreSamples: true})
 			require.NoError(t, err)
 			require.Len(t, queryer.queries, 1, "no sample query is issued")
-			require.Nil(t, execution.Samples)
+			require.Nil(t, execution.Evidence)
 		})
 	}
 }
@@ -635,7 +645,7 @@ func TestExecuteSwallowsASampleFailure(t *testing.T) {
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, config),
 		ExecOptions{StoreSamples: true})
 	require.NoError(t, err)
-	require.Nil(t, execution.Samples)
+	require.Nil(t, execution.Evidence)
 	require.Zero(t, execution.Observation.SampleRows)
 	require.Equal(t, int64(5), execution.Observation.FailedRows)
 }
@@ -678,10 +688,10 @@ func TestExecuteSamplesCustomSQLAsItsOwnRows(t *testing.T) {
 		ExecOptions{StoreSamples: true})
 	require.NoError(t, err)
 	require.Contains(t, queryer.queries[1], "SELECT * FROM (SELECT id, amount FROM orders WHERE amount < 0) dq")
-	require.NotNil(t, execution.Samples)
-	require.Equal(t, "id", execution.Samples.GetSamples()[0].GetColumns()[0].GetColumn())
-	require.Equal(t, "1", execution.Samples.GetSamples()[0].GetColumns()[0].GetValue())
-	require.Equal(t, "-5.5", execution.Samples.GetSamples()[0].GetColumns()[1].GetValue())
+	require.NotNil(t, execution.Evidence)
+	require.Equal(t, "id", execution.Evidence.GetSamples()[0].GetColumns()[0].GetColumn())
+	require.Equal(t, "1", execution.Evidence.GetSamples()[0].GetColumns()[0].GetValue())
+	require.Equal(t, "-5.5", execution.Evidence.GetSamples()[0].GetColumns()[1].GetValue())
 }
 
 // SamplesFromRows is the conversion boundary: every normalized value type has a

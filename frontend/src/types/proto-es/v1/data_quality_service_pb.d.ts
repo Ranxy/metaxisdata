@@ -365,6 +365,14 @@ export declare type QualityRuleConfig = Message<"metaxisdata.v1.QualityRuleConfi
      */
     value: StandardCodeConfig;
     case: "standardCode";
+  } | {
+    /**
+     * v1.2: segment identity tracking across executions.
+     *
+     * @generated from field: metaxisdata.v1.SegmentCheckConfig segment_check = 20;
+     */
+    value: SegmentCheckConfig;
+    case: "segmentCheck";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -652,7 +660,9 @@ export declare type UniqueCombinationConfig = Message<"metaxisdata.v1.UniqueComb
 export declare const UniqueCombinationConfigSchema: GenMessage<UniqueCombinationConfig>;
 
 /**
- * AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+ * AcceptedValuesConfig counts rows whose column value is outside the accepted
+ * set. The set comes from exactly one source: the fixed list, another column of
+ * the same target, or a single-column query.
  *
  * @generated from message metaxisdata.v1.AcceptedValuesConfig
  */
@@ -685,6 +695,24 @@ export declare type AcceptedValuesConfig = Message<"metaxisdata.v1.AcceptedValue
    * @generated from field: optional double warn_threshold = 5;
    */
   warnThreshold?: number;
+
+  /**
+   * A column of the same target whose distinct values are the accepted set.
+   * Mutually exclusive with values and query.
+   *
+   * @generated from field: string field = 6;
+   */
+  field: string;
+
+  /**
+   * A query whose values are the accepted set. Mutually exclusive with values
+   * and field. The reference side is read over the target's own read-only data
+   * source, so it may name another database or schema of that instance but not
+   * another instance.
+   *
+   * @generated from field: metaxisdata.v1.AcceptedValuesQuery query = 7;
+   */
+  query?: AcceptedValuesQuery;
 };
 
 /**
@@ -692,6 +720,35 @@ export declare type AcceptedValuesConfig = Message<"metaxisdata.v1.AcceptedValue
  * Use `create(AcceptedValuesConfigSchema)` to create a new message.
  */
 export declare const AcceptedValuesConfigSchema: GenMessage<AcceptedValuesConfig>;
+
+/**
+ * AcceptedValuesQuery is the accepted set a single-column query returns.
+ *
+ * @generated from message metaxisdata.v1.AcceptedValuesQuery
+ */
+export declare type AcceptedValuesQuery = Message<"metaxisdata.v1.AcceptedValuesQuery"> & {
+  /**
+   * One SELECT or WITH statement of at most 8 KiB. It is parsed before it runs;
+   * time variables are rendered the same way a custom SQL check renders them.
+   *
+   * @generated from field: string sql = 1;
+   */
+  sql: string;
+
+  /**
+   * The column the query returns. Named explicitly because the server tests it
+   * for NULL (a NULL in the set would make NOT IN unknown for every row).
+   *
+   * @generated from field: string value_column = 2;
+   */
+  valueColumn: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.AcceptedValuesQuery.
+ * Use `create(AcceptedValuesQuerySchema)` to create a new message.
+ */
+export declare const AcceptedValuesQuerySchema: GenMessage<AcceptedValuesQuery>;
 
 /**
  * RangeConfig counts rows outside a bound pair. At least one bound is required;
@@ -1068,6 +1125,56 @@ export declare type StandardCodeConfig = Message<"metaxisdata.v1.StandardCodeCon
  * Use `create(StandardCodeConfigSchema)` to create a new message.
  */
 export declare const StandardCodeConfigSchema: GenMessage<StandardCodeConfig>;
+
+/**
+ * SegmentCheckConfig fails when a segment that the check's recent executions
+ * observed is missing from the current one. A segment is the distinct
+ * combination of the grouping columns.
+ *
+ * @generated from message metaxisdata.v1.SegmentCheckConfig
+ */
+export declare type SegmentCheckConfig = Message<"metaxisdata.v1.SegmentCheckConfig"> & {
+  /**
+   * The columns that identify a segment (1-5).
+   *
+   * @generated from field: repeated string columns = 1;
+   */
+  columns: string[];
+
+  /**
+   * How many previous judged executions form the baseline. 0 means the default
+   * (3); the accepted range is 1-10. Executions judged against another target,
+   * or recorded before segment evidence existed, are skipped.
+   *
+   * @generated from field: int32 baseline_runs = 2;
+   */
+  baselineRuns: number;
+
+  /**
+   * How many of the baseline executions a segment must appear in to be expected
+   * in the current one. 0 means the default (2). It is clamped to the number of
+   * baseline runs actually available, so the second execution already judges.
+   *
+   * @generated from field: int32 min_occurrences = 3;
+   */
+  minOccurrences: number;
+
+  /**
+   * @generated from field: optional double fail_threshold = 4;
+   */
+  failThreshold?: number;
+
+  /**
+   * @generated from field: optional double warn_threshold = 5;
+   */
+  warnThreshold?: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SegmentCheckConfig.
+ * Use `create(SegmentCheckConfigSchema)` to create a new message.
+ */
+export declare const SegmentCheckConfigSchema: GenMessage<SegmentCheckConfig>;
 
 /**
  * SchemaDriftColumn is one column of the snapshot a schema-drift rule expects.
@@ -1740,6 +1847,24 @@ export declare type QualityExecution = Message<"metaxisdata.v1.QualityExecution"
    * @generated from field: string reference_executed_sql = 30;
    */
   referenceExecutedSql: string;
+
+  /**
+   * Rows that passed the same check, kept beside the failed rows so a reviewer
+   * can compare the two populations. Only the row-level check types whose
+   * passing rows are a row predicate keep them, and only when the verdict was
+   * WARN or FAIL (a passing verdict has no failed rows to compare against).
+   *
+   * @generated from field: repeated metaxisdata.v1.FailureSample passing_samples = 31;
+   */
+  passingSamples: FailureSample[];
+
+  /**
+   * The segment set a segment check observed, compared with its baseline.
+   * Unset for every other check type.
+   *
+   * @generated from field: metaxisdata.v1.SegmentObservation segment_evidence = 32;
+   */
+  segmentEvidence?: SegmentObservation;
 };
 
 /**
@@ -2727,6 +2852,125 @@ export declare type FailureSample = Message<"metaxisdata.v1.FailureSample"> & {
  * Use `create(FailureSampleSchema)` to create a new message.
  */
 export declare const FailureSampleSchema: GenMessage<FailureSample>;
+
+/**
+ * SegmentObservation is the segment set one segment-check execution observed,
+ * kept as the baseline the following executions are judged against.
+ *
+ * @generated from message metaxisdata.v1.SegmentObservation
+ */
+export declare type SegmentObservation = Message<"metaxisdata.v1.SegmentObservation"> & {
+  /**
+   * The segments this execution saw, largest first. Bounded by a fixed cap, so a
+   * truncated observation carries only the largest segments.
+   *
+   * @generated from field: repeated metaxisdata.v1.SegmentRecord observed = 1;
+   */
+  observed: SegmentRecord[];
+
+  /**
+   * The observed segments the baseline did not have. They are evidence only: a
+   * new segment does not fail the check.
+   *
+   * @generated from field: repeated metaxisdata.v1.SegmentRecord new_segments = 2;
+   */
+  newSegments: SegmentRecord[];
+
+  /**
+   * True when the observed set was cut off by the segment cap.
+   *
+   * @generated from field: bool truncated = 3;
+   */
+  truncated: boolean;
+
+  /**
+   * How many previous executions formed the baseline; 0 means there was none.
+   *
+   * @generated from field: int32 baseline_runs = 4;
+   */
+  baselineRuns: number;
+
+  /**
+   * How many segments the baseline expected.
+   *
+   * @generated from field: int64 expected_count = 5;
+   */
+  expectedCount: bigint;
+
+  /**
+   * The expected segments the current execution did not observe: the ones that
+   * failed the check. Each carries the last baseline run that saw it and its row
+   * count then. Empty when the check passed.
+   *
+   * @generated from field: repeated metaxisdata.v1.SegmentRecord disappeared = 6;
+   */
+  disappeared: SegmentRecord[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.SegmentObservation.
+ * Use `create(SegmentObservationSchema)` to create a new message.
+ */
+export declare const SegmentObservationSchema: GenMessage<SegmentObservation>;
+
+/**
+ * SegmentRecord is one segment: its key values and row count.
+ *
+ * @generated from message metaxisdata.v1.SegmentRecord
+ */
+export declare type SegmentRecord = Message<"metaxisdata.v1.SegmentRecord"> & {
+  /**
+   * One display-rendered value per grouping column, in the rule's column order.
+   *
+   * @generated from field: repeated string values = 1;
+   */
+  values: string[];
+
+  /**
+   * @generated from field: int64 row_count = 2;
+   */
+  rowCount: bigint;
+
+  /**
+   * When the baseline last observed the segment. Unset for a segment this
+   * execution observed.
+   *
+   * @generated from field: google.protobuf.Timestamp last_seen = 3;
+   */
+  lastSeen?: Timestamp;
+
+  /**
+   * Whether the matching value in values is SQL NULL. The list is parallel to
+   * values; a missing entry reads as not null.
+   *
+   * @generated from field: repeated bool is_null = 4;
+   */
+  isNull: boolean[];
+
+  /**
+   * Whether the matching value in values was redacted before storage. The list
+   * is parallel to values; a missing entry reads as not redacted.
+   *
+   * @generated from field: repeated bool masked = 5;
+   */
+  masked: boolean[];
+
+  /**
+   * A digest of the full value behind each entry of values, hex encoded. Values
+   * are truncated for display; the digest is what tells two segments with the
+   * same 128-byte prefix apart across executions. The list is parallel to
+   * values; a missing entry reads as empty (fall back to the value).
+   *
+   * @generated from field: repeated string value_digests = 6;
+   */
+  valueDigests: string[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.SegmentRecord.
+ * Use `create(SegmentRecordSchema)` to create a new message.
+ */
+export declare const SegmentRecordSchema: GenMessage<SegmentRecord>;
 
 /**
  * ColumnValue is one column of a sampled failed row. Values are truncated before
@@ -7937,6 +8181,14 @@ export enum QualityRuleType {
    * @generated from enum value: QUALITY_RULE_TYPE_STANDARD_CODE = 19;
    */
   STANDARD_CODE = 19,
+
+  /**
+   * v1.2: tracks the distinct segments of one or more columns and fails when a
+   * segment the previous executions observed is missing from the current one.
+   *
+   * @generated from enum value: QUALITY_RULE_TYPE_SEGMENT_CHECK = 20;
+   */
+  SEGMENT_CHECK = 20,
 }
 
 /**

@@ -419,6 +419,27 @@ func TestValidateAcceptedValues(t *testing.T) {
 		}), wantErr: true},
 		{name: "unconvertible value", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "id", Values: []string{"1", "abc"}}), wantErr: true},
 		{name: "missing column", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "missing", Values: []string{"1"}}), wantErr: true},
+		{name: "reference column", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "created_at", Field: "updated_at"})},
+		{name: "reference column is the checked column", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "name", Field: "name"}), wantErr: true},
+		{name: "reference column across kinds", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "id", Field: "name"}), wantErr: true},
+		{name: "reference column missing", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{Column: "name", Field: "missing"}), wantErr: true},
+		{name: "query source", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{
+			Column: "name",
+			Query:  &storepb.AcceptedValuesQuery{Sql: "SELECT name FROM orders", ValueColumn: "name"},
+		})},
+		{name: "query without value column", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{
+			Column: "name",
+			Query:  &storepb.AcceptedValuesQuery{Sql: "SELECT name FROM orders"},
+		}), wantErr: true},
+		{name: "query that is not a select", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{
+			Column: "name",
+			Query:  &storepb.AcceptedValuesQuery{Sql: "DELETE FROM orders", ValueColumn: "name"},
+		}), wantErr: true},
+		{name: "two value sources", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{
+			Column: "name",
+			Values: []string{"a"},
+			Field:  "name",
+		}), wantErr: true},
 		{name: "warn above fail", config: validationAcceptedValuesConfig(&storepb.AcceptedValuesConfig{
 			Column:        "id",
 			Values:        []string{"1"},

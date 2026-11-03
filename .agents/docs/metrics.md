@@ -620,7 +620,7 @@ v1（P0 66 条，按目录行计）已经实现，按四个可独立评审的范
 | schemasync | engine(9) × outcome(2) × 若干 + object_type(10) × 3 + 12 项维护 → < 200 |
 | lineage | meta_type(4) × engine(9) × result(11) ≈ 396 + 直方图 ≈ 500 |
 | openlineage | failure_kind(9) × route(2) + 事件/边/解析 < 200 |
-| quality | rule_type(19) × status(7) ≈ 133 + error_code ≈ 247 + 直方图 ≈ 400 |
+| quality | rule_type(20) × status(7) ≈ 140 + error_code ≈ 247 + 直方图 ≈ 400 |
 | query | purpose(6) × outcome(2) + 直方图 < 150 |
 | llm | feature(4) × provider(配置数) × outcome(4) + 直方图 < 200 |
 | 运行时 | go/process/db_pool ≈ 40 |

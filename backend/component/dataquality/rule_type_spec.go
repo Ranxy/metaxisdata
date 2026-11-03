@@ -1,7 +1,6 @@
 package dataquality
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 
@@ -69,6 +68,11 @@ type ruleTypeSpec struct {
 	// Sample builds the failed-row sample; nil means the rule has no failing row
 	// to show (CompileFailureRows).
 	Sample func(CompileInput, int) (CompiledQuery, error)
+	// Passing builds the statement that reads the rows the rule does not count as
+	// failures, for the good-vs-bad comparison. Nil means the type keeps no
+	// passing rows: its failure is a measurement, a group shape, or a statement
+	// that defines its own rows.
+	Passing func(CompileInput, int) (CompiledQuery, error)
 	// Observe reads the aggregate row; nil means the type never has an aggregate
 	// observation (observationFromAggregate).
 	Observe func(*db.QueryResult, map[string]int) (Observation, error)
@@ -153,6 +157,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		},
 		Judge:      evaluateNullPercent,
 		Sample:     sampleNullPercent,
+		Passing:    sampleNullPercentPassing,
 		Observe:    countObservation,
 		LabelDraft: labelDraftNullPercent,
 	},
@@ -239,10 +244,12 @@ var ruleTypeSpecs = []ruleTypeSpec{
 			if accepted == nil {
 				return nil
 			}
-			values := append([]string(nil), accepted.GetValues()...)
-			slices.Sort(values)
+			// The value source is part of the proposal's identity: a fixed list, a
+			// reference column and a query are three different rules even when they
+			// check the same column.
+			source := acceptedValuesSourceDiscriminator(accepted)
 			return []string{
-				"values=" + suggestionSignatureHash(strings.Join(slices.Compact(values), "\x00")),
+				source,
 				"allow_null=" + strconv.FormatBool(accepted.GetAllowNull()),
 			}
 		},
@@ -258,6 +265,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Compiler:    compileAcceptedValues,
 		Validator:   validateAcceptedValuesConfig,
 		Sample:      sampleAcceptedValues,
+		Passing:     sampleAcceptedValuesPassing,
 		Observe:     countObservation,
 		LabelDraft:  labelDraftAcceptedValues,
 	},
@@ -285,6 +293,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Compiler:    compileRange,
 		Validator:   validateRangeConfig,
 		Sample:      sampleRange,
+		Passing:     sampleRangePassing,
 		Observe:     countObservation,
 		LabelDraft:  labelDraftRange,
 	},
@@ -326,6 +335,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 			return validateRegexConfig(target, config.GetRegex())
 		},
 		Sample:     sampleRegex,
+		Passing:    sampleRegexPassing,
 		Observe:    countObservation,
 		LabelDraft: labelDraftRegex,
 	},
@@ -353,6 +363,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Compiler:    compileStringLength,
 		Validator:   validateStringLengthConfig,
 		Sample:      sampleStringLength,
+		Passing:     sampleStringLengthPassing,
 		Observe:     countObservation,
 		LabelDraft:  labelDraftStringLength,
 	},
@@ -389,6 +400,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Compiler:    compileReferentialIntegrity,
 		Validator:   validateReferentialIntegrityConfig,
 		Sample:      sampleReferentialIntegrity,
+		Passing:     sampleReferentialIntegrityPassing,
 		Observe:     countObservation,
 	},
 	{
@@ -429,6 +441,7 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Compiler:    compileCrossColumn,
 		Validator:   validateCrossColumnConfig,
 		Sample:      sampleCrossColumn,
+		Passing:     sampleCrossColumnPassing,
 		Observe:     countObservation,
 	},
 	{
@@ -646,6 +659,35 @@ var ruleTypeSpecs = []ruleTypeSpec{
 		Validator:   validateStandardCodeConfig,
 		LabelDraft:  labelDraftStandardCode,
 	},
+	{
+		Type:  storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
+		Trend: trendPercentCapableShape,
+		Arm:   armSegmentCheck,
+		IdentityColumns: func(config *storepb.QualityRuleConfig) []string {
+			return config.GetSegmentCheck().GetColumns()
+		},
+		Discriminators: func(config *storepb.QualityRuleConfig) []string {
+			segment := config.GetSegmentCheck()
+			if segment == nil {
+				return nil
+			}
+			baselineRuns, minOccurrences, err := SegmentCheckBounds(config)
+			if err != nil {
+				return nil
+			}
+			// The baseline window and the occurrence threshold decide which
+			// disappearances count, so they are part of what the rule means.
+			return []string{
+				"baseline_runs=" + strconv.Itoa(baselineRuns),
+				"min_occurrences=" + strconv.Itoa(minOccurrences),
+			}
+		},
+		Percent:     true,
+		Judge:       evaluateSegmentCheck,
+		Compiler:    compileSegmentCheck,
+		Validator:   validateSegmentCheckConfig,
+		CountsTotal: true,
+	},
 }
 
 func armRowCount(config *storepb.QualityRuleConfig) bool {
@@ -740,5 +782,10 @@ func armCrossTable(config *storepb.QualityRuleConfig) bool {
 
 func armStandardCode(config *storepb.QualityRuleConfig) bool {
 	_, ok := config.GetConfig().(*storepb.QualityRuleConfig_StandardCode)
+	return ok
+}
+
+func armSegmentCheck(config *storepb.QualityRuleConfig) bool {
+	_, ok := config.GetConfig().(*storepb.QualityRuleConfig_SegmentCheck)
 	return ok
 }

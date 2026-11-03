@@ -71,7 +71,7 @@ func sampleColumnsFor(t *testing.T, name string) []string {
 		return []string{"email"}
 	case "unique_combination":
 		return []string{"amount", "status"}
-	case "accepted_values":
+	case "accepted_values", "accepted_values_field", "accepted_values_query":
 		return []string{"id", "status"}
 	case "range":
 		return []string{"id", "amount"}

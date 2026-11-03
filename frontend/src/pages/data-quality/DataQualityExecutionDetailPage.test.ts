@@ -20,6 +20,8 @@ import {
   QualityTargetPathSchema,
   QualityTargetSchema,
   QualityThresholdsSchema,
+  SegmentObservationSchema,
+  SegmentRecordSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -395,5 +397,237 @@ describe("DataQualityExecutionDetailPage", () => {
       "SELECT COUNT(*) AS right_value FROM other.customers"
     );
     withReference.wrapper.unmount();
+  });
+
+  it("renders the passing rows beside the failed rows when it kept them", async () => {
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        passingSamples: [
+          {
+            columns: [
+              { column: "id", value: "9" },
+              { column: "email", value: "ok@example.com" },
+            ],
+          },
+        ],
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+    expect(text).toContain(i18n.global.t("dataQuality.passingSamples"));
+    expect(text).toContain(i18n.global.t("dataQuality.passingSamplesHint"));
+    expect(text).toContain("ok@example.com");
+    // The failed rows card is still there: the two populations sit together.
+    expect(text).toContain(i18n.global.t("dataQuality.failureSamples"));
+    wrapper.unmount();
+  });
+
+  it("does not render an empty passing-rows card", async () => {
+    const { wrapper } = await mountPage();
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.passingSamples")
+    );
+    wrapper.unmount();
+  });
+
+  it("renders a segment check's evidence instead of failed rows", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Every region keeps reporting",
+        ruleType: QualityRuleType.SEGMENT_CHECK,
+      })
+    );
+    const lastSeen = new Date(START.getTime() - 3_600_000);
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        samples: [],
+        observedValue: 2,
+        observedKind: QualityObservedKind.COUNT,
+        segmentEvidence: create(SegmentObservationSchema, {
+          observed: [
+            create(SegmentRecordSchema, {
+              values: ["emea", "web"],
+              rowCount: 10n,
+            }),
+          ],
+          newSegments: [
+            create(SegmentRecordSchema, {
+              values: ["latam", "app"],
+              rowCount: 4n,
+            }),
+          ],
+          disappeared: [
+            create(SegmentRecordSchema, {
+              values: ["apac", "web"],
+              rowCount: 7n,
+              lastSeen: timestampFromDate(lastSeen),
+            }),
+            create(SegmentRecordSchema, {
+              values: ["amer", "batch"],
+              rowCount: 1234n,
+              lastSeen: timestampFromDate(lastSeen),
+            }),
+          ],
+          baselineRuns: 3,
+          expectedCount: 2n,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+
+    expect(text).toContain(i18n.global.t("dataQuality.segmentEvidence.title"));
+    // The disappeared segment is the failure: its values, row count and last run.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.disappeared")
+    );
+    expect(text).toContain("apac · web");
+    // The plural form follows the numeric count; the placeholder is formatted.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.rowCount", {
+        count: 7,
+        rows: "7",
+      })
+    );
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.rowCount", {
+        count: 1234,
+        rows: "1,234",
+      })
+    );
+    expect(text).toContain("7 rows");
+    expect(text).toContain("1,234 rows");
+    expect(text).not.toContain("7 row ");
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.lastSeen", { time: "" }).trim()
+    );
+    // The new segment is evidence only.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.newSegments")
+    );
+    expect(text).toContain("latam · app");
+    expect(text).toContain("Baseline: 3 runs · 2 expected segments");
+    expect(text).not.toContain("1 runs");
+    expect(text).not.toContain("2 expected segment ");
+    // A segment check keeps no failed-row samples, so it shows no such card.
+    expect(text).not.toContain(i18n.global.t("dataQuality.failureSamples"));
+    expect(text).not.toContain(i18n.global.t("dataQuality.noSamples"));
+    wrapper.unmount();
+  });
+
+  it("says when a segment observation was truncated and not judged", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Segment set",
+        ruleType: QualityRuleType.SEGMENT_CHECK,
+      })
+    );
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        samples: [],
+        outcome: QualityStatus.NOT_EVALUATED,
+        segmentEvidence: create(SegmentObservationSchema, {
+          observed: [
+            create(SegmentRecordSchema, {
+              values: ["emea"],
+              rowCount: 10n,
+            }),
+          ],
+          truncated: true,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.truncated")
+    );
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.noNewSegments")
+    );
+    wrapper.unmount();
+  });
+
+  it("uses the singular baseline wording for a first judged run", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Segment set",
+        ruleType: QualityRuleType.SEGMENT_CHECK,
+      })
+    );
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        samples: [],
+        segmentEvidence: create(SegmentObservationSchema, {
+          observed: [
+            create(SegmentRecordSchema, { values: ["emea"], rowCount: 10n }),
+          ],
+          disappeared: [
+            create(SegmentRecordSchema, { values: ["apac"], rowCount: 3n }),
+          ],
+          baselineRuns: 1,
+          expectedCount: 1n,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+    expect(text).toContain("Baseline: 1 run · 1 expected segment");
+    expect(text).toContain("3 rows");
+    expect(text).not.toContain("1 runs");
+    expect(text).not.toContain("1 expected segments");
+    wrapper.unmount();
+  });
+
+  it("caps each segment list at 50 records and says how many it hid", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Segment set",
+        ruleType: QualityRuleType.SEGMENT_CHECK,
+      })
+    );
+    const records = (prefix: string) =>
+      Array.from({ length: 51 }, (_, index) =>
+        create(SegmentRecordSchema, {
+          values: [`${prefix}-${index}`],
+          rowCount: BigInt(index + 1),
+        })
+      );
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        samples: [],
+        segmentEvidence: create(SegmentObservationSchema, {
+          observed: records("observed"),
+          disappeared: records("gone"),
+          newSegments: records("new"),
+          baselineRuns: 2,
+          expectedCount: 51n,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+    // The section headers keep the exact counts.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.segmentsCount", {
+        count: 51,
+      })
+    );
+    // Only the first 50 records of each list are rendered.
+    expect(text).toContain("gone-49");
+    expect(text).not.toContain("gone-50");
+    expect(text).toContain("new-49");
+    expect(text).not.toContain("new-50");
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.showing", {
+        shown: 50,
+        total: 51,
+      })
+    );
+    wrapper.unmount();
   });
 });

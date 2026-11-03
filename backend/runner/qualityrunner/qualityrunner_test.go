@@ -501,7 +501,7 @@ func TestBuildExecutionMessageStoresTheVerdictAndItsEvidence(t *testing.T) {
 		},
 	}
 	execution := &dataquality.Execution{
-		Samples:     &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{}}},
+		Evidence:    &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{}}},
 		ExecutedSQL: "SELECT COUNT(*) FROM orders",
 		Sampled:     true,
 		Truncated:   true,
@@ -1287,4 +1287,51 @@ func TestNextTargetRun(t *testing.T) {
 	require.Equal(t, time.Date(2026, time.November, 2, 2, 0, 0, 0, time.UTC),
 		nextTargetRun(now, schedule.Spec{Cron: "0 2 * * *", TimeZone: "UTC"}))
 	require.Equal(t, now.Add(minRuleScheduleInterval), nextTargetRun(now, schedule.Spec{}))
+}
+
+// TestSegmentBaselineFromExecutions pins the history read: only executions that
+// carry segment evidence count, and the derived baseline is the expected set the
+// check will compare against.
+func TestSegmentBaselineFromExecutions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.November, 3, 12, 0, 0, 0, time.UTC)
+	observed := func(values ...string) *store.QualityExecutionMessage {
+		return &store.QualityExecutionMessage{
+			StartedAt: now,
+			Sample: &storepb.QualityExecutionEvidence{Segments: &storepb.SegmentObservation{
+				Observed: []*storepb.SegmentRecord{{Values: []string{values[0]}, RowCount: 10}},
+			}},
+		}
+	}
+	executions := []*store.QualityExecutionMessage{
+		observed("open"),
+		// No evidence (defensive): the store query already excludes these, but a row
+		// without an observation is never counted as an empty one.
+		{StartedAt: now.Add(-time.Hour)},
+		observed("open"),
+	}
+	baseline := segmentBaselineFromExecutions(executions, 3, 1)
+	require.NotNil(t, baseline)
+	require.Equal(t, 2, baseline.Runs, "only the evidenced executions count")
+	require.Len(t, baseline.Expected, 1)
+	require.Equal(t, []string{"open"}, baseline.Expected[0].Key)
+
+	require.Nil(t, segmentBaselineFromExecutions(nil, 3, 1), "no history means no baseline")
+}
+
+// TestSegmentCheckNeedsPersonalLabels pins which rule types must fail rather than
+// run without redaction: only the segment check stores evidence that has no
+// "verdict without samples" form.
+func TestSegmentCheckNeedsPersonalLabels(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, segmentCheckNeedsPersonalLabels(storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK))
+	for _, ruleType := range []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+	} {
+		require.False(t, segmentCheckNeedsPersonalLabels(ruleType), "%s can drop its samples", ruleType)
+	}
 }

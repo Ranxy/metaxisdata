@@ -320,14 +320,14 @@ func convertQualityStatusCountsToV1(counts *storepb.QualityStatusCounts) *v1pb.Q
 	}
 }
 
-// convertQualityFailureSamplesToV1 flattens the stored sample wrapper into the
-// API's repeated FailureSample.
-func convertQualityFailureSamplesToV1(samples *storepb.QualityFailureSamples) []*v1pb.FailureSample {
-	if samples == nil {
+// convertQualitySamplesToV1 flattens the stored sample rows into the API's
+// repeated FailureSample.
+func convertQualitySamplesToV1(samples []*storepb.FailureSample) []*v1pb.FailureSample {
+	if len(samples) == 0 {
 		return nil
 	}
-	converted := make([]*v1pb.FailureSample, 0, len(samples.GetSamples()))
-	for _, sample := range samples.GetSamples() {
+	converted := make([]*v1pb.FailureSample, 0, len(samples))
+	for _, sample := range samples {
 		if sample == nil {
 			continue
 		}
@@ -449,27 +449,29 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 			MetaType: v1pb.MetaType(execution.TargetType),
 			Path:     convertQualityTargetPathToV1(execution.TargetPath),
 		},
-		State:         v1pb.QualityExecutionState(execution.State),
-		Outcome:       v1pb.QualityStatus(execution.Status),
-		Trigger:       v1pb.QualityExecutionTrigger(execution.Trigger),
-		Attempt:       execution.Attempt,
-		Initiator:     formatQualityOwner(execution.InitiatorID),
-		Instance:      instance,
-		ObservedValue: observedValue(execution.ObservedValue),
-		ObservedKind:  v1pb.QualityObservedKind(execution.ObservedKind),
-		Thresholds:    convertQualityThresholdsToV1(execution.Thresholds),
-		FailedRows:    execution.FailedRows,
-		TotalRows:     execution.TotalRows,
-		Sampled:       execution.Sampled,
-		SampleRows:    execution.SampleRows,
-		Truncated:     execution.Truncated,
-		Samples:       convertQualityFailureSamplesToV1(execution.Sample),
-		ExecutedSql:   execution.ExecutedSQL,
-		ErrorCode:     execution.ErrorCode,
-		ErrorMessage:  execution.ErrorMessage,
-		Duration:      durationFromMilliseconds(execution.DurationMS),
-		StartTime:     timestamppb.New(execution.StartedAt),
-		Run:           formatQualityRunName(workspaceID, execution.RunID),
+		State:           v1pb.QualityExecutionState(execution.State),
+		Outcome:         v1pb.QualityStatus(execution.Status),
+		Trigger:         v1pb.QualityExecutionTrigger(execution.Trigger),
+		Attempt:         execution.Attempt,
+		Initiator:       formatQualityOwner(execution.InitiatorID),
+		Instance:        instance,
+		ObservedValue:   observedValue(execution.ObservedValue),
+		ObservedKind:    v1pb.QualityObservedKind(execution.ObservedKind),
+		Thresholds:      convertQualityThresholdsToV1(execution.Thresholds),
+		FailedRows:      execution.FailedRows,
+		TotalRows:       execution.TotalRows,
+		Sampled:         execution.Sampled,
+		SampleRows:      execution.SampleRows,
+		Truncated:       execution.Truncated,
+		Samples:         convertQualitySamplesToV1(execution.Sample.GetSamples()),
+		PassingSamples:  convertQualitySamplesToV1(execution.Sample.GetPassingSamples()),
+		SegmentEvidence: convertSegmentObservationToV1(execution.Sample.GetSegments()),
+		ExecutedSql:     execution.ExecutedSQL,
+		ErrorCode:       execution.ErrorCode,
+		ErrorMessage:    execution.ErrorMessage,
+		Duration:        durationFromMilliseconds(execution.DurationMS),
+		StartTime:       timestamppb.New(execution.StartedAt),
+		Run:             formatQualityRunName(workspaceID, execution.RunID),
 		// A reconciliation that needed a second session ran a second statement;
 		// it is the evidence for the reference side and stays empty otherwise.
 		ReferenceExecutedSql: execution.ReferenceExecutedSQL,
@@ -742,6 +744,9 @@ func qualityRuleReferencedColumns(config *storepb.QualityRuleConfig) []string {
 		}
 	case *storepb.QualityRuleConfig_AcceptedValues:
 		columns = appendColumn(columns, arm.AcceptedValues.GetColumn())
+		// A reference-column source also reads that column; a query source's
+		// columns are not knowable from the config.
+		columns = appendColumn(columns, arm.AcceptedValues.GetField())
 	case *storepb.QualityRuleConfig_Range:
 		columns = appendColumn(columns, arm.Range.GetColumn())
 	case *storepb.QualityRuleConfig_Regex:
@@ -761,6 +766,10 @@ func qualityRuleReferencedColumns(config *storepb.QualityRuleConfig) []string {
 		}
 	case *storepb.QualityRuleConfig_GroupCheck:
 		for _, column := range arm.GroupCheck.GetColumns() {
+			columns = appendColumn(columns, column)
+		}
+	case *storepb.QualityRuleConfig_SegmentCheck:
+		for _, column := range arm.SegmentCheck.GetColumns() {
 			columns = appendColumn(columns, column)
 		}
 	case *storepb.QualityRuleConfig_Aggregate:
@@ -898,6 +907,8 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			AllowNull:     arm.AcceptedValues.GetAllowNull(),
 			FailThreshold: copyPtr(arm.AcceptedValues.FailThreshold),
 			WarnThreshold: copyPtr(arm.AcceptedValues.WarnThreshold),
+			Field:         arm.AcceptedValues.GetField(),
+			Query:         convertAcceptedValuesQueryToV1(arm.AcceptedValues.GetQuery()),
 		}}
 	case *storepb.QualityRuleConfig_Range:
 		converted.Config = &v1pb.QualityRuleConfig_Range{Range: &v1pb.RangeConfig{
@@ -1011,6 +1022,14 @@ func convertQualityRuleConfigToV1(config *storepb.QualityRuleConfig) *v1pb.Quali
 			FailThreshold: copyPtr(arm.StandardCode.FailThreshold),
 			WarnThreshold: copyPtr(arm.StandardCode.WarnThreshold),
 		}}
+	case *storepb.QualityRuleConfig_SegmentCheck:
+		converted.Config = &v1pb.QualityRuleConfig_SegmentCheck{SegmentCheck: &v1pb.SegmentCheckConfig{
+			Columns:        append([]string(nil), arm.SegmentCheck.GetColumns()...),
+			BaselineRuns:   arm.SegmentCheck.GetBaselineRuns(),
+			MinOccurrences: arm.SegmentCheck.GetMinOccurrences(),
+			FailThreshold:  copyPtr(arm.SegmentCheck.FailThreshold),
+			WarnThreshold:  copyPtr(arm.SegmentCheck.WarnThreshold),
+		}}
 	case nil:
 	default:
 	}
@@ -1095,6 +1114,8 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			AllowNull:     arm.AcceptedValues.GetAllowNull(),
 			FailThreshold: copyPtr(arm.AcceptedValues.FailThreshold),
 			WarnThreshold: copyPtr(arm.AcceptedValues.WarnThreshold),
+			Field:         arm.AcceptedValues.GetField(),
+			Query:         convertAcceptedValuesQueryFromV1(arm.AcceptedValues.GetQuery()),
 		}}
 	case *v1pb.QualityRuleConfig_Range:
 		converted.Config = &storepb.QualityRuleConfig_Range{Range: &storepb.RangeConfig{
@@ -1207,6 +1228,14 @@ func convertQualityRuleConfigFromV1(config *v1pb.QualityRuleConfig) *storepb.Qua
 			CodeTable:     arm.StandardCode.GetCodeTable(),
 			FailThreshold: copyPtr(arm.StandardCode.FailThreshold),
 			WarnThreshold: copyPtr(arm.StandardCode.WarnThreshold),
+		}}
+	case *v1pb.QualityRuleConfig_SegmentCheck:
+		converted.Config = &storepb.QualityRuleConfig_SegmentCheck{SegmentCheck: &storepb.SegmentCheckConfig{
+			Columns:        append([]string(nil), arm.SegmentCheck.GetColumns()...),
+			BaselineRuns:   arm.SegmentCheck.GetBaselineRuns(),
+			MinOccurrences: arm.SegmentCheck.GetMinOccurrences(),
+			FailThreshold:  copyPtr(arm.SegmentCheck.FailThreshold),
+			WarnThreshold:  copyPtr(arm.SegmentCheck.WarnThreshold),
 		}}
 	case nil:
 	default:
@@ -1714,4 +1743,69 @@ func fillSchemaDriftSnapshot(config *storepb.QualityRuleConfig, columns []dataqu
 	}
 	drift.ExpectedColumns = expected
 	return true
+}
+
+// convertAcceptedValuesQueryToV1 copies the accepted values query source; nil
+// stays nil so a fixed-list rule carries no source object.
+func convertAcceptedValuesQueryToV1(query *storepb.AcceptedValuesQuery) *v1pb.AcceptedValuesQuery {
+	if query == nil {
+		return nil
+	}
+	return &v1pb.AcceptedValuesQuery{
+		Sql:         query.GetSql(),
+		ValueColumn: query.GetValueColumn(),
+	}
+}
+
+// convertAcceptedValuesQueryFromV1 copies the public accepted values query
+// source into the stored shape; nil stays nil.
+func convertAcceptedValuesQueryFromV1(query *v1pb.AcceptedValuesQuery) *storepb.AcceptedValuesQuery {
+	if query == nil {
+		return nil
+	}
+	return &storepb.AcceptedValuesQuery{
+		Sql:         query.GetSql(),
+		ValueColumn: query.GetValueColumn(),
+	}
+}
+
+// convertSegmentObservationToV1 copies a segment check's evidence. Nil stays nil,
+// so every other check type carries no segment evidence.
+func convertSegmentObservationToV1(observation *storepb.SegmentObservation) *v1pb.SegmentObservation {
+	if observation == nil {
+		return nil
+	}
+	return &v1pb.SegmentObservation{
+		Observed:      convertSegmentRecordsToV1(observation.GetObserved()),
+		NewSegments:   convertSegmentRecordsToV1(observation.GetNewSegments()),
+		Disappeared:   convertSegmentRecordsToV1(observation.GetDisappeared()),
+		Truncated:     observation.GetTruncated(),
+		BaselineRuns:  observation.GetBaselineRuns(),
+		ExpectedCount: observation.GetExpectedCount(),
+	}
+}
+
+// convertSegmentRecordsToV1 copies one segment record list.
+func convertSegmentRecordsToV1(records []*storepb.SegmentRecord) []*v1pb.SegmentRecord {
+	if len(records) == 0 {
+		return nil
+	}
+	converted := make([]*v1pb.SegmentRecord, 0, len(records))
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		convertedRecord := &v1pb.SegmentRecord{
+			Values:       append([]string(nil), record.GetValues()...),
+			RowCount:     record.GetRowCount(),
+			IsNull:       append([]bool(nil), record.GetIsNull()...),
+			Masked:       append([]bool(nil), record.GetMasked()...),
+			ValueDigests: append([]string(nil), record.GetValueDigests()...),
+		}
+		if lastSeen := record.GetLastSeen(); lastSeen != nil {
+			convertedRecord.LastSeen = &timestamppb.Timestamp{Seconds: lastSeen.GetSeconds(), Nanos: lastSeen.GetNanos()}
+		}
+		converted = append(converted, convertedRecord)
+	}
+	return converted
 }

@@ -187,11 +187,27 @@ export const RULE_SCHEMAS: Record<number, RuleFieldSchema> = {
         kind: "columns",
         required: true,
       },
+      // The set itself comes from exactly one of these three sources; which
+      // field is required depends on the selected source (see below).
       {
         field: "values",
         labelKey: "dataQuality.editor.values",
         kind: "list",
-        required: true,
+      },
+      {
+        field: "acceptedField",
+        labelKey: "dataQuality.editor.acceptedField",
+        kind: "columns",
+      },
+      {
+        field: "acceptedQuery",
+        labelKey: "dataQuality.editor.acceptedQuery",
+        kind: "sql",
+      },
+      {
+        field: "acceptedQueryColumn",
+        labelKey: "dataQuality.editor.acceptedQueryColumn",
+        kind: "text",
       },
     ],
   },
@@ -387,6 +403,29 @@ export const RULE_SCHEMAS: Record<number, RuleFieldSchema> = {
         labelKey: "dataQuality.editor.maxRowsPerGroup",
         kind: "integer",
         requiredOneOf: "groupBound",
+      },
+    ],
+  },
+  [QualityRuleType.SEGMENT_CHECK]: {
+    ruleType: QualityRuleType.SEGMENT_CHECK,
+    fields: [
+      {
+        field: "segmentColumns",
+        labelKey: "dataQuality.editor.segmentColumns",
+        kind: "columns",
+        required: true,
+      },
+      // Both defaults are resolved by the server when the field is blank, so
+      // neither is marked required here.
+      {
+        field: "segmentBaselineRuns",
+        labelKey: "dataQuality.editor.segmentBaselineRuns",
+        kind: "integer",
+      },
+      {
+        field: "segmentMinOccurrences",
+        labelKey: "dataQuality.editor.segmentMinOccurrences",
+        kind: "integer",
       },
     ],
   },
@@ -604,6 +643,43 @@ export function missingRequiredFields(
         break;
       }
       break;
+    case QualityRuleType.ACCEPTED_VALUES: {
+      // The source selector decides which field carries the accepted set, so the
+      // required field is a conditional arm rather than a schema entry.
+      switch (config.acceptedSource ?? "list") {
+        case "field":
+          if (!filled(config.acceptedField)) {
+            missing.push({
+              field: "acceptedField",
+              labelKey: "dataQuality.editor.acceptedField",
+            });
+          }
+          break;
+        case "query":
+          if (!filled(config.acceptedQuery)) {
+            missing.push({
+              field: "acceptedQuery",
+              labelKey: "dataQuality.editor.acceptedQuery",
+            });
+          }
+          if (!filled(config.acceptedQueryColumn)) {
+            missing.push({
+              field: "acceptedQueryColumn",
+              labelKey: "dataQuality.editor.acceptedQueryColumn",
+            });
+          }
+          break;
+        default:
+          if (!filled(config.values)) {
+            missing.push({
+              field: "values",
+              labelKey: "dataQuality.editor.values",
+            });
+          }
+          break;
+      }
+      break;
+    }
     case QualityRuleType.AGGREGATE:
       if (
         config.aggregateFunction === QualityAggregateFunction.PERCENTILE &&

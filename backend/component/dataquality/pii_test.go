@@ -72,13 +72,13 @@ func TestExecuteAggregateRedactsPersonalSampleColumns(t *testing.T) {
 		execTestResolution(storepb.Engine_MYSQL), snapshot,
 		ExecOptions{StoreSamples: true, SampleLimit: 20, MaskColumns: []string{"email"}})
 	require.NoError(t, err)
-	require.NotNil(t, execution.Samples)
-	cell := execution.Samples.GetSamples()[0].GetColumns()[1]
+	require.NotNil(t, execution.Evidence)
+	cell := execution.Evidence.GetSamples()[0].GetColumns()[1]
 	require.Equal(t, "email", cell.GetColumn())
 	require.Equal(t, MaskPersonalValue("alice@example.com"), cell.GetValue())
 	require.True(t, cell.GetMasked())
 	// The key column is not personal data and stays readable.
-	require.Equal(t, "1", execution.Samples.GetSamples()[0].GetColumns()[0].GetValue())
+	require.Equal(t, "1", execution.Evidence.GetSamples()[0].GetColumns()[0].GetValue())
 }
 
 // The CEL path builds its sample in process; masking still applies.
@@ -95,8 +95,8 @@ func TestExecuteCELRedactsPersonalSampleColumns(t *testing.T) {
 		execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION, config),
 		ExecOptions{StoreSamples: true, SampleLimit: 20, MaskColumns: []string{"email"}})
 	require.NoError(t, err)
-	require.NotNil(t, execution.Samples)
-	cell := execution.Samples.GetSamples()[0].GetColumns()[0]
+	require.NotNil(t, execution.Evidence)
+	cell := execution.Evidence.GetSamples()[0].GetColumns()[0]
 	require.Equal(t, MaskPersonalValue("alice@example.com"), cell.GetValue())
 	require.True(t, cell.GetMasked())
 }

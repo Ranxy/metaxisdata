@@ -102,6 +102,49 @@ func (r *Runner) ruleBaseline(ctx context.Context, ruleID int64, target store.Me
 	return baselineFromExecutions(executions, time.Now().UTC(), interval)
 }
 
+// segmentBaseline reads the segment evidence of the check's previous executions
+// against its current target and derives the expected segment set. An unreadable
+// history is not fatal: the check then reports NOT_EVALUATED (no baseline), which
+// is the correct "nothing to compare" verdict rather than a made-up comparison.
+func (r *Runner) segmentBaseline(ctx context.Context, snapshot *dataquality.RuleSnapshot, baselineRuns, minOccurrences int) *dataquality.SegmentBaseline {
+	if snapshot == nil {
+		return nil
+	}
+	// The store filters to usable baseline candidates (current target and revision,
+	// segment evidence present and untruncated), so the window is exactly the
+	// configured number of runs: an ERROR or skipped execution cannot consume it.
+	executions, err := r.stores.ListRecentSegmentEvidenceExecutions(ctx, snapshot.ID,
+		store.MetaGUIDKey{GUID: snapshot.Target.GUID, ObjectType: snapshot.Target.MetaType},
+		snapshot.Revision, baselineRuns)
+	if err != nil {
+		slog.Warn("failed to read a segment check baseline",
+			slog.Int64("rule", snapshot.ID),
+			log.WithError(err))
+		return nil
+	}
+	return segmentBaselineFromExecutions(executions, baselineRuns, minOccurrences)
+}
+
+// segmentBaselineFromExecutions derives the expected set from the executions the
+// store returned. A row without segment evidence is skipped defensively rather
+// than counted as an empty observation; the SQL already excludes those and the
+// rows of another revision (editing a check can change the grouping key, and old
+// keys would read as vanished segments, so the baseline restarts on the first run
+// after a configuration edit).
+func segmentBaselineFromExecutions(executions []*store.QualityExecutionMessage, baselineRuns, minOccurrences int) *dataquality.SegmentBaseline {
+	runs := make([]dataquality.SegmentHistoryRun, 0, len(executions))
+	for _, execution := range executions {
+		if execution == nil || execution.Sample.GetSegments() == nil {
+			continue
+		}
+		runs = append(runs, dataquality.SegmentHistoryRun{
+			Segments:  execution.Sample.GetSegments(),
+			StartedAt: execution.StartedAt,
+		})
+	}
+	return dataquality.BuildSegmentBaseline(runs, baselineRuns, minOccurrences)
+}
+
 // acquireInflight marks one rule as being executed and reports whether this
 // caller owns it. The guard is process-local, like the design's in-flight map: a
 // second execution of the same rule records SKIPPED instead of executing it
@@ -164,7 +207,7 @@ func buildExecutionMessage(planned *store.QualityExecutionMessage, outcome *rule
 		execution.TargetPath = outcome.snapshot.Target.Path
 	}
 	if outcome.execution != nil {
-		execution.Sample = outcome.execution.Samples
+		execution.Sample = outcome.execution.Evidence
 		execution.ExecutedSQL = outcome.execution.ExecutedSQL
 		execution.ReferenceExecutedSQL = outcome.execution.ReferenceExecutedSQL
 		execution.Sampled = outcome.execution.Sampled

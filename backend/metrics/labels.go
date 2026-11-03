@@ -122,6 +122,8 @@ func qualityRuleTypeLabel(ruleType storepb.QualityRuleType) string {
 		return "cross_table"
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:
 		return "standard_code"
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK:
+		return "segment_check"
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return "unspecified"
 	default:

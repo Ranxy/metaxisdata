@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package metaxisdata.store;
 
+import "google/protobuf/timestamp.proto";
 import "store/meta.proto";
 
 option go_package = "generated-go/store";
@@ -48,6 +49,9 @@ enum QualityRuleType {
   // v1.2: validates a column against a national or industry standard code. The
   // rule reads a bounded sample of the column and checks the values in process.
   QUALITY_RULE_TYPE_STANDARD_CODE = 19;
+  // v1.2: tracks the distinct segments of one or more columns and fails when a
+  // segment the previous executions observed is missing from the current one.
+  QUALITY_RULE_TYPE_SEGMENT_CHECK = 20;
 }
 
 // QualityStandardCode is the standard a standard-code rule validates against.
@@ -372,9 +376,57 @@ message QualityStatusCounts {
   int32 not_evaluated = 7;
 }
 
-// QualityFailureSamples holds the rows a failed check sampled as evidence.
-message QualityFailureSamples {
+// QualityExecutionEvidence is the evidence one execution keeps: the rows that
+// failed, the rows that passed in the same check (so a reviewer can compare the
+// two populations), and the segment observation a segment check judges its next
+// run against.
+message QualityExecutionEvidence {
   repeated FailureSample samples = 1;
+  repeated FailureSample passing_samples = 2;
+  SegmentObservation segments = 3;
+}
+
+// SegmentObservation is the segment set one segment-check execution observed,
+// kept as the baseline for the following executions.
+message SegmentObservation {
+  // The segments this execution saw, largest first. Bounded by a fixed cap, so a
+  // truncated observation carries only the largest segments.
+  repeated SegmentRecord observed = 1;
+  // The observed segments the baseline did not have. They are evidence only: a
+  // new segment does not fail the check.
+  repeated SegmentRecord new_segments = 2;
+  // True when the observed set was cut off by the segment cap.
+  bool truncated = 3;
+  // How many previous executions formed the baseline; 0 means there was none.
+  int32 baseline_runs = 4;
+  // How many segments the baseline expected.
+  int64 expected_count = 5;
+  // The expected segments the current execution did not observe: the ones that
+  // failed the check. Each carries the last baseline run that saw it and its row
+  // count then. Empty when the check passed.
+  repeated SegmentRecord disappeared = 6;
+}
+
+// SegmentRecord is one segment: its key values and row count.
+message SegmentRecord {
+  // One display-rendered value per grouping column, in the rule's column order.
+  repeated string values = 1;
+  int64 row_count = 2;
+  // When the baseline last observed the segment. Unset for a segment this
+  // execution observed.
+  google.protobuf.Timestamp last_seen = 3;
+  // Whether the matching value in values is SQL NULL. The list is parallel to
+  // values; a missing entry reads as not null, so a record written before this
+  // field existed stays usable.
+  repeated bool is_null = 4;
+  // Whether the matching value in values was redacted before storage. The list
+  // is parallel to values; a missing entry reads as not redacted.
+  repeated bool masked = 5;
+  // A digest of the full value behind each entry of values, hex encoded. Values
+  // are truncated for display; the digest is what tells two segments with the
+  // same 128-byte prefix apart across executions. The list is parallel to
+  // values; a missing entry reads as empty (fall back to the value).
+  repeated string value_digests = 6;
 }
 
 // FailureSample is one failed row, already truncated.
@@ -573,12 +625,14 @@ message QualityRuleConfig {
     CrossTableConfig cross_table = 18;
     // v1.2: national and industry standard codes.
     StandardCodeConfig standard_code = 19;
+    // v1.2: segment identity tracking across executions.
+    SegmentCheckConfig segment_check = 20;
   }
   // How a count-type rule's thresholds are measured: failed rows, or failed rows
   // divided by total rows. Ignored by types whose config already names the unit.
-  // Numbers 20-27 are reserved for future rule configs; the v1 message uses the
+  // Numbers 21-27 are reserved for future rule configs; the v1 message uses the
   // same numbers so the two definitions stay structurally identical.
-  reserved 20 to 27;
+  reserved 21 to 27;
   QualityThresholdMetric threshold_metric = 28;
   QualityFilter filter = 29;
   QualityEmptyBehavior on_empty = 30;
@@ -663,13 +717,50 @@ message UniqueCombinationConfig {
   optional double warn_threshold = 5;
 }
 
-// AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+// AcceptedValuesConfig counts rows whose column value is outside the accepted
+// set. The set comes from exactly one source: the fixed list, another column of
+// the same target, or a single-column query.
 message AcceptedValuesConfig {
   string column = 1;
   // At most 200 values, encoded as strings and converted by the column's type.
   repeated string values = 2;
   // When false (the default), a NULL value is a violation.
   bool allow_null = 3;
+  optional double fail_threshold = 4;
+  optional double warn_threshold = 5;
+  // A column of the same target whose distinct values are the accepted set.
+  // Mutually exclusive with values and query.
+  string field = 6;
+  // A query whose values are the accepted set. Mutually exclusive with values
+  // and field.
+  AcceptedValuesQuery query = 7;
+}
+
+// AcceptedValuesQuery is the accepted set a single-column query returns.
+message AcceptedValuesQuery {
+  // One SELECT or WITH statement of at most 8 KiB. It is parsed before it runs
+  // and is read over the target's read-only data source.
+  string sql = 1;
+  // The column the query returns. Named explicitly because the compiler tests
+  // that column for NULL (a NULL in the set would make NOT IN unknown for every
+  // row) and a T-SQL derived table cannot be given a column alias.
+  string value_column = 2;
+}
+
+// SegmentCheckConfig fails when a segment that the check's recent executions
+// observed is missing from the current one. A segment is the distinct
+// combination of the grouping columns.
+message SegmentCheckConfig {
+  // The columns that identify a segment (1-5).
+  repeated string columns = 1;
+  // How many previous judged executions form the baseline. 0 means the default
+  // (3); the accepted range is 1-10. Runs whose evidence predates this build, or
+  // that were judged against another target, are skipped.
+  int32 baseline_runs = 2;
+  // How many of the baseline executions a segment must appear in to be expected
+  // in the current one. 0 means the default (2). It is clamped to the number of
+  // baseline runs actually available, so the second execution already judges.
+  int32 min_occurrences = 3;
   optional double fail_threshold = 4;
   optional double warn_threshold = 5;
 }

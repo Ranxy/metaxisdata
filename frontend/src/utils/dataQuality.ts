@@ -225,6 +225,8 @@ export function qualityRuleTypeKey(ruleType: QualityRuleType): string {
       return "dataQuality.ruleType.aggregate";
     case QualityRuleType.CROSS_TABLE:
       return "dataQuality.ruleType.crossTable";
+    case QualityRuleType.SEGMENT_CHECK:
+      return "dataQuality.ruleType.segmentCheck";
     default:
       return "dataQuality.ruleType.unspecified";
   }

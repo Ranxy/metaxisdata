@@ -1300,7 +1300,7 @@ COMMENT ON COLUMN quality_run.counts IS 'Stored as QualityStatusCounts (proto/st
 COMMENT ON COLUMN quality_run.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_execution.target_path IS 'Stored as QualityTargetPath (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_execution.thresholds IS 'Stored as QualityThresholds (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_execution.sample IS 'Stored as QualityFailureSamples (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_execution.sample IS 'Stored as QualityExecutionEvidence (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_execution.state IS 'Lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED';
 COMMENT ON COLUMN quality_run.status IS 'Internal dispatch batch lifecycle: 1 PENDING, 2 RUNNING, 3 COMPLETED, 4 ABANDONED';
 COMMENT ON COLUMN column_profile.profile IS 'Stored as ColumnProfile (proto/store/store/data_quality.proto)';

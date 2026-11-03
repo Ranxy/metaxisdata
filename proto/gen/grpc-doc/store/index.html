@@ -244,6 +244,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.AcceptedValuesQuery"><span class="badge">M</span>AcceptedValuesQuery</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.AggregateConfig"><span class="badge">M</span>AggregateConfig</a>
                 </li>
               
@@ -324,7 +328,7 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityFailureSamples"><span class="badge">M</span>QualityFailureSamples</a>
+                  <a href="#metaxisdata.store.QualityExecutionEvidence"><span class="badge">M</span>QualityExecutionEvidence</a>
                 </li>
               
                 <li>
@@ -409,6 +413,18 @@
               
                 <li>
                   <a href="#metaxisdata.store.SchemaDriftConfig"><span class="badge">M</span>SchemaDriftConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SegmentCheckConfig"><span class="badge">M</span>SegmentCheckConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SegmentObservation"><span class="badge">M</span>SegmentObservation</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.SegmentRecord"><span class="badge">M</span>SegmentRecord</a>
                 </li>
               
                 <li>
@@ -1579,7 +1595,7 @@ identified by an opaque server-generated id. </p></td>
 
       
         <h3 id="metaxisdata.store.AcceptedValuesConfig">AcceptedValuesConfig</h3>
-        <p>AcceptedValuesConfig counts rows whose column value is outside a fixed set.</p>
+        <p>AcceptedValuesConfig counts rows whose column value is outside the accepted</p><p>set. The set comes from exactly one source: the fixed list, another column of</p><p>the same target, or a single-column query.</p>
 
         
           <table class="field-table">
@@ -1621,6 +1637,56 @@ identified by an opaque server-generated id. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>field</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A column of the same target whose distinct values are the accepted set.
+Mutually exclusive with values and query. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>query</td>
+                  <td><a href="#metaxisdata.store.AcceptedValuesQuery">AcceptedValuesQuery</a></td>
+                  <td></td>
+                  <td><p>A query whose values are the accepted set. Mutually exclusive with values
+and field. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.AcceptedValuesQuery">AcceptedValuesQuery</h3>
+        <p>AcceptedValuesQuery is the accepted set a single-column query returns.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sql</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>One SELECT or WITH statement of at most 8 KiB. It is parsed before it runs
+and is read over the target&#39;s read-only data source. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value_column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The column the query returns. Named explicitly because the compiler tests
+that column for NULL (a NULL in the set would make NOT IN unknown for every
+row) and a T-SQL derived table cannot be given a column alias. </p></td>
                 </tr>
               
             </tbody>
@@ -2634,8 +2700,8 @@ fingerprint are the same contract, so the second is a no-op. </p></td>
 
         
       
-        <h3 id="metaxisdata.store.QualityFailureSamples">QualityFailureSamples</h3>
-        <p>QualityFailureSamples holds the rows a failed check sampled as evidence.</p>
+        <h3 id="metaxisdata.store.QualityExecutionEvidence">QualityExecutionEvidence</h3>
+        <p>QualityExecutionEvidence is the evidence one execution keeps: the rows that</p><p>failed, the rows that passed in the same check (so a reviewer can compare the</p><p>two populations), and the segment observation a segment check judges its next</p><p>run against.</p>
 
         
           <table class="field-table">
@@ -2648,6 +2714,20 @@ fingerprint are the same contract, so the second is a no-op. </p></td>
                   <td>samples</td>
                   <td><a href="#metaxisdata.store.FailureSample">FailureSample</a></td>
                   <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>passing_samples</td>
+                  <td><a href="#metaxisdata.store.FailureSample">FailureSample</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>segments</td>
+                  <td><a href="#metaxisdata.store.SegmentObservation">SegmentObservation</a></td>
+                  <td></td>
                   <td><p> </p></td>
                 </tr>
               
@@ -2971,6 +3051,13 @@ failure (runtime debug mode was on and the write was attempted). </p></td>
                   <td><a href="#metaxisdata.store.StandardCodeConfig">StandardCodeConfig</a></td>
                   <td></td>
                   <td><p>v1.2: national and industry standard codes. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>segment_check</td>
+                  <td><a href="#metaxisdata.store.SegmentCheckConfig">SegmentCheckConfig</a></td>
+                  <td></td>
+                  <td><p>v1.2: segment identity tracking across executions. </p></td>
                 </tr>
               
                 <tr>
@@ -3881,6 +3968,191 @@ either change is drift unless the rule author turns the check off. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.SegmentCheckConfig">SegmentCheckConfig</h3>
+        <p>SegmentCheckConfig fails when a segment that the check's recent executions</p><p>observed is missing from the current one. A segment is the distinct</p><p>combination of the grouping columns.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>columns</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The columns that identify a segment (1-5). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>baseline_runs</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many previous judged executions form the baseline. 0 means the default
+(3); the accepted range is 1-10. Runs whose evidence predates this build, or
+that were judged against another target, are skipped. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_occurrences</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many of the baseline executions a segment must appear in to be expected
+in the current one. 0 means the default (2). It is clamped to the number of
+baseline runs actually available, so the second execution already judges. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>fail_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>warn_threshold</td>
+                  <td><a href="#double">double</a></td>
+                  <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.SegmentObservation">SegmentObservation</h3>
+        <p>SegmentObservation is the segment set one segment-check execution observed,</p><p>kept as the baseline for the following executions.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>observed</td>
+                  <td><a href="#metaxisdata.store.SegmentRecord">SegmentRecord</a></td>
+                  <td>repeated</td>
+                  <td><p>The segments this execution saw, largest first. Bounded by a fixed cap, so a
+truncated observation carries only the largest segments. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>new_segments</td>
+                  <td><a href="#metaxisdata.store.SegmentRecord">SegmentRecord</a></td>
+                  <td>repeated</td>
+                  <td><p>The observed segments the baseline did not have. They are evidence only: a
+new segment does not fail the check. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the observed set was cut off by the segment cap. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>baseline_runs</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many previous executions formed the baseline; 0 means there was none. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>How many segments the baseline expected. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>disappeared</td>
+                  <td><a href="#metaxisdata.store.SegmentRecord">SegmentRecord</a></td>
+                  <td>repeated</td>
+                  <td><p>The expected segments the current execution did not observe: the ones that
+failed the check. Each carries the last baseline run that saw it and its row
+count then. Empty when the check passed. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.SegmentRecord">SegmentRecord</h3>
+        <p>SegmentRecord is one segment: its key values and row count.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>values</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>One display-rendered value per grouping column, in the rule&#39;s column order. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>row_count</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_seen</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the baseline last observed the segment. Unset for a segment this
+execution observed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>is_null</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>repeated</td>
+                  <td><p>Whether the matching value in values is SQL NULL. The list is parallel to
+values; a missing entry reads as not null, so a record written before this
+field existed stays usable. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>masked</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>repeated</td>
+                  <td><p>Whether the matching value in values was redacted before storage. The list
+is parallel to values; a missing entry reads as not redacted. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>value_digests</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>A digest of the full value behind each entry of values, hex encoded. Values
+are truncated for display; the digest is what tells two segments with the
+same 128-byte prefix apart across executions. The list is parallel to
+values; a missing entry reads as empty (fall back to the value). </p></td>
                 </tr>
               
             </tbody>
@@ -4995,6 +5267,13 @@ the same instance and database.</p></td>
                 <td>19</td>
                 <td><p>v1.2: validates a column against a national or industry standard code. The
 rule reads a bounded sample of the column and checks the values in process.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_RULE_TYPE_SEGMENT_CHECK</td>
+                <td>20</td>
+                <td><p>v1.2: tracks the distinct segments of one or more columns and fails when a
+segment the previous executions observed is missing from the current one.</p></td>
               </tr>
             
           </tbody>

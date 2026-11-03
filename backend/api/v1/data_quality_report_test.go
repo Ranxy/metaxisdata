@@ -382,7 +382,7 @@ func qualityReportFailedExecutionsFixture() []*store.QualityExecutionMessage {
 			Status:     storepb.QualityStatus_QUALITY_STATUS_FAIL,
 			FailedRows: 2, TotalRows: 10,
 			FinishedAt: time.Date(2026, time.October, 31, 7, 0, 0, 0, time.UTC),
-			Sample: &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{
+			Sample: &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{
 				{Columns: []*storepb.ColumnValue{
 					{Column: "id", Value: "2"},
 					{Column: "email", IsNull: &nullMarker},

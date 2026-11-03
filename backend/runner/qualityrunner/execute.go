@@ -372,16 +372,36 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 
 	options := r.execOptions(snapshot.Config)
 	options.Reference = reference
+	// A segment check judges the current segment set against the sets its previous
+	// executions observed; that history only the store can supply. The baseline is
+	// read for the current target: after a move, the old table's segments describe
+	// another relation.
+	if snapshot.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK {
+		baselineRuns, minOccurrences, err := dataquality.SegmentCheckBounds(snapshot.Config)
+		if err != nil {
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeUnsupported, err.Error())
+		}
+		options.Segments = r.segmentBaseline(ctx, snapshot, baselineRuns, minOccurrences)
+	}
 	// A personal-data column's sampled values are redacted before they are stored.
-	// If the labels cannot be read, the verdict still runs but no failure sample is
-	// stored: a privacy guarantee must not degrade into storing raw values on a
-	// transient store error.
+	// If the labels cannot be read, a sample-based check still runs but stores no
+	// evidence; a segment check fails instead, because its evidence is not optional
+	// (see segmentCheckNeedsPersonalLabels): a privacy guarantee must not degrade
+	// into storing raw values on a transient store error.
 	personalColumns, err := personal.forTarget(ctx, snapshot.Target.GUID, snapshot.Target.MetaType)
 	if err != nil {
 		slog.Warn("could not read personal-data labels; the execution keeps its verdict but stores no failure sample",
 			slog.Int64("execution", planned.ID),
 			slog.String("target", snapshot.Target.GUID),
 			log.WithError(err))
+		if segmentCheckNeedsPersonalLabels(snapshot.Type) {
+			// A segment check always stores its observed segment keys, so it cannot
+			// degrade to "verdict without evidence" the way a sample-based check can:
+			// an unreadable label set must not become raw personal values in the
+			// baseline. Fail the run; its next cycle retries with a fresh read.
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution,
+				"personal-data labels could not be read, so the segment evidence would store raw values")
+		}
 		options.StoreSamples = false
 	} else {
 		options.MaskColumns = personalColumns
@@ -419,6 +439,17 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		}
 	}
 	state := dataquality.Evaluate(*snapshot, observation, time.Now().UTC())
+	// The good-vs-bad comparison is kept only when there is a failure to compare
+	// with: running it for a passing check would spend a query on evidence no
+	// reviewer looks at.
+	switch state.Status {
+	case storepb.QualityStatus_QUALITY_STATUS_WARN, storepb.QualityStatus_QUALITY_STATUS_FAIL:
+		if err := dataquality.AttachPassingRows(ctx, queryer, execution, *snapshot, options); err != nil {
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution, err.Error())
+		}
+	default:
+		dataquality.DropPassingRows(execution)
+	}
 	return &ruleExecution{
 		result: buildExecutionMessage(planned, &ruleExecutionOutcome{
 			snapshot:    snapshot,
@@ -432,4 +463,12 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		head:     head,
 		snapshot: snapshot,
 	}
+}
+
+// segmentCheckNeedsPersonalLabels reports whether an unreadable personal-label
+// read must fail the run instead of dropping the samples. A segment check always
+// stores its observed segment keys, so it has no safe degraded mode: the raw
+// values would land in the baseline.
+func segmentCheckNeedsPersonalLabels(ruleType storepb.QualityRuleType) bool {
+	return ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK
 }

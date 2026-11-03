@@ -139,6 +139,13 @@
       :column-details="columnDetails"
       :field-errors="fieldErrors"
     />
+    <SegmentCheckConfig
+      v-else-if="ruleType === QualityRuleType.SEGMENT_CHECK"
+      v-model="config"
+      :rule-type="ruleType"
+      :column-details="columnDetails"
+      :field-errors="fieldErrors"
+    />
     <AggregateConfig
       v-else-if="ruleType === QualityRuleType.AGGREGATE"
       v-model="config"
@@ -210,6 +217,7 @@ import {
 } from "./rule-configs/ruleConfigField";
 import ScalarConfig from "./rule-configs/ScalarConfig.vue";
 import SchemaDriftConfig from "./rule-configs/SchemaDriftConfig.vue";
+import SegmentCheckConfig from "./rule-configs/SegmentCheckConfig.vue";
 import StandardCodeConfig from "./rule-configs/StandardCodeConfig.vue";
 import UniquenessConfig from "./rule-configs/UniquenessConfig.vue";
 

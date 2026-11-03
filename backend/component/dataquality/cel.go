@@ -331,43 +331,47 @@ func requireConstantMatchesPattern(parsed *cel.Ast) error {
 // whose value cannot be represented or whose evaluation errors: a silent skip
 // would turn a broken rule into a passing one.
 func EvalCELRows(program cel.Program, columns []ColumnInfo, rows [][]any) (violations int64, evaluated int64, err error) {
-	violations, evaluated, _, err = evaluateCELRows(program, columns, rows, 0)
+	violations, evaluated, _, _, err = evaluateCELRows(program, columns, rows, 0)
 	return violations, evaluated, err
 }
 
 // evalCELRows is EvalCELRows plus the rows that violated the predicate, up to
 // failingLimit. The executor needs them for the failure sample; the public wrapper
 // does not expose them because the row count is the observation.
-func evaluateCELRows(program cel.Program, columns []ColumnInfo, rows [][]any, failingLimit int) (violations int64, evaluated int64, failing [][]any, err error) {
+func evaluateCELRows(program cel.Program, columns []ColumnInfo, rows [][]any, sampleLimit int) (violations int64, evaluated int64, failing, passing [][]any, err error) {
 	for rowIndex, row := range rows {
 		activation := make(map[string]any, len(columns))
 		for columnIndex, column := range columns {
 			if columnIndex >= len(row) {
-				return 0, 0, nil, badData("sample row %d has %d values, expect %d", rowIndex, len(row), len(columns))
+				return 0, 0, nil, nil, badData("sample row %d has %d values, expect %d", rowIndex, len(row), len(columns))
 			}
 			value, err := celRowValue(column, row[columnIndex])
 			if err != nil {
-				return 0, 0, nil, err
+				return 0, 0, nil, nil, err
 			}
 			activation[column.Name] = value
 		}
 		result, _, err := program.Eval(activation)
 		if err != nil {
-			return 0, 0, nil, badData("failed to evaluate the CEL expression on row %d: %v", rowIndex, err)
+			return 0, 0, nil, nil, badData("failed to evaluate the CEL expression on row %d: %v", rowIndex, err)
 		}
 		matched, ok := result.Value().(bool)
 		if !ok {
-			return 0, 0, nil, badData("the CEL expression returned %T on row %d, expect bool", result.Value(), rowIndex)
+			return 0, 0, nil, nil, badData("the CEL expression returned %T on row %d, expect bool", result.Value(), rowIndex)
 		}
 		evaluated++
-		if !matched {
-			violations++
-			if failingLimit > 0 && len(failing) < failingLimit {
-				failing = append(failing, row)
+		if matched {
+			if sampleLimit > 0 && len(passing) < sampleLimit {
+				passing = append(passing, row)
 			}
+			continue
+		}
+		violations++
+		if sampleLimit > 0 && len(failing) < sampleLimit {
+			failing = append(failing, row)
 		}
 	}
-	return violations, evaluated, failing, nil
+	return violations, evaluated, failing, passing, nil
 }
 
 // celRowValue converts one normalized sample value into the Go value the CEL

@@ -302,7 +302,7 @@ func TestEvaluateStandardCodeRows(t *testing.T) {
 		{int64(3), nil},
 		{int64(4), "91330100799655058B"},
 	}
-	violations, evaluated, failing, err := evaluateStandardCodeRows(
+	violations, evaluated, failing, passing, err := evaluateStandardCodeRows(
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, false, 1, rows, 1, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), violations)
@@ -310,19 +310,22 @@ func TestEvaluateStandardCodeRows(t *testing.T) {
 	require.Len(t, failing, 1, "the failing-row detail is capped by the caller's limit")
 	require.Equal(t, int64(2), failing[0][0])
 	require.Equal(t, "broken", failing[0][1])
+	require.Len(t, passing, 1, "the passing-row detail is capped by the same limit")
+	require.Equal(t, int64(1), passing[0][0])
 
 	// allow_null turns a NULL row into a pass but leaves every other violation.
-	violations, evaluated, _, err = evaluateStandardCodeRows(
+	violations, evaluated, _, passing, err = evaluateStandardCodeRows(
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, true, 1, rows, 10, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), violations)
 	require.Equal(t, int64(4), evaluated)
+	require.Len(t, passing, 3, "the NULL row and both valid codes passed")
 }
 
 func TestEvaluateStandardCodeRowsRejectsNonText(t *testing.T) {
 	t.Parallel()
 
-	_, _, _, err := evaluateStandardCodeRows(
+	_, _, _, _, err := evaluateStandardCodeRows(
 		storepb.QualityStandardCode_QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE, false, 1,
 		[][]any{{int64(1), int64(42)}}, 0, nil)
 	require.Error(t, err)
@@ -373,14 +376,14 @@ func TestExecuteStandardCodeRuleMasksResidentIDSamples(t *testing.T) {
 		Rows:    [][]any{{int64(7), "110105194912310021"}},
 	}, ExecOptions{StoreSamples: true, SampleLimit: 10})
 	require.NoError(t, err)
-	require.NotNil(t, execution.Samples)
-	require.Len(t, execution.Samples.GetSamples(), 1)
+	require.NotNil(t, execution.Evidence)
+	require.Len(t, execution.Evidence.GetSamples(), 1)
 
-	cell := execution.Samples.GetSamples()[0].GetColumns()[1]
+	cell := execution.Evidence.GetSamples()[0].GetColumns()[1]
 	require.Equal(t, "name", cell.GetColumn())
 	require.Equal(t, "110105********0021", cell.GetValue())
 	require.True(t, cell.GetMasked())
-	for _, sample := range execution.Samples.GetSamples() {
+	for _, sample := range execution.Evidence.GetSamples() {
 		for _, value := range sample.GetColumns() {
 			require.NotContains(t, value.GetValue(), "19491231", "the birth date must not be stored")
 		}
@@ -429,10 +432,10 @@ func TestExecuteStandardCodeRuleCountsInvalidValues(t *testing.T) {
 	require.Equal(t, 100, queryer.options[0].MaxRows, "the cap must equal sample_rows")
 	require.Equal(t, queryer.queries[0], execution.ExecutedSQL)
 
-	require.NotNil(t, execution.Samples)
-	require.Len(t, execution.Samples.GetSamples(), 1)
-	require.Equal(t, "broken", sampleColumnValue(execution.Samples.GetSamples()[0], "name"))
-	require.Equal(t, "2", sampleColumnValue(execution.Samples.GetSamples()[0], "id"), "the key column identifies the row")
+	require.NotNil(t, execution.Evidence)
+	require.Len(t, execution.Evidence.GetSamples(), 1)
+	require.Equal(t, "broken", sampleColumnValue(execution.Evidence.GetSamples()[0], "name"))
+	require.Equal(t, "2", sampleColumnValue(execution.Evidence.GetSamples()[0], "id"), "the key column identifies the row")
 }
 
 func TestExecuteStandardCodeRuleMarksACappedSample(t *testing.T) {
@@ -481,8 +484,8 @@ func TestExecuteStandardCodeRuleNeedsNoSampleStatement(t *testing.T) {
 	}, ExecOptions{StoreSamples: true, SampleLimit: 1})
 	require.NoError(t, err)
 	require.Len(t, queryer.queries, 1)
-	require.NotNil(t, execution.Samples)
-	require.Equal(t, "Z01", sampleColumnValue(execution.Samples.GetSamples()[0], "name"))
+	require.NotNil(t, execution.Evidence)
+	require.Equal(t, "Z01", sampleColumnValue(execution.Evidence.GetSamples()[0], "name"))
 }
 
 // A stored rule with an arm but no standard is a defect, not a silent all-fail

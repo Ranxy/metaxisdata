@@ -449,7 +449,7 @@
 
         <DialogFooter class="shrink-0 border-t px-6 py-4">
           <Button
-            v-if="canCreateTemplate"
+            v-if="canSaveAsTemplate"
             variant="outline"
             class="mr-auto"
             :disabled="saving"
@@ -728,7 +728,10 @@ import {
 /** The pane the workspace opened the dialog from, which seeds the check type. */
 type ComposerScope = "dataset" | "column";
 
-/** The single-column config field each check type fills from `initialColumn`. */
+/**
+ * The single-column config field each check type fills from `initialColumn`.
+ * A segment check groups by several columns, so it has no single field to fill.
+ */
 const SINGLE_COLUMN_FIELD: Partial<
   Record<QualityRuleType, keyof RuleFormState["config"]>
 > = {
@@ -775,6 +778,7 @@ const COLUMN_TYPES = [
 const ADVANCED_TYPES = [
   QualityRuleType.CROSS_COLUMN,
   QualityRuleType.GROUP_CHECK,
+  QualityRuleType.SEGMENT_CHECK,
   QualityRuleType.AGGREGATE,
   QualityRuleType.CROSS_TABLE,
   QualityRuleType.CEL_EXPRESSION,
@@ -891,6 +895,25 @@ const target = computed<TargetSelection | undefined>(() => {
 const columnGuid = computed(() => target.value?.guid ?? props.targetGuid);
 
 const form = ref<RuleFormState>(emptyRuleForm());
+/**
+ * Whether the current form can be saved as a workspace template. The server
+ * refuses a segment check (its grouping columns are target-bound) and an
+ * accepted-values check with a dynamic source (the reference column or query is
+ * target-bound), so the action is hidden instead of failing after the reader
+ * typed a title.
+ */
+const canSaveAsTemplate = computed(() => {
+  if (!canCreateTemplate.value) {
+    return false;
+  }
+  if (form.value.ruleType === QualityRuleType.SEGMENT_CHECK) {
+    return false;
+  }
+  return !(
+    form.value.ruleType === QualityRuleType.ACCEPTED_VALUES &&
+    (form.value.config.acceptedSource ?? "list") !== "list"
+  );
+});
 /**
  * The target engine, which decides whether a percentage sample is offered. The
  * instance cache serves every page; a failed read leaves it unknown rather than

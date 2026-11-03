@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -70,6 +71,19 @@ func qualityConfigCases() []struct {
 			AllowNull:     true,
 			FailThreshold: qualityTestPtr(2.5),
 			WarnThreshold: qualityTestPtr(1.5),
+		}}}},
+		{name: "accepted_values_field", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
+			Column:        "status",
+			Field:         "status_label",
+			FailThreshold: qualityTestPtr(2.5),
+			WarnThreshold: qualityTestPtr(1.5),
+		}}}},
+		{name: "accepted_values_query", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_AcceptedValues{AcceptedValues: &storepb.AcceptedValuesConfig{
+			Column: "status",
+			Query: &storepb.AcceptedValuesQuery{
+				Sql:         "SELECT DISTINCT status FROM legacy_orders",
+				ValueColumn: "status",
+			},
 		}}}},
 		{name: "range", config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_Range{Range: &storepb.RangeConfig{
 			Column:        "amount",
@@ -399,7 +413,7 @@ func TestConvertQualityExecution(t *testing.T) {
 		Sampled:    true,
 		SampleRows: 20,
 		Truncated:  true,
-		Sample: &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+		Sample: &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
 			{Column: "id", Value: "1", IsNull: proto.Bool(false)},
 			{Column: "amount", Value: "-5"},
 			{Column: "note", IsNull: proto.Bool(true)},
@@ -627,7 +641,8 @@ func TestConvertQualityThresholdsNil(t *testing.T) {
 
 	require.Nil(t, convertQualityThresholdsToV1(nil))
 	require.Nil(t, convertQualityStatusCountsToV1(nil))
-	require.Nil(t, convertQualityFailureSamplesToV1(nil))
+	require.Nil(t, convertQualitySamplesToV1(nil))
+	require.Nil(t, convertSegmentObservationToV1(nil))
 	require.Nil(t, convertQualityTargetPathToV1(nil))
 }
 
@@ -1189,4 +1204,69 @@ func resolvedTimeZoneFallback(t *testing.T) string {
 	t.Helper()
 	resolved := resolveDataQualitySetting(&storepb.WorkspaceProfileSetting{})
 	return convertDataQualitySetting(resolved).GetTimeZone()
+}
+
+// TestConvertSegmentObservationToV1 pins the public shape of a segment check's
+// evidence: the current set, the new segments, the disappeared ones with their
+// last-seen time, and the baseline metadata.
+func TestConvertSegmentObservationToV1(t *testing.T) {
+	t.Parallel()
+
+	lastSeen := time.Date(2026, time.November, 2, 9, 0, 0, 0, time.UTC)
+	observation := &storepb.SegmentObservation{
+		Observed: []*storepb.SegmentRecord{
+			{Values: []string{"open"}, RowCount: 30, IsNull: []bool{false}, Masked: []bool{false}},
+		},
+		NewSegments: []*storepb.SegmentRecord{
+			{Values: []string{"refunded"}, RowCount: 3},
+		},
+		Disappeared: []*storepb.SegmentRecord{
+			{Values: []string{"closed"}, RowCount: 12, LastSeen: timestamppb.New(lastSeen), Masked: []bool{true}},
+		},
+		Truncated:     true,
+		BaselineRuns:  2,
+		ExpectedCount: 3,
+	}
+	converted := convertSegmentObservationToV1(observation)
+	require.NotNil(t, converted)
+	require.True(t, converted.GetTruncated())
+	require.Equal(t, int32(2), converted.GetBaselineRuns())
+	require.Equal(t, int64(3), converted.GetExpectedCount())
+	require.Len(t, converted.GetObserved(), 1)
+	require.Equal(t, []string{"open"}, converted.GetObserved()[0].GetValues())
+	require.Equal(t, int64(30), converted.GetObserved()[0].GetRowCount())
+	require.Len(t, converted.GetNewSegments(), 1)
+	require.Equal(t, []string{"refunded"}, converted.GetNewSegments()[0].GetValues())
+	require.Len(t, converted.GetDisappeared(), 1)
+	disappeared := converted.GetDisappeared()[0]
+	require.Equal(t, []string{"closed"}, disappeared.GetValues())
+	require.Equal(t, int64(12), disappeared.GetRowCount())
+	require.Equal(t, lastSeen, disappeared.GetLastSeen().AsTime())
+	require.True(t, disappeared.GetMasked()[0])
+}
+
+// TestConvertQualityExecutionCarriesEvidenceParts pins that one stored evidence
+// wrapper lands in the API's three separate evidence fields.
+func TestConvertQualityExecutionCarriesEvidenceParts(t *testing.T) {
+	t.Parallel()
+
+	execution := &store.QualityExecutionMessage{
+		ID:         7,
+		RuleID:     3,
+		TargetGUID: "inst;db;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+		State:      storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED,
+		Status:     storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		Sample: &storepb.QualityExecutionEvidence{
+			Samples:        []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{{Column: "status", Value: "bad"}}}},
+			PassingSamples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{{Column: "status", Value: "good"}}}},
+			Segments:       &storepb.SegmentObservation{BaselineRuns: 2, ExpectedCount: 1},
+		},
+	}
+	converted := convertQualityExecution("ws", execution, "workspaces/ws/qualityRules/3")
+	require.Len(t, converted.GetSamples(), 1)
+	require.Len(t, converted.GetPassingSamples(), 1)
+	require.Equal(t, "good", converted.GetPassingSamples()[0].GetColumns()[0].GetValue())
+	require.NotNil(t, converted.GetSegmentEvidence())
+	require.Equal(t, int32(2), converted.GetSegmentEvidence().GetBaselineRuns())
 }

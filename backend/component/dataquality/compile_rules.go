@@ -224,19 +224,13 @@ func compileUniqueQuery(input CompileInput, columns []string, countNulls bool) (
 // CASE falls through to zero.
 func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	config := input.Config.GetAcceptedValues()
-	if config == nil {
-		return CompiledQuery{}, invalidConfig("the accepted-values config is missing")
-	}
-	column, err := requireValueComparisonColumn(input.Target, config.GetColumn())
+	source, err := acceptedValuesSourceOf(config)
 	if err != nil {
 		return CompiledQuery{}, err
 	}
-	values := config.GetValues()
-	if len(values) == 0 {
-		return CompiledQuery{}, invalidConfig("an accepted-values rule needs at least one value")
-	}
-	if len(values) > compileMaxAcceptedValues {
-		return CompiledQuery{}, invalidConfig("an accepted-values rule allows at most %d values, got %d", compileMaxAcceptedValues, len(values))
+	column, err := acceptedValuesColumn(input.Target, config, source)
+	if err != nil {
+		return CompiledQuery{}, err
 	}
 	if err := compileValidateCountThresholds(input.Config, config.FailThreshold, config.WarnThreshold); err != nil {
 		return CompiledQuery{}, err
@@ -247,18 +241,9 @@ func compileAcceptedValues(input CompileInput) (CompiledQuery, error) {
 	}
 
 	args := newCompileArgs(input.Dialect, filterArgs)
-	placeholders := make([]string, 0, len(values))
-	for _, value := range values {
-		converted, err := compileValueArg(column, value)
-		if err != nil {
-			return CompiledQuery{}, err
-		}
-		placeholders = append(placeholders, args.add(converted))
-	}
-	qualified := qualify(input.Dialect, column.Name)
-	condition := qualified + " NOT IN (" + strings.Join(placeholders, ", ") + ")"
-	if !config.GetAllowNull() {
-		condition = qualified + " IS NULL OR " + condition
+	condition, err := acceptedValuesCondition(input, config, column, args.add)
+	if err != nil {
+		return CompiledQuery{}, err
 	}
 	return compileCountSelect(relation, where, condition, args.values()), nil
 }

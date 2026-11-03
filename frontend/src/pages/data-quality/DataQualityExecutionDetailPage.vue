@@ -330,85 +330,210 @@
           :as-of="execution.startTime"
         />
 
-        <Card v-if="execution.samples.length > 0">
+        <!-- A segment check's evidence is the segment card below: it keeps no
+             failed-row samples, so it gets no empty failed-rows card. -->
+        <template v-if="showsFailedSamples">
+          <Card v-if="execution.samples.length > 0">
+            <CardHeader class="border-b">
+              <CardTitle class="text-base">
+                {{ t("dataQuality.failureSamples") }}
+              </CardTitle>
+              <CardDescription>
+                {{ t("dataQuality.failureSamplesHint") }}
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="pt-4">
+              <ExecutionSampleRows :samples="execution.samples" />
+            </CardContent>
+          </Card>
+          <Card v-else>
+            <CardHeader class="border-b">
+              <CardTitle class="text-base">
+                {{ t("dataQuality.failureSamples") }}
+              </CardTitle>
+            </CardHeader>
+            <CardContent class="pt-4">
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQuality.noSamples") }}
+              </p>
+            </CardContent>
+          </Card>
+        </template>
+
+        <!-- The rows that passed the same check, kept beside the failed ones so
+             a reviewer can compare what the rule lets through with what it
+             rejects. Only some row-level checks and only a WARN/FAIL verdict
+             carry them, so an empty list renders no card at all. -->
+        <Card v-if="passingSamples.length > 0">
           <CardHeader class="border-b">
             <CardTitle class="text-base">
-              {{ t("dataQuality.failureSamples") }}
+              {{ t("dataQuality.passingSamples") }}
             </CardTitle>
             <CardDescription>
-              {{ t("dataQuality.failureSamplesHint") }}
+              {{ t("dataQuality.passingSamplesHint") }}
             </CardDescription>
           </CardHeader>
           <CardContent class="pt-4">
-            <!-- One block per sampled row, not a table: the columns are
-                 data-dependent, and a wide table is what the layout audit
-                 rejects. A row is numbered because two failures on the same
-                 column can otherwise look like the same row repeated, and a
-                 NULL or an empty string is printed as such: a blank cell would
-                 read as a rendering defect. A sample recorded before the null
-                 marker existed cannot say which of the two it was, so it gets
-                 the neutral form. -->
-            <div class="space-y-2">
-              <div
-                v-for="(sample, index) in execution.samples"
-                :key="index"
-                class="rounded-md border p-3 text-xs"
+            <ExecutionSampleRows :samples="passingSamples" />
+          </CardContent>
+        </Card>
+
+        <!-- A segment check judges the segment set, so its evidence is the set
+             it observed compared with the baseline: what disappeared (the
+             failures), what is new, and how large the comparison was. -->
+        <Card v-if="segmentEvidence">
+          <CardHeader class="border-b">
+            <CardTitle class="text-base">
+              {{ t("dataQuality.segmentEvidence.title") }}
+            </CardTitle>
+            <CardDescription>
+              {{ t("dataQuality.segmentEvidence.hint") }}
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-5 pt-4">
+            <section class="space-y-2">
+              <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h3 class="text-sm font-medium">
+                  {{ t("dataQuality.segmentEvidence.disappeared") }}
+                </h3>
+                <span class="text-xs text-muted-foreground tabular-nums">
+                  {{
+                    t("dataQuality.segmentEvidence.segmentsCount", {
+                      count: disappearedSegments.length,
+                    })
+                  }}
+                </span>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                {{ t("dataQuality.segmentEvidence.disappearedHint") }}
+              </p>
+              <p
+                v-if="disappearedSegments.length === 0"
+                class="text-sm text-muted-foreground"
               >
-                <div class="mb-1 font-mono text-muted-foreground">
-                  {{ t("dataQuality.sampleNumber", { index: index + 1 }) }}
-                </div>
+                {{ t("dataQuality.segmentEvidence.noDisappeared") }}
+              </p>
+              <div
+                v-else
+                class="space-y-2"
+              >
                 <div
-                  v-for="cell in sample.columns"
-                  :key="cell.column"
-                  class="flex gap-2 py-0.5"
+                  v-for="(record, index) in disappearedShown"
+                  :key="index"
+                  class="flex flex-wrap items-start justify-between gap-2 rounded-md border p-2.5 text-xs"
                 >
                   <span
-                    class="w-40 shrink-0 truncate font-mono text-muted-foreground"
-                    :title="cell.column"
+                    class="min-w-0 break-all font-mono"
+                    :title="segmentText(record)"
                   >
-                    {{ cell.column }}
+                    {{ segmentText(record) }}
                   </span>
-                  <span
-                    v-if="cell.isNull === true"
-                    class="min-w-0 font-mono text-muted-foreground italic"
-                  >
-                    {{ t("dataQuality.sampleNull") }}
-                  </span>
-                  <span
-                    v-else-if="cell.value !== ''"
-                    class="min-w-0 break-all"
-                  >{{ cell.value
-                    }}<span
-                      v-if="cell.masked"
-                      class="ml-1 font-mono text-muted-foreground"
-                    >{{ t("dataQuality.sampleMasked") }}</span></span>
-                  <span
-                    v-else-if="cell.isNull === false"
-                    class="min-w-0 font-mono text-muted-foreground italic"
-                  >
-                    {{ t("dataQuality.sampleEmpty") }}
-                  </span>
-                  <span
-                    v-else
-                    class="min-w-0 font-mono text-muted-foreground italic"
-                    :title="t('dataQuality.sampleLegacyHint')"
-                  >
-                    {{ t("dataQuality.sampleAmbiguous") }}
+                  <span class="flex shrink-0 items-center gap-3 text-muted-foreground tabular-nums">
+                    <span>
+                      {{
+                        t("dataQuality.segmentEvidence.rowCount", {
+                          count: Number(record.rowCount),
+                          rows: formatRowCount(record.rowCount, locale),
+                        })
+                      }}
+                    </span>
+                    <span
+                      v-if="record.lastSeen"
+                      :title="formatDateTime(record.lastSeen, locale)"
+                    >
+                      {{
+                        t("dataQuality.segmentEvidence.lastSeen", {
+                          time: formatRelativeTime(record.lastSeen, locale),
+                        })
+                      }}
+                    </span>
                   </span>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card v-else>
-          <CardHeader class="border-b">
-            <CardTitle class="text-base">
-              {{ t("dataQuality.failureSamples") }}
-            </CardTitle>
-          </CardHeader>
-          <CardContent class="pt-4">
-            <p class="text-sm text-muted-foreground">
-              {{ t("dataQuality.noSamples") }}
+              <p
+                v-if="disappearedOverflow"
+                class="text-xs text-muted-foreground"
+              >
+                {{
+                  t("dataQuality.segmentEvidence.showing", {
+                    shown: disappearedShown.length,
+                    total: disappearedSegments.length,
+                  })
+                }}
+              </p>
+            </section>
+
+            <section class="space-y-2">
+              <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h3 class="text-sm font-medium">
+                  {{ t("dataQuality.segmentEvidence.newSegments") }}
+                </h3>
+                <span class="text-xs text-muted-foreground tabular-nums">
+                  {{
+                    t("dataQuality.segmentEvidence.segmentsCount", {
+                      count: newSegments.length,
+                    })
+                  }}
+                </span>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                {{ t("dataQuality.segmentEvidence.newSegmentsHint") }}
+              </p>
+              <p
+                v-if="newSegments.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("dataQuality.segmentEvidence.noNewSegments") }}
+              </p>
+              <div
+                v-else
+                class="space-y-2"
+              >
+                <div
+                  v-for="(record, index) in newSegmentsShown"
+                  :key="index"
+                  class="flex flex-wrap items-start justify-between gap-2 rounded-md border p-2.5 text-xs"
+                >
+                  <span
+                    class="min-w-0 break-all font-mono"
+                    :title="segmentText(record)"
+                  >
+                    {{ segmentText(record) }}
+                  </span>
+                  <span class="flex shrink-0 items-center text-muted-foreground tabular-nums">
+                    {{
+                      t("dataQuality.segmentEvidence.rowCount", {
+                        count: Number(record.rowCount),
+                        rows: formatRowCount(record.rowCount, locale),
+                      })
+                    }}
+                  </span>
+                </div>
+              </div>
+              <p
+                v-if="newSegmentsOverflow"
+                class="text-xs text-muted-foreground"
+              >
+                {{
+                  t("dataQuality.segmentEvidence.showing", {
+                    shown: newSegmentsShown.length,
+                    total: newSegments.length,
+                  })
+                }}
+              </p>
+            </section>
+
+            <p
+              v-if="segmentBaselineLabel"
+              class="border-t pt-3 text-xs text-muted-foreground"
+            >
+              {{ segmentBaselineLabel }}
+            </p>
+            <p
+              v-if="segmentEvidence.truncated"
+              class="text-xs text-warning"
+            >
+              {{ t("dataQuality.segmentEvidence.truncated") }}
             </p>
           </CardContent>
         </Card>
@@ -491,6 +616,7 @@ import {
 } from "@/api/data-quality";
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import PageState from "@/components/common/PageState.vue";
+import ExecutionSampleRows from "@/components/data-quality/ExecutionSampleRows.vue";
 import QualityExplainDrawer from "@/components/data-quality/QualityExplainDrawer.vue";
 import QualityImpactCard from "@/components/data-quality/QualityImpactCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -514,6 +640,7 @@ import {
   QualityExecutionState,
   QualityRuleType,
   QualityStatus,
+  type SegmentRecord,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
@@ -694,6 +821,97 @@ const rowsLabel = computed(() =>
     ? `${formatRowCount(execution.value.failedRows, locale.value)} / ${formatRowCount(execution.value.totalRows, locale.value)}`
     : "-"
 );
+
+/** The rows that passed the same check; empty for every check type that has none. */
+const passingSamples = computed(() => execution.value?.passingSamples ?? []);
+
+/** A segment check's evidence: the observed set compared with its baseline. */
+const segmentEvidence = computed(() => execution.value?.segmentEvidence);
+
+/**
+ * A segment check's verdict is the disappeared-segment count, and its evidence
+ * is the segment card; it keeps no failed-row samples, so the failed-rows card
+ * is hidden. The type comes from the rule read, but the evidence alone proves
+ * the type when the caller may not read the rule.
+ */
+const isSegmentCheck = computed(
+  () =>
+    ruleType.value === QualityRuleType.SEGMENT_CHECK ||
+    segmentEvidence.value !== undefined
+);
+const showsFailedSamples = computed(() => !isSegmentCheck.value);
+
+const disappearedSegments = computed(
+  () => segmentEvidence.value?.disappeared ?? []
+);
+const newSegments = computed(() => segmentEvidence.value?.newSegments ?? []);
+
+/**
+ * The segment card keeps the review scannable: only the first 50 records of
+ * each list are rendered, and a line says how many the execution carried. The
+ * section headers keep the exact counts.
+ */
+const SEGMENT_DISPLAY_LIMIT = 50;
+const disappearedShown = computed(() =>
+  disappearedSegments.value.slice(0, SEGMENT_DISPLAY_LIMIT)
+);
+const newSegmentsShown = computed(() =>
+  newSegments.value.slice(0, SEGMENT_DISPLAY_LIMIT)
+);
+const disappearedOverflow = computed(
+  () => disappearedSegments.value.length > SEGMENT_DISPLAY_LIMIT
+);
+const newSegmentsOverflow = computed(
+  () => newSegments.value.length > SEGMENT_DISPLAY_LIMIT
+);
+
+/** How the baseline was sized, or why the comparison was skipped. */
+const segmentBaselineLabel = computed(() => {
+  const evidence = segmentEvidence.value;
+  if (!evidence) {
+    return "";
+  }
+  if (evidence.baselineRuns === 0) {
+    // A truncated observation records the set but never judges it, so it says
+    // that instead of pretending there was no baseline at all.
+    return evidence.truncated
+      ? ""
+      : t("dataQuality.segmentEvidence.noBaseline");
+  }
+  // Both halves are pluralized from a numeric count with a locale-formatted
+  // placeholder: one "count" can only drive one plural rule, so the runs and the
+  // expected segments are separate messages joined here.
+  const runs = t("dataQuality.segmentEvidence.baseline", {
+    count: evidence.baselineRuns,
+    runs: formatRowCount(evidence.baselineRuns, locale.value),
+  });
+  const expected = t("dataQuality.segmentEvidence.expectedSegments", {
+    // expectedCount is an int64 (BigInt on the wire); the plural rule needs a number.
+    count: Number(evidence.expectedCount),
+    expected: formatRowCount(evidence.expectedCount, locale.value),
+  });
+  return `${runs} · ${expected}`;
+});
+
+/**
+ * One segment as display text: the grouping values in rule order, with the same
+ * NULL / empty / masked wording the failure samples use.
+ */
+function segmentText(record: SegmentRecord): string {
+  return record.values
+    .map((value, index) => {
+      if (record.isNull[index] === true) {
+        return t("dataQuality.sampleNull");
+      }
+      if (value === "") {
+        return t("dataQuality.sampleEmpty");
+      }
+      return record.masked[index] === true
+        ? `${value} (${t("dataQuality.sampleMasked")})`
+        : value;
+    })
+    .join(" · ");
+}
 
 const thresholdLabel = computed(() => {
   if (!execution.value) {

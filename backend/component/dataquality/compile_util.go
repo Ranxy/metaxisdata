@@ -103,15 +103,26 @@ func (a *compileArgs) values() []any {
 }
 
 // groupCheckColumns resolves and de-duplicates a group-check rule's grouping
-// columns, preserving the configured order. The same function is used by
-// validation, the aggregate compiler and the sample compiler so all three reject
-// the same config with the same message.
+// columns. Validation, the aggregate compiler and the sample compiler share it, so
+// all three reject the same config with the same message.
 func groupCheckColumns(target ResolvedTarget, names []string) ([]string, error) {
+	return groupingColumns(target, names, "group-check", maxGroupCheckColumns)
+}
+
+// segmentCheckColumns resolves the grouping columns of a segment check, with the
+// same rules and messages as a grouped row-count rule.
+func segmentCheckColumns(target ResolvedTarget, names []string) ([]string, error) {
+	return groupingColumns(target, names, "segment-check", maxSegmentColumns)
+}
+
+// groupingColumns resolves and de-duplicates one rule's grouping columns,
+// preserving the configured order.
+func groupingColumns(target ResolvedTarget, names []string, ruleLabel string, maxColumns int) ([]string, error) {
 	if len(names) == 0 {
-		return nil, invalidConfig("a group-check rule needs at least one column")
+		return nil, invalidConfig("a %s rule needs at least one column", ruleLabel)
 	}
-	if len(names) > maxGroupCheckColumns {
-		return nil, invalidConfig("a group-check rule allows at most %d group columns, got %d", maxGroupCheckColumns, len(names))
+	if len(names) > maxColumns {
+		return nil, invalidConfig("a %s rule allows at most %d group columns, got %d", ruleLabel, maxColumns, len(names))
 	}
 	columns := make([]string, 0, len(names))
 	seen := make(map[string]struct{}, len(names))

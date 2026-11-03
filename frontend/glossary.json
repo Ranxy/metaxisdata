@@ -1173,7 +1173,7 @@
     {
       "id": "accepted-values",
       "category": "Data Quality",
-      "definition": "The rule that every value of a column comes from a fixed list.",
+      "definition": "The rule that every value of a column comes from an accepted set: a fixed list, another column of the same target, or a query.",
       "translations": {
         "en-US": "accepted values",
         "zh-CN": "允许值"
@@ -1238,6 +1238,36 @@
       "avoid": {
         "zh-CN": [
           "分组检查"
+        ]
+      }
+    },
+    {
+      "id": "passing-rows",
+      "category": "Data Quality",
+      "definition": "The rows a failed or warned check counted as passing, kept beside the failed rows so a reviewer can compare the two populations.",
+      "translations": {
+        "en-US": "passing rows",
+        "zh-CN": "通过行"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "segment-check",
+      "category": "Data Quality",
+      "definition": "The rule that groups rows into segments and fails the segments the check's recent runs observed but the current run no longer has.",
+      "translations": {
+        "en-US": "segment check",
+        "zh-CN": "分片检查"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "分段检查",
+          "维度检查"
         ]
       }
     },

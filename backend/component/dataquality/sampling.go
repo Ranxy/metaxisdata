@@ -99,6 +99,8 @@ func samplingUnsupported(ruleType storepb.QualityRuleType) error {
 		return invalidConfig("a CEL expression has its own sample_rows setting; the check's sampling does not apply to it")
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE:
 		return invalidConfig("a standard-code check has its own sample_rows setting; the check's sampling does not apply to it")
+	case storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK:
+		return invalidConfig("a segment check cannot be sampled: it compares the whole segment set with the baseline, and a sample would look like vanished segments")
 	case storepb.QualityRuleType_QUALITY_RULE_TYPE_UNSPECIFIED:
 		return invalidConfig("a rule type is required")
 	default:

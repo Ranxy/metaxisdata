@@ -152,15 +152,30 @@ func validatePostgresCustomSQL(statement string) (err error) {
 // validateMSSQLCustomSQL parses with omni's T-SQL parser. GO batch separators are
 // not statements; a script that is one SELECT plus GO is still one statement.
 func validateMSSQLCustomSQL(statement string) (err error) {
+	selectStmt, err := mssqlSelectStatement(statement)
+	if err != nil {
+		return err
+	}
+	if selectStmt.IntoTable != nil {
+		return invalidConfig("custom SQL must not write its result: SELECT ... INTO is not allowed")
+	}
+	return nil
+}
+
+// mssqlSelectStatement parses one T-SQL statement and returns its SELECT node.
+// GO batch separators do not count; every parse/panic is reported as an
+// invalid definition rather than escaping as a runtime failure.
+func mssqlSelectStatement(statement string) (selectStmt *mssqlast.SelectStmt, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			selectStmt = nil
 			err = invalidConfig("the MSSQL SQL parser failed on this statement: %v", recovered)
 		}
 	}()
 
 	statements, parseErr := omnimssql.Parse(statement)
 	if parseErr != nil {
-		return invalidConfig("custom SQL does not parse as MSSQL SQL: %v", parseErr)
+		return nil, invalidConfig("custom SQL does not parse as MSSQL SQL: %v", parseErr)
 	}
 	count := 0
 	var only mssqlast.Node
@@ -175,14 +190,29 @@ func validateMSSQLCustomSQL(statement string) (err error) {
 		count++
 	}
 	if count != 1 {
-		return invalidConfig("custom SQL must be exactly one statement, got %d", count)
+		return nil, invalidConfig("custom SQL must be exactly one statement, got %d", count)
 	}
 	selectStmt, ok := only.(*mssqlast.SelectStmt)
 	if !ok {
-		return invalidConfig("custom SQL must be a single SELECT or WITH ... SELECT, got %s", mssqlStatementName(only))
+		return nil, invalidConfig("custom SQL must be a single SELECT or WITH ... SELECT, got %s", mssqlStatementName(only))
 	}
-	if selectStmt.IntoTable != nil {
-		return invalidConfig("custom SQL must not write its result: SELECT ... INTO is not allowed")
+	return selectStmt, nil
+}
+
+// validateMSSQLDerivedQuery checks a read-only query that will be embedded as a
+// derived table (the accepted-values query source). T-SQL rejects a CTE or a
+// top-level ORDER BY inside a derived table, so a query using either could never
+// run; the save path refuses it instead of storing a check that always errors.
+func validateMSSQLDerivedQuery(statement string) error {
+	selectStmt, err := mssqlSelectStatement(statement)
+	if err != nil {
+		return err
+	}
+	if selectStmt.WithClause != nil {
+		return invalidConfig("the accepted-values query cannot use WITH on SQL Server: a CTE inside a derived table is not valid T-SQL")
+	}
+	if selectStmt.OrderByClause != nil {
+		return invalidConfig("the accepted-values query cannot use ORDER BY on SQL Server: a derived table rejects ORDER BY unless it also limits rows")
 	}
 	return nil
 }

@@ -276,6 +276,11 @@ func ruleConfigTextFields(config *storepb.QualityRuleConfig) []namedText {
 	fields := []namedText{
 		{"null_values", config.GetNullPercent().GetNullValues()},
 		{"accepted values", config.GetAcceptedValues().GetValues()},
+		// The dynamic value sources are column names, not values: a time variable
+		// there would be compared literally. The query's SQL does resolve variables,
+		// so it is absent from this list.
+		{"accepted values reference column", []string{config.GetAcceptedValues().GetField()}},
+		{"accepted values query column", []string{config.GetAcceptedValues().GetQuery().GetValueColumn()}},
 		{"range bounds", []string{config.GetRange().GetMin(), config.GetRange().GetMax()}},
 		{"regex pattern", []string{config.GetRegex().GetPattern()}},
 		{"CEL expression", []string{config.GetCelExpression().GetExpression()}},

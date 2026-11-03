@@ -44,7 +44,7 @@ func TestRuleTypeSpecsCoverTheEnum(t *testing.T) {
 		}
 		realTypes++
 	}
-	require.Equal(t, 19, realTypes, "the rule type enum has 19 real values")
+	require.Equal(t, 20, realTypes, "the rule type enum has 20 real values")
 	require.Len(t, ruleTypeSpecs, realTypes)
 
 	seen := make(map[storepb.QualityRuleType]bool, len(ruleTypeSpecs))
@@ -133,8 +133,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CEL_EXPRESSION,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_GROUP_CHECK,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Percent }),
-		"11 types carry a denominator for a PERCENT threshold")
+		"12 types carry a denominator for a PERCENT threshold")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
@@ -169,7 +170,7 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Observe != nil }),
-		"16 types read an aggregate row; CEL and schema_drift never do")
+		"16 types read an aggregate row; CEL, standard code, schema drift and the segment check never do")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,
@@ -201,8 +202,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.IdentityColumns != nil }),
-		"15 types feed the suggestion identity with columns")
+		"16 types feed the suggestion identity with columns")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE,
@@ -217,14 +219,22 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Discriminators != nil }),
-		"12 types fold config values into the suggestion identity")
+		"13 types fold config values into the suggestion identity")
 
 	// CountsTotal is meaningful only for a count-shaped rule; custom_sql is the
-	// one count-shaped rule whose observation has no denominator.
+	// one count-shaped rule whose observation has no denominator. A rule with a
+	// direct judge (the segment check) still carries a total when its PERCENT
+	// metric divides by it.
 	countsTotal := 0
 	for _, spec := range ruleTypeSpecs {
 		if spec.Thresholds == nil {
+			if spec.Type == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK {
+				require.True(t, spec.CountsTotal, "a segment report counts disappeared segments over expected ones")
+				require.True(t, spec.Percent, "the segment check divides by the expected segment count")
+				continue
+			}
 			require.False(t, spec.CountsTotal, "%s judges directly and must not claim a total", spec.Type)
 			continue
 		}
@@ -257,8 +267,9 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Judge != nil }),
-		"6 types judge an observation that is not a count shape")
+		"7 types judge their own observation")
 
 	// A draft's title and rationale come from the spec title, so every type that
 	// has a draft must have one.
@@ -410,6 +421,9 @@ func TestRuleTypeForConfigRoundTrip(t *testing.T) {
 		},
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE: {
 			Config: &storepb.QualityRuleConfig_StandardCode{StandardCode: &storepb.StandardCodeConfig{}},
+		},
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK: {
+			Config: &storepb.QualityRuleConfig_SegmentCheck{SegmentCheck: &storepb.SegmentCheckConfig{}},
 		},
 	}
 	require.Len(t, configs, len(ruleTypeSpecs))

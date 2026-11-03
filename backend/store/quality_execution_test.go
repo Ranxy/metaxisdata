@@ -629,7 +629,7 @@ func TestQualityTargetExecutionTallyJudged(t *testing.T) {
 func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
 	t.Parallel()
 
-	samples := &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+	samples := &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
 		{Column: "legacy"},
 		{Column: "blank", IsNull: proto.Bool(false)},
 		{Column: "missing", IsNull: proto.Bool(true)},
@@ -639,7 +639,7 @@ func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
 	require.Contains(t, string(raw), `"isNull":false`)
 	require.Contains(t, string(raw), `"isNull":true`)
 
-	decoded := &storepb.QualityFailureSamples{}
+	decoded := &storepb.QualityExecutionEvidence{}
 	require.NoError(t, unmarshalQualityProto(raw, decoded))
 	columns := decoded.GetSamples()[0].GetColumns()
 	require.Nil(t, columns[0].IsNull, "an absent marker stays absent")
@@ -647,4 +647,21 @@ func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
 	require.False(t, *columns[1].IsNull)
 	require.NotNil(t, columns[2].IsNull)
 	require.True(t, *columns[2].IsNull)
+}
+
+// TestQualityExecutionSegmentEvidenceWindow pins the segment baseline read: the
+// window is exactly the requested number of usable runs, so the SQL itself must
+// exclude executions without a complete segment observation and another revision.
+// Filtering in Go after a fixed candidate read would let a skipped or errored run
+// starve the window.
+func TestQualityExecutionSegmentEvidenceWindow(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "FROM quality_execution")
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "rule_id = $1 AND target_guid = $2 AND target_type = $3")
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "state = $4 AND rule_revision = $5")
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "sample->'segments' IS NOT NULL")
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "COALESCE(sample->'segments'->>'truncated', 'false') <> 'true'")
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "ORDER BY started_at DESC, id DESC")
+	require.Contains(t, qualityExecutionSegmentEvidenceStatement, "LIMIT $6")
 }
