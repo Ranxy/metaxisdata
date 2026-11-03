@@ -507,14 +507,9 @@ describe("DataQualityExecutionDetailPage", () => {
       i18n.global.t("dataQuality.segmentEvidence.newSegments")
     );
     expect(text).toContain("latam · app");
-    expect(text).toContain(
-      i18n.global.t("dataQuality.segmentEvidence.baseline", {
-        count: 3,
-        runs: "3",
-        expected: "2",
-      })
-    );
     expect(text).toContain("Baseline: 3 runs · 2 expected segments");
+    expect(text).not.toContain("1 runs");
+    expect(text).not.toContain("2 expected segment ");
     // A segment check keeps no failed-row samples, so it shows no such card.
     expect(text).not.toContain(i18n.global.t("dataQuality.failureSamples"));
     expect(text).not.toContain(i18n.global.t("dataQuality.noSamples"));
@@ -580,9 +575,10 @@ describe("DataQualityExecutionDetailPage", () => {
     );
     const { wrapper } = await mountPage();
     const text = wrapper.text();
-    expect(text).toContain("Baseline: 1 run · 1 expected segments");
+    expect(text).toContain("Baseline: 1 run · 1 expected segment");
     expect(text).toContain("3 rows");
     expect(text).not.toContain("1 runs");
+    expect(text).not.toContain("1 expected segments");
     wrapper.unmount();
   });
 

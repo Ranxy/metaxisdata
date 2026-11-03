@@ -878,13 +878,19 @@ const segmentBaselineLabel = computed(() => {
       ? ""
       : t("dataQuality.segmentEvidence.noBaseline");
   }
-  return t("dataQuality.segmentEvidence.baseline", {
-    // The numeric count selects the plural form; the placeholder carries the
-    // locale-formatted number.
+  // Both halves are pluralized from a numeric count with a locale-formatted
+  // placeholder: one "count" can only drive one plural rule, so the runs and the
+  // expected segments are separate messages joined here.
+  const runs = t("dataQuality.segmentEvidence.baseline", {
     count: evidence.baselineRuns,
     runs: formatRowCount(evidence.baselineRuns, locale.value),
+  });
+  const expected = t("dataQuality.segmentEvidence.expectedSegments", {
+    // expectedCount is an int64 (BigInt on the wire); the plural rule needs a number.
+    count: Number(evidence.expectedCount),
     expected: formatRowCount(evidence.expectedCount, locale.value),
   });
+  return `${runs} · ${expected}`;
 });
 
 /**

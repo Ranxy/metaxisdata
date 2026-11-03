@@ -1258,9 +1258,10 @@
     "search": "Search",
     "searchPlaceholder": "Search checks by title or description...",
     "segmentEvidence": {
-      "baseline": "Baseline: {runs} run · {expected} expected segments | Baseline: {runs} runs · {expected} expected segments",
+      "baseline": "Baseline: {runs} run | Baseline: {runs} runs",
       "disappeared": "Disappeared segments",
       "disappearedHint": "Segments the baseline expected that this execution no longer observed. Each one failed the check.",
+      "expectedSegments": "{expected} expected segment | {expected} expected segments",
       "hint": "The segment set this execution observed, compared with the segment sets of its recent executions.",
       "lastSeen": "last seen {time}",
       "newSegments": "New segments",

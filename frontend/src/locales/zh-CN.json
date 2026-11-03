@@ -1258,9 +1258,10 @@
     "search": "搜索",
     "searchPlaceholder": "按标题或描述搜索检查…",
     "segmentEvidence": {
-      "baseline": "基线：{runs} 次执行 · 预期 {expected} 个分片",
+      "baseline": "基线：{runs} 次执行",
       "disappeared": "消失的分片",
       "disappearedHint": "基线预期存在、本次执行未再观察到的分片。每个都会让检查失败。",
+      "expectedSegments": "预期 {expected} 个分片",
       "hint": "本次执行观察到的分片集合，已与最近几次执行的分片集合对比。",
       "lastSeen": "最后出现 {time}",
       "newSegments": "新增分片",
