@@ -2581,3 +2581,9 @@ describe("execution semantics sampling gating", () => {
     expect(canSampleRuleType(QualityRuleType.CROSS_TABLE)).toBe(false);
   });
 });
+
+describe("range defaults", () => {
+  it("starts a new check with inclusive bounds", () => {
+    expect(emptyConfig().inclusive).toBe(true);
+  });
+});

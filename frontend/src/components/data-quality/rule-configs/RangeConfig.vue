@@ -29,6 +29,9 @@
     v-model="config.inclusive"
     :label="t('dataQuality.editor.inclusive')"
   />
+  <p class="-mt-2 text-xs text-muted-foreground">
+    {{ t("dataQuality.editor.inclusiveHint") }}
+  </p>
 </template>
 
 <script setup lang="ts">

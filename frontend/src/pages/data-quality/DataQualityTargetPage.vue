@@ -730,6 +730,7 @@ import {
   acknowledgeQualityTargetSchema,
   exportQualityReport,
   getQualityContract,
+  getQualityExecution,
   getQualityTarget,
   getQualityTargetSchedule,
   listQualitySuggestions,
@@ -781,6 +782,7 @@ import { useTargetWorkspaceDialogs } from "@/composables/useTargetWorkspaceDialo
 import { notify } from "@/lib/notify";
 import {
   type QualityContract,
+  type QualityExecution,
   type QualityExecutionSummary,
   type QualityIssue,
   type QualityRule,
@@ -797,6 +799,7 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { downloadBlob, fileTimestamp } from "@/utils/csv";
 import {
   formatScheduleInterval,
+  isExecutionInProgress,
   qualityIssueStatusKey,
   qualityIssueStatusVariant,
   qualityTargetMetadataRoute,
@@ -1239,6 +1242,72 @@ async function refreshTargetSchedule() {
   }
 }
 
+/** Apply a target read to the page. The caller owns the ticket check. */
+function applyTarget(response: Awaited<ReturnType<typeof getQualityTarget>>) {
+  summary.value = response.summary ?? create(QualityTargetSummarySchema, {});
+  rules.value = response.qualityRules;
+  ruleHistory.value = new Map(
+    response.ruleHistory.map((history) => [history.rule, history.executions])
+  );
+  targetColumns.value = response.targetColumns.map((column) => ({
+    name: column.name,
+    type: column.type,
+    nullable: column.nullable,
+  }));
+  issues.value = response.openIssues;
+  orphaned.value = response.orphanedReason !== "";
+}
+
+/**
+ * Re-read the workspace without the resetting work `load` does. A "Run now"
+ * leaves the page mounted and the drawer open, so it uses this to pick up the
+ * new executions instead of flashing the empty skeleton.
+ */
+async function refreshWorkspace() {
+  const ticket = ++loadTicket;
+  const guid = targetGuid.value;
+  const metaType = parseMetaType(route.query.metaType) ?? MetaType.UNSPECIFIED;
+  try {
+    const response = await getQualityTarget({ targetGuid: guid, metaType });
+    if (ticket !== loadTicket) {
+      return;
+    }
+    applyTarget(response);
+  } catch {
+    // A refresh that fails keeps the last good page; the action's own toast
+    // already reported whether the run was submitted.
+  }
+}
+
+/**
+ * Wait until the executions a run planned leave PENDING/RUNNING, then let the
+ * caller re-read the workspace. The page used to only toast "submitted", so a
+ * reader saw "Never run" until they refreshed by hand.
+ */
+const RUN_SETTLE_TIMEOUT_MS = 30_000;
+const RUN_SETTLE_POLL_MS = 1_500;
+
+async function waitForExecutions(executions: QualityExecution[]) {
+  const names = executions.map((execution) => execution.name).filter(Boolean);
+  if (names.length === 0) {
+    return;
+  }
+  const deadline = Date.now() + RUN_SETTLE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const current = await Promise.all(
+      names.map((name) => getQualityExecution(name).catch(() => undefined))
+    );
+    if (
+      current.every(
+        (execution) => !execution || !isExecutionInProgress(execution.state)
+      )
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, RUN_SETTLE_POLL_MS));
+  }
+}
+
 async function load() {
   const ticket = ++loadTicket;
   loading.value = true;
@@ -1269,18 +1338,7 @@ async function load() {
     if (ticket !== loadTicket) {
       return;
     }
-    summary.value = response.summary ?? create(QualityTargetSummarySchema, {});
-    rules.value = response.qualityRules;
-    ruleHistory.value = new Map(
-      response.ruleHistory.map((history) => [history.rule, history.executions])
-    );
-    targetColumns.value = response.targetColumns.map((column) => ({
-      name: column.name,
-      type: column.type,
-      nullable: column.nullable,
-    }));
-    issues.value = response.openIssues;
-    orphaned.value = response.orphanedReason !== "";
+    applyTarget(response);
   } catch (cause: unknown) {
     if (ticket !== loadTicket) {
       return;
@@ -1480,6 +1538,8 @@ async function runAll() {
     notify.success(
       t("dataQuality.workspace.runAllSubmitted", { count: executions.length })
     );
+    await waitForExecutions(executions);
+    await load();
   } catch (cause: unknown) {
     notify.error(formatError(cause, "dataQuality.workspace.runAllFailed"));
   } finally {
@@ -1558,8 +1618,10 @@ async function runRule(rule: QualityRule) {
   }
   runningRule.value = rule.name;
   try {
-    await runQualityRules({ rules: [rule.name] });
+    const executions = await runQualityRules({ rules: [rule.name] });
     notify.success(t("dataQuality.executionStarted"));
+    await waitForExecutions(executions);
+    await refreshWorkspace();
   } catch (cause: unknown) {
     notify.error(formatError(cause, "dataQuality.workspace.runRuleFailed"));
   } finally {
