@@ -7244,6 +7244,7 @@ SegmentRecord is one segment: its key values and row count.
 | last_seen | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the baseline last observed the segment. Unset for a segment this execution observed. |
 | is_null | [bool](#bool) | repeated | Whether the matching value in values is SQL NULL. The list is parallel to values; a missing entry reads as not null. |
 | masked | [bool](#bool) | repeated | Whether the matching value in values was redacted before storage. The list is parallel to values; a missing entry reads as not redacted. |
+| value_digests | [string](#string) | repeated | A digest of the full value behind each entry of values, hex encoded. Values are truncated for display; the digest is what tells two segments with the same 128-byte prefix apart across executions. The list is parallel to values; a missing entry reads as empty (fall back to the value). |
 
 
 

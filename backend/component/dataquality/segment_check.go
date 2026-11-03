@@ -2,6 +2,8 @@ package dataquality
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strconv"
 	"time"
 
@@ -22,8 +24,13 @@ const (
 	// observation is never judged, because a segment beyond the cap would look
 	// missing.
 	maxSegmentCount = 500
-	// maxSegmentValueBytes bounds one stored segment key value.
+	// maxSegmentValueBytes bounds one stored segment key value. The digest below
+	// carries the identity of a longer value.
 	maxSegmentValueBytes = 128
+	// segmentValueDigestBytes is how many SHA-256 bytes one segment value's digest
+	// keeps. Eight bytes (16 hex characters) make an accidental collision between
+	// a check's segments negligible while keeping the evidence compact.
+	segmentValueDigestBytes = 8
 	// segmentRowCountColumn is the result column carrying a segment's row count.
 	segmentRowCountColumn = "segment_rows"
 	// defaultSegmentBaselineRuns is how many previous executions form the baseline
@@ -46,11 +53,13 @@ type SegmentHistoryRun struct {
 
 // SegmentExpectation is one segment the baseline expects to keep existing.
 type SegmentExpectation struct {
-	Key         []string
-	IsNull      []bool
-	RowCount    int64
-	LastSeen    time.Time
-	Occurrences int
+	Key          []string
+	IsNull       []bool
+	Masked       []bool
+	ValueDigests []string
+	RowCount     int64
+	LastSeen     time.Time
+	Occurrences  int
 }
 
 // SegmentBaseline is the expected segment set derived from a segment check's
@@ -109,17 +118,19 @@ func BuildSegmentBaseline(runs []SegmentHistoryRun, baselineRuns, minOccurrences
 			if record == nil {
 				continue
 			}
-			key := segmentKey(record.GetValues(), record.GetIsNull())
+			key := segmentKey(record.GetValues(), record.GetIsNull(), record.GetValueDigests())
 			baseline.Known[key] = struct{}{}
 			expectation, ok := byKey[key]
 			if !ok {
 				// Runs arrive newest first, so the first observation is the latest
 				// one and its row count is the last known size.
 				expectation = SegmentExpectation{
-					Key:      append([]string(nil), record.GetValues()...),
-					IsNull:   append([]bool(nil), record.GetIsNull()...),
-					RowCount: record.GetRowCount(),
-					LastSeen: run.StartedAt,
+					Key:          append([]string(nil), record.GetValues()...),
+					IsNull:       append([]bool(nil), record.GetIsNull()...),
+					Masked:       append([]bool(nil), record.GetMasked()...),
+					ValueDigests: append([]string(nil), record.GetValueDigests()...),
+					RowCount:     record.GetRowCount(),
+					LastSeen:     run.StartedAt,
 				}
 				order = append(order, key)
 			}
@@ -147,21 +158,36 @@ func BuildSegmentBaseline(runs []SegmentHistoryRun, baselineRuns, minOccurrences
 }
 
 // segmentKey canonicalizes one segment's key values so two runs compare equal
-// regardless of value content. Length prefixes keep "a|b" and "a", "|b" apart.
-func segmentKey(values []string, isNull []bool) string {
+// regardless of value content. It prefers the value digest, because the display
+// value is truncated and two long values sharing the truncation prefix would
+// otherwise collapse into one segment. Length prefixes keep "a|b" and "a", "|b"
+// apart.
+func segmentKey(values []string, isNull []bool, digests []string) string {
 	var key []byte
 	for index, value := range values {
-		key = strconv.AppendInt(key, int64(len(value)), 10)
+		component := value
+		if index < len(digests) && digests[index] != "" {
+			component = digests[index]
+		}
+		key = strconv.AppendInt(key, int64(len(component)), 10)
 		key = append(key, ':')
 		if index < len(isNull) && isNull[index] {
 			key = append(key, '1')
 		} else {
 			key = append(key, '0')
 		}
-		key = append(key, value...)
+		key = append(key, component...)
 		key = append(key, ';')
 	}
 	return string(key)
+}
+
+// segmentValueDigest fingerprints one full segment value. Values are stored
+// truncated for display; the digest keeps two values with the same prefix
+// distinct across executions.
+func segmentValueDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:segmentValueDigestBytes])
 }
 
 // compileSegmentCheck reads the distinct segments of the grouping columns and
@@ -240,11 +266,14 @@ func evaluateSegmentCheck(config *storepb.QualityRuleConfig, obs Observation, on
 			Thresholds: thresholds,
 		}
 	}
+	// A baseline that expected no segments judged nothing: both units follow
+	// on_empty, the same way a count rule with no rows does. Deciding this per
+	// unit would give the same data two different verdicts.
+	if obs.TotalRows == 0 && obs.FailedRows == 0 {
+		return ResultState{Status: emptyStatus(onEmpty, storepb.QualityStatus_QUALITY_STATUS_PASS), Thresholds: thresholds}
+	}
 	observed := float64(obs.FailedRows)
 	if thresholdMetric(config) == storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT {
-		if obs.TotalRows == 0 {
-			return ResultState{Status: emptyStatus(onEmpty, storepb.QualityStatus_QUALITY_STATUS_PASS), Thresholds: thresholds}
-		}
 		observed = float64(obs.FailedRows) / float64(obs.TotalRows) * 100
 	}
 	return applyThresholds(observed, thresholds)
@@ -295,18 +324,20 @@ func executeSegmentCheckRule(ctx context.Context, queryer db.ReadOnlyQueryer, _ 
 	default:
 		observedKeys := make(map[string]struct{}, len(observed))
 		for _, record := range observed {
-			observedKeys[segmentKey(record.GetValues(), record.GetIsNull())] = struct{}{}
+			observedKeys[segmentKey(record.GetValues(), record.GetIsNull(), record.GetValueDigests())] = struct{}{}
 		}
 		missing := make([]*storepb.SegmentRecord, 0)
 		for _, expectation := range baseline.Expected {
-			if _, ok := observedKeys[segmentKey(expectation.Key, expectation.IsNull)]; ok {
+			if _, ok := observedKeys[segmentKey(expectation.Key, expectation.IsNull, expectation.ValueDigests)]; ok {
 				continue
 			}
 			missing = append(missing, &storepb.SegmentRecord{
-				Values:   expectation.Key,
-				IsNull:   expectation.IsNull,
-				RowCount: expectation.RowCount,
-				LastSeen: timestamppb.New(expectation.LastSeen),
+				Values:       expectation.Key,
+				IsNull:       expectation.IsNull,
+				Masked:       expectation.Masked,
+				ValueDigests: expectation.ValueDigests,
+				RowCount:     expectation.RowCount,
+				LastSeen:     timestamppb.New(expectation.LastSeen),
 			})
 		}
 		evidence.Disappeared = missing
@@ -337,9 +368,10 @@ func segmentRecordsFromRows(columns []string, rows [][]any, masked map[string]st
 			return nil, false, badData("a segment row returned %d columns, expect %d", len(row), len(columns)+1)
 		}
 		record := &storepb.SegmentRecord{
-			Values: make([]string, 0, len(columns)),
-			IsNull: make([]bool, 0, len(columns)),
-			Masked: make([]bool, 0, len(columns)),
+			Values:       make([]string, 0, len(columns)),
+			IsNull:       make([]bool, 0, len(columns)),
+			Masked:       make([]bool, 0, len(columns)),
+			ValueDigests: make([]string, 0, len(columns)),
 		}
 		for index, name := range columns {
 			cell := row[index]
@@ -347,15 +379,19 @@ func segmentRecordsFromRows(columns []string, rows [][]any, masked map[string]st
 				record.Values = append(record.Values, "")
 				record.IsNull = append(record.IsNull, true)
 				record.Masked = append(record.Masked, false)
+				record.ValueDigests = append(record.ValueDigests, "")
 				continue
 			}
-			value := segmentValueString(cell)
+			// The digest is taken over the display form the evidence stores, so a
+			// personal value never contributes a fingerprint of its raw text.
+			value := sampleValueString(cell)
 			maskedValue := false
 			if _, ok := masked[name]; ok {
 				value = MaskPersonalValue(value)
 				maskedValue = true
 			}
-			record.Values = append(record.Values, value)
+			record.ValueDigests = append(record.ValueDigests, segmentValueDigest(value))
+			record.Values = append(record.Values, common.TruncateUTF8Bytes(value, maxSegmentValueBytes))
 			record.IsNull = append(record.IsNull, false)
 			record.Masked = append(record.Masked, maskedValue)
 		}
@@ -376,15 +412,10 @@ func segmentRecordsFromRows(columns []string, rows [][]any, masked map[string]st
 func newSegmentRecords(observed []*storepb.SegmentRecord, known map[string]struct{}) []*storepb.SegmentRecord {
 	records := make([]*storepb.SegmentRecord, 0)
 	for _, record := range observed {
-		if _, ok := known[segmentKey(record.GetValues(), record.GetIsNull())]; ok {
+		if _, ok := known[segmentKey(record.GetValues(), record.GetIsNull(), record.GetValueDigests())]; ok {
 			continue
 		}
 		records = append(records, record)
 	}
 	return records
-}
-
-// segmentValueString renders one segment key value as its stored display form.
-func segmentValueString(value any) string {
-	return common.TruncateUTF8Bytes(sampleValueString(value), maxSegmentValueBytes)
 }

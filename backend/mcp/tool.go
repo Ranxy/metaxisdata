@@ -180,7 +180,7 @@ func (s *Server) toolDefinitions() []toolDefinition {
 		},
 		{
 			Name:        "get_quality_execution",
-			Description: "Return one quality check run's full evidence: the SQL that executed, the failed sample rows, the thresholds it was judged against, any baseline and the sampling and truncation flags. Use it to explain a verdict yourself; list_quality_executions finds a run.",
+			Description: "Return one quality check run's full evidence: the SQL that executed, the failed sample rows, the rows that passed when the check keeps that comparison, a segment check's observed/new/disappeared segments, the thresholds it was judged against, any baseline and the sampling and truncation flags. Use it to explain a verdict yourself; list_quality_executions finds a run.",
 			RPC:         "metaxisdata.v1.DataQualityService.GetQualityExecution",
 			Permission:  permission.DataQualityExecutionsGet,
 			Schema: objectSchema(map[string]any{

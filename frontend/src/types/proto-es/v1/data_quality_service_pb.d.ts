@@ -2954,6 +2954,16 @@ export declare type SegmentRecord = Message<"metaxisdata.v1.SegmentRecord"> & {
    * @generated from field: repeated bool masked = 5;
    */
   masked: boolean[];
+
+  /**
+   * A digest of the full value behind each entry of values, hex encoded. Values
+   * are truncated for display; the digest is what tells two segments with the
+   * same 128-byte prefix apart across executions. The list is parallel to
+   * values; a missing entry reads as empty (fall back to the value).
+   *
+   * @generated from field: repeated string value_digests = 6;
+   */
+  valueDigests: string[];
 };
 
 /**

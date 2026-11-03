@@ -1796,10 +1796,11 @@ func convertSegmentRecordsToV1(records []*storepb.SegmentRecord) []*v1pb.Segment
 			continue
 		}
 		convertedRecord := &v1pb.SegmentRecord{
-			Values:   append([]string(nil), record.GetValues()...),
-			RowCount: record.GetRowCount(),
-			IsNull:   append([]bool(nil), record.GetIsNull()...),
-			Masked:   append([]bool(nil), record.GetMasked()...),
+			Values:       append([]string(nil), record.GetValues()...),
+			RowCount:     record.GetRowCount(),
+			IsNull:       append([]bool(nil), record.GetIsNull()...),
+			Masked:       append([]bool(nil), record.GetMasked()...),
+			ValueDigests: append([]string(nil), record.GetValueDigests()...),
 		}
 		if lastSeen := record.GetLastSeen(); lastSeen != nil {
 			convertedRecord.LastSeen = &timestamppb.Timestamp{Seconds: lastSeen.GetSeconds(), Nanos: lastSeen.GetNanos()}

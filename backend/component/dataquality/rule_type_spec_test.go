@@ -170,7 +170,7 @@ func TestRuleTypeSpecContract(t *testing.T) {
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_AGGREGATE,
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
 	}, ruleTypesWith(func(spec ruleTypeSpec) bool { return spec.Observe != nil }),
-		"16 types read an aggregate row; CEL, schema_drift and the segment check never do")
+		"16 types read an aggregate row; CEL, standard code, schema drift and the segment check never do")
 
 	require.Equal(t, []storepb.QualityRuleType{
 		storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT,

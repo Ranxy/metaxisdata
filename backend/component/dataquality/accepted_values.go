@@ -121,6 +121,15 @@ func validateAcceptedValuesQuery(engine storepb.Engine, query *storepb.AcceptedV
 	if err := ValidateCustomSQL(engine, query.GetSql()); err != nil {
 		return invalidConfig("the accepted-values query is not a usable read-only statement: %v", err)
 	}
+	// The query is embedded as a derived table; SQL Server rejects two otherwise
+	// valid read-only shapes there, so refuse them at save time.
+	if engine == storepb.Engine_MSSQL {
+		parseable, err := customSQLForParsing(query.GetSql())
+		if err != nil {
+			return err
+		}
+		return validateMSSQLDerivedQuery(parseable)
+	}
 	return nil
 }
 
@@ -210,7 +219,9 @@ func acceptedValuesQuerySet(input CompileInput, query *storepb.AcceptedValuesQue
 	// The derived table is aliased differently from scanRelation's bounded form
 	// ("dq") so neither wrapper can shadow the other.
 	quoted := qualify(input.Dialect, strings.TrimSpace(query.GetValueColumn()))
-	return "SELECT dq_values." + quoted + " FROM (" + rendered + ") dq_values WHERE dq_values." + quoted + " IS NOT NULL", nil
+	// The newline keeps a trailing line comment in the user statement from
+	// swallowing the closing parenthesis and the wrapper's WHERE clause.
+	return "SELECT dq_values." + quoted + " FROM (" + rendered + "\n) dq_values WHERE dq_values." + quoted + " IS NOT NULL", nil
 }
 
 // acceptedValuesSourceDiscriminator renders the value source as part of a

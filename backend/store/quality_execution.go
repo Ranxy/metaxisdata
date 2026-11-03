@@ -751,6 +751,46 @@ func qualityExecutionRecentQuery(ruleID int64, target *MetaGUIDKey, limit int) (
 	return query, args
 }
 
+// qualityExecutionSegmentEvidenceStatement reads the executions whose evidence
+// carries a complete segment observation. The predicates keep the baseline window
+// exact: a skipped or errored execution, one from another revision, or one whose
+// observation was truncated is not a baseline candidate, so it must not consume
+// one of the window's rows.
+const qualityExecutionSegmentEvidenceStatement = `
+	SELECT ` + qualityExecutionColumns + `
+	FROM quality_execution
+	WHERE rule_id = $1 AND target_guid = $2 AND target_type = $3
+		AND state = $4 AND rule_revision = $5
+		AND sample->'segments' IS NOT NULL
+		AND COALESCE(sample->'segments'->>'truncated', 'false') <> 'true'
+	ORDER BY started_at DESC, id DESC
+	LIMIT $6
+`
+
+// ListRecentSegmentEvidenceExecutions returns the newest completed executions of
+// one rule revision against one target that carry a complete segment observation,
+// newest first, at most limit of them. It is the segment check's baseline read:
+// filtering in the query keeps the window at exactly limit usable runs instead of
+// letting executions without evidence consume it.
+func (s *Store) ListRecentSegmentEvidenceExecutions(ctx context.Context, ruleID int64, target MetaGUIDKey, revision int32, limit int) ([]*QualityExecutionMessage, error) {
+	if ruleID <= 0 {
+		return nil, common.Errorf(common.Invalid, "quality rule id is required")
+	}
+	if target.GUID == "" {
+		return nil, common.Errorf(common.Invalid, "a quality target is required")
+	}
+	if limit <= 0 {
+		return nil, common.Errorf(common.Invalid, "quality execution limit must be positive")
+	}
+	rows, err := s.GetDB().QueryContext(ctx, qualityExecutionSegmentEvidenceStatement,
+		ruleID, target.GUID, int16(target.ObjectType),
+		storepb.QualityExecutionState_QUALITY_EXECUTION_STATE_COMPLETED, revision, limit)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list segment evidence executions")
+	}
+	return scanQualityExecutions(rows)
+}
+
 // ListRecentQualityExecutions returns the rule's newest completed executions.
 // When target is non-nil the read is restricted to executions against that
 // target: a row_count_change execution that compares row counts belongs to one

@@ -433,17 +433,22 @@ func referentialIntegritySample(input CompileInput, limit int, passing bool) (Co
 	for _, name := range childColumns {
 		selectList = append(selectList, "c."+qualify(input.Dialect, name))
 	}
-	join := " LEFT JOIN "
-	tail := compileAppendWhere("", "("+condition+")")
 	if passing {
-		// An INNER JOIN keeps only the child rows that found a parent, and a NULL
-		// child value matches nothing: those rows are neither failures nor passes.
-		join = " INNER JOIN "
-		tail = ""
+		// A passing row is a child row that found a parent. EXISTS keeps one output
+		// row per child — an INNER JOIN would repeat a child whose parent key is
+		// not unique — and, under allow_null, a NULL child value passes too.
+		match := "EXISTS (SELECT 1 FROM " + parentTable + " p WHERE " + parent + " = " + child + ")"
+		if config.GetAllowNull() {
+			match = child + " IS NULL OR " + match
+		}
+		return sampleQuery(input,
+			"SELECT "+strings.Join(selectList, ", ")+" FROM (SELECT * FROM "+table+where+") c"+
+				compileAppendWhere("", "("+match+")"),
+			filterArgs, childColumns, limit), nil
 	}
 	return sampleQuery(input,
 		"SELECT "+strings.Join(selectList, ", ")+" FROM (SELECT * FROM "+table+where+") c"+
-			join+parentTable+" p ON "+child+" = "+parent+tail,
+			" LEFT JOIN "+parentTable+" p ON "+child+" = "+parent+compileAppendWhere("", "("+condition+")"),
 		filterArgs, childColumns, limit), nil
 }
 

@@ -384,15 +384,24 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		options.Segments = r.segmentBaseline(ctx, snapshot, baselineRuns, minOccurrences)
 	}
 	// A personal-data column's sampled values are redacted before they are stored.
-	// If the labels cannot be read, the verdict still runs but no failure sample is
-	// stored: a privacy guarantee must not degrade into storing raw values on a
-	// transient store error.
+	// If the labels cannot be read, a sample-based check still runs but stores no
+	// evidence; a segment check fails instead, because its evidence is not optional
+	// (see segmentCheckNeedsPersonalLabels): a privacy guarantee must not degrade
+	// into storing raw values on a transient store error.
 	personalColumns, err := personal.forTarget(ctx, snapshot.Target.GUID, snapshot.Target.MetaType)
 	if err != nil {
 		slog.Warn("could not read personal-data labels; the execution keeps its verdict but stores no failure sample",
 			slog.Int64("execution", planned.ID),
 			slog.String("target", snapshot.Target.GUID),
 			log.WithError(err))
+		if segmentCheckNeedsPersonalLabels(snapshot.Type) {
+			// A segment check always stores its observed segment keys, so it cannot
+			// degrade to "verdict without evidence" the way a sample-based check can:
+			// an unreadable label set must not become raw personal values in the
+			// baseline. Fail the run; its next cycle retries with a fresh read.
+			return fail(storepb.QualityStatus_QUALITY_STATUS_ERROR, dataquality.ErrCodeExecution,
+				"personal-data labels could not be read, so the segment evidence would store raw values")
+		}
 		options.StoreSamples = false
 	} else {
 		options.MaskColumns = personalColumns
@@ -454,4 +463,12 @@ func (r *Runner) executeOne(ctx context.Context, planned *store.QualityExecution
 		head:     head,
 		snapshot: snapshot,
 	}
+}
+
+// segmentCheckNeedsPersonalLabels reports whether an unreadable personal-label
+// read must fail the run instead of dropping the samples. A segment check always
+// stores its observed segment keys, so it has no safe degraded mode: the raw
+// values would land in the baseline.
+func segmentCheckNeedsPersonalLabels(ruleType storepb.QualityRuleType) bool {
+	return ruleType == storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK
 }

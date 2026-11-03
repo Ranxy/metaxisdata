@@ -215,13 +215,13 @@ func compileRuleGoldens() []compileGolden {
 			wantColumns: []string{"total_rows", "failed_rows"},
 			wantKind:    QueryAggregate,
 			mysqlSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN `status` IS NULL OR `status` NOT IN " +
-				"(SELECT dq_values.`name` FROM (SELECT DISTINCT name FROM orders) dq_values " +
+				"(SELECT dq_values.`name` FROM (SELECT DISTINCT name FROM orders\n) dq_values " +
 				"WHERE dq_values.`name` IS NOT NULL) THEN 1 ELSE 0 END) AS failed_rows FROM `shop`.`orders`",
 			postgresSQL: `SELECT COUNT(*) AS total_rows, SUM(CASE WHEN "status" IS NULL OR "status" NOT IN ` +
-				`(SELECT dq_values."name" FROM (SELECT DISTINCT name FROM orders) dq_values ` +
+				`(SELECT dq_values."name" FROM (SELECT DISTINCT name FROM orders` + "\n" + `) dq_values ` +
 				`WHERE dq_values."name" IS NOT NULL) THEN 1 ELSE 0 END) AS failed_rows FROM "public"."orders"`,
 			mssqlSQL: "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN [status] IS NULL OR [status] NOT IN " +
-				"(SELECT dq_values.[name] FROM (SELECT DISTINCT name FROM orders) dq_values " +
+				"(SELECT dq_values.[name] FROM (SELECT DISTINCT name FROM orders\n) dq_values " +
 				"WHERE dq_values.[name] IS NOT NULL) THEN 1 ELSE 0 END) AS failed_rows FROM [public].[orders]",
 		},
 		{

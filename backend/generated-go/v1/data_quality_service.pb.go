@@ -7199,7 +7199,12 @@ type SegmentRecord struct {
 	IsNull []bool `protobuf:"varint,4,rep,packed,name=is_null,json=isNull,proto3" json:"is_null,omitempty"`
 	// Whether the matching value in values was redacted before storage. The list
 	// is parallel to values; a missing entry reads as not redacted.
-	Masked        []bool `protobuf:"varint,5,rep,packed,name=masked,proto3" json:"masked,omitempty"`
+	Masked []bool `protobuf:"varint,5,rep,packed,name=masked,proto3" json:"masked,omitempty"`
+	// A digest of the full value behind each entry of values, hex encoded. Values
+	// are truncated for display; the digest is what tells two segments with the
+	// same 128-byte prefix apart across executions. The list is parallel to
+	// values; a missing entry reads as empty (fall back to the value).
+	ValueDigests  []string `protobuf:"bytes,6,rep,name=value_digests,json=valueDigests,proto3" json:"value_digests,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7265,6 +7270,13 @@ func (x *SegmentRecord) GetIsNull() []bool {
 func (x *SegmentRecord) GetMasked() []bool {
 	if x != nil {
 		return x.Masked
+	}
+	return nil
+}
+
+func (x *SegmentRecord) GetValueDigests() []string {
+	if x != nil {
+		return x.ValueDigests
 	}
 	return nil
 }
@@ -17256,13 +17268,14 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\ttruncated\x18\x03 \x01(\bR\ttruncated\x12#\n" +
 	"\rbaseline_runs\x18\x04 \x01(\x05R\fbaselineRuns\x12%\n" +
 	"\x0eexpected_count\x18\x05 \x01(\x03R\rexpectedCount\x12?\n" +
-	"\vdisappeared\x18\x06 \x03(\v2\x1d.metaxisdata.v1.SegmentRecordR\vdisappeared\"\xae\x01\n" +
+	"\vdisappeared\x18\x06 \x03(\v2\x1d.metaxisdata.v1.SegmentRecordR\vdisappeared\"\xd3\x01\n" +
 	"\rSegmentRecord\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\tR\x06values\x12\x1b\n" +
 	"\trow_count\x18\x02 \x01(\x03R\browCount\x127\n" +
 	"\tlast_seen\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x17\n" +
 	"\ais_null\x18\x04 \x03(\bR\x06isNull\x12\x16\n" +
-	"\x06masked\x18\x05 \x03(\bR\x06masked\"\x8d\x01\n" +
+	"\x06masked\x18\x05 \x03(\bR\x06masked\x12#\n" +
+	"\rvalue_digests\x18\x06 \x03(\tR\fvalueDigests\"\x8d\x01\n" +
 	"\vColumnValue\x12\x16\n" +
 	"\x06column\x18\x01 \x01(\tR\x06column\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1c\n" +

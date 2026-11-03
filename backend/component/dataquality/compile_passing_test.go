@@ -102,10 +102,11 @@ func TestCompilePassingRowsCoversEveryTypeWithOne(t *testing.T) {
 	}
 }
 
-// TestCompilePassingRowsReferentialUsesInnerJoin pins that a passing referential
-// row is the row that found a parent: the LEFT JOIN flips to an INNER JOIN rather
-// than negating a predicate the join produced.
-func TestCompilePassingRowsReferentialUsesInnerJoin(t *testing.T) {
+// TestCompilePassingRowsReferentialUsesExists pins that a passing referential row
+// is the child row that found a parent: an EXISTS keeps one output row per child
+// (an INNER JOIN would repeat a child whose parent key is not unique) and, under
+// allow_null, a NULL child value is a pass too.
+func TestCompilePassingRowsReferentialUsesExists(t *testing.T) {
 	t.Parallel()
 
 	config := &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_ReferentialIntegrity{
@@ -116,9 +117,8 @@ func TestCompilePassingRowsReferentialUsesInnerJoin(t *testing.T) {
 		},
 	}}
 	query := passingSampleFor(t, storepb.QualityRuleType_QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY, config, storepb.Engine_MYSQL)
-	require.Contains(t, query.SQL, " INNER JOIN ")
-	require.NotContains(t, query.SQL, "LEFT JOIN")
-	require.Contains(t, query.SQL, "ON c.`id` = p.`id`")
+	require.Contains(t, query.SQL, "EXISTS (SELECT 1 FROM `shop`.`customers` p WHERE p.`id` = c.`id`)")
+	require.NotContains(t, query.SQL, "JOIN")
 }
 
 // TestCompilePassingRowsSkipsMeasuredTypes pins that the types whose failure is a
@@ -203,4 +203,20 @@ func TestAttachPassingRowsStoresAndRedacts(t *testing.T) {
 	DropPassingRows(execution)
 	require.Empty(t, execution.Evidence.GetPassingSamples())
 	require.Len(t, execution.Evidence.GetSamples(), 1)
+}
+
+// TestCompilePassingRowsSkipsEveryOtherType pins the remaining types that keep no
+// passing rows, so the deliberate exclusion list cannot shrink silently.
+func TestCompilePassingRowsSkipsEveryOtherType(t *testing.T) {
+	t.Parallel()
+
+	for _, ruleType := range []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE_COMBINATION,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_CROSS_TABLE,
+	} {
+		spec, ok := ruleTypeSpecFor(ruleType)
+		require.True(t, ok)
+		require.Nil(t, spec.Passing, "%s must not keep passing rows", ruleType)
+	}
 }

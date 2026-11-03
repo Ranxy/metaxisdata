@@ -1296,30 +1296,42 @@ func TestSegmentBaselineFromExecutions(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.November, 3, 12, 0, 0, 0, time.UTC)
-	observed := func(revision int32, values ...string) *store.QualityExecutionMessage {
+	observed := func(values ...string) *store.QualityExecutionMessage {
 		return &store.QualityExecutionMessage{
-			StartedAt:    now,
-			RuleRevision: revision,
+			StartedAt: now,
 			Sample: &storepb.QualityExecutionEvidence{Segments: &storepb.SegmentObservation{
 				Observed: []*storepb.SegmentRecord{{Values: []string{values[0]}, RowCount: 10}},
 			}},
 		}
 	}
 	executions := []*store.QualityExecutionMessage{
-		observed(2, "open"),
-		// No evidence: an execution from before the type existed, or one whose
-		// observation was never kept.
+		observed("open"),
+		// No evidence (defensive): the store query already excludes these, but a row
+		// without an observation is never counted as an empty one.
 		{StartedAt: now.Add(-time.Hour)},
-		observed(2, "open"),
-		// Another revision: editing the check can change the grouping key, so its
-		// observations do not describe the current shape.
-		observed(1, "closed"),
+		observed("open"),
 	}
-	baseline := segmentBaselineFromExecutions(executions, 2, 3, 1)
+	baseline := segmentBaselineFromExecutions(executions, 3, 1)
 	require.NotNil(t, baseline)
-	require.Equal(t, 2, baseline.Runs, "only the current revision's evidenced executions count")
+	require.Equal(t, 2, baseline.Runs, "only the evidenced executions count")
 	require.Len(t, baseline.Expected, 1)
 	require.Equal(t, []string{"open"}, baseline.Expected[0].Key)
 
-	require.Nil(t, segmentBaselineFromExecutions(nil, 1, 3, 1), "no history means no baseline")
+	require.Nil(t, segmentBaselineFromExecutions(nil, 3, 1), "no history means no baseline")
+}
+
+// TestSegmentCheckNeedsPersonalLabels pins which rule types must fail rather than
+// run without redaction: only the segment check stores evidence that has no
+// "verdict without samples" form.
+func TestSegmentCheckNeedsPersonalLabels(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, segmentCheckNeedsPersonalLabels(storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK))
+	for _, ruleType := range []storepb.QualityRuleType{
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES,
+		storepb.QualityRuleType_QUALITY_RULE_TYPE_STANDARD_CODE,
+	} {
+		require.False(t, segmentCheckNeedsPersonalLabels(ruleType), "%s can drop its samples", ruleType)
+	}
 }

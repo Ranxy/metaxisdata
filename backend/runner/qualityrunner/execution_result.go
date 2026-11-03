@@ -110,32 +110,31 @@ func (r *Runner) segmentBaseline(ctx context.Context, snapshot *dataquality.Rule
 	if snapshot == nil {
 		return nil
 	}
-	// Read a few more rows than the window: executions written before segment
-	// evidence existed carry none and are skipped.
-	executions, err := r.stores.ListRecentQualityExecutions(ctx, snapshot.ID,
-		&store.MetaGUIDKey{GUID: snapshot.Target.GUID, ObjectType: snapshot.Target.MetaType}, baselineRuns+2)
+	// The store filters to usable baseline candidates (current target and revision,
+	// segment evidence present and untruncated), so the window is exactly the
+	// configured number of runs: an ERROR or skipped execution cannot consume it.
+	executions, err := r.stores.ListRecentSegmentEvidenceExecutions(ctx, snapshot.ID,
+		store.MetaGUIDKey{GUID: snapshot.Target.GUID, ObjectType: snapshot.Target.MetaType},
+		snapshot.Revision, baselineRuns)
 	if err != nil {
 		slog.Warn("failed to read a segment check baseline",
 			slog.Int64("rule", snapshot.ID),
 			log.WithError(err))
 		return nil
 	}
-	return segmentBaselineFromExecutions(executions, snapshot.Revision, baselineRuns, minOccurrences)
+	return segmentBaselineFromExecutions(executions, baselineRuns, minOccurrences)
 }
 
-// segmentBaselineFromExecutions keeps the executions that carry segment evidence
-// and derives the expected set. Executions without evidence (written before the
-// type existed) are skipped rather than counted as an empty observation, and so
-// are executions from another revision: editing the check can change the
-// grouping key, and old keys would read as vanished segments. The baseline
-// therefore restarts on the first run after an edit.
-func segmentBaselineFromExecutions(executions []*store.QualityExecutionMessage, revision int32, baselineRuns, minOccurrences int) *dataquality.SegmentBaseline {
+// segmentBaselineFromExecutions derives the expected set from the executions the
+// store returned. A row without segment evidence is skipped defensively rather
+// than counted as an empty observation; the SQL already excludes those and the
+// rows of another revision (editing a check can change the grouping key, and old
+// keys would read as vanished segments, so the baseline restarts on the first run
+// after a configuration edit).
+func segmentBaselineFromExecutions(executions []*store.QualityExecutionMessage, baselineRuns, minOccurrences int) *dataquality.SegmentBaseline {
 	runs := make([]dataquality.SegmentHistoryRun, 0, len(executions))
 	for _, execution := range executions {
 		if execution == nil || execution.Sample.GetSegments() == nil {
-			continue
-		}
-		if execution.RuleRevision != revision {
 			continue
 		}
 		runs = append(runs, dataquality.SegmentHistoryRun{

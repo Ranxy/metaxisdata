@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +27,13 @@ func segmentCheckConfig(columns []string, baselineRuns, minOccurrences int32) *s
 
 // segmentRecord is one observed segment in a test baseline.
 func segmentRecord(values []string, rowCount int64) *storepb.SegmentRecord {
-	return &storepb.SegmentRecord{Values: values, RowCount: rowCount}
+	digests := make([]string, len(values))
+	for index, value := range values {
+		if value != "" {
+			digests[index] = segmentValueDigest(value)
+		}
+	}
+	return &storepb.SegmentRecord{Values: values, RowCount: rowCount, ValueDigests: digests}
 }
 
 // TestSegmentCheckSQLGoldens pins the grouped statement: the segment columns and
@@ -282,12 +289,12 @@ func TestExecuteSegmentCheckRule(t *testing.T) {
 	baseline := &SegmentBaseline{
 		Runs: 2,
 		Expected: []SegmentExpectation{
-			{Key: []string{"open"}, RowCount: 20},
-			{Key: []string{"closed"}, RowCount: 5},
+			{Key: []string{"open"}, ValueDigests: []string{segmentValueDigest("open")}, RowCount: 20},
+			{Key: []string{"closed"}, ValueDigests: []string{segmentValueDigest("closed")}, RowCount: 5},
 		},
 		Known: map[string]struct{}{
-			segmentKey([]string{"open"}, nil):   {},
-			segmentKey([]string{"closed"}, nil): {},
+			segmentKey([]string{"open"}, nil, []string{segmentValueDigest("open")}):     {},
+			segmentKey([]string{"closed"}, nil, []string{segmentValueDigest("closed")}): {},
 		},
 	}
 	queryer = &execFakeQueryer{results: []*db.QueryResult{{
@@ -393,9 +400,9 @@ func TestSegmentCheckEvidenceTimestamp(t *testing.T) {
 	baseline := &SegmentBaseline{
 		Runs: 1,
 		Expected: []SegmentExpectation{
-			{Key: []string{"open"}, RowCount: 20, LastSeen: lastSeen, Occurrences: 1},
+			{Key: []string{"open"}, ValueDigests: []string{segmentValueDigest("open")}, RowCount: 20, LastSeen: lastSeen, Occurrences: 1},
 		},
-		Known: map[string]struct{}{segmentKey([]string{"open"}, nil): {}},
+		Known: map[string]struct{}{segmentKey([]string{"open"}, nil, []string{segmentValueDigest("open")}): {}},
 	}
 	queryer := &execFakeQueryer{results: []*db.QueryResult{{
 		Columns: compiled.Columns,
@@ -408,8 +415,8 @@ func TestSegmentCheckEvidenceTimestamp(t *testing.T) {
 	require.Equal(t, lastSeen, disappeared[0].GetLastSeen().AsTime())
 	require.True(t, proto.Equal(
 		&storepb.SegmentObservation{
-			Observed:      []*storepb.SegmentRecord{{Values: []string{"closed"}, IsNull: []bool{false}, Masked: []bool{false}, RowCount: 3}},
-			NewSegments:   []*storepb.SegmentRecord{{Values: []string{"closed"}, IsNull: []bool{false}, Masked: []bool{false}, RowCount: 3}},
+			Observed:      []*storepb.SegmentRecord{{Values: []string{"closed"}, IsNull: []bool{false}, Masked: []bool{false}, ValueDigests: []string{segmentValueDigest("closed")}, RowCount: 3}},
+			NewSegments:   []*storepb.SegmentRecord{{Values: []string{"closed"}, IsNull: []bool{false}, Masked: []bool{false}, ValueDigests: []string{segmentValueDigest("closed")}, RowCount: 3}},
 			Disappeared:   disappeared,
 			BaselineRuns:  1,
 			ExpectedCount: 1,
@@ -431,7 +438,7 @@ func TestSegmentCheckNULLKeys(t *testing.T) {
 	baseline := &SegmentBaseline{
 		Runs:     1,
 		Expected: []SegmentExpectation{{Key: []string{""}, IsNull: []bool{true}, RowCount: 4}},
-		Known:    map[string]struct{}{segmentKey([]string{""}, []bool{true}): {}},
+		Known:    map[string]struct{}{segmentKey([]string{""}, []bool{true}, nil): {}},
 	}
 	config := segmentCheckConfig([]string{"status"}, 3, 1)
 	snapshot := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK, config)
@@ -449,4 +456,94 @@ func TestSegmentCheckNULLKeys(t *testing.T) {
 	execution, err := executeSegmentCheckRule(context.Background(), queryer, execTestResolution(storepb.Engine_MYSQL), snapshot, ExecOptions{Segments: baseline}, compiled, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), execution.Observation.FailedRows, "the NULL segment is still present")
+}
+
+// TestSegmentCheckKeyDigestsKeepLongValuesApart pins the reason a digest is
+// stored beside the truncated display value: two segments whose values share the
+// 128-byte prefix are still distinct segments.
+func TestSegmentCheckKeyDigestsKeepLongValuesApart(t *testing.T) {
+	t.Parallel()
+
+	prefix := strings.Repeat("x", maxSegmentValueBytes)
+	records, truncated, err := segmentRecordsFromRows([]string{"url"}, [][]any{
+		{prefix + "-a", int64(2)},
+		{prefix + "-b", int64(1)},
+	}, nil)
+	require.NoError(t, err)
+	require.False(t, truncated)
+	require.Len(t, records, 2)
+	require.Equal(t, records[0].GetValues(), records[1].GetValues(), "the display values are both truncated to the same prefix")
+	require.NotEqual(t, records[0].GetValueDigests(), records[1].GetValueDigests())
+	require.NotEqual(t,
+		segmentKey(records[0].GetValues(), records[0].GetIsNull(), records[0].GetValueDigests()),
+		segmentKey(records[1].GetValues(), records[1].GetIsNull(), records[1].GetValueDigests()))
+}
+
+// TestSegmentCheckDisappearedCarriesTheMaskedMarker pins that a disappeared
+// personal segment keeps the redaction marker it was stored with: evidence that
+// says a value is masked must not lose that when it becomes a failure record.
+func TestSegmentCheckDisappearedCarriesTheMaskedMarker(t *testing.T) {
+	t.Parallel()
+
+	maskedValue := MaskPersonalValue("110101199001011234")
+	baseline := &SegmentBaseline{
+		Runs: 1,
+		Expected: []SegmentExpectation{{
+			Key:          []string{"110101********1234"},
+			Masked:       []bool{true},
+			ValueDigests: []string{segmentValueDigest(maskedValue)},
+			RowCount:     3,
+			LastSeen:     time.Date(2026, time.November, 2, 9, 0, 0, 0, time.UTC),
+		}},
+		Known: map[string]struct{}{
+			segmentKey([]string{"110101********1234"}, nil, []string{segmentValueDigest(maskedValue)}): {},
+		},
+	}
+	config := segmentCheckConfig([]string{"status"}, 3, 1)
+	snapshot := execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK, config)
+	compiled, err := Compile(CompileInput{
+		Dialect: mustDialect(t, storepb.Engine_MYSQL),
+		Target:  compileTestTarget(storepb.Engine_MYSQL),
+		Type:    snapshot.Type,
+		Config:  config,
+	})
+	require.NoError(t, err)
+	queryer := &execFakeQueryer{results: []*db.QueryResult{{
+		Columns: compiled.Columns,
+		Rows:    [][]any{{"open", int64(1)}},
+	}}}
+	execution, err := executeSegmentCheckRule(context.Background(), queryer, execTestResolution(storepb.Engine_MYSQL), snapshot, ExecOptions{Segments: baseline}, compiled, nil)
+	require.NoError(t, err)
+	disappeared := execution.Evidence.GetSegments().GetDisappeared()
+	require.Len(t, disappeared, 1)
+	require.Equal(t, []bool{true}, disappeared[0].GetMasked())
+	require.Equal(t, []string{segmentValueDigest(maskedValue)}, disappeared[0].GetValueDigests())
+}
+
+// TestSegmentCheckZeroExpectedVerdictIsUnitIndependent pins that a baseline which
+// expected no segment follows on_empty for both units, instead of a PERCENT check
+// and a COUNT check reaching opposite verdicts on the same data.
+func TestSegmentCheckZeroExpectedVerdictIsUnitIndependent(t *testing.T) {
+	t.Parallel()
+
+	emptyExpected := Observation{Observed: 0, FailedRows: 0, TotalRows: 0}
+	for _, metric := range []storepb.QualityThresholdMetric{
+		storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_COUNT,
+		storepb.QualityThresholdMetric_QUALITY_THRESHOLD_METRIC_PERCENT,
+	} {
+		for _, onEmpty := range []struct {
+			behavior storepb.QualityEmptyBehavior
+			want     storepb.QualityStatus
+		}{
+			{storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_NOT_EVALUATED, storepb.QualityStatus_QUALITY_STATUS_NOT_EVALUATED},
+			{storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_PASS, storepb.QualityStatus_QUALITY_STATUS_PASS},
+			{storepb.QualityEmptyBehavior_QUALITY_EMPTY_BEHAVIOR_FAIL, storepb.QualityStatus_QUALITY_STATUS_FAIL},
+		} {
+			config := segmentCheckConfig([]string{"status"}, 0, 0)
+			config.ThresholdMetric = metric
+			config.OnEmpty = onEmpty.behavior
+			state := Evaluate(execTestSnapshot(storepb.QualityRuleType_QUALITY_RULE_TYPE_SEGMENT_CHECK, config), emptyExpected, time.Now())
+			require.Equal(t, onEmpty.want, state.Status, "metric %s, on_empty %s", metric, onEmpty.behavior)
+		}
+	}
 }
