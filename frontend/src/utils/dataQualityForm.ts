@@ -699,7 +699,9 @@ export function emptyConfig(): RuleConfigForm {
     allowNull: false,
     minValue: "",
     maxValue: "",
-    inclusive: false,
+    // Inclusive by default: "amount within 0 and 1000" is the common intent,
+    // and an exclusive lower bound silently fails rows that equal it.
+    inclusive: true,
     pattern: "",
     minLen: "",
     maxLen: "",

@@ -20,6 +20,22 @@
       </template>
       <template #actions>
         <Button
+          v-if="showExplain"
+          variant="outline"
+          :disabled="explainLoading"
+          @click="openExplain"
+        >
+          <Loader2
+            v-if="explainLoading"
+            class="mr-2 h-4 w-4 animate-spin"
+          />
+          <Sparkles
+            v-else
+            class="mr-2 h-4 w-4"
+          />
+          {{ t("dataQuality.llm.explain.action") }}
+        </Button>
+        <Button
           v-if="targetWorkspaceTo"
           variant="outline"
           as-child
@@ -386,6 +402,12 @@
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <QualityExplainDrawer
+      v-model:open="explainOpen"
+      :execution="explainExecution"
+      :execution-title="explainTitle"
+    />
   </div>
 </template>
 
@@ -398,22 +420,27 @@ import {
   Check,
   CheckCheck,
   ExternalLink,
+  Loader2,
   RefreshCcw,
+  Sparkles,
   Target,
 } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute } from "vue-router";
 import {
   acknowledgeQualityIssue,
+  getQualityExecution,
   getQualityIssue,
   getQualityRule,
   muteQualityIssue,
   qualityRuleID,
   resolveQualityIssue,
 } from "@/api/data-quality";
+import { getWorkspaceProfileSetting } from "@/api/setting";
 import { getUser } from "@/api/user";
 import PageState from "@/components/common/PageState.vue";
+import QualityExplainDrawer from "@/components/data-quality/QualityExplainDrawer.vue";
 import QualityImpactCard from "@/components/data-quality/QualityImpactCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -447,6 +474,7 @@ import { useErrorHandler } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  type QualityExecution,
   type QualityIssue,
   QualityIssueStatus,
   QualityResolutionReason,
@@ -513,6 +541,57 @@ const canViewRule = computed(() =>
 const canViewExecution = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.executions.get")
 );
+
+const canExplain = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.explain")
+);
+const llmEnabled = ref(false);
+const explainOpen = ref(false);
+const explainLoading = ref(false);
+const explainExecution = ref<QualityExecution>();
+const explainTitle = ref("");
+const showExplain = computed(
+  () =>
+    canExplain.value &&
+    llmEnabled.value &&
+    !!issue.value &&
+    Boolean(issue.value.lastSeenExecution || issue.value.firstSeenExecution)
+);
+
+/** Explain the execution that last observed the problem (fallback: the first). */
+async function openExplain() {
+  const current = issue.value;
+  if (!current) {
+    return;
+  }
+  const name = current.lastSeenExecution || current.firstSeenExecution;
+  if (!name) {
+    notify.error(t("dataQuality.issueExplainUnavailable"));
+    return;
+  }
+  explainLoading.value = true;
+  try {
+    explainExecution.value = await getQualityExecution(name);
+    explainTitle.value = ruleTitle.value || current.rule;
+    explainOpen.value = true;
+  } catch (cause: unknown) {
+    notify.error(formatError(cause, "dataQuality.issueExplainUnavailable"));
+  } finally {
+    explainLoading.value = false;
+  }
+}
+
+/** Only read the workspace switch; the settings page owns changing it. */
+async function loadLlmSetting() {
+  try {
+    const profile = await getWorkspaceProfileSetting();
+    llmEnabled.value = profile.dataQuality?.enableLlmAnalysis ?? false;
+  } catch {
+    // A failed read is not evidence that the model is off; the server refuses
+    // the call with an actionable error if the switch is off.
+    llmEnabled.value = true;
+  }
+}
 
 const mutedUntil = computed(() => {
   const seconds = issue.value?.mutedUntil?.seconds;
@@ -637,6 +716,10 @@ async function load() {
 // An issue→issue navigation reuses this component (the router view is not
 // keyed), so the route name is what tells the page it now shows another issue.
 watch(issueName, () => void load());
+
+onMounted(() => {
+  void loadLlmSetting();
+});
 
 /** Best effort: a caller without rules.get still sees the issue by rule id. */
 async function loadRuleTitle(ruleName: string) {

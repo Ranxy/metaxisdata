@@ -686,3 +686,19 @@ describe("DataQualityOverviewPage", () => {
     expect(mocks.getQualityConsumptionCoverage).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("DataQualityOverviewPage coverage gaps", () => {
+  it("lists the instances with the largest gaps", async () => {
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.gapsTitle")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.gapsRowHint", {
+        monitored: 3,
+        total: 6,
+        gap: 3,
+      })
+    );
+  });
+});

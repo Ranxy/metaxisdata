@@ -111,6 +111,61 @@
           />
         </div>
 
+        <!-- The coverage number is a dead end on its own: this card turns the
+             largest gaps into rows a reader can act on and hands off to the
+             section's own target picker. -->
+        <Card v-if="coverageGapRows.length > 0">
+          <CardHeader
+            class="flex flex-row flex-wrap items-start justify-between gap-3 border-b"
+          >
+            <div class="min-w-0 space-y-1">
+              <CardTitle class="text-base">
+                {{ t("dataQuality.overview.gapsTitle") }}
+              </CardTitle>
+              <CardDescription>
+                {{ t("dataQuality.overview.gapsHint", { count: coverageGapTotal }) }}
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              @click="pickerOpen = true"
+            >
+              <Plus class="mr-2 h-4 w-4" />
+              {{ t("dataQuality.targets.startMonitoring") }}
+            </Button>
+          </CardHeader>
+          <CardContent class="p-0">
+            <div
+              v-for="row in coverageGapRows"
+              :key="row.key"
+              class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0"
+            >
+              <div class="min-w-0">
+                <div class="truncate font-medium">
+                  {{ coverageLabel(row) }}
+                </div>
+                <div class="text-xs text-muted-foreground">
+                  {{
+                    t("dataQuality.overview.gapsRowHint", {
+                      monitored: row.monitoredTableCount,
+                      total: row.totalTableCount,
+                      gap: coverageGapOf(row),
+                    })
+                  }}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                @click="pickerOpen = true"
+              >
+                {{ t("dataQuality.targets.startMonitoring") }}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         <!-- Coverage and score cut four ways: the workspace totals above say how
              much is watched and how it is doing, this table says where. All four
              lenses arrive in one overview response, so switching is local. -->
@@ -463,6 +518,12 @@
          the overview's load or failure must not block or hide this card, and
          this card's failure stays inside it. -->
     <QualityConsumptionCard :refresh-key="refreshKey" />
+
+    <TargetPicker
+      :open="pickerOpen"
+      @update:open="pickerOpen = $event"
+      @select="onTargetPicked"
+    />
   </div>
 </template>
 
@@ -483,7 +544,7 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import {
   getQualityOverview,
   listAllQualityRules,
@@ -496,6 +557,7 @@ import PageState from "@/components/common/PageState.vue";
 import StatCard, { type StatCardTone } from "@/components/common/StatCard.vue";
 import QualityConsumptionCard from "@/components/data-quality/QualityConsumptionCard.vue";
 import QualityTrendChart from "@/components/data-quality/QualityTrendChart.vue";
+import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -537,6 +599,7 @@ import {
   qualityStatusKey,
   qualityStatusVariant,
 } from "@/utils/dataQuality";
+import type { TargetSelection } from "@/utils/dataQualityForm";
 import {
   type CoverageBreakdownRow,
   coveragePercent,
@@ -566,6 +629,34 @@ import { guidToRouteParams } from "@/utils/guid";
  */
 
 const { t, locale } = useI18n();
+const router = useRouter();
+const pickerOpen = ref(false);
+
+/** Instances with at least one unmonitored table, biggest gap first. */
+const coverageGapRows = computed(() => {
+  return normalizeCoverageBreakdown(overview.value.coverageByInstance)
+    .filter((row) => row.totalTableCount > row.monitoredTableCount)
+    .sort(
+      (left, right) =>
+        coverageGapOf(right) - coverageGapOf(left) ||
+        coverageLabel(left).localeCompare(coverageLabel(right))
+    );
+});
+const coverageGapTotal = computed(() =>
+  coverageGapRows.value.reduce((sum, row) => sum + coverageGapOf(row), 0)
+);
+
+function coverageGapOf(row: CoverageBreakdownRow): number {
+  return Math.max(0, row.totalTableCount - row.monitoredTableCount);
+}
+
+function onTargetPicked(selection: TargetSelection) {
+  void router.push({
+    name: "DataQualityTarget",
+    params: { targetGuid: guidToRouteParams(selection.guid) },
+    query: { metaType: String(selection.metaType), add: "1" },
+  });
+}
 const { formatError } = useErrorMessage();
 const { emailOf, load: loadUserDirectory } = useUserDirectory();
 const authStore = useAuthStore();

@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   getQualityIssue: vi.fn(),
   getQualityRule: vi.fn(),
   getQualityTargetImpact: vi.fn(),
+  getWorkspaceProfileSetting: vi.fn(),
   getUser: vi.fn(),
 }));
 
@@ -30,6 +31,11 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   getQualityIssue: mocks.getQualityIssue,
   getQualityRule: mocks.getQualityRule,
   getQualityTargetImpact: mocks.getQualityTargetImpact,
+}));
+
+vi.mock("@/api/setting", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/setting")>()),
+  getWorkspaceProfileSetting: mocks.getWorkspaceProfileSetting,
 }));
 
 vi.mock("@/api/user", async (importOriginal) => ({
@@ -144,6 +150,9 @@ describe("DataQualityIssueDetailPage", () => {
         title: "Orders should have rows",
       })
     );
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: false },
+    });
     mocks.getUser.mockResolvedValue(
       create(UserSchema, {
         name: ACKNOWLEDGED_BY,
@@ -298,6 +307,24 @@ describe("DataQualityIssueDetailPage", () => {
         metaType: MetaType.TABLE,
         asOf: timestampFromDate(firstSeen),
       })
+    );
+  });
+});
+
+describe("DataQualityIssueDetailPage explain entry", () => {
+  it("offers Explain with AI when the model is on and the issue has an execution", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue({
+      dataQuality: { enableLlmAnalysis: true },
+    });
+    mocks.getQualityIssue.mockResolvedValue(
+      issueFixture(ACKNOWLEDGED_BY, { guid: "instance_1;shop;public;orders" })
+    );
+    const { wrapper } = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.dataQuality.explain",
+    ]);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.llm.explain.action")
     );
   });
 });

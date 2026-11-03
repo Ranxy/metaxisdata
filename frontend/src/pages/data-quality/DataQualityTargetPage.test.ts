@@ -23,6 +23,7 @@ import {
   NullPercentConfigSchema,
   type QualityContract,
   QualityContractSchema,
+  QualityExecutionSchema,
   QualityExecutionState,
   QualityExecutionTrigger,
   type QualityIssue,
@@ -70,6 +71,7 @@ Element.prototype.releasePointerCapture ??= () => {};
 
 const mocks = vi.hoisted(() => ({
   getQualityTarget: vi.fn(),
+  getQualityExecution: vi.fn(),
   getQualityTargetSchedule: vi.fn(),
   getQualityContract: vi.fn(),
   getQualityRule: vi.fn(),
@@ -96,6 +98,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api/data-quality", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/data-quality")>()),
   getQualityTarget: mocks.getQualityTarget,
+  getQualityExecution: mocks.getQualityExecution,
   getQualityTargetSchedule: mocks.getQualityTargetSchedule,
   getQualityContract: mocks.getQualityContract,
   getQualityRule: mocks.getQualityRule,
@@ -925,6 +928,29 @@ describe("DataQualityTargetPage", () => {
     expect(mocks.runQualityRules).toHaveBeenLastCalledWith({
       rules: [RULE_DATASET],
     });
+    wrapper.unmount();
+  });
+
+  it("re-reads the workspace after the checks a run planned finish", async () => {
+    const execution = create(QualityExecutionSchema, {
+      name: "workspaces/ws/qualityExecutions/exec-1",
+      state: QualityExecutionState.PENDING,
+    });
+    mocks.runQualityRules.mockResolvedValue([execution]);
+    mocks.getQualityExecution.mockResolvedValue(
+      create(QualityExecutionSchema, {
+        name: execution.name,
+        state: QualityExecutionState.COMPLETED,
+      })
+    );
+    const { wrapper } = await mountPage();
+    const before = mocks.getQualityTarget.mock.calls.length;
+
+    buttonByText(label("dataQuality.workspace.runAll"))?.click();
+    await flushPromises();
+
+    expect(mocks.getQualityExecution).toHaveBeenCalledWith(execution.name);
+    expect(mocks.getQualityTarget.mock.calls.length).toBe(before + 1);
     wrapper.unmount();
   });
 
