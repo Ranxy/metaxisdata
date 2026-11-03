@@ -95,6 +95,91 @@ function completeForm(ruleType: QualityRuleType): RuleFormState {
   return form;
 }
 
+describe("accepted-values value source", () => {
+  it("requires the field the selected source carries", () => {
+    const form = completeForm(QualityRuleType.ACCEPTED_VALUES);
+    // The default source is the fixed list.
+    form.config.values = "";
+    expect(missingRequiredFields(form, TARGET)).toEqual([
+      { field: "values", labelKey: "dataQuality.editor.values" },
+    ]);
+
+    // A reference column is required instead of the list (the completed form
+    // filled it, so clear it first).
+    form.config.acceptedSource = "field";
+    form.config.acceptedField = "";
+    expect(missingRequiredFields(form, TARGET)).toEqual([
+      { field: "acceptedField", labelKey: "dataQuality.editor.acceptedField" },
+    ]);
+    form.config.acceptedField = "status";
+    expect(missingRequiredFields(form, TARGET)).toEqual([]);
+
+    // A query needs both the statement and the column it returns.
+    form.config.acceptedSource = "query";
+    form.config.acceptedField = "";
+    form.config.acceptedQuery = "";
+    form.config.acceptedQueryColumn = "";
+    expect(
+      missingRequiredFields(form, TARGET).map((field) => field.field)
+    ).toEqual(["acceptedQuery", "acceptedQueryColumn"]);
+    form.config.acceptedQuery = "SELECT code FROM codes";
+    expect(
+      missingRequiredFields(form, TARGET).map((field) => field.field)
+    ).toEqual(["acceptedQueryColumn"]);
+    form.config.acceptedQueryColumn = "code";
+    expect(missingRequiredFields(form, TARGET)).toEqual([]);
+  });
+
+  it("does not require the fixed list when a dynamic source is selected", () => {
+    const form = completeForm(QualityRuleType.ACCEPTED_VALUES);
+    form.config.values = "";
+    form.config.acceptedSource = "field";
+    form.config.acceptedField = "status";
+    expect(missingRequiredFields(form, TARGET)).toEqual([]);
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+  });
+
+  it("declares dynamic source fields without a static required flag", () => {
+    for (const field of ["values", "acceptedField", "acceptedQuery"]) {
+      expect(isFieldRequired(QualityRuleType.ACCEPTED_VALUES, field)).toBe(
+        false
+      );
+    }
+  });
+});
+
+describe("segment check schema", () => {
+  it("requires the grouping columns and leaves the window fields optional", () => {
+    expect(
+      isFieldRequired(QualityRuleType.SEGMENT_CHECK, "segmentColumns")
+    ).toBe(true);
+    expect(
+      isFieldRequired(QualityRuleType.SEGMENT_CHECK, "segmentBaselineRuns")
+    ).toBe(false);
+    expect(
+      isFieldRequired(QualityRuleType.SEGMENT_CHECK, "segmentMinOccurrences")
+    ).toBe(false);
+    expect(
+      ruleFieldSchema(QualityRuleType.SEGMENT_CHECK)?.fields.map(
+        (field) => field.kind
+      )
+    ).toEqual(["columns", "integer", "integer"]);
+  });
+
+  it("reports the missing grouping columns and accepts the defaults", () => {
+    const form = completeForm(QualityRuleType.SEGMENT_CHECK);
+    form.config.segmentColumns = "";
+    expect(
+      missingRequiredFields(form, TARGET).map((field) => field.field)
+    ).toEqual(["segmentColumns"]);
+    form.config.segmentColumns = "status";
+    form.config.segmentBaselineRuns = "";
+    form.config.segmentMinOccurrences = "";
+    expect(missingRequiredFields(form, TARGET)).toEqual([]);
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+  });
+});
+
 describe("rule field schema", () => {
   it("covers every editable rule type with labeled metadata", () => {
     expect(EDITABLE_RULE_TYPES).toHaveLength(20);
