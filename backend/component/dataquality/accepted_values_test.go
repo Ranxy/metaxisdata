@@ -40,6 +40,8 @@ func TestValidateAcceptedValuesQueryOnMSSQL(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			config := acceptedValuesQueryConfig(test.sql, "name")
+			pgErr := ValidateConfig(validationTarget(storepb.Engine_POSTGRES), storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, config)
+			require.NoError(t, pgErr, "PostgreSQL accepts a CTE or ORDER BY in a derived table")
 			mssqlErr := ValidateConfig(validationTarget(storepb.Engine_MSSQL), storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, config)
 			if test.wantMSSQLErr {
 				require.Error(t, mssqlErr)
@@ -47,8 +49,6 @@ func TestValidateAcceptedValuesQueryOnMSSQL(t *testing.T) {
 				return
 			}
 			require.NoError(t, mssqlErr)
-			require.NoError(t, ValidateConfig(validationTarget(storepb.Engine_POSTGRES), storepb.QualityRuleType_QUALITY_RULE_TYPE_ACCEPTED_VALUES, config),
-				"PostgreSQL accepts a CTE or ORDER BY in a derived table")
 		})
 	}
 }
