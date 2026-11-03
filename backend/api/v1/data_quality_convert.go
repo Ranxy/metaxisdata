@@ -320,9 +320,9 @@ func convertQualityStatusCountsToV1(counts *storepb.QualityStatusCounts) *v1pb.Q
 	}
 }
 
-// convertQualityFailureSamplesToV1 flattens the stored sample wrapper into the
+// convertQualityExecutionEvidenceToV1 flattens the stored sample wrapper into the
 // API's repeated FailureSample.
-func convertQualityFailureSamplesToV1(samples *storepb.QualityFailureSamples) []*v1pb.FailureSample {
+func convertQualityExecutionEvidenceToV1(samples *storepb.QualityExecutionEvidence) []*v1pb.FailureSample {
 	if samples == nil {
 		return nil
 	}
@@ -463,7 +463,7 @@ func convertQualityExecution(workspaceID string, execution *store.QualityExecuti
 		Sampled:       execution.Sampled,
 		SampleRows:    execution.SampleRows,
 		Truncated:     execution.Truncated,
-		Samples:       convertQualityFailureSamplesToV1(execution.Sample),
+		Samples:       convertQualityExecutionEvidenceToV1(execution.Sample),
 		ExecutedSql:   execution.ExecutedSQL,
 		ErrorCode:     execution.ErrorCode,
 		ErrorMessage:  execution.ErrorMessage,

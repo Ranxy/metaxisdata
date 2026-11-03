@@ -6234,6 +6234,7 @@ paths:
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
                         - QUALITY_RULE_TYPE_STANDARD_CODE
+                        - QUALITY_RULE_TYPE_SEGMENT_CHECK
                     type: string
                     format: enum
                 - name: severity
@@ -7821,7 +7822,37 @@ components:
                 warnThreshold:
                     type: number
                     format: double
-            description: AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+                field:
+                    type: string
+                    description: |-
+                        A column of the same target whose distinct values are the accepted set.
+                         Mutually exclusive with values and query.
+                query:
+                    allOf:
+                        - $ref: '#/components/schemas/AcceptedValuesQuery'
+                    description: |-
+                        A query whose values are the accepted set. Mutually exclusive with values
+                         and field. The reference side is read over the target's own read-only data
+                         source, so it may name another database or schema of that instance but not
+                         another instance.
+            description: |-
+                AcceptedValuesConfig counts rows whose column value is outside the accepted
+                 set. The set comes from exactly one source: the fixed list, another column of
+                 the same target, or a single-column query.
+        AcceptedValuesQuery:
+            type: object
+            properties:
+                sql:
+                    type: string
+                    description: |-
+                        One SELECT or WITH statement of at most 8 KiB. It is parsed before it runs;
+                         time variables are rendered the same way a custom SQL check renders them.
+                valueColumn:
+                    type: string
+                    description: |-
+                        The column the query returns. Named explicitly because the server tests it
+                         for NULL (a NULL in the set would make NOT IN unknown for every row).
+            description: AcceptedValuesQuery is the accepted set a single-column query returns.
         AcknowledgeQualityTargetSchemaRequest:
             required:
                 - parent
@@ -13064,6 +13095,7 @@ components:
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
                         - QUALITY_RULE_TYPE_STANDARD_CODE
+                        - QUALITY_RULE_TYPE_SEGMENT_CHECK
                     type: string
                     format: enum
                 severity:
@@ -13353,6 +13385,21 @@ components:
                         The statement that read a reconciliation's reference side, when the
                          reference needed its own connection. Empty for every other execution and
                          for a reconciliation whose two sides share the target's connection.
+                passingSamples:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FailureSample'
+                    description: |-
+                        Rows that passed the same check, kept beside the failed rows so a reviewer
+                         can compare the two populations. Only the row-level check types whose
+                         passing rows are a row predicate keep them, and only when the verdict was
+                         WARN or FAIL (a passing verdict has no failed rows to compare against).
+                segmentEvidence:
+                    allOf:
+                        - $ref: '#/components/schemas/SegmentObservation'
+                    description: |-
+                        The segment set a segment check observed, compared with its baseline.
+                         Unset for every other check type.
             description: |-
                 QualityExecution is one rule checked once: the durable unit of the data
                  quality engine. A scheduled tick or a manual request plans one execution per
@@ -13828,6 +13875,7 @@ components:
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
                         - QUALITY_RULE_TYPE_STANDARD_CODE
+                        - QUALITY_RULE_TYPE_SEGMENT_CHECK
                     type: string
                     format: enum
                 target:
@@ -13961,6 +14009,10 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/StandardCodeConfig'
                     description: 'v1.2: national and industry standard codes.'
+                segmentCheck:
+                    allOf:
+                        - $ref: '#/components/schemas/SegmentCheckConfig'
+                    description: 'v1.2: segment identity tracking across executions.'
                 thresholdMetric:
                     enum:
                         - QUALITY_THRESHOLD_METRIC_UNSPECIFIED
@@ -14085,6 +14137,7 @@ components:
                         - QUALITY_RULE_TYPE_AGGREGATE
                         - QUALITY_RULE_TYPE_CROSS_TABLE
                         - QUALITY_RULE_TYPE_STANDARD_CODE
+                        - QUALITY_RULE_TYPE_SEGMENT_CHECK
                     type: string
                     format: enum
                 config:
@@ -15445,6 +15498,107 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/StoredMetadata'
                     description: The metadata content.
+        SegmentCheckConfig:
+            type: object
+            properties:
+                columns:
+                    type: array
+                    items:
+                        type: string
+                    description: The columns that identify a segment (1-5).
+                baselineRuns:
+                    type: integer
+                    description: |-
+                        How many previous judged executions form the baseline. 0 means the default
+                         (3); the accepted range is 1-10. Executions judged against another target,
+                         or recorded before segment evidence existed, are skipped.
+                    format: int32
+                minOccurrences:
+                    type: integer
+                    description: |-
+                        How many of the baseline executions a segment must appear in to be expected
+                         in the current one. 0 means the default (2). It is clamped to the number of
+                         baseline runs actually available, so the second execution already judges.
+                    format: int32
+                failThreshold:
+                    type: number
+                    format: double
+                warnThreshold:
+                    type: number
+                    format: double
+            description: |-
+                SegmentCheckConfig fails when a segment that the check's recent executions
+                 observed is missing from the current one. A segment is the distinct
+                 combination of the grouping columns.
+        SegmentObservation:
+            type: object
+            properties:
+                observed:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SegmentRecord'
+                    description: |-
+                        The segments this execution saw, largest first. Bounded by a fixed cap, so a
+                         truncated observation carries only the largest segments.
+                newSegments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SegmentRecord'
+                    description: |-
+                        The observed segments the baseline did not have. They are evidence only: a
+                         new segment does not fail the check.
+                truncated:
+                    type: boolean
+                    description: True when the observed set was cut off by the segment cap.
+                baselineRuns:
+                    type: integer
+                    description: How many previous executions formed the baseline; 0 means there was none.
+                    format: int32
+                expectedCount:
+                    type: string
+                    description: How many segments the baseline expected.
+                disappeared:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SegmentRecord'
+                    description: |-
+                        The expected segments the current execution did not observe: the ones that
+                         failed the check. Each carries the last baseline run that saw it and its row
+                         count then. Empty when the check passed.
+            description: |-
+                SegmentObservation is the segment set one segment-check execution observed,
+                 kept as the baseline the following executions are judged against.
+        SegmentRecord:
+            type: object
+            properties:
+                values:
+                    type: array
+                    items:
+                        type: string
+                    description: One display-rendered value per grouping column, in the rule's column order.
+                rowCount:
+                    type: string
+                lastSeen:
+                    type: string
+                    description: |-
+                        When the baseline last observed the segment. Unset for a segment this
+                         execution observed.
+                    format: date-time
+                isNull:
+                    type: array
+                    items:
+                        type: boolean
+                    description: |-
+                        Whether the matching value in values is SQL NULL. The list is parallel to
+                         values; a missing entry reads as not null.
+                masked:
+                    type: array
+                    items:
+                        type: boolean
+                    description: |-
+                        Whether the matching value in values was redacted before storage. The list
+                         is parallel to values; a missing entry reads as not redacted.
+            description: 'SegmentRecord is one segment: its key values and row count.'
         SemanticLabelEvidence:
             type: object
             properties:
@@ -15529,6 +15683,7 @@ components:
                             - QUALITY_RULE_TYPE_AGGREGATE
                             - QUALITY_RULE_TYPE_CROSS_TABLE
                             - QUALITY_RULE_TYPE_STANDARD_CODE
+                            - QUALITY_RULE_TYPE_SEGMENT_CHECK
                         type: string
                         format: enum
                     description: |-

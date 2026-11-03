@@ -1059,14 +1059,14 @@ func schemaDriftOrderItems(expected []*storepb.SchemaDriftColumn, current []Colu
 
 // schemaDriftSamples renders drift items in the failure-sample shape: one sample
 // row per item, naming the affected column and the reason.
-func schemaDriftSamples(items []schemaDriftItem, limit int) *storepb.QualityFailureSamples {
+func schemaDriftSamples(items []schemaDriftItem, limit int) *storepb.QualityExecutionEvidence {
 	if len(items) == 0 || limit <= 0 {
 		return nil
 	}
 	if limit > maxSampleLimit {
 		limit = maxSampleLimit
 	}
-	samples := &storepb.QualityFailureSamples{}
+	samples := &storepb.QualityExecutionEvidence{}
 	for _, item := range items {
 		if len(samples.Samples) == limit {
 			break

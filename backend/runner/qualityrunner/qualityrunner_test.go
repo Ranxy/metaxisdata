@@ -501,7 +501,7 @@ func TestBuildExecutionMessageStoresTheVerdictAndItsEvidence(t *testing.T) {
 		},
 	}
 	execution := &dataquality.Execution{
-		Samples:     &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{}}},
+		Samples:     &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{}}},
 		ExecutedSQL: "SELECT COUNT(*) FROM orders",
 		Sampled:     true,
 		Truncated:   true,

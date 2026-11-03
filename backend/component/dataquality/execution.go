@@ -73,7 +73,7 @@ type Execution struct {
 	Observation Observation
 	// Samples is the failed-row sample, or nil when none was requested, none was
 	// possible for this rule type, or the sample query failed.
-	Samples *storepb.QualityFailureSamples
+	Samples *storepb.QualityExecutionEvidence
 	// ExecutedSQL is the aggregate statement, truncated for storage.
 	ExecutedSQL string
 	// ReferenceExecutedSQL is the statement that read a reconciliation's reference
@@ -112,14 +112,14 @@ func truncateExecutedSQL(sql string) string {
 // a row that was read records whether it was SQL NULL, so a NULL stays
 // distinguishable from an empty string — the two cases a null_percent and a
 // string_length failure sample are made of.
-func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.QualityFailureSamples {
+func SamplesFromRows(columns []string, rows [][]any, limit int) *storepb.QualityExecutionEvidence {
 	if limit <= 0 || len(columns) == 0 || len(rows) == 0 {
 		return nil
 	}
 	if limit > maxSampleLimit {
 		limit = maxSampleLimit
 	}
-	samples := &storepb.QualityFailureSamples{}
+	samples := &storepb.QualityExecutionEvidence{}
 	for _, row := range rows {
 		if len(samples.Samples) == limit {
 			break

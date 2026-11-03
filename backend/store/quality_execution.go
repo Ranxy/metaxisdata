@@ -65,7 +65,7 @@ type QualityExecutionMessage struct {
 	Sampled       bool
 	SampleRows    int64
 	Truncated     bool
-	Sample        *storepb.QualityFailureSamples
+	Sample        *storepb.QualityExecutionEvidence
 	ExecutedSQL   string
 	// ReferenceExecutedSQL is the statement that read a cross-table
 	// reconciliation's reference side when that side needed its own connection.
@@ -256,7 +256,7 @@ func scanQualityExecution(scanner interface{ Scan(...any) error }) (*QualityExec
 	if err := unmarshalQualityProto(thresholdsRaw, msg.Thresholds); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal quality execution thresholds")
 	}
-	msg.Sample = &storepb.QualityFailureSamples{}
+	msg.Sample = &storepb.QualityExecutionEvidence{}
 	if err := unmarshalQualityProto(sampleRaw, msg.Sample); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal quality execution failure samples")
 	}

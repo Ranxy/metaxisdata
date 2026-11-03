@@ -288,7 +288,7 @@ func TestDataQualityReportCapRealServerIntegration(t *testing.T) {
 			Value:  strings.Repeat("a", 300),
 		})
 	}
-	sample := &storepb.QualityFailureSamples{}
+	sample := &storepb.QualityExecutionEvidence{}
 	for row := 0; row < 5; row++ {
 		sample.Samples = append(sample.Samples, &storepb.FailureSample{Columns: cells})
 	}

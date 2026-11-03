@@ -629,7 +629,7 @@ func TestQualityTargetExecutionTallyJudged(t *testing.T) {
 func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
 	t.Parallel()
 
-	samples := &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+	samples := &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
 		{Column: "legacy"},
 		{Column: "blank", IsNull: proto.Bool(false)},
 		{Column: "missing", IsNull: proto.Bool(true)},
@@ -639,7 +639,7 @@ func TestQualityExecutionSampleKeepsTheNullMarker(t *testing.T) {
 	require.Contains(t, string(raw), `"isNull":false`)
 	require.Contains(t, string(raw), `"isNull":true`)
 
-	decoded := &storepb.QualityFailureSamples{}
+	decoded := &storepb.QualityExecutionEvidence{}
 	require.NoError(t, unmarshalQualityProto(raw, decoded))
 	columns := decoded.GetSamples()[0].GetColumns()
 	require.Nil(t, columns[0].IsNull, "an absent marker stays absent")

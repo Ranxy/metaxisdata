@@ -221,6 +221,7 @@
   
 - [v1/data_quality_service.proto](#v1_data_quality_service-proto)
     - [AcceptedValuesConfig](#metaxisdata-v1-AcceptedValuesConfig)
+    - [AcceptedValuesQuery](#metaxisdata-v1-AcceptedValuesQuery)
     - [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest)
     - [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse)
     - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
@@ -371,6 +372,9 @@
     - [RunQualityRulesResponse](#metaxisdata-v1-RunQualityRulesResponse)
     - [SchemaDriftColumn](#metaxisdata-v1-SchemaDriftColumn)
     - [SchemaDriftConfig](#metaxisdata-v1-SchemaDriftConfig)
+    - [SegmentCheckConfig](#metaxisdata-v1-SegmentCheckConfig)
+    - [SegmentObservation](#metaxisdata-v1-SegmentObservation)
+    - [SegmentRecord](#metaxisdata-v1-SegmentRecord)
     - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
     - [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig)
@@ -4160,7 +4164,9 @@ LIST, HASH (https://www.postgresql.org/docs/current/ddl-partitioning.html)
 <a name="metaxisdata-v1-AcceptedValuesConfig"></a>
 
 ### AcceptedValuesConfig
-AcceptedValuesConfig counts rows whose column value is outside a fixed set.
+AcceptedValuesConfig counts rows whose column value is outside the accepted
+set. The set comes from exactly one source: the fixed list, another column of
+the same target, or a single-column query.
 
 
 | Field | Type | Label | Description |
@@ -4170,6 +4176,24 @@ AcceptedValuesConfig counts rows whose column value is outside a fixed set.
 | allow_null | [bool](#bool) |  | When false (the default), a NULL value is a violation. |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+| field | [string](#string) |  | A column of the same target whose distinct values are the accepted set. Mutually exclusive with values and query. |
+| query | [AcceptedValuesQuery](#metaxisdata-v1-AcceptedValuesQuery) |  | A query whose values are the accepted set. Mutually exclusive with values and field. The reference side is read over the target&#39;s own read-only data source, so it may name another database or schema of that instance but not another instance. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-AcceptedValuesQuery"></a>
+
+### AcceptedValuesQuery
+AcceptedValuesQuery is the accepted set a single-column query returns.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sql | [string](#string) |  | One SELECT or WITH statement of at most 8 KiB. It is parsed before it runs; time variables are rendered the same way a custom SQL check renders them. |
+| value_column | [string](#string) |  | The column the query returns. Named explicitly because the server tests it for NULL (a NULL in the set would make NOT IN unknown for every row). |
 
 
 
@@ -6132,6 +6156,8 @@ the same row.
 | baseline_value | [double](#double) | optional | The row count a row_count_change check compared against. Unset for every other type, and for a first observation that had no recent baseline to compare with; the verdict then follows on_empty, which a new count-change check defaults to PASS so the first run only records the baseline. |
 | baseline_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When that baseline was measured. Unset whenever baseline_value is. |
 | reference_executed_sql | [string](#string) |  | The statement that read a reconciliation&#39;s reference side, when the reference needed its own connection. Empty for every other execution and for a reconciliation whose two sides share the target&#39;s connection. |
+| passing_samples | [FailureSample](#metaxisdata-v1-FailureSample) | repeated | Rows that passed the same check, kept beside the failed rows so a reviewer can compare the two populations. Only the row-level check types whose passing rows are a row predicate keep them, and only when the verdict was WARN or FAIL (a passing verdict has no failed rows to compare against). |
+| segment_evidence | [SegmentObservation](#metaxisdata-v1-SegmentObservation) |  | The segment set a segment check observed, compared with its baseline. Unset for every other check type. |
 
 
 
@@ -6438,6 +6464,7 @@ behavior and the count/percent metric are shared by every type.
 | aggregate | [AggregateConfig](#metaxisdata-v1-AggregateConfig) |  | v1.1 second batch: aggregates and cross-table reconciliation. |
 | cross_table | [CrossTableConfig](#metaxisdata-v1-CrossTableConfig) |  |  |
 | standard_code | [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig) |  | v1.2: national and industry standard codes. |
+| segment_check | [SegmentCheckConfig](#metaxisdata-v1-SegmentCheckConfig) |  | v1.2: segment identity tracking across executions. |
 | threshold_metric | [QualityThresholdMetric](#metaxisdata-v1-QualityThresholdMetric) |  |  |
 | filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  |  |
 | on_empty | [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior) |  |  |
@@ -7162,6 +7189,67 @@ database nothing.
 
 
 
+<a name="metaxisdata-v1-SegmentCheckConfig"></a>
+
+### SegmentCheckConfig
+SegmentCheckConfig fails when a segment that the check&#39;s recent executions
+observed is missing from the current one. A segment is the distinct
+combination of the grouping columns.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| columns | [string](#string) | repeated | The columns that identify a segment (1-5). |
+| baseline_runs | [int32](#int32) |  | How many previous judged executions form the baseline. 0 means the default (3); the accepted range is 1-10. Executions judged against another target, or recorded before segment evidence existed, are skipped. |
+| min_occurrences | [int32](#int32) |  | How many of the baseline executions a segment must appear in to be expected in the current one. 0 means the default (2). It is clamped to the number of baseline runs actually available, so the second execution already judges. |
+| fail_threshold | [double](#double) | optional |  |
+| warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SegmentObservation"></a>
+
+### SegmentObservation
+SegmentObservation is the segment set one segment-check execution observed,
+kept as the baseline the following executions are judged against.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| observed | [SegmentRecord](#metaxisdata-v1-SegmentRecord) | repeated | The segments this execution saw, largest first. Bounded by a fixed cap, so a truncated observation carries only the largest segments. |
+| new_segments | [SegmentRecord](#metaxisdata-v1-SegmentRecord) | repeated | The observed segments the baseline did not have. They are evidence only: a new segment does not fail the check. |
+| truncated | [bool](#bool) |  | True when the observed set was cut off by the segment cap. |
+| baseline_runs | [int32](#int32) |  | How many previous executions formed the baseline; 0 means there was none. |
+| expected_count | [int64](#int64) |  | How many segments the baseline expected. |
+| disappeared | [SegmentRecord](#metaxisdata-v1-SegmentRecord) | repeated | The expected segments the current execution did not observe: the ones that failed the check. Each carries the last baseline run that saw it and its row count then. Empty when the check passed. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-SegmentRecord"></a>
+
+### SegmentRecord
+SegmentRecord is one segment: its key values and row count.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| values | [string](#string) | repeated | One display-rendered value per grouping column, in the rule&#39;s column order. |
+| row_count | [int64](#int64) |  |  |
+| last_seen | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the baseline last observed the segment. Unset for a segment this execution observed. |
+| is_null | [bool](#bool) | repeated | Whether the matching value in values is SQL NULL. The list is parallel to values; a missing entry reads as not null. |
+| masked | [bool](#bool) | repeated | Whether the matching value in values was redacted before storage. The list is parallel to values; a missing entry reads as not redacted. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-SemanticLabelEvidence"></a>
 
 ### SemanticLabelEvidence
@@ -7798,6 +7886,7 @@ rule: changing the type is a different rule and a new revision.
 | QUALITY_RULE_TYPE_AGGREGATE | 17 | v1.1: aggregates one column and bounds the value. |
 | QUALITY_RULE_TYPE_CROSS_TABLE | 18 | v1.1: reconciles one aggregate of this table with one of another table in the same instance and database. |
 | QUALITY_RULE_TYPE_STANDARD_CODE | 19 | v1.2: validates a column against a national or industry standard code. The rule reads a bounded sample of the column and checks the values in process. |
+| QUALITY_RULE_TYPE_SEGMENT_CHECK | 20 | v1.2: tracks the distinct segments of one or more columns and fails when a segment the previous executions observed is missing from the current one. |
 
 
 

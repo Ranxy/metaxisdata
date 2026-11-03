@@ -399,7 +399,7 @@ func TestConvertQualityExecution(t *testing.T) {
 		Sampled:    true,
 		SampleRows: 20,
 		Truncated:  true,
-		Sample: &storepb.QualityFailureSamples{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
+		Sample: &storepb.QualityExecutionEvidence{Samples: []*storepb.FailureSample{{Columns: []*storepb.ColumnValue{
 			{Column: "id", Value: "1", IsNull: proto.Bool(false)},
 			{Column: "amount", Value: "-5"},
 			{Column: "note", IsNull: proto.Bool(true)},
@@ -627,7 +627,7 @@ func TestConvertQualityThresholdsNil(t *testing.T) {
 
 	require.Nil(t, convertQualityThresholdsToV1(nil))
 	require.Nil(t, convertQualityStatusCountsToV1(nil))
-	require.Nil(t, convertQualityFailureSamplesToV1(nil))
+	require.Nil(t, convertQualityExecutionEvidenceToV1(nil))
 	require.Nil(t, convertQualityTargetPathToV1(nil))
 }
 

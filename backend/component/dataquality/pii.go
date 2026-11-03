@@ -71,7 +71,7 @@ func RedactPersonalProfile(profile *storepb.ColumnProfile) {
 // redactPersonalSamples replaces the cells of the named columns with their masked
 // display forms and marks them. NULL cells keep their null marker; only a stored
 // value is redacted.
-func redactPersonalSamples(samples *storepb.QualityFailureSamples, columns map[string]struct{}) {
+func redactPersonalSamples(samples *storepb.QualityExecutionEvidence, columns map[string]struct{}) {
 	if samples == nil || len(columns) == 0 {
 		return
 	}
