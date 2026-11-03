@@ -3,6 +3,8 @@ import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { describe, expect, it } from "vitest";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
+  AcceptedValuesConfigSchema,
+  AcceptedValuesQuerySchema,
   CelExpressionConfigSchema,
   FreshnessConfigSchema,
   QualityAggregateFunction,
@@ -790,6 +792,13 @@ describe("accepted-values sources", () => {
     query.config.values = "";
     expect(validateRuleForm(query, TARGET)).toEqual([]);
 
+    // The bound is inclusive: exactly 8 KiB is allowed, one byte more is not.
+    const atLimit = acceptedForm();
+    atLimit.config.acceptedSource = "query";
+    atLimit.config.acceptedQuery = "a".repeat(MAX_ACCEPTED_VALUES_QUERY_BYTES);
+    atLimit.config.acceptedQueryColumn = "code";
+    expect(validateRuleForm(atLimit, TARGET)).toEqual([]);
+
     const tooLong = acceptedForm();
     tooLong.config.acceptedSource = "query";
     tooLong.config.acceptedQuery = "a".repeat(
@@ -801,6 +810,64 @@ describe("accepted-values sources", () => {
         candidate.key === `${VALIDATION_PREFIX}acceptedQueryTooLong`
     );
     expect(issue?.params).toEqual({ max: MAX_ACCEPTED_VALUES_QUERY_BYTES });
+  });
+
+  it("rebuilds a stored dynamic source unchanged", () => {
+    // A rule written through the API carries the source on the wire; reading it
+    // and building again must keep the same arm and the same source fields.
+    const storedField = create(QualityRuleSchema, {
+      ruleType: QualityRuleType.ACCEPTED_VALUES,
+      config: create(QualityRuleConfigSchema, {
+        config: {
+          case: "acceptedValues",
+          value: create(AcceptedValuesConfigSchema, {
+            column: "status",
+            field: "status_code",
+            allowNull: true,
+          }),
+        },
+      }),
+    });
+    const fieldForm = ruleToForm(storedField);
+    expect(fieldForm.config.acceptedSource).toBe("field");
+    expect(fieldForm.config.values).toBe("");
+    const rebuiltField = buildRuleConfig(fieldForm);
+    if (rebuiltField.config?.case !== "acceptedValues") {
+      throw new Error("expected an accepted-values config arm");
+    }
+    expect(rebuiltField.config.value.column).toBe("status");
+    expect(rebuiltField.config.value.values).toEqual([]);
+    expect(rebuiltField.config.value.field).toBe("status_code");
+    expect(rebuiltField.config.value.query).toBeUndefined();
+    expect(rebuiltField.config.value.allowNull).toBe(true);
+
+    const storedQuery = create(QualityRuleSchema, {
+      ruleType: QualityRuleType.ACCEPTED_VALUES,
+      config: create(QualityRuleConfigSchema, {
+        config: {
+          case: "acceptedValues",
+          value: create(AcceptedValuesConfigSchema, {
+            column: "status",
+            query: create(AcceptedValuesQuerySchema, {
+              sql: "SELECT code FROM public.codes",
+              valueColumn: "code",
+            }),
+          }),
+        },
+      }),
+    });
+    const queryForm = ruleToForm(storedQuery);
+    expect(queryForm.config.acceptedSource).toBe("query");
+    const rebuiltQuery = buildRuleConfig(queryForm);
+    if (rebuiltQuery.config?.case !== "acceptedValues") {
+      throw new Error("expected an accepted-values config arm");
+    }
+    expect(rebuiltQuery.config.value.field).toBe("");
+    expect(rebuiltQuery.config.value.values).toEqual([]);
+    expect(rebuiltQuery.config.value.query?.sql).toBe(
+      "SELECT code FROM public.codes"
+    );
+    expect(rebuiltQuery.config.value.query?.valueColumn).toBe("code");
   });
 });
 
@@ -842,6 +909,22 @@ describe("segment check", () => {
     expect(rule.config.config.value.baselineRuns).toBe(0);
     expect(rule.config.config.value.minOccurrences).toBe(0);
     expect(ruleToForm(rule).config.segmentBaselineRuns).toBe("");
+  });
+
+  it("treats a typed zero as the server's default window", () => {
+    // 0 on the wire means "use the default", so the form's own check must not
+    // call the value the server would accept invalid.
+    const form = validForm(QualityRuleType.SEGMENT_CHECK);
+    form.config.segmentBaselineRuns = "0";
+    form.config.segmentMinOccurrences = "0";
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "segmentCheck") {
+      throw new Error("expected a segment-check config arm");
+    }
+    expect(rule.config.config.value.baselineRuns).toBe(0);
+    expect(rule.config.config.value.minOccurrences).toBe(0);
   });
 
   it("refuses more grouping columns than the server accepts", () => {

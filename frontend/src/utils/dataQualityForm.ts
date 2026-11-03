@@ -2399,10 +2399,13 @@ export function validateRuleForm(
         });
       }
       // Both numeric fields are optional: blank asks for the server default
-      // (3 and 2). A supplied number must be in the range the server accepts.
-      const baselineRuns = trimmed(c.segmentBaselineRuns)
-        ? optionalIntegerValue(c.segmentBaselineRuns)
-        : DEFAULT_SEGMENT_BASELINE_RUNS;
+      // (3 and 2), and an explicit 0 means the same thing on the wire, so a
+      // typed 0 is accepted as the default instead of being refused here. Any
+      // other supplied number must be in the range the server accepts.
+      const baselineRuns = segmentWindowValue(
+        c.segmentBaselineRuns,
+        DEFAULT_SEGMENT_BASELINE_RUNS
+      );
       if (
         baselineRuns === undefined ||
         baselineRuns < MIN_SEGMENT_BASELINE_RUNS ||
@@ -2414,9 +2417,10 @@ export function validateRuleForm(
         });
         break;
       }
-      const minOccurrences = trimmed(c.segmentMinOccurrences)
-        ? optionalIntegerValue(c.segmentMinOccurrences)
-        : Math.min(DEFAULT_SEGMENT_MIN_OCCURRENCES, baselineRuns);
+      const minOccurrences = segmentWindowValue(
+        c.segmentMinOccurrences,
+        Math.min(DEFAULT_SEGMENT_MIN_OCCURRENCES, baselineRuns)
+      );
       if (
         minOccurrences === undefined ||
         minOccurrences < 1 ||
@@ -2709,6 +2713,22 @@ function optionalIntegerValue(value: string | undefined): number | undefined {
     return undefined;
   }
   return Number(text);
+}
+
+/**
+ * A segment window field as the number the server will use: blank and an
+ * explicit 0 both mean "the default", because 0 is what the wire carries for an
+ * unset field. Anything else is parsed as a whole number.
+ */
+function segmentWindowValue(
+  value: string | undefined,
+  fallback: number
+): number | undefined {
+  if (trimmed(value) === "") {
+    return fallback;
+  }
+  const parsed = optionalIntegerValue(value);
+  return parsed === 0 ? fallback : parsed;
 }
 
 function optionalInt32(value: string | undefined): number | undefined {

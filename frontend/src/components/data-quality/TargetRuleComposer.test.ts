@@ -15,12 +15,14 @@ import { useAuthStore } from "@/store/modules/auth";
 import { useInstanceStore } from "@/store/modules/instance";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
+  AcceptedValuesConfigSchema,
   QualityComparison,
   QualityDimension,
   QualityEmptyBehavior,
   QualityFilterOperator,
   QualityFrequencyTier,
   type QualityRule,
+  type QualityRuleConfig,
   QualityRuleConfigSchema,
   QualityRuleSamplingSchema,
   QualityRuleSchema,
@@ -41,6 +43,7 @@ import {
   QualityTrendUnit,
   RowCountChangeConfigSchema,
   RowCountConfigSchema,
+  SegmentCheckConfigSchema,
   StandardCodeConfigSchema,
   UniqueConfigSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -1346,6 +1349,79 @@ describe("TargetRuleComposer", () => {
     expect(mocks.deleteQualityRuleTemplate).toHaveBeenCalledWith(template.name);
     expect(mocks.createQualityRule).not.toHaveBeenCalled();
     wrapper.unmount();
+  });
+
+  it("hides save-as-template for a check the server refuses to template", async () => {
+    const permissions = [
+      "metaxisdata.dataQuality.rules.update",
+      "metaxisdata.dataQuality.templates.create",
+    ];
+    const storedRule = (
+      ruleType: QualityRuleType,
+      config: QualityRuleConfig["config"]
+    ) =>
+      create(QualityRuleSchema, {
+        name: "workspaces/ws/qualityRules/template-refused",
+        title: "Template refused",
+        ruleType,
+        state: QualityRuleState.ENABLED,
+        target: create(QualityTargetSchema, {
+          metaGuid: TABLE,
+          metaType: MetaType.TABLE,
+          path: create(QualityTargetPathSchema, {
+            instance: "inst1",
+            database: "db1",
+            schema: "public",
+            object: "orders",
+          }),
+          columns: ["status"],
+        }),
+        config: create(QualityRuleConfigSchema, { config }),
+      });
+
+    // The fixed list is the only accepted-values source a template can carry.
+    const fixedList = await mountComposer({
+      permissions,
+      rule: storedRule(QualityRuleType.ACCEPTED_VALUES, {
+        case: "acceptedValues",
+        value: create(AcceptedValuesConfigSchema, {
+          column: "status",
+          values: ["open", "closed"],
+        }),
+      }),
+    });
+    await flushPromises();
+    expect(document.body.querySelector("[data-save-template]")).toBeTruthy();
+    fixedList.unmount();
+
+    // A dynamic accepted-values source is target-bound: the server refuses it.
+    const dynamic = await mountComposer({
+      permissions,
+      rule: storedRule(QualityRuleType.ACCEPTED_VALUES, {
+        case: "acceptedValues",
+        value: create(AcceptedValuesConfigSchema, {
+          column: "status",
+          field: "status_code",
+        }),
+      }),
+    });
+    await flushPromises();
+    expect(document.body.querySelector("[data-save-template]")).toBeNull();
+    dynamic.unmount();
+
+    // A segment check's grouping columns are target-bound too.
+    const segment = await mountComposer({
+      permissions,
+      rule: storedRule(QualityRuleType.SEGMENT_CHECK, {
+        case: "segmentCheck",
+        value: create(SegmentCheckConfigSchema, {
+          columns: ["region", "channel"],
+        }),
+      }),
+    });
+    await flushPromises();
+    expect(document.body.querySelector("[data-save-template]")).toBeNull();
+    segment.unmount();
   });
 
   it("does not offer template management without the catalogue permissions", async () => {

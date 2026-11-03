@@ -527,7 +527,7 @@
       "acceptedQuery": "Value query",
       "acceptedQueryColumn": "Value column",
       "acceptedQueryColumnHint": "The column the query returns. Name it explicitly so the server can filter NULLs out of the accepted set.",
-      "acceptedQueryHint": "One read-only SELECT or WITH statement, at most 8 KiB; it may use the same time variables as a custom SQL check.",
+      "acceptedQueryHint": "One read-only SELECT or WITH statement, at most 8 KiB; it may use the same time variables as a custom SQL check. On SQL Server use a plain SELECT (no WITH or ORDER BY).",
       "acceptedQueryPlaceholder": "SELECT DISTINCT code FROM public.codes",
       "acceptedSource": "Value source",
       "acceptedSourceField": "Column",
@@ -1258,7 +1258,7 @@
     "search": "Search",
     "searchPlaceholder": "Search checks by title or description...",
     "segmentEvidence": {
-      "baseline": "Baseline: {runs} runs · {expected} expected segments",
+      "baseline": "Baseline: {runs} run · {expected} expected segments | Baseline: {runs} runs · {expected} expected segments",
       "disappeared": "Disappeared segments",
       "disappearedHint": "Segments the baseline expected that this execution no longer observed. Each one failed the check.",
       "hint": "The segment set this execution observed, compared with the segment sets of its recent executions.",
@@ -1268,8 +1268,9 @@
       "noBaseline": "No baseline yet: this execution only records the segment set.",
       "noDisappeared": "No expected segment disappeared.",
       "noNewSegments": "No new segment.",
-      "rowCount": "{count} row | {count} rows",
+      "rowCount": "{rows} row | {rows} rows",
       "segmentsCount": "{count} segment | {count} segments",
+      "showing": "Showing {shown} of {total}",
       "title": "Segment evidence",
       "truncated": "The segment set exceeded the size cap, so it was truncated and this execution was not judged against the baseline."
     },

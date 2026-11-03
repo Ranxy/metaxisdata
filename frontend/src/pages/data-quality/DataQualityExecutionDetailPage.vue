@@ -418,7 +418,7 @@
                 class="space-y-2"
               >
                 <div
-                  v-for="(record, index) in disappearedSegments"
+                  v-for="(record, index) in disappearedShown"
                   :key="index"
                   class="flex flex-wrap items-start justify-between gap-2 rounded-md border p-2.5 text-xs"
                 >
@@ -432,7 +432,8 @@
                     <span>
                       {{
                         t("dataQuality.segmentEvidence.rowCount", {
-                          count: formatRowCount(record.rowCount, locale),
+                          count: Number(record.rowCount),
+                          rows: formatRowCount(record.rowCount, locale),
                         })
                       }}
                     </span>
@@ -449,6 +450,17 @@
                   </span>
                 </div>
               </div>
+              <p
+                v-if="disappearedOverflow"
+                class="text-xs text-muted-foreground"
+              >
+                {{
+                  t("dataQuality.segmentEvidence.showing", {
+                    shown: disappearedShown.length,
+                    total: disappearedSegments.length,
+                  })
+                }}
+              </p>
             </section>
 
             <section class="space-y-2">
@@ -478,7 +490,7 @@
                 class="space-y-2"
               >
                 <div
-                  v-for="(record, index) in newSegments"
+                  v-for="(record, index) in newSegmentsShown"
                   :key="index"
                   class="flex flex-wrap items-start justify-between gap-2 rounded-md border p-2.5 text-xs"
                 >
@@ -491,12 +503,24 @@
                   <span class="flex shrink-0 items-center text-muted-foreground tabular-nums">
                     {{
                       t("dataQuality.segmentEvidence.rowCount", {
-                        count: formatRowCount(record.rowCount, locale),
+                        count: Number(record.rowCount),
+                        rows: formatRowCount(record.rowCount, locale),
                       })
                     }}
                   </span>
                 </div>
               </div>
+              <p
+                v-if="newSegmentsOverflow"
+                class="text-xs text-muted-foreground"
+              >
+                {{
+                  t("dataQuality.segmentEvidence.showing", {
+                    shown: newSegmentsShown.length,
+                    total: newSegments.length,
+                  })
+                }}
+              </p>
             </section>
 
             <p
@@ -822,6 +846,25 @@ const disappearedSegments = computed(
 );
 const newSegments = computed(() => segmentEvidence.value?.newSegments ?? []);
 
+/**
+ * The segment card keeps the review scannable: only the first 50 records of
+ * each list are rendered, and a line says how many the execution carried. The
+ * section headers keep the exact counts.
+ */
+const SEGMENT_DISPLAY_LIMIT = 50;
+const disappearedShown = computed(() =>
+  disappearedSegments.value.slice(0, SEGMENT_DISPLAY_LIMIT)
+);
+const newSegmentsShown = computed(() =>
+  newSegments.value.slice(0, SEGMENT_DISPLAY_LIMIT)
+);
+const disappearedOverflow = computed(
+  () => disappearedSegments.value.length > SEGMENT_DISPLAY_LIMIT
+);
+const newSegmentsOverflow = computed(
+  () => newSegments.value.length > SEGMENT_DISPLAY_LIMIT
+);
+
 /** How the baseline was sized, or why the comparison was skipped. */
 const segmentBaselineLabel = computed(() => {
   const evidence = segmentEvidence.value;
@@ -836,6 +879,9 @@ const segmentBaselineLabel = computed(() => {
       : t("dataQuality.segmentEvidence.noBaseline");
   }
   return t("dataQuality.segmentEvidence.baseline", {
+    // The numeric count selects the plural form; the placeholder carries the
+    // locale-formatted number.
+    count: evidence.baselineRuns,
     runs: formatRowCount(evidence.baselineRuns, locale.value),
     expected: formatRowCount(evidence.expectedCount, locale.value),
   });
