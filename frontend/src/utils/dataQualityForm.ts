@@ -4,6 +4,7 @@ import { DurationSchema } from "@bufbuild/protobuf/wkt";
 import { Engine } from "@/types/proto-es/v1/common_pb";
 import {
   AcceptedValuesConfigSchema,
+  AcceptedValuesQuerySchema,
   AggregateConfigSchema,
   CelExpressionConfigSchema,
   CrossColumnConfigSchema,
@@ -45,6 +46,7 @@ import {
   RowCountConfigSchema,
   SchemaDriftColumnSchema,
   SchemaDriftConfigSchema,
+  SegmentCheckConfigSchema,
   StandardCodeConfigSchema,
   StringLengthConfigSchema,
   UniqueCombinationConfigSchema,
@@ -74,10 +76,27 @@ export const MAX_FILTER_CLAUSES = 10;
 export const MAX_FILTER_VALUES = 100;
 /** accepted_values takes at most 200 values. */
 export const MAX_ACCEPTED_VALUES = 200;
+/**
+ * An accepted-values query is bounded like custom SQL: one statement of at most
+ * 8 KiB. The server parses the text before it runs it.
+ */
+export const MAX_ACCEPTED_VALUES_QUERY_BYTES = 8192;
 /** null_percent's extra missing values are capped at 20. */
 export const MAX_NULL_VALUES = 20;
 /** A grouped row-count rule groups by at most five columns. */
 export const MAX_GROUP_COLUMNS = 5;
+/** A segment check groups by at most five columns. */
+export const MAX_SEGMENT_COLUMNS = 5;
+/** How many previous executions form a segment check's baseline. */
+export const MIN_SEGMENT_BASELINE_RUNS = 1;
+export const MAX_SEGMENT_BASELINE_RUNS = 10;
+export const DEFAULT_SEGMENT_BASELINE_RUNS = 3;
+/**
+ * How many baseline executions a segment must appear in to be expected. The
+ * server clamps it to the number of baseline runs actually available, so a new
+ * check's second execution already judges.
+ */
+export const DEFAULT_SEGMENT_MIN_OCCURRENCES = 2;
 /**
  * One check's execution: a query timeout and, optionally, how much of the
  * target it reads. Blank/0 timeout means the server default (60s).
@@ -136,7 +155,7 @@ export const CROSS_TABLE_FUNCTIONS: QualityAggregateFunction[] = [
 ];
 
 /**
- * The 19 rule types the editor offers. Every one has a config form;
+ * The 20 rule types the editor offers. Every one has a config form;
  * CEL_EXPRESSION included now that the API accepts it.
  */
 export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
@@ -159,6 +178,7 @@ export const EDITABLE_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.CROSS_TABLE,
   QualityRuleType.CEL_EXPRESSION,
   QualityRuleType.STANDARD_CODE,
+  QualityRuleType.SEGMENT_CHECK,
 ];
 
 /**
@@ -182,6 +202,7 @@ export const THRESHOLD_METRIC_RULE_TYPES: QualityRuleType[] = [
   QualityRuleType.GROUP_CHECK,
   QualityRuleType.CEL_EXPRESSION,
   QualityRuleType.STANDARD_CODE,
+  QualityRuleType.SEGMENT_CHECK,
 ];
 
 /** One section of the rule-type select: an i18n group key and its types. */
@@ -202,6 +223,7 @@ export const RULE_TYPE_GROUPS: RuleTypeGroup[] = [
       QualityRuleType.ROW_COUNT_CHANGE,
       QualityRuleType.NULL_PERCENT,
       QualityRuleType.GROUP_CHECK,
+      QualityRuleType.SEGMENT_CHECK,
       QualityRuleType.FRESHNESS,
     ],
   },
@@ -385,6 +407,7 @@ const DIMENSION_BY_RULE_TYPE: Partial<
   [QualityRuleType.CROSS_TABLE]: QualityDimension.CONSISTENCY,
   [QualityRuleType.CEL_EXPRESSION]: QualityDimension.ACCURACY,
   [QualityRuleType.STANDARD_CODE]: QualityDimension.VALIDITY,
+  [QualityRuleType.SEGMENT_CHECK]: QualityDimension.COMPLETENESS,
 };
 
 // ---- form state ----
@@ -393,6 +416,8 @@ export type ScheduleUnit = "minutes" | "hours" | "days";
 export type NullMetric = "count" | "percent";
 /** How much of the target one execution reads. */
 export type SampleMethod = "none" | "percent" | "maxRows";
+/** Where an accepted-values check's accepted set comes from. */
+export type AcceptedValuesSource = "list" | "field" | "query";
 
 /** One clause of the rule's AND filter, with values kept as typed text. */
 export interface FilterClauseForm {
@@ -434,6 +459,14 @@ export interface RuleConfigForm {
   columns?: string;
   allColumns?: boolean;
   values?: string;
+  /** Where an accepted-values check's set comes from; "list" is the default. */
+  acceptedSource?: AcceptedValuesSource;
+  /** The reference column of the "field" source; must differ from the checked one. */
+  acceptedField?: string;
+  /** The single-column query of the "query" source, at most 8 KiB. */
+  acceptedQuery?: string;
+  /** The column the query above returns. */
+  acceptedQueryColumn?: string;
   allowNull?: boolean;
   minValue?: string;
   maxValue?: string;
@@ -481,6 +514,13 @@ export interface RuleConfigForm {
   groupColumns?: string;
   minRowsPerGroup?: string;
   maxRowsPerGroup?: string;
+  // segment_check
+  /** Comma-separated grouping columns, 1-5 of them. */
+  segmentColumns?: string;
+  /** Whole number of previous executions forming the baseline; blank uses 3. */
+  segmentBaselineRuns?: string;
+  /** Whole number of baseline runs a segment must appear in; blank uses 2. */
+  segmentMinOccurrences?: string;
   // aggregate
   aggregateColumn?: string;
   aggregateFunction?: QualityAggregateFunction;
@@ -652,6 +692,10 @@ export function emptyConfig(): RuleConfigForm {
     columns: "",
     allColumns: false,
     values: "",
+    acceptedSource: "list",
+    acceptedField: "",
+    acceptedQuery: "",
+    acceptedQueryColumn: "",
     allowNull: false,
     minValue: "",
     maxValue: "",
@@ -684,6 +728,9 @@ export function emptyConfig(): RuleConfigForm {
     groupColumns: "",
     minRowsPerGroup: "",
     maxRowsPerGroup: "",
+    segmentColumns: "",
+    segmentBaselineRuns: String(DEFAULT_SEGMENT_BASELINE_RUNS),
+    segmentMinOccurrences: String(DEFAULT_SEGMENT_MIN_OCCURRENCES),
     aggregateColumn: "",
     aggregateFunction: QualityAggregateFunction.SUM,
     percentile: "",
@@ -930,12 +977,17 @@ export function columnsForConfig(form: RuleFormState): string[] {
     case QualityRuleType.NULL_PERCENT:
       return uniqueValues([c.nullColumn ?? ""]);
     case QualityRuleType.UNIQUE:
-    case QualityRuleType.ACCEPTED_VALUES:
     case QualityRuleType.RANGE:
     case QualityRuleType.REGEX:
     case QualityRuleType.STRING_LENGTH:
     case QualityRuleType.STANDARD_CODE:
       return uniqueValues([c.column ?? ""]);
+    case QualityRuleType.ACCEPTED_VALUES:
+      // A field source reads the reference column as well; a query's value
+      // column is the query's own result, not a column of this target.
+      return c.acceptedSource === "field"
+        ? uniqueValues([c.column ?? "", c.acceptedField ?? ""])
+        : uniqueValues([c.column ?? ""]);
     case QualityRuleType.UNIQUE_COMBINATION:
       return c.allColumns ? [] : uniqueValues(parseValueList(c.columns ?? ""));
     case QualityRuleType.REFERENTIAL_INTEGRITY:
@@ -950,6 +1002,8 @@ export function columnsForConfig(form: RuleFormState): string[] {
       );
     case QualityRuleType.GROUP_CHECK:
       return uniqueValues(parseValueList(c.groupColumns ?? ""));
+    case QualityRuleType.SEGMENT_CHECK:
+      return uniqueValues(parseValueList(c.segmentColumns ?? ""));
     case QualityRuleType.AGGREGATE:
       return uniqueValues([c.aggregateColumn ?? ""]);
     case QualityRuleType.CEL_EXPRESSION:
@@ -1062,6 +1116,8 @@ export function ruleTypeForConfigCase(
       return QualityRuleType.AGGREGATE;
     case "crossTable":
       return QualityRuleType.CROSS_TABLE;
+    case "segmentCheck":
+      return QualityRuleType.SEGMENT_CHECK;
     default:
       return undefined;
   }
@@ -1141,17 +1197,32 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
         };
-      case QualityRuleType.ACCEPTED_VALUES:
+      case QualityRuleType.ACCEPTED_VALUES: {
+        // Exactly one source travels: the backend refuses a config that names
+        // more than one (or none). The fields of the other sources stay blank.
+        const source = c.acceptedSource ?? "list";
+        const values = source === "list" ? parseValueList(c.values ?? "") : [];
+        const field = source === "field" ? trimmed(c.acceptedField) : "";
+        const query =
+          source === "query"
+            ? create(AcceptedValuesQuerySchema, {
+                sql: (c.acceptedQuery ?? "").trim(),
+                valueColumn: trimmed(c.acceptedQueryColumn),
+              })
+            : undefined;
         return {
           case: "acceptedValues" as const,
           value: create(AcceptedValuesConfigSchema, {
             column: trimmed(c.column),
-            values: parseValueList(c.values ?? ""),
+            values,
+            field,
             allowNull: c.allowNull ?? false,
+            ...(query ? { query } : {}),
             ...optionalDouble("failThreshold", c.failThreshold),
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
         };
+      }
       case QualityRuleType.RANGE:
         return {
           case: "range" as const,
@@ -1284,6 +1355,18 @@ export function buildRuleConfig(form: RuleFormState): QualityRuleConfig {
             columns: parseValueList(c.groupColumns ?? ""),
             ...optionalInt64("minRowsPerGroup", c.minRowsPerGroup),
             ...optionalInt64("maxRowsPerGroup", c.maxRowsPerGroup),
+            ...optionalDouble("failThreshold", c.failThreshold),
+            ...optionalDouble("warnThreshold", c.warnThreshold),
+          }),
+        };
+      case QualityRuleType.SEGMENT_CHECK:
+        return {
+          case: "segmentCheck" as const,
+          value: create(SegmentCheckConfigSchema, {
+            columns: parseValueList(c.segmentColumns ?? ""),
+            // 0 asks for the server default, so a cleared input is not an error.
+            baselineRuns: optionalIntegerValue(c.segmentBaselineRuns) ?? 0,
+            minOccurrences: optionalIntegerValue(c.segmentMinOccurrences) ?? 0,
             ...optionalDouble("failThreshold", c.failThreshold),
             ...optionalDouble("warnThreshold", c.warnThreshold),
           }),
@@ -1512,6 +1595,16 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       const value = config.value;
       form.column = value.column;
       form.values = value.values.join(", ");
+      // A dynamic source is derived from which field the stored config names;
+      // a fixed list is the default when neither is set.
+      form.acceptedSource = value.field.trim()
+        ? "field"
+        : value.query !== undefined
+          ? "query"
+          : "list";
+      form.acceptedField = value.field;
+      form.acceptedQuery = value.query?.sql ?? "";
+      form.acceptedQueryColumn = value.query?.valueColumn ?? "";
       form.allowNull = value.allowNull;
       form.failThreshold = optionalStringFromDouble(value.failThreshold);
       form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
@@ -1618,6 +1711,19 @@ function configToForm(rule: QualityRule): RuleConfigForm {
       form.groupColumns = value.columns.join(", ");
       form.minRowsPerGroup = optionalStringFromInt64(value.minRowsPerGroup);
       form.maxRowsPerGroup = optionalStringFromInt64(value.maxRowsPerGroup);
+      form.failThreshold = optionalStringFromDouble(value.failThreshold);
+      form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
+      break;
+    }
+    case "segmentCheck": {
+      const value = config.value;
+      form.segmentColumns = value.columns.join(", ");
+      // 0 is the stored "server default": leave the input blank rather than
+      // showing a number the rule does not actually carry.
+      form.segmentBaselineRuns =
+        value.baselineRuns > 0 ? String(value.baselineRuns) : "";
+      form.segmentMinOccurrences =
+        value.minOccurrences > 0 ? String(value.minOccurrences) : "";
       form.failThreshold = optionalStringFromDouble(value.failThreshold);
       form.warnThreshold = optionalStringFromDouble(value.warnThreshold);
       break;
@@ -1989,6 +2095,8 @@ export function validateRuleForm(
     c.warnLagSeconds,
     c.minRowsPerGroup,
     c.maxRowsPerGroup,
+    c.segmentBaselineRuns,
+    c.segmentMinOccurrences,
   ]) {
     if (invalidInteger(value)) {
       invalid();
@@ -2070,14 +2178,39 @@ export function validateRuleForm(
       if (!trimmed(c.column)) {
         issues.push({ key: VALIDATION_PREFIX + "columnRequired" });
       }
-      const values = parseValueList(c.values ?? "");
-      if (values.length === 0) {
-        issues.push({ key: VALIDATION_PREFIX + "valuesRequired" });
-      } else if (values.length > MAX_ACCEPTED_VALUES) {
-        issues.push({
-          key: VALIDATION_PREFIX + "valuesTooMany",
-          params: { max: MAX_ACCEPTED_VALUES },
-        });
+      const source = c.acceptedSource ?? "list";
+      if (source === "field") {
+        const field = trimmed(c.acceptedField);
+        if (!field) {
+          issues.push({ key: VALIDATION_PREFIX + "acceptedFieldRequired" });
+        } else if (field === trimmed(c.column)) {
+          issues.push({ key: VALIDATION_PREFIX + "acceptedFieldSameColumn" });
+        }
+      } else if (source === "query") {
+        const sql = (c.acceptedQuery ?? "").trim();
+        if (!sql) {
+          issues.push({ key: VALIDATION_PREFIX + "acceptedQueryRequired" });
+        } else if (byteLength(sql) > MAX_ACCEPTED_VALUES_QUERY_BYTES) {
+          issues.push({
+            key: VALIDATION_PREFIX + "acceptedQueryTooLong",
+            params: { max: MAX_ACCEPTED_VALUES_QUERY_BYTES },
+          });
+        }
+        if (!trimmed(c.acceptedQueryColumn)) {
+          issues.push({
+            key: VALIDATION_PREFIX + "acceptedQueryColumnRequired",
+          });
+        }
+      } else {
+        const values = parseValueList(c.values ?? "");
+        if (values.length === 0) {
+          issues.push({ key: VALIDATION_PREFIX + "valuesRequired" });
+        } else if (values.length > MAX_ACCEPTED_VALUES) {
+          issues.push({
+            key: VALIDATION_PREFIX + "valuesTooMany",
+            params: { max: MAX_ACCEPTED_VALUES },
+          });
+        }
       }
       break;
     }
@@ -2252,6 +2385,51 @@ export function validateRuleForm(
       }
       if (!hasAny([c.minRowsPerGroup, c.maxRowsPerGroup])) {
         issues.push({ key: VALIDATION_PREFIX + "groupBoundRequired" });
+      }
+      break;
+    }
+    case QualityRuleType.SEGMENT_CHECK: {
+      const columns = parseValueList(c.segmentColumns ?? "");
+      if (columns.length === 0) {
+        issues.push({ key: VALIDATION_PREFIX + "segmentColumnsRequired" });
+      } else if (columns.length > MAX_SEGMENT_COLUMNS) {
+        issues.push({
+          key: VALIDATION_PREFIX + "segmentColumnsTooMany",
+          params: { max: MAX_SEGMENT_COLUMNS },
+        });
+      }
+      // Both numeric fields are optional: blank asks for the server default
+      // (3 and 2). A supplied number must be in the range the server accepts.
+      const baselineRuns = trimmed(c.segmentBaselineRuns)
+        ? optionalIntegerValue(c.segmentBaselineRuns)
+        : DEFAULT_SEGMENT_BASELINE_RUNS;
+      if (
+        baselineRuns === undefined ||
+        baselineRuns < MIN_SEGMENT_BASELINE_RUNS ||
+        baselineRuns > MAX_SEGMENT_BASELINE_RUNS
+      ) {
+        issues.push({
+          key: VALIDATION_PREFIX + "segmentBaselineRunsInvalid",
+          params: { max: MAX_SEGMENT_BASELINE_RUNS },
+        });
+        break;
+      }
+      const minOccurrences = trimmed(c.segmentMinOccurrences)
+        ? optionalIntegerValue(c.segmentMinOccurrences)
+        : Math.min(DEFAULT_SEGMENT_MIN_OCCURRENCES, baselineRuns);
+      if (
+        minOccurrences === undefined ||
+        minOccurrences < 1 ||
+        minOccurrences > Math.min(baselineRuns, MAX_SEGMENT_BASELINE_RUNS)
+      ) {
+        issues.push({
+          key: VALIDATION_PREFIX + "segmentMinOccurrencesInvalid",
+        });
+      }
+      const fail = optionalNumberValue(c.failThreshold);
+      const warn = optionalNumberValue(c.warnThreshold);
+      if (fail !== undefined && warn !== undefined && warn > fail) {
+        issues.push({ key: VALIDATION_PREFIX + "thresholdOrder" });
       }
       break;
     }

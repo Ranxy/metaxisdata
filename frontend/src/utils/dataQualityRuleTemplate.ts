@@ -112,16 +112,27 @@ export function templateDescription(
  * The template message a "save as template" action sends for the current form.
  * It carries the check's type, parameters, severity and dimension; the server
  * clears the target-bound fields. The check itself is not saved.
+ *
+ * The server refuses a template that carries a dynamic accepted-values source
+ * (another column or a query), because the source is bound to one target, so
+ * the template path drops those two sources and leaves only the fixed list.
+ * Without any value the save then fails with the server's own message, which is
+ * the feedback the dialog already renders.
  */
 export function formToRuleTemplate(
   form: RuleFormState,
   options: { title: string; description?: string }
 ): QualityRuleTemplate {
+  const config = buildRuleConfig(form);
+  if (config.config?.case === "acceptedValues") {
+    config.config.value.field = "";
+    config.config.value.query = undefined;
+  }
   return create(QualityRuleTemplateSchema, {
     title: options.title.trim(),
     description: (options.description ?? "").trim(),
     ruleType: form.ruleType,
-    config: buildRuleConfig(form),
+    config,
     severity: form.severity,
     dimension: form.dimension,
   });

@@ -728,7 +728,10 @@ import {
 /** The pane the workspace opened the dialog from, which seeds the check type. */
 type ComposerScope = "dataset" | "column";
 
-/** The single-column config field each check type fills from `initialColumn`. */
+/**
+ * The single-column config field each check type fills from `initialColumn`.
+ * A segment check groups by several columns, so it has no single field to fill.
+ */
 const SINGLE_COLUMN_FIELD: Partial<
   Record<QualityRuleType, keyof RuleFormState["config"]>
 > = {
@@ -775,6 +778,7 @@ const COLUMN_TYPES = [
 const ADVANCED_TYPES = [
   QualityRuleType.CROSS_COLUMN,
   QualityRuleType.GROUP_CHECK,
+  QualityRuleType.SEGMENT_CHECK,
   QualityRuleType.AGGREGATE,
   QualityRuleType.CROSS_TABLE,
   QualityRuleType.CEL_EXPRESSION,

@@ -225,4 +225,33 @@ describe("formToRuleTemplate", () => {
     expect(reopened.config.countNulls).toBe(true);
     expect(reopened.title).toBe("Email uniqueness");
   });
+
+  it("drops a dynamic accepted-values source a template cannot carry", () => {
+    // A reference column or a query is bound to one target; the server refuses a
+    // template that names either, so the save path leaves the fixed list only.
+    for (const config of [
+      { acceptedSource: "field" as const, acceptedField: "status_code" },
+      {
+        acceptedSource: "query" as const,
+        acceptedQuery: "SELECT code FROM public.codes",
+        acceptedQueryColumn: "code",
+      },
+    ]) {
+      const value = emptyRuleForm(QualityRuleType.ACCEPTED_VALUES);
+      value.title = "Status is accepted";
+      value.config = {
+        ...value.config,
+        column: "status",
+        values: "",
+        ...config,
+      };
+      const template = formToRuleTemplate(value, { title: "Status list" });
+      if (template.config?.config.case !== "acceptedValues") {
+        throw new Error("expected an accepted-values config arm");
+      }
+      expect(template.config.config.value.field).toBe("");
+      expect(template.config.config.value.query).toBeUndefined();
+      expect(template.config.config.value.values).toEqual([]);
+    }
+  });
 });

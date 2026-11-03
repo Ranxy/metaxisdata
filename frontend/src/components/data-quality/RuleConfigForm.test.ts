@@ -119,6 +119,29 @@ describe("RuleConfigForm", () => {
     wrapper.unmount();
   });
 
+  it("renders the segment-check config under the shared threshold block", () => {
+    const wrapper = mountForm(QualityRuleType.SEGMENT_CHECK);
+    expect(wrapper.find("#dq-field-segmentColumns").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-segmentBaselineRuns").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-segmentMinOccurrences").exists()).toBe(true);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.segmentColumns")
+    );
+    // PERCENT is allowed for this type, so the shared unit select is shown.
+    expect(wrapper.text()).toContain(THRESHOLD_LABEL());
+    wrapper.unmount();
+  });
+
+  it("renders the accepted-values source selector with the fixed list by default", () => {
+    const wrapper = mountForm(QualityRuleType.ACCEPTED_VALUES);
+    expect(wrapper.find("#dq-field-acceptedSource").exists()).toBe(true);
+    expect(wrapper.find("#dq-field-values").exists()).toBe(true);
+    expect(wrapper.text()).toContain(
+      label("dataQuality.editor.acceptedSource")
+    );
+    wrapper.unmount();
+  });
+
   it("renders the cross-table reference, thresholds and reference filter", () => {
     const wrapper = mountForm(QualityRuleType.CROSS_TABLE, {
       referenceGuid: "inst2;db2;public;orders_ref",

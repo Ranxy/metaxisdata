@@ -20,6 +20,8 @@ import {
   QualityTargetPathSchema,
   QualityTargetSchema,
   QualityThresholdsSchema,
+  SegmentObservationSchema,
+  SegmentRecordSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { UserSchema } from "@/types/proto-es/v1/user_service_pb";
@@ -395,5 +397,141 @@ describe("DataQualityExecutionDetailPage", () => {
       "SELECT COUNT(*) AS right_value FROM other.customers"
     );
     withReference.wrapper.unmount();
+  });
+
+  it("renders the passing rows beside the failed rows when it kept them", async () => {
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        passingSamples: [
+          {
+            columns: [
+              { column: "id", value: "9" },
+              { column: "email", value: "ok@example.com" },
+            ],
+          },
+        ],
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+    expect(text).toContain(i18n.global.t("dataQuality.passingSamples"));
+    expect(text).toContain(i18n.global.t("dataQuality.passingSamplesHint"));
+    expect(text).toContain("ok@example.com");
+    // The failed rows card is still there: the two populations sit together.
+    expect(text).toContain(i18n.global.t("dataQuality.failureSamples"));
+    wrapper.unmount();
+  });
+
+  it("does not render an empty passing-rows card", async () => {
+    const { wrapper } = await mountPage();
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.passingSamples")
+    );
+    wrapper.unmount();
+  });
+
+  it("renders a segment check's evidence instead of failed rows", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Every region keeps reporting",
+        ruleType: QualityRuleType.SEGMENT_CHECK,
+      })
+    );
+    const lastSeen = new Date(START.getTime() - 3_600_000);
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        samples: [],
+        observedValue: 2,
+        observedKind: QualityObservedKind.COUNT,
+        segmentEvidence: create(SegmentObservationSchema, {
+          observed: [
+            create(SegmentRecordSchema, {
+              values: ["emea", "web"],
+              rowCount: 10n,
+            }),
+          ],
+          newSegments: [
+            create(SegmentRecordSchema, {
+              values: ["latam", "app"],
+              rowCount: 4n,
+            }),
+          ],
+          disappeared: [
+            create(SegmentRecordSchema, {
+              values: ["apac", "web"],
+              rowCount: 7n,
+              lastSeen: timestampFromDate(lastSeen),
+            }),
+          ],
+          baselineRuns: 3,
+          expectedCount: 2n,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+
+    expect(text).toContain(i18n.global.t("dataQuality.segmentEvidence.title"));
+    // The disappeared segment is the failure: its values, row count and last run.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.disappeared")
+    );
+    expect(text).toContain("apac · web");
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.rowCount", { count: "7" })
+    );
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.lastSeen", { time: "" }).trim()
+    );
+    // The new segment is evidence only.
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.newSegments")
+    );
+    expect(text).toContain("latam · app");
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.baseline", {
+        runs: "3",
+        expected: "2",
+      })
+    );
+    // A segment check keeps no failed-row samples, so it shows no such card.
+    expect(text).not.toContain(i18n.global.t("dataQuality.failureSamples"));
+    expect(text).not.toContain(i18n.global.t("dataQuality.noSamples"));
+    wrapper.unmount();
+  });
+
+  it("says when a segment observation was truncated and not judged", async () => {
+    mocks.getQualityRule.mockResolvedValue(
+      create(QualityRuleSchema, {
+        name: RULE,
+        title: "Segment set",
+        ruleType: QualityRuleType.SEGMENT_CHECK,
+      })
+    );
+    mocks.getQualityExecution.mockResolvedValue(
+      executionFixture({
+        samples: [],
+        outcome: QualityStatus.NOT_EVALUATED,
+        segmentEvidence: create(SegmentObservationSchema, {
+          observed: [
+            create(SegmentRecordSchema, {
+              values: ["emea"],
+              rowCount: 10n,
+            }),
+          ],
+          truncated: true,
+        }),
+      })
+    );
+    const { wrapper } = await mountPage();
+    const text = wrapper.text();
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.truncated")
+    );
+    expect(text).toContain(
+      i18n.global.t("dataQuality.segmentEvidence.noNewSegments")
+    );
+    wrapper.unmount();
   });
 });

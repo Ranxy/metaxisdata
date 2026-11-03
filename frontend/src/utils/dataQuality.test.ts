@@ -226,6 +226,9 @@ describe("qualityRuleTypeKey", () => {
     expect(qualityRuleTypeKey(QualityRuleType.CROSS_TABLE)).toBe(
       "dataQuality.ruleType.crossTable"
     );
+    expect(qualityRuleTypeKey(QualityRuleType.SEGMENT_CHECK)).toBe(
+      "dataQuality.ruleType.segmentCheck"
+    );
     expect(qualityRuleTypeKey(QualityRuleType.UNSPECIFIED)).toBe(
       "dataQuality.ruleType.unspecified"
     );
@@ -242,7 +245,7 @@ describe("qualityRuleTypeKey", () => {
       (value): value is QualityRuleType =>
         typeof value === "number" && value !== QualityRuleType.UNSPECIFIED
     );
-    expect(types).toHaveLength(19);
+    expect(types).toHaveLength(20);
     const keys = types.map((ruleType) => qualityRuleTypeKey(ruleType));
     expect(keys).not.toContain("dataQuality.ruleType.unspecified");
     expect(new Set(keys).size).toBe(types.length);
@@ -259,6 +262,9 @@ describe("qualityRuleTypeDescriptionKey", () => {
     );
     expect(qualityRuleTypeDescriptionKey(QualityRuleType.CROSS_TABLE)).toBe(
       "dataQuality.ruleTypeDescription.crossTable"
+    );
+    expect(qualityRuleTypeDescriptionKey(QualityRuleType.SEGMENT_CHECK)).toBe(
+      "dataQuality.ruleTypeDescription.segmentCheck"
     );
     expect(qualityRuleTypeDescriptionKey(QualityRuleType.UNSPECIFIED)).toBe("");
     expect(qualityRuleTypeDescriptionKey(99 as QualityRuleType)).toBe("");
@@ -1149,7 +1155,7 @@ describe("data quality vocabulary catalogs", () => {
     const types = enumValues(QualityRuleType).filter(
       (value) => value !== QualityRuleType.UNSPECIFIED
     );
-    expect(types).toHaveLength(19);
+    expect(types).toHaveLength(20);
     for (const [locale, catalog] of Object.entries(CATALOGS)) {
       const labels = types.map((ruleType) =>
         label(catalog, qualityRuleTypeKey(ruleType))

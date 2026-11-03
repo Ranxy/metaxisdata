@@ -425,7 +425,7 @@ describe("TargetRuleComposer", () => {
     await nextTick();
 
     const buttons = typeButtons();
-    expect(buttons).toHaveLength(19);
+    expect(buttons).toHaveLength(20);
     expect(buttons.map(typeButtonLabel)).toContain(
       label(qualityRuleTypeKey(QualityRuleType.ROW_COUNT))
     );

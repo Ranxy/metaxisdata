@@ -97,7 +97,7 @@ function completeForm(ruleType: QualityRuleType): RuleFormState {
 
 describe("rule field schema", () => {
   it("covers every editable rule type with labeled metadata", () => {
-    expect(EDITABLE_RULE_TYPES).toHaveLength(19);
+    expect(EDITABLE_RULE_TYPES).toHaveLength(20);
     for (const ruleType of EDITABLE_RULE_TYPES) {
       const schema = ruleFieldSchema(ruleType);
       expect(schema, `schema for ${ruleType}`).toBeTruthy();

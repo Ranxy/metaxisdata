@@ -48,6 +48,7 @@ import {
   isThresholdMetricType,
   isValidCronExpression,
   MAX_ACCEPTED_VALUES,
+  MAX_ACCEPTED_VALUES_QUERY_BYTES,
   MAX_CEL_COLUMNS,
   MAX_CEL_EXPRESSION_BYTES,
   MAX_CUSTOM_SQL_BYTES,
@@ -191,6 +192,13 @@ const CONFIG_FIXTURES: Partial<
     failThreshold: "0",
     warnThreshold: "5",
   },
+  [QualityRuleType.SEGMENT_CHECK]: {
+    segmentColumns: "region, channel",
+    segmentBaselineRuns: "5",
+    segmentMinOccurrences: "3",
+    failThreshold: "2",
+    warnThreshold: "1",
+  },
   [QualityRuleType.AGGREGATE]: {
     aggregateColumn: "amount",
     aggregateFunction: QualityAggregateFunction.AVG,
@@ -254,6 +262,7 @@ const CONFIG_CASES: Record<string, QualityRuleType> = {
   customSql: QualityRuleType.CUSTOM_SQL,
   schemaDrift: QualityRuleType.SCHEMA_DRIFT,
   groupCheck: QualityRuleType.GROUP_CHECK,
+  segmentCheck: QualityRuleType.SEGMENT_CHECK,
   aggregate: QualityRuleType.AGGREGATE,
   crossTable: QualityRuleType.CROSS_TABLE,
   celExpression: QualityRuleType.CEL_EXPRESSION,
@@ -292,14 +301,15 @@ function ruleFor(ruleType: QualityRuleType): QualityRule {
 
 describe("rule type catalogs", () => {
   it("offers every editable type", () => {
-    expect(EDITABLE_RULE_TYPES).toHaveLength(19);
-    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(19);
+    expect(EDITABLE_RULE_TYPES).toHaveLength(20);
+    expect(new Set(EDITABLE_RULE_TYPES).size).toBe(20);
     for (const ruleType of [
       QualityRuleType.CEL_EXPRESSION,
       QualityRuleType.SCHEMA_DRIFT,
       QualityRuleType.GROUP_CHECK,
       QualityRuleType.AGGREGATE,
       QualityRuleType.CROSS_TABLE,
+      QualityRuleType.SEGMENT_CHECK,
     ]) {
       expect(EDITABLE_RULE_TYPES).toContain(ruleType);
     }
@@ -320,6 +330,7 @@ describe("rule type catalogs", () => {
         QualityRuleType.GROUP_CHECK,
         QualityRuleType.CEL_EXPRESSION,
         QualityRuleType.STANDARD_CODE,
+        QualityRuleType.SEGMENT_CHECK,
       ])
     );
     expect(THRESHOLD_METRIC_RULE_TYPES).not.toContain(
@@ -382,6 +393,7 @@ describe("rule type catalogs", () => {
       QualityRuleType.CROSS_TABLE,
       QualityRuleType.CEL_EXPRESSION,
       QualityRuleType.STANDARD_CODE,
+      QualityRuleType.SEGMENT_CHECK,
     ]) {
       expect(allowedRuleTypes(MetaType.VIEW)).not.toContain(ruleType);
     }
@@ -542,6 +554,21 @@ describe("target selection", () => {
     expect(columnsForConfig(validForm(QualityRuleType.STANDARD_CODE))).toEqual([
       "credit_code",
     ]);
+    expect(columnsForConfig(validForm(QualityRuleType.SEGMENT_CHECK))).toEqual([
+      "region",
+      "channel",
+    ]);
+    // A field source reads the reference column as well; a query's value column
+    // is the query's own result, not a column of the target.
+    const fieldSource = validForm(QualityRuleType.ACCEPTED_VALUES);
+    fieldSource.config.acceptedSource = "field";
+    fieldSource.config.acceptedField = "status_code";
+    expect(columnsForConfig(fieldSource)).toEqual(["status", "status_code"]);
+    const querySource = validForm(QualityRuleType.ACCEPTED_VALUES);
+    querySource.config.acceptedSource = "query";
+    querySource.config.acceptedQuery = "SELECT code FROM codes";
+    querySource.config.acceptedQueryColumn = "code";
+    expect(columnsForConfig(querySource)).toEqual(["status"]);
   });
 });
 
@@ -692,6 +719,141 @@ describe("config conversion", () => {
       }),
     });
     expect(ruleToForm(rule).config.maxLagSeconds).toBe("");
+  });
+});
+
+describe("accepted-values sources", () => {
+  function acceptedForm(): RuleFormState {
+    return validForm(QualityRuleType.ACCEPTED_VALUES);
+  }
+
+  it("sends exactly one source and reads the same one back", () => {
+    // The default is the fixed list.
+    const list = acceptedForm();
+    let rule = formToRule(list, { target: TARGET });
+    if (rule.config?.config.case !== "acceptedValues") {
+      throw new Error("expected an accepted-values config arm");
+    }
+    expect(rule.config.config.value.values).toEqual(["open", "closed"]);
+    expect(rule.config.config.value.field).toBe("");
+    expect(rule.config.config.value.query).toBeUndefined();
+    expect(ruleToForm(rule).config.acceptedSource).toBe("list");
+
+    // A reference column carries no values and no query.
+    const field = acceptedForm();
+    field.config.acceptedSource = "field";
+    field.config.acceptedField = "status_code";
+    rule = formToRule(field, { target: TARGET });
+    if (rule.config?.config.case !== "acceptedValues") {
+      throw new Error("expected an accepted-values config arm");
+    }
+    expect(rule.config.config.value.values).toEqual([]);
+    expect(rule.config.config.value.field).toBe("status_code");
+    expect(rule.config.config.value.query).toBeUndefined();
+    expect(ruleToForm(rule).config.acceptedField).toBe("status_code");
+
+    // A query carries its statement and the column it returns.
+    const query = acceptedForm();
+    query.config.acceptedSource = "query";
+    query.config.acceptedQuery = "  SELECT DISTINCT code FROM public.codes  ";
+    query.config.acceptedQueryColumn = " code ";
+    rule = formToRule(query, { target: TARGET });
+    if (rule.config?.config.case !== "acceptedValues") {
+      throw new Error("expected an accepted-values config arm");
+    }
+    expect(rule.config.config.value.values).toEqual([]);
+    expect(rule.config.config.value.field).toBe("");
+    expect(rule.config.config.value.query?.sql).toBe(
+      "SELECT DISTINCT code FROM public.codes"
+    );
+    expect(rule.config.config.value.query?.valueColumn).toBe("code");
+    const back = ruleToForm(rule);
+    expect(back.config.acceptedSource).toBe("query");
+    expect(back.config.acceptedQuery).toBe(
+      "SELECT DISTINCT code FROM public.codes"
+    );
+    expect(back.config.acceptedQueryColumn).toBe("code");
+  });
+
+  it("validates the selected source only", () => {
+    // A field source does not need the fixed list, and vice versa.
+    const field = acceptedForm();
+    field.config.acceptedSource = "field";
+    field.config.acceptedField = "status_code";
+    field.config.values = "";
+    expect(validateRuleForm(field, TARGET)).toEqual([]);
+
+    const query = acceptedForm();
+    query.config.acceptedSource = "query";
+    query.config.acceptedQuery = "SELECT code FROM public.codes";
+    query.config.acceptedQueryColumn = "code";
+    query.config.values = "";
+    expect(validateRuleForm(query, TARGET)).toEqual([]);
+
+    const tooLong = acceptedForm();
+    tooLong.config.acceptedSource = "query";
+    tooLong.config.acceptedQuery = "a".repeat(
+      MAX_ACCEPTED_VALUES_QUERY_BYTES + 1
+    );
+    tooLong.config.acceptedQueryColumn = "code";
+    const issue = validateRuleForm(tooLong, TARGET).find(
+      (candidate) =>
+        candidate.key === `${VALIDATION_PREFIX}acceptedQueryTooLong`
+    );
+    expect(issue?.params).toEqual({ max: MAX_ACCEPTED_VALUES_QUERY_BYTES });
+  });
+});
+
+describe("segment check", () => {
+  it("sends the grouping columns and the baseline window", () => {
+    const form = validForm(QualityRuleType.SEGMENT_CHECK);
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "segmentCheck") {
+      throw new Error("expected a segment-check config arm");
+    }
+    const config = rule.config.config.value;
+    expect(config.columns).toEqual(["region", "channel"]);
+    expect(config.baselineRuns).toBe(5);
+    expect(config.minOccurrences).toBe(3);
+    expect(config.failThreshold).toBe(2);
+    expect(config.warnThreshold).toBe(1);
+    // The target snapshot records every grouping column.
+    expect(rule.target?.columns).toEqual(["region", "channel"]);
+
+    const back = ruleToForm(rule);
+    expect(back.config.segmentColumns).toBe("region, channel");
+    expect(back.config.segmentBaselineRuns).toBe("5");
+    expect(back.config.segmentMinOccurrences).toBe("3");
+    expect(back.thresholdMetric).toBe(QualityThresholdMetric.COUNT);
+  });
+
+  it("accepts PERCENT and blanks for the two numeric defaults", () => {
+    const form = validForm(QualityRuleType.SEGMENT_CHECK);
+    form.thresholdMetric = QualityThresholdMetric.PERCENT;
+    form.config.segmentBaselineRuns = "";
+    form.config.segmentMinOccurrences = "";
+    expect(validateRuleForm(form, TARGET)).toEqual([]);
+
+    const rule = formToRule(form, { target: TARGET });
+    if (rule.config?.config.case !== "segmentCheck") {
+      throw new Error("expected a segment-check config arm");
+    }
+    // 0 asks the server for its own defaults (3 and 2).
+    expect(rule.config.config.value.baselineRuns).toBe(0);
+    expect(rule.config.config.value.minOccurrences).toBe(0);
+    expect(ruleToForm(rule).config.segmentBaselineRuns).toBe("");
+  });
+
+  it("refuses more grouping columns than the server accepts", () => {
+    const form = validForm(QualityRuleType.SEGMENT_CHECK);
+    form.config.segmentColumns = "a, b, c, d, e, f";
+    expect(validateRuleForm(form, TARGET).map((issue) => issue.key)).toContain(
+      `${VALIDATION_PREFIX}segmentColumnsTooMany`
+    );
+  });
+
+  it("cannot be sampled", () => {
+    expect(canSampleRuleType(QualityRuleType.SEGMENT_CHECK)).toBe(false);
   });
 });
 
@@ -1316,6 +1478,63 @@ describe("validation", () => {
           };
         },
         "groupBoundRequired",
+      ],
+      [
+        QualityRuleType.SEGMENT_CHECK,
+        (form) => {
+          form.config = { ...form.config, segmentColumns: "" };
+        },
+        "segmentColumnsRequired",
+      ],
+      [
+        QualityRuleType.SEGMENT_CHECK,
+        (form) => {
+          form.config = { ...form.config, segmentBaselineRuns: "11" };
+        },
+        "segmentBaselineRunsInvalid",
+      ],
+      [
+        QualityRuleType.SEGMENT_CHECK,
+        (form) => {
+          form.config = { ...form.config, segmentMinOccurrences: "6" };
+        },
+        "segmentMinOccurrencesInvalid",
+      ],
+      [
+        QualityRuleType.ACCEPTED_VALUES,
+        (form) => {
+          form.config = { ...form.config, acceptedSource: "field" };
+        },
+        "acceptedFieldRequired",
+      ],
+      [
+        QualityRuleType.ACCEPTED_VALUES,
+        (form) => {
+          form.config = {
+            ...form.config,
+            acceptedSource: "field",
+            acceptedField: "status",
+          };
+        },
+        "acceptedFieldSameColumn",
+      ],
+      [
+        QualityRuleType.ACCEPTED_VALUES,
+        (form) => {
+          form.config = { ...form.config, acceptedSource: "query" };
+        },
+        "acceptedQueryRequired",
+      ],
+      [
+        QualityRuleType.ACCEPTED_VALUES,
+        (form) => {
+          form.config = {
+            ...form.config,
+            acceptedSource: "query",
+            acceptedQuery: "SELECT 1",
+          };
+        },
+        "acceptedQueryColumnRequired",
       ],
       [
         QualityRuleType.AGGREGATE,
