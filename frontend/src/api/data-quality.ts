@@ -533,6 +533,8 @@ export async function listQualityRules(options: {
 }
 
 /** Every rule the caller can see, walking the cursor pages. */
+const listAllPageSize = 1000;
+
 export async function listAllQualityRules(
   options: { pageSize?: number; state?: QualityRuleState } = {}
 ): Promise<QualityRule[]> {
@@ -1722,6 +1724,7 @@ export async function listQualityInvestigations(
     const request = create(ListQualityInvestigationsRequestSchema, {
       parent: WORKSPACE_PARENT,
       targetGuid,
+      pageSize: listAllPageSize,
       pageToken,
     });
     const response = await dataQualityClient.listQualityInvestigations(
@@ -1746,6 +1749,7 @@ export async function listQualityMemories(
     const request = create(ListQualityMemoriesRequestSchema, {
       parent: WORKSPACE_PARENT,
       subject,
+      pageSize: listAllPageSize,
       pageToken,
     });
     const response = await dataQualityClient.listQualityMemories(request, {

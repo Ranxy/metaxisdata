@@ -1073,7 +1073,7 @@
       "confirmed": "记忆已确认",
       "decideFailed": "记录决策失败。",
       "details": "{evidence} 条证据 · {hypotheses} 个假设",
-      "hint": "系统对该目标积累的认识。调查用证据解释一次事件；记忆是可累积的知识，提议只有经人确认后才算数。",
+      "hint": "系统对该目标积累的认识。调查用证据解释一次事件；记忆是可累积的知识，只有经人确认后才算数。",
       "investigations": "调查",
       "investigationsEmpty": "该目标还没有调查记录。",
       "kindAssetFact": "资产事实",

@@ -1072,7 +1072,7 @@
       "confirm": "Confirm",
       "confirmed": "Memory confirmed",
       "decideFailed": "Recording the decision failed.",
-      "details": "{evidence} evidence references · {hypotheses} hypotheses",
+      "details": "Evidence: {evidence} · hypotheses: {hypotheses}",
       "hint": "What the system learned about this target. Investigations explain an event with evidence; memories are durable knowledge, and a proposal only counts once a person confirms it.",
       "investigations": "Investigations",
       "investigationsEmpty": "No investigation has been recorded for this target yet.",

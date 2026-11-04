@@ -63,6 +63,15 @@ function memoryFixture(
   });
 }
 
+function memoryFixture2() {
+  return create(QualityMemorySchema, {
+    name: "workspaces/ws1/qualityMemories/m2",
+    kind: QualityMemoryKind.DECISION,
+    statement: "the second statement",
+    status: QualityMemoryStatus.PROPOSED,
+  });
+}
+
 function mountCard(canConfirm = true) {
   return mount(QualityKnowledgeCard, {
     props: { targetGuid: "inst;db;public;orders", canConfirm },
@@ -122,19 +131,71 @@ describe("QualityKnowledgeCard", () => {
     wrapper.unmount();
   });
 
-  it("offers no decision to a reader and shows an empty state", async () => {
-    mocks.listQualityInvestigations.mockResolvedValue([]);
-    mocks.listQualityMemories.mockResolvedValue([]);
+  it("offers no decision to a reader, even for a proposed memory", async () => {
     const wrapper = mountCard(false);
     await flushPromises();
 
     expect(wrapper.text()).toContain(
-      label("dataQuality.knowledge.investigationsEmpty")
+      label("dataQuality.knowledge.statusProposed")
+    );
+    expect(
+      wrapper
+        .findAll("button")
+        .some(
+          (button) => button.text() === label("dataQuality.knowledge.confirm")
+        )
+    ).toBe(false);
+    expect(
+      wrapper
+        .findAll("button")
+        .some(
+          (button) => button.text() === label("dataQuality.knowledge.reject")
+        )
+    ).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("rejects a proposed memory and keeps only the affected row changed", async () => {
+    mocks.listQualityMemories.mockResolvedValue([
+      memoryFixture(),
+      memoryFixture2(),
+    ]);
+    mocks.confirmQualityMemory.mockResolvedValue(
+      memoryFixture(QualityMemoryStatus.REJECTED)
+    );
+    const wrapper = mountCard();
+    await flushPromises();
+
+    const reject = wrapper
+      .findAll("button")
+      .find(
+        (button) => button.text() === label("dataQuality.knowledge.reject")
+      );
+    await reject!.trigger("click");
+    await flushPromises();
+
+    expect(mocks.confirmQualityMemory).toHaveBeenCalledWith(
+      "workspaces/ws1/qualityMemories/m1",
+      ConfirmQualityMemoryRequest_Decision.REJECT
     );
     expect(wrapper.text()).toContain(
-      label("dataQuality.knowledge.memoriesEmpty")
+      label("dataQuality.knowledge.statusRejected")
     );
-    expect(wrapper.findAll("button")).toHaveLength(0);
+    expect(wrapper.text()).toContain("the second statement");
+    wrapper.unmount();
+  });
+
+  it("reports a failed load and retries", async () => {
+    mocks.listQualityInvestigations.mockRejectedValueOnce(new Error("boom"));
+    const wrapper = mountCard();
+    await flushPromises();
+    expect(wrapper.text()).toContain(label("dataQuality.knowledge.loadFailed"));
+    const retry = wrapper
+      .findAll("button")
+      .find((button) => button.text() === label("common.retry"));
+    await retry!.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("the upstream batch was short");
     wrapper.unmount();
   });
 });

@@ -18,7 +18,16 @@
         variant="destructive"
       >
         <AlertTriangle class="h-4 w-4" />
-        <AlertDescription class="break-words">{{ error }}</AlertDescription>
+        <AlertDescription class="space-y-2 break-words">
+          <p>{{ error }}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="load"
+          >
+            {{ t("common.retry") }}
+          </Button>
+        </AlertDescription>
       </Alert>
       <template v-else>
         <section class="space-y-2">
@@ -43,7 +52,10 @@
                   {{ verdictLabel(investigation.verdict) }}
                 </Badge>
                 <span class="text-xs text-muted-foreground">
-                  {{ triggerLabel(investigation.trigger) }} · {{ investigation.triggerReference }}
+                  {{ triggerLabel(investigation.trigger) }}
+                  <template v-if="investigation.triggerReference">
+                    · {{ investigation.triggerReference }}
+                  </template>
                 </span>
                 <span class="ml-auto text-xs text-muted-foreground">
                   {{ formatDateTime(investigation.createTime, locale) }}
@@ -55,7 +67,16 @@
               >
                 {{ investigation.summary }}
               </p>
-              <details class="mt-1">
+              <p
+                v-if="investigation.failureReason"
+                class="mt-1 text-xs text-destructive"
+              >
+                {{ investigation.failureReason }}
+              </p>
+              <details
+                v-if="investigation.evidence.length > 0 || investigation.hypotheses.length > 0"
+                class="mt-1"
+              >
                 <summary class="cursor-pointer text-xs text-muted-foreground">
                   {{ t("dataQuality.knowledge.details", {
                     evidence: investigation.evidence.length,
@@ -122,7 +143,7 @@
               >
                 <Button
                   size="sm"
-                  :disabled="busyName === memory.name"
+                  :disabled="busyName !== ''"
                   @click="decide(memory, 'confirm')"
                 >
                   {{ t("dataQuality.knowledge.confirm") }}
@@ -130,7 +151,7 @@
                 <Button
                   size="sm"
                   variant="outline"
-                  :disabled="busyName === memory.name"
+                  :disabled="busyName !== ''"
                   @click="decide(memory, 'reject')"
                 >
                   {{ t("dataQuality.knowledge.reject") }}
@@ -146,7 +167,7 @@
 
 <script setup lang="ts">
 import { AlertTriangle } from "lucide-vue-next";
-import { onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   confirmQualityMemory,
@@ -195,24 +216,43 @@ const memories = ref<QualityMemory[]>([]);
 const loading = ref(false);
 const error = ref("");
 const busyName = ref("");
+let loadGeneration = 0;
+let loadController: AbortController | undefined;
 
 async function load() {
+  // A target switch reuses this component: an older reply must never write the
+  // previous target's rows under the new one.
+  const generation = ++loadGeneration;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
+  investigations.value = [];
+  memories.value = [];
+  error.value = "";
   if (props.targetGuid === "") {
+    loading.value = false;
     return;
   }
   loading.value = true;
-  error.value = "";
   try {
     const [nextInvestigations, nextMemories] = await Promise.all([
-      listQualityInvestigations(props.targetGuid),
-      listQualityMemories(props.targetGuid),
+      listQualityInvestigations(props.targetGuid, controller.signal),
+      listQualityMemories(props.targetGuid, controller.signal),
     ]);
+    if (generation !== loadGeneration || controller.signal.aborted) {
+      return;
+    }
     investigations.value = nextInvestigations;
     memories.value = nextMemories;
   } catch (e: unknown) {
+    if (generation !== loadGeneration || controller.signal.aborted) {
+      return;
+    }
     error.value = formatError(e, "dataQuality.knowledge.loadFailed");
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) {
+      loading.value = false;
+    }
   }
 }
 
@@ -332,9 +372,9 @@ function statusVariant(
   }
 }
 
-onMounted(load);
-watch(
-  () => props.targetGuid,
-  () => void load()
-);
+watch(() => props.targetGuid, load, { immediate: true });
+onBeforeUnmount(() => {
+  loadGeneration++;
+  loadController?.abort();
+});
 </script>
