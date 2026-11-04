@@ -175,20 +175,7 @@ func qualityCoverageGapsFromPlans(plans []*v1pb.QualityPlan) []*v1pb.QualityCove
 // the criticality and the explicit statements; without an intent the presence of a
 // contract is still the S1 bridge to IMPORTANT.
 func qualityPlanView(guid string, metaType storepb.MetaType, rules []*store.QualityRuleMessage, contract *store.QualityContractMessage) *v1pb.QualityPlan {
-	shapes := make([]dataquality.RuleShape, 0, len(rules))
-	for _, rule := range rules {
-		if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED &&
-			rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
-			// A paused rule is live but deliberately not running; it does not
-			// satisfy the requirement it would otherwise cover.
-			continue
-		}
-		shapes = append(shapes, dataquality.RuleShape{
-			Type:    rule.RuleType,
-			Column:  dataquality.ConfigColumn(rule.Config),
-			Enabled: true,
-		})
-	}
+	shapes := qualityRuleShapes(rules)
 	var settings *storepb.QualityContractSettings
 	if contract != nil {
 		settings = contract.Settings
@@ -216,6 +203,105 @@ func qualityPlanView(guid string, metaType storepb.MetaType, rules []*store.Qual
 		CheckCount:   int32(len(rules)),
 		Requirements: requirements,
 		GapCount:     int32(plan.GapCount),
+		Coverage:     coverageToV1(coverageFromRequirements(plan.Requirements)),
+	}
+}
+
+// qualityRuleShapes is the part of the live rules plan derivation reads. A paused
+// rule is live but deliberately not running, so it does not satisfy the
+// requirement it would otherwise cover.
+func qualityRuleShapes(rules []*store.QualityRuleMessage) []dataquality.RuleShape {
+	shapes := make([]dataquality.RuleShape, 0, len(rules))
+	for _, rule := range rules {
+		if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED &&
+			rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+			continue
+		}
+		shapes = append(shapes, dataquality.RuleShape{
+			Type:    rule.RuleType,
+			Column:  dataquality.ConfigColumn(rule.Config),
+			Enabled: true,
+		})
+	}
+	return shapes
+}
+
+// qualityContractPlanSnapshot builds the plan payload a publish records: the
+// coverage the plan declares at publish time plus the target's schedule projection.
+// It is the same derivation the read view renders, so a published version can never
+// promise something the plan card did not show.
+func qualityContractPlanSnapshot(intent *storepb.QualityContractIntent, rules []*store.QualityRuleMessage, schedule *store.QualityTargetScheduleMessage) *storepb.QualityContractPlan {
+	derived := dataquality.DerivePlan(true, intent, qualityRuleShapes(rules))
+	payload := &storepb.QualityContractPlan{
+		Coverage: coverageFromRequirements(derived.Requirements),
+	}
+	if schedule != nil {
+		payload.Cadence = &storepb.QualityContractPlanCadence{
+			IntervalSeconds: int64(schedule.ScheduleInterval / time.Second),
+			Cron:            schedule.Cron,
+			Timezone:        schedule.TimeZone,
+		}
+	}
+	return payload
+}
+
+// coverageFromRequirements renders the declared coverage the plan requires. The
+// plan payload and the read projection share it so the two cannot disagree.
+func coverageFromRequirements(requirements []dataquality.PlanRequirement) []*storepb.QualityContractPlanCoverage {
+	coverage := make([]*storepb.QualityContractPlanCoverage, 0, len(requirements))
+	for _, requirement := range requirements {
+		coverage = append(coverage, &storepb.QualityContractPlanCoverage{
+			Property:  storepb.QualityCoverageProperty(requirement.Property),
+			Column:    requirement.Column,
+			MinChecks: 1,
+			Source:    qualityContractPlanSource(requirement.Source),
+		})
+	}
+	return coverage
+}
+
+// coverageToV1 renders stored declarations for the API.
+func coverageToV1(coverage []*storepb.QualityContractPlanCoverage) []*v1pb.QualityPlanCoverage {
+	rendered := make([]*v1pb.QualityPlanCoverage, 0, len(coverage))
+	for _, declaration := range coverage {
+		rendered = append(rendered, &v1pb.QualityPlanCoverage{
+			Property:  v1pb.QualityCoverageProperty(declaration.GetProperty()),
+			Column:    declaration.GetColumn(),
+			MinChecks: declaration.GetMinChecks(),
+			Source:    v1pb.QualityCoverageSource(declaration.GetSource()),
+		})
+	}
+	return rendered
+}
+
+// convertQualityContractPlanToV1 renders a published plan payload. It carries only
+// the declarations and cadence: the target, state and gap projection belong to the
+// live view, never to a stored version.
+func convertQualityContractPlanToV1(plan *storepb.QualityContractPlan) *v1pb.QualityPlan {
+	if plan == nil {
+		return nil
+	}
+	rendered := &v1pb.QualityPlan{Coverage: coverageToV1(plan.GetCoverage())}
+	if cadence := plan.GetCadence(); cadence != nil {
+		rendered.Cadence = &v1pb.QualityPlanCadence{
+			IntervalSeconds: cadence.GetIntervalSeconds(),
+			Cron:            cadence.GetCron(),
+			Timezone:        cadence.GetTimezone(),
+		}
+	}
+	return rendered
+}
+
+// qualityContractPlanSource maps a plan requirement's source onto the stored
+// declaration source.
+func qualityContractPlanSource(source dataquality.RequirementSource) storepb.QualityCoverageSource {
+	switch source {
+	case dataquality.RequirementTemplate:
+		return storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE
+	case dataquality.RequirementIntent:
+		return storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT
+	default:
+		return storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_UNSPECIFIED
 	}
 }
 

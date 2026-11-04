@@ -1164,6 +1164,55 @@ message QualityContractSettings {
   reserved "default_schedule_interval_seconds";
 }
 
+// QualityCoverageSource records where one declaration came from. The numbers match
+// the API enum so the two convert by cast.
+enum QualityCoverageSource {
+  QUALITY_COVERAGE_SOURCE_UNSPECIFIED = 0;
+  QUALITY_COVERAGE_SOURCE_TEMPLATE = 1;
+  QUALITY_COVERAGE_SOURCE_INTENT = 2;
+}
+
+// QualityContractPlanCoverage is one required property at one scope, as a
+// published plan records it.
+message QualityContractPlanCoverage {
+  QualityCoverageProperty property = 1;
+  // The scope column; empty means the whole table.
+  string column = 2;
+  // How many checks the declaration needs; 0 reads as one.
+  int32 min_checks = 3;
+  QualityCoverageSource source = 4;
+}
+
+// QualityContractPlanCadence is the target schedule the plan was published
+// under. It is a read projection of quality_target_schedule, recorded so a
+// version is self-contained; the schedule table keeps the single timer.
+message QualityContractPlanCadence {
+  // Seconds between runs; 0 only when the target has no schedule. A cron target
+  // records the expression's nominal gap here and its expression in cron.
+  int64 interval_seconds = 1;
+  string cron = 2;
+  string timezone = 3;
+}
+
+// QualityContractPlan is the published plan payload: the declared coverage and
+// the cadence it was published under. The checks that implement plan membership
+// are the snapshot's ordered checks, which stay the only source of rule data.
+message QualityContractPlan {
+  repeated QualityContractPlanCoverage coverage = 1;
+  QualityContractPlanCadence cadence = 2;
+}
+
+// QualityContractChangeKind says which sections of a version changed against its
+// predecessor.
+enum QualityContractChangeKind {
+  QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED = 0;
+  QUALITY_CONTRACT_CHANGE_KIND_INTENT = 1;
+  QUALITY_CONTRACT_CHANGE_KIND_PLAN = 2;
+  QUALITY_CONTRACT_CHANGE_KIND_CHECKS = 3;
+  // More than one section changed.
+  QUALITY_CONTRACT_CHANGE_KIND_BOTH = 4;
+}
+
 // QualityContractSnapshot is what a published contract version records: the
 // target-level settings plus the ordered checks (one per live rule) at publish
 // time. The rules remain the mutable source of truth; a revision is the record of
@@ -1171,16 +1220,19 @@ message QualityContractSettings {
 message QualityContractSnapshot {
   QualityContractSettings settings = 1;
   repeated QualityContractCheck checks = 2;
+  // The declared plan this version promised. Absent on a version published before
+  // plan payloads existed.
+  QualityContractPlan plan = 5;
   // The content fingerprint. Zero (absent) means a snapshot written before the
   // versioned schema: its value came from a build-dependent JSON encoder, so
   // readers compare legacy content directly instead of re-hashing it. Version 2
   // rows use a deterministic binary encoding.
   string fingerprint = 3;
 
-  // The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2
-  // is the versioned schema written by every new publish; its fingerprint is
-  // deterministic across builds. Readers must branch on this, never mix
-  // fingerprints across versions.
+  // The snapshot schema version. Zero (absent) means a legacy snapshot; 2 is the
+  // deterministic-fingerprint schema and 3 adds the plan payload. Readers must
+  // branch on this, never mix fingerprints across versions: a version's no-op
+  // comparison uses the fingerprint schema that version was written with.
   int32 snapshot_version = 4;
 }
 

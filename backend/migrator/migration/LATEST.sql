@@ -1348,7 +1348,8 @@ CREATE TABLE IF NOT EXISTS quality_contract_revision (
     removed_count INT4 NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
     published_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    change_kind INT2 NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_contract_revision_version
     ON quality_contract_revision(contract_id, version);
@@ -1361,6 +1362,7 @@ COMMENT ON COLUMN quality_contract.published_version IS 'Newest published versio
 COMMENT ON TABLE quality_contract_revision IS 'Append-only published quality contract versions';
 COMMENT ON COLUMN quality_contract_revision.snapshot IS 'Stored as QualityContractSnapshot (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_contract_revision.published_by IS 'Principal id of the publisher';
+COMMENT ON COLUMN quality_contract_revision.change_kind IS 'Stored as QualityContractChangeKind (proto/store/store/data_quality.proto)';
 
 ALTER SEQUENCE quality_contract_id_seq RESTART WITH 101;
 ALTER SEQUENCE quality_contract_revision_id_seq RESTART WITH 101;

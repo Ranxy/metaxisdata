@@ -37,14 +37,16 @@ type QualityContractRevisionMessage struct {
 	AddedCount    int32
 	ModifiedCount int32
 	RemovedCount  int32
-	Note          string
-	PublishedBy   *int32
-	PublishedAt   time.Time
+	// ChangeKind is which sections of this version changed against its predecessor.
+	ChangeKind  storepb.QualityContractChangeKind
+	Note        string
+	PublishedBy *int32
+	PublishedAt time.Time
 }
 
 const qualityContractColumns = `id, target_guid, target_type, settings, published_version, created_at, updated_at`
 
-const qualityContractRevisionColumns = `id, contract_id, version, snapshot, check_count, added_count, modified_count, removed_count, note, published_by, published_at`
+const qualityContractRevisionColumns = `id, contract_id, version, snapshot, check_count, added_count, modified_count, removed_count, note, published_by, published_at, change_kind`
 
 // GetQualityContract reads one target's contract. A nil message means the target
 // has no contract row yet; callers treat that as the zero settings.
@@ -219,13 +221,15 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 		publishedChecks = publishedSnapshot.GetChecks()
 	}
 	added, modified, removed := QualityContractCheckDiff(publishedChecks, input.Snapshot.GetChecks())
+	changeKind := QualityContractChangeKindOf(publishedSnapshot, input.Snapshot, added, modified, removed)
 
 	switch {
 	case latestErr == nil:
 		// A legacy (v1) row is compared by content, not by re-hashing: its
-		// fingerprint came from a build-dependent encoder. A v2 row is compared by
-		// the deterministic fingerprint. Doing this under the row lock is what
-		// makes the version choice safe against a concurrent publish.
+		// fingerprint came from a build-dependent encoder. A v2 or v3 row is
+		// compared by its own fingerprint schema (v2 before the plan payload, v3
+		// after). Doing this under the row lock is what makes the version choice
+		// safe against a concurrent publish.
 		unchanged := false
 		if publishedSnapshot.GetSnapshotVersion() == 0 {
 			unchanged = QualityContractSnapshotContentEqual(publishedSnapshot, input.Snapshot)
@@ -258,11 +262,11 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 	nextVersion := publishedVersion + 1
 	revision, err := scanQualityContractRevision(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_contract_revision
-			(contract_id, version, snapshot, check_count, added_count, modified_count, removed_count, note, published_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			(contract_id, version, snapshot, check_count, added_count, modified_count, removed_count, note, published_by, change_kind)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING `+qualityContractRevisionColumns,
 		contractID, nextVersion, snapshotPayload, int32(len(input.Snapshot.GetChecks())), added,
-		modified, removed, input.Note, input.PublishedBy))
+		modified, removed, input.Note, input.PublishedBy, int16(changeKind)))
 	if err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to insert the contract revision")
 	}
@@ -389,14 +393,16 @@ func scanQualityContractRevision(scanner interface{ Scan(dest ...any) error }) (
 		message      QualityContractRevisionMessage
 		snapshotJSON []byte
 		publishedBy  sql.NullInt32
+		changeKind   int16
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.ContractID, &message.Version, &snapshotJSON,
 		&message.CheckCount, &message.AddedCount, &message.ModifiedCount, &message.RemovedCount,
-		&message.Note, &publishedBy, &message.PublishedAt,
+		&message.Note, &publishedBy, &message.PublishedAt, &changeKind,
 	); err != nil {
 		return nil, err
 	}
+	message.ChangeKind = storepb.QualityContractChangeKind(changeKind)
 	snapshot := &storepb.QualityContractSnapshot{}
 	if len(snapshotJSON) > 0 {
 		if err := common.ProtojsonUnmarshaler.Unmarshal(snapshotJSON, snapshot); err != nil {
@@ -449,4 +455,63 @@ func qualityContractCheckEqual(a, b *storepb.QualityContractCheck) bool {
 		a.GetRuleType() == b.GetRuleType() &&
 		a.GetSeverity() == b.GetSeverity() &&
 		a.GetColumn() == b.GetColumn()
+}
+
+// QualityContractChangeKindOf classifies a version against its predecessor: which of
+// intent, plan and checks changed. Counts are passed in because the publish
+// transaction already computed them; an unchanged snapshot returns UNSPECIFIED. With
+// no predecessor every recorded section counts as added, so version 1 is BOTH or
+// the single section it recorded.
+//
+// The plan is derived from the intent, so a statement or criticality edit changes
+// both payloads. That edit is classified INTENT: the plan moved because its
+// declaration moved, and PLAN keeps meaning "only the recorded plan/cadence moved".
+func QualityContractChangeKindOf(published, next *storepb.QualityContractSnapshot, added, modified, removed int32) storepb.QualityContractChangeKind {
+	intentChanged := !qualityContractIntentEqual(published.GetSettings().GetIntent(), next.GetSettings().GetIntent())
+	planChanged := !qualityContractPlanEqual(published.GetPlan(), next.GetPlan())
+	checksChanged := added > 0 || modified > 0 || removed > 0
+	kind := storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED
+	changed := 0
+	if intentChanged {
+		kind = storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_INTENT
+		changed++
+	}
+	if planChanged && !intentChanged {
+		kind = storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN
+		changed++
+	}
+	if checksChanged {
+		kind = storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_CHECKS
+		changed++
+	}
+	if changed > 1 {
+		return storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_BOTH
+	}
+	return kind
+}
+
+// qualityContractIntentEqual compares two intents treating absent and empty as the
+// same declaration: a version published before intent existed carries no intent, and
+// that must not classify as an intent change.
+func qualityContractIntentEqual(left, right *storepb.QualityContractIntent) bool {
+	if left == nil {
+		left = &storepb.QualityContractIntent{}
+	}
+	if right == nil {
+		right = &storepb.QualityContractIntent{}
+	}
+	return proto.Equal(left, right)
+}
+
+// qualityContractPlanEqual compares two plan payloads treating absent and empty as
+// the same plan, so a v2 baseline (no plan field) publishing an empty plan does not
+// classify as a plan change.
+func qualityContractPlanEqual(left, right *storepb.QualityContractPlan) bool {
+	if left == nil {
+		left = &storepb.QualityContractPlan{}
+	}
+	if right == nil {
+		right = &storepb.QualityContractPlan{}
+	}
+	return proto.Equal(left, right)
 }

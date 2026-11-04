@@ -3020,6 +3020,10 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 		}))
 	require.NoError(t, err)
 	require.Len(t, version2.Msg.GetChecks(), 2)
+	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_CHECKS,
+		version2.Msg.GetRevision().GetChangeKind(), "the second version changed only its checks")
+	require.NotEmpty(t, version2.Msg.GetRevision().GetPlan().GetCoverage(),
+		"a published version records the plan it promised")
 	require.Contains(t, []string{version2.Msg.GetChecks()[0].GetColumn(), version2.Msg.GetChecks()[1].GetColumn()}, "name",
 		"a published check records the config's checked column")
 	version1, err := fixture.dataQuality.GetQualityContractRevision(fixture.ctx,
@@ -3031,6 +3035,8 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 		}))
 	require.NoError(t, err)
 	require.Len(t, version1.Msg.GetChecks(), 1)
+	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_BOTH,
+		version1.Msg.GetRevision().GetChangeKind(), "the first version records everything it added")
 
 	// The target filter reaches the runner's compiled statement: a row-count rule
 	// reads COUNT(*) over the filtered rows.

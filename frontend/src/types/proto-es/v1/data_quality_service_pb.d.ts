@@ -7118,6 +7118,77 @@ export declare type QualityCoverageRequirement = Message<"metaxisdata.v1.Quality
 export declare const QualityCoverageRequirementSchema: GenMessage<QualityCoverageRequirement>;
 
 /**
+ * QualityPlanCoverage is one required property at one scope, as a published plan
+ * records it.
+ *
+ * @generated from message metaxisdata.v1.QualityPlanCoverage
+ */
+export declare type QualityPlanCoverage = Message<"metaxisdata.v1.QualityPlanCoverage"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageProperty property = 1;
+   */
+  property: QualityCoverageProperty;
+
+  /**
+   * The scope column; empty means the whole table.
+   *
+   * @generated from field: string column = 2;
+   */
+  column: string;
+
+  /**
+   * How many checks the declaration needs; 0 reads as one.
+   *
+   * @generated from field: int32 min_checks = 3;
+   */
+  minChecks: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageSource source = 4;
+   */
+  source: QualityCoverageSource;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityPlanCoverage.
+ * Use `create(QualityPlanCoverageSchema)` to create a new message.
+ */
+export declare const QualityPlanCoverageSchema: GenMessage<QualityPlanCoverage>;
+
+/**
+ * QualityPlanCadence is the target schedule a plan version recorded. It is a
+ * projection of the target's schedule; editing the schedule is still the only
+ * way to change it.
+ *
+ * @generated from message metaxisdata.v1.QualityPlanCadence
+ */
+export declare type QualityPlanCadence = Message<"metaxisdata.v1.QualityPlanCadence"> & {
+  /**
+   * Seconds between runs; 0 only when the target has no schedule. A cron target
+   * records the expression's nominal gap here and its expression in cron.
+   *
+   * @generated from field: int64 interval_seconds = 1;
+   */
+  intervalSeconds: bigint;
+
+  /**
+   * @generated from field: string cron = 2;
+   */
+  cron: string;
+
+  /**
+   * @generated from field: string timezone = 3;
+   */
+  timezone: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityPlanCadence.
+ * Use `create(QualityPlanCadenceSchema)` to create a new message.
+ */
+export declare const QualityPlanCadenceSchema: GenMessage<QualityPlanCadence>;
+
+/**
  * QualityPlan is the read-only projection of a target's monitoring plan: its
  * state, derived criticality, the checks that implement it and the declared
  * coverage it currently satisfies.
@@ -7154,6 +7225,22 @@ export declare type QualityPlan = Message<"metaxisdata.v1.QualityPlan"> & {
    * @generated from field: int32 gap_count = 6;
    */
   gapCount: number;
+
+  /**
+   * The declarations the plan is built from (template plus intent statements), as
+   * a published version records them.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityPlanCoverage coverage = 7;
+   */
+  coverage: QualityPlanCoverage[];
+
+  /**
+   * The cadence a published version recorded. Absent in the live projection,
+   * which reads the target's current schedule instead.
+   *
+   * @generated from field: metaxisdata.v1.QualityPlanCadence cadence = 8;
+   */
+  cadence?: QualityPlanCadence;
 };
 
 /**
@@ -7401,6 +7488,21 @@ export declare type QualityContractRevision = Message<"metaxisdata.v1.QualityCon
    * @generated from field: metaxisdata.v1.QualityContractIntent intent = 7;
    */
   intent?: QualityContractIntent;
+
+  /**
+   * Which sections of this version changed against its predecessor.
+   *
+   * @generated from field: metaxisdata.v1.QualityContractChangeKind change_kind = 8;
+   */
+  changeKind: QualityContractChangeKind;
+
+  /**
+   * The plan this version recorded. Absent on a version published before plan
+   * payloads existed.
+   *
+   * @generated from field: metaxisdata.v1.QualityPlan plan = 9;
+   */
+  plan?: QualityPlan;
 };
 
 /**
@@ -10166,6 +10268,46 @@ export enum QualityCoverageSource {
  * Describes the enum metaxisdata.v1.QualityCoverageSource.
  */
 export declare const QualityCoverageSourceSchema: GenEnum<QualityCoverageSource>;
+
+/**
+ * QualityContractChangeKind says which sections of a version changed against its
+ * predecessor.
+ *
+ * @generated from enum metaxisdata.v1.QualityContractChangeKind
+ */
+export enum QualityContractChangeKind {
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_CHANGE_KIND_INTENT = 1;
+   */
+  INTENT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_CHANGE_KIND_PLAN = 2;
+   */
+  PLAN = 2,
+
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_CHANGE_KIND_CHECKS = 3;
+   */
+  CHECKS = 3,
+
+  /**
+   * More than one section changed.
+   *
+   * @generated from enum value: QUALITY_CONTRACT_CHANGE_KIND_BOTH = 4;
+   */
+  BOTH = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityContractChangeKind.
+ */
+export declare const QualityContractChangeKindSchema: GenEnum<QualityContractChangeKind>;
 
 /**
  * DataQualityService manages the checks that watch the data itself: rules and

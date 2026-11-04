@@ -125,10 +125,18 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 	}
 
 	checks := buildQualityContractChecks(rules)
+	// The plan payload is the same declaration the read view renders: the
+	// criticality template plus the intent statements, with the target's schedule
+	// projection. Publishing it makes "what this version promised" explicit.
+	schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	plan := qualityContractPlanSnapshot(settings.GetIntent(), rules, schedule)
 	// The store decides under its row lock whether this snapshot is a no-op: a
-	// legacy row is compared by content, a v2 row by deterministic fingerprint.
-	// Deciding here would race a concurrent publish.
-	snapshot := qualityContractSnapshotV2(settings, checks)
+	// legacy row is compared by content, a v2 row by its own fingerprint schema, a
+	// v3 row by the plan-bearing fingerprint. Deciding here would race a publish.
+	snapshot := qualityContractSnapshotV3(settings, plan, checks)
 	// The version's diff counts are computed by the store inside the publish
 	// transaction, against the snapshot that really is the previous version.
 	note, err := qualityContractNote(req.Msg.GetNote())
@@ -300,16 +308,27 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 		view.PublishedAt = timestamppb.New(latest.PublishedAt.UTC())
 		view.PublishedBy = formatQualityContractPublisher(latest.PublishedBy)
 		view.PublishNote = latest.Note
-		if latest.Snapshot.GetSnapshotVersion() == 0 {
+		switch latest.Snapshot.GetSnapshotVersion() {
+		case 0:
 			// A legacy snapshot's fingerprint was produced by a build-dependent
 			// encoder; compare the content instead of re-hashing it.
 			view.HasUnpublishedChanges = !store.QualityContractSnapshotContentEqual(
 				latest.Snapshot,
 				&storepb.QualityContractSnapshot{Settings: settings, Checks: checks},
 			)
-		} else {
+		case 2:
+			// A v2 version predates the plan payload; compare it the way it was
+			// written so an untouched contract does not look changed after upgrade.
 			view.HasUnpublishedChanges = latest.Snapshot.GetFingerprint() !=
 				qualityContractFingerprintV2(settings, checks)
+		default:
+			schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, metaType)
+			if err != nil {
+				return nil, err
+			}
+			plan := qualityContractPlanSnapshot(settings.GetIntent(), rules, schedule)
+			view.HasUnpublishedChanges = latest.Snapshot.GetFingerprint() !=
+				qualityContractFingerprintV3(settings, plan, checks)
 		}
 	} else {
 		view.ChangeSummary = &v1pb.QualityContractChangeSummary{Added: int32(len(checks))}
@@ -446,15 +465,56 @@ func qualityContractFingerprintV2(settings *storepb.QualityContractSettings, che
 	return contractSnapshotVersionPrefixV2 + hex.EncodeToString(sum[:])
 }
 
-// contractSnapshotVersionV2 is the schema version every new publish records.
+// contractSnapshotVersionV2 is the deterministic-fingerprint schema (settings and
+// checks, no plan payload) that v2 rows were published with.
 const contractSnapshotVersionV2 = 2
 
 // contractSnapshotVersionPrefixV2 tags a v2 fingerprint. The prefix is derived
 // from the same constant the snapshot version uses so the two cannot drift.
 const contractSnapshotVersionPrefixV2 = "v2:"
 
-// qualityContractSnapshotV2 builds the snapshot a publish writes: settings, the
-// ordered checks, the schema version and the deterministic fingerprint.
+// contractSnapshotVersionV3 is the schema version every new publish records: the
+// v2 deterministic fingerprint plus the plan payload.
+const contractSnapshotVersionV3 = 3
+
+// contractSnapshotVersionPrefixV3 tags a v3 fingerprint. A v2 and a v3 fingerprint
+// never compare equal, which is what keeps the no-op rule honest across the schema
+// upgrade: an untouched v2 version is compared with its own schema, not this one.
+const contractSnapshotVersionPrefixV3 = "v3:"
+
+// qualityContractFingerprintV3 hashes the settings, plan, ordered checks and schema
+// version with a deterministic encoder.
+func qualityContractFingerprintV3(settings *storepb.QualityContractSettings, plan *storepb.QualityContractPlan, checks []*storepb.QualityContractCheck) string {
+	snapshot := &storepb.QualityContractSnapshot{
+		Settings:        settings,
+		Plan:            plan,
+		Checks:          checks,
+		SnapshotVersion: contractSnapshotVersionV3,
+	}
+	payload, err := proto.MarshalOptions{Deterministic: true}.Marshal(snapshot)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return contractSnapshotVersionPrefixV3 + hex.EncodeToString(sum[:])
+}
+
+// qualityContractSnapshotV3 builds the snapshot a publish writes: settings, plan,
+// the ordered checks, the schema version and the deterministic fingerprint.
+func qualityContractSnapshotV3(settings *storepb.QualityContractSettings, plan *storepb.QualityContractPlan, checks []*storepb.QualityContractCheck) *storepb.QualityContractSnapshot {
+	return &storepb.QualityContractSnapshot{
+		Settings:        settings,
+		Plan:            plan,
+		Checks:          checks,
+		Fingerprint:     qualityContractFingerprintV3(settings, plan, checks),
+		SnapshotVersion: contractSnapshotVersionV3,
+	}
+}
+
+// qualityContractSnapshotV2 builds a v2 snapshot: settings, the ordered checks, the
+// schema version and the deterministic fingerprint. New publishes write v3; this
+// shape is kept so v2 rows keep being compared with the schema they were written
+// with.
 func qualityContractSnapshotV2(settings *storepb.QualityContractSettings, checks []*storepb.QualityContractCheck) *storepb.QualityContractSnapshot {
 	return &storepb.QualityContractSnapshot{
 		Settings:        settings,
@@ -610,7 +670,9 @@ func convertQualityContractRevisionToV1(revision *store.QualityContractRevisionM
 			Modified: revision.ModifiedCount,
 			Removed:  revision.RemovedCount,
 		},
-		Intent: convertQualityContractIntentToV1(revision.Snapshot.GetSettings().GetIntent()),
+		Intent:     convertQualityContractIntentToV1(revision.Snapshot.GetSettings().GetIntent()),
+		ChangeKind: v1pb.QualityContractChangeKind(revision.ChangeKind),
+		Plan:       convertQualityContractPlanToV1(revision.Snapshot.GetPlan()),
 	}
 }
 

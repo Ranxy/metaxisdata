@@ -42,6 +42,9 @@
     - [QualityContractIntent](#metaxisdata-store-QualityContractIntent)
     - [QualityContractIntentExemption](#metaxisdata-store-QualityContractIntentExemption)
     - [QualityContractIntentStatement](#metaxisdata-store-QualityContractIntentStatement)
+    - [QualityContractPlan](#metaxisdata-store-QualityContractPlan)
+    - [QualityContractPlanCadence](#metaxisdata-store-QualityContractPlanCadence)
+    - [QualityContractPlanCoverage](#metaxisdata-store-QualityContractPlanCoverage)
     - [QualityContractSettings](#metaxisdata-store-QualityContractSettings)
     - [QualityContractSnapshot](#metaxisdata-store-QualityContractSnapshot)
     - [QualityExecutionEvidence](#metaxisdata-store-QualityExecutionEvidence)
@@ -79,9 +82,11 @@
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
     - [QualityComparison](#metaxisdata-store-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-store-QualityComparisonOperator)
+    - [QualityContractChangeKind](#metaxisdata-store-QualityContractChangeKind)
     - [QualityContractCriticality](#metaxisdata-store-QualityContractCriticality)
     - [QualityContractIntentSource](#metaxisdata-store-QualityContractIntentSource)
     - [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty)
+    - [QualityCoverageSource](#metaxisdata-store-QualityCoverageSource)
     - [QualityDimension](#metaxisdata-store-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior)
     - [QualityExecutionState](#metaxisdata-store-QualityExecutionState)
@@ -905,6 +910,62 @@ QualityContractIntentStatement is one property the target promises for a scope.
 
 
 
+<a name="metaxisdata-store-QualityContractPlan"></a>
+
+### QualityContractPlan
+QualityContractPlan is the published plan payload: the declared coverage and
+the cadence it was published under. The checks that implement plan membership
+are the snapshot&#39;s ordered checks, which stay the only source of rule data.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| coverage | [QualityContractPlanCoverage](#metaxisdata-store-QualityContractPlanCoverage) | repeated |  |
+| cadence | [QualityContractPlanCadence](#metaxisdata-store-QualityContractPlanCadence) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractPlanCadence"></a>
+
+### QualityContractPlanCadence
+QualityContractPlanCadence is the target schedule the plan was published
+under. It is a read projection of quality_target_schedule, recorded so a
+version is self-contained; the schedule table keeps the single timer.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| interval_seconds | [int64](#int64) |  | Seconds between runs; 0 only when the target has no schedule. A cron target records the expression&#39;s nominal gap here and its expression in cron. |
+| cron | [string](#string) |  |  |
+| timezone | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractPlanCoverage"></a>
+
+### QualityContractPlanCoverage
+QualityContractPlanCoverage is one required property at one scope, as a
+published plan records it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  | The scope column; empty means the whole table. |
+| min_checks | [int32](#int32) |  | How many checks the declaration needs; 0 reads as one. |
+| source | [QualityCoverageSource](#metaxisdata-store-QualityCoverageSource) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityContractSettings"></a>
 
 ### QualityContractSettings
@@ -937,8 +998,9 @@ what a person published.
 | ----- | ---- | ----- | ----------- |
 | settings | [QualityContractSettings](#metaxisdata-store-QualityContractSettings) |  |  |
 | checks | [QualityContractCheck](#metaxisdata-store-QualityContractCheck) | repeated |  |
+| plan | [QualityContractPlan](#metaxisdata-store-QualityContractPlan) |  | The declared plan this version promised. Absent on a version published before plan payloads existed. |
 | fingerprint | [string](#string) |  | The content fingerprint. Zero (absent) means a snapshot written before the versioned schema: its value came from a build-dependent JSON encoder, so readers compare legacy content directly instead of re-hashing it. Version 2 rows use a deterministic binary encoding. |
-| snapshot_version | [int32](#int32) |  | The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2 is the versioned schema written by every new publish; its fingerprint is deterministic across builds. Readers must branch on this, never mix fingerprints across versions. |
+| snapshot_version | [int32](#int32) |  | The snapshot schema version. Zero (absent) means a legacy snapshot; 2 is the deterministic-fingerprint schema and 3 adds the plan payload. Readers must branch on this, never mix fingerprints across versions: a version&#39;s no-op comparison uses the fingerprint schema that version was written with. |
 
 
 
@@ -1653,6 +1715,22 @@ between two columns of the same row.
 
 
 
+<a name="metaxisdata-store-QualityContractChangeKind"></a>
+
+### QualityContractChangeKind
+QualityContractChangeKind says which sections of a version changed against its
+predecessor.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_INTENT | 1 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_PLAN | 2 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_CHECKS | 3 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_BOTH | 4 | More than one section changed. |
+
+
+
 <a name="metaxisdata-store-QualityContractCriticality"></a>
 
 ### QualityContractCriticality
@@ -1701,6 +1779,20 @@ cast.
 | QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES | 6 |  |
 | QUALITY_COVERAGE_PROPERTY_FORMAT | 7 |  |
 | QUALITY_COVERAGE_PROPERTY_RANGE | 8 |  |
+
+
+
+<a name="metaxisdata-store-QualityCoverageSource"></a>
+
+### QualityCoverageSource
+QualityCoverageSource records where one declaration came from. The numbers match
+the API enum so the two convert by cast.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COVERAGE_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_COVERAGE_SOURCE_TEMPLATE | 1 |  |
+| QUALITY_COVERAGE_SOURCE_INTENT | 2 |  |
 
 
 

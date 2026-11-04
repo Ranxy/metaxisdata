@@ -332,6 +332,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityContractPlan"><span class="badge">M</span>QualityContractPlan</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractPlanCadence"><span class="badge">M</span>QualityContractPlanCadence</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractPlanCoverage"><span class="badge">M</span>QualityContractPlanCoverage</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityContractSettings"><span class="badge">M</span>QualityContractSettings</a>
                 </li>
               
@@ -477,6 +489,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityContractChangeKind"><span class="badge">E</span>QualityContractChangeKind</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityContractCriticality"><span class="badge">E</span>QualityContractCriticality</a>
                 </li>
               
@@ -486,6 +502,10 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityCoverageProperty"><span class="badge">E</span>QualityCoverageProperty</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityCoverageSource"><span class="badge">E</span>QualityCoverageSource</a>
                 </li>
               
                 <li>
@@ -2812,6 +2832,121 @@ that drive checks arrive with the plan evaluator. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualityContractPlan">QualityContractPlan</h3>
+        <p>QualityContractPlan is the published plan payload: the declared coverage and</p><p>the cadence it was published under. The checks that implement plan membership</p><p>are the snapshot's ordered checks, which stay the only source of rule data.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>coverage</td>
+                  <td><a href="#metaxisdata.store.QualityContractPlanCoverage">QualityContractPlanCoverage</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cadence</td>
+                  <td><a href="#metaxisdata.store.QualityContractPlanCadence">QualityContractPlanCadence</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractPlanCadence">QualityContractPlanCadence</h3>
+        <p>QualityContractPlanCadence is the target schedule the plan was published</p><p>under. It is a read projection of quality_target_schedule, recorded so a</p><p>version is self-contained; the schedule table keeps the single timer.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>interval_seconds</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Seconds between runs; 0 only when the target has no schedule. A cron target
+records the expression&#39;s nominal gap here and its expression in cron. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cron</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractPlanCoverage">QualityContractPlanCoverage</h3>
+        <p>QualityContractPlanCoverage is one required property at one scope, as a</p><p>published plan records it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.store.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The scope column; empty means the whole table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_checks</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many checks the declaration needs; 0 reads as one. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.store.QualityCoverageSource">QualityCoverageSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityContractSettings">QualityContractSettings</h3>
         <p>QualityContractSettings is the target-level layer above the rules: defaults the</p><p>workspace UI uses when authoring, and the filter every rule on the target is</p><p>checked with. Rule-level fields always win where they are set.</p>
 
@@ -2877,6 +3012,14 @@ without rewriting the rules. </p></td>
                 </tr>
               
                 <tr>
+                  <td>plan</td>
+                  <td><a href="#metaxisdata.store.QualityContractPlan">QualityContractPlan</a></td>
+                  <td></td>
+                  <td><p>The declared plan this version promised. Absent on a version published before
+plan payloads existed. </p></td>
+                </tr>
+              
+                <tr>
                   <td>fingerprint</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
@@ -2890,10 +3033,10 @@ rows use a deterministic binary encoding. </p></td>
                   <td>snapshot_version</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2
-is the versioned schema written by every new publish; its fingerprint is
-deterministic across builds. Readers must branch on this, never mix
-fingerprints across versions. </p></td>
+                  <td><p>The snapshot schema version. Zero (absent) means a legacy snapshot; 2 is the
+deterministic-fingerprint schema and 3 adds the plan payload. Readers must
+branch on this, never mix fingerprints across versions: a version&#39;s no-op
+comparison uses the fingerprint schema that version was written with. </p></td>
                 </tr>
               
             </tbody>
@@ -4842,6 +4985,47 @@ accepted range expressed as a pass band.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.store.QualityContractChangeKind">QualityContractChangeKind</h3>
+        <p>QualityContractChangeKind says which sections of a version changed against its</p><p>predecessor.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_INTENT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_PLAN</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_CHECKS</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_BOTH</td>
+                <td>4</td>
+                <td><p>More than one section changed.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.store.QualityContractCriticality">QualityContractCriticality</h3>
         <p>QualityContractCriticality ranks a target for the autonomy policy. It is read</p><p>from the intent when declared; otherwise the plan derives a display value and</p><p>never writes it back.</p>
         <table class="enum-table">
@@ -4971,6 +5155,35 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_COVERAGE_PROPERTY_RANGE</td>
                 <td>8</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityCoverageSource">QualityCoverageSource</h3>
+        <p>QualityCoverageSource records where one declaration came from. The numbers match</p><p>the API enum so the two convert by cast.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_SOURCE_TEMPLATE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_SOURCE_INTENT</td>
+                <td>2</td>
                 <td><p></p></td>
               </tr>
             

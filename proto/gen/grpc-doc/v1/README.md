@@ -346,6 +346,8 @@
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
     - [QualityPlan](#metaxisdata-v1-QualityPlan)
+    - [QualityPlanCadence](#metaxisdata-v1-QualityPlanCadence)
+    - [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage)
     - [QualityRootCauseCandidate](#metaxisdata-v1-QualityRootCauseCandidate)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
@@ -410,6 +412,7 @@
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
+    - [QualityContractChangeKind](#metaxisdata-v1-QualityContractChangeKind)
     - [QualityContractIntentSource](#metaxisdata-v1-QualityContractIntentSource)
     - [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty)
     - [QualityCoverageSource](#metaxisdata-v1-QualityCoverageSource)
@@ -6208,6 +6211,8 @@ QualityContractRevision is one published version&#39;s metadata.
 | check_count | [int32](#int32) |  |  |
 | change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  |  |
 | intent | [QualityContractIntent](#metaxisdata-v1-QualityContractIntent) |  | The intent this version recorded. Absent when the version recorded none, including every version published before intent existed; this conversion cannot tell the two apart. |
+| change_kind | [QualityContractChangeKind](#metaxisdata-v1-QualityContractChangeKind) |  | Which sections of this version changed against its predecessor. |
+| plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The plan this version recorded. Absent on a version published before plan payloads existed. |
 
 
 
@@ -6593,6 +6598,46 @@ coverage it currently satisfies.
 | check_count | [int32](#int32) |  |  |
 | requirements | [QualityCoverageRequirement](#metaxisdata-v1-QualityCoverageRequirement) | repeated |  |
 | gap_count | [int32](#int32) |  |  |
+| coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) | repeated | The declarations the plan is built from (template plus intent statements), as a published version records them. |
+| cadence | [QualityPlanCadence](#metaxisdata-v1-QualityPlanCadence) |  | The cadence a published version recorded. Absent in the live projection, which reads the target&#39;s current schedule instead. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityPlanCadence"></a>
+
+### QualityPlanCadence
+QualityPlanCadence is the target schedule a plan version recorded. It is a
+projection of the target&#39;s schedule; editing the schedule is still the only
+way to change it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| interval_seconds | [int64](#int64) |  | Seconds between runs; 0 only when the target has no schedule. A cron target records the expression&#39;s nominal gap here and its expression in cron. |
+| cron | [string](#string) |  |  |
+| timezone | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityPlanCoverage"></a>
+
+### QualityPlanCoverage
+QualityPlanCoverage is one required property at one scope, as a published plan
+records it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  | The scope column; empty means the whole table. |
+| min_checks | [int32](#int32) |  | How many checks the declaration needs; 0 reads as one. |
+| source | [QualityCoverageSource](#metaxisdata-v1-QualityCoverageSource) |  |  |
 
 
 
@@ -7898,6 +7943,22 @@ between two columns of the same row.
 | QUALITY_COMPARISON_OPERATOR_LTE | 4 |  |
 | QUALITY_COMPARISON_OPERATOR_GT | 5 |  |
 | QUALITY_COMPARISON_OPERATOR_GTE | 6 |  |
+
+
+
+<a name="metaxisdata-v1-QualityContractChangeKind"></a>
+
+### QualityContractChangeKind
+QualityContractChangeKind says which sections of a version changed against its
+predecessor.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_INTENT | 1 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_PLAN | 2 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_CHECKS | 3 |  |
+| QUALITY_CONTRACT_CHANGE_KIND_BOTH | 4 | More than one section changed. |
 
 
 
