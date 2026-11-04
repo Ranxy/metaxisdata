@@ -218,4 +218,9 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | resident ID card | 居民身份证 | Data Quality | An 18-character Chinese resident identity card number, with a check digit. | all keys | — |
 | administrative division code | 行政区划代码 | Data Quality | A code from the national administrative division table identifying a region. | all keys | — |
 | industry classification code | 行业分类代码 | Data Quality | A code from the national industry classification table identifying an economic activity. | all keys | — |
+| contract | 契约 | Data Quality | The target-level layer above the checks: the shared filter, the default severity, the declared intent and the published version history. | dataQuality. | zh-CN: `合同` |
+| intent | 意图 | Data Quality | What a target promises above its checks: how critical it is, the properties it commits to and the requirements it has explicitly waived. | dataQuality. | — |
+| plan | 计划 | Data Quality | The declared coverage a target promises plus the enabled checks that implement it; a target with checks but no contract has no plan. | dataQuality. | — |
+| coverage declaration | 覆盖声明 | Data Quality | One property and scope a plan promises to monitor, whether from the criticality template or from an explicit intent statement. | dataQuality. | zh-CN: `覆盖要求` |
+| coverage gap | 覆盖缺口 | Data Quality | A declared requirement that no enabled check satisfies and that no valid exemption waives. It is not the same number as the coverage rate. | dataQuality. | — |
 <!-- END GENERATED GLOSSARY -->

@@ -2,6 +2,8 @@ package dataquality
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -62,4 +64,62 @@ func ValidateTargetFilter(ctx context.Context, s *store.Store, guid string, meta
 		return err
 	}
 	return nil
+}
+
+// ValidateContractIntent checks an intent before it is stored: every scope column
+// exists on the resolved target and every exemption carries a reason. The registry
+// read only happens when a scope column is named, so a statement-free intent update
+// stays cheap.
+//
+// It does not validate the enum values or the counts; those are request-shape
+// checks the API performs before converting.
+func ValidateContractIntent(ctx context.Context, s *store.Store, guid string, metaType storepb.MetaType, intent *storepb.QualityContractIntent) error {
+	if intent == nil {
+		return nil
+	}
+	for _, exemption := range intent.GetExemptions() {
+		if strings.TrimSpace(exemption.GetReason()) == "" {
+			return invalidConfig("an intent exemption needs a reason")
+		}
+	}
+	scopes := intentScopeColumns(intent)
+	if len(scopes) == 0 {
+		return nil
+	}
+	resolution, err := ResolveTarget(ctx, s, guid, metaType)
+	if err != nil {
+		// A target that lost its registry row keeps its rules and its contract; the
+		// read paths still serve them, so refuse only a declaration the registry
+		// could verify. Rejecting the update would make the contract uneditable.
+		if errors.Is(err, ErrOrphaned) {
+			return nil
+		}
+		return err
+	}
+	known := make(map[string]struct{}, len(resolution.Target.Columns))
+	for _, column := range resolution.Target.Columns {
+		known[column.Name] = struct{}{}
+	}
+	for _, column := range scopes {
+		if _, ok := known[column]; !ok {
+			return invalidConfig("intent scope column %q does not exist on the target", column)
+		}
+	}
+	return nil
+}
+
+// intentScopeColumns lists the non-empty column scopes an intent declares.
+func intentScopeColumns(intent *storepb.QualityContractIntent) []string {
+	var columns []string
+	for _, statement := range intent.GetStatements() {
+		if column := strings.TrimSpace(statement.GetColumn()); column != "" {
+			columns = append(columns, column)
+		}
+	}
+	for _, exemption := range intent.GetExemptions() {
+		if column := strings.TrimSpace(exemption.GetColumn()); column != "" {
+			columns = append(columns, column)
+		}
+	}
+	return columns
 }

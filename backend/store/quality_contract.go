@@ -166,14 +166,29 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 
 	var contractID int64
 	var publishedVersion int32
+	var storedSettingsPayload []byte
+	// The conflict branch takes the row lock without writing settings: publish
+	// records a snapshot, it never owns the settings. Writing the caller's earlier
+	// read here would silently revert a concurrent settings (intent) update.
 	locked := tx.QueryRowContext(ctx, `
 		INSERT INTO quality_contract (target_guid, target_type, settings)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (target_guid, target_type) DO UPDATE SET settings = EXCLUDED.settings
-		RETURNING id, published_version
+		ON CONFLICT (target_guid, target_type) DO UPDATE SET target_guid = EXCLUDED.target_guid
+		RETURNING id, published_version, settings
 	`, input.TargetGUID, int16(input.TargetType), settingsPayload)
-	if err := locked.Scan(&contractID, &publishedVersion); err != nil {
+	if err := locked.Scan(&contractID, &publishedVersion, &storedSettingsPayload); err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to lock the quality contract")
+	}
+	// The snapshot was built from settings read before this transaction. If the
+	// settings changed in between, publishing that snapshot would record promises
+	// the live contract no longer makes; make the caller reload instead.
+	storedSettings := &storepb.QualityContractSettings{}
+	if err := common.ProtojsonUnmarshaler.Unmarshal(storedSettingsPayload, storedSettings); err != nil {
+		return nil, nil, false, errors.Wrap(err, "failed to read the quality contract settings")
+	}
+	if !proto.Equal(storedSettings, settings) {
+		return nil, nil, false, common.Errorf(common.Conflict,
+			"the quality contract changed while publishing; reload and publish again")
 	}
 
 	// Re-read under the row lock: the upsert above already locked the row, but the

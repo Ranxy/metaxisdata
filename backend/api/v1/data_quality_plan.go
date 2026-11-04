@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -29,34 +30,12 @@ func (s *DataQualityService) qualityPlansFor(ctx context.Context, instance, data
 	if err != nil {
 		return nil, err
 	}
-	contracted := make(map[store.MetaGUIDKey]struct{}, len(contracts))
-	for _, contract := range contracts {
-		contracted[store.MetaGUIDKey{GUID: contract.TargetGUID, ObjectType: contract.TargetType}] = struct{}{}
-	}
-
-	type targetRules struct {
-		guid  string
-		types storepb.MetaType
-		rules []*store.QualityRuleMessage
-	}
-	byTarget := make(map[store.MetaGUIDKey]*targetRules, len(rules))
-	for _, rule := range rules {
-		key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
-		entry := byTarget[key]
-		if entry == nil {
-			entry = &targetRules{guid: rule.TargetGUID, types: rule.TargetType}
-			byTarget[key] = entry
-		}
-		entry.rules = append(entry.rules, rule)
-	}
-
-	plans := make([]*v1pb.QualityPlan, 0, len(byTarget))
-	for key, entry := range byTarget {
-		if !qualityPlanMatchesScope(key.GUID, instance, database, schema, table) {
+	plans := make([]*v1pb.QualityPlan, 0, len(rules))
+	for _, entry := range qualityPlanEntries(rules, contracts) {
+		if !qualityPlanMatchesScope(entry.guid, instance, database, schema, table) {
 			continue
 		}
-		_, hasContract := contracted[key]
-		plan := qualityPlanView(key.GUID, entry.types, entry.rules, hasContract)
+		plan := qualityPlanView(entry.guid, entry.metaType, entry.rules, entry.contract)
 		if search := strings.ToLower(strings.TrimSpace(search)); search != "" &&
 			!strings.Contains(strings.ToLower(qualityPlanSearchText(plan)), search) {
 			continue
@@ -68,6 +47,45 @@ func (s *DataQualityService) qualityPlansFor(ctx context.Context, instance, data
 	})
 
 	return plans, nil
+}
+
+// qualityPlanEntry is one target's live rules and contract row.
+type qualityPlanEntry struct {
+	guid     string
+	metaType storepb.MetaType
+	rules    []*store.QualityRuleMessage
+	contract *store.QualityContractMessage
+}
+
+// qualityPlanEntries joins the live rules and the contract rows by target. A target
+// that declared a contract but has no checks yet is still a plan: it is exactly the
+// state in which the declared gaps matter most.
+func qualityPlanEntries(rules []*store.QualityRuleMessage, contracts []*store.QualityContractMessage) []qualityPlanEntry {
+	byTarget := make(map[store.MetaGUIDKey]*qualityPlanEntry, len(rules)+len(contracts))
+	order := make([]store.MetaGUIDKey, 0, len(rules)+len(contracts))
+	entryFor := func(key store.MetaGUIDKey, guid string, metaType storepb.MetaType) *qualityPlanEntry {
+		entry := byTarget[key]
+		if entry == nil {
+			entry = &qualityPlanEntry{guid: guid, metaType: metaType}
+			byTarget[key] = entry
+			order = append(order, key)
+		}
+		return entry
+	}
+	for _, rule := range rules {
+		key := store.MetaGUIDKey{GUID: rule.TargetGUID, ObjectType: rule.TargetType}
+		entry := entryFor(key, rule.TargetGUID, rule.TargetType)
+		entry.rules = append(entry.rules, rule)
+	}
+	for _, contract := range contracts {
+		key := store.MetaGUIDKey{GUID: contract.TargetGUID, ObjectType: contract.TargetType}
+		entryFor(key, contract.TargetGUID, contract.TargetType).contract = contract
+	}
+	entries := make([]qualityPlanEntry, 0, len(order))
+	for _, key := range order {
+		entries = append(entries, *byTarget[key])
+	}
+	return entries
 }
 
 func (s *DataQualityService) ListQualityPlans(ctx context.Context, req *connect.Request[v1pb.ListQualityPlansRequest]) (*connect.Response[v1pb.ListQualityPlansResponse], error) {
@@ -109,19 +127,7 @@ func (s *DataQualityService) ListQualityCoverageGaps(ctx context.Context, req *c
 	if err != nil {
 		return nil, err
 	}
-	gaps := make([]*v1pb.QualityCoverageGap, 0)
-	for _, plan := range plans {
-		for _, requirement := range plan.GetRequirements() {
-			if requirement.GetSatisfied() {
-				continue
-			}
-			gaps = append(gaps, &v1pb.QualityCoverageGap{
-				Target:      plan.GetTarget(),
-				Property:    requirement.GetProperty(),
-				Criticality: plan.GetCriticality(),
-			})
-		}
-	}
+	gaps := qualityCoverageGapsFromPlans(plans)
 
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:        req.Msg.GetPageToken(),
@@ -144,24 +150,59 @@ func (s *DataQualityService) ListQualityCoverageGaps(ctx context.Context, req *c
 	}), nil
 }
 
-// qualityPlanView derives one plan and renders it. The contract's presence is the
-// S1 intent signal; explicit criticality and coverage declarations arrive with the
-// plan write path.
-func qualityPlanView(guid string, metaType storepb.MetaType, rules []*store.QualityRuleMessage, contracted bool) *v1pb.QualityPlan {
-	ruleTypes := make([]storepb.QualityRuleType, 0, len(rules))
+// qualityCoverageGapsFromPlans flattens the plans to the requirements no enabled
+// check satisfies. An exempted requirement is not a gap: the declaration waived it,
+// and the plan's gap count already excludes it.
+func qualityCoverageGapsFromPlans(plans []*v1pb.QualityPlan) []*v1pb.QualityCoverageGap {
+	gaps := make([]*v1pb.QualityCoverageGap, 0)
+	for _, plan := range plans {
+		for _, requirement := range plan.GetRequirements() {
+			if requirement.GetSatisfied() || requirement.GetExempted() {
+				continue
+			}
+			gaps = append(gaps, &v1pb.QualityCoverageGap{
+				Target:      plan.GetTarget(),
+				Property:    requirement.GetProperty(),
+				Criticality: plan.GetCriticality(),
+				Column:      requirement.GetColumn(),
+			})
+		}
+	}
+	return gaps
+}
+
+// qualityPlanView derives one plan and renders it. The contract's intent decides
+// the criticality and the explicit statements; without an intent the presence of a
+// contract is still the S1 bridge to IMPORTANT.
+func qualityPlanView(guid string, metaType storepb.MetaType, rules []*store.QualityRuleMessage, contract *store.QualityContractMessage) *v1pb.QualityPlan {
+	shapes := make([]dataquality.RuleShape, 0, len(rules))
 	for _, rule := range rules {
-		ruleTypes = append(ruleTypes, rule.RuleType)
+		if rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED &&
+			rule.State != storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED {
+			// A paused rule is live but deliberately not running; it does not
+			// satisfy the requirement it would otherwise cover.
+			continue
+		}
+		shapes = append(shapes, dataquality.RuleShape{
+			Type:    rule.RuleType,
+			Column:  dataquality.ConfigColumn(rule.Config),
+			Enabled: true,
+		})
 	}
-	criticality := dataquality.CriticalityExperimental
-	if contracted {
-		criticality = dataquality.CriticalityImportant
+	var settings *storepb.QualityContractSettings
+	if contract != nil {
+		settings = contract.Settings
 	}
-	plan := dataquality.DerivePlan(contracted, criticality, ruleTypes)
+	intent := dataquality.ActiveIntent(settings.GetIntent(), time.Now())
+	plan := dataquality.DerivePlan(contract != nil, intent, shapes)
 	requirements := make([]*v1pb.QualityCoverageRequirement, 0, len(plan.Requirements))
 	for _, requirement := range plan.Requirements {
 		requirements = append(requirements, &v1pb.QualityCoverageRequirement{
 			Property:  convertPlanProperty(requirement.Property),
 			Satisfied: requirement.Satisfied,
+			Column:    requirement.Column,
+			Source:    convertPlanRequirementSource(requirement.Source),
+			Exempted:  requirement.Exempted,
 		})
 	}
 	return &v1pb.QualityPlan{
@@ -236,16 +277,17 @@ func convertPlanCriticality(criticality dataquality.AssetCriticality) v1pb.Quali
 }
 
 func convertPlanProperty(property dataquality.CoverageProperty) v1pb.QualityCoverageProperty {
-	switch property {
-	case dataquality.CoverageVolume:
-		return v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME
-	case dataquality.CoverageFreshness:
-		return v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS
-	case dataquality.CoverageUniqueness:
-		return v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_UNIQUENESS
-	case dataquality.CoverageSchemaStability:
-		return v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY
+	// The plan, store and API enums share their numbering.
+	return v1pb.QualityCoverageProperty(property)
+}
+
+func convertPlanRequirementSource(source dataquality.RequirementSource) v1pb.QualityCoverageSource {
+	switch source {
+	case dataquality.RequirementTemplate:
+		return v1pb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE
+	case dataquality.RequirementIntent:
+		return v1pb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT
 	default:
-		return v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_UNSPECIFIED
+		return v1pb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_UNSPECIFIED
 	}
 }

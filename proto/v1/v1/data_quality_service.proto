@@ -3594,11 +3594,61 @@ message QualityContractSettings {
   QualityFilter filter = 1;
   // The severity a newly authored rule starts with; UNSPECIFIED means no default.
   QualitySeverity default_severity = 3;
+  // What the target promises above its checks.
+  QualityContractIntent intent = 4;
 
   // The per-rule default schedule was replaced by the target's schedule; see
   // UpdateQualityTargetSchedule.
   reserved 2;
   reserved "default_schedule_interval_seconds";
+}
+
+// QualityContractIntentSource records who wrote the intent.
+enum QualityContractIntentSource {
+  QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED = 0;
+  QUALITY_CONTRACT_INTENT_SOURCE_HUMAN = 1;
+  QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT = 2;
+  QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED = 3;
+}
+
+// QualityContractIntentStatement is one property the target promises for a scope.
+message QualityContractIntentStatement {
+  QualityCoverageProperty property = 1;
+  // The column the promise is scoped to; empty means the whole table.
+  string column = 2;
+  // A free-text tolerance kept for reviewers. It is not evaluated yet.
+  string tolerance = 3;
+}
+
+// QualityContractIntentExemption waives one declared requirement: the requirement
+// stays visible, produces no gap, and never counts as satisfied.
+message QualityContractIntentExemption {
+  QualityCoverageProperty property = 1;
+  string column = 2;
+  string reason = 3;
+  // Format: users/{user}. Empty when the editor is unknown.
+  string approved_by = 4;
+  // 0 means the exemption never expires.
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// QualityContractIntent is the target's declaration above the checks: its
+// criticality, the properties it commits to, its dependents and the requirements
+// it explicitly waived. Editing it is part of UpdateQualityContract, and it is
+// versioned with the contract on every publish.
+message QualityContractIntent {
+  QualityAssetCriticality criticality = 1;
+  repeated QualityContractIntentStatement statements = 2;
+  // Downstream assets or external tags that depend on this one. Recorded only;
+  // they feed impact and criticality derivation later.
+  repeated string dependents = 3;
+  repeated QualityContractIntentExemption exemptions = 4;
+  // When the declaration is meant to take effect; unset means unset. Recorded
+  // only: plan derivation does not evaluate it yet.
+  google.protobuf.Timestamp effective_from = 5;
+  QualityContractIntentSource source = 6;
+  // Reserved for domain-level intent; stored, not resolved in this phase.
+  string domain_ref = 7;
 }
 
 // QualityContractChangeSummary counts how the live rules differ from the
@@ -3627,20 +3677,39 @@ enum QualityAssetCriticality {
   QUALITY_ASSET_CRITICALITY_CRITICAL = 3;
 }
 
-// QualityCoverageProperty is one kind of monitoring a declaration can require.
+// QualityCoverageProperty is one kind of monitoring an intent promise or a plan
+// declaration can require.
 enum QualityCoverageProperty {
   QUALITY_COVERAGE_PROPERTY_UNSPECIFIED = 0;
   QUALITY_COVERAGE_PROPERTY_VOLUME = 1;
   QUALITY_COVERAGE_PROPERTY_FRESHNESS = 2;
   QUALITY_COVERAGE_PROPERTY_UNIQUENESS = 3;
   QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY = 4;
+  QUALITY_COVERAGE_PROPERTY_NULL_RATE = 5;
+  QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES = 6;
+  QUALITY_COVERAGE_PROPERTY_FORMAT = 7;
+  QUALITY_COVERAGE_PROPERTY_RANGE = 8;
+}
+
+// QualityCoverageSource says where a requirement came from: the criticality
+// template or an explicit intent statement.
+enum QualityCoverageSource {
+  QUALITY_COVERAGE_SOURCE_UNSPECIFIED = 0;
+  QUALITY_COVERAGE_SOURCE_TEMPLATE = 1;
+  QUALITY_COVERAGE_SOURCE_INTENT = 2;
 }
 
 // QualityCoverageRequirement is one required property and whether a live rule
-// currently satisfies it. Gap = required and not satisfied.
+// currently satisfies it. Gap = required, not satisfied and not exempted.
 message QualityCoverageRequirement {
   QualityCoverageProperty property = 1;
   bool satisfied = 2;
+  // The scope column; empty means the whole table.
+  string column = 3;
+  QualityCoverageSource source = 4;
+  // A declared exemption waives the gap without counting the requirement as
+  // satisfied.
+  bool exempted = 5;
 }
 
 // QualityPlan is the read-only projection of a target's monitoring plan: its
@@ -3678,6 +3747,8 @@ message QualityCoverageGap {
   QualityTarget target = 1;
   QualityCoverageProperty property = 2;
   QualityAssetCriticality criticality = 3;
+  // The scope column; empty means the whole table.
+  string column = 4;
 }
 
 message ListQualityCoverageGapsRequest {
@@ -3707,6 +3778,10 @@ message QualityContractRevision {
   string note = 4;
   int32 check_count = 5;
   QualityContractChangeSummary change_summary = 6;
+  // The intent this version recorded. Absent when the version recorded none,
+  // including every version published before intent existed; this conversion
+  // cannot tell the two apart.
+  QualityContractIntent intent = 7;
 }
 
 // QualityContractCheck is one rule as a published version records it.
