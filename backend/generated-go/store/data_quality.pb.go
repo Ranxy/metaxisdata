@@ -7148,7 +7148,10 @@ type QualityChangeRequestItem struct {
 	Column    string                  `protobuf:"bytes,4,opt,name=column,proto3" json:"column,omitempty"`
 	MinChecks int32                   `protobuf:"varint,5,opt,name=min_checks,json=minChecks,proto3" json:"min_checks,omitempty"`
 	// COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
-	Remove        bool `protobuf:"varint,6,opt,name=remove,proto3" json:"remove,omitempty"`
+	Remove bool `protobuf:"varint,6,opt,name=remove,proto3" json:"remove,omitempty"`
+	// SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
+	// dimension of its own and a rule requires one.
+	Dimension     QualityDimension `protobuf:"varint,7,opt,name=dimension,proto3,enum=metaxisdata.store.QualityDimension" json:"dimension,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7223,6 +7226,13 @@ func (x *QualityChangeRequestItem) GetRemove() bool {
 		return x.Remove
 	}
 	return false
+}
+
+func (x *QualityChangeRequestItem) GetDimension() QualityDimension {
+	if x != nil {
+		return x.Dimension
+	}
+	return QualityDimension_QUALITY_DIMENSION_UNSPECIFIED
 }
 
 // QualityChangeRequestItems is the JSONB payload of quality_change_request.items.
@@ -8154,7 +8164,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1aQualityContractPlanCadence\x12)\n" +
 	"\x10interval_seconds\x18\x01 \x01(\x03R\x0fintervalSeconds\x12\x12\n" +
 	"\x04cron\x18\x02 \x01(\tR\x04cron\x12\x1a\n" +
-	"\btimezone\x18\x03 \x01(\tR\btimezone\"\xac\x02\n" +
+	"\btimezone\x18\x03 \x01(\tR\btimezone\"\xef\x02\n" +
 	"\x18QualityChangeRequestItem\x12C\n" +
 	"\x04kind\x18\x01 \x01(\x0e2/.metaxisdata.store.QualityChangeRequestItemKindR\x04kind\x124\n" +
 	"\x16suggestion_resource_id\x18\x02 \x01(\tR\x14suggestionResourceId\x12F\n" +
@@ -8162,7 +8172,8 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x06column\x18\x04 \x01(\tR\x06column\x12\x1d\n" +
 	"\n" +
 	"min_checks\x18\x05 \x01(\x05R\tminChecks\x12\x16\n" +
-	"\x06remove\x18\x06 \x01(\bR\x06remove\"^\n" +
+	"\x06remove\x18\x06 \x01(\bR\x06remove\x12A\n" +
+	"\tdimension\x18\a \x01(\x0e2#.metaxisdata.store.QualityDimensionR\tdimension\"^\n" +
 	"\x19QualityChangeRequestItems\x12A\n" +
 	"\x05items\x18\x01 \x03(\v2+.metaxisdata.store.QualityChangeRequestItemR\x05items\"\xad\x02\n" +
 	"\x1eQualityChangeRequestItemResult\x12\x14\n" +
@@ -8645,22 +8656,23 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	29,  // 74: metaxisdata.store.QualityContractPlanCoverage.source:type_name -> metaxisdata.store.QualityCoverageSource
 	32,  // 75: metaxisdata.store.QualityChangeRequestItem.kind:type_name -> metaxisdata.store.QualityChangeRequestItemKind
 	27,  // 76: metaxisdata.store.QualityChangeRequestItem.property:type_name -> metaxisdata.store.QualityCoverageProperty
-	92,  // 77: metaxisdata.store.QualityChangeRequestItems.items:type_name -> metaxisdata.store.QualityChangeRequestItem
-	35,  // 78: metaxisdata.store.QualityChangeRequestItemResult.status:type_name -> metaxisdata.store.QualityChangeRequestItemResult.Status
-	94,  // 79: metaxisdata.store.QualityChangeRequestItemResults.results:type_name -> metaxisdata.store.QualityChangeRequestItemResult
-	33,  // 80: metaxisdata.store.QualityChangeRejectionReasons.reasons:type_name -> metaxisdata.store.QualityChangeRejectionReason
-	90,  // 81: metaxisdata.store.QualityContractPlan.coverage:type_name -> metaxisdata.store.QualityContractPlanCoverage
-	91,  // 82: metaxisdata.store.QualityContractPlan.cadence:type_name -> metaxisdata.store.QualityContractPlanCadence
-	89,  // 83: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
-	99,  // 84: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
-	97,  // 85: metaxisdata.store.QualityContractSnapshot.plan:type_name -> metaxisdata.store.QualityContractPlan
-	0,   // 86: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
-	3,   // 87: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
-	88,  // [88:88] is the sub-list for method output_type
-	88,  // [88:88] is the sub-list for method input_type
-	88,  // [88:88] is the sub-list for extension type_name
-	88,  // [88:88] is the sub-list for extension extendee
-	0,   // [0:88] is the sub-list for field type_name
+	2,   // 77: metaxisdata.store.QualityChangeRequestItem.dimension:type_name -> metaxisdata.store.QualityDimension
+	92,  // 78: metaxisdata.store.QualityChangeRequestItems.items:type_name -> metaxisdata.store.QualityChangeRequestItem
+	35,  // 79: metaxisdata.store.QualityChangeRequestItemResult.status:type_name -> metaxisdata.store.QualityChangeRequestItemResult.Status
+	94,  // 80: metaxisdata.store.QualityChangeRequestItemResults.results:type_name -> metaxisdata.store.QualityChangeRequestItemResult
+	33,  // 81: metaxisdata.store.QualityChangeRejectionReasons.reasons:type_name -> metaxisdata.store.QualityChangeRejectionReason
+	90,  // 82: metaxisdata.store.QualityContractPlan.coverage:type_name -> metaxisdata.store.QualityContractPlanCoverage
+	91,  // 83: metaxisdata.store.QualityContractPlan.cadence:type_name -> metaxisdata.store.QualityContractPlanCadence
+	89,  // 84: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
+	99,  // 85: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
+	97,  // 86: metaxisdata.store.QualityContractSnapshot.plan:type_name -> metaxisdata.store.QualityContractPlan
+	0,   // 87: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
+	3,   // 88: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
+	89,  // [89:89] is the sub-list for method output_type
+	89,  // [89:89] is the sub-list for method input_type
+	89,  // [89:89] is the sub-list for extension type_name
+	89,  // [89:89] is the sub-list for extension extendee
+	0,   // [0:89] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }

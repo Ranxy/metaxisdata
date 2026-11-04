@@ -483,7 +483,7 @@ func (s *DataQualityService) applyQualityChangeRequestSuggestion(ctx context.Con
 		result.Detail = "the suggestion was decided before the request was approved"
 		return result
 	}
-	rule, err := qualityRuleFromDraft(suggestion)
+	rule, err := qualityRuleFromDraft(suggestion, storepb.QualityDimension(item.GetDimension()))
 	if err != nil {
 		result.Status = storepb.QualityChangeRequestItemResult_STATUS_FAILED
 		result.Detail = qualityChangeRequestDetail(err)
@@ -528,9 +528,14 @@ func (s *DataQualityService) validateQualityChangeRequestItems(ctx context.Conte
 				return nil, connect.NewError(connect.CodeAborted,
 					errors.Errorf("suggestion %q is already decided", resourceID))
 			}
+			dimension := storepb.QualityDimension(item.GetDimension())
+			if dimension == storepb.QualityDimension_QUALITY_DIMENSION_UNSPECIFIED {
+				return nil, connectErrorInvalid("a suggestion item needs the dimension the created rule carries")
+			}
 			stored.Items = append(stored.Items, &storepb.QualityChangeRequestItem{
 				Kind:                 storepb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
 				SuggestionResourceId: resourceID,
+				Dimension:            dimension,
 			})
 		case v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE:
 			hasCoverage = true
@@ -582,7 +587,7 @@ func qualityChangeRequestCriticality(contract *store.QualityContractMessage, rul
 
 // qualityRuleFromDraft renders a pending rule draft as the rule the accept path
 // creates. The draft's target is the suggestion's target, never a request field.
-func qualityRuleFromDraft(suggestion *store.QualitySuggestionMessage) (*v1pb.QualityRule, error) {
+func qualityRuleFromDraft(suggestion *store.QualitySuggestionMessage, dimension storepb.QualityDimension) (*v1pb.QualityRule, error) {
 	draft := suggestion.Payload.GetRule()
 	if draft == nil {
 		return nil, errors.New("the suggestion carries no rule draft")
@@ -593,6 +598,7 @@ func qualityRuleFromDraft(suggestion *store.QualitySuggestionMessage) (*v1pb.Qua
 	}
 	return &v1pb.QualityRule{
 		Title:       draft.GetTitle(),
+		Dimension:   v1pb.QualityDimension(dimension),
 		Description: draft.GetRationale(),
 		RuleType:    v1pb.QualityRuleType(ruleType),
 		Severity:    v1pb.QualitySeverity(draft.GetSeverity()),
@@ -674,6 +680,10 @@ func qualityChangeRequestDetail(err error) string {
 	if errors.As(err, &connectErr) {
 		return connectErr.Message()
 	}
+	if common.ErrorCode(err) == common.Invalid {
+		// Validation messages are written for the reviewer and carry no payload.
+		return err.Error()
+	}
 	return "the item could not be applied"
 }
 
@@ -698,6 +708,7 @@ func qualityChangeRequestItemsForFingerprint(items []*v1pb.QualityChangeRequestI
 			stored.Items = append(stored.Items, &storepb.QualityChangeRequestItem{
 				Kind:                 storepb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
 				SuggestionResourceId: strings.TrimSpace(item.GetSuggestion()),
+				Dimension:            storepb.QualityDimension(item.GetDimension()),
 			})
 		case v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE:
 			stored.Items = append(stored.Items, &storepb.QualityChangeRequestItem{
@@ -749,6 +760,7 @@ func convertQualityChangeRequestToV1(workspaceID string, message *store.QualityC
 			Column:    item.GetColumn(),
 			MinChecks: item.GetMinChecks(),
 			Remove:    item.GetRemove(),
+			Dimension: v1pb.QualityDimension(item.GetDimension()),
 		}
 		// The suggestion field is SUGGESTION_REF-only; a coverage item must not render
 		// a bogus empty suggestion name.

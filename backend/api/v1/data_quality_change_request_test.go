@@ -76,16 +76,17 @@ func TestQualityRuleFromDraft(t *testing.T) {
 			},
 		}},
 	}
-	rule, err := qualityRuleFromDraft(suggestion)
+	rule, err := qualityRuleFromDraft(suggestion, storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS)
 	require.NoError(t, err)
 	require.Equal(t, "orders must have rows", rule.GetTitle())
 	require.Equal(t, "the table is never empty", rule.GetDescription())
 	require.Equal(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, rule.GetRuleType())
+	require.Equal(t, v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, rule.GetDimension())
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_ERROR, rule.GetSeverity())
 	require.Equal(t, suggestion.TargetGUID, rule.GetTarget().GetMetaGuid())
 	require.NotNil(t, rule.GetConfig().GetRowCount())
 
-	_, err = qualityRuleFromDraft(&store.QualitySuggestionMessage{})
+	_, err = qualityRuleFromDraft(&store.QualitySuggestionMessage{}, storepb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS)
 	require.Error(t, err)
 }
 

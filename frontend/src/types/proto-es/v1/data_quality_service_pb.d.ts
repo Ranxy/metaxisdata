@@ -7484,6 +7484,14 @@ export declare type QualityChangeRequestItem = Message<"metaxisdata.v1.QualityCh
    * @generated from field: bool remove = 6;
    */
   remove: boolean;
+
+  /**
+   * SUGGESTION_REF: the dimension the created rule carries; required because a
+   * rule draft has no dimension and a rule needs one.
+   *
+   * @generated from field: metaxisdata.v1.QualityDimension dimension = 7;
+   */
+  dimension: QualityDimension;
 };
 
 /**

@@ -855,6 +855,7 @@ one plan declaration.
 | column | [string](#string) |  |  |
 | min_checks | [int32](#int32) |  |  |
 | remove | [bool](#bool) |  | COVERAGE_CHANGE: remove the declaration instead of adding or changing it. |
+| dimension | [QualityDimension](#metaxisdata-store-QualityDimension) |  | SUGGESTION_REF: the dimension the created rule carries. A rule draft has no dimension of its own and a rule requires one. |
 
 
 

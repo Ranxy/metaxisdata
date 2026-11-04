@@ -1252,6 +1252,9 @@ message QualityChangeRequestItem {
   int32 min_checks = 5;
   // COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
   bool remove = 6;
+  // SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
+  // dimension of its own and a rule requires one.
+  QualityDimension dimension = 7;
 }
 
 // QualityChangeRequestItems is the JSONB payload of quality_change_request.items.

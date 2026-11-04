@@ -3892,6 +3892,9 @@ message QualityChangeRequestItem {
   int32 min_checks = 5;
   // COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
   bool remove = 6;
+  // SUGGESTION_REF: the dimension the created rule carries; required because a
+  // rule draft has no dimension and a rule needs one.
+  QualityDimension dimension = 7;
 }
 
 // QualityChangeRequestItemResult is one item's outcome.

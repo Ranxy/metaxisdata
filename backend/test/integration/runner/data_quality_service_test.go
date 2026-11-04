@@ -4058,6 +4058,7 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 		{
 			Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
 			Suggestion: suggestionName,
+			Dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
 		},
 		{
 			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
@@ -4075,6 +4076,7 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 		{
 			Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
 			Suggestion: suggestionName,
+			Dimension:  v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS,
 		},
 		{
 			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
@@ -4094,7 +4096,8 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 
 	applied, err := decide(request.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
 	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, applied.GetState())
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, applied.GetState(),
+		"item results: %v", applied.GetItemResults())
 	require.Len(t, applied.GetItemResults(), 2)
 	for _, result := range applied.GetItemResults() {
 		require.Equal(t, v1pb.QualityChangeRequestItemResult_STATUS_APPLIED, result.GetStatus(), result.GetDetail())
@@ -4154,8 +4157,8 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 	// part later decisions learn from.
 	noReason, err := create([]*v1pb.QualityChangeRequestItem{{
 		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
-		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
-		MinChecks: 1,
+		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
+		MinChecks: 2,
 	}}, 2)
 	require.NoError(t, err)
 	_, err = decide(noReason.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_REJECT)

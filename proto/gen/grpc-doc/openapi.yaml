@@ -13438,6 +13438,20 @@ components:
                 remove:
                     type: boolean
                     description: 'COVERAGE_CHANGE: remove the declaration instead of adding or changing it.'
+                dimension:
+                    enum:
+                        - QUALITY_DIMENSION_UNSPECIFIED
+                        - QUALITY_DIMENSION_COMPLETENESS
+                        - QUALITY_DIMENSION_VALIDITY
+                        - QUALITY_DIMENSION_UNIQUENESS
+                        - QUALITY_DIMENSION_CONSISTENCY
+                        - QUALITY_DIMENSION_TIMELINESS
+                        - QUALITY_DIMENSION_ACCURACY
+                    type: string
+                    description: |-
+                        SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
+                         dimension of its own and a rule requires one.
+                    format: enum
             description: |-
                 QualityChangeRequestItem is one typed change. Which fields are read depends on
                  kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes
