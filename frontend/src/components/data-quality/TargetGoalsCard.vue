@@ -140,7 +140,7 @@
 
 <script setup lang="ts">
 import { AlertTriangle } from "lucide-vue-next";
-import { onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   clearQualityAgentGoal,
@@ -194,19 +194,42 @@ const loading = ref(false);
 const error = ref("");
 const busy = ref(false);
 const clearTarget = ref<QualityAgentGoal | undefined>(undefined);
+let loadGeneration = 0;
+let loadController: AbortController | undefined;
 
 async function load() {
   if (!props.targetGuid) {
+    goals.value = [];
+    clearTarget.value = undefined;
     return;
   }
+  // A target switch reuses this card: an older reply must never become the rows the
+  // controls act on.
+  const generation = ++loadGeneration;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
   loading.value = true;
   error.value = "";
+  clearTarget.value = undefined;
   try {
-    goals.value = await listQualityAgentGoals(props.targetGuid);
+    const next = await listQualityAgentGoals(
+      props.targetGuid,
+      controller.signal
+    );
+    if (generation !== loadGeneration || controller.signal.aborted) {
+      return;
+    }
+    goals.value = next;
   } catch (e: unknown) {
+    if (generation !== loadGeneration || controller.signal.aborted) {
+      return;
+    }
     error.value = formatError(e, "dataQuality.goals.loadFailed");
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) {
+      loading.value = false;
+    }
   }
 }
 
@@ -267,6 +290,8 @@ async function clear() {
     await load();
   } catch (e: unknown) {
     notify.error(formatError(e, "dataQuality.goals.actionFailed"));
+    clearTarget.value = undefined;
+    await load();
   } finally {
     busy.value = false;
   }
@@ -296,9 +321,9 @@ async function apply(
   }
 }
 
-onMounted(load);
-watch(
-  () => props.targetGuid,
-  () => void load()
-);
+watch(() => props.targetGuid, load, { immediate: true });
+onBeforeUnmount(() => {
+  loadGeneration++;
+  loadController?.abort();
+});
 </script>

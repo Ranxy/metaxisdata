@@ -1815,6 +1815,7 @@ export async function listQualityAgentGoals(
     const request = create(ListQualityAgentGoalsRequestSchema, {
       parent: WORKSPACE_PARENT,
       targetGuid,
+      pageSize: listAllPageSize,
       pageToken,
     });
     const response = await dataQualityClient.listQualityAgentGoals(request, {

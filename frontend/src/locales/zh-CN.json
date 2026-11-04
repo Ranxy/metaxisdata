@@ -1004,7 +1004,7 @@
       "phaseUnspecified": "未知",
       "resume": "恢复",
       "round": "第 {round}/{max} 轮",
-      "title": "Runner 目标",
+      "title": "runner 目标",
       "updated": "goal 已更新"
     },
     "impact": {

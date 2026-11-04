@@ -55,7 +55,9 @@ describe("TargetGoalsCard", () => {
     mocks.resumeQualityAgentGoal.mockResolvedValue(
       goalFixture(QualityAgentGoalPhase.ACTIVE)
     );
-    mocks.clearQualityAgentGoal.mockResolvedValue(undefined);
+    mocks.clearQualityAgentGoal.mockImplementation(async () => {
+      mocks.listQualityAgentGoals.mockResolvedValue([]);
+    });
   });
 
   it("resumes a blocked goal with the revision it read", async () => {
@@ -101,6 +103,40 @@ describe("TargetGoalsCard", () => {
       "workspaces/ws1/qualityAgentGoals/g1",
       4
     );
+    // The list is re-read after the clear, so the removed row disappears.
+    expect(mocks.listQualityAgentGoals).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  // A stale revision or a failed action reloads the card so the controls match the
+  // runner's state, instead of leaving an unusable row.
+  it("reloads after a failed action", async () => {
+    mocks.resumeQualityAgentGoal.mockRejectedValueOnce(
+      new Error("stale revision")
+    );
+    const wrapper = mountCard();
+    await flushPromises();
+
+    const resume = wrapper
+      .findAll("button")
+      .find((button) => button.text() === label("dataQuality.goals.resume"));
+    await resume!.trigger("click");
+    await flushPromises();
+
+    expect(mocks.listQualityAgentGoals).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  // A reader sees the goals and their state but none of the controls.
+  it("hides the controls from a reader", async () => {
+    const wrapper = mount(TargetGoalsCard, {
+      props: { targetGuid: "inst;db;;orders", canManage: false },
+      global: { plugins: [i18n] },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(label("dataQuality.goals.phaseBlocked"));
+    expect(wrapper.findAll("button")).toHaveLength(0);
     wrapper.unmount();
   });
 });
