@@ -5306,7 +5306,8 @@ paths:
                 - DataQualityService
             description: |-
                 Create a batch of typed changes against one target. It stays PROPOSED until a
-                 person decides; creating it changes nothing on the target.
+                 person decides; creating it changes nothing on the target. An agent principal
+                 may only create PROPOSED requests, and only while autonomy is enabled.
             operationId: DataQualityService_CreateQualityChangeRequest
             parameters:
                 - name: workspace
@@ -5839,6 +5840,41 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/PublishQualityContractResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityContracts:stagePlan:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Write the target's plan declaration without touching its settings. This is the
+                 one write an agent principal may make; an agent call is refused while the
+                 workspace kill switch or the agent itself is disabled.
+            operationId: DataQualityService_StageQualityPlan
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StageQualityPlanRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityContract'
                 default:
                     description: Default error response
                     content:
@@ -16906,6 +16942,55 @@ components:
                         type: string
                     description: Engine specific parameters.
             description: SpatialIndexConfig is the configuration of a spatial index.
+        StageQualityPlanRequest:
+            required:
+                - parent
+                - targetGuid
+                - baseVersion
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                baseVersion:
+                    type: integer
+                    description: |-
+                        The newest published version the declaration is written against. 0 is a valid
+                         base for a target that has never been published.
+                    format: int32
+                coverage:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityPlanCoverage'
+                    description: |-
+                        The complete declaration: coverage only, like UpdateQualityContract's draft.
+                         The list has no presence: an omitted or empty coverage clears the target's
+                         declaration and returns it to the projection derived from the intent and the
+                         live checks.
         StandardCodeConfig:
             type: object
             properties:

@@ -11,6 +11,8 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/api/auth"
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -134,6 +136,87 @@ func (s *DataQualityService) RotateQualityAgentToken(ctx context.Context, req *c
 		Agent: convertQualityAgentToV1(workspaceID, agent),
 		Token: token,
 	}), nil
+}
+
+// currentWritingAgent returns the agent a request is made by, or nil for a human
+// caller. It enforces the two switches every agent write needs: the workspace kill
+// switch and the agent's own enabled flag. A disabled agent may still read; it just
+// cannot write.
+func (s *DataQualityService) currentWritingAgent(ctx context.Context) (*store.QualityAgentMessage, error) {
+	user, ok := GetUserFromContext(ctx)
+	if !ok || user == nil || user.Type != storepb.PrincipalType_SERVICE_ACCOUNT {
+		return nil, nil
+	}
+	agent, err := s.store.GetQualityAgentByPrincipalID(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if agent == nil {
+		// A service account that is not a quality agent is not managed here; the ACL
+		// decides whether it may call the RPC at all.
+		return nil, nil
+	}
+	if !agent.Enabled {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("this agent is disabled; an administrator must create or enable one"))
+	}
+	settings, err := dataquality.LoadSettings(ctx, s.store)
+	if err != nil {
+		return nil, errLoadQualitySettings(err)
+	}
+	if !settings.AgentAutonomyEnabled {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("agent autonomy is disabled in this workspace"))
+	}
+	return agent, nil
+}
+
+// StageQualityPlan writes the target's plan declaration without touching the
+// settings or the published version. It is the write an agent principal owns; the
+// kill switch and the agent's state are checked before anything is read for a write.
+func (s *DataQualityService) StageQualityPlan(ctx context.Context, req *connect.Request[v1pb.StageQualityPlanRequest]) (*connect.Response[v1pb.QualityContract], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	if _, err := s.currentWritingAgent(ctx); err != nil {
+		return nil, err
+	}
+	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
+	if targetGUID == "" {
+		return nil, connectErrorInvalid("target_guid is required")
+	}
+	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target's quality rules")
+	}
+	metaType := storepb.MetaType(req.Msg.GetMetaType())
+	if metaType == storepb.MetaType_UNSPECIFIED && len(rules) > 0 {
+		metaType = rules[0].TargetType
+	}
+	if metaType == storepb.MetaType_UNSPECIFIED {
+		return nil, connectErrorInvalid("meta_type is required when the target has no rules")
+	}
+	existing, err := s.store.GetQualityContract(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the target has no contract; an administrator must create one before a declaration can be staged"))
+	}
+	draft := &v1pb.QualityPlan{Coverage: req.Msg.GetCoverage()}
+	plan, err := s.planQualityContractDraft(ctx, targetGUID, metaType, existing, draft, req.Msg.GetBaseVersion())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.writeQualityContractDraft(ctx, targetGUID, metaType, existing, plan, req.Msg.GetBaseVersion()); err != nil {
+		return nil, err
+	}
+	contract, err := s.qualityContractView(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(contract), nil
 }
 
 // mintQualityAgentToken mints the bearer token an agent authenticates with. It is

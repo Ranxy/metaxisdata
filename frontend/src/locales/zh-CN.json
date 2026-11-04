@@ -1965,6 +1965,10 @@
   },
   "dataQualitySettings": {
     "addCodeTable": "添加代码表",
+    "agentAutonomy": "允许 agent 写入",
+    "agentAutonomyHint": "默认关闭。关闭后会停止新的 agent 写入；已记录的提议仍由人决策。批准与发布始终由人完成。",
+    "agentSection": "Agent 自治",
+    "agentSectionDescription": "工作区的 agent 主体是否允许写计划声明与 PROPOSED 变更单。它们始终可以读取。",
     "checkTimeZone": "检查时区",
     "checkTimeZoneHint": "IANA 时区名称，例如 Asia/Shanghai；留空表示 UTC。检查筛选与自定义 SQL 中的时间变量按此时区解析；不影响检查的调度。",
     "codeTableColumnDescription": "描述",

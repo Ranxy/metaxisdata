@@ -1761,6 +1761,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.StageQualityPlanRequest"><span class="badge">M</span>StageQualityPlanRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.StandardCodeConfig"><span class="badge">M</span>StandardCodeConfig</a>
                 </li>
               
@@ -23075,6 +23079,62 @@ display order. The model may rank types but may not invent one. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.StageQualityPlanRequest">StageQualityPlanRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The newest published version the declaration is written against. 0 is a valid
+base for a target that has never been published. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>coverage</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanCoverage">QualityPlanCoverage</a></td>
+                  <td>repeated</td>
+                  <td><p>The complete declaration: coverage only, like UpdateQualityContract&#39;s draft.
+The list has no presence: an omitted or empty coverage clears the target&#39;s
+declaration and returns it to the projection derived from the intent and the
+live checks. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.StandardCodeConfig">StandardCodeConfig</h3>
         <p>StandardCodeConfig validates one column against a national or industry</p><p>standard code. The standard fixes the value shape, the check digit where one</p><p>exists, and whether the value must exist in the standard's built-in code</p><p>table. The rule reads a bounded sample of the column and validates every row</p><p>in process, so its verdict is a sample verdict like cel_expression's.</p>
 
@@ -26465,11 +26525,21 @@ version (no_changes=true).</p></td>
               </tr>
             
               <tr>
+                <td>StageQualityPlan</td>
+                <td><a href="#metaxisdata.v1.StageQualityPlanRequest">StageQualityPlanRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
+                <td><p>Write the target&#39;s plan declaration without touching its settings. This is the
+one write an agent principal may make; an agent call is refused while the
+workspace kill switch or the agent itself is disabled.</p></td>
+              </tr>
+            
+              <tr>
                 <td>CreateQualityChangeRequest</td>
                 <td><a href="#metaxisdata.v1.CreateQualityChangeRequestRequest">CreateQualityChangeRequestRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
                 <td><p>Create a batch of typed changes against one target. It stays PROPOSED until a
-person decides; creating it changes nothing on the target.</p></td>
+person decides; creating it changes nothing on the target. An agent principal
+may only create PROPOSED requests, and only while autonomy is enabled.</p></td>
               </tr>
             
               <tr>
@@ -27136,6 +27206,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>PublishQualityContract</td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualityContracts:publish</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>StageQualityPlan</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityContracts:stagePlan</td>
                 <td>*</td>
               </tr>
               

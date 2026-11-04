@@ -34,6 +34,10 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
+	agent, err := s.currentWritingAgent(ctx)
+	if err != nil {
+		return nil, err
+	}
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
 	if targetGUID == "" {
 		return nil, connectErrorInvalid("target_guid is required")
@@ -65,9 +69,9 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 		return nil, err
 	}
 	fingerprint := qualityChangeRequestFingerprint(preliminary, req.Msg.GetBaseVersion())
+	source := qualityChangeRequestSource(agent)
 	existing, err := s.store.GetQualityChangeRequestByFingerprint(ctx, targetGUID, metaType,
-		req.Msg.GetBaseVersion(),
-		storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN, fingerprint)
+		req.Msg.GetBaseVersion(), source, fingerprint)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +97,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 		TargetGUID:         targetGUID,
 		TargetType:         metaType,
 		BaseVersion:        req.Msg.GetBaseVersion(),
-		Source:             storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN,
+		Source:             source,
 		Items:              storedItems,
 		RequestFingerprint: fingerprint,
 		CreatedBy:          createdBy,
@@ -102,6 +106,15 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 		return nil, err
 	}
 	return connect.NewResponse(convertQualityChangeRequestToV1(workspaceID, message)), nil
+}
+
+// qualityChangeRequestSource records who proposed the batch: the agent principal
+// when an agent writes it, a person otherwise.
+func qualityChangeRequestSource(agent *store.QualityAgentMessage) storepb.QualityChangeRequestSource {
+	if agent != nil {
+		return storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_AGENT
+	}
+	return storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN
 }
 
 // GetQualityChangeRequest reads one request with its items and per-item results.

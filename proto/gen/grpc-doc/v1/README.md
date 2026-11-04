@@ -407,6 +407,7 @@
     - [SegmentRecord](#metaxisdata-v1-SegmentRecord)
     - [SemanticLabelEvidence](#metaxisdata-v1-SemanticLabelEvidence)
     - [SemanticLabelSuggestion](#metaxisdata-v1-SemanticLabelSuggestion)
+    - [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest)
     - [StandardCodeConfig](#metaxisdata-v1-StandardCodeConfig)
     - [StringLengthConfig](#metaxisdata-v1-StringLengthConfig)
     - [SuggestColumnLabelsRequest](#metaxisdata-v1-SuggestColumnLabelsRequest)
@@ -7905,6 +7906,25 @@ SemanticLabelSuggestion is a model-proposed semantic label for one column.
 
 
 
+<a name="metaxisdata-v1-StageQualityPlanRequest"></a>
+
+### StageQualityPlanRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| base_version | [int32](#int32) |  | The newest published version the declaration is written against. 0 is a valid base for a target that has never been published. |
+| coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) | repeated | The complete declaration: coverage only, like UpdateQualityContract&#39;s draft. The list has no presence: an omitted or empty coverage clears the target&#39;s declaration and returns it to the projection derived from the intent and the live checks. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-StandardCodeConfig"></a>
 
 ### StandardCodeConfig
@@ -9055,7 +9075,8 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityCoverageGaps | [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest) | [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse) | ListQualityCoverageGaps flattens the plan projection to the unsatisfied declared coverage: one row per target property that a live rule does not implement. Read-only, like ListQualityPlans. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
-| CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. |
+| StageQualityPlan | [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Write the target&#39;s plan declaration without touching its settings. This is the one write an agent principal may make; an agent call is refused while the workspace kill switch or the agent itself is disabled. |
+| CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. An agent principal may only create PROPOSED requests, and only while autonomy is enabled. |
 | GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |
 | ListQualityChangeRequests | [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest) | [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse) | List change requests, newest first. |
 | CreateQualityAgent | [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest) | [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse) | Create an agent principal and return its bearer token once. The agent is an independent principal whose only workspace role is the quality agent role; its token is a normal access token for that principal, so disabling the agent makes every token it issued unusable. Administrator only. |

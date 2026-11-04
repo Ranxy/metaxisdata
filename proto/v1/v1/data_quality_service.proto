@@ -652,15 +652,28 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.contracts.publish";
   }
 
+  // Write the target's plan declaration without touching its settings. This is the
+  // one write an agent principal may make; an agent call is refused while the
+  // workspace kill switch or the agent itself is disabled.
+  rpc StageQualityPlan(StageQualityPlanRequest) returns (QualityContract) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityContracts:stagePlan"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
+  }
+
   // Create a batch of typed changes against one target. It stays PROPOSED until a
-  // person decides; creating it changes nothing on the target.
+  // person decides; creating it changes nothing on the target. An agent principal
+  // may only create PROPOSED requests, and only while autonomy is enabled.
   rpc CreateQualityChangeRequest(CreateQualityChangeRequestRequest) returns (QualityChangeRequest) {
     option (google.api.http) = {
       post: "/v1/{parent=workspaces/*}/qualityChangeRequests"
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
   }
 
   // Read one change request, with its items and per-item results.
@@ -3972,6 +3985,21 @@ message QualityChangeRequest {
   google.protobuf.Timestamp created_at = 11;
   string decided_by = 12;
   google.protobuf.Timestamp decided_at = 13;
+}
+
+message StageQualityPlanRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  // The newest published version the declaration is written against. 0 is a valid
+  // base for a target that has never been published.
+  int32 base_version = 4 [(google.api.field_behavior) = REQUIRED];
+  // The complete declaration: coverage only, like UpdateQualityContract's draft.
+  // The list has no presence: an omitted or empty coverage clears the target's
+  // declaration and returns it to the projection derived from the intent and the
+  // live checks.
+  repeated QualityPlanCoverage coverage = 5;
 }
 
 message CreateQualityChangeRequestRequest {

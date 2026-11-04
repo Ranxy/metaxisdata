@@ -38,6 +38,7 @@ function baseForm(
     maxColumnsPerAnalysis: "",
     sendSampleValuesToLlm: false,
     checkTimeZone: "",
+    agentAutonomyEnabled: false,
     weeklyDigest: {
       enabled: false,
       dayOfWeek: DayOfWeek.MONDAY,
@@ -86,6 +87,8 @@ describe("settingsToForm", () => {
       maxColumnsPerAnalysis: "50",
       sendSampleValuesToLlm: true,
       checkTimeZone: "Asia/Shanghai",
+      // Agent writes are off unless the stored setting opts in.
+      agentAutonomyEnabled: false,
       // No digest stored yet: show the schedule the server resolves instead.
       weeklyDigest: {
         enabled: false,
