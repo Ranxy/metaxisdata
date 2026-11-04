@@ -6,8 +6,13 @@ import {
   ExportQualityReportResponseSchema,
   GetQualityConsumptionCoverageResponseSchema,
   GetQualityTargetImpactResponseSchema,
+  QualityContractSchema,
+  QualityContractSettingsSchema,
+  QualityCoverageProperty,
   QualityExecutionState,
   QualityIssueStatus,
+  QualityPlanCoverageSchema,
+  QualityPlanSchema,
   QualitySeverity,
   QualityStatus,
   QualityTargetOrder,
@@ -22,6 +27,7 @@ import {
   getQualityConsumptionCoverage,
   getQualityTargetImpact,
   listQualityTargets,
+  updateQualityContract,
   updateQualityTargetSchedule,
 } from "./data-quality";
 
@@ -34,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   getQualityTargetImpact: vi.fn(),
   listQualityTargets: vi.fn(),
   updateQualityTargetSchedule: vi.fn(),
+  updateQualityContract: vi.fn(),
 }));
 
 vi.mock("./client", () => ({
@@ -46,6 +53,7 @@ vi.mock("./client", () => ({
     getQualityTargetImpact: mocks.getQualityTargetImpact,
     listQualityTargets: mocks.listQualityTargets,
     updateQualityTargetSchedule: mocks.updateQualityTargetSchedule,
+    updateQualityContract: mocks.updateQualityContract,
   },
 }));
 
@@ -381,5 +389,44 @@ describe("consumption coverage wrapper", () => {
       expect.anything(),
       { signal: controller.signal }
     );
+  });
+});
+
+// The declaration travels with its aligned base version and the complete settings
+// the server replaces.
+describe("updateQualityContract", () => {
+  it("sends the complete settings, the declaration and its base version", async () => {
+    mocks.updateQualityContract.mockResolvedValue(
+      create(QualityContractSchema, { publishedVersion: 4 })
+    );
+
+    await updateQualityContract({
+      targetGuid: "inst1;db1;public;orders",
+      metaType: MetaType.TABLE,
+      settings: create(QualityContractSettingsSchema),
+      draft: create(QualityPlanSchema, {
+        coverage: [
+          create(QualityPlanCoverageSchema, {
+            property: QualityCoverageProperty.FRESHNESS,
+            column: "created_at",
+            minChecks: 2,
+          }),
+        ],
+      }),
+      stagedBaseVersion: 4,
+    });
+
+    const request = mocks.updateQualityContract.mock.calls[0]?.[0] as {
+      targetGuid: string;
+      metaType: MetaType;
+      settings?: unknown;
+      draft?: { coverage: unknown[] };
+      stagedBaseVersion: number;
+    };
+    expect(request.targetGuid).toBe("inst1;db1;public;orders");
+    expect(request.metaType).toBe(MetaType.TABLE);
+    expect(request.settings).toBeTruthy();
+    expect(request.draft?.coverage).toHaveLength(1);
+    expect(request.stagedBaseVersion).toBe(4);
   });
 });

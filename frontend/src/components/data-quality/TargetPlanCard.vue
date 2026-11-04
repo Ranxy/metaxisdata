@@ -1,10 +1,21 @@
 <template>
   <Card>
     <CardHeader class="space-y-1 border-b">
-      <CardTitle class="flex items-center gap-2 text-base">
-        <ShieldCheck class="h-4 w-4 shrink-0 text-muted-foreground" />
-        {{ t("dataQuality.workspace.planTitle") }}
-      </CardTitle>
+      <div class="flex items-center justify-between gap-2">
+        <CardTitle class="flex items-center gap-2 text-base">
+          <ShieldCheck class="h-4 w-4 shrink-0 text-muted-foreground" />
+          {{ t("dataQuality.workspace.planTitle") }}
+        </CardTitle>
+        <Button
+          v-if="canUpdate && contract"
+          variant="ghost"
+          size="sm"
+          @click="declarationOpen = true"
+        >
+          <Pencil class="mr-1 h-3.5 w-3.5" />
+          {{ t("dataQuality.workspace.planEdit") }}
+        </Button>
+      </div>
       <CardDescription>
         {{ t("dataQuality.workspace.planHint") }}
       </CardDescription>
@@ -17,6 +28,13 @@
           </Badge>
           <Badge variant="outline">
             {{ t("dataQuality.workspace.planCriticality", { value: criticalityLabel }) }}
+          </Badge>
+          <Badge :variant="hasDeclaration ? 'secondary' : 'neutral'">
+            {{
+              hasDeclaration
+                ? t("dataQuality.workspace.planDeclared")
+                : t("dataQuality.workspace.planDerived")
+            }}
           </Badge>
           <span class="text-xs text-muted-foreground">
             {{
@@ -40,18 +58,49 @@
           class="space-y-1.5"
         >
           <li
-            v-for="requirement in plan.requirements"
-            :key="requirement.property"
+            v-for="row in planRows"
+            :key="row.key"
             class="flex items-center justify-between gap-2 text-sm"
           >
-            <span>{{ propertyLabel(requirement.property) }}</span>
-            <Badge :variant="requirement.satisfied ? 'success' : 'warning'">
-              {{ requirement.satisfied ? t("dataQuality.workspace.planSatisfied") : t("dataQuality.workspace.planGap") }}
+            <span>
+              {{ t(qualityCoveragePropertyKey(row.property)) }}
+              <span
+                v-if="row.column"
+                class="text-muted-foreground"
+              >
+                · {{ row.column }}
+              </span>
+            </span>
+            <Badge
+              v-if="row.declared"
+              variant="secondary"
+            >
+              {{ t("dataQuality.workspace.planDeclared") }}
+            </Badge>
+            <Badge
+              v-else-if="row.exempted"
+              variant="neutral"
+            >
+              {{ t("dataQuality.workspace.planExempted") }}
+            </Badge>
+            <Badge
+              v-else
+              :variant="row.satisfied ? 'success' : 'warning'"
+            >
+              {{
+                row.satisfied
+                  ? t("dataQuality.workspace.planSatisfied")
+                  : t("dataQuality.workspace.planGap")
+              }}
             </Badge>
           </li>
         </ul>
         <p class="text-xs text-muted-foreground">
-          {{ t("dataQuality.workspace.planReadOnlyHint") }}
+          {{
+            hasDeclaration
+              ? t("dataQuality.workspace.planDeclaredHint")
+              : t("dataQuality.workspace.planDerivedHint")
+          }}
         </p>
       </template>
       <p
@@ -61,14 +110,26 @@
         {{ t("dataQuality.workspace.planEmptyHint") }}
       </p>
     </CardContent>
+
+    <TargetPlanDeclarationDialog
+      v-if="contract"
+      v-model:open="declarationOpen"
+      :target-guid="contract.target?.metaGuid ?? ''"
+      :meta-type="contract.target?.metaType ?? MetaType.UNSPECIFIED"
+      :contract="contract"
+      @updated="emit('updated', $event)"
+      @refresh="emit('refresh')"
+    />
   </Card>
 </template>
 
 <script setup lang="ts">
-import { ShieldCheck } from "lucide-vue-next";
-import { computed } from "vue";
+import { Pencil, ShieldCheck } from "lucide-vue-next";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import TargetPlanDeclarationDialog from "@/components/data-quality/TargetPlanDeclarationDialog.vue";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -82,11 +143,73 @@ import {
   QualityCoverageProperty,
   QualityPlanState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
-const props = defineProps<{ contract?: QualityContract }>();
+const props = withDefaults(
+  defineProps<{ contract?: QualityContract; canUpdate?: boolean }>(),
+  { canUpdate: false }
+);
+const emit = defineEmits<{
+  updated: [contract: QualityContract];
+  /** The declaration changed underneath the editor; the page re-reads the contract. */
+  refresh: [];
+}>();
 const { t } = useI18n();
 
+const declarationOpen = ref(false);
+
 const plan = computed(() => props.contract?.plan);
+const hasDeclaration = computed(
+  () => (props.contract?.stagedPlan?.coverage.length ?? 0) > 0
+);
+
+interface PlanRow {
+  key: string;
+  property: QualityCoverageProperty;
+  column: string;
+  satisfied: boolean;
+  exempted: boolean;
+  declared: boolean;
+}
+
+/**
+ * The rows the card renders: the derived requirements plus any declared coverage
+ * the derived list does not contain. A declared promise that no derived requirement
+ * lists still shows up, so the "Declared" badge always names what it points at.
+ */
+const planRows = computed<PlanRow[]>(() => {
+  const rows: PlanRow[] = [];
+  const seen = new Set<string>();
+  for (const requirement of plan.value?.requirements ?? []) {
+    const key = `${requirement.property}:${requirement.column}`;
+    seen.add(key);
+    rows.push({
+      key,
+      property: requirement.property,
+      column: requirement.column,
+      satisfied: requirement.satisfied,
+      exempted: requirement.exempted,
+      declared: false,
+    });
+  }
+  for (const coverage of props.contract?.stagedPlan?.coverage ?? []) {
+    const key = `${coverage.property}:${coverage.column}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({
+      key,
+      property: coverage.property,
+      column: coverage.column,
+      satisfied: false,
+      exempted: false,
+      declared: true,
+    });
+  }
+  return rows;
+});
 
 const planStateLabel = computed(() =>
   plan.value?.state === QualityPlanState.PLANNED
@@ -104,19 +227,4 @@ const criticalityLabel = computed(() => {
       return t("dataQuality.workspace.planCriticalityExperimental");
   }
 });
-
-function propertyLabel(property: QualityCoverageProperty): string {
-  switch (property) {
-    case QualityCoverageProperty.VOLUME:
-      return t("dataQuality.workspace.planPropertyVolume");
-    case QualityCoverageProperty.FRESHNESS:
-      return t("dataQuality.workspace.planPropertyFreshness");
-    case QualityCoverageProperty.UNIQUENESS:
-      return t("dataQuality.workspace.planPropertyUniqueness");
-    case QualityCoverageProperty.SCHEMA_STABILITY:
-      return t("dataQuality.workspace.planPropertySchemaStability");
-    default:
-      return t("dataQuality.workspace.planPropertyUnspecified");
-  }
-}
 </script>

@@ -237,7 +237,12 @@
           @retry="loadContract()"
         />
 
-        <TargetPlanCard :contract="contract" />
+        <TargetPlanCard
+          :contract="contract"
+          :can-update="canUpdate"
+          @updated="onContractChanged"
+          @refresh="loadContract()"
+        />
 
         <p
           v-if="orphaned"

@@ -45,6 +45,60 @@
           </Badge>
         </div>
 
+        <!-- The version also records a plan declaration and the intent it was
+             published with; show those sections next to the check counts. -->
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <Badge
+              v-if="intentChanged"
+              variant="secondary"
+              class="max-w-full truncate"
+            >
+              {{ t("dataQuality.contract.publishIntentChanged") }}
+            </Badge>
+            <Badge
+              v-for="(change, index) in visiblePlanChanges"
+              :key="`${change.kind}:${index}`"
+              variant="secondary"
+              class="max-w-full truncate"
+            >
+              {{ planChangeLabel(change) }}
+            </Badge>
+            <span
+              v-if="hiddenPlanChangeCount > 0"
+              class="text-xs text-muted-foreground"
+            >
+              {{
+                t("dataQuality.contract.publishPlanMore", {
+                  count: hiddenPlanChangeCount,
+                })
+              }}
+            </span>
+          </div>
+          <p
+            v-if="planNotRecorded"
+            class="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
+          >
+            {{
+              isFirstVersion
+                ? t("dataQuality.contract.publishPlanFirstVersion")
+                : t("dataQuality.contract.publishPlanNotRecorded")
+            }}
+          </p>
+          <p
+            v-else-if="planChanges.length > 0"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("dataQuality.contract.publishPlanHint") }}
+          </p>
+          <p
+            v-else-if="cadenceOnlyChange"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("dataQuality.contract.publishPlanCadenceHint") }}
+          </p>
+        </div>
+
         <p
           v-if="showNoChanges"
           class="rounded-md border border-dashed p-3 text-sm text-muted-foreground"
@@ -106,8 +160,14 @@ import {
 import { Label } from "@/components/ui/label";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
-import type { QualityContract } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  type QualityContract,
+  QualityCoverageProperty,
+  type QualityPlanChange,
+  QualityPlanChange_Kind,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
 /**
  * Publish the live rules as the target's next contract version.
@@ -154,6 +214,67 @@ const summary = computed(() => ({
   modified: props.contract?.changeSummary?.modified ?? 0,
   removed: props.contract?.changeSummary?.removed ?? 0,
 }));
+
+const intentChanged = computed(
+  () => props.contract?.diff?.intentChanged ?? false
+);
+
+const planChanges = computed<QualityPlanChange[]>(
+  () => props.contract?.diff?.planChanges ?? []
+);
+
+const planNotRecorded = computed(
+  () => props.contract?.diff?.planNotRecorded ?? false
+);
+
+const isFirstVersion = computed(
+  () => (props.contract?.publishedVersion ?? 0) === 0
+);
+
+/**
+ * A schedule change moves the version's cadence without changing any declaration,
+ * so the dialog would otherwise look empty while staying publishable.
+ */
+const cadenceOnlyChange = computed(() => {
+  if (!hasChanges.value || planNotRecorded.value || intentChanged.value) {
+    return false;
+  }
+  if (planChanges.value.length > 0) {
+    return false;
+  }
+  return (
+    summary.value.added + summary.value.modified + summary.value.removed === 0
+  );
+});
+
+/** The section shows the first few changes; the rest is a count. */
+const maxPlanChanges = 6;
+const visiblePlanChanges = computed(() =>
+  planChanges.value.slice(0, maxPlanChanges)
+);
+const hiddenPlanChangeCount = computed(
+  () => planChanges.value.length - visiblePlanChanges.value.length
+);
+
+function planChangeLabel(change: QualityPlanChange): string {
+  const scope = change.coverage?.column
+    ? `${t(qualityCoveragePropertyKey(change.coverage.property))} · ${change.coverage.column}`
+    : t(
+        qualityCoveragePropertyKey(
+          change.coverage?.property ?? QualityCoverageProperty.UNSPECIFIED
+        )
+      );
+  switch (change.kind) {
+    case QualityPlanChange_Kind.ADDED:
+      return t("dataQuality.contract.publishPlanAdded", { scope });
+    case QualityPlanChange_Kind.REMOVED:
+      return t("dataQuality.contract.publishPlanRemoved", { scope });
+    case QualityPlanChange_Kind.MODIFIED:
+      return t("dataQuality.contract.publishPlanModified", { scope });
+    default:
+      return scope;
+  }
+}
 
 watch(
   () => props.open,

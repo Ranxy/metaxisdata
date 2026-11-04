@@ -79,6 +79,7 @@ import {
   QualityIssueStatus,
   type QualityLLMUsage,
   type QualityOverview,
+  type QualityPlan,
   QualityResolutionReason,
   type QualityRule,
   QualityRuleState,
@@ -389,12 +390,18 @@ export async function updateQualityContract(options: {
   targetGuid: string;
   metaType?: MetaType;
   settings: QualityContractSettings;
+  /** The complete plan declaration; absent leaves the current one untouched. */
+  draft?: QualityPlan;
+  /** The published version the declaration is aligned to; required with draft. */
+  stagedBaseVersion?: number;
 }): Promise<QualityContract> {
   const request = create(UpdateQualityContractRequestSchema, {
     parent: WORKSPACE_PARENT,
     targetGuid: options.targetGuid,
     metaType: options.metaType ?? MetaType.UNSPECIFIED,
     settings: options.settings,
+    draft: options.draft,
+    stagedBaseVersion: options.stagedBaseVersion ?? 0,
   });
   return await dataQualityClient.updateQualityContract(request);
 }

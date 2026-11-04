@@ -4,6 +4,7 @@ import {
   QualityAggregateFunction,
   QualityComparison,
   QualityComparisonOperator,
+  QualityCoverageProperty,
   QualityDimension,
   QualityEmptyBehavior,
   type QualityExecution,
@@ -157,6 +158,38 @@ export function qualitySeverityVariant(
       return "danger";
     default:
       return "secondary";
+  }
+}
+
+// ---- plan coverage ----
+
+/**
+ * The label key for one plan coverage property. The plan card, the declaration
+ * editor and the publish diff all render the same enum, so the catalog lives here
+ * once instead of drifting between three switches.
+ */
+export function qualityCoveragePropertyKey(
+  property: QualityCoverageProperty
+): string {
+  switch (property) {
+    case QualityCoverageProperty.VOLUME:
+      return "dataQuality.workspace.planPropertyVolume";
+    case QualityCoverageProperty.FRESHNESS:
+      return "dataQuality.workspace.planPropertyFreshness";
+    case QualityCoverageProperty.NULL_RATE:
+      return "dataQuality.workspace.planPropertyNullRate";
+    case QualityCoverageProperty.UNIQUENESS:
+      return "dataQuality.workspace.planPropertyUniqueness";
+    case QualityCoverageProperty.ACCEPTED_VALUES:
+      return "dataQuality.workspace.planPropertyAcceptedValues";
+    case QualityCoverageProperty.FORMAT:
+      return "dataQuality.workspace.planPropertyFormat";
+    case QualityCoverageProperty.RANGE:
+      return "dataQuality.workspace.planPropertyRange";
+    case QualityCoverageProperty.SCHEMA_STABILITY:
+      return "dataQuality.workspace.planPropertySchemaStability";
+    default:
+      return "dataQuality.workspace.planPropertyUnspecified";
   }
 }
 

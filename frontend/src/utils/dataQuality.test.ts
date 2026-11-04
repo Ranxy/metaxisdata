@@ -7,6 +7,7 @@ import {
   QualityAggregateFunction,
   QualityComparison,
   QualityComparisonOperator,
+  QualityCoverageProperty,
   QualityDimension,
   QualityEmptyBehavior,
   QualityExecutionSchema,
@@ -41,6 +42,7 @@ import {
   isExecutionInProgress,
   qualityAggregateFunctionKey,
   qualityComparisonOperatorKey,
+  qualityCoveragePropertyKey,
   qualityDimensionKey,
   qualityEmptyBehaviorKey,
   qualityErrorCodeKey,
@@ -1219,6 +1221,25 @@ describe("data quality vocabulary catalogs", () => {
           expect.any(String)
         );
       }
+    }
+  });
+});
+
+describe("qualityCoveragePropertyKey", () => {
+  it("maps every plan coverage property to its label key", () => {
+    const keys = [
+      QualityCoverageProperty.VOLUME,
+      QualityCoverageProperty.FRESHNESS,
+      QualityCoverageProperty.NULL_RATE,
+      QualityCoverageProperty.UNIQUENESS,
+      QualityCoverageProperty.ACCEPTED_VALUES,
+      QualityCoverageProperty.FORMAT,
+      QualityCoverageProperty.RANGE,
+      QualityCoverageProperty.SCHEMA_STABILITY,
+    ].map((property) => qualityCoveragePropertyKey(property));
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const key of keys) {
+      expect(key.startsWith("dataQuality.workspace.planProperty")).toBe(true);
     }
   });
 });
