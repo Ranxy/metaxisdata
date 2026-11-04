@@ -49,8 +49,6 @@
               <Badge :variant="stateVariant(request.state)">
                 {{ stateLabel(request) }}
               </Badge>
-              <!-- Who proposed the batch matters: an agent's request is a proposal,
-                   a person's is their own; the decision stays human either way. -->
               <Badge
                 v-if="request.source === QualityChangeRequestSource.AGENT"
                 variant="info"

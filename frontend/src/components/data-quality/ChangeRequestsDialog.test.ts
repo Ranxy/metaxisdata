@@ -66,11 +66,12 @@ function requestFixture(
     failed?: boolean;
     rejected?: boolean;
     source?: QualityChangeRequestSource;
+    name?: string;
   } = {}
 ) {
   const state = options.state ?? QualityChangeRequestState.PROPOSED;
   return create(QualityChangeRequestSchema, {
-    name: "workspaces/ws1/qualityChangeRequests/cr1",
+    name: options.name ?? "workspaces/ws1/qualityChangeRequests/cr1",
     state,
     source: options.source,
     baseVersion: 2,
@@ -312,19 +313,48 @@ describe("ChangeRequestsDialog", () => {
     expect(mocks.createQualityMemory).not.toHaveBeenCalled();
   });
 
-  it("labels who proposed the change request", async () => {
+  it("labels who proposed each change request", async () => {
     mountDialog({
       requests: [
-        requestFixture({ source: QualityChangeRequestSource.AGENT }),
-        requestFixture({ source: QualityChangeRequestSource.HUMAN }),
+        requestFixture({
+          name: "workspaces/ws1/qualityChangeRequests/cr-agent",
+          source: QualityChangeRequestSource.AGENT,
+        }),
+        requestFixture({
+          name: "workspaces/ws1/qualityChangeRequests/cr-person",
+          source: QualityChangeRequestSource.HUMAN,
+        }),
+        requestFixture({
+          name: "workspaces/ws1/qualityChangeRequests/cr-unknown",
+        }),
       ],
     });
     await flushPromises();
 
-    expect(document.body.textContent).toContain(
+    const section = (name: string) =>
+      document.body.querySelector<HTMLElement>(
+        `[data-testid="change-request-workspaces/ws1/qualityChangeRequests/${name}"]`
+      );
+    const agentSection = section("cr-agent");
+    const personSection = section("cr-person");
+    const unknownSection = section("cr-unknown");
+    expect(agentSection?.textContent).toContain(
       label("dataQuality.changeRequests.sourceAgent")
     );
-    expect(document.body.textContent).toContain(
+    expect(agentSection?.textContent).not.toContain(
+      label("dataQuality.changeRequests.sourceHuman")
+    );
+    expect(personSection?.textContent).toContain(
+      label("dataQuality.changeRequests.sourceHuman")
+    );
+    expect(personSection?.textContent).not.toContain(
+      label("dataQuality.changeRequests.sourceAgent")
+    );
+    // An unspecified source says nothing.
+    expect(unknownSection?.textContent).not.toContain(
+      label("dataQuality.changeRequests.sourceAgent")
+    );
+    expect(unknownSection?.textContent).not.toContain(
       label("dataQuality.changeRequests.sourceHuman")
     );
   });
