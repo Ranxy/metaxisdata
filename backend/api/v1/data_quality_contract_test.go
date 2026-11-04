@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -163,4 +164,93 @@ func TestQualityContractNote(t *testing.T) {
 
 	_, err = qualityContractNote(strings.Repeat("x", maxQualityContractNoteBytes+1))
 	require.Error(t, err)
+}
+
+// The v2 fingerprint must be deterministic bytes: protojson output is seeded per
+// build, so hashing it would make an unchanged contract look changed after a
+// redeploy. These assertions pin the properties the versioning relies on.
+func TestQualityContractFingerprintV2IsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	settings := &storepb.QualityContractSettings{}
+	checks := []*storepb.QualityContractCheck{{RuleResourceId: "a", RuleRevision: 1, Title: "rows"}}
+	first := qualityContractFingerprintV2(settings, checks)
+	require.Equal(t, first, qualityContractFingerprintV2(settings, checks))
+	require.True(t, strings.HasPrefix(first, contractSnapshotVersionPrefixV2))
+	require.NotEqual(t, qualityContractFingerprint(settings, checks), first,
+		"a v1 and a v2 fingerprint must never compare equal")
+
+	changed := []*storepb.QualityContractCheck{{RuleResourceId: "a", RuleRevision: 2, Title: "rows"}}
+	require.NotEqual(t, first, qualityContractFingerprintV2(settings, changed))
+}
+
+func TestQualityContractSnapshotV2(t *testing.T) {
+	t.Parallel()
+
+	settings := &storepb.QualityContractSettings{}
+	checks := []*storepb.QualityContractCheck{{RuleResourceId: "a", RuleRevision: 1, Title: "rows"}}
+	snapshot := qualityContractSnapshotV2(settings, checks)
+	require.Equal(t, int32(contractSnapshotVersionV2), snapshot.GetSnapshotVersion())
+	require.Equal(t, qualityContractFingerprintV2(settings, checks), snapshot.GetFingerprint())
+}
+
+// Legacy snapshots are compared by content, not by re-hashing their v1
+// fingerprint (which a different build would compute differently).
+func TestQualityContractSnapshotContentEqual(t *testing.T) {
+	t.Parallel()
+
+	settings := &storepb.QualityContractSettings{}
+	checks := []*storepb.QualityContractCheck{{RuleResourceId: "a", RuleRevision: 1, Title: "rows"}}
+	require.True(t, store.QualityContractSnapshotContentEqual(
+		&storepb.QualityContractSnapshot{Settings: settings, Checks: checks, Fingerprint: "old", SnapshotVersion: 0},
+		&storepb.QualityContractSnapshot{Settings: settings, Checks: checks, Fingerprint: "v2:new", SnapshotVersion: 2},
+	), "fingerprint and schema version are not content")
+
+	changed := []*storepb.QualityContractCheck{{RuleResourceId: "a", RuleRevision: 2, Title: "rows"}}
+	require.False(t, store.QualityContractSnapshotContentEqual(
+		&storepb.QualityContractSnapshot{Settings: settings, Checks: checks},
+		&storepb.QualityContractSnapshot{Settings: settings, Checks: changed},
+	))
+}
+
+// The view wiring must use content comparison for a legacy revision; using the v2
+// fingerprint there would make every legacy contract look changed forever.
+func TestQualityContractViewLegacyHasUnpublishedChanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	settings := &storepb.QualityContractSettings{}
+	minimum := int64(1)
+	rules := []*store.QualityRuleMessage{{
+		ResourceID: "a",
+		Revision:   1,
+		Title:      "rows",
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		Config: &storepb.QualityRuleConfig{Config: &storepb.QualityRuleConfig_RowCount{
+			RowCount: &storepb.RowCountConfig{MinRows: &minimum},
+		}},
+	}}
+	checks := buildQualityContractChecks(rules)
+	revision := &store.QualityContractRevisionMessage{Snapshot: &storepb.QualityContractSnapshot{
+		Settings:    settings,
+		Checks:      checks,
+		Fingerprint: qualityContractFingerprint(settings, checks),
+	}}
+	contract := &store.QualityContractMessage{Settings: settings}
+	service := &DataQualityService{}
+
+	view, err := service.qualityContractViewWith(ctx, "inst;shop;public;orders", storepb.MetaType_TABLE, contract, rules, revision)
+	require.NoError(t, err)
+	require.False(t, view.GetHasUnpublishedChanges(), "unchanged legacy content must not look unpublished")
+
+	changed := append([]*store.QualityRuleMessage{}, rules...)
+	changed = append(changed, &store.QualityRuleMessage{
+		ResourceID: "b",
+		Revision:   1,
+		Title:      "more rows",
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS,
+	})
+	view, err = service.qualityContractViewWith(ctx, "inst;shop;public;orders", storepb.MetaType_TABLE, contract, changed, revision)
+	require.NoError(t, err)
+	require.True(t, view.GetHasUnpublishedChanges())
 }

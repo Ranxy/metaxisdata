@@ -7,6 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -194,9 +195,9 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 	// version to this snapshot. They are computed from the snapshot read under the
 	// row lock, not from a caller's earlier read, so a concurrent publish cannot
 	// make the history record a diff against the wrong predecessor.
+	publishedSnapshot := &storepb.QualityContractSnapshot{}
 	var publishedChecks []*storepb.QualityContractCheck
 	if latestErr == nil && len(latestSnapshot) > 0 {
-		publishedSnapshot := &storepb.QualityContractSnapshot{}
 		if unmarshalErr := common.ProtojsonUnmarshaler.Unmarshal(latestSnapshot, publishedSnapshot); unmarshalErr != nil {
 			return nil, nil, false, errors.Wrap(unmarshalErr, "failed to read the latest contract snapshot")
 		}
@@ -206,8 +207,17 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 
 	switch {
 	case latestErr == nil:
-		if latestFingerprint.Valid && input.Snapshot.GetFingerprint() != "" &&
-			latestFingerprint.String == input.Snapshot.GetFingerprint() {
+		// A legacy (v1) row is compared by content, not by re-hashing: its
+		// fingerprint came from a build-dependent encoder. A v2 row is compared by
+		// the deterministic fingerprint. Doing this under the row lock is what
+		// makes the version choice safe against a concurrent publish.
+		unchanged := false
+		if publishedSnapshot.GetSnapshotVersion() == 0 {
+			unchanged = QualityContractSnapshotContentEqual(publishedSnapshot, input.Snapshot)
+		} else if latestFingerprint.Valid && input.Snapshot.GetFingerprint() != "" {
+			unchanged = latestFingerprint.String == input.Snapshot.GetFingerprint()
+		}
+		if unchanged {
 			// The live state is what the newest version already recorded. Return it
 			// instead of creating a duplicate version.
 			revision, scanErr := scanQualityContractRevision(tx.QueryRowContext(ctx,
@@ -255,6 +265,26 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 		return nil, nil, false, errors.Wrap(err, "failed to commit the contract publish transaction")
 	}
 	return revision, contract, true, nil
+}
+
+// QualityContractSnapshotContentEqual reports whether two snapshots carry the
+// same settings and ordered checks, ignoring the fingerprint and schema version.
+// Legacy snapshots are compared this way because their fingerprints were derived
+// from a build-dependent JSON encoder.
+func QualityContractSnapshotContentEqual(left, right *storepb.QualityContractSnapshot) bool {
+	trim := func(snapshot *storepb.QualityContractSnapshot) *storepb.QualityContractSnapshot {
+		if snapshot == nil {
+			return &storepb.QualityContractSnapshot{}
+		}
+		clone, ok := proto.Clone(snapshot).(*storepb.QualityContractSnapshot)
+		if !ok {
+			return &storepb.QualityContractSnapshot{}
+		}
+		clone.Fingerprint = ""
+		clone.SnapshotVersion = 0
+		return clone
+	}
+	return proto.Equal(trim(left), trim(right))
 }
 
 // GetLatestQualityContractRevision returns the newest published version, or nil.

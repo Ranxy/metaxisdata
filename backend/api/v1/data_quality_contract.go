@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -108,11 +109,10 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 	}
 
 	checks := buildQualityContractChecks(rules)
-	snapshot := &storepb.QualityContractSnapshot{
-		Settings:    settings,
-		Checks:      checks,
-		Fingerprint: qualityContractFingerprint(settings, checks),
-	}
+	// The store decides under its row lock whether this snapshot is a no-op: a
+	// legacy row is compared by content, a v2 row by deterministic fingerprint.
+	// Deciding here would race a concurrent publish.
+	snapshot := qualityContractSnapshotV2(settings, checks)
 	// The version's diff counts are computed by the store inside the publish
 	// transaction, against the snapshot that really is the previous version.
 	note, err := qualityContractNote(req.Msg.GetNote())
@@ -280,7 +280,17 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 		view.PublishedAt = timestamppb.New(latest.PublishedAt.UTC())
 		view.PublishedBy = formatQualityContractPublisher(latest.PublishedBy)
 		view.PublishNote = latest.Note
-		view.HasUnpublishedChanges = latest.Snapshot.GetFingerprint() != qualityContractFingerprint(settings, checks)
+		if latest.Snapshot.GetSnapshotVersion() == 0 {
+			// A legacy snapshot's fingerprint was produced by a build-dependent
+			// encoder; compare the content instead of re-hashing it.
+			view.HasUnpublishedChanges = !store.QualityContractSnapshotContentEqual(
+				latest.Snapshot,
+				&storepb.QualityContractSnapshot{Settings: settings, Checks: checks},
+			)
+		} else {
+			view.HasUnpublishedChanges = latest.Snapshot.GetFingerprint() !=
+				qualityContractFingerprintV2(settings, checks)
+		}
 	} else {
 		view.ChangeSummary = &v1pb.QualityContractChangeSummary{Added: int32(len(checks))}
 		view.HasUnpublishedChanges = len(checks) > 0 || !qualityContractSettingsEmpty(settings)
@@ -394,6 +404,44 @@ func qualityContractFingerprint(settings *storepb.QualityContractSettings, check
 	}
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
+}
+
+// qualityContractFingerprintV2 hashes the snapshot with a deterministic encoder.
+// protojson is not stable across builds (its encoder randomizes insignificant
+// whitespace with a per-binary seed), so hashing it would make an unchanged
+// contract look changed after a redeploy and create a spurious revision. The
+// version prefix and version field make a v1 and a v2 fingerprint unable to
+// compare equal by accident.
+func qualityContractFingerprintV2(settings *storepb.QualityContractSettings, checks []*storepb.QualityContractCheck) string {
+	snapshot := &storepb.QualityContractSnapshot{
+		Settings:        settings,
+		Checks:          checks,
+		SnapshotVersion: contractSnapshotVersionV2,
+	}
+	payload, err := proto.MarshalOptions{Deterministic: true}.Marshal(snapshot)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return contractSnapshotVersionPrefixV2 + hex.EncodeToString(sum[:])
+}
+
+// contractSnapshotVersionV2 is the schema version every new publish records.
+const contractSnapshotVersionV2 = 2
+
+// contractSnapshotVersionPrefixV2 tags a v2 fingerprint. The prefix is derived
+// from the same constant the snapshot version uses so the two cannot drift.
+const contractSnapshotVersionPrefixV2 = "v2:"
+
+// qualityContractSnapshotV2 builds the snapshot a publish writes: settings, the
+// ordered checks, the schema version and the deterministic fingerprint.
+func qualityContractSnapshotV2(settings *storepb.QualityContractSettings, checks []*storepb.QualityContractCheck) *storepb.QualityContractSnapshot {
+	return &storepb.QualityContractSnapshot{
+		Settings:        settings,
+		Checks:          checks,
+		Fingerprint:     qualityContractFingerprintV2(settings, checks),
+		SnapshotVersion: contractSnapshotVersionV2,
+	}
 }
 
 // qualityContractChangeSummary renders the counts the store computed into the API
