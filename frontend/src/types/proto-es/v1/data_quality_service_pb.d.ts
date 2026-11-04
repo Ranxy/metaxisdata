@@ -7081,6 +7081,113 @@ export declare type ListQualityPlansResponse = Message<"metaxisdata.v1.ListQuali
 export declare const ListQualityPlansResponseSchema: GenMessage<ListQualityPlansResponse>;
 
 /**
+ * QualityCoverageGap is one required property a target's plan does not satisfy.
+ *
+ * @generated from message metaxisdata.v1.QualityCoverageGap
+ */
+export declare type QualityCoverageGap = Message<"metaxisdata.v1.QualityCoverageGap"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageProperty property = 2;
+   */
+  property: QualityCoverageProperty;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAssetCriticality criticality = 3;
+   */
+  criticality: QualityAssetCriticality;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityCoverageGap.
+ * Use `create(QualityCoverageGapSchema)` to create a new message.
+ */
+export declare const QualityCoverageGapSchema: GenMessage<QualityCoverageGap>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityCoverageGapsRequest
+ */
+export declare type ListQualityCoverageGapsRequest = Message<"metaxisdata.v1.ListQualityCoverageGapsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * @generated from field: string instance = 4;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: string database = 5;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string schema = 6;
+   */
+  schema: string;
+
+  /**
+   * @generated from field: string table = 7;
+   */
+  table: string;
+
+  /**
+   * @generated from field: string search = 8;
+   */
+  search: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityCoverageGapsRequest.
+ * Use `create(ListQualityCoverageGapsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityCoverageGapsRequestSchema: GenMessage<ListQualityCoverageGapsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityCoverageGapsResponse
+ */
+export declare type ListQualityCoverageGapsResponse = Message<"metaxisdata.v1.ListQualityCoverageGapsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityCoverageGap gaps = 1;
+   */
+  gaps: QualityCoverageGap[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+
+  /**
+   * @generated from field: int32 total_size = 3;
+   */
+  totalSize: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityCoverageGapsResponse.
+ * Use `create(ListQualityCoverageGapsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityCoverageGapsResponseSchema: GenMessage<ListQualityCoverageGapsResponse>;
+
+/**
  * QualityContractRevision is one published version's metadata.
  *
  * @generated from message metaxisdata.v1.QualityContractRevision
@@ -10520,6 +10627,18 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof ListQualityPlansRequestSchema;
     output: typeof ListQualityPlansResponseSchema;
+  },
+  /**
+   * ListQualityCoverageGaps flattens the plan projection to the unsatisfied
+   * declared coverage: one row per target property that a live rule does not
+   * implement. Read-only, like ListQualityPlans.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityCoverageGaps
+   */
+  listQualityCoverageGaps: {
+    methodKind: "unary";
+    input: typeof ListQualityCoverageGapsRequestSchema;
+    output: typeof ListQualityCoverageGapsResponseSchema;
   },
   /**
    * Update the target-level defaults. The filter is ANDed into every rule on the

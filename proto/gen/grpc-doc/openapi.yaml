@@ -5574,6 +5574,64 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityCoverageGaps:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                ListQualityCoverageGaps flattens the plan projection to the unsatisfied
+                 declared coverage: one row per target property that a live rule does not
+                 implement. Read-only, like ListQualityPlans.
+            operationId: DataQualityService_ListQualityCoverageGaps
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: instance
+                  in: query
+                  schema:
+                    type: string
+                - name: database
+                  in: query
+                  schema:
+                    type: string
+                - name: schema
+                  in: query
+                  schema:
+                    type: string
+                - name: table
+                  in: query
+                  schema:
+                    type: string
+                - name: search
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityCoverageGapsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityExecutions:
         get:
             tags:
@@ -11510,6 +11568,18 @@ components:
                         $ref: '#/components/schemas/QualityContractRevision'
                 nextPageToken:
                     type: string
+        ListQualityCoverageGapsResponse:
+            type: object
+            properties:
+                gaps:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityCoverageGap'
+                nextPageToken:
+                    type: string
+                totalSize:
+                    type: integer
+                    format: int32
         ListQualityExecutionsResponse:
             type: object
             properties:
@@ -13253,6 +13323,29 @@ components:
                 QualityCoverageBreakdown is one instance's or one environment's share of the
                  workspace coverage. The key/title pair names the row; the counts use the same
                  denominator as QualityOverview.
+        QualityCoverageGap:
+            type: object
+            properties:
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                property:
+                    enum:
+                        - QUALITY_COVERAGE_PROPERTY_UNSPECIFIED
+                        - QUALITY_COVERAGE_PROPERTY_VOLUME
+                        - QUALITY_COVERAGE_PROPERTY_FRESHNESS
+                        - QUALITY_COVERAGE_PROPERTY_UNIQUENESS
+                        - QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY
+                    type: string
+                    format: enum
+                criticality:
+                    enum:
+                        - QUALITY_ASSET_CRITICALITY_UNSPECIFIED
+                        - QUALITY_ASSET_CRITICALITY_EXPERIMENTAL
+                        - QUALITY_ASSET_CRITICALITY_IMPORTANT
+                        - QUALITY_ASSET_CRITICALITY_CRITICAL
+                    type: string
+                    format: enum
+            description: QualityCoverageGap is one required property a target's plan does not satisfy.
         QualityCoverageRequirement:
             type: object
             properties:

@@ -451,6 +451,16 @@ the dialog leaves untouched. Its **Target scope** filter follows the metadata
 tree: pick an instance, then drill into a database, schema or table/view, and
 apply at any level. Filters take effect when you press **Apply**.
 
+## Plan and declared coverage
+
+A target workspace shows a read-only **Plan & coverage** card next to its contract.
+It is a projection, not a second set of checks: a target with a contract is
+*planned* and carries the minimum coverage template for its criticality (volume
+and schema stability today); one without a contract is *unplanned*, and the card
+says so instead of claiming coverage. Each required property is marked
+**Covered** or **Gap** from the target's live checks; the gap count is the number
+of unsatisfied properties. Nothing here is published or edited yet.
+
 ## Contracts and target-level settings
 
 ### The target schedule

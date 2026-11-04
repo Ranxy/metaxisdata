@@ -293,6 +293,8 @@
     - [ListQualityCodeTablesResponse](#metaxisdata-v1-ListQualityCodeTablesResponse)
     - [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest)
     - [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse)
+    - [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest)
+    - [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse)
     - [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest)
     - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
@@ -327,6 +329,7 @@
     - [QualityContractRevision](#metaxisdata-v1-QualityContractRevision)
     - [QualityContractSettings](#metaxisdata-v1-QualityContractSettings)
     - [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown)
+    - [QualityCoverageGap](#metaxisdata-v1-QualityCoverageGap)
     - [QualityCoverageRequirement](#metaxisdata-v1-QualityCoverageRequirement)
     - [QualityDimensionScore](#metaxisdata-v1-QualityDimensionScore)
     - [QualityExecution](#metaxisdata-v1-QualityExecution)
@@ -5478,6 +5481,45 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityCoverageGapsRequest"></a>
+
+### ListQualityCoverageGapsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| instance | [string](#string) |  |  |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| table | [string](#string) |  |  |
+| search | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityCoverageGapsResponse"></a>
+
+### ListQualityCoverageGapsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| gaps | [QualityCoverageGap](#metaxisdata-v1-QualityCoverageGap) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+| total_size | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityExecutionsRequest"></a>
 
 ### ListQualityExecutionsRequest
@@ -6137,6 +6179,23 @@ denominator as QualityOverview.
 | monitored_table_count | [int32](#int32) |  |  |
 | total_column_count | [int32](#int32) |  |  |
 | covered_column_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityCoverageGap"></a>
+
+### QualityCoverageGap
+QualityCoverageGap is one required property a target&#39;s plan does not satisfy.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
+| criticality | [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality) |  |  |
 
 
 
@@ -8370,6 +8429,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | GetQualityTargetSchedule | [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Read one target&#39;s schedule without the target&#39;s rules, results and issues. A rule lifecycle change can move the target&#39;s next run; the workspace re-reads just this instead of the whole target after every check edit. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
 | ListQualityPlans | [ListQualityPlansRequest](#metaxisdata-v1-ListQualityPlansRequest) | [ListQualityPlansResponse](#metaxisdata-v1-ListQualityPlansResponse) | ListQualityPlans lists the read-only monitoring plan projection for every target with live rules. It is the directory the plan write path will grow from; it does not write anything. |
+| ListQualityCoverageGaps | [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest) | [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse) | ListQualityCoverageGaps flattens the plan projection to the unsatisfied declared coverage: one row per target property that a live rule does not implement. Read-only, like ListQualityPlans. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |

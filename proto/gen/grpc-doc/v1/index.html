@@ -1305,6 +1305,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListQualityCoverageGapsRequest"><span class="badge">M</span>ListQualityCoverageGapsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityCoverageGapsResponse"><span class="badge">M</span>ListQualityCoverageGapsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListQualityExecutionsRequest"><span class="badge">M</span>ListQualityExecutionsRequest</a>
                 </li>
               
@@ -1438,6 +1446,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityCoverageBreakdown"><span class="badge">M</span>QualityCoverageBreakdown</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityCoverageGap"><span class="badge">M</span>QualityCoverageGap</a>
                 </li>
               
                 <li>
@@ -15853,6 +15865,117 @@ returned. The maximum value is 1000; values above 1000 are coerced to 1000. </p>
 
         
       
+        <h3 id="metaxisdata.v1.ListQualityCoverageGapsRequest">ListQualityCoverageGapsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityCoverageGapsResponse">ListQualityCoverageGapsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>gaps</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageGap">QualityCoverageGap</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListQualityExecutionsRequest">ListQualityExecutionsRequest</h3>
         <p></p>
 
@@ -17711,6 +17834,44 @@ or the id no longer resolves. </p></td>
                 <tr>
                   <td>covered_column_count</td>
                   <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityCoverageGap">QualityCoverageGap</h3>
+        <p>QualityCoverageGap is one required property a target's plan does not satisfy.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>criticality</td>
+                  <td><a href="#metaxisdata.v1.QualityAssetCriticality">QualityAssetCriticality</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -24619,6 +24780,15 @@ from; it does not write anything.</p></td>
               </tr>
             
               <tr>
+                <td>ListQualityCoverageGaps</td>
+                <td><a href="#metaxisdata.v1.ListQualityCoverageGapsRequest">ListQualityCoverageGapsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityCoverageGapsResponse">ListQualityCoverageGapsResponse</a></td>
+                <td><p>ListQualityCoverageGaps flattens the plan projection to the unsatisfied
+declared coverage: one row per target property that a live rule does not
+implement. Read-only, like ListQualityPlans.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualityContract</td>
                 <td><a href="#metaxisdata.v1.UpdateQualityContractRequest">UpdateQualityContractRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
@@ -25215,6 +25385,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>ListQualityPlans</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityPlans</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityCoverageGaps</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityCoverageGaps</td>
                 <td></td>
               </tr>
               
