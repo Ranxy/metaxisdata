@@ -611,6 +611,14 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // ListQualityPlans lists the read-only monitoring plan projection for every
+  // target with live rules. It is the directory the plan write path will grow
+  // from; it does not write anything.
+  rpc ListQualityPlans(ListQualityPlansRequest) returns (ListQualityPlansResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityPlans"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Update the target-level defaults. The filter is ANDed into every rule on the
   // target at compile time; the default severity only seeds newly authored rules
   // and never rewrites an existing rule. The target's schedule is updated through
@@ -3565,6 +3573,11 @@ message QualityContract {
   // True when the live rules or settings differ from the published snapshot (or
   // nothing has been published yet and the target has content).
   bool has_unpublished_changes = 9;
+
+  // The target's monitoring plan as derived from the live rules and the
+  // contract. Read-only in this slice; staged editing arrives with the plan
+  // write path.
+  QualityPlan plan = 10;
 }
 
 // QualityContractSettings is the target-level layer's mutable configuration.
@@ -3586,6 +3599,70 @@ message QualityContractChangeSummary {
   int32 added = 1;
   int32 modified = 2;
   int32 removed = 3;
+}
+
+// QualityPlanState says whether a target has a plan at all. A target with rules
+// but no contract row is UNPLANNED: its checks are real, but nothing records
+// what it promised.
+enum QualityPlanState {
+  QUALITY_PLAN_STATE_UNSPECIFIED = 0;
+  QUALITY_PLAN_STATE_PLANNED = 1;
+  QUALITY_PLAN_STATE_UNPLANNED = 2;
+}
+
+// QualityAssetCriticality ranks a target for the autonomy policy. Derived
+// criticality is a display/policy input, never written back to the contract.
+enum QualityAssetCriticality {
+  QUALITY_ASSET_CRITICALITY_UNSPECIFIED = 0;
+  QUALITY_ASSET_CRITICALITY_EXPERIMENTAL = 1;
+  QUALITY_ASSET_CRITICALITY_IMPORTANT = 2;
+  QUALITY_ASSET_CRITICALITY_CRITICAL = 3;
+}
+
+// QualityCoverageProperty is one kind of monitoring a declaration can require.
+enum QualityCoverageProperty {
+  QUALITY_COVERAGE_PROPERTY_UNSPECIFIED = 0;
+  QUALITY_COVERAGE_PROPERTY_VOLUME = 1;
+  QUALITY_COVERAGE_PROPERTY_FRESHNESS = 2;
+  QUALITY_COVERAGE_PROPERTY_UNIQUENESS = 3;
+  QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY = 4;
+}
+
+// QualityCoverageRequirement is one required property and whether a live rule
+// currently satisfies it. Gap = required and not satisfied.
+message QualityCoverageRequirement {
+  QualityCoverageProperty property = 1;
+  bool satisfied = 2;
+}
+
+// QualityPlan is the read-only projection of a target's monitoring plan: its
+// state, derived criticality, the checks that implement it and the declared
+// coverage it currently satisfies.
+message QualityPlan {
+  QualityTarget target = 1;
+  QualityPlanState state = 2;
+  QualityAssetCriticality criticality = 3;
+  int32 check_count = 4;
+  repeated QualityCoverageRequirement requirements = 5;
+  int32 gap_count = 6;
+}
+
+message ListQualityPlansRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 page_size = 2;
+  string page_token = 3;
+  string instance = 4;
+  string database = 5;
+  string schema = 6;
+  string table = 7;
+  string search = 8;
+}
+
+message ListQualityPlansResponse {
+  repeated QualityPlan plans = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
 }
 
 // QualityContractRevision is one published version's metadata.

@@ -6859,6 +6859,15 @@ export declare type QualityContract = Message<"metaxisdata.v1.QualityContract"> 
    * @generated from field: bool has_unpublished_changes = 9;
    */
   hasUnpublishedChanges: boolean;
+
+  /**
+   * The target's monitoring plan as derived from the live rules and the
+   * contract. Read-only in this slice; staged editing arrives with the plan
+   * write path.
+   *
+   * @generated from field: metaxisdata.v1.QualityPlan plan = 10;
+   */
+  plan?: QualityPlan;
 };
 
 /**
@@ -6922,6 +6931,154 @@ export declare type QualityContractChangeSummary = Message<"metaxisdata.v1.Quali
  * Use `create(QualityContractChangeSummarySchema)` to create a new message.
  */
 export declare const QualityContractChangeSummarySchema: GenMessage<QualityContractChangeSummary>;
+
+/**
+ * QualityCoverageRequirement is one required property and whether a live rule
+ * currently satisfies it. Gap = required and not satisfied.
+ *
+ * @generated from message metaxisdata.v1.QualityCoverageRequirement
+ */
+export declare type QualityCoverageRequirement = Message<"metaxisdata.v1.QualityCoverageRequirement"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageProperty property = 1;
+   */
+  property: QualityCoverageProperty;
+
+  /**
+   * @generated from field: bool satisfied = 2;
+   */
+  satisfied: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityCoverageRequirement.
+ * Use `create(QualityCoverageRequirementSchema)` to create a new message.
+ */
+export declare const QualityCoverageRequirementSchema: GenMessage<QualityCoverageRequirement>;
+
+/**
+ * QualityPlan is the read-only projection of a target's monitoring plan: its
+ * state, derived criticality, the checks that implement it and the declared
+ * coverage it currently satisfies.
+ *
+ * @generated from message metaxisdata.v1.QualityPlan
+ */
+export declare type QualityPlan = Message<"metaxisdata.v1.QualityPlan"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityPlanState state = 2;
+   */
+  state: QualityPlanState;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAssetCriticality criticality = 3;
+   */
+  criticality: QualityAssetCriticality;
+
+  /**
+   * @generated from field: int32 check_count = 4;
+   */
+  checkCount: number;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityCoverageRequirement requirements = 5;
+   */
+  requirements: QualityCoverageRequirement[];
+
+  /**
+   * @generated from field: int32 gap_count = 6;
+   */
+  gapCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityPlan.
+ * Use `create(QualityPlanSchema)` to create a new message.
+ */
+export declare const QualityPlanSchema: GenMessage<QualityPlan>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityPlansRequest
+ */
+export declare type ListQualityPlansRequest = Message<"metaxisdata.v1.ListQualityPlansRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * @generated from field: string instance = 4;
+   */
+  instance: string;
+
+  /**
+   * @generated from field: string database = 5;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string schema = 6;
+   */
+  schema: string;
+
+  /**
+   * @generated from field: string table = 7;
+   */
+  table: string;
+
+  /**
+   * @generated from field: string search = 8;
+   */
+  search: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityPlansRequest.
+ * Use `create(ListQualityPlansRequestSchema)` to create a new message.
+ */
+export declare const ListQualityPlansRequestSchema: GenMessage<ListQualityPlansRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityPlansResponse
+ */
+export declare type ListQualityPlansResponse = Message<"metaxisdata.v1.ListQualityPlansResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityPlan plans = 1;
+   */
+  plans: QualityPlan[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+
+  /**
+   * @generated from field: int32 total_size = 3;
+   */
+  totalSize: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityPlansResponse.
+ * Use `create(ListQualityPlansResponseSchema)` to create a new message.
+ */
+export declare const ListQualityPlansResponseSchema: GenMessage<ListQualityPlansResponse>;
 
 /**
  * QualityContractRevision is one published version's metadata.
@@ -9547,6 +9704,105 @@ export enum QualityTargetOrder {
 export declare const QualityTargetOrderSchema: GenEnum<QualityTargetOrder>;
 
 /**
+ * QualityPlanState says whether a target has a plan at all. A target with rules
+ * but no contract row is UNPLANNED: its checks are real, but nothing records
+ * what it promised.
+ *
+ * @generated from enum metaxisdata.v1.QualityPlanState
+ */
+export enum QualityPlanState {
+  /**
+   * @generated from enum value: QUALITY_PLAN_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_PLAN_STATE_PLANNED = 1;
+   */
+  PLANNED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_PLAN_STATE_UNPLANNED = 2;
+   */
+  UNPLANNED = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityPlanState.
+ */
+export declare const QualityPlanStateSchema: GenEnum<QualityPlanState>;
+
+/**
+ * QualityAssetCriticality ranks a target for the autonomy policy. Derived
+ * criticality is a display/policy input, never written back to the contract.
+ *
+ * @generated from enum metaxisdata.v1.QualityAssetCriticality
+ */
+export enum QualityAssetCriticality {
+  /**
+   * @generated from enum value: QUALITY_ASSET_CRITICALITY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_ASSET_CRITICALITY_EXPERIMENTAL = 1;
+   */
+  EXPERIMENTAL = 1,
+
+  /**
+   * @generated from enum value: QUALITY_ASSET_CRITICALITY_IMPORTANT = 2;
+   */
+  IMPORTANT = 2,
+
+  /**
+   * @generated from enum value: QUALITY_ASSET_CRITICALITY_CRITICAL = 3;
+   */
+  CRITICAL = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAssetCriticality.
+ */
+export declare const QualityAssetCriticalitySchema: GenEnum<QualityAssetCriticality>;
+
+/**
+ * QualityCoverageProperty is one kind of monitoring a declaration can require.
+ *
+ * @generated from enum metaxisdata.v1.QualityCoverageProperty
+ */
+export enum QualityCoverageProperty {
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_VOLUME = 1;
+   */
+  VOLUME = 1,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_FRESHNESS = 2;
+   */
+  FRESHNESS = 2,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_UNIQUENESS = 3;
+   */
+  UNIQUENESS = 3,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY = 4;
+   */
+  SCHEMA_STABILITY = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityCoverageProperty.
+ */
+export declare const QualityCoveragePropertySchema: GenEnum<QualityCoverageProperty>;
+
+/**
  * DataQualityService manages the checks that watch the data itself: rules and
  * their executions.
  *
@@ -10252,6 +10508,18 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityContractRequestSchema;
     output: typeof QualityContractSchema;
+  },
+  /**
+   * ListQualityPlans lists the read-only monitoring plan projection for every
+   * target with live rules. It is the directory the plan write path will grow
+   * from; it does not write anything.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityPlans
+   */
+  listQualityPlans: {
+    methodKind: "unary";
+    input: typeof ListQualityPlansRequestSchema;
+    output: typeof ListQualityPlansResponseSchema;
   },
   /**
    * Update the target-level defaults. The filter is ANDed into every rule on the

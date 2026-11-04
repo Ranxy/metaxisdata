@@ -77,6 +77,7 @@ const (
 	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
 	DataQualityService_GetQualityTargetSchedule_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityTargetSchedule"
 	DataQualityService_GetQualityContract_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityContract"
+	DataQualityService_ListQualityPlans_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListQualityPlans"
 	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
 	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
 	DataQualityService_ListQualityContractRevisions_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
@@ -335,6 +336,10 @@ type DataQualityServiceClient interface {
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(ctx context.Context, in *GetQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error)
+	// ListQualityPlans lists the read-only monitoring plan projection for every
+	// target with live rules. It is the directory the plan write path will grow
+	// from; it does not write anything.
+	ListQualityPlans(ctx context.Context, in *ListQualityPlansRequest, opts ...grpc.CallOption) (*ListQualityPlansResponse, error)
 	// Update the target-level defaults. The filter is ANDed into every rule on the
 	// target at compile time; the default severity only seeds newly authored rules
 	// and never rewrites an existing rule. The target's schedule is updated through
@@ -969,6 +974,16 @@ func (c *dataQualityServiceClient) GetQualityContract(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ListQualityPlans(ctx context.Context, in *ListQualityPlansRequest, opts ...grpc.CallOption) (*ListQualityPlansResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityPlansResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityPlans_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) UpdateQualityContract(ctx context.Context, in *UpdateQualityContractRequest, opts ...grpc.CallOption) (*QualityContract, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityContract)
@@ -1270,6 +1285,10 @@ type DataQualityServiceServer interface {
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error)
+	// ListQualityPlans lists the read-only monitoring plan projection for every
+	// target with live rules. It is the directory the plan write path will grow
+	// from; it does not write anything.
+	ListQualityPlans(context.Context, *ListQualityPlansRequest) (*ListQualityPlansResponse, error)
 	// Update the target-level defaults. The filter is ANDed into every rule on the
 	// target at compile time; the default severity only seeds newly authored rules
 	// and never rewrites an existing rule. The target's schedule is updated through
@@ -1468,6 +1487,9 @@ func (UnimplementedDataQualityServiceServer) GetQualityTargetSchedule(context.Co
 }
 func (UnimplementedDataQualityServiceServer) GetQualityContract(context.Context, *GetQualityContractRequest) (*QualityContract, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityPlans(context.Context, *ListQualityPlansRequest) (*ListQualityPlansResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityPlans not implemented")
 }
 func (UnimplementedDataQualityServiceServer) UpdateQualityContract(context.Context, *UpdateQualityContractRequest) (*QualityContract, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateQualityContract not implemented")
@@ -2503,6 +2525,24 @@ func _DataQualityService_GetQualityContract_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ListQualityPlans_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityPlansRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityPlans(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityPlans_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityPlans(ctx, req.(*ListQualityPlansRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_UpdateQualityContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateQualityContractRequest)
 	if err := dec(in); err != nil {
@@ -2811,6 +2851,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityContract",
 			Handler:    _DataQualityService_GetQualityContract_Handler,
+		},
+		{
+			MethodName: "ListQualityPlans",
+			Handler:    _DataQualityService_ListQualityPlans_Handler,
 		},
 		{
 			MethodName: "UpdateQualityContract",

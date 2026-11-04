@@ -5964,6 +5964,64 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityPlans:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                ListQualityPlans lists the read-only monitoring plan projection for every
+                 target with live rules. It is the directory the plan write path will grow
+                 from; it does not write anything.
+            operationId: DataQualityService_ListQualityPlans
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: instance
+                  in: query
+                  schema:
+                    type: string
+                - name: database
+                  in: query
+                  schema:
+                    type: string
+                - name: schema
+                  in: query
+                  schema:
+                    type: string
+                - name: table
+                  in: query
+                  schema:
+                    type: string
+                - name: search
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityPlansResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityRuleTemplates:
         get:
             tags:
@@ -11470,6 +11528,18 @@ components:
                         $ref: '#/components/schemas/QualityIssue'
                 nextPageToken:
                     type: string
+        ListQualityPlansResponse:
+            type: object
+            properties:
+                plans:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityPlan'
+                nextPageToken:
+                    type: string
+                totalSize:
+                    type: integer
+                    format: int32
         ListQualityRuleTemplatesResponse:
             type: object
             properties:
@@ -13041,6 +13111,13 @@ components:
                     description: |-
                         True when the live rules or settings differ from the published snapshot (or
                          nothing has been published yet and the target has content).
+                plan:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityPlan'
+                    description: |-
+                        The target's monitoring plan as derived from the live rules and the
+                         contract. Read-only in this slice; staged editing arrives with the plan
+                         write path.
             description: |-
                 QualityContract is the target-level layer above the rules: defaults, the
                  published version and whether the live rules have drifted from it. It is a
@@ -13176,6 +13253,23 @@ components:
                 QualityCoverageBreakdown is one instance's or one environment's share of the
                  workspace coverage. The key/title pair names the row; the counts use the same
                  denominator as QualityOverview.
+        QualityCoverageRequirement:
+            type: object
+            properties:
+                property:
+                    enum:
+                        - QUALITY_COVERAGE_PROPERTY_UNSPECIFIED
+                        - QUALITY_COVERAGE_PROPERTY_VOLUME
+                        - QUALITY_COVERAGE_PROPERTY_FRESHNESS
+                        - QUALITY_COVERAGE_PROPERTY_UNIQUENESS
+                        - QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY
+                    type: string
+                    format: enum
+                satisfied:
+                    type: boolean
+            description: |-
+                QualityCoverageRequirement is one required property and whether a live rule
+                 currently satisfies it. Gap = required and not satisfied.
         QualityDigestSetting:
             type: object
             properties:
@@ -13797,6 +13891,40 @@ components:
                     description: 0-100; unset when none of the owner's rules has a judged result.
                     format: double
             description: QualityOwnerScore is the quality score rolled up by rule owner.
+        QualityPlan:
+            type: object
+            properties:
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                state:
+                    enum:
+                        - QUALITY_PLAN_STATE_UNSPECIFIED
+                        - QUALITY_PLAN_STATE_PLANNED
+                        - QUALITY_PLAN_STATE_UNPLANNED
+                    type: string
+                    format: enum
+                criticality:
+                    enum:
+                        - QUALITY_ASSET_CRITICALITY_UNSPECIFIED
+                        - QUALITY_ASSET_CRITICALITY_EXPERIMENTAL
+                        - QUALITY_ASSET_CRITICALITY_IMPORTANT
+                        - QUALITY_ASSET_CRITICALITY_CRITICAL
+                    type: string
+                    format: enum
+                checkCount:
+                    type: integer
+                    format: int32
+                requirements:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityCoverageRequirement'
+                gapCount:
+                    type: integer
+                    format: int32
+            description: |-
+                QualityPlan is the read-only projection of a target's monitoring plan: its
+                 state, derived criticality, the checks that implement it and the declared
+                 coverage it currently satisfies.
         QualityRootCauseCandidate:
             type: object
             properties:
