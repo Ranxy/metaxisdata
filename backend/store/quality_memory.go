@@ -94,17 +94,8 @@ func (s *Store) CreateQualityMemory(ctx context.Context, input *CreateQualityMem
 		return nil, errors.Wrap(err, "failed to create the quality memory")
 	}
 	if message.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
-		// Supersede the previous confirmed statement of the same kind and subject so a
-		// reader sees exactly one current memory; the old row stays for correction.
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE quality_memory
-			SET status = $3, superseded_by = $4, updated_at = NOW()
-			WHERE kind = $1 AND subject = $2 AND status = $5 AND resource_id <> $4 AND deleted = FALSE
-		`, int16(input.Kind), input.Subject,
-			int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED),
-			input.ResourceID,
-			int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)); err != nil {
-			return nil, errors.Wrap(err, "failed to supersede the previous memory")
+		if err := supersedeQualityMemory(ctx, tx, input.Kind, input.Subject, input.ResourceID); err != nil {
+			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -194,13 +185,34 @@ func (s *Store) ListQualityMemories(ctx context.Context, find *FindQualityMemory
 }
 
 // ConfirmQualityMemory moves a PROPOSED memory to CONFIRMED or REJECTED. The compare
-// and set on the previous status is what makes two reviewers' clicks safe.
+// and set on the previous status is what makes two reviewers' clicks safe, and a
+// confirmed memory supersedes the previous one of the same kind and subject in the
+// same transaction, so exactly one row is current.
 func (s *Store) ConfirmQualityMemory(ctx context.Context, resourceID string, status storepb.QualityMemoryStatus, confirmedBy *int32) (*QualityMemoryMessage, error) {
 	if status != storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED &&
 		status != storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_REJECTED {
 		return nil, common.Errorf(common.Invalid, "a confirmation must confirm or reject")
 	}
-	message, err := scanQualityMemory(s.GetDB().QueryRowContext(ctx, `
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var kind int16
+	var subject string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT kind, subject FROM quality_memory WHERE resource_id = $1 AND deleted = FALSE`,
+		resourceID).Scan(&kind, &subject); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, common.Errorf(common.NotFound, "memory %q not found", resourceID)
+		}
+		return nil, errors.Wrap(err, "failed to read the memory to confirm")
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`,
+		strings.ToLower(storepb.QualityMemoryKind(kind).String())+"|"+subject); err != nil {
+		return nil, errors.Wrap(err, "failed to lock the memory subject")
+	}
+	message, err := scanQualityMemory(tx.QueryRowContext(ctx, `
 		UPDATE quality_memory
 		SET status = $2, confirmed_by = $3, confirmed_at = NOW(), updated_at = NOW()
 		WHERE resource_id = $1 AND status = $4 AND deleted = FALSE
@@ -209,11 +221,35 @@ func (s *Store) ConfirmQualityMemory(ctx context.Context, resourceID string, sta
 		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, common.Errorf(common.Conflict, "the memory was already decided or does not exist")
+			return nil, common.Errorf(common.Conflict, "the memory was already decided")
 		}
 		return nil, errors.Wrap(err, "failed to confirm the quality memory")
 	}
+	if message.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
+		if err := supersedeQualityMemory(ctx, tx, storepb.QualityMemoryKind(kind), subject, resourceID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the memory confirmation")
+	}
 	return message, nil
+}
+
+// supersedeQualityMemory marks the previous confirmed memory of one (kind, subject) as
+// superseded. It runs inside the caller's transaction, after the new row is locked in.
+func supersedeQualityMemory(ctx context.Context, tx *sql.Tx, kind storepb.QualityMemoryKind, subject, resourceID string) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE quality_memory
+		SET status = $3, superseded_by = $4, updated_at = NOW()
+		WHERE kind = $1 AND subject = $2 AND status = $5 AND resource_id <> $4 AND deleted = FALSE
+	`, int16(kind), subject,
+		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED),
+		resourceID,
+		int16(storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED)); err != nil {
+		return errors.Wrap(err, "failed to supersede the previous memory")
+	}
+	return nil
 }
 
 // DeleteQualityMemory soft-deletes a memory; the audit row records who removed it.

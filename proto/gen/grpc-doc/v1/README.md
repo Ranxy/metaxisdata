@@ -5989,8 +5989,8 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
 | status | [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus) |  |  |
-| subject | [string](#string) |  | An exact subject, or a prefix of the subject. |
-| page_size | [int32](#int32) |  |  |
+| subject | [string](#string) |  | An exact subject. |
+| page_size | [int32](#int32) |  | The page size; 0 uses the default (50), and the maximum is 1000. |
 | page_token | [string](#string) |  |  |
 
 

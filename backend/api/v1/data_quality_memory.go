@@ -53,12 +53,26 @@ func (s *DataQualityService) CreateQualityMemory(ctx context.Context, req *conne
 			// A decision or an event is a judgment: the agent proposes, a person confirms.
 			status = storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED
 		}
+		// The server cannot verify a reference, so only evidence shapes a deterministic
+		// observation produces may auto-confirm a fact; anything else is recorded as a
+		// proposal for a person to judge.
+		if !observedEvidence(req.Msg.GetEvidence()) {
+			status = storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED
+		}
 	} else if id := currentUserID(ctx); id > 0 {
 		confirmedBy = principalIDPointer(id)
 	}
 	input, err := validateQualityMemoryRequest(req.Msg, source, status, confirmedBy)
 	if err != nil {
 		return nil, err
+	}
+	// The criticality amplifier must see the real asset: a critical subject's judged
+	// memory (A1-6) is handed to a person, still before the write.
+	if agent != nil && kind != storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT {
+		if _, err := s.authorizeAgentAction(ctx, action, 0,
+			memorySubjectCriticality(ctx, s.store, input.Subject)); err != nil {
+			return nil, err
+		}
 	}
 	resourceID, err := common.RandomString(12)
 	if err != nil {
@@ -71,6 +85,42 @@ func (s *DataQualityService) CreateQualityMemory(ctx context.Context, req *conne
 		return nil, err
 	}
 	return connect.NewResponse(convertQualityMemoryToV1(workspaceID, message)), nil
+}
+
+// observedEvidenceKinds are the evidence shapes a deterministic observation produces.
+// A fact whose evidence claims anything else is not auto-confirmed: the server has not
+// verified it, so a person decides.
+var observedEvidenceKinds = map[string]bool{
+	"EXECUTION": true, "PROFILE": true, "LINEAGE": true, "SCHEMA_FINGERPRINT": true,
+}
+
+func observedEvidence(evidence []*v1pb.QualityInvestigationEvidence) bool {
+	if len(evidence) == 0 {
+		return false
+	}
+	for _, reference := range evidence {
+		if !observedEvidenceKinds[strings.ToUpper(strings.TrimSpace(reference.GetKind()))] {
+			return false
+		}
+	}
+	return true
+}
+
+// memorySubjectCriticality resolves the plan criticality of a target subject, or zero
+// when the subject is not a target GUID. It never writes.
+func memorySubjectCriticality(ctx context.Context, s *store.Store, subject string) dataquality.AssetCriticality {
+	if !strings.Contains(subject, ";") {
+		return 0
+	}
+	rules, err := s.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &subject})
+	if err != nil || len(rules) == 0 {
+		return 0
+	}
+	contract, err := s.GetQualityContract(ctx, subject, rules[0].TargetType)
+	if err != nil {
+		return 0
+	}
+	return qualityChangeRequestCriticality(contract, rules)
 }
 
 // qualityMemoryAction maps a memory kind onto the WS2 action it performs. An asset
@@ -278,10 +328,10 @@ func convertQualityMemoryToV1(workspaceID string, message *store.QualityMemoryMe
 		Source:       v1pb.QualityMemorySource(message.Source),
 		Status:       status,
 		DomainRef:    message.DomainRef,
-		ExpiresAt:    timestampFromTimePointer(message.ExpiresAt),
+		ExpiresAt:    timestampOrNil(message.ExpiresAt),
 		SupersededBy: qualityMemoryName(workspaceID, message.SupersededBy),
 		ConfirmedBy:  formatQualityContractPublisher(message.ConfirmedBy),
-		ConfirmedAt:  timestampFromTimePointer(message.ConfirmedAt),
+		ConfirmedAt:  timestampOrNil(message.ConfirmedAt),
 		CreatedBy:    formatQualityContractPublisher(message.CreatedBy),
 		CreateTime:   timestamppb.New(message.CreatedAt),
 	}
@@ -298,11 +348,4 @@ func qualityMemoryName(workspaceID, resourceID string) string {
 		return ""
 	}
 	return common.FormatWorkspace(workspaceID) + "/" + qualityMemoryPrefix + resourceID
-}
-
-func timestampFromTimePointer(value *time.Time) *timestamppb.Timestamp {
-	if value == nil {
-		return nil
-	}
-	return timestamppb.New(*value)
 }

@@ -4184,8 +4184,9 @@ message ListQualityMemoriesRequest {
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
   QualityMemoryKind kind = 2;
   QualityMemoryStatus status = 3;
-  // An exact subject, or a prefix of the subject.
+  // An exact subject.
   string subject = 4;
+  // The page size; 0 uses the default (50), and the maximum is 1000.
   int32 page_size = 5;
   string page_token = 6;
 }

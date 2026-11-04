@@ -8043,13 +8043,15 @@ export declare type ListQualityMemoriesRequest = Message<"metaxisdata.v1.ListQua
   status: QualityMemoryStatus;
 
   /**
-   * An exact subject, or a prefix of the subject.
+   * An exact subject.
    *
    * @generated from field: string subject = 4;
    */
   subject: string;
 
   /**
+   * The page size; 0 uses the default (50), and the maximum is 1000.
+   *
    * @generated from field: int32 page_size = 5;
    */
   pageSize: number;

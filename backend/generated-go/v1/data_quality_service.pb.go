@@ -17492,8 +17492,9 @@ type ListQualityMemoriesRequest struct {
 	Parent string              `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	Kind   QualityMemoryKind   `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.v1.QualityMemoryKind" json:"kind,omitempty"`
 	Status QualityMemoryStatus `protobuf:"varint,3,opt,name=status,proto3,enum=metaxisdata.v1.QualityMemoryStatus" json:"status,omitempty"`
-	// An exact subject, or a prefix of the subject.
-	Subject       string `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
+	// An exact subject.
+	Subject string `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
+	// The page size; 0 uses the default (50), and the maximum is 1000.
 	PageSize      int32  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields

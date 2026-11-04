@@ -6526,11 +6526,12 @@ paths:
                     format: enum
                 - name: subject
                   in: query
-                  description: An exact subject, or a prefix of the subject.
+                  description: An exact subject.
                   schema:
                     type: string
                 - name: pageSize
                   in: query
+                  description: The page size; 0 uses the default (50), and the maximum is 1000.
                   schema:
                     type: integer
                     format: int32
