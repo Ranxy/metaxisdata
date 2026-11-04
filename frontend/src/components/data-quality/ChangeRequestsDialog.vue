@@ -49,6 +49,18 @@
               <Badge :variant="stateVariant(request.state)">
                 {{ stateLabel(request) }}
               </Badge>
+              <Badge
+                v-if="request.source === QualityChangeRequestSource.AGENT"
+                variant="info"
+              >
+                {{ t("dataQuality.changeRequests.sourceAgent") }}
+              </Badge>
+              <Badge
+                v-else-if="request.source === QualityChangeRequestSource.HUMAN"
+                variant="neutral"
+              >
+                {{ t("dataQuality.changeRequests.sourceHuman") }}
+              </Badge>
               <span class="text-xs text-muted-foreground">
                 {{
                   t("dataQuality.changeRequests.baseVersion", {
@@ -301,6 +313,7 @@ import {
   type QualityChangeRequest,
   QualityChangeRequestItemKind,
   QualityChangeRequestItemResult_Status,
+  QualityChangeRequestSource,
   QualityChangeRequestState,
   QualityMemoryKind,
 } from "@/types/proto-es/v1/data_quality_service_pb";

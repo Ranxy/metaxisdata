@@ -374,6 +374,8 @@
       "reviewDescription": "展开一单查看每项类型化变更及结果，然后批准或拒绝。决策前不会改变任何状态。",
       "reviewTitle": "变更单",
       "setDeclaration": "要求 {scope}（至少 {count} 条检查）",
+      "sourceAgent": "Agent 发起",
+      "sourceHuman": "人工发起",
       "stateApplied": "已生效",
       "stateApproved": "部分生效",
       "stateExpired": "已过期",

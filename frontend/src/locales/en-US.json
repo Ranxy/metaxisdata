@@ -374,6 +374,8 @@
       "reviewDescription": "Expand a batch to see each typed change and its result, then approve or reject it. Nothing changes until you decide.",
       "reviewTitle": "Change requests",
       "setDeclaration": "Require {scope} (min {count} checks)",
+      "sourceAgent": "Agent proposal",
+      "sourceHuman": "Person",
       "stateApplied": "Applied",
       "stateApproved": "Partially applied",
       "stateExpired": "Expired",
