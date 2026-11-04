@@ -13764,6 +13764,14 @@ components:
                     type: integer
                     description: How many days the trend covers.
                     format: int32
+                cannotRunRuleCount:
+                    type: integer
+                    description: |-
+                        Enabled rules whose latest completed execution is ERROR: the check could not
+                         run, so its data was not judged. These are not failing rules and are not
+                         scored; the UI shows them as their own "cannot run" count so a broken check
+                         is visible without being mistaken for bad data.
+                    format: int32
             description: |-
                 QualityOverview is the workspace-level summary the overview page renders. It
                  aggregates the tables instead of listing rows, so the page costs a handful of

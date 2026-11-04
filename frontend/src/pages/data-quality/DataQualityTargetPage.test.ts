@@ -900,7 +900,10 @@ describe("DataQualityTargetPage", () => {
       label("dataQuality.workspace.summaryPassing", { count: 1 })
     );
     expect(text).toContain(
-      label("dataQuality.workspace.summaryFailing", { count: 2 })
+      label("dataQuality.workspace.summaryFailing", { count: 1 })
+    );
+    expect(text).toContain(
+      label("dataQuality.workspace.summaryCannotRun", { count: 1 })
     );
     expect(text).toContain(
       label("dataQuality.workspace.summaryIssues", { count: 1 })

@@ -12004,9 +12004,14 @@ type QualityOverview struct {
 	// The per-day tallies of the trend window, oldest first.
 	Trend []*QualityTrendPoint `protobuf:"bytes,11,rep,name=trend,proto3" json:"trend,omitempty"`
 	// How many days the trend covers.
-	TrendDays     int32 `protobuf:"varint,12,opt,name=trend_days,json=trendDays,proto3" json:"trend_days,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TrendDays int32 `protobuf:"varint,12,opt,name=trend_days,json=trendDays,proto3" json:"trend_days,omitempty"`
+	// Enabled rules whose latest completed execution is ERROR: the check could not
+	// run, so its data was not judged. These are not failing rules and are not
+	// scored; the UI shows them as their own "cannot run" count so a broken check
+	// is visible without being mistaken for bad data.
+	CannotRunRuleCount int32 `protobuf:"varint,24,opt,name=cannot_run_rule_count,json=cannotRunRuleCount,proto3" json:"cannot_run_rule_count,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *QualityOverview) Reset() {
@@ -12196,6 +12201,13 @@ func (x *QualityOverview) GetTrend() []*QualityTrendPoint {
 func (x *QualityOverview) GetTrendDays() int32 {
 	if x != nil {
 		return x.TrendDays
+	}
+	return 0
+}
+
+func (x *QualityOverview) GetCannotRunRuleCount() int32 {
+	if x != nil {
+		return x.CannotRunRuleCount
 	}
 	return 0
 }
@@ -17682,7 +17694,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x1bdaily_column_analysis_limit\x18\x04 \x01(\x05R\x18dailyColumnAnalysisLimit\x12\x1b\n" +
 	"\tin_flight\x18\x05 \x01(\x05R\binFlight\x12+\n" +
 	"\x11concurrency_limit\x18\x06 \x01(\x05R\x10concurrencyLimit\x127\n" +
-	"\tresets_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bresetsAt\"\xf0\t\n" +
+	"\tresets_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bresetsAt\"\xa3\n" +
+	"\n" +
 	"\x0fQualityOverview\x12\x1d\n" +
 	"\n" +
 	"rule_count\x18\x01 \x01(\x05R\truleCount\x12,\n" +
@@ -17709,7 +17722,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	" \x01(\v2#.metaxisdata.v1.QualityStatusCountsR\rlastDayCounts\x127\n" +
 	"\x05trend\x18\v \x03(\v2!.metaxisdata.v1.QualityTrendPointR\x05trend\x12\x1d\n" +
 	"\n" +
-	"trend_days\x18\f \x01(\x05R\ttrendDaysB\x10\n" +
+	"trend_days\x18\f \x01(\x05R\ttrendDays\x121\n" +
+	"\x15cannot_run_rule_count\x18\x18 \x01(\x05R\x12cannotRunRuleCountB\x10\n" +
 	"\x0e_quality_score\"\x82\x02\n" +
 	"\x18QualityCoverageBreakdown\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

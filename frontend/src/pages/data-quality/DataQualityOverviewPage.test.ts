@@ -145,6 +145,7 @@ function overviewFixture(overrides = {}) {
     openErrorCount: 2,
     openCriticalCount: 1,
     failingRuleCount: 2,
+    cannotRunRuleCount: 0,
     executionCount: 10,
     lastDayCounts: create(QualityStatusCountsSchema, {
       total: 10,
@@ -699,6 +700,21 @@ describe("DataQualityOverviewPage coverage gaps", () => {
         total: 6,
         gap: 3,
       })
+    );
+  });
+});
+
+describe("DataQualityOverviewPage cannot-run notice", () => {
+  it("separates checks that cannot run from failing checks", async () => {
+    mocks.getQualityOverview.mockResolvedValue(
+      overviewFixture({ cannotRunRuleCount: 2 })
+    );
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.cannotRunNotice", { count: 2 })
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.overview.cannotRunAction")
     );
   });
 });

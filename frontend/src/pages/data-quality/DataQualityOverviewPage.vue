@@ -59,6 +59,26 @@
         v-else
         class="space-y-4"
       >
+        <!-- ERROR is "not judged", not "failing": it gets its own visible notice
+             so a broken check does not hide behind a green score. -->
+        <div
+          v-if="overview.cannotRunRuleCount > 0"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2 text-sm text-warning"
+        >
+          <span class="flex min-w-0 items-center gap-2">
+            <TriangleAlert class="h-4 w-4 shrink-0" />
+            <span>
+              {{ t("dataQuality.overview.cannotRunNotice", { count: overview.cannotRunRuleCount }) }}
+            </span>
+          </span>
+          <RouterLink
+            :to="{ name: 'DataQualityChecks' }"
+            class="font-medium underline underline-offset-2"
+          >
+            {{ t("dataQuality.overview.cannotRunAction") }}
+          </RouterLink>
+        </div>
+
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard
             :label="t('dataQuality.overview.statEnabledRules')"
