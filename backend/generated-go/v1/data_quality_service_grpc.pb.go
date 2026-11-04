@@ -81,6 +81,7 @@ const (
 	DataQualityService_ListQualityCoverageGaps_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListQualityCoverageGaps"
 	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
 	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	DataQualityService_GetQualityActionPolicy_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
 	DataQualityService_StageQualityPlan_FullMethodName                   = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
 	DataQualityService_CreateQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
 	DataQualityService_GetQualityChangeRequest_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
@@ -363,6 +364,9 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(ctx context.Context, in *PublishQualityContractRequest, opts ...grpc.CallOption) (*PublishQualityContractResponse, error)
+	// Read the WS2 action catalog and how the autonomy policy would decide each action
+	// for an agent right now. Read-only: it exposes the policy, it does not change it.
+	GetQualityActionPolicy(ctx context.Context, in *GetQualityActionPolicyRequest, opts ...grpc.CallOption) (*QualityActionPolicy, error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -1057,6 +1061,16 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityActionPolicy(ctx context.Context, in *GetQualityActionPolicyRequest, opts ...grpc.CallOption) (*QualityActionPolicy, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityActionPolicy)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityActionPolicy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) StageQualityPlan(ctx context.Context, in *StageQualityPlanRequest, opts ...grpc.CallOption) (*QualityContract, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityContract)
@@ -1445,6 +1459,9 @@ type DataQualityServiceServer interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error)
+	// Read the WS2 action catalog and how the autonomy policy would decide each action
+	// for an agent right now. Read-only: it exposes the policy, it does not change it.
+	GetQualityActionPolicy(context.Context, *GetQualityActionPolicyRequest) (*QualityActionPolicy, error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -1675,6 +1692,9 @@ func (UnimplementedDataQualityServiceServer) UpdateQualityContract(context.Conte
 }
 func (UnimplementedDataQualityServiceServer) PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PublishQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityActionPolicy(context.Context, *GetQualityActionPolicyRequest) (*QualityActionPolicy, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityActionPolicy not implemented")
 }
 func (UnimplementedDataQualityServiceServer) StageQualityPlan(context.Context, *StageQualityPlanRequest) (*QualityContract, error) {
 	return nil, status.Error(codes.Unimplemented, "method StageQualityPlan not implemented")
@@ -2803,6 +2823,24 @@ func _DataQualityService_PublishQualityContract_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityActionPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityActionPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityActionPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityActionPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityActionPolicy(ctx, req.(*GetQualityActionPolicyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_StageQualityPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StageQualityPlanRequest)
 	if err := dec(in); err != nil {
@@ -3253,6 +3291,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PublishQualityContract",
 			Handler:    _DataQualityService_PublishQualityContract_Handler,
+		},
+		{
+			MethodName: "GetQualityActionPolicy",
+			Handler:    _DataQualityService_GetQualityActionPolicy_Handler,
 		},
 		{
 			MethodName: "StageQualityPlan",
