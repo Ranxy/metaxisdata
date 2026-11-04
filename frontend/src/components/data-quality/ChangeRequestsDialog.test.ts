@@ -11,6 +11,7 @@ import {
   QualityChangeRequestItemResultSchema,
   QualityChangeRequestItemSchema,
   QualityChangeRequestSchema,
+  QualityChangeRequestSource,
   QualityChangeRequestState,
   QualityCoverageProperty,
   QualityMemoryKind,
@@ -64,12 +65,14 @@ function requestFixture(
     state?: QualityChangeRequestState;
     failed?: boolean;
     rejected?: boolean;
+    source?: QualityChangeRequestSource;
   } = {}
 ) {
   const state = options.state ?? QualityChangeRequestState.PROPOSED;
   return create(QualityChangeRequestSchema, {
     name: "workspaces/ws1/qualityChangeRequests/cr1",
     state,
+    source: options.source,
     baseVersion: 2,
     items: [
       create(QualityChangeRequestItemSchema, {
@@ -307,6 +310,23 @@ describe("ChangeRequestsDialog", () => {
 
     expect(mocks.decideQualityChangeRequest).toHaveBeenCalled();
     expect(mocks.createQualityMemory).not.toHaveBeenCalled();
+  });
+
+  it("labels who proposed the change request", async () => {
+    mountDialog({
+      requests: [
+        requestFixture({ source: QualityChangeRequestSource.AGENT }),
+        requestFixture({ source: QualityChangeRequestSource.HUMAN }),
+      ],
+    });
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      label("dataQuality.changeRequests.sourceAgent")
+    );
+    expect(document.body.textContent).toContain(
+      label("dataQuality.changeRequests.sourceHuman")
+    );
   });
 
   it("offers no actions for an expired request", async () => {
