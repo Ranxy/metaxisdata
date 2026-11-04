@@ -342,6 +342,11 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 		if *completeWhy == "" {
 			*completeWhy = "the objective is achieved"
 		}
+		// A conclusion is a judgement: record it as a PROPOSED decision memory, so it
+		// becomes knowledge only after a person confirms it.
+		if err := e.recordModelDecision(ctx, goal, *completeWhy); err != nil {
+			return "", err
+		}
 		return marshalJSON(map[string]any{"completed": true})
 	case "block_goal":
 		var input struct {
@@ -364,6 +369,48 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 	default:
 		return "", fmt.Errorf("unknown tool %q", name)
 	}
+}
+
+// recordModelDecision writes the model's conclusion as a proposed decision memory. It
+// never confirms itself: a person is what turns it into knowledge.
+func (e *Engine) recordModelDecision(ctx context.Context, goal *store.QualityAgentGoalMessage, statement string) error {
+	existing, err := e.store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &goal.TargetGUID})
+	if err != nil {
+		return errors.Wrap(err, "failed to read the target's memories")
+	}
+	for _, memory := range existing {
+		if memory.Subject == goal.TargetGUID && memory.Statement == statement &&
+			memory.Status != storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_REJECTED {
+			return nil
+		}
+	}
+	sum := sha256.Sum256([]byte("decision|" + statement))
+	key := "model-decision:" + goal.TargetGUID + ":" + hex.EncodeToString(sum[:8])
+	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT,
+		&storepb.QualityAgentGoalStepPayload{Tool: "record_decision", Summary: truncateRunes(statement, 200)}, key+":intent"); err != nil {
+		return err
+	}
+	resourceID, err := common.RandomString(12)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate the memory id")
+	}
+	message, err := e.store.CreateQualityMemory(ctx, &store.CreateQualityMemoryInput{
+		ResourceID: resourceID,
+		Kind:       storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
+		Subject:    goal.TargetGUID,
+		Statement:  statement,
+		Source:     storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT,
+		Status:     storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED,
+		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
+			{Kind: "GOAL", Reference: goal.ResourceID},
+		}},
+		CreatedBy: ptrInt32(goal.AgentPrincipalID),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to record the decision memory")
+	}
+	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT,
+		&storepb.QualityAgentGoalStepPayload{Tool: "record_decision", Summary: "decision memory recorded", Resource: message.ResourceID}, key+":result")
 }
 
 // recordModelAssetFact writes one model-observed fact with its own content-hashed

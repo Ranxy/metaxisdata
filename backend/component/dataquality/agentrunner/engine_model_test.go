@@ -84,6 +84,11 @@ func TestModelTurnRecordsAndCompletes(t *testing.T) {
 	require.Equal(t, storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE, outcome.Phase)
 	require.Len(t, fake.investigations, 1)
 	require.Equal(t, "the upstream batch was short", fake.investigations[0].Summary)
+	require.Len(t, fake.memories, 1, "the conclusion is recorded as a proposed decision")
+	require.Equal(t, storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION, fake.memories[0].Kind)
+	require.Equal(t, storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED, fake.memories[0].Status)
+	require.Equal(t, "the drop is explained", fake.memories[0].Statement)
+	require.Equal(t, "GOAL", fake.memories[0].Evidence.Evidence[0].Kind)
 	require.Equal(t, int32(42), *fake.investigations[0].CreatedBy)
 
 	kinds := map[storepb.QualityAgentGoalStepKind]int{}
@@ -92,8 +97,9 @@ func TestModelTurnRecordsAndCompletes(t *testing.T) {
 	}
 	require.Equal(t, 1, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED])
 	require.Equal(t, 3, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TOOL_CALL])
-	require.Equal(t, 1, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT])
-	require.Equal(t, 1, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT])
+	require.Equal(t, 2, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT],
+		"the investigation and the proposed decision are both journaled")
+	require.Equal(t, 2, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT])
 }
 
 // The same blocker must persist for three consecutive rounds before the goal parks.
