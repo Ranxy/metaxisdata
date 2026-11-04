@@ -191,6 +191,23 @@
                 </label>
                 </div>
               </div>
+              <label
+                v-if="decision.mode === 'reject'"
+                class="flex items-start gap-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  class="mt-0.5"
+                  :checked="decision.remember"
+                  @change="decision.remember = !decision.remember"
+                />
+                <span>
+                  {{ t("dataQuality.changeRequests.rememberReason") }}
+                  <span class="block text-xs text-muted-foreground">
+                    {{ t("dataQuality.changeRequests.rememberReasonHint") }}
+                  </span>
+                </span>
+              </label>
               <p
                 v-if="decision.mode === 'reject' && decision.reasons.length === 0"
                 class="text-xs text-muted-foreground"
@@ -258,6 +275,7 @@ import { AlertTriangle, Loader2 } from "lucide-vue-next";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
+  createQualityMemory,
   decideQualityChangeRequest,
   listQualityChangeRequests,
   listQualitySuggestions,
@@ -284,6 +302,7 @@ import {
   QualityChangeRequestItemKind,
   QualityChangeRequestItemResult_Status,
   QualityChangeRequestState,
+  QualityMemoryKind,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
@@ -314,6 +333,8 @@ interface DecisionDraft {
   mode: "approve" | "reject";
   note: string;
   reasons: QualityChangeRejectionReason[];
+  /** Whether a rejection also records why as durable decision memory. */
+  remember: boolean;
 }
 
 const { t } = useI18n();
@@ -533,6 +554,7 @@ function beginDecision(
     mode,
     note: "",
     reasons: mode === "reject" ? [QualityChangeRejectionReason.NOISE] : [],
+    remember: mode === "reject",
   };
 }
 
@@ -551,6 +573,36 @@ function toggleReason(reason: QualityChangeRejectionReason) {
     reasons.splice(index, 1);
   } else {
     reasons.push(reason);
+  }
+}
+
+/**
+ * A rejection already carries structured reasons; recording them as a decision
+ * memory is what lets later proposals learn from it. The decision has succeeded, so
+ * a failed memory write is a warning, never an error on the decision.
+ */
+async function rememberRejection(
+  request: QualityChangeRequest,
+  draft: DecisionDraft
+) {
+  const reasons = request.rejectionReasons.map((reason) =>
+    t(rejectionKey(reason))
+  );
+  const note = draft.note.trim();
+  const statement = [reasons.join(", "), note].filter(Boolean).join(" — ");
+  try {
+    await createQualityMemory({
+      kind: QualityMemoryKind.DECISION,
+      subject: props.targetGuid,
+      statement,
+      evidence: [{ kind: "CHANGE_REQUEST", reference: request.name }],
+      signal: controller?.signal,
+    });
+    notify.success(t("dataQuality.changeRequests.memoryRecorded"));
+  } catch (e: unknown) {
+    notify.warning(
+      formatError(e, "dataQuality.changeRequests.memoryRecordFailed")
+    );
   }
 }
 
@@ -580,6 +632,13 @@ async function submitDecision(request: QualityChangeRequest) {
       notify.warning(t("dataQuality.changeRequests.expiredNotice"));
     } else {
       notify.warning(t("dataQuality.changeRequests.decidedPartialNotice"));
+    }
+    if (
+      draft.mode === "reject" &&
+      draft.remember &&
+      updated.state === QualityChangeRequestState.REJECTED
+    ) {
+      await rememberRejection(updated, draft);
     }
     decision.value = null;
     emit("decided");

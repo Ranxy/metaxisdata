@@ -8163,7 +8163,7 @@ export declare const DeleteQualityMemoryRequestSchema: GenMessage<DeleteQualityM
  */
 export declare type QualityInvestigationEvidence = Message<"metaxisdata.v1.QualityInvestigationEvidence"> & {
   /**
-   * EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE.
+   * EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST.
    *
    * @generated from field: string kind = 1;
    */

@@ -15154,7 +15154,7 @@ components:
             properties:
                 kind:
                     type: string
-                    description: EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE.
+                    description: EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST.
                 reference:
                     type: string
                 note:
