@@ -151,6 +151,10 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 		PublishedBy: publishedByPtr,
 	})
 	if err != nil {
+		if common.ErrorCode(err) == common.Conflict {
+			// The settings changed between the read and the publish transaction.
+			return nil, connect.NewError(connect.CodeAborted, err)
+		}
 		return nil, err
 	}
 	view, err := s.qualityContractViewWith(ctx, targetGUID, metaType, storedContract, rules, revision)
@@ -736,6 +740,14 @@ func validateQualityContractIntentShape(intent *v1pb.QualityContractIntent) erro
 		v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL:
 	default:
 		return connectErrorInvalid("unknown intent criticality %d", intent.GetCriticality())
+	}
+	switch intent.GetSource() {
+	case v1pb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED,
+		v1pb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_HUMAN,
+		v1pb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT,
+		v1pb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED:
+	default:
+		return connectErrorInvalid("unknown intent source %d", intent.GetSource())
 	}
 	if err := checkQualityContractIntentTimestamp(intent.GetEffectiveFrom(), "effective_from"); err != nil {
 		return err

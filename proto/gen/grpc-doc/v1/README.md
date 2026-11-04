@@ -6147,7 +6147,7 @@ versioned with the contract on every publish.
 | statements | [QualityContractIntentStatement](#metaxisdata-v1-QualityContractIntentStatement) | repeated |  |
 | dependents | [string](#string) | repeated | Downstream assets or external tags that depend on this one. Recorded only; they feed impact and criticality derivation later. |
 | exemptions | [QualityContractIntentExemption](#metaxisdata-v1-QualityContractIntentExemption) | repeated |  |
-| effective_from | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the declaration takes effect; unset means immediately. |
+| effective_from | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the declaration is meant to take effect; unset means unset. Recorded only: plan derivation does not evaluate it yet. |
 | source | [QualityContractIntentSource](#metaxisdata-v1-QualityContractIntentSource) |  |  |
 | domain_ref | [string](#string) |  | Reserved for domain-level intent; stored, not resolved in this phase. |
 
@@ -6207,7 +6207,7 @@ QualityContractRevision is one published version&#39;s metadata.
 | note | [string](#string) |  |  |
 | check_count | [int32](#int32) |  |  |
 | change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  |  |
-| intent | [QualityContractIntent](#metaxisdata-v1-QualityContractIntent) |  | The intent this version recorded; absent on a version published before intent existed, which is not the same as an empty one. |
+| intent | [QualityContractIntent](#metaxisdata-v1-QualityContractIntent) |  | The intent this version recorded. Absent when the version recorded none, including every version published before intent existed; this conversion cannot tell the two apart. |
 
 
 

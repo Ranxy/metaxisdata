@@ -2,6 +2,7 @@ package dataquality
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -87,6 +88,12 @@ func ValidateContractIntent(ctx context.Context, s *store.Store, guid string, me
 	}
 	resolution, err := ResolveTarget(ctx, s, guid, metaType)
 	if err != nil {
+		// A target that lost its registry row keeps its rules and its contract; the
+		// read paths still serve them, so refuse only a declaration the registry
+		// could verify. Rejecting the update would make the contract uneditable.
+		if errors.Is(err, ErrOrphaned) {
+			return nil
+		}
 		return err
 	}
 	known := make(map[string]struct{}, len(resolution.Target.Columns))

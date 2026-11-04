@@ -13285,7 +13285,9 @@ components:
                         $ref: '#/components/schemas/QualityContractIntentExemption'
                 effectiveFrom:
                     type: string
-                    description: When the declaration takes effect; unset means immediately.
+                    description: |-
+                        When the declaration is meant to take effect; unset means unset. Recorded
+                         only: plan derivation does not evaluate it yet.
                     format: date-time
                 source:
                     enum:
@@ -13383,8 +13385,9 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/QualityContractIntent'
                     description: |-
-                        The intent this version recorded; absent on a version published before intent
-                         existed, which is not the same as an empty one.
+                        The intent this version recorded. Absent when the version recorded none,
+                         including every version published before intent existed; this conversion
+                         cannot tell the two apart.
             description: QualityContractRevision is one published version's metadata.
         QualityContractSettings:
             type: object

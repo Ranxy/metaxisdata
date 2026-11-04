@@ -17757,7 +17757,8 @@ they feed impact and criticality derivation later. </p></td>
                   <td>effective_from</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
-                  <td><p>When the declaration takes effect; unset means immediately. </p></td>
+                  <td><p>When the declaration is meant to take effect; unset means unset. Recorded
+only: plan derivation does not evaluate it yet. </p></td>
                 </tr>
               
                 <tr>
@@ -17927,8 +17928,9 @@ they feed impact and criticality derivation later. </p></td>
                   <td>intent</td>
                   <td><a href="#metaxisdata.v1.QualityContractIntent">QualityContractIntent</a></td>
                   <td></td>
-                  <td><p>The intent this version recorded; absent on a version published before intent
-existed, which is not the same as an empty one. </p></td>
+                  <td><p>The intent this version recorded. Absent when the version recorded none,
+including every version published before intent existed; this conversion
+cannot tell the two apart. </p></td>
                 </tr>
               
             </tbody>

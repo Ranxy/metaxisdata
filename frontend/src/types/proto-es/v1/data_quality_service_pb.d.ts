@@ -7018,7 +7018,8 @@ export declare type QualityContractIntent = Message<"metaxisdata.v1.QualityContr
   exemptions: QualityContractIntentExemption[];
 
   /**
-   * When the declaration takes effect; unset means immediately.
+   * When the declaration is meant to take effect; unset means unset. Recorded
+   * only: plan derivation does not evaluate it yet.
    *
    * @generated from field: google.protobuf.Timestamp effective_from = 5;
    */
@@ -7393,8 +7394,9 @@ export declare type QualityContractRevision = Message<"metaxisdata.v1.QualityCon
   changeSummary?: QualityContractChangeSummary;
 
   /**
-   * The intent this version recorded; absent on a version published before intent
-   * existed, which is not the same as an empty one.
+   * The intent this version recorded. Absent when the version recorded none,
+   * including every version published before intent existed; this conversion
+   * cannot tell the two apart.
    *
    * @generated from field: metaxisdata.v1.QualityContractIntent intent = 7;
    */

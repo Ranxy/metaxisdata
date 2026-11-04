@@ -377,3 +377,64 @@ func TestConvertQualityContractRevisionIntent(t *testing.T) {
 	legacy := convertQualityContractRevisionToV1(&store.QualityContractRevisionMessage{Version: 1})
 	require.Nil(t, legacy.GetIntent())
 }
+
+// The intent participates in the v2 fingerprint: an intent-only edit must produce a
+// new version, and the same intent must fingerprint identically.
+func TestQualityContractFingerprintV2CoversIntent(t *testing.T) {
+	t.Parallel()
+
+	checks := []*storepb.QualityContractCheck{{RuleResourceId: "r1", RuleRevision: 1}}
+	plain := &storepb.QualityContractSettings{}
+	withIntent := &storepb.QualityContractSettings{
+		Intent: &storepb.QualityContractIntent{
+			Criticality: storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL,
+		},
+	}
+	require.NotEqual(t, qualityContractFingerprintV2(plain, checks), qualityContractFingerprintV2(withIntent, checks))
+	require.Equal(t, qualityContractFingerprintV2(withIntent, checks), qualityContractFingerprintV2(withIntent, checks))
+}
+
+// Editing an exemption makes it a new declaration attributed to this editor; an
+// unchanged one keeps its approver.
+func TestNormalizeQualityContractIntentReattributesChangedExemption(t *testing.T) {
+	t.Parallel()
+
+	previous := &storepb.QualityContractIntent{
+		Exemptions: []*storepb.QualityContractIntentExemption{
+			{Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, Reason: "first", ApprovedBy: 3},
+		},
+	}
+	intent := normalizeQualityContractIntent(&storepb.QualityContractIntent{
+		Exemptions: []*storepb.QualityContractIntentExemption{
+			{Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, Reason: "changed"},
+		},
+	}, 7, previous)
+	require.NotNil(t, intent)
+	require.Equal(t, int32(7), intent.GetExemptions()[0].GetApprovedBy())
+}
+
+// The store, plan and API enums are converted by cast, so their numbering is
+// load-bearing: a renumber in one proto must fail this test, not silently pick the
+// wrong property.
+func TestCoverageEnumNumberingMatches(t *testing.T) {
+	t.Parallel()
+
+	for property := storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME; property <= storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_RANGE; property++ {
+		require.Equal(t, int32(property), int32(v1pb.QualityCoverageProperty(property)))
+	}
+	for criticality := storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_EXPERIMENTAL; criticality <= storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL; criticality++ {
+		require.Equal(t, int32(criticality), int32(v1pb.QualityAssetCriticality(criticality)))
+	}
+	for source := storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_HUMAN; source <= storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED; source++ {
+		require.Equal(t, int32(source), int32(v1pb.QualityContractIntentSource(source)))
+	}
+}
+
+// An unknown source must be rejected rather than stored as a meaningless number.
+func TestValidateQualityContractIntentShapeRejectsUnknownSource(t *testing.T) {
+	t.Parallel()
+
+	require.Error(t, validateQualityContractIntentShape(&v1pb.QualityContractIntent{
+		Source: v1pb.QualityContractIntentSource(99),
+	}))
+}

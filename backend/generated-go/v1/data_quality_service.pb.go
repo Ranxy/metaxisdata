@@ -14905,7 +14905,8 @@ type QualityContractIntent struct {
 	// they feed impact and criticality derivation later.
 	Dependents []string                          `protobuf:"bytes,3,rep,name=dependents,proto3" json:"dependents,omitempty"`
 	Exemptions []*QualityContractIntentExemption `protobuf:"bytes,4,rep,name=exemptions,proto3" json:"exemptions,omitempty"`
-	// When the declaration takes effect; unset means immediately.
+	// When the declaration is meant to take effect; unset means unset. Recorded
+	// only: plan derivation does not evaluate it yet.
 	EffectiveFrom *timestamppb.Timestamp      `protobuf:"bytes,5,opt,name=effective_from,json=effectiveFrom,proto3" json:"effective_from,omitempty"`
 	Source        QualityContractIntentSource `protobuf:"varint,6,opt,name=source,proto3,enum=metaxisdata.v1.QualityContractIntentSource" json:"source,omitempty"`
 	// Reserved for domain-level intent; stored, not resolved in this phase.
@@ -15625,8 +15626,9 @@ type QualityContractRevision struct {
 	Note          string                        `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
 	CheckCount    int32                         `protobuf:"varint,5,opt,name=check_count,json=checkCount,proto3" json:"check_count,omitempty"`
 	ChangeSummary *QualityContractChangeSummary `protobuf:"bytes,6,opt,name=change_summary,json=changeSummary,proto3" json:"change_summary,omitempty"`
-	// The intent this version recorded; absent on a version published before intent
-	// existed, which is not the same as an empty one.
+	// The intent this version recorded. Absent when the version recorded none,
+	// including every version published before intent existed; this conversion
+	// cannot tell the two apart.
 	Intent        *QualityContractIntent `protobuf:"bytes,7,opt,name=intent,proto3" json:"intent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

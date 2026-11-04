@@ -859,7 +859,7 @@ the contract for free.
 | statements | [QualityContractIntentStatement](#metaxisdata-store-QualityContractIntentStatement) | repeated |  |
 | dependents | [string](#string) | repeated | Downstream assets or external tags that depend on this one. Recorded only; they feed impact and criticality derivation in a later phase. |
 | exemptions | [QualityContractIntentExemption](#metaxisdata-store-QualityContractIntentExemption) | repeated |  |
-| effective_from_unix_ms | [int64](#int64) |  | When the declaration takes effect; 0 means immediately. |
+| effective_from_unix_ms | [int64](#int64) |  | When the declaration is meant to take effect; 0 means unset. It is recorded only: plan derivation does not evaluate it in this phase. |
 | source | [QualityContractIntentSource](#metaxisdata-store-QualityContractIntentSource) |  |  |
 | domain_ref | [string](#string) |  | Reserved for domain-level intent (the P2 answer to O1); stored, not resolved. |
 

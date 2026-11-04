@@ -10,15 +10,15 @@ import (
 )
 
 func planRules(ruleType storepb.QualityRuleType) []RuleShape {
-	return []RuleShape{{Type: ruleType}}
+	return []RuleShape{{Type: ruleType, Enabled: true}}
 }
 
 func TestDerivePlanUnplanned(t *testing.T) {
 	t.Parallel()
 
 	plan := DerivePlan(false, nil, []RuleShape{
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Enabled: true},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS, Enabled: true},
 	})
 	require.Equal(t, PlanUnplanned, plan.State)
 	require.Equal(t, CriticalityExperimental, plan.Criticality)
@@ -41,8 +41,8 @@ func TestDerivePlanImportantTemplate(t *testing.T) {
 
 	// A schema drift rule closes the gap.
 	plan = DerivePlan(true, nil, []RuleShape{
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE},
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT_CHANGE, Enabled: true},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, Enabled: true},
 	})
 	require.Zero(t, plan.GapCount)
 }
@@ -53,8 +53,8 @@ func TestDerivePlanCriticalTemplate(t *testing.T) {
 	plan := DerivePlan(true, &storepb.QualityContractIntent{
 		Criticality: storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL,
 	}, []RuleShape{
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Enabled: true},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_UNIQUE, Enabled: true},
 	})
 	require.Equal(t, CriticalityCritical, plan.Criticality)
 	require.Equal(t, []CoverageProperty{CoverageFreshness, CoverageVolume, CoverageUniqueness, CoverageSchemaStability},
@@ -101,8 +101,8 @@ func TestDerivePlanIntentStatements(t *testing.T) {
 		},
 	}
 	plan := DerivePlan(true, intent, []RuleShape{
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT},
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, Column: "phone"},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Enabled: true},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, Column: "phone", Enabled: true},
 	})
 	require.Equal(t, RequirementIntent, plan.Requirements[2].Source)
 	require.Equal(t, "email", plan.Requirements[2].Column)
@@ -110,9 +110,23 @@ func TestDerivePlanIntentStatements(t *testing.T) {
 	require.True(t, plan.Requirements[0].Satisfied, "a table-level requirement is satisfied by any rule of the property")
 
 	plan = DerivePlan(true, intent, []RuleShape{
-		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, Column: "email"},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_NULL_PERCENT, Column: "email", Enabled: true},
 	})
 	require.True(t, plan.Requirements[2].Satisfied)
+}
+
+// A paused check is a live rule the target deliberately does not run, so it does
+// not satisfy a declared requirement.
+func TestDerivePlanPausedRuleDoesNotSatisfy(t *testing.T) {
+	t.Parallel()
+
+	plan := DerivePlan(true, nil, []RuleShape{
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT, Enabled: false},
+		{Type: storepb.QualityRuleType_QUALITY_RULE_TYPE_SCHEMA_DRIFT, Enabled: true},
+	})
+	require.False(t, plan.Requirements[0].Satisfied, "a paused volume check does not satisfy VOLUME")
+	require.True(t, plan.Requirements[1].Satisfied)
+	require.Equal(t, 1, plan.GapCount)
 }
 
 // A statement that restates a template requirement keeps a single requirement and

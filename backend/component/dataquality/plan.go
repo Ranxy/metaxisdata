@@ -58,11 +58,14 @@ const (
 	RequirementIntent
 )
 
-// RuleShape is the part of a live rule that plan derivation reads: its type and
-// the column it watches (empty for a table-level rule).
+// RuleShape is the part of a live rule that plan derivation reads: its type, the
+// column it watches (empty for a table-level rule) and whether it is enabled. A
+// paused rule is a live rule the target deliberately does not run, so it does not
+// satisfy a declared requirement.
 type RuleShape struct {
-	Type   storepb.QualityRuleType
-	Column string
+	Type    storepb.QualityRuleType
+	Column  string
+	Enabled bool
 }
 
 // PlanRequirement is one required property for one scope, and whether the live
@@ -182,6 +185,9 @@ func planRequirements(criticality AssetCriticality) []PlanRequirement {
 		properties = []CoverageProperty{CoverageFreshness, CoverageVolume, CoverageUniqueness, CoverageSchemaStability}
 	case CriticalityImportant:
 		properties = []CoverageProperty{CoverageVolume, CoverageSchemaStability}
+	default:
+		// EXPERIMENTAL and any unknown value declare no template requirement.
+		properties = nil
 	}
 	requirements := make([]PlanRequirement, 0, len(properties))
 	for _, property := range properties {
@@ -222,6 +228,9 @@ func exemptRequirement(requirements []PlanRequirement, property CoverageProperty
 // whatever its column, because the template names a property, not a column.
 func requirementSatisfied(requirement PlanRequirement, rules []RuleShape) bool {
 	for _, rule := range rules {
+		if !rule.Enabled {
+			continue
+		}
 		if requirement.Column != "" && rule.Column != requirement.Column {
 			continue
 		}

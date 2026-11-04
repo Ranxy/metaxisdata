@@ -3643,7 +3643,8 @@ message QualityContractIntent {
   // they feed impact and criticality derivation later.
   repeated string dependents = 3;
   repeated QualityContractIntentExemption exemptions = 4;
-  // When the declaration takes effect; unset means immediately.
+  // When the declaration is meant to take effect; unset means unset. Recorded
+  // only: plan derivation does not evaluate it yet.
   google.protobuf.Timestamp effective_from = 5;
   QualityContractIntentSource source = 6;
   // Reserved for domain-level intent; stored, not resolved in this phase.
@@ -3777,8 +3778,9 @@ message QualityContractRevision {
   string note = 4;
   int32 check_count = 5;
   QualityContractChangeSummary change_summary = 6;
-  // The intent this version recorded; absent on a version published before intent
-  // existed, which is not the same as an empty one.
+  // The intent this version recorded. Absent when the version recorded none,
+  // including every version published before intent existed; this conversion
+  // cannot tell the two apart.
   QualityContractIntent intent = 7;
 }
 

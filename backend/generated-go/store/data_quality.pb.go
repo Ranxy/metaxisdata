@@ -6446,7 +6446,8 @@ type QualityContractIntent struct {
 	// they feed impact and criticality derivation in a later phase.
 	Dependents []string                          `protobuf:"bytes,3,rep,name=dependents,proto3" json:"dependents,omitempty"`
 	Exemptions []*QualityContractIntentExemption `protobuf:"bytes,4,rep,name=exemptions,proto3" json:"exemptions,omitempty"`
-	// When the declaration takes effect; 0 means immediately.
+	// When the declaration is meant to take effect; 0 means unset. It is recorded
+	// only: plan derivation does not evaluate it in this phase.
 	EffectiveFromUnixMs int64                       `protobuf:"varint,5,opt,name=effective_from_unix_ms,json=effectiveFromUnixMs,proto3" json:"effective_from_unix_ms,omitempty"`
 	Source              QualityContractIntentSource `protobuf:"varint,6,opt,name=source,proto3,enum=metaxisdata.store.QualityContractIntentSource" json:"source,omitempty"`
 	// Reserved for domain-level intent (the P2 answer to O1); stored, not resolved.
