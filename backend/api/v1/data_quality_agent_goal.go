@@ -385,10 +385,11 @@ func convertQualityAgentGoalToV1(workspaceID string, message *store.QualityAgent
 // GetQualityAgentMetrics reads the runner's evaluation: goal phases, token spend, the
 // acceptance of its proposed change requests and its investigation verdicts.
 func (s *DataQualityService) GetQualityAgentMetrics(ctx context.Context, req *connect.Request[v1pb.GetQualityAgentMetricsRequest]) (*connect.Response[v1pb.QualityAgentMetrics], error) {
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
 		return nil, err
 	}
-	metrics, err := s.store.GetQualityAgentMetrics(ctx)
+	metrics, err := s.store.GetQualityAgentMetrics(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}

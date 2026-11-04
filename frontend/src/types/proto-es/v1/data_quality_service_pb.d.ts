@@ -10576,7 +10576,8 @@ export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMe
   tokensLastHour: bigint;
 
   /**
-   * Change requests proposed by an agent, by lifecycle state.
+   * Change requests proposed by an agent, by lifecycle state. Acceptance is
+   * applied / (applied + rejected); pending and expired are not decisions.
    *
    * @generated from field: int32 agent_change_requests_total = 4;
    */
@@ -10598,7 +10599,18 @@ export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMe
   agentChangeRequestsPending: number;
 
   /**
-   * Investigations recorded by agents, and the verdicts they reached.
+   * @generated from field: int32 agent_change_requests_approved = 13;
+   */
+  agentChangeRequestsApproved: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_expired = 14;
+   */
+  agentChangeRequestsExpired: number;
+
+  /**
+   * Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
+   * carry no verdict, so the buckets do not have to sum to the total.
    *
    * @generated from field: int32 investigations_total = 8;
    */
@@ -10618,6 +10630,11 @@ export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMe
    * @generated from field: int32 investigations_contributing_factor = 11;
    */
   investigationsContributingFactor: number;
+
+  /**
+   * @generated from field: int32 investigations_unrelated = 15;
+   */
+  investigationsUnrelated: number;
 
   /**
    * @generated from field: repeated metaxisdata.v1.QualityAgentTargetCost top_targets = 12;

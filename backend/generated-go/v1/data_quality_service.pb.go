@@ -22544,16 +22544,21 @@ type QualityAgentMetrics struct {
 	Goals          []*QualityAgentGoalPhaseCount `protobuf:"bytes,1,rep,name=goals,proto3" json:"goals,omitempty"`
 	TokensTotal    int64                         `protobuf:"varint,2,opt,name=tokens_total,json=tokensTotal,proto3" json:"tokens_total,omitempty"`
 	TokensLastHour int64                         `protobuf:"varint,3,opt,name=tokens_last_hour,json=tokensLastHour,proto3" json:"tokens_last_hour,omitempty"`
-	// Change requests proposed by an agent, by lifecycle state.
+	// Change requests proposed by an agent, by lifecycle state. Acceptance is
+	// applied / (applied + rejected); pending and expired are not decisions.
 	AgentChangeRequestsTotal    int32 `protobuf:"varint,4,opt,name=agent_change_requests_total,json=agentChangeRequestsTotal,proto3" json:"agent_change_requests_total,omitempty"`
 	AgentChangeRequestsApplied  int32 `protobuf:"varint,5,opt,name=agent_change_requests_applied,json=agentChangeRequestsApplied,proto3" json:"agent_change_requests_applied,omitempty"`
 	AgentChangeRequestsRejected int32 `protobuf:"varint,6,opt,name=agent_change_requests_rejected,json=agentChangeRequestsRejected,proto3" json:"agent_change_requests_rejected,omitempty"`
 	AgentChangeRequestsPending  int32 `protobuf:"varint,7,opt,name=agent_change_requests_pending,json=agentChangeRequestsPending,proto3" json:"agent_change_requests_pending,omitempty"`
-	// Investigations recorded by agents, and the verdicts they reached.
+	AgentChangeRequestsApproved int32 `protobuf:"varint,13,opt,name=agent_change_requests_approved,json=agentChangeRequestsApproved,proto3" json:"agent_change_requests_approved,omitempty"`
+	AgentChangeRequestsExpired  int32 `protobuf:"varint,14,opt,name=agent_change_requests_expired,json=agentChangeRequestsExpired,proto3" json:"agent_change_requests_expired,omitempty"`
+	// Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
+	// carry no verdict, so the buckets do not have to sum to the total.
 	InvestigationsTotal              int32                     `protobuf:"varint,8,opt,name=investigations_total,json=investigationsTotal,proto3" json:"investigations_total,omitempty"`
 	InvestigationsInconclusive       int32                     `protobuf:"varint,9,opt,name=investigations_inconclusive,json=investigationsInconclusive,proto3" json:"investigations_inconclusive,omitempty"`
 	InvestigationsRootCause          int32                     `protobuf:"varint,10,opt,name=investigations_root_cause,json=investigationsRootCause,proto3" json:"investigations_root_cause,omitempty"`
 	InvestigationsContributingFactor int32                     `protobuf:"varint,11,opt,name=investigations_contributing_factor,json=investigationsContributingFactor,proto3" json:"investigations_contributing_factor,omitempty"`
+	InvestigationsUnrelated          int32                     `protobuf:"varint,15,opt,name=investigations_unrelated,json=investigationsUnrelated,proto3" json:"investigations_unrelated,omitempty"`
 	TopTargets                       []*QualityAgentTargetCost `protobuf:"bytes,12,rep,name=top_targets,json=topTargets,proto3" json:"top_targets,omitempty"`
 	unknownFields                    protoimpl.UnknownFields
 	sizeCache                        protoimpl.SizeCache
@@ -22638,6 +22643,20 @@ func (x *QualityAgentMetrics) GetAgentChangeRequestsPending() int32 {
 	return 0
 }
 
+func (x *QualityAgentMetrics) GetAgentChangeRequestsApproved() int32 {
+	if x != nil {
+		return x.AgentChangeRequestsApproved
+	}
+	return 0
+}
+
+func (x *QualityAgentMetrics) GetAgentChangeRequestsExpired() int32 {
+	if x != nil {
+		return x.AgentChangeRequestsExpired
+	}
+	return 0
+}
+
 func (x *QualityAgentMetrics) GetInvestigationsTotal() int32 {
 	if x != nil {
 		return x.InvestigationsTotal
@@ -22662,6 +22681,13 @@ func (x *QualityAgentMetrics) GetInvestigationsRootCause() int32 {
 func (x *QualityAgentMetrics) GetInvestigationsContributingFactor() int32 {
 	if x != nil {
 		return x.InvestigationsContributingFactor
+	}
+	return 0
+}
+
+func (x *QualityAgentMetrics) GetInvestigationsUnrelated() int32 {
+	if x != nil {
+		return x.InvestigationsUnrelated
 	}
 	return 0
 }
@@ -24564,7 +24590,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vtokens_used\x18\x02 \x01(\x03R\n" +
 	"tokensUsed\x12\x1d\n" +
 	"\n" +
-	"goal_count\x18\x03 \x01(\x05R\tgoalCount\"\xf5\x05\n" +
+	"goal_count\x18\x03 \x01(\x05R\tgoalCount\"\xb8\a\n" +
 	"\x13QualityAgentMetrics\x12@\n" +
 	"\x05goals\x18\x01 \x03(\v2*.metaxisdata.v1.QualityAgentGoalPhaseCountR\x05goals\x12!\n" +
 	"\ftokens_total\x18\x02 \x01(\x03R\vtokensTotal\x12(\n" +
@@ -24572,12 +24598,15 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x1bagent_change_requests_total\x18\x04 \x01(\x05R\x18agentChangeRequestsTotal\x12A\n" +
 	"\x1dagent_change_requests_applied\x18\x05 \x01(\x05R\x1aagentChangeRequestsApplied\x12C\n" +
 	"\x1eagent_change_requests_rejected\x18\x06 \x01(\x05R\x1bagentChangeRequestsRejected\x12A\n" +
-	"\x1dagent_change_requests_pending\x18\a \x01(\x05R\x1aagentChangeRequestsPending\x121\n" +
+	"\x1dagent_change_requests_pending\x18\a \x01(\x05R\x1aagentChangeRequestsPending\x12C\n" +
+	"\x1eagent_change_requests_approved\x18\r \x01(\x05R\x1bagentChangeRequestsApproved\x12A\n" +
+	"\x1dagent_change_requests_expired\x18\x0e \x01(\x05R\x1aagentChangeRequestsExpired\x121\n" +
 	"\x14investigations_total\x18\b \x01(\x05R\x13investigationsTotal\x12?\n" +
 	"\x1binvestigations_inconclusive\x18\t \x01(\x05R\x1ainvestigationsInconclusive\x12:\n" +
 	"\x19investigations_root_cause\x18\n" +
 	" \x01(\x05R\x17investigationsRootCause\x12L\n" +
-	"\"investigations_contributing_factor\x18\v \x01(\x05R investigationsContributingFactor\x12G\n" +
+	"\"investigations_contributing_factor\x18\v \x01(\x05R investigationsContributingFactor\x129\n" +
+	"\x18investigations_unrelated\x18\x0f \x01(\x05R\x17investigationsUnrelated\x12G\n" +
 	"\vtop_targets\x18\f \x03(\v2&.metaxisdata.v1.QualityAgentTargetCostR\n" +
 	"topTargets\"<\n" +
 	"\x1dGetQualityAgentMetricsRequest\x12\x1b\n" +

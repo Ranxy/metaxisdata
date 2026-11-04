@@ -5112,16 +5112,21 @@ message QualityAgentMetrics {
   repeated QualityAgentGoalPhaseCount goals = 1;
   int64 tokens_total = 2;
   int64 tokens_last_hour = 3;
-  // Change requests proposed by an agent, by lifecycle state.
+  // Change requests proposed by an agent, by lifecycle state. Acceptance is
+  // applied / (applied + rejected); pending and expired are not decisions.
   int32 agent_change_requests_total = 4;
   int32 agent_change_requests_applied = 5;
   int32 agent_change_requests_rejected = 6;
   int32 agent_change_requests_pending = 7;
-  // Investigations recorded by agents, and the verdicts they reached.
+  int32 agent_change_requests_approved = 13;
+  int32 agent_change_requests_expired = 14;
+  // Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
+  // carry no verdict, so the buckets do not have to sum to the total.
   int32 investigations_total = 8;
   int32 investigations_inconclusive = 9;
   int32 investigations_root_cause = 10;
   int32 investigations_contributing_factor = 11;
+  int32 investigations_unrelated = 15;
   repeated QualityAgentTargetCost top_targets = 12;
 }
 

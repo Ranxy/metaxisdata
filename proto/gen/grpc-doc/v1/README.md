@@ -6707,14 +6707,17 @@ the proposals it made were decided. All of it is derived from existing rows.
 | goals | [QualityAgentGoalPhaseCount](#metaxisdata-v1-QualityAgentGoalPhaseCount) | repeated |  |
 | tokens_total | [int64](#int64) |  |  |
 | tokens_last_hour | [int64](#int64) |  |  |
-| agent_change_requests_total | [int32](#int32) |  | Change requests proposed by an agent, by lifecycle state. |
+| agent_change_requests_total | [int32](#int32) |  | Change requests proposed by an agent, by lifecycle state. Acceptance is applied / (applied &#43; rejected); pending and expired are not decisions. |
 | agent_change_requests_applied | [int32](#int32) |  |  |
 | agent_change_requests_rejected | [int32](#int32) |  |  |
 | agent_change_requests_pending | [int32](#int32) |  |  |
-| investigations_total | [int32](#int32) |  | Investigations recorded by agents, and the verdicts they reached. |
+| agent_change_requests_approved | [int32](#int32) |  |  |
+| agent_change_requests_expired | [int32](#int32) |  |  |
+| investigations_total | [int32](#int32) |  | Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows carry no verdict, so the buckets do not have to sum to the total. |
 | investigations_inconclusive | [int32](#int32) |  |  |
 | investigations_root_cause | [int32](#int32) |  |  |
 | investigations_contributing_factor | [int32](#int32) |  |  |
+| investigations_unrelated | [int32](#int32) |  |  |
 | top_targets | [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost) | repeated |  |
 
 

@@ -14702,7 +14702,9 @@ components:
                     type: string
                 agentChangeRequestsTotal:
                     type: integer
-                    description: Change requests proposed by an agent, by lifecycle state.
+                    description: |-
+                        Change requests proposed by an agent, by lifecycle state. Acceptance is
+                         applied / (applied + rejected); pending and expired are not decisions.
                     format: int32
                 agentChangeRequestsApplied:
                     type: integer
@@ -14713,9 +14715,17 @@ components:
                 agentChangeRequestsPending:
                     type: integer
                     format: int32
+                agentChangeRequestsApproved:
+                    type: integer
+                    format: int32
+                agentChangeRequestsExpired:
+                    type: integer
+                    format: int32
                 investigationsTotal:
                     type: integer
-                    description: Investigations recorded by agents, and the verdicts they reached.
+                    description: |-
+                        Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
+                         carry no verdict, so the buckets do not have to sum to the total.
                     format: int32
                 investigationsInconclusive:
                     type: integer
@@ -14724,6 +14734,9 @@ components:
                     type: integer
                     format: int32
                 investigationsContributingFactor:
+                    type: integer
+                    format: int32
+                investigationsUnrelated:
                     type: integer
                     format: int32
                 topTargets:

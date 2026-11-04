@@ -19256,7 +19256,8 @@ must still approve). </p></td>
                   <td>agent_change_requests_total</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>Change requests proposed by an agent, by lifecycle state. </p></td>
+                  <td><p>Change requests proposed by an agent, by lifecycle state. Acceptance is
+applied / (applied &#43; rejected); pending and expired are not decisions. </p></td>
                 </tr>
               
                 <tr>
@@ -19281,10 +19282,25 @@ must still approve). </p></td>
                 </tr>
               
                 <tr>
+                  <td>agent_change_requests_approved</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_change_requests_expired</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
                   <td>investigations_total</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>Investigations recorded by agents, and the verdicts they reached. </p></td>
+                  <td><p>Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
+carry no verdict, so the buckets do not have to sum to the total. </p></td>
                 </tr>
               
                 <tr>
@@ -19303,6 +19319,13 @@ must still approve). </p></td>
               
                 <tr>
                   <td>investigations_contributing_factor</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>investigations_unrelated</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
