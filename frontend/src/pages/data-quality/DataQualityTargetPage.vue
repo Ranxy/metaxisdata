@@ -244,6 +244,12 @@
           @refresh="loadContract()"
         />
 
+        <TargetChangeRequestsCard
+          :target-guid="targetGuid"
+          :can-decide="canDecideChanges"
+          :can-suggest="canSuggest"
+        />
+
         <p
           v-if="orphaned"
           class="text-xs text-danger"
@@ -758,6 +764,7 @@ import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
 import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
+import TargetChangeRequestsCard from "@/components/data-quality/TargetChangeRequestsCard.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
@@ -870,6 +877,7 @@ const {
   canListIssues,
   canViewIssue,
   canPublish,
+  canDecideChanges,
 } = useDataQualityPermissions();
 
 const rules = ref<QualityRule[]>([]);

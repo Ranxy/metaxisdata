@@ -74,6 +74,9 @@ export const DYNAMIC_PREFIXES = [
   // its unset state) to its label key.
   "dataQuality.intent.criticalityOption",
   "dataQuality.intent.criticalityUnset",
+  // rejectionKey() in ChangeRequestsDialog.vue maps the rejection taxonomy to its
+  // label key.
+  "dataQuality.changeRequests.reason",
   // The editor's vocabulary helpers and its validation messages: the key is
   // chosen by a helper in src/utils/dataQuality.ts or returned by
   // validateRuleForm, so the checker cannot follow it either.
