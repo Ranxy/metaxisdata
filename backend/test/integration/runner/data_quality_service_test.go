@@ -4956,6 +4956,7 @@ func TestQualityAgentRunnerDeterministicTurnRealServerIntegration(t *testing.T) 
 		dataQuality, cloned := proto.Clone(original).(*v1pb.DataQualitySetting)
 		require.True(t, cloned)
 		dataQuality.AgentRunnerEnabled = true
+		dataQuality.AgentAutonomyEnabled = true
 		dataQuality.AgentRunnerDatabases = []string{databaseRef}
 		_, err := fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
 			withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{

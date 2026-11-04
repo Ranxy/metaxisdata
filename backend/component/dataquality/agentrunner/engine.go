@@ -82,6 +82,18 @@ func (e *Engine) Run(ctx context.Context, goal *store.QualityAgentGoalMessage) (
 			return e.modelTurn(ctx, goal, config)
 		}
 	}
+	outcome, err := e.deterministicTurn(ctx, goal)
+	if err != nil {
+		return Outcome{}, err
+	}
+	// A deterministic turn is a real round, so it counts against max_rounds even though
+	// no model request was admitted.
+	outcome.Admitted = true
+	return outcome, nil
+}
+
+// deterministicTurn runs the no-model survey or event investigation.
+func (e *Engine) deterministicTurn(ctx context.Context, goal *store.QualityAgentGoalMessage) (Outcome, error) {
 	switch goal.Kind {
 	case storepb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET:
 		return e.maintain(ctx, goal)
@@ -91,8 +103,8 @@ func (e *Engine) Run(ctx context.Context, goal *store.QualityAgentGoalMessage) (
 		return Outcome{
 			Phase:         storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED,
 			BlockedCode:   "needs-human",
-			BlockedReason: "a custom goal needs the model turn, which arrives with M3",
-			Summary:       "blocked: custom goals need the model turn",
+			BlockedReason: "a custom goal needs the model turn; configure LLM analysis",
+			Summary:       "blocked: custom goals need a model",
 		}, nil
 	}
 }

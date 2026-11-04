@@ -85,6 +85,9 @@ func (f *fakeEngine) Run(_ context.Context, _ *store.QualityAgentGoalMessage) (a
 }
 
 func newTestRunner(store GoalStore, settings dataquality.Settings, now time.Time) *Runner {
+	// The autonomy kill switch is a separate gate; the runner tests enable it so they
+	// exercise the goal logic they are about.
+	settings.AgentAutonomyEnabled = true
 	return &Runner{
 		store: store,
 		engine: &fakeEngine{outcome: agentrunner.Outcome{

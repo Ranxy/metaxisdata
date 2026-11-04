@@ -25,7 +25,9 @@ const (
 	tickInterval = 3 * time.Second
 	// claimLease is how long one claim is protected from other claims before a crash
 	// can be assumed. A turn that legitimately runs longer renews it in M3.
-	claimLease = 2 * time.Minute
+	claimLease = 15 * time.Minute
+	// turnDeadline bounds one goal turn well inside the lease.
+	turnDeadline = 10 * time.Minute
 	// restartLimit is how many times a goal may be recovered after a crash before it
 	// is blocked for a person.
 	restartLimit int32 = 3
@@ -160,6 +162,11 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 		slog.Error("failed to append a quality agent goal step",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
 	}
+	if !settings.AgentAutonomyEnabled {
+		next := r.now().Add(5 * time.Minute)
+		r.stopWithBlockerWithWake(ctx, goal, "autonomy-off", "agent autonomy is disabled in this workspace", &next)
+		return
+	}
 	if goal.MaxRounds > 0 && goal.RoundsStarted >= goal.MaxRounds {
 		r.stopWithBlocker(ctx, goal, "round-limit", "the goal reached its round limit")
 		return
@@ -172,6 +179,9 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 	if err != nil {
 		slog.Error("failed to read the runner token spend",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
+		next := r.now().Add(5 * time.Minute)
+		r.stopWithBlockerWithWake(ctx, goal, "internal-error", "the token spend could not be read", &next)
+		return
 	}
 	if spent >= limit {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
@@ -179,7 +189,9 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 			"the workspace spent its hourly agent token budget", &nextWindow)
 		return
 	}
-	outcome, err := r.engine.Run(ctx, goal)
+	turnCtx, cancel := context.WithTimeout(ctx, turnDeadline)
+	defer cancel()
+	outcome, err := r.engine.Run(turnCtx, goal)
 	if err != nil {
 		slog.Error("quality agent goal turn failed",
 			slog.String("goal", goal.ResourceID), log.WithError(err))

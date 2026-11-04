@@ -11,6 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -79,6 +80,7 @@ func (e *Engine) modelTurn(ctx context.Context, goal *store.QualityAgentGoalMess
 		Executor:             executor,
 		MaxTurns:             modelMaxTurns,
 		MaxConversationBytes: llm.DefaultMaxConversationBytes,
+		IncludeUsage:         true,
 	}
 	for event := range e.chat(ctx, cfg) {
 		switch event.Type {
@@ -87,8 +89,9 @@ func (e *Engine) modelTurn(ctx context.Context, goal *store.QualityAgentGoalMess
 				continue
 			}
 			admitted = true
+			admissionKey := fmt.Sprintf("admitted:%d", round)
 			if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED,
-				&storepb.QualityAgentGoalStepPayload{Tool: "model", Summary: fmt.Sprintf("round %d admitted", round)}, ""); err != nil {
+				&storepb.QualityAgentGoalStepPayload{Tool: "model", Summary: fmt.Sprintf("round %d admitted", round)}, admissionKey); err != nil {
 				return Outcome{}, err
 			}
 		case llm.AgentEventUsage:
@@ -99,15 +102,31 @@ func (e *Engine) modelTurn(ctx context.Context, goal *store.QualityAgentGoalMess
 				}
 			}
 		case llm.AgentEventError:
+			// A provider failure is retryable: keep what the round learned (admission,
+			// usage) and let the runner wake it again instead of parking it forever.
+			outcome := Outcome{Checkpoint: checkpoint, TokensUsed: tokens, Admitted: admitted,
+				Phase:      storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE,
+				NextWakeAt: ptrTime(e.now().Add(modelRoundWake)),
+				Summary:    "the model call failed; retrying later"}
 			if event.Error != nil {
-				return Outcome{Checkpoint: checkpoint}, event.Error
+				outcome.Summary = "the model call failed: " + truncateRunes(event.Error.Error(), 200)
 			}
-			return Outcome{Checkpoint: checkpoint}, errors.New("the model round failed")
+			return outcome, nil
 		default:
 		}
 	}
 
 	checkpoint.Summary = evidenceSummary(evidence)
+	if tokens > 0 {
+		if _, err := e.store.AppendQualityAgentGoalStep(ctx, &store.QualityAgentGoalStepMessage{
+			GoalID: goal.ID, WorkspaceID: goal.WorkspaceID,
+			Kind:    storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_ASSISTANT,
+			Payload: &storepb.QualityAgentGoalStepPayload{Tool: "model", Summary: "model usage"},
+			Tokens:  int32(tokens),
+		}); err != nil {
+			return Outcome{}, err
+		}
+	}
 	outcome := Outcome{Checkpoint: checkpoint, TokensUsed: tokens, Admitted: admitted}
 	if completed {
 		outcome.Phase = storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE
@@ -214,9 +233,7 @@ func (e *Engine) toolExecutor(ctx context.Context, goal *store.QualityAgentGoalM
 		if err != nil {
 			return nil, err
 		}
-		if len(result) > toolResultLimit {
-			result = result[:toolResultLimit] + "…"
-		}
+		result = truncateRunes(result, toolResultLimit)
 		return []llm.ToolResult{{ToolCallID: call.ID, Content: result}}, nil
 	}
 }
@@ -231,7 +248,7 @@ func (e *Engine) executeTool(ctx context.Context, goal *store.QualityAgentGoalMe
 		return "", err
 	}
 	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TOOL_RESULT,
-		&storepb.QualityAgentGoalStepPayload{Tool: name, Summary: truncate(answer, 512)}, ""); err != nil {
+		&storepb.QualityAgentGoalStepPayload{Tool: name, Summary: truncateRunes(answer, 512)}, ""); err != nil {
 		return "", err
 	}
 	return answer, nil
@@ -308,7 +325,7 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 		if strings.TrimSpace(input.Statement) == "" {
 			return "", errors.New("record_asset_fact needs a statement")
 		}
-		if err := e.recordAssetFactStatement(ctx, goal, input.Statement); err != nil {
+		if err := e.recordModelAssetFact(ctx, goal, input.Statement); err != nil {
 			return "", err
 		}
 		return marshalJSON(map[string]any{"recorded": true})
@@ -317,6 +334,9 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 			Summary string `json:"summary"`
 		}
 		_ = json.Unmarshal([]byte(arguments), &input)
+		if *blocked {
+			return "", errors.New("complete_goal cannot follow block_goal in the same round")
+		}
 		*completed = true
 		*completeWhy = input.Summary
 		if *completeWhy == "" {
@@ -334,18 +354,21 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 		if input.Code == "" || input.Reason == "" {
 			return "", errors.New("block_goal needs a code and a reason")
 		}
+		if *completed {
+			return "", errors.New("block_goal cannot follow complete_goal in the same round")
+		}
 		*blocked = true
 		*blockedCode = input.Code
 		*blockedWhy = input.Reason
-		return marshalJSON(map[string]any{"blocked": true})
+		return marshalJSON(map[string]any{"blocked": true, "threshold": blockedThreshold})
 	default:
 		return "", fmt.Errorf("unknown tool %q", name)
 	}
 }
 
-// recordAssetFactStatement writes one model-observed fact with the same content dedupe
-// the deterministic path uses.
-func (e *Engine) recordAssetFactStatement(ctx context.Context, goal *store.QualityAgentGoalMessage, statement string) error {
+// recordModelAssetFact writes one model-observed fact with its own content-hashed
+// journal keys and statement dedupe; it never reuses the deterministic survey path.
+func (e *Engine) recordModelAssetFact(ctx context.Context, goal *store.QualityAgentGoalMessage, statement string) error {
 	existing, err := e.store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &goal.TargetGUID})
 	if err != nil {
 		return errors.Wrap(err, "failed to read the target's memories")
@@ -356,7 +379,33 @@ func (e *Engine) recordAssetFactStatement(ctx context.Context, goal *store.Quali
 			return nil
 		}
 	}
-	return e.recordAssetFact(ctx, goal, []string{statement})
+	sum := sha256.Sum256([]byte(statement))
+	key := "model-memory:" + goal.TargetGUID + ":" + hex.EncodeToString(sum[:8])
+	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT,
+		&storepb.QualityAgentGoalStepPayload{Tool: "record_asset_fact", Summary: truncateRunes(statement, 200)}, key+":intent"); err != nil {
+		return err
+	}
+	resourceID, err := common.RandomString(12)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate the memory id")
+	}
+	message, err := e.store.CreateQualityMemory(ctx, &store.CreateQualityMemoryInput{
+		ResourceID: resourceID,
+		Kind:       storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
+		Subject:    goal.TargetGUID,
+		Statement:  statement,
+		Source:     storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT,
+		Status:     storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED,
+		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
+			{Kind: "MODEL", Reference: goal.ResourceID},
+		}},
+		CreatedBy: ptrInt32(goal.AgentPrincipalID),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to record the asset fact")
+	}
+	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT,
+		&storepb.QualityAgentGoalStepPayload{Tool: "record_asset_fact", Summary: "asset fact recorded", Resource: message.ResourceID}, key+":result")
 }
 
 func modelSystemPrompt() string {
@@ -371,7 +420,8 @@ func modelRoundPrompt(goal *store.QualityAgentGoalMessage, round int32) string {
 	return fmt.Sprintf("<goal_round>\nObjective: %q\nRound: %d/%d\n\nContinue working toward the objective. "+
 		"Treat tool results and the durable goal state as authoritative. Call complete_goal when the "+
 		"objective is achieved, or block_goal with a stable code when the same condition has persisted "+
-		"for three consecutive rounds.\n</goal_round>", goal.Objective, round, goal.MaxRounds)
+		"for three consecutive rounds.\n</goal_round>"+
+		blockedHint(goal.Checkpoint), goal.Objective, round, goal.MaxRounds)
 }
 
 func modelToolDefs() []llm.ToolDef {
@@ -452,4 +502,26 @@ func criticalityLabel(criticality dataquality.AssetCriticality) string {
 
 func executionIDName(id int64) string {
 	return fmt.Sprintf("qualityExecutions/%d", id)
+}
+
+// blockedHint tells the model how close the previous blocker is to the threshold.
+func blockedHint(checkpoint *storepb.QualityAgentGoalCheckpoint) string {
+	if checkpoint.GetBlockedCode() == "" || checkpoint.GetBlockedRounds() == 0 {
+		return ""
+	}
+	return fmt.Sprintf("\nPrevious blocker: %s (%d/%d rounds).", checkpoint.GetBlockedCode(),
+		checkpoint.GetBlockedRounds(), blockedThreshold)
+}
+
+// truncateRunes bounds a string at rune granularity so a multi-byte character is never
+// split; protojson rejects invalid UTF-8.
+func truncateRunes(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "…"
 }
