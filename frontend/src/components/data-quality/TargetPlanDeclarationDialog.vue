@@ -15,6 +15,13 @@
         </DialogHeader>
 
         <div class="min-h-0 flex-1 space-y-4 overflow-auto px-6 py-5">
+          <p
+            v-if="warning"
+            class="text-sm text-destructive"
+          >
+            {{ warning }}
+          </p>
+
           <Alert
             v-if="error"
             variant="destructive"
@@ -42,12 +49,14 @@
             class="flex flex-wrap items-end gap-2 rounded-md border p-2"
           >
             <div class="min-w-40 flex-1 space-y-1">
-              <Label>{{ t("dataQuality.planDeclaration.property") }}</Label>
+              <Label :for="`dq-plan-property-${row.key}`">
+                {{ t("dataQuality.planDeclaration.property") }}
+              </Label>
               <Select
                 :model-value="String(row.property)"
                 @update:model-value="(value) => setProperty(index, value)"
               >
-                <SelectTrigger>
+                <SelectTrigger :id="`dq-plan-property-${row.key}`">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -62,20 +71,27 @@
               </Select>
             </div>
             <div class="min-w-32 flex-1 space-y-1">
-              <Label>{{ t("dataQuality.planDeclaration.column") }}</Label>
+              <Label :for="`dq-plan-column-${row.key}`">
+                {{ t("dataQuality.planDeclaration.column") }}
+              </Label>
               <Input
+                :id="`dq-plan-column-${row.key}`"
                 v-model="row.column"
                 list="dq-plan-declaration-columns"
                 :placeholder="t('dataQuality.planDeclaration.columnPlaceholder')"
               />
             </div>
             <div class="w-24 space-y-1">
-              <Label>{{ t("dataQuality.planDeclaration.minChecks") }}</Label>
+              <Label :for="`dq-plan-min-checks-${row.key}`">
+                {{ t("dataQuality.planDeclaration.minChecks") }}
+              </Label>
               <Input
+                :id="`dq-plan-min-checks-${row.key}`"
                 v-model.number="row.minChecks"
                 type="number"
                 min="1"
                 max="10"
+                @blur="clampMinChecks(index)"
               />
             </div>
             <Button
@@ -146,6 +162,7 @@
 
 <script setup lang="ts">
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { AlertTriangle, Plus, Trash2 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -182,6 +199,7 @@ import {
   QualityPlanSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
 /**
  * Edit the target's plan declaration: the properties it promises to watch.
@@ -205,6 +223,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:open": [value: boolean];
   updated: [contract: QualityContract];
+  /** The declaration changed underneath the editor; the page re-reads the contract. */
+  refresh: [];
 }>();
 
 interface DeclarationRow {
@@ -220,6 +240,7 @@ const { formatError } = useErrorMessage();
 const rows = ref<DeclarationRow[]>([]);
 const columns = ref<{ name: string }[]>([]);
 const error = ref("");
+const warning = ref("");
 const saving = ref(false);
 let nextKey = 1;
 
@@ -232,30 +253,7 @@ const propertyOptions = [
   QualityCoverageProperty.FORMAT,
   QualityCoverageProperty.RANGE,
   QualityCoverageProperty.SCHEMA_STABILITY,
-].map((value) => ({ value, key: propertyKey(value) }));
-
-function propertyKey(property: QualityCoverageProperty): string {
-  switch (property) {
-    case QualityCoverageProperty.VOLUME:
-      return "dataQuality.workspace.planPropertyVolume";
-    case QualityCoverageProperty.FRESHNESS:
-      return "dataQuality.workspace.planPropertyFreshness";
-    case QualityCoverageProperty.NULL_RATE:
-      return "dataQuality.workspace.planPropertyNullRate";
-    case QualityCoverageProperty.UNIQUENESS:
-      return "dataQuality.workspace.planPropertyUniqueness";
-    case QualityCoverageProperty.ACCEPTED_VALUES:
-      return "dataQuality.workspace.planPropertyAcceptedValues";
-    case QualityCoverageProperty.FORMAT:
-      return "dataQuality.workspace.planPropertyFormat";
-    case QualityCoverageProperty.RANGE:
-      return "dataQuality.workspace.planPropertyRange";
-    case QualityCoverageProperty.SCHEMA_STABILITY:
-      return "dataQuality.workspace.planPropertySchemaStability";
-    default:
-      return "dataQuality.workspace.planPropertyUnspecified";
-  }
-}
+].map((value) => ({ value, key: qualityCoveragePropertyKey(value) }));
 
 const hasDeclaration = computed(
   () => (props.contract?.stagedPlan?.coverage.length ?? 0) > 0
@@ -281,10 +279,12 @@ function reset() {
   rows.value = declarationsFromContract(props.contract);
   columns.value = [];
   error.value = "";
+  warning.value = "";
   saving.value = false;
 }
 
 function addRow() {
+  warning.value = "";
   rows.value.push({
     key: nextKey++,
     property: QualityCoverageProperty.VOLUME,
@@ -294,14 +294,29 @@ function addRow() {
 }
 
 function removeRow(index: number) {
+  warning.value = "";
   rows.value.splice(index, 1);
 }
 
 function clearRows() {
+  warning.value = "";
   rows.value = [];
 }
 
+/** A minimum outside 1–10 is clamped where it is typed, not only on save. */
+function clampMinChecks(index: number) {
+  const row = rows.value[index];
+  if (!row) {
+    return;
+  }
+  row.minChecks = Math.min(
+    10,
+    Math.max(1, Math.round(Number(row.minChecks) || 1))
+  );
+}
+
 function setProperty(index: number, value: unknown) {
+  warning.value = "";
   const row = rows.value[index];
   if (row) {
     row.property = Number(value) as QualityCoverageProperty;
@@ -381,11 +396,12 @@ async function save() {
     return;
   }
   if (duplicateDeclaration()) {
-    error.value = t("dataQuality.planDeclaration.duplicate");
+    warning.value = t("dataQuality.planDeclaration.duplicate");
     return;
   }
   saving.value = true;
   error.value = "";
+  warning.value = "";
   try {
     const updated = await updateQualityContract({
       targetGuid: props.targetGuid,
@@ -393,12 +409,23 @@ async function save() {
       settings:
         props.contract.settings ?? create(QualityContractSettingsSchema),
       draft: buildDeclaration(),
-      stagedBaseVersion: props.contract.stagedBaseVersion,
+      // The server compares the request's base with published_version and the store
+      // compare-and-sets the declaration it read; sending published_version is
+      // correct even for rows published before staged_base_version existed.
+      stagedBaseVersion: props.contract.publishedVersion,
     });
     notify.success(t("dataQuality.planDeclaration.saved"));
     emit("updated", updated);
     emit("update:open", false);
   } catch (e: unknown) {
+    if (e instanceof ConnectError && e.code === Code.Aborted) {
+      // The declaration (or the published version it was based on) changed while
+      // this dialog was open; retrying with the same stale base would abort again.
+      notify.warning(t("dataQuality.planDeclaration.conflict"));
+      emit("refresh");
+      close();
+      return;
+    }
     error.value = formatError(e, "dataQuality.planDeclaration.saveFailed");
   } finally {
     saving.value = false;

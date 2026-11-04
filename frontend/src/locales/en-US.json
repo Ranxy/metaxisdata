@@ -456,6 +456,8 @@
       "publishNote": "Note",
       "publishNotePlaceholder": "Why this version exists",
       "publishPlanAdded": "Add {scope}",
+      "publishPlanCadenceHint": "This version also records the target's current run schedule.",
+      "publishPlanFirstVersion": "The target has no published version yet, so this version records its plan for the first time.",
       "publishPlanHint": "The next version records these plan declarations.",
       "publishPlanModified": "Change {scope}",
       "publishPlanMore": "{count} more",
@@ -1122,7 +1124,8 @@
       "clear": "Clear declaration",
       "column": "Column",
       "columnPlaceholder": "Whole table",
-      "description": "Declare the properties this target promises to watch. The declaration is the target's current plan; publishing records it in the next contract version. An empty declaration falls back to the plan derived from the intent and the live checks.",
+      "conflict": "The declaration changed while you were editing. Reload the target and edit again.",
+      "description": "Declare the coverage this target promises to watch. The declaration is the target's current plan; publishing records it in the next contract version. An empty declaration falls back to the plan derived from the intent and the live checks.",
       "duplicate": "The same property and column are declared twice.",
       "minChecks": "Min checks",
       "noDeclarations": "No declarations: the plan is derived from the intent and the live checks.",
@@ -1131,7 +1134,7 @@
       "save": "Save declaration",
       "saveFailed": "Saving the plan declaration failed",
       "saved": "Plan declaration saved",
-      "title": "Plan declaration"
+      "title": "Coverage declaration"
     },
     "polling": "This execution is still running; the page refreshes automatically.",
     "profile": {

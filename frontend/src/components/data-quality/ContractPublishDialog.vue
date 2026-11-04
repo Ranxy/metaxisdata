@@ -52,6 +52,7 @@
             <Badge
               v-if="intentChanged"
               variant="secondary"
+              class="max-w-full truncate"
             >
               {{ t("dataQuality.contract.publishIntentChanged") }}
             </Badge>
@@ -59,6 +60,7 @@
               v-for="(change, index) in visiblePlanChanges"
               :key="`${change.kind}:${index}`"
               variant="secondary"
+              class="max-w-full truncate"
             >
               {{ planChangeLabel(change) }}
             </Badge>
@@ -77,13 +79,23 @@
             v-if="planNotRecorded"
             class="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
           >
-            {{ t("dataQuality.contract.publishPlanNotRecorded") }}
+            {{
+              isFirstVersion
+                ? t("dataQuality.contract.publishPlanFirstVersion")
+                : t("dataQuality.contract.publishPlanNotRecorded")
+            }}
           </p>
           <p
             v-else-if="planChanges.length > 0"
             class="text-xs text-muted-foreground"
           >
             {{ t("dataQuality.contract.publishPlanHint") }}
+          </p>
+          <p
+            v-else-if="cadenceOnlyChange"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("dataQuality.contract.publishPlanCadenceHint") }}
           </p>
         </div>
 
@@ -155,6 +167,7 @@ import {
   QualityPlanChange_Kind,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
 /**
  * Publish the live rules as the target's next contract version.
@@ -214,6 +227,26 @@ const planNotRecorded = computed(
   () => props.contract?.diff?.planNotRecorded ?? false
 );
 
+const isFirstVersion = computed(
+  () => (props.contract?.publishedVersion ?? 0) === 0
+);
+
+/**
+ * A schedule change moves the version's cadence without changing any declaration,
+ * so the dialog would otherwise look empty while staying publishable.
+ */
+const cadenceOnlyChange = computed(() => {
+  if (!hasChanges.value || planNotRecorded.value || intentChanged.value) {
+    return false;
+  }
+  if (planChanges.value.length > 0) {
+    return false;
+  }
+  return (
+    summary.value.added + summary.value.modified + summary.value.removed === 0
+  );
+});
+
 /** The section shows the first few changes; the rest is a count. */
 const maxPlanChanges = 6;
 const visiblePlanChanges = computed(() =>
@@ -223,34 +256,13 @@ const hiddenPlanChangeCount = computed(
   () => planChanges.value.length - visiblePlanChanges.value.length
 );
 
-function propertyLabel(property: QualityCoverageProperty): string {
-  switch (property) {
-    case QualityCoverageProperty.VOLUME:
-      return t("dataQuality.workspace.planPropertyVolume");
-    case QualityCoverageProperty.FRESHNESS:
-      return t("dataQuality.workspace.planPropertyFreshness");
-    case QualityCoverageProperty.NULL_RATE:
-      return t("dataQuality.workspace.planPropertyNullRate");
-    case QualityCoverageProperty.UNIQUENESS:
-      return t("dataQuality.workspace.planPropertyUniqueness");
-    case QualityCoverageProperty.ACCEPTED_VALUES:
-      return t("dataQuality.workspace.planPropertyAcceptedValues");
-    case QualityCoverageProperty.FORMAT:
-      return t("dataQuality.workspace.planPropertyFormat");
-    case QualityCoverageProperty.RANGE:
-      return t("dataQuality.workspace.planPropertyRange");
-    case QualityCoverageProperty.SCHEMA_STABILITY:
-      return t("dataQuality.workspace.planPropertySchemaStability");
-    default:
-      return t("dataQuality.workspace.planPropertyUnspecified");
-  }
-}
-
 function planChangeLabel(change: QualityPlanChange): string {
   const scope = change.coverage?.column
-    ? `${propertyLabel(change.coverage.property)} · ${change.coverage.column}`
-    : propertyLabel(
-        change.coverage?.property ?? QualityCoverageProperty.UNSPECIFIED
+    ? `${t(qualityCoveragePropertyKey(change.coverage.property))} · ${change.coverage.column}`
+    : t(
+        qualityCoveragePropertyKey(
+          change.coverage?.property ?? QualityCoverageProperty.UNSPECIFIED
+        )
       );
   switch (change.kind) {
     case QualityPlanChange_Kind.ADDED:

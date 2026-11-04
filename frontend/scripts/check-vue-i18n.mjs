@@ -66,6 +66,10 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.executionTrigger",
   "dataQuality.errorCode",
   "dataQuality.threshold",
+  // qualityCoveragePropertyKey() in src/utils/dataQuality.ts maps a plan coverage
+  // property to its label key; the plan card, the declaration editor and the
+  // publish diff render it.
+  "dataQuality.workspace.planProperty",
   // The editor's vocabulary helpers and its validation messages: the key is
   // chosen by a helper in src/utils/dataQuality.ts or returned by
   // validateRuleForm, so the checker cannot follow it either.

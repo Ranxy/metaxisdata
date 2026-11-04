@@ -241,6 +241,7 @@
           :contract="contract"
           :can-update="canUpdate"
           @updated="onContractChanged"
+          @refresh="loadContract()"
         />
 
         <p

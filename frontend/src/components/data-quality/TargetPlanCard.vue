@@ -58,31 +58,37 @@
           class="space-y-1.5"
         >
           <li
-            v-for="requirement in plan.requirements"
-            :key="`${requirement.property}:${requirement.column}`"
+            v-for="row in planRows"
+            :key="row.key"
             class="flex items-center justify-between gap-2 text-sm"
           >
             <span>
-              {{ propertyLabel(requirement.property) }}
+              {{ t(qualityCoveragePropertyKey(row.property)) }}
               <span
-                v-if="requirement.column"
+                v-if="row.column"
                 class="text-muted-foreground"
               >
-                · {{ requirement.column }}
+                · {{ row.column }}
               </span>
             </span>
             <Badge
-              v-if="requirement.exempted"
+              v-if="row.declared"
+              variant="secondary"
+            >
+              {{ t("dataQuality.workspace.planDeclared") }}
+            </Badge>
+            <Badge
+              v-else-if="row.exempted"
               variant="neutral"
             >
               {{ t("dataQuality.workspace.planExempted") }}
             </Badge>
             <Badge
               v-else
-              :variant="requirement.satisfied ? 'success' : 'warning'"
+              :variant="row.satisfied ? 'success' : 'warning'"
             >
               {{
-                requirement.satisfied
+                row.satisfied
                   ? t("dataQuality.workspace.planSatisfied")
                   : t("dataQuality.workspace.planGap")
               }}
@@ -112,6 +118,7 @@
       :meta-type="contract.target?.metaType ?? MetaType.UNSPECIFIED"
       :contract="contract"
       @updated="emit('updated', $event)"
+      @refresh="emit('refresh')"
     />
   </Card>
 </template>
@@ -137,12 +144,17 @@ import {
   QualityPlanState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
 const props = withDefaults(
   defineProps<{ contract?: QualityContract; canUpdate?: boolean }>(),
   { canUpdate: false }
 );
-const emit = defineEmits<{ updated: [contract: QualityContract] }>();
+const emit = defineEmits<{
+  updated: [contract: QualityContract];
+  /** The declaration changed underneath the editor; the page re-reads the contract. */
+  refresh: [];
+}>();
 const { t } = useI18n();
 
 const declarationOpen = ref(false);
@@ -151,6 +163,53 @@ const plan = computed(() => props.contract?.plan);
 const hasDeclaration = computed(
   () => (props.contract?.stagedPlan?.coverage.length ?? 0) > 0
 );
+
+interface PlanRow {
+  key: string;
+  property: QualityCoverageProperty;
+  column: string;
+  satisfied: boolean;
+  exempted: boolean;
+  declared: boolean;
+}
+
+/**
+ * The rows the card renders: the derived requirements plus any declared coverage
+ * the derived list does not contain. A declared promise that no derived requirement
+ * lists still shows up, so the "Declared" badge always names what it points at.
+ */
+const planRows = computed<PlanRow[]>(() => {
+  const rows: PlanRow[] = [];
+  const seen = new Set<string>();
+  for (const requirement of plan.value?.requirements ?? []) {
+    const key = `${requirement.property}:${requirement.column}`;
+    seen.add(key);
+    rows.push({
+      key,
+      property: requirement.property,
+      column: requirement.column,
+      satisfied: requirement.satisfied,
+      exempted: requirement.exempted,
+      declared: false,
+    });
+  }
+  for (const coverage of props.contract?.stagedPlan?.coverage ?? []) {
+    const key = `${coverage.property}:${coverage.column}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({
+      key,
+      property: coverage.property,
+      column: coverage.column,
+      satisfied: false,
+      exempted: false,
+      declared: true,
+    });
+  }
+  return rows;
+});
 
 const planStateLabel = computed(() =>
   plan.value?.state === QualityPlanState.PLANNED
@@ -168,27 +227,4 @@ const criticalityLabel = computed(() => {
       return t("dataQuality.workspace.planCriticalityExperimental");
   }
 });
-
-function propertyLabel(property: QualityCoverageProperty): string {
-  switch (property) {
-    case QualityCoverageProperty.VOLUME:
-      return t("dataQuality.workspace.planPropertyVolume");
-    case QualityCoverageProperty.FRESHNESS:
-      return t("dataQuality.workspace.planPropertyFreshness");
-    case QualityCoverageProperty.NULL_RATE:
-      return t("dataQuality.workspace.planPropertyNullRate");
-    case QualityCoverageProperty.ACCEPTED_VALUES:
-      return t("dataQuality.workspace.planPropertyAcceptedValues");
-    case QualityCoverageProperty.FORMAT:
-      return t("dataQuality.workspace.planPropertyFormat");
-    case QualityCoverageProperty.RANGE:
-      return t("dataQuality.workspace.planPropertyRange");
-    case QualityCoverageProperty.UNIQUENESS:
-      return t("dataQuality.workspace.planPropertyUniqueness");
-    case QualityCoverageProperty.SCHEMA_STABILITY:
-      return t("dataQuality.workspace.planPropertySchemaStability");
-    default:
-      return t("dataQuality.workspace.planPropertyUnspecified");
-  }
-}
 </script>
