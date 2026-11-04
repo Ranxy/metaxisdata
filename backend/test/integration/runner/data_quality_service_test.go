@@ -4338,8 +4338,38 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	}
 
 	// The kill switch is the workspace's total gate: off (the default) refuses the
-	// write before anything changes.
+	// agent's declaration write before anything changes.
 	_, err = stage(1)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+	// A person writing while the switch is off is unaffected.
+	humanProposal, err := fixture.dataQuality.CreateQualityChangeRequest(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityChangeRequestRequest{
+			Parent:      "workspaces/-",
+			TargetGuid:  fixture.usersGUID,
+			MetaType:    v1pb.MetaType_TABLE,
+			BaseVersion: 1,
+			Items: []*v1pb.QualityChangeRequestItem{{
+				Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+				MinChecks: 2,
+			}},
+		}))
+	require.NoError(t, err, "the agent switch does not gate human writes")
+	require.Equal(t, v1pb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN, humanProposal.Msg.GetSource())
+	// The agent cannot propose either while the switch is off.
+	_, err = agentClient.CreateQualityChangeRequest(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityChangeRequestRequest{
+			Parent:      "workspaces/-",
+			TargetGuid:  fixture.usersGUID,
+			MetaType:    v1pb.MetaType_TABLE,
+			BaseVersion: 1,
+			Items: []*v1pb.QualityChangeRequestItem{{
+				Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
+				MinChecks: 2,
+			}},
+		}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
 
@@ -4358,8 +4388,16 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		}))
 	require.NoError(t, err)
 
+	// A declaration written against a version that is no longer current is refused,
+	// not rebased.
+	_, err = stage(0)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
+
 	staged, err := stage(1)
 	require.NoError(t, err, "the enabled agent stages a declaration")
+	// Staging a declaration does not publish: the version is where it was.
+	require.Equal(t, int32(1), staged.GetPublishedVersion())
 	require.NotNil(t, staged.GetStagedPlan())
 	found := false
 	for _, declaration := range staged.GetStagedPlan().GetCoverage() {

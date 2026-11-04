@@ -7917,8 +7917,8 @@ SemanticLabelSuggestion is a model-proposed semantic label for one column.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | target_guid | [string](#string) |  |  |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| base_version | [int32](#int32) |  | The newest published version the declaration is written against. |
-| coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) | repeated | The complete declaration: coverage only, like UpdateQualityContract&#39;s draft. |
+| base_version | [int32](#int32) |  | The newest published version the declaration is written against. 0 is a valid base for a target that has never been published. |
+| coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) | repeated | The complete declaration: coverage only, like UpdateQualityContract&#39;s draft. The list has no presence: an omitted or empty coverage clears the target&#39;s declaration and returns it to the projection derived from the intent and the live checks. |
 
 
 

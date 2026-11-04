@@ -7671,7 +7671,8 @@ export declare type StageQualityPlanRequest = Message<"metaxisdata.v1.StageQuali
   metaType: MetaType;
 
   /**
-   * The newest published version the declaration is written against.
+   * The newest published version the declaration is written against. 0 is a valid
+   * base for a target that has never been published.
    *
    * @generated from field: int32 base_version = 4;
    */
@@ -7679,6 +7680,9 @@ export declare type StageQualityPlanRequest = Message<"metaxisdata.v1.StageQuali
 
   /**
    * The complete declaration: coverage only, like UpdateQualityContract's draft.
+   * The list has no presence: an omitted or empty coverage clears the target's
+   * declaration and returns it to the projection derived from the intent and the
+   * live checks.
    *
    * @generated from field: repeated metaxisdata.v1.QualityPlanCoverage coverage = 5;
    */

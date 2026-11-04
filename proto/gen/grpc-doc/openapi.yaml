@@ -16978,13 +16978,19 @@ components:
                     format: enum
                 baseVersion:
                     type: integer
-                    description: The newest published version the declaration is written against.
+                    description: |-
+                        The newest published version the declaration is written against. 0 is a valid
+                         base for a target that has never been published.
                     format: int32
                 coverage:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityPlanCoverage'
-                    description: 'The complete declaration: coverage only, like UpdateQualityContract''s draft.'
+                    description: |-
+                        The complete declaration: coverage only, like UpdateQualityContract's draft.
+                         The list has no presence: an omitted or empty coverage clears the target's
+                         declaration and returns it to the projection derived from the intent and the
+                         live checks.
         StandardCodeConfig:
             type: object
             properties:

@@ -265,6 +265,19 @@ describe("DataQualitySettingsPage", () => {
     expect(setting.defaultScheduleInterval?.seconds).toBe(3_600n);
   });
 
+  it("saves the agent autonomy kill switch", async () => {
+    const wrapper = await mountPage();
+    await wrapper.find("#dq-setting-agent-autonomy").trigger("click");
+    await flushPromises();
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateDataQualitySetting).toHaveBeenCalledTimes(1);
+    const setting = mocks.updateDataQualitySetting.mock.calls[0]?.[0];
+    expect(setting).toMatchObject({ agentAutonomyEnabled: true });
+  });
+
   it("reports a bad number inline and does not save", async () => {
     const wrapper = await mountPage();
     await fieldInput(

@@ -69,9 +69,9 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 		return nil, err
 	}
 	fingerprint := qualityChangeRequestFingerprint(preliminary, req.Msg.GetBaseVersion())
+	source := qualityChangeRequestSource(agent)
 	existing, err := s.store.GetQualityChangeRequestByFingerprint(ctx, targetGUID, metaType,
-		req.Msg.GetBaseVersion(),
-		storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN, fingerprint)
+		req.Msg.GetBaseVersion(), source, fingerprint)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 		TargetGUID:         targetGUID,
 		TargetType:         metaType,
 		BaseVersion:        req.Msg.GetBaseVersion(),
-		Source:             qualityChangeRequestSource(agent),
+		Source:             source,
 		Items:              storedItems,
 		RequestFingerprint: fingerprint,
 		CreatedBy:          createdBy,

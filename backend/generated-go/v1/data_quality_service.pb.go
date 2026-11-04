@@ -16450,9 +16450,13 @@ type StageQualityPlanRequest struct {
 	Parent     string   `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	TargetGuid string   `protobuf:"bytes,2,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
 	MetaType   MetaType `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
-	// The newest published version the declaration is written against.
+	// The newest published version the declaration is written against. 0 is a valid
+	// base for a target that has never been published.
 	BaseVersion int32 `protobuf:"varint,4,opt,name=base_version,json=baseVersion,proto3" json:"base_version,omitempty"`
 	// The complete declaration: coverage only, like UpdateQualityContract's draft.
+	// The list has no presence: an omitted or empty coverage clears the target's
+	// declaration and returns it to the projection derived from the intent and the
+	// live checks.
 	Coverage      []*QualityPlanCoverage `protobuf:"bytes,5,rep,name=coverage,proto3" json:"coverage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

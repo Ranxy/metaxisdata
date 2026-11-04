@@ -23114,14 +23114,18 @@ display order. The model may rank types but may not invent one. </p></td>
                   <td>base_version</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The newest published version the declaration is written against. </p></td>
+                  <td><p>The newest published version the declaration is written against. 0 is a valid
+base for a target that has never been published. </p></td>
                 </tr>
               
                 <tr>
                   <td>coverage</td>
                   <td><a href="#metaxisdata.v1.QualityPlanCoverage">QualityPlanCoverage</a></td>
                   <td>repeated</td>
-                  <td><p>The complete declaration: coverage only, like UpdateQualityContract&#39;s draft. </p></td>
+                  <td><p>The complete declaration: coverage only, like UpdateQualityContract&#39;s draft.
+The list has no presence: an omitted or empty coverage clears the target&#39;s
+declaration and returns it to the projection derived from the intent and the
+live checks. </p></td>
                 </tr>
               
             </tbody>
