@@ -35,25 +35,22 @@
         <div class="flex flex-wrap items-center gap-2">
           <Badge :variant="pendingCount > 0 ? 'warning' : 'neutral'">
             {{
-              t("dataQuality.changeRequests.pending", {
-                count: pendingCount,
-              })
+              pendingCapped
+                ? t("dataQuality.changeRequests.pendingAtLeast", { count: pendingCount })
+                : t("dataQuality.changeRequests.pending", { count: pendingCount })
             }}
           </Badge>
-          <span class="text-xs text-muted-foreground">
-            {{ t("dataQuality.changeRequests.total", { count: requests.length }) }}
-          </span>
           <Button
             size="sm"
             variant="outline"
-            :disabled="requests.length === 0"
+            :disabled="pendingCount === 0 && !hasAny"
             @click="dialogOpen = true"
           >
             {{ t("dataQuality.changeRequests.review") }}
           </Button>
         </div>
         <p
-          v-if="requests.length === 0"
+          v-if="!hasAny"
           class="text-xs text-muted-foreground"
         >
           {{ t("dataQuality.changeRequests.empty") }}
@@ -64,7 +61,6 @@
     <ChangeRequestsDialog
       v-model:open="dialogOpen"
       :target-guid="targetGuid"
-      :meta-type="metaType"
       :can-decide="canDecide"
       :can-suggest="canSuggest"
       @decided="load()"
@@ -91,7 +87,6 @@ import {
   type QualityChangeRequest,
   QualityChangeRequestState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 /**
  * The target's change requests: how many batches are waiting for a decision and the
@@ -101,7 +96,6 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 const props = withDefaults(
   defineProps<{
     targetGuid: string;
-    metaType: MetaType;
     canDecide?: boolean;
     canSuggest?: boolean;
   }>(),
@@ -110,40 +104,61 @@ const props = withDefaults(
 
 const { t } = useI18n();
 
-const requests = ref<QualityChangeRequest[]>([]);
+const pending = ref<QualityChangeRequest[]>([]);
+const recent = ref<QualityChangeRequest[]>([]);
 const loading = ref(false);
 const error = ref("");
 const dialogOpen = ref(false);
+let generation = 0;
 
-const pendingCount = computed(
-  () =>
-    requests.value.filter(
-      (request) =>
-        request.state === QualityChangeRequestState.PROPOSED ||
-        request.state === QualityChangeRequestState.APPROVED
-    ).length
+const pendingCount = computed(() => pending.value.length);
+const capped = ref(false);
+const pendingCapped = computed(() => capped.value);
+const hasAny = computed(
+  () => pending.value.length > 0 || recent.value.length > 0
 );
 
+/**
+ * The card counts what waits for a decision from the decision states themselves
+ * rather than from a single "newest 20" page: a queue must not silently undercount
+ * once a target has history.
+ */
 async function load() {
   const guid = props.targetGuid;
+  const ticket = ++generation;
   loading.value = true;
   error.value = "";
   try {
-    const page = await listQualityChangeRequests({
-      targetGuid: guid,
-      pageSize: 20,
-    });
-    if (guid !== props.targetGuid) {
+    const [proposed, approved, all] = await Promise.all([
+      listQualityChangeRequests({
+        targetGuid: guid,
+        state: QualityChangeRequestState.PROPOSED,
+        pageSize: 50,
+      }),
+      listQualityChangeRequests({
+        targetGuid: guid,
+        state: QualityChangeRequestState.APPROVED,
+        pageSize: 50,
+      }),
+      listQualityChangeRequests({ targetGuid: guid, pageSize: 20 }),
+    ]);
+    if (ticket !== generation || guid !== props.targetGuid) {
       return;
     }
-    requests.value = page.items;
+    pending.value = [...proposed.items, ...approved.items];
+    capped.value =
+      proposed.nextPageToken !== "" || approved.nextPageToken !== "";
+    recent.value = all.items;
   } catch {
-    if (guid === props.targetGuid) {
+    if (ticket === generation && guid === props.targetGuid) {
       error.value = "failed";
-      requests.value = [];
+      pending.value = [];
+      recent.value = [];
     }
   } finally {
-    loading.value = false;
+    if (ticket === generation) {
+      loading.value = false;
+    }
   }
 }
 

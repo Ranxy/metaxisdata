@@ -13,7 +13,6 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
-  CreateQualityChangeRequestRequestSchema,
   CreateQualityCodeTableRequestSchema,
   CreateQualityRuleRequestSchema,
   CreateQualityRuleTemplateRequestSchema,
@@ -30,7 +29,6 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
-  GetQualityChangeRequestRequestSchema,
   GetQualityCodeTableRequestSchema,
   GetQualityConsumptionCoverageRequestSchema,
   type GetQualityConsumptionCoverageResponse,
@@ -73,7 +71,6 @@ import {
   type PublishQualityContractResponse,
   QualityChangeRejectionReason,
   type QualityChangeRequest,
-  type QualityChangeRequestItem,
   QualityChangeRequestState,
   type QualityCodeTable,
   type QualityContract,
@@ -1608,37 +1605,6 @@ export async function exportQualityReport(options: {
 }
 
 // ---- change requests ----
-
-/** Create a proposed batch of typed changes against one target. */
-export async function createQualityChangeRequest(options: {
-  targetGuid: string;
-  metaType?: MetaType;
-  baseVersion: number;
-  items: QualityChangeRequestItem[];
-  signal?: AbortSignal;
-}): Promise<QualityChangeRequest> {
-  const request = create(CreateQualityChangeRequestRequestSchema, {
-    parent: WORKSPACE_PARENT,
-    targetGuid: options.targetGuid,
-    metaType: options.metaType ?? MetaType.UNSPECIFIED,
-    baseVersion: options.baseVersion,
-    items: options.items,
-  });
-  return await dataQualityClient.createQualityChangeRequest(request, {
-    signal: options.signal,
-  });
-}
-
-/** Read one change request by resource name. */
-export async function getQualityChangeRequest(
-  name: string,
-  signal?: AbortSignal
-): Promise<QualityChangeRequest> {
-  const request = create(GetQualityChangeRequestRequestSchema, { name });
-  return await dataQualityClient.getQualityChangeRequest(request, {
-    signal,
-  });
-}
 
 /** One page of change requests, newest first. */
 export async function listQualityChangeRequests(options: {

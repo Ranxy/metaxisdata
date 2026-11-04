@@ -17,6 +17,13 @@ vi.mock("@/api/data-quality", () => ({
   listQualityChangeRequests: mocks.listQualityChangeRequests,
 }));
 
+vi.mock("@/composables/useUserDirectory", () => ({
+  useUserDirectory: () => ({
+    emailOf: (name: string) => name,
+    load: vi.fn(),
+  }),
+}));
+
 const TABLE = "inst1;db1;public;orders";
 
 function label(key: string, params: Record<string, unknown> = {}): string {
@@ -47,13 +54,26 @@ describe("TargetChangeRequestsCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = "";
-    mocks.listQualityChangeRequests.mockResolvedValue({
-      items: [
-        requestFixture(QualityChangeRequestState.PROPOSED),
-        requestFixture(QualityChangeRequestState.EXPIRED),
-      ],
-      nextPageToken: "",
-    });
+    mocks.listQualityChangeRequests.mockImplementation(
+      async (options: { state?: QualityChangeRequestState }) => {
+        if (options.state === QualityChangeRequestState.PROPOSED) {
+          return {
+            items: [requestFixture(QualityChangeRequestState.PROPOSED)],
+            nextPageToken: "",
+          };
+        }
+        if (options.state === QualityChangeRequestState.APPROVED) {
+          return { items: [], nextPageToken: "" };
+        }
+        return {
+          items: [
+            requestFixture(QualityChangeRequestState.PROPOSED),
+            requestFixture(QualityChangeRequestState.EXPIRED),
+          ],
+          nextPageToken: "",
+        };
+      }
+    );
   });
 
   it("counts the batches waiting for a decision", async () => {
@@ -62,9 +82,6 @@ describe("TargetChangeRequestsCard", () => {
 
     expect(wrapper.text()).toContain(
       label("dataQuality.changeRequests.pending", { count: 1 })
-    );
-    expect(wrapper.text()).toContain(
-      label("dataQuality.changeRequests.total", { count: 2 })
     );
     expect(wrapper.text()).toContain(
       label("dataQuality.changeRequests.review")

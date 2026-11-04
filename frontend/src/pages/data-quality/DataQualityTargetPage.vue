@@ -246,7 +246,6 @@
 
         <TargetChangeRequestsCard
           :target-guid="targetGuid"
-          :meta-type="effectiveMetaType"
           :can-decide="canDecideChanges"
           :can-suggest="canSuggest"
         />

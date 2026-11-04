@@ -1,8 +1,10 @@
 import { create } from "@bufbuild/protobuf";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "@/locales";
 import {
+  DecideQualityChangeRequestRequest_Decision,
   QualityChangeRejectionReason,
   QualityChangeRequestItemKind,
   QualityChangeRequestItemResult_Status,
@@ -40,6 +42,13 @@ vi.mock("@/api/data-quality", () => ({
 }));
 
 vi.mock("@/lib/notify", () => ({ notify: notifyMock }));
+
+vi.mock("@/composables/useUserDirectory", () => ({
+  useUserDirectory: () => ({
+    emailOf: (name: string) => name,
+    load: vi.fn(),
+  }),
+}));
 
 const TABLE = "inst1;db1;public;orders";
 
@@ -160,7 +169,8 @@ describe("ChangeRequestsDialog", () => {
         create(QualityChangeRequestSchema, {
           name: options.name,
           state:
-            options.decision === 1
+            options.decision ===
+            DecideQualityChangeRequestRequest_Decision.APPROVE
               ? QualityChangeRequestState.APPLIED
               : QualityChangeRequestState.REJECTED,
         })
@@ -217,7 +227,7 @@ describe("ChangeRequestsDialog", () => {
     expect(mocks.decideQualityChangeRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "workspaces/ws1/qualityChangeRequests/cr1",
-        decision: 1,
+        decision: DecideQualityChangeRequestRequest_Decision.APPROVE,
       })
     );
     expect(wrapper.emitted("decided")).toBeTruthy();
@@ -287,5 +297,52 @@ describe("ChangeRequestsDialog", () => {
         reasons: label("dataQuality.changeRequests.reasonNoise"),
       })
     );
+  });
+
+  it("does not fetch proposals without the suggest permission", async () => {
+    const wrapper = mountDialog({
+      requests: [requestFixture()],
+      canSuggest: false,
+    });
+    await flushPromises();
+    expect(mocks.listQualitySuggestions).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("hides both decision actions without the decide permission", async () => {
+    const wrapper = mountDialog({
+      requests: [requestFixture()],
+      canDecide: false,
+    });
+    await flushPromises();
+    expect(
+      buttonByText(label("dataQuality.changeRequests.approve"))
+    ).toBeUndefined();
+    expect(
+      buttonByText(label("dataQuality.changeRequests.reject"))
+    ).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("reloads the list when another reviewer decided first", async () => {
+    mocks.decideQualityChangeRequest.mockRejectedValueOnce(
+      new ConnectError("already decided", Code.Aborted)
+    );
+    const wrapper = mountDialog({ requests: [requestFixture()] });
+    await flushPromises();
+    const listCallsBefore = mocks.listQualityChangeRequests.mock.calls.length;
+
+    buttonByText(label("dataQuality.changeRequests.approve"))?.click();
+    await flushPromises();
+    buttonByText(label("dataQuality.changeRequests.confirmApprove"))?.click();
+    await flushPromises();
+
+    expect(mocks.listQualityChangeRequests.mock.calls.length).toBeGreaterThan(
+      listCallsBefore
+    );
+    expect(document.body.textContent).toContain(
+      label("dataQuality.changeRequests.decideStale")
+    );
+    wrapper.unmount();
   });
 });

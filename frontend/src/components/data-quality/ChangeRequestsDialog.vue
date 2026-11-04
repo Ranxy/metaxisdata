@@ -33,7 +33,7 @@
             <Loader2 class="h-4 w-4 animate-spin" />
           </div>
           <p
-            v-else-if="requests.length === 0"
+            v-else-if="!error && requests.length === 0"
             class="text-sm text-muted-foreground"
           >
             {{ t("dataQuality.changeRequests.empty") }}
@@ -47,7 +47,7 @@
           >
             <div class="flex flex-wrap items-center gap-2">
               <Badge :variant="stateVariant(request.state)">
-                {{ stateLabel(request.state) }}
+                {{ stateLabel(request) }}
               </Badge>
               <span class="text-xs text-muted-foreground">
                 {{
@@ -63,7 +63,7 @@
               >
                 {{
                   t("dataQuality.changeRequests.createdBy", {
-                    name: request.createdBy,
+                    name: creatorLabel(request.createdBy),
                   })
                 }}
               </span>
@@ -79,13 +79,20 @@
                 class="flex flex-wrap items-center justify-between gap-2 text-sm"
               >
                 <span>{{ itemLabel(item) }}</span>
-                <Badge
-                  v-if="resultOf(request, index)"
-                  :variant="resultVariant(resultOf(request, index)?.status)"
-                  :title="resultOf(request, index)?.detail"
-                >
-                  {{ resultLabel(resultOf(request, index)?.status) }}
-                </Badge>
+                <span class="flex flex-wrap items-center gap-2">
+                  <span
+                    v-if="resultDetail(request, index)"
+                    class="text-xs text-muted-foreground"
+                  >
+                    {{ resultDetail(request, index) }}
+                  </span>
+                  <Badge
+                    v-if="resultOf(request, index)"
+                    :variant="resultVariant(resultOf(request, index)?.status)"
+                  >
+                    {{ resultLabel(resultOf(request, index)?.status) }}
+                  </Badge>
+                </span>
               </li>
             </ul>
 
@@ -105,6 +112,18 @@
               class="text-xs text-muted-foreground"
             >
               {{ t("dataQuality.changeRequests.expiredHint") }}
+            </p>
+            <p
+              v-else-if="request.state === QualityChangeRequestState.APPROVED"
+              class="text-xs text-muted-foreground"
+            >
+              {{ t("dataQuality.changeRequests.approvedHint") }}
+            </p>
+            <p
+              v-if="request.state !== QualityChangeRequestState.PROPOSED && request.decisionNote"
+              class="text-xs text-muted-foreground"
+            >
+              {{ t("dataQuality.changeRequests.decisionNote", { note: request.decisionNote }) }}
             </p>
 
             <div
@@ -135,7 +154,11 @@
               v-if="decision?.name === request.name"
               class="space-y-2 rounded-md border border-dashed p-2"
             >
+              <Label :for="`dq-change-request-note-${request.name}`">
+                {{ t("dataQuality.changeRequests.noteLabel") }}
+              </Label>
               <textarea
+                :id="`dq-change-request-note-${request.name}`"
                 v-model="decision.note"
                 maxlength="500"
                 class="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -143,8 +166,17 @@
               />
               <div
                 v-if="decision.mode === 'reject'"
-                class="grid gap-1 sm:grid-cols-2"
+                role="group"
+                :aria-labelledby="`dq-change-request-reasons-${request.name}`"
+                class="space-y-1"
               >
+                <p
+                  :id="`dq-change-request-reasons-${request.name}`"
+                  class="text-sm font-medium"
+                >
+                  {{ t("dataQuality.changeRequests.reasonsLabel") }}
+                </p>
+                <div class="grid gap-1 sm:grid-cols-2">
                 <label
                   v-for="reason in rejectionOptions"
                   :key="reason.value"
@@ -157,6 +189,7 @@
                   />
                   {{ t(reason.key) }}
                 </label>
+                </div>
               </div>
               <p
                 v-if="decision.mode === 'reject' && decision.reasons.length === 0"
@@ -200,10 +233,18 @@
 
         <DialogFooter class="shrink-0 border-t px-6 py-4">
           <Button
+            v-if="nextPageToken"
+            variant="ghost"
+            :disabled="loadingMore"
+            @click="load(true)"
+          >
+            {{ t("dataQuality.changeRequests.loadMore") }}
+          </Button>
+          <Button
             variant="outline"
             @click="close"
           >
-            {{ t("common.cancel") }}
+            {{ t("dataQuality.changeRequests.close") }}
           </Button>
         </DialogFooter>
       </div>
@@ -212,8 +253,9 @@
 </template>
 
 <script setup lang="ts">
+import { Code, ConnectError } from "@connectrpc/connect";
 import { AlertTriangle, Loader2 } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   decideQualityChangeRequest,
@@ -231,7 +273,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { useUserDirectory } from "@/composables/useUserDirectory";
 import { notify } from "@/lib/notify";
 import {
   DecideQualityChangeRequestRequest_Decision,
@@ -241,7 +285,6 @@ import {
   QualityChangeRequestItemResult_Status,
   QualityChangeRequestState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
-import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import { qualityCoveragePropertyKey } from "@/utils/dataQuality";
 
 /**
@@ -255,7 +298,6 @@ const props = withDefaults(
   defineProps<{
     open: boolean;
     targetGuid: string;
-    metaType: MetaType;
     canDecide?: boolean;
     canSuggest?: boolean;
   }>(),
@@ -276,14 +318,19 @@ interface DecisionDraft {
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
+const { emailOf, load: loadDirectory } = useUserDirectory();
 
 const requests = ref<QualityChangeRequest[]>([]);
 const suggestionTitles = ref<Record<string, string>>({});
 const loading = ref(false);
+const loadingMore = ref(false);
 const error = ref("");
 const busy = ref("");
 const decision = ref<DecisionDraft | null>(null);
 const decisionError = ref("");
+const nextPageToken = ref("");
+let generation = 0;
+let controller: AbortController | null = null;
 
 const rejectionOptions = [
   QualityChangeRejectionReason.NOT_IMPORTANT,
@@ -309,8 +356,10 @@ function rejectionKey(reason: QualityChangeRejectionReason): string {
       return "dataQuality.changeRequests.reasonWrongColumn";
     case QualityChangeRejectionReason.DEFER:
       return "dataQuality.changeRequests.reasonDefer";
-    default:
+    case QualityChangeRejectionReason.OTHER:
       return "dataQuality.changeRequests.reasonOther";
+    default:
+      return "dataQuality.changeRequests.reasonUnspecified";
   }
 }
 
@@ -344,12 +393,14 @@ function stateVariant(state: QualityChangeRequestState) {
   }
 }
 
-function stateLabel(state: QualityChangeRequestState): string {
-  switch (state) {
+function stateLabel(request: QualityChangeRequest): string {
+  switch (request.state) {
     case QualityChangeRequestState.PROPOSED:
       return t("dataQuality.changeRequests.stateProposed");
     case QualityChangeRequestState.APPROVED:
-      return t("dataQuality.changeRequests.stateApproved");
+      return requestStateHasApplied(request.itemResults)
+        ? t("dataQuality.changeRequests.stateApproved")
+        : t("dataQuality.changeRequests.stateRetry");
     case QualityChangeRequestState.APPLIED:
       return t("dataQuality.changeRequests.stateApplied");
     case QualityChangeRequestState.REJECTED:
@@ -359,6 +410,30 @@ function stateLabel(state: QualityChangeRequestState): string {
     default:
       return t("dataQuality.changeRequests.stateUnspecified");
   }
+}
+
+function requestStateHasApplied(
+  results: QualityChangeRequest["itemResults"]
+): boolean {
+  return results.some(
+    (result) => result.status === QualityChangeRequestItemResult_Status.APPLIED
+  );
+}
+
+function resultDetail(request: QualityChangeRequest, index: number): string {
+  const result = resultOf(request, index);
+  if (
+    !result ||
+    (result.status !== QualityChangeRequestItemResult_Status.FAILED &&
+      result.status !== QualityChangeRequestItemResult_Status.SKIPPED)
+  ) {
+    return "";
+  }
+  return result.detail;
+}
+
+function creatorLabel(name: string): string {
+  return emailOf(name) || name;
 }
 
 function isDecidable(request: QualityChangeRequest): boolean {
@@ -495,29 +570,40 @@ async function submitDecision(request: QualityChangeRequest) {
           : DecideQualityChangeRequestRequest_Decision.REJECT,
       rejectionReasons: draft.reasons,
       decisionNote: draft.note.trim(),
+      signal: controller?.signal,
     });
-    notify.success(
-      updated.state === QualityChangeRequestState.APPLIED
-        ? t("dataQuality.changeRequests.appliedNotice")
-        : updated.state === QualityChangeRequestState.REJECTED
-          ? t("dataQuality.changeRequests.rejectedNotice")
-          : t("dataQuality.changeRequests.decidedPartialNotice")
-    );
+    if (updated.state === QualityChangeRequestState.APPLIED) {
+      notify.success(t("dataQuality.changeRequests.appliedNotice"));
+    } else if (updated.state === QualityChangeRequestState.REJECTED) {
+      notify.success(t("dataQuality.changeRequests.rejectedNotice"));
+    } else if (updated.state === QualityChangeRequestState.EXPIRED) {
+      notify.warning(t("dataQuality.changeRequests.expiredNotice"));
+    } else {
+      notify.warning(t("dataQuality.changeRequests.decidedPartialNotice"));
+    }
     decision.value = null;
     emit("decided");
-    await load();
+    await refresh();
   } catch (e: unknown) {
-    decisionError.value = formatError(
-      e,
-      "dataQuality.changeRequests.decideFailed"
-    );
+    if (e instanceof ConnectError && e.code === Code.Aborted) {
+      // Another reviewer decided first; reload so the panel stops offering an
+      // action that can no longer succeed, and say why above the list.
+      decision.value = null;
+      await refresh();
+      error.value = t("dataQuality.changeRequests.decideStale");
+    } else {
+      decisionError.value = formatError(
+        e,
+        "dataQuality.changeRequests.decideFailed"
+      );
+    }
   } finally {
     busy.value = "";
   }
 }
 
 /** Suggestion titles need the suggest permission; without it items show their id. */
-async function loadSuggestionTitles() {
+async function loadSuggestionTitles(signal: AbortSignal) {
   if (!props.canSuggest) {
     return;
   }
@@ -526,8 +612,9 @@ async function loadSuggestionTitles() {
     const page = await listQualitySuggestions({
       targetGuid: guid,
       pageSize: 200,
+      signal,
     });
-    if (guid !== props.targetGuid) {
+    if (signal.aborted || guid !== props.targetGuid) {
       return;
     }
     const titles: Record<string, string> = {};
@@ -539,31 +626,60 @@ async function loadSuggestionTitles() {
     }
     suggestionTitles.value = titles;
   } catch {
-    suggestionTitles.value = {};
+    if (!signal.aborted) {
+      suggestionTitles.value = {};
+    }
   }
 }
 
-async function load() {
+async function load(more = false) {
   const guid = props.targetGuid;
-  loading.value = true;
+  if (more) {
+    loadingMore.value = true;
+  } else {
+    generation++;
+    loading.value = true;
+    requests.value = [];
+    nextPageToken.value = "";
+  }
+  const ticket = generation;
+  controller?.abort();
+  controller = new AbortController();
+  const signal = controller.signal;
   error.value = "";
   try {
     const page = await listQualityChangeRequests({
       targetGuid: guid,
-      pageSize: 50,
+      pageSize: 20,
+      pageToken: more ? nextPageToken.value : "",
+      signal,
     });
-    if (guid !== props.targetGuid) {
+    if (signal.aborted || ticket !== generation || guid !== props.targetGuid) {
       return;
     }
-    requests.value = page.items;
+    requests.value = more ? [...requests.value, ...page.items] : page.items;
+    nextPageToken.value = page.nextPageToken;
   } catch (e: unknown) {
-    if (guid === props.targetGuid) {
-      error.value = formatError(e, "dataQuality.changeRequests.loadFailed");
+    if (signal.aborted || ticket !== generation || guid !== props.targetGuid) {
+      return;
+    }
+    error.value = formatError(e, "dataQuality.changeRequests.loadFailed");
+    if (!more) {
       requests.value = [];
     }
   } finally {
-    loading.value = false;
+    if (ticket === generation) {
+      loading.value = false;
+      loadingMore.value = false;
+    }
   }
+}
+
+async function refresh() {
+  await Promise.all([
+    load(),
+    loadSuggestionTitles(controller?.signal ?? new AbortController().signal),
+  ]);
 }
 
 watch(
@@ -573,10 +689,28 @@ watch(
     decisionError.value = "";
     error.value = "";
     if (isOpen) {
+      void loadDirectory();
       void load();
-      void loadSuggestionTitles();
+      const signal = controller?.signal ?? new AbortController().signal;
+      void loadSuggestionTitles(signal);
     }
   },
   { immediate: true }
 );
+
+watch(
+  () => props.targetGuid,
+  () => {
+    if (props.open) {
+      decision.value = null;
+      void load();
+      const signal = controller?.signal ?? new AbortController().signal;
+      void loadSuggestionTitles(signal);
+    }
+  }
+);
+
+onBeforeUnmount(() => {
+  controller?.abort();
+});
 </script>
