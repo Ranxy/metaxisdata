@@ -798,6 +798,13 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
   }
 
+  // Read the runner's evaluation: goal phases, token spend, the acceptance of the
+  // change requests it proposed, and investigation verdicts. Read-only.
+  rpc GetQualityAgentMetrics(GetQualityAgentMetricsRequest) returns (QualityAgentMetrics) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentMetrics"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Create one durable objective for the built-in quality agent runner: keep a
   // target trustworthy, investigate one event, or a person's request. The target's
   // database must be in the workspace's runner allowlist, and the runner must be
@@ -5084,4 +5091,41 @@ message CompleteQualityAgentGoalRequest {
 message ClearQualityAgentGoalRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   int32 expected_revision = 2;
+}
+
+// QualityAgentGoalPhaseCount is how many goals stand in one phase.
+message QualityAgentGoalPhaseCount {
+  QualityAgentGoalPhase phase = 1;
+  int32 count = 2;
+}
+
+// QualityAgentTargetCost is one target's share of the runner's token spend.
+message QualityAgentTargetCost {
+  QualityTarget target = 1;
+  int64 tokens_used = 2;
+  int32 goal_count = 3;
+}
+
+// QualityAgentMetrics is the runner's evaluation: what it did, what it spent and how
+// the proposals it made were decided. All of it is derived from existing rows.
+message QualityAgentMetrics {
+  repeated QualityAgentGoalPhaseCount goals = 1;
+  int64 tokens_total = 2;
+  int64 tokens_last_hour = 3;
+  // Change requests proposed by an agent, by lifecycle state.
+  int32 agent_change_requests_total = 4;
+  int32 agent_change_requests_applied = 5;
+  int32 agent_change_requests_rejected = 6;
+  int32 agent_change_requests_pending = 7;
+  // Investigations recorded by agents, and the verdicts they reached.
+  int32 investigations_total = 8;
+  int32 investigations_inconclusive = 9;
+  int32 investigations_root_cause = 10;
+  int32 investigations_contributing_factor = 11;
+  repeated QualityAgentTargetCost top_targets = 12;
+}
+
+message GetQualityAgentMetricsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
 }

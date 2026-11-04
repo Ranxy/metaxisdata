@@ -10503,6 +10503,153 @@ export declare type ClearQualityAgentGoalRequest = Message<"metaxisdata.v1.Clear
 export declare const ClearQualityAgentGoalRequestSchema: GenMessage<ClearQualityAgentGoalRequest>;
 
 /**
+ * QualityAgentGoalPhaseCount is how many goals stand in one phase.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentGoalPhaseCount
+ */
+export declare type QualityAgentGoalPhaseCount = Message<"metaxisdata.v1.QualityAgentGoalPhaseCount"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalPhase phase = 1;
+   */
+  phase: QualityAgentGoalPhase;
+
+  /**
+   * @generated from field: int32 count = 2;
+   */
+  count: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentGoalPhaseCount.
+ * Use `create(QualityAgentGoalPhaseCountSchema)` to create a new message.
+ */
+export declare const QualityAgentGoalPhaseCountSchema: GenMessage<QualityAgentGoalPhaseCount>;
+
+/**
+ * QualityAgentTargetCost is one target's share of the runner's token spend.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentTargetCost
+ */
+export declare type QualityAgentTargetCost = Message<"metaxisdata.v1.QualityAgentTargetCost"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: int64 tokens_used = 2;
+   */
+  tokensUsed: bigint;
+
+  /**
+   * @generated from field: int32 goal_count = 3;
+   */
+  goalCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentTargetCost.
+ * Use `create(QualityAgentTargetCostSchema)` to create a new message.
+ */
+export declare const QualityAgentTargetCostSchema: GenMessage<QualityAgentTargetCost>;
+
+/**
+ * QualityAgentMetrics is the runner's evaluation: what it did, what it spent and how
+ * the proposals it made were decided. All of it is derived from existing rows.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentMetrics
+ */
+export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMetrics"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentGoalPhaseCount goals = 1;
+   */
+  goals: QualityAgentGoalPhaseCount[];
+
+  /**
+   * @generated from field: int64 tokens_total = 2;
+   */
+  tokensTotal: bigint;
+
+  /**
+   * @generated from field: int64 tokens_last_hour = 3;
+   */
+  tokensLastHour: bigint;
+
+  /**
+   * Change requests proposed by an agent, by lifecycle state.
+   *
+   * @generated from field: int32 agent_change_requests_total = 4;
+   */
+  agentChangeRequestsTotal: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_applied = 5;
+   */
+  agentChangeRequestsApplied: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_rejected = 6;
+   */
+  agentChangeRequestsRejected: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_pending = 7;
+   */
+  agentChangeRequestsPending: number;
+
+  /**
+   * Investigations recorded by agents, and the verdicts they reached.
+   *
+   * @generated from field: int32 investigations_total = 8;
+   */
+  investigationsTotal: number;
+
+  /**
+   * @generated from field: int32 investigations_inconclusive = 9;
+   */
+  investigationsInconclusive: number;
+
+  /**
+   * @generated from field: int32 investigations_root_cause = 10;
+   */
+  investigationsRootCause: number;
+
+  /**
+   * @generated from field: int32 investigations_contributing_factor = 11;
+   */
+  investigationsContributingFactor: number;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentTargetCost top_targets = 12;
+   */
+  topTargets: QualityAgentTargetCost[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentMetrics.
+ * Use `create(QualityAgentMetricsSchema)` to create a new message.
+ */
+export declare const QualityAgentMetricsSchema: GenMessage<QualityAgentMetrics>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentMetricsRequest
+ */
+export declare type GetQualityAgentMetricsRequest = Message<"metaxisdata.v1.GetQualityAgentMetricsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentMetricsRequest.
+ * Use `create(GetQualityAgentMetricsRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentMetricsRequestSchema: GenMessage<GetQualityAgentMetricsRequest>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -13622,6 +13769,17 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof RotateQualityAgentTokenRequestSchema;
     output: typeof RotateQualityAgentTokenResponseSchema;
+  },
+  /**
+   * Read the runner's evaluation: goal phases, token spend, the acceptance of the
+   * change requests it proposed, and investigation verdicts. Read-only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentMetrics
+   */
+  getQualityAgentMetrics: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentMetricsRequestSchema;
+    output: typeof QualityAgentMetricsSchema;
   },
   /**
    * Create one durable objective for the built-in quality agent runner: keep a

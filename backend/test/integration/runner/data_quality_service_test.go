@@ -5049,4 +5049,15 @@ func TestQualityAgentRunnerDeterministicTurnRealServerIntegration(t *testing.T) 
 			response.Msg.GetRoundsStarted() >= 1 &&
 			response.Msg.GetNextWakeTime() != nil
 	}, 20*time.Second, 250*time.Millisecond, "the runner surveys and schedules the empty maintain goal")
+
+	// The evaluation reads the rows the runner produced: phases, verdicts and spend.
+	metrics, err := fixture.dataQuality.GetQualityAgentMetrics(fixture.ctx,
+		withToken(token, &v1pb.GetQualityAgentMetricsRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, metrics.Msg.GetInvestigationsTotal(), int32(1))
+	require.GreaterOrEqual(t, metrics.Msg.GetInvestigationsInconclusive(), int32(1))
+	require.Equal(t, int64(0), metrics.Msg.GetTokensTotal())
+	require.Equal(t, int32(0), metrics.Msg.GetAgentChangeRequestsTotal())
+	require.NotEmpty(t, metrics.Msg.GetGoals())
+	require.NotEmpty(t, metrics.Msg.GetTopTargets())
 }

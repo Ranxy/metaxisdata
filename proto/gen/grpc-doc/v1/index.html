@@ -1233,6 +1233,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityAgentMetricsRequest"><span class="badge">M</span>GetQualityAgentMetricsRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityChangeRequestRequest"><span class="badge">M</span>GetQualityChangeRequestRequest</a>
                 </li>
               
@@ -1538,6 +1542,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgentGoal"><span class="badge">M</span>QualityAgentGoal</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentGoalPhaseCount"><span class="badge">M</span>QualityAgentGoalPhaseCount</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentMetrics"><span class="badge">M</span>QualityAgentMetrics</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentTargetCost"><span class="badge">M</span>QualityAgentTargetCost</a>
                 </li>
               
                 <li>
@@ -15551,6 +15567,30 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityAgentMetricsRequest">GetQualityAgentMetricsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityChangeRequestRequest">GetQualityChangeRequestRequest</h3>
         <p></p>
 
@@ -19139,6 +19179,176 @@ must still approve). </p></td>
                 <tr>
                   <td>update_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentGoalPhaseCount">QualityAgentGoalPhaseCount</h3>
+        <p>QualityAgentGoalPhaseCount is how many goals stand in one phase.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>phase</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalPhase">QualityAgentGoalPhase</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentMetrics">QualityAgentMetrics</h3>
+        <p>QualityAgentMetrics is the runner's evaluation: what it did, what it spent and how</p><p>the proposals it made were decided. All of it is derived from existing rows.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>goals</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalPhaseCount">QualityAgentGoalPhaseCount</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens_total</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens_last_hour</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_change_requests_total</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Change requests proposed by an agent, by lifecycle state. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_change_requests_applied</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_change_requests_rejected</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_change_requests_pending</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>investigations_total</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Investigations recorded by agents, and the verdicts they reached. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>investigations_inconclusive</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>investigations_root_cause</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>investigations_contributing_factor</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>top_targets</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentTargetCost">QualityAgentTargetCost</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentTargetCost">QualityAgentTargetCost</h3>
+        <p>QualityAgentTargetCost is one target's share of the runner's token spend.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens_used</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>goal_count</td>
+                  <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -28605,6 +28815,14 @@ minted before this call. The token is returned once.</p></td>
               </tr>
             
               <tr>
+                <td>GetQualityAgentMetrics</td>
+                <td><a href="#metaxisdata.v1.GetQualityAgentMetricsRequest">GetQualityAgentMetricsRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentMetrics">QualityAgentMetrics</a></td>
+                <td><p>Read the runner&#39;s evaluation: goal phases, token spend, the acceptance of the
+change requests it proposed, and investigation verdicts. Read-only.</p></td>
+              </tr>
+            
+              <tr>
                 <td>CreateQualityAgentGoal</td>
                 <td><a href="#metaxisdata.v1.CreateQualityAgentGoalRequest">CreateQualityAgentGoalRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
@@ -29435,6 +29653,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/qualityAgents/*}:rotateToken</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityAgentMetrics</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentMetrics</td>
+                <td></td>
               </tr>
               
             
