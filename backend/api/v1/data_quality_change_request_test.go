@@ -125,9 +125,52 @@ func TestConvertQualityChangeRequestToV1(t *testing.T) {
 	}
 	converted := convertQualityChangeRequestToV1("ws1", message)
 	require.Equal(t, "workspaces/ws1/qualityChangeRequests/cr1", converted.GetName())
+	require.Empty(t, converted.GetItems()[0].GetSuggestion(), "a coverage item has no suggestion name")
 	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, converted.GetState())
 	require.Len(t, converted.GetItems(), 1)
 	require.Len(t, converted.GetItemResults(), 1)
 	require.Equal(t, "users/7", converted.GetCreatedBy())
 	require.Equal(t, common.FormatUserUID(7), converted.GetCreatedBy())
+}
+
+// A batch cannot declare the same property and column twice, and a minimum outside
+// the declaration bounds is refused before any write.
+func TestValidateQualityChangeRequestItemsBounds(t *testing.T) {
+	t.Parallel()
+
+	service := &DataQualityService{}
+	duplicate := []*v1pb.QualityChangeRequestItem{
+		{Kind: v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+			Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, MinChecks: 1},
+		{Kind: v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+			Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, MinChecks: 2},
+	}
+	_, err := service.validateQualityChangeRequestItems(context.TODO(), "inst;db;public;orders",
+		storepb.MetaType_TABLE, nil, duplicate)
+	require.Error(t, err, "the same declaration twice is refused")
+
+	tooManyChecks := []*v1pb.QualityChangeRequestItem{{
+		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+		MinChecks: maxQualityPlanMinChecks + 1,
+	}}
+	_, err = service.validateQualityChangeRequestItems(context.TODO(), "inst;db;public;orders",
+		storepb.MetaType_TABLE, nil, tooManyChecks)
+	require.Error(t, err)
+}
+
+// The pre-validation rendering used for the idempotency lookup rejects an unknown
+// kind and trims a suggestion name the same way the stored item does.
+func TestQualityChangeRequestItemsForFingerprint(t *testing.T) {
+	t.Parallel()
+
+	items, err := qualityChangeRequestItemsForFingerprint([]*v1pb.QualityChangeRequestItem{{
+		Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
+		Suggestion: "  workspaces/ws1/qualitySuggestions/abc  ",
+	}})
+	require.NoError(t, err)
+	require.Equal(t, "workspaces/ws1/qualitySuggestions/abc", items.GetItems()[0].GetSuggestionResourceId())
+
+	_, err = qualityChangeRequestItemsForFingerprint([]*v1pb.QualityChangeRequestItem{{Kind: v1pb.QualityChangeRequestItemKind(99)}})
+	require.Error(t, err)
 }

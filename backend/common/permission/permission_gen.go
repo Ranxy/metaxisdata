@@ -64,6 +64,8 @@ const (
 	DataQualityExplain                 Permission = "metaxisdata.dataQuality.explain"
 	DataQualitySuggest                 Permission = "metaxisdata.dataQuality.suggest"
 	DataQualityContractsPublish        Permission = "metaxisdata.dataQuality.contracts.publish"
+	DataQualityPlansUpdate             Permission = "metaxisdata.dataQuality.plans.update"
+	DataQualityChangeRequestsDecide    Permission = "metaxisdata.dataQuality.changeRequests.decide"
 	DataQualityProfileRun              Permission = "metaxisdata.dataQuality.profile.run"
 	DataQualityLabelsUpdate            Permission = "metaxisdata.dataQuality.labels.update"
 	DataQualityTemplatesList           Permission = "metaxisdata.dataQuality.templates.list"
@@ -102,8 +104,6 @@ const (
 	ConnectedAppsList                  Permission = "metaxisdata.connectedApps.list"
 	ConnectedAppsRevoke                Permission = "metaxisdata.connectedApps.revoke"
 	AuditLogsSearch                    Permission = "metaxisdata.auditLogs.search"
-	DataQualityPlansUpdate             Permission = "metaxisdata.dataQuality.plans.update"
-	DataQualityChangeRequestsDecide    Permission = "metaxisdata.dataQuality.changeRequests.decide"
 )
 
 // allPermissions is the complete, authoritative list of valid permission
@@ -169,6 +169,8 @@ var allPermissions = []Permission{
 	DataQualityExplain,
 	DataQualitySuggest,
 	DataQualityContractsPublish,
+	DataQualityPlansUpdate,
+	DataQualityChangeRequestsDecide,
 	DataQualityProfileRun,
 	DataQualityLabelsUpdate,
 	DataQualityTemplatesList,
@@ -207,8 +209,6 @@ var allPermissions = []Permission{
 	ConnectedAppsList,
 	ConnectedAppsRevoke,
 	AuditLogsSearch,
-	DataQualityPlansUpdate,
-	DataQualityChangeRequestsDecide,
 }
 
 var allPermissionsMap = func() map[Permission]bool {

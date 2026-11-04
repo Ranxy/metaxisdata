@@ -383,10 +383,10 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 `quality_change_request` 是**一次批准或拒绝的批量**（一个 target、1–20 项），不是第二套判定语义：创建只记录 PROPOSED、不改变任何状态；批准时逐项走各自既有路径并回传逐项结果；拒绝记录结构化理由。权限：读复用 `rules.list`，创建复用 `rules.update`（agent 侧 `plans.update` 在 S3 接入），决策用新增的 `changeRequests.decide`；创建与决策都审计。
 
 - **item 类型（S4 已实现 2 类）**：`SUGGESTION_REF`（接受一条 PENDING 规则草案：走 `createQualityRuleFromRequest` 的 claim 路径，创建规则、必要时回滚 claim、并关闭同身份草案）与 `COVERAGE_CHANGE`（对计划声明加/改/删，合并为**一次** `SetQualityContractStaged` 写入并沿用声明 CAS）。`ADD_CHECK`/`UPDATE_EXPECTATION`/`SET_CADENCE`/`ARCHIVE_CHECK` 明确**未实现**（proto 不定义，未知类型 `InvalidArgument`）；红线动作（静默/关闭/发布/确认结构变更/改 owner/关键度）永远不是 item 类型。
-- **批准语义**：`PROPOSED → （应用每项）→ APPLIED`；任一项失败则整单停在 `APPROVED` 并保留逐项结果，重试批准只重放未成功的项（`APPLIED`/`SKIPPED` 不再执行）。逐项状态 `APPLIED`/`FAILED`/`SKIPPED`（已成立），`applied_resource_id` 记录创建的资源；不返回“整单成功/失败”。
+- **批准语义**：`PROPOSED → （应用每项）→ APPLIED`；任一项失败则整单停在 `APPROVED` 并保留逐项结果，重试批准只重放未成功的项（`APPLIED`/`SKIPPED` 不再执行）。逐项状态 `APPLIED`/`FAILED`/`SKIPPED`（已成立），`applied_resource_id` 记录创建的资源；不返回“整单成功/失败”。全部项都失败（没有任何 `APPLIED`）时允许再 `REJECT`；已有 `APPLIED` 项则不可拒绝。由批量创建的规则只带草案里的 title/description/severity/config/target：草案没有 owner/tags/dimension，因此这些规则无 owner（通知路由到 admins）、无标签、dimension 为 UNSPECIFIED，人可随后编辑。
 - **过期**：决策时 `base_version` 与当前 `published_version` 不同 → 直接置 `EXPIRED`（不 rebase、不应用任何 item）。创建不要求 base 是最新（允许基于旧读取提出），但决策一定校验。
 - **critical**：`intent.criticality=CRITICAL` 的目标只接受**单项**变更单（`InvalidArgument`）；批量 20 项会让人没读清就批准。
-- **幂等**：`(target_guid, target_type, base_version, source, request_fingerprint)` 唯一，`request_fingerprint` 是 items 的确定性编码 + base；重试创建返回既有单。决策写入用「状态 + 逐项结果」CAS，双击不会重复应用。
+- **幂等**：`(target_guid, target_type, base_version, source, request_fingerprint)` 唯一，`request_fingerprint` 是 items 的确定性编码 + base；重试创建**先按指纹查**再校验/写入，因此即使其中的建议已被决策，也返回既有单而不是报错。决策写入用「状态 + 逐项结果」CAS，双击不会重复应用。
 - **拒绝理由 taxonomy**（写入该行，作为 P5 决策记忆的第一条信号）：`NOT_IMPORTANT`/`TOO_TIGHT`/`NOISE`/`COVERED_UPSTREAM`/`WRONG_COLUMN`/`DEFER`/`OTHER` + 备注；拒绝必须至少给一个理由码。
 - **UI**：本切片只有 backend；列表/详情/决策界面在 S4b 接入（逐项 diff 展开后才允许批量批准，与 D-94 的批量编辑教训一致）。
 

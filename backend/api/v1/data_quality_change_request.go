@@ -57,6 +57,23 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
+	// A retry of the same batch returns the request that already exists, even after
+	// its suggestions were decided: look up the fingerprint before validating, or a
+	// retry would be refused by the now-decided proposal.
+	preliminary, err := qualityChangeRequestItemsForFingerprint(items)
+	if err != nil {
+		return nil, err
+	}
+	fingerprint := qualityChangeRequestFingerprint(preliminary, req.Msg.GetBaseVersion())
+	existing, err := s.store.GetQualityChangeRequestByFingerprint(ctx, targetGUID, metaType,
+		req.Msg.GetBaseVersion(),
+		storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return connect.NewResponse(convertQualityChangeRequestToV1(workspaceID, existing)), nil
+	}
 	storedItems, err := s.validateQualityChangeRequestItems(ctx, targetGUID, metaType, contract, items)
 	if err != nil {
 		return nil, err
@@ -78,7 +95,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 		BaseVersion:        req.Msg.GetBaseVersion(),
 		Source:             storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_HUMAN,
 		Items:              storedItems,
-		RequestFingerprint: qualityChangeRequestFingerprint(storedItems, req.Msg.GetBaseVersion()),
+		RequestFingerprint: fingerprint,
 		CreatedBy:          createdBy,
 	})
 	if err != nil {
@@ -144,7 +161,7 @@ func (s *DataQualityService) ListQualityChangeRequests(ctx context.Context, req 
 	}
 	response := &v1pb.ListQualityChangeRequestsResponse{NextPageToken: nextPageToken}
 	for _, message := range messages {
-		response.ChangeRequests = append(response.ChangeRequests, convertQualityChangeRequestToV1(workspaceID, message))
+		response.QualityChangeRequests = append(response.QualityChangeRequests, convertQualityChangeRequestToV1(workspaceID, message))
 	}
 	return connect.NewResponse(response), nil
 }
@@ -181,7 +198,11 @@ func (s *DataQualityService) DecideQualityChangeRequest(ctx context.Context, req
 	}
 	decidedBy := principalIDPointer(currentUserID(ctx))
 	if decision == v1pb.DecideQualityChangeRequestRequest_DECISION_REJECT {
-		if message.State != storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED {
+		// A request whose items all failed has nothing applied yet, so it can still be
+		// refused; one with applied items cannot.
+		if message.State != storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED &&
+			(message.State != storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPROVED ||
+				qualityChangeRequestHasAppliedItem(message.ItemResults)) {
 			return nil, connect.NewError(connect.CodeAborted,
 				errors.New("a request whose items already applied cannot be rejected"))
 		}
@@ -211,7 +232,7 @@ func (s *DataQualityService) DecideQualityChangeRequest(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	if contract == nil || message.BaseVersion != contract.PublishedVersion {
+	if message.BaseVersion != qualityContractPublishedVersion(contract) {
 		expired, err := s.store.DecideQualityChangeRequest(ctx, &store.DecisionQualityChangeRequestInput{
 			ResourceID:          resourceID,
 			ExpectedState:       message.State,
@@ -329,6 +350,12 @@ func (s *DataQualityService) applyQualityChangeRequestCoverage(ctx context.Conte
 	if contract == nil {
 		return fail("the target has no contract to declare coverage on"), nil
 	}
+	// The publish may have landed between the decision's staleness check and this
+	// fresh read. Applying on top of a newer version would silently rebase the change
+	// the EXPIRED rule exists to prevent, and it would regress the declaration's base.
+	if message.BaseVersion != qualityContractPublishedVersion(contract) {
+		return fail("the published version changed; the request is stale"), nil
+	}
 	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &message.TargetGUID})
 	if err != nil {
 		return nil, err
@@ -394,6 +421,9 @@ func (s *DataQualityService) applyQualityChangeRequestCoverage(ctx context.Conte
 	if !applied {
 		return results, nil
 	}
+	if len(working) > maxQualityPlanCoverage {
+		return fail("the plan declaration would exceed its size limit"), nil
+	}
 	if err := dataquality.ValidatePlanCoverage(ctx, s.store, message.TargetGUID, message.TargetType, working); err != nil {
 		return fail(qualityChangeRequestDetail(err)), nil
 	}
@@ -442,8 +472,15 @@ func (s *DataQualityService) applyQualityChangeRequestSuggestion(ctx context.Con
 		return result
 	}
 	if suggestion.Status != storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_PENDING {
-		result.Status = storepb.QualityChangeRequestItemResult_STATUS_SKIPPED
-		result.Detail = "the suggestion is already decided"
+		// Only an accepted proposal means the change is already true. A rejected or
+		// superseded one was never applied, so the item failed.
+		if suggestion.Status == storepb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED {
+			result.Status = storepb.QualityChangeRequestItemResult_STATUS_SKIPPED
+			result.Detail = "the suggestion is already accepted"
+			return result
+		}
+		result.Status = storepb.QualityChangeRequestItemResult_STATUS_FAILED
+		result.Detail = "the suggestion was decided before the request was approved"
 		return result
 	}
 	rule, err := qualityRuleFromDraft(suggestion)
@@ -629,10 +666,52 @@ func qualityChangeRequestDecisionError(err error) error {
 	return err
 }
 
-// qualityChangeRequestDetail renders an item failure for a reviewer. The message is
-// the operation's error; it carries no payload.
+// qualityChangeRequestDetail renders an item failure for a reviewer. API errors keep
+// their message; anything else (a store or database error) becomes a fixed detail so
+// internal text never lands in the durable item_results payload.
 func qualityChangeRequestDetail(err error) string {
-	return err.Error()
+	var connectErr *connect.Error
+	if errors.As(err, &connectErr) {
+		return connectErr.Message()
+	}
+	return "the item could not be applied"
+}
+
+// qualityChangeRequestHasAppliedItem reports whether any item already applied, which
+// is what makes approving irreversible.
+func qualityChangeRequestHasAppliedItem(results *storepb.QualityChangeRequestItemResults) bool {
+	for _, result := range results.GetResults() {
+		if result.GetStatus() == storepb.QualityChangeRequestItemResult_STATUS_APPLIED {
+			return true
+		}
+	}
+	return false
+}
+
+// qualityChangeRequestItemsForFingerprint renders the items enough to compute the
+// idempotency fingerprint before the expensive per-item validation.
+func qualityChangeRequestItemsForFingerprint(items []*v1pb.QualityChangeRequestItem) (*storepb.QualityChangeRequestItems, error) {
+	stored := &storepb.QualityChangeRequestItems{Items: make([]*storepb.QualityChangeRequestItem, 0, len(items))}
+	for _, item := range items {
+		switch item.GetKind() {
+		case v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF:
+			stored.Items = append(stored.Items, &storepb.QualityChangeRequestItem{
+				Kind:                 storepb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
+				SuggestionResourceId: strings.TrimSpace(item.GetSuggestion()),
+			})
+		case v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE:
+			stored.Items = append(stored.Items, &storepb.QualityChangeRequestItem{
+				Kind:      storepb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+				Property:  storepb.QualityCoverageProperty(item.GetProperty()),
+				Column:    strings.TrimSpace(item.GetColumn()),
+				MinChecks: item.GetMinChecks(),
+				Remove:    item.GetRemove(),
+			})
+		default:
+			return nil, connectErrorInvalid("unknown change request item kind %d", item.GetKind())
+		}
+	}
+	return stored, nil
 }
 
 // qualitySuggestionResourceIDFromName extracts a suggestion id from a resource name.
@@ -664,14 +743,19 @@ func convertQualityChangeRequestToV1(workspaceID string, message *store.QualityC
 		converted.DecidedAt = timestamppb.New(*message.DecidedAt)
 	}
 	for _, item := range message.Items.GetItems() {
-		converted.Items = append(converted.Items, &v1pb.QualityChangeRequestItem{
-			Kind:       v1pb.QualityChangeRequestItemKind(item.GetKind()),
-			Suggestion: formatQualitySuggestionName(workspaceID, item.GetSuggestionResourceId()),
-			Property:   v1pb.QualityCoverageProperty(item.GetProperty()),
-			Column:     item.GetColumn(),
-			MinChecks:  item.GetMinChecks(),
-			Remove:     item.GetRemove(),
-		})
+		rendered := &v1pb.QualityChangeRequestItem{
+			Kind:      v1pb.QualityChangeRequestItemKind(item.GetKind()),
+			Property:  v1pb.QualityCoverageProperty(item.GetProperty()),
+			Column:    item.GetColumn(),
+			MinChecks: item.GetMinChecks(),
+			Remove:    item.GetRemove(),
+		}
+		// The suggestion field is SUGGESTION_REF-only; a coverage item must not render
+		// a bogus empty suggestion name.
+		if resourceID := item.GetSuggestionResourceId(); resourceID != "" {
+			rendered.Suggestion = formatQualitySuggestionName(workspaceID, resourceID)
+		}
+		converted.Items = append(converted.Items, rendered)
 	}
 	for _, result := range message.ItemResults.GetResults() {
 		converted.ItemResults = append(converted.ItemResults, &v1pb.QualityChangeRequestItemResult{

@@ -1396,7 +1396,7 @@ CREATE TABLE IF NOT EXISTS quality_change_request (
     -- Stored as QualityChangeRequestItemResults (proto/store/store/data_quality.proto)
     item_results JSONB NOT NULL DEFAULT '{}',
     request_fingerprint TEXT NOT NULL DEFAULT '',
-    rationale_codes JSONB NOT NULL DEFAULT '[]',
+    rationale_codes JSONB NOT NULL DEFAULT '{}',
     decision_note TEXT NOT NULL DEFAULT '',
     created_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     decided_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
@@ -1415,6 +1415,7 @@ CREATE INDEX IF NOT EXISTS idx_quality_change_request_state
 COMMENT ON TABLE quality_change_request IS 'Approve-or-reject batches of typed quality changes with per-item results';
 COMMENT ON COLUMN quality_change_request.items IS 'Stored as QualityChangeRequestItems (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_change_request.item_results IS 'Stored as QualityChangeRequestItemResults (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_change_request.rationale_codes IS 'Stored as QualityChangeRejectionReasons (proto/store/store/data_quality.proto)';
 ALTER SEQUENCE quality_change_request_id_seq RESTART WITH 101;
 
 

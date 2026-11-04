@@ -4070,6 +4070,21 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 	require.Equal(t, int32(1), request.GetBaseVersion())
 	require.Len(t, request.GetItems(), 2)
 
+	// Creating the same batch again returns the same request instead of a second one.
+	duplicateCreate, err := create([]*v1pb.QualityChangeRequestItem{
+		{
+			Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
+			Suggestion: suggestionName,
+		},
+		{
+			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
+			MinChecks: 1,
+		},
+	}, 1)
+	require.NoError(t, err)
+	require.Equal(t, request.GetName(), duplicateCreate.GetName(), "a retry returns the existing request")
+
 	// Reading it back by name is the review surface.
 	read, err := fixture.dataQuality.GetQualityChangeRequest(fixture.ctx,
 		withToken(fixture.env.AdminToken(), &v1pb.GetQualityChangeRequestRequest{Name: request.GetName()}))
@@ -4134,6 +4149,18 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 	}, refused.GetRejectionReasons())
 	_, err = decide(rejected.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
 	require.Error(t, err, "a decided request cannot be decided again")
+
+	// A rejection without a taxonomy reason is refused: the structured reason is the
+	// part later decisions learn from.
+	noReason, err := create([]*v1pb.QualityChangeRequestItem{{
+		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+		MinChecks: 1,
+	}}, 2)
+	require.NoError(t, err)
+	_, err = decide(noReason.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_REJECT)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 	// A critical target decides one item at a time: a batch would hide changes from
 	// the approver.

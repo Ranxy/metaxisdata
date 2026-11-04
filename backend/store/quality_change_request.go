@@ -293,3 +293,23 @@ func (find *FindQualityChangeRequestMessage) offsetOr(fallback int) int {
 	}
 	return fallback
 }
+
+// GetQualityChangeRequestByFingerprint reads the request a create retry would hit:
+// the idempotency key (target, type, base version, source, fingerprint). A nil
+// message means no request was recorded for that batch.
+func (s *Store) GetQualityChangeRequestByFingerprint(ctx context.Context, targetGUID string, targetType storepb.MetaType, baseVersion int32, source storepb.QualityChangeRequestSource, fingerprint string) (*QualityChangeRequestMessage, error) {
+	if targetGUID == "" || fingerprint == "" {
+		return nil, nil
+	}
+	message, err := scanQualityChangeRequest(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityChangeRequestColumns+` FROM quality_change_request
+			WHERE target_guid = $1 AND target_type = $2 AND base_version = $3 AND source = $4 AND request_fingerprint = $5`,
+		targetGUID, int16(targetType), baseVersion, int16(source), fingerprint))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read the quality change request by fingerprint")
+	}
+	return message, nil
+}

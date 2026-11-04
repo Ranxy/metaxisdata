@@ -3935,8 +3935,9 @@ message CreateQualityChangeRequestRequest {
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
   string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
   MetaType meta_type = 3;
-  // The newest published version the request is written against.
-  int32 base_version = 4;
+  // The newest published version the request is written against. Required, but 0
+  // is a valid value for a target that has never been published.
+  int32 base_version = 4 [(google.api.field_behavior) = REQUIRED];
   // At most 20 items.
   repeated QualityChangeRequestItem items = 5 [(google.api.field_behavior) = REQUIRED];
 }
@@ -3956,7 +3957,7 @@ message ListQualityChangeRequestsRequest {
 }
 
 message ListQualityChangeRequestsResponse {
-  repeated QualityChangeRequest change_requests = 1;
+  repeated QualityChangeRequest quality_change_requests = 1;
   string next_page_token = 2;
 }
 

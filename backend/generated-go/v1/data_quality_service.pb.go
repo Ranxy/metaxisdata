@@ -16440,7 +16440,8 @@ type CreateQualityChangeRequestRequest struct {
 	Parent     string   `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	TargetGuid string   `protobuf:"bytes,2,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
 	MetaType   MetaType `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
-	// The newest published version the request is written against.
+	// The newest published version the request is written against. Required, but 0
+	// is a valid value for a target that has never been published.
 	BaseVersion int32 `protobuf:"varint,4,opt,name=base_version,json=baseVersion,proto3" json:"base_version,omitempty"`
 	// At most 20 items.
 	Items         []*QualityChangeRequestItem `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
@@ -16636,11 +16637,11 @@ func (x *ListQualityChangeRequestsRequest) GetPageToken() string {
 }
 
 type ListQualityChangeRequestsResponse struct {
-	state          protoimpl.MessageState  `protogen:"open.v1"`
-	ChangeRequests []*QualityChangeRequest `protobuf:"bytes,1,rep,name=change_requests,json=changeRequests,proto3" json:"change_requests,omitempty"`
-	NextPageToken  string                  `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state                 protoimpl.MessageState  `protogen:"open.v1"`
+	QualityChangeRequests []*QualityChangeRequest `protobuf:"bytes,1,rep,name=quality_change_requests,json=qualityChangeRequests,proto3" json:"quality_change_requests,omitempty"`
+	NextPageToken         string                  `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ListQualityChangeRequestsResponse) Reset() {
@@ -16673,9 +16674,9 @@ func (*ListQualityChangeRequestsResponse) Descriptor() ([]byte, []int) {
 	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{161}
 }
 
-func (x *ListQualityChangeRequestsResponse) GetChangeRequests() []*QualityChangeRequest {
+func (x *ListQualityChangeRequestsResponse) GetQualityChangeRequests() []*QualityChangeRequest {
 	if x != nil {
-		return x.ChangeRequests
+		return x.QualityChangeRequests
 	}
 	return nil
 }
@@ -20568,13 +20569,13 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\n" +
 	"decided_by\x18\f \x01(\tR\tdecidedBy\x129\n" +
 	"\n" +
-	"decided_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\"\x85\x02\n" +
+	"decided_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\"\x8a\x02\n" +
 	"!CreateQualityChangeRequestRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12$\n" +
 	"\vtarget_guid\x18\x02 \x01(\tB\x03\xe0A\x02R\n" +
 	"targetGuid\x125\n" +
-	"\tmeta_type\x18\x03 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12!\n" +
-	"\fbase_version\x18\x04 \x01(\x05R\vbaseVersion\x12C\n" +
+	"\tmeta_type\x18\x03 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12&\n" +
+	"\fbase_version\x18\x04 \x01(\x05B\x03\xe0A\x02R\vbaseVersion\x12C\n" +
 	"\x05items\x18\x05 \x03(\v2(.metaxisdata.v1.QualityChangeRequestItemB\x03\xe0A\x02R\x05items\"9\n" +
 	"\x1eGetQualityChangeRequestRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"\xdd\x01\n" +
@@ -20585,9 +20586,9 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x05state\x18\x03 \x01(\x0e2).metaxisdata.v1.QualityChangeRequestStateR\x05state\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\tR\tpageToken\"\x9a\x01\n" +
-	"!ListQualityChangeRequestsResponse\x12M\n" +
-	"\x0fchange_requests\x18\x01 \x03(\v2$.metaxisdata.v1.QualityChangeRequestR\x0echangeRequests\x12&\n" +
+	"page_token\x18\x05 \x01(\tR\tpageToken\"\xa9\x01\n" +
+	"!ListQualityChangeRequestsResponse\x12\\\n" +
+	"\x17quality_change_requests\x18\x01 \x03(\v2$.metaxisdata.v1.QualityChangeRequestR\x15qualityChangeRequests\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xea\x02\n" +
 	"!DecideQualityChangeRequestRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12[\n" +
@@ -21738,7 +21739,7 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	241, // 291: metaxisdata.v1.CreateQualityChangeRequestRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	199, // 292: metaxisdata.v1.CreateQualityChangeRequestRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
 	36,  // 293: metaxisdata.v1.ListQualityChangeRequestsRequest.state:type_name -> metaxisdata.v1.QualityChangeRequestState
-	201, // 294: metaxisdata.v1.ListQualityChangeRequestsResponse.change_requests:type_name -> metaxisdata.v1.QualityChangeRequest
+	201, // 294: metaxisdata.v1.ListQualityChangeRequestsResponse.quality_change_requests:type_name -> metaxisdata.v1.QualityChangeRequest
 	43,  // 295: metaxisdata.v1.DecideQualityChangeRequestRequest.decision:type_name -> metaxisdata.v1.DecideQualityChangeRequestRequest.Decision
 	39,  // 296: metaxisdata.v1.DecideQualityChangeRequestRequest.rejection_reasons:type_name -> metaxisdata.v1.QualityChangeRejectionReason
 	45,  // 297: metaxisdata.v1.QualityCoverageGap.target:type_name -> metaxisdata.v1.QualityTarget

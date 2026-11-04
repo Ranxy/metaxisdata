@@ -4573,7 +4573,7 @@ they are returned, so a wide text column cannot bloat the response.
 | parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
 | target_guid | [string](#string) |  |  |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
-| base_version | [int32](#int32) |  | The newest published version the request is written against. |
+| base_version | [int32](#int32) |  | The newest published version the request is written against. Required, but 0 is a valid value for a target that has never been published. |
 | items | [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem) | repeated | At most 20 items. |
 
 
@@ -5517,7 +5517,7 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| change_requests | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | repeated |  |
+| quality_change_requests | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 

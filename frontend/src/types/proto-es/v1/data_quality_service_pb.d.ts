@@ -7663,7 +7663,8 @@ export declare type CreateQualityChangeRequestRequest = Message<"metaxisdata.v1.
   metaType: MetaType;
 
   /**
-   * The newest published version the request is written against.
+   * The newest published version the request is written against. Required, but 0
+   * is a valid value for a target that has never been published.
    *
    * @generated from field: int32 base_version = 4;
    */
@@ -7744,9 +7745,9 @@ export declare const ListQualityChangeRequestsRequestSchema: GenMessage<ListQual
  */
 export declare type ListQualityChangeRequestsResponse = Message<"metaxisdata.v1.ListQualityChangeRequestsResponse"> & {
   /**
-   * @generated from field: repeated metaxisdata.v1.QualityChangeRequest change_requests = 1;
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRequest quality_change_requests = 1;
    */
-  changeRequests: QualityChangeRequest[];
+  qualityChangeRequests: QualityChangeRequest[];
 
   /**
    * @generated from field: string next_page_token = 2;

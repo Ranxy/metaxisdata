@@ -9417,6 +9417,7 @@ components:
             required:
                 - parent
                 - targetGuid
+                - baseVersion
                 - items
             type: object
             properties:
@@ -9449,7 +9450,9 @@ components:
                     format: enum
                 baseVersion:
                     type: integer
-                    description: The newest published version the request is written against.
+                    description: |-
+                        The newest published version the request is written against. Required, but 0
+                         is a valid value for a target that has never been published.
                     format: int32
                 items:
                     type: array
@@ -11786,7 +11789,7 @@ components:
         ListQualityChangeRequestsResponse:
             type: object
             properties:
-                changeRequests:
+                qualityChangeRequests:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityChangeRequest'

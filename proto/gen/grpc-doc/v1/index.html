@@ -13745,7 +13745,8 @@ replaced. The raw value is never returned. </p></td>
                   <td>base_version</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The newest published version the request is written against. </p></td>
+                  <td><p>The newest published version the request is written against. Required, but 0
+is a valid value for a target that has never been published. </p></td>
                 </tr>
               
                 <tr>
@@ -15996,7 +15997,7 @@ to retrieve the subsequent page. </p></td>
             <tbody>
               
                 <tr>
-                  <td>change_requests</td>
+                  <td>quality_change_requests</td>
                   <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
