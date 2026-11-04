@@ -675,6 +675,47 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Create an agent principal and return its bearer token once. The agent is an
+  // independent principal whose only workspace role is the quality agent role; its
+  // token is a normal access token for that principal, so disabling the agent makes
+  // every token it issued unusable. Administrator only.
+  rpc CreateQualityAgent(CreateQualityAgentRequest) returns (CreateQualityAgentResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityAgents"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+
+  // List the workspace's agent principals, without tokens.
+  rpc ListQualityAgents(ListQualityAgentsRequest) returns (ListQualityAgentsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgents"};
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+
+  // Disable an agent principal. Its tokens stop authenticating immediately; the
+  // agent row stays for the audit trail.
+  rpc DisableQualityAgent(DisableQualityAgentRequest) returns (QualityAgent) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:disable"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+
+  // Rotate an agent's bearer token: mint a new one and invalidate every token
+  // minted before this call. The token is returned once.
+  rpc RotateQualityAgentToken(RotateQualityAgentTokenRequest) returns (RotateQualityAgentTokenResponse) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:rotateToken"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+
   // Approve or reject a change request. Approving applies each item through its
   // existing path and returns a result per item; rejecting records the structured
   // reasons. A stale base version expires the request instead of rebasing it.
@@ -3977,6 +4018,61 @@ message DecideQualityChangeRequestRequest {
   // Why the request was rejected; required for REJECT.
   repeated QualityChangeRejectionReason rejection_reasons = 3;
   string decision_note = 4;
+}
+
+// QualityAgent is one agent principal: an independent identity an administrator
+// creates for autonomous quality work. Its token is issued once, and disabling the
+// agent ends every token it holds.
+message QualityAgent {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1;
+  string display_name = 2;
+  string description = 3;
+  bool enabled = 4;
+  // Format: users/{user}. Empty when unknown.
+  string created_by = 5;
+  google.protobuf.Timestamp create_time = 6;
+}
+
+message CreateQualityAgentRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string display_name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+}
+
+message CreateQualityAgentResponse {
+  QualityAgent agent = 1;
+  // The bearer token, returned exactly once. It authenticates as the agent
+  // principal and cannot be retrieved again; rotate it if lost.
+  string token = 2;
+}
+
+message ListQualityAgentsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListQualityAgentsResponse {
+  repeated QualityAgent quality_agents = 1;
+  string next_page_token = 2;
+}
+
+message DisableQualityAgentRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RotateQualityAgentTokenRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RotateQualityAgentTokenResponse {
+  QualityAgent agent = 1;
+  string token = 2;
 }
 
 // QualityCoverageGap is one required property a target's plan does not satisfy.

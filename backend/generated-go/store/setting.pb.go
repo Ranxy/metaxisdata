@@ -590,9 +590,13 @@ type DataQualitySetting struct {
 	WeeklyDigest             *QualityDigestSetting  `protobuf:"bytes,12,opt,name=weekly_digest,json=weeklyDigest,proto3" json:"weekly_digest,omitempty"`
 	// IANA time zone the time variables of check filters and custom SQL are
 	// resolved in, for example "Asia/Shanghai". Empty means UTC.
-	TimeZone      string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TimeZone string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
+	// Whether the workspace's agent principals may write plan declarations and
+	// proposed change requests. Off by default: the kill switch returns the
+	// workspace to human-only edits, and the agent still reads.
+	AgentAutonomyEnabled bool `protobuf:"varint,14,opt,name=agent_autonomy_enabled,json=agentAutonomyEnabled,proto3" json:"agent_autonomy_enabled,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -714,6 +718,13 @@ func (x *DataQualitySetting) GetTimeZone() string {
 		return x.TimeZone
 	}
 	return ""
+}
+
+func (x *DataQualitySetting) GetAgentAutonomyEnabled() bool {
+	if x != nil {
+		return x.AgentAutonomyEnabled
+	}
+	return false
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest
@@ -1239,7 +1250,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf1\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa7\x06\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1254,7 +1265,8 @@ const file_store_setting_proto_rawDesc = "" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
 	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12L\n" +
 	"\rweekly_digest\x18\f \x01(\v2'.metaxisdata.store.QualityDigestSettingR\fweeklyDigest\x12\x1b\n" +
-	"\ttime_zone\x18\r \x01(\tR\btimeZone\"\x9e\x01\n" +
+	"\ttime_zone\x18\r \x01(\tR\btimeZone\x124\n" +
+	"\x16agent_autonomy_enabled\x18\x0e \x01(\bR\x14agentAutonomyEnabled\"\x9e\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12<\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x1c.metaxisdata.store.DayOfWeekR\tdayOfWeek\x12\x12\n" +

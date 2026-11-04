@@ -21,6 +21,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
+	"github.com/Ranxy/metaxisdata/backend/config"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -106,6 +107,10 @@ type DataQualityService struct {
 	// metrics records execution, query and LLM outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
+	// secret and profile let the agent-management RPCs mint a bearer token for an
+	// agent principal with the same signing key the auth interceptor verifies.
+	secret  string
+	profile *config.Profile
 	// exportSlots bounds how many bulk exports one process streams at once. An
 	// export holds a metadata-database connection per page and can stream for
 	// minutes, so an unbounded fan-out from one member would starve the rest of
@@ -117,7 +122,7 @@ type DataQualityService struct {
 // NewDataQualityService creates the service. executionScheduler may be nil.
 // suggester and quota are created once by the server and shared with the
 // background suggestion runner, so a job spends the same budget a request does.
-func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, suggester *dataquality.Suggester, quota *dataquality.LLMQuota, stateCfg *state.State, m *metrics.Metrics) *DataQualityService {
+func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, executionScheduler QualityExecutionScheduler, suggester *dataquality.Suggester, quota *dataquality.LLMQuota, stateCfg *state.State, m *metrics.Metrics, secret string, profile *config.Profile) *DataQualityService {
 	return &DataQualityService{
 		store:              s,
 		dbFactory:          dbFactory,
@@ -127,6 +132,8 @@ func NewDataQualityService(s *store.Store, dbFactory *dbfactory.DBFactory, execu
 		stateCfg:           stateCfg,
 		metrics:            m,
 		exportSlots:        make(chan struct{}, qualityExportConcurrency),
+		secret:             secret,
+		profile:            profile,
 	}
 }
 

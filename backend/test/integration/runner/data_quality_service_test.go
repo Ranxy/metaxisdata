@@ -4199,3 +4199,92 @@ func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
+
+// TestDataQualityAgentRealServerIntegration covers the agent principal: an
+// administrator creates it and gets a bearer token once, the token authenticates as
+// an independent principal whose role can read quality plans but not administration,
+// rotation invalidates the old token, disabling the agent ends it, and the workspace
+// kill-switch setting round-trips.
+func TestDataQualityAgentRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+	adminToken := fixture.env.AdminToken()
+
+	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:      "workspaces/-",
+			DisplayName: "quality agent",
+			Description: "proposes plan declarations",
+		}))
+	require.NoError(t, err)
+	require.NotEmpty(t, created.Msg.GetToken(), "the token is returned once")
+	require.True(t, created.Msg.GetAgent().GetEnabled())
+	require.Equal(t, "quality agent", created.Msg.GetAgent().GetDisplayName())
+	require.NotEmpty(t, created.Msg.GetAgent().GetName())
+
+	// The token is a real principal: the same HTTP endpoint accepts it, and the
+	// agent role can read quality plans.
+	agentClient := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 10 * time.Second}, fixture.env.BaseURL)
+	_, err = agentClient.ListQualityPlans(fixture.ctx,
+		withToken(created.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+
+	// Administration stays administrator-only: the agent holds no settings write.
+	_, err = agentClient.ListQualityAgents(fixture.ctx,
+		withToken(created.Msg.GetToken(), &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-"}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// Rotation mints a new token and ends the old one.
+	rotated, err := fixture.dataQuality.RotateQualityAgentToken(fixture.ctx,
+		withToken(adminToken, &v1pb.RotateQualityAgentTokenRequest{Name: created.Msg.GetAgent().GetName()}))
+	require.NoError(t, err)
+	require.NotEmpty(t, rotated.Msg.GetToken())
+	_, err = agentClient.ListQualityPlans(fixture.ctx,
+		withToken(created.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
+	require.Error(t, err, "the old token is invalidated by a rotation")
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+	_, err = agentClient.ListQualityPlans(fixture.ctx,
+		withToken(rotated.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err, "the rotated token authenticates")
+
+	// Disabling the agent ends every token; the row stays for the audit trail.
+	disabled, err := fixture.dataQuality.DisableQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.DisableQualityAgentRequest{Name: created.Msg.GetAgent().GetName()}))
+	require.NoError(t, err)
+	require.False(t, disabled.Msg.GetEnabled())
+	_, err = agentClient.ListQualityPlans(fixture.ctx,
+		withToken(rotated.Msg.GetToken(), &v1pb.ListQualityPlansRequest{Parent: "workspaces/-"}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+
+	listed, err := fixture.dataQuality.ListQualityAgents(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityAgentsRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.Len(t, listed.Msg.GetQualityAgents(), 1)
+	require.False(t, listed.Msg.GetQualityAgents()[0].GetEnabled())
+
+	// The workspace kill switch is a setting: off by default, writable by an
+	// administrator.
+	settings, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	require.False(t, settings.Msg.GetDataQuality().GetAgentAutonomyEnabled(), "agent writes are off by default")
+	_, err = fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting: &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
+				AgentAutonomyEnabled: true,
+			}},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(), withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	})
+	settings, err = fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	require.True(t, settings.Msg.GetDataQuality().GetAgentAutonomyEnabled())
+}

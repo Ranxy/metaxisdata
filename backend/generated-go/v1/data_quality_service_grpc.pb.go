@@ -84,6 +84,10 @@ const (
 	DataQualityService_CreateQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
 	DataQualityService_GetQualityChangeRequest_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
 	DataQualityService_ListQualityChangeRequests_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityChangeRequests"
+	DataQualityService_CreateQualityAgent_FullMethodName                 = "/metaxisdata.v1.DataQualityService/CreateQualityAgent"
+	DataQualityService_ListQualityAgents_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityAgents"
+	DataQualityService_DisableQualityAgent_FullMethodName                = "/metaxisdata.v1.DataQualityService/DisableQualityAgent"
+	DataQualityService_RotateQualityAgentToken_FullMethodName            = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
 	DataQualityService_DecideQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
 	DataQualityService_ListQualityContractRevisions_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
 	DataQualityService_GetQualityContractRevision_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
@@ -365,6 +369,19 @@ type DataQualityServiceClient interface {
 	GetQualityChangeRequest(ctx context.Context, in *GetQualityChangeRequestRequest, opts ...grpc.CallOption) (*QualityChangeRequest, error)
 	// List change requests, newest first.
 	ListQualityChangeRequests(ctx context.Context, in *ListQualityChangeRequestsRequest, opts ...grpc.CallOption) (*ListQualityChangeRequestsResponse, error)
+	// Create an agent principal and return its bearer token once. The agent is an
+	// independent principal whose only workspace role is the quality agent role; its
+	// token is a normal access token for that principal, so disabling the agent makes
+	// every token it issued unusable. Administrator only.
+	CreateQualityAgent(ctx context.Context, in *CreateQualityAgentRequest, opts ...grpc.CallOption) (*CreateQualityAgentResponse, error)
+	// List the workspace's agent principals, without tokens.
+	ListQualityAgents(ctx context.Context, in *ListQualityAgentsRequest, opts ...grpc.CallOption) (*ListQualityAgentsResponse, error)
+	// Disable an agent principal. Its tokens stop authenticating immediately; the
+	// agent row stays for the audit trail.
+	DisableQualityAgent(ctx context.Context, in *DisableQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
+	// Rotate an agent's bearer token: mint a new one and invalidate every token
+	// minted before this call. The token is returned once.
+	RotateQualityAgentToken(ctx context.Context, in *RotateQualityAgentTokenRequest, opts ...grpc.CallOption) (*RotateQualityAgentTokenResponse, error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -1064,6 +1081,46 @@ func (c *dataQualityServiceClient) ListQualityChangeRequests(ctx context.Context
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) CreateQualityAgent(ctx context.Context, in *CreateQualityAgentRequest, opts ...grpc.CallOption) (*CreateQualityAgentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateQualityAgentResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgents(ctx context.Context, in *ListQualityAgentsRequest, opts ...grpc.CallOption) (*ListQualityAgentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) DisableQualityAgent(ctx context.Context, in *DisableQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgent)
+	err := c.cc.Invoke(ctx, DataQualityService_DisableQualityAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) RotateQualityAgentToken(ctx context.Context, in *RotateQualityAgentTokenRequest, opts ...grpc.CallOption) (*RotateQualityAgentTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RotateQualityAgentTokenResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_RotateQualityAgentToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) DecideQualityChangeRequest(ctx context.Context, in *DecideQualityChangeRequestRequest, opts ...grpc.CallOption) (*QualityChangeRequest, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityChangeRequest)
@@ -1379,6 +1436,19 @@ type DataQualityServiceServer interface {
 	GetQualityChangeRequest(context.Context, *GetQualityChangeRequestRequest) (*QualityChangeRequest, error)
 	// List change requests, newest first.
 	ListQualityChangeRequests(context.Context, *ListQualityChangeRequestsRequest) (*ListQualityChangeRequestsResponse, error)
+	// Create an agent principal and return its bearer token once. The agent is an
+	// independent principal whose only workspace role is the quality agent role; its
+	// token is a normal access token for that principal, so disabling the agent makes
+	// every token it issued unusable. Administrator only.
+	CreateQualityAgent(context.Context, *CreateQualityAgentRequest) (*CreateQualityAgentResponse, error)
+	// List the workspace's agent principals, without tokens.
+	ListQualityAgents(context.Context, *ListQualityAgentsRequest) (*ListQualityAgentsResponse, error)
+	// Disable an agent principal. Its tokens stop authenticating immediately; the
+	// agent row stays for the audit trail.
+	DisableQualityAgent(context.Context, *DisableQualityAgentRequest) (*QualityAgent, error)
+	// Rotate an agent's bearer token: mint a new one and invalidate every token
+	// minted before this call. The token is returned once.
+	RotateQualityAgentToken(context.Context, *RotateQualityAgentTokenRequest) (*RotateQualityAgentTokenResponse, error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -1593,6 +1663,18 @@ func (UnimplementedDataQualityServiceServer) GetQualityChangeRequest(context.Con
 }
 func (UnimplementedDataQualityServiceServer) ListQualityChangeRequests(context.Context, *ListQualityChangeRequestsRequest) (*ListQualityChangeRequestsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityChangeRequests not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualityAgent(context.Context, *CreateQualityAgentRequest) (*CreateQualityAgentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualityAgent not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgents(context.Context, *ListQualityAgentsRequest) (*ListQualityAgentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgents not implemented")
+}
+func (UnimplementedDataQualityServiceServer) DisableQualityAgent(context.Context, *DisableQualityAgentRequest) (*QualityAgent, error) {
+	return nil, status.Error(codes.Unimplemented, "method DisableQualityAgent not implemented")
+}
+func (UnimplementedDataQualityServiceServer) RotateQualityAgentToken(context.Context, *RotateQualityAgentTokenRequest) (*RotateQualityAgentTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RotateQualityAgentToken not implemented")
 }
 func (UnimplementedDataQualityServiceServer) DecideQualityChangeRequest(context.Context, *DecideQualityChangeRequestRequest) (*QualityChangeRequest, error) {
 	return nil, status.Error(codes.Unimplemented, "method DecideQualityChangeRequest not implemented")
@@ -2751,6 +2833,78 @@ func _DataQualityService_ListQualityChangeRequests_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_CreateQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualityAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualityAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualityAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualityAgent(ctx, req.(*CreateQualityAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgents(ctx, req.(*ListQualityAgentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_DisableQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DisableQualityAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).DisableQualityAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_DisableQualityAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).DisableQualityAgent(ctx, req.(*DisableQualityAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_RotateQualityAgentToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RotateQualityAgentTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).RotateQualityAgentToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_RotateQualityAgentToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).RotateQualityAgentToken(ctx, req.(*RotateQualityAgentTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_DecideQualityChangeRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DecideQualityChangeRequestRequest)
 	if err := dec(in); err != nil {
@@ -3069,6 +3223,22 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListQualityChangeRequests",
 			Handler:    _DataQualityService_ListQualityChangeRequests_Handler,
+		},
+		{
+			MethodName: "CreateQualityAgent",
+			Handler:    _DataQualityService_CreateQualityAgent_Handler,
+		},
+		{
+			MethodName: "ListQualityAgents",
+			Handler:    _DataQualityService_ListQualityAgents_Handler,
+		},
+		{
+			MethodName: "DisableQualityAgent",
+			Handler:    _DataQualityService_DisableQualityAgent_Handler,
+		},
+		{
+			MethodName: "RotateQualityAgentToken",
+			Handler:    _DataQualityService_RotateQualityAgentToken_Handler,
 		},
 		{
 			MethodName: "DecideQualityChangeRequest",

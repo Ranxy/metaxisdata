@@ -241,6 +241,7 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
 		WeeklyDigest:             digest,
 		TimeZone:                 timeZone,
+		AgentAutonomyEnabled:     dataQuality.GetAgentAutonomyEnabled(),
 	}
 	if interval != nil {
 		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
@@ -301,6 +302,7 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
 		WeeklyDigest:             digest,
 		TimeZone:                 dataQuality.GetTimeZone(),
+		AgentAutonomyEnabled:     dataQuality.GetAgentAutonomyEnabled(),
 	}
 }
 
@@ -331,6 +333,7 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 			Time:      fmt.Sprintf("%02d:%02d", resolved.Digest.Hour, resolved.Digest.Minute),
 			Timezone:  resolved.Digest.Timezone,
 		},
+		AgentAutonomyEnabled: resolved.AgentAutonomyEnabled,
 	}
 }
 

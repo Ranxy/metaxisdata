@@ -217,6 +217,11 @@ message DataQualitySetting {
   // the ${now} family. Empty means UTC. It does not affect a check's schedule,
   // which belongs to the target.
   string time_zone = 13;
+
+  // Whether the workspace's agent principals may write plan declarations and
+  // proposed change requests. Off by default: turning it off is the kill
+  // switch that returns the workspace to human-only edits.
+  bool agent_autonomy_enabled = 14;
 }
 
 // QualityDigestSetting is the schedule of the weekly data quality digest.

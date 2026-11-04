@@ -7832,6 +7832,213 @@ export enum DecideQualityChangeRequestRequest_Decision {
 export declare const DecideQualityChangeRequestRequest_DecisionSchema: GenEnum<DecideQualityChangeRequestRequest_Decision>;
 
 /**
+ * QualityAgent is one agent principal: an independent identity an administrator
+ * creates for autonomous quality work. Its token is issued once, and disabling the
+ * agent ends every token it holds.
+ *
+ * @generated from message metaxisdata.v1.QualityAgent
+ */
+export declare type QualityAgent = Message<"metaxisdata.v1.QualityAgent"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * @generated from field: bool enabled = 4;
+   */
+  enabled: boolean;
+
+  /**
+   * Format: users/{user}. Empty when unknown.
+   *
+   * @generated from field: string created_by = 5;
+   */
+  createdBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 6;
+   */
+  createTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgent.
+ * Use `create(QualityAgentSchema)` to create a new message.
+ */
+export declare const QualityAgentSchema: GenMessage<QualityAgent>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityAgentRequest
+ */
+export declare type CreateQualityAgentRequest = Message<"metaxisdata.v1.CreateQualityAgentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * @generated from field: string description = 3;
+   */
+  description: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityAgentRequest.
+ * Use `create(CreateQualityAgentRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityAgentRequestSchema: GenMessage<CreateQualityAgentRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityAgentResponse
+ */
+export declare type CreateQualityAgentResponse = Message<"metaxisdata.v1.CreateQualityAgentResponse"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgent agent = 1;
+   */
+  agent?: QualityAgent;
+
+  /**
+   * The bearer token, returned exactly once. It authenticates as the agent
+   * principal and cannot be retrieved again; rotate it if lost.
+   *
+   * @generated from field: string token = 2;
+   */
+  token: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityAgentResponse.
+ * Use `create(CreateQualityAgentResponseSchema)` to create a new message.
+ */
+export declare const CreateQualityAgentResponseSchema: GenMessage<CreateQualityAgentResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentsRequest
+ */
+export declare type ListQualityAgentsRequest = Message<"metaxisdata.v1.ListQualityAgentsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentsRequest.
+ * Use `create(ListQualityAgentsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentsRequestSchema: GenMessage<ListQualityAgentsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentsResponse
+ */
+export declare type ListQualityAgentsResponse = Message<"metaxisdata.v1.ListQualityAgentsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgent quality_agents = 1;
+   */
+  qualityAgents: QualityAgent[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentsResponse.
+ * Use `create(ListQualityAgentsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentsResponseSchema: GenMessage<ListQualityAgentsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.DisableQualityAgentRequest
+ */
+export declare type DisableQualityAgentRequest = Message<"metaxisdata.v1.DisableQualityAgentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DisableQualityAgentRequest.
+ * Use `create(DisableQualityAgentRequestSchema)` to create a new message.
+ */
+export declare const DisableQualityAgentRequestSchema: GenMessage<DisableQualityAgentRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.RotateQualityAgentTokenRequest
+ */
+export declare type RotateQualityAgentTokenRequest = Message<"metaxisdata.v1.RotateQualityAgentTokenRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.RotateQualityAgentTokenRequest.
+ * Use `create(RotateQualityAgentTokenRequestSchema)` to create a new message.
+ */
+export declare const RotateQualityAgentTokenRequestSchema: GenMessage<RotateQualityAgentTokenRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.RotateQualityAgentTokenResponse
+ */
+export declare type RotateQualityAgentTokenResponse = Message<"metaxisdata.v1.RotateQualityAgentTokenResponse"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgent agent = 1;
+   */
+  agent?: QualityAgent;
+
+  /**
+   * @generated from field: string token = 2;
+   */
+  token: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.RotateQualityAgentTokenResponse.
+ * Use `create(RotateQualityAgentTokenResponseSchema)` to create a new message.
+ */
+export declare const RotateQualityAgentTokenResponseSchema: GenMessage<RotateQualityAgentTokenResponse>;
+
+/**
  * QualityCoverageGap is one required property a target's plan does not satisfy.
  *
  * @generated from message metaxisdata.v1.QualityCoverageGap
@@ -11764,6 +11971,51 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof ListQualityChangeRequestsRequestSchema;
     output: typeof ListQualityChangeRequestsResponseSchema;
+  },
+  /**
+   * Create an agent principal and return its bearer token once. The agent is an
+   * independent principal whose only workspace role is the quality agent role; its
+   * token is a normal access token for that principal, so disabling the agent makes
+   * every token it issued unusable. Administrator only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityAgent
+   */
+  createQualityAgent: {
+    methodKind: "unary";
+    input: typeof CreateQualityAgentRequestSchema;
+    output: typeof CreateQualityAgentResponseSchema;
+  },
+  /**
+   * List the workspace's agent principals, without tokens.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgents
+   */
+  listQualityAgents: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentsRequestSchema;
+    output: typeof ListQualityAgentsResponseSchema;
+  },
+  /**
+   * Disable an agent principal. Its tokens stop authenticating immediately; the
+   * agent row stays for the audit trail.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.DisableQualityAgent
+   */
+  disableQualityAgent: {
+    methodKind: "unary";
+    input: typeof DisableQualityAgentRequestSchema;
+    output: typeof QualityAgentSchema;
+  },
+  /**
+   * Rotate an agent's bearer token: mint a new one and invalidate every token
+   * minted before this call. The token is returned once.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.RotateQualityAgentToken
+   */
+  rotateQualityAgentToken: {
+    methodKind: "unary";
+    input: typeof RotateQualityAgentTokenRequestSchema;
+    output: typeof RotateQualityAgentTokenResponseSchema;
   },
   /**
    * Approve or reject a change request. Approving applies each item through its

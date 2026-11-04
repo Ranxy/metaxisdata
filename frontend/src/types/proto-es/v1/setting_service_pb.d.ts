@@ -224,6 +224,15 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
    * @generated from field: string time_zone = 13;
    */
   timeZone: string;
+
+  /**
+   * Whether the workspace's agent principals may write plan declarations and
+   * proposed change requests. Off by default: turning it off is the kill
+   * switch that returns the workspace to human-only edits.
+   *
+   * @generated from field: bool agent_autonomy_enabled = 14;
+   */
+  agentAutonomyEnabled: boolean;
 };
 
 /**

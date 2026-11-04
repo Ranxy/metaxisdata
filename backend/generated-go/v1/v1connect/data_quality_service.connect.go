@@ -226,6 +226,18 @@ const (
 	// DataQualityServiceListQualityChangeRequestsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityChangeRequests RPC.
 	DataQualityServiceListQualityChangeRequestsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityChangeRequests"
+	// DataQualityServiceCreateQualityAgentProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityAgent RPC.
+	DataQualityServiceCreateQualityAgentProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityAgent"
+	// DataQualityServiceListQualityAgentsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgents RPC.
+	DataQualityServiceListQualityAgentsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgents"
+	// DataQualityServiceDisableQualityAgentProcedure is the fully-qualified name of the
+	// DataQualityService's DisableQualityAgent RPC.
+	DataQualityServiceDisableQualityAgentProcedure = "/metaxisdata.v1.DataQualityService/DisableQualityAgent"
+	// DataQualityServiceRotateQualityAgentTokenProcedure is the fully-qualified name of the
+	// DataQualityService's RotateQualityAgentToken RPC.
+	DataQualityServiceRotateQualityAgentTokenProcedure = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
 	// DataQualityServiceDecideQualityChangeRequestProcedure is the fully-qualified name of the
 	// DataQualityService's DecideQualityChangeRequest RPC.
 	DataQualityServiceDecideQualityChangeRequestProcedure = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
@@ -502,6 +514,19 @@ type DataQualityServiceClient interface {
 	GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
 	// List change requests, newest first.
 	ListQualityChangeRequests(context.Context, *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error)
+	// Create an agent principal and return its bearer token once. The agent is an
+	// independent principal whose only workspace role is the quality agent role; its
+	// token is a normal access token for that principal, so disabling the agent makes
+	// every token it issued unusable. Administrator only.
+	CreateQualityAgent(context.Context, *connect.Request[v1.CreateQualityAgentRequest]) (*connect.Response[v1.CreateQualityAgentResponse], error)
+	// List the workspace's agent principals, without tokens.
+	ListQualityAgents(context.Context, *connect.Request[v1.ListQualityAgentsRequest]) (*connect.Response[v1.ListQualityAgentsResponse], error)
+	// Disable an agent principal. Its tokens stop authenticating immediately; the
+	// agent row stays for the audit trail.
+	DisableQualityAgent(context.Context, *connect.Request[v1.DisableQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
+	// Rotate an agent's bearer token: mint a new one and invalidate every token
+	// minted before this call. The token is returned once.
+	RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -912,6 +937,30 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityChangeRequests")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualityAgent: connect.NewClient[v1.CreateQualityAgentRequest, v1.CreateQualityAgentResponse](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityAgentProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityAgents: connect.NewClient[v1.ListQualityAgentsRequest, v1.ListQualityAgentsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgents")),
+			connect.WithClientOptions(opts...),
+		),
+		disableQualityAgent: connect.NewClient[v1.DisableQualityAgentRequest, v1.QualityAgent](
+			httpClient,
+			baseURL+DataQualityServiceDisableQualityAgentProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("DisableQualityAgent")),
+			connect.WithClientOptions(opts...),
+		),
+		rotateQualityAgentToken: connect.NewClient[v1.RotateQualityAgentTokenRequest, v1.RotateQualityAgentTokenResponse](
+			httpClient,
+			baseURL+DataQualityServiceRotateQualityAgentTokenProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("RotateQualityAgentToken")),
+			connect.WithClientOptions(opts...),
+		),
 		decideQualityChangeRequest: connect.NewClient[v1.DecideQualityChangeRequestRequest, v1.QualityChangeRequest](
 			httpClient,
 			baseURL+DataQualityServiceDecideQualityChangeRequestProcedure,
@@ -1005,6 +1054,10 @@ type dataQualityServiceClient struct {
 	createQualityChangeRequest         *connect.Client[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest]
 	getQualityChangeRequest            *connect.Client[v1.GetQualityChangeRequestRequest, v1.QualityChangeRequest]
 	listQualityChangeRequests          *connect.Client[v1.ListQualityChangeRequestsRequest, v1.ListQualityChangeRequestsResponse]
+	createQualityAgent                 *connect.Client[v1.CreateQualityAgentRequest, v1.CreateQualityAgentResponse]
+	listQualityAgents                  *connect.Client[v1.ListQualityAgentsRequest, v1.ListQualityAgentsResponse]
+	disableQualityAgent                *connect.Client[v1.DisableQualityAgentRequest, v1.QualityAgent]
+	rotateQualityAgentToken            *connect.Client[v1.RotateQualityAgentTokenRequest, v1.RotateQualityAgentTokenResponse]
 	decideQualityChangeRequest         *connect.Client[v1.DecideQualityChangeRequestRequest, v1.QualityChangeRequest]
 	listQualityContractRevisions       *connect.Client[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse]
 	getQualityContractRevision         *connect.Client[v1.GetQualityContractRevisionRequest, v1.GetQualityContractRevisionResponse]
@@ -1335,6 +1388,26 @@ func (c *dataQualityServiceClient) ListQualityChangeRequests(ctx context.Context
 	return c.listQualityChangeRequests.CallUnary(ctx, req)
 }
 
+// CreateQualityAgent calls metaxisdata.v1.DataQualityService.CreateQualityAgent.
+func (c *dataQualityServiceClient) CreateQualityAgent(ctx context.Context, req *connect.Request[v1.CreateQualityAgentRequest]) (*connect.Response[v1.CreateQualityAgentResponse], error) {
+	return c.createQualityAgent.CallUnary(ctx, req)
+}
+
+// ListQualityAgents calls metaxisdata.v1.DataQualityService.ListQualityAgents.
+func (c *dataQualityServiceClient) ListQualityAgents(ctx context.Context, req *connect.Request[v1.ListQualityAgentsRequest]) (*connect.Response[v1.ListQualityAgentsResponse], error) {
+	return c.listQualityAgents.CallUnary(ctx, req)
+}
+
+// DisableQualityAgent calls metaxisdata.v1.DataQualityService.DisableQualityAgent.
+func (c *dataQualityServiceClient) DisableQualityAgent(ctx context.Context, req *connect.Request[v1.DisableQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error) {
+	return c.disableQualityAgent.CallUnary(ctx, req)
+}
+
+// RotateQualityAgentToken calls metaxisdata.v1.DataQualityService.RotateQualityAgentToken.
+func (c *dataQualityServiceClient) RotateQualityAgentToken(ctx context.Context, req *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error) {
+	return c.rotateQualityAgentToken.CallUnary(ctx, req)
+}
+
 // DecideQualityChangeRequest calls metaxisdata.v1.DataQualityService.DecideQualityChangeRequest.
 func (c *dataQualityServiceClient) DecideQualityChangeRequest(ctx context.Context, req *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
 	return c.decideQualityChangeRequest.CallUnary(ctx, req)
@@ -1618,6 +1691,19 @@ type DataQualityServiceHandler interface {
 	GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
 	// List change requests, newest first.
 	ListQualityChangeRequests(context.Context, *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error)
+	// Create an agent principal and return its bearer token once. The agent is an
+	// independent principal whose only workspace role is the quality agent role; its
+	// token is a normal access token for that principal, so disabling the agent makes
+	// every token it issued unusable. Administrator only.
+	CreateQualityAgent(context.Context, *connect.Request[v1.CreateQualityAgentRequest]) (*connect.Response[v1.CreateQualityAgentResponse], error)
+	// List the workspace's agent principals, without tokens.
+	ListQualityAgents(context.Context, *connect.Request[v1.ListQualityAgentsRequest]) (*connect.Response[v1.ListQualityAgentsResponse], error)
+	// Disable an agent principal. Its tokens stop authenticating immediately; the
+	// agent row stays for the audit trail.
+	DisableQualityAgent(context.Context, *connect.Request[v1.DisableQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error)
+	// Rotate an agent's bearer token: mint a new one and invalidate every token
+	// minted before this call. The token is returned once.
+	RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -2024,6 +2110,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityChangeRequests")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualityAgentHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityAgentProcedure,
+		svc.CreateQualityAgent,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityAgentsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentsProcedure,
+		svc.ListQualityAgents,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceDisableQualityAgentHandler := connect.NewUnaryHandler(
+		DataQualityServiceDisableQualityAgentProcedure,
+		svc.DisableQualityAgent,
+		connect.WithSchema(dataQualityServiceMethods.ByName("DisableQualityAgent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceRotateQualityAgentTokenHandler := connect.NewUnaryHandler(
+		DataQualityServiceRotateQualityAgentTokenProcedure,
+		svc.RotateQualityAgentToken,
+		connect.WithSchema(dataQualityServiceMethods.ByName("RotateQualityAgentToken")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceDecideQualityChangeRequestHandler := connect.NewUnaryHandler(
 		DataQualityServiceDecideQualityChangeRequestProcedure,
 		svc.DecideQualityChangeRequest,
@@ -2178,6 +2288,14 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityChangeRequestHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityChangeRequestsProcedure:
 			dataQualityServiceListQualityChangeRequestsHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityAgentProcedure:
+			dataQualityServiceCreateQualityAgentHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentsProcedure:
+			dataQualityServiceListQualityAgentsHandler.ServeHTTP(w, r)
+		case DataQualityServiceDisableQualityAgentProcedure:
+			dataQualityServiceDisableQualityAgentHandler.ServeHTTP(w, r)
+		case DataQualityServiceRotateQualityAgentTokenProcedure:
+			dataQualityServiceRotateQualityAgentTokenHandler.ServeHTTP(w, r)
 		case DataQualityServiceDecideQualityChangeRequestProcedure:
 			dataQualityServiceDecideQualityChangeRequestHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityContractRevisionsProcedure:
@@ -2449,6 +2567,22 @@ func (UnimplementedDataQualityServiceHandler) GetQualityChangeRequest(context.Co
 
 func (UnimplementedDataQualityServiceHandler) ListQualityChangeRequests(context.Context, *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityChangeRequests is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityAgent(context.Context, *connect.Request[v1.CreateQualityAgentRequest]) (*connect.Response[v1.CreateQualityAgentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityAgent is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgents(context.Context, *connect.Request[v1.ListQualityAgentsRequest]) (*connect.Response[v1.ListQualityAgentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgents is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) DisableQualityAgent(context.Context, *connect.Request[v1.DisableQualityAgentRequest]) (*connect.Response[v1.QualityAgent], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DisableQualityAgent is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.RotateQualityAgentToken is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) DecideQualityChangeRequest(context.Context, *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
