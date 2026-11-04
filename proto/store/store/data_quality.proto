@@ -1194,6 +1194,103 @@ message QualityContractPlanCadence {
   string timezone = 3;
 }
 
+// QualityChangeRequestState is the lifecycle of one change request.
+enum QualityChangeRequestState {
+  QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED = 0;
+  // Waiting for a person's decision.
+  QUALITY_CHANGE_REQUEST_STATE_PROPOSED = 1;
+  // Approved, but not every item applied yet (a failed item can be retried).
+  QUALITY_CHANGE_REQUEST_STATE_APPROVED = 2;
+  QUALITY_CHANGE_REQUEST_STATE_APPLIED = 3;
+  QUALITY_CHANGE_REQUEST_STATE_REJECTED = 4;
+  // The published version it was written against is gone; it is not rebased.
+  QUALITY_CHANGE_REQUEST_STATE_EXPIRED = 5;
+}
+
+// QualityChangeRequestSource records who wrote the request.
+enum QualityChangeRequestSource {
+  QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED = 0;
+  QUALITY_CHANGE_REQUEST_SOURCE_HUMAN = 1;
+  QUALITY_CHANGE_REQUEST_SOURCE_AGENT = 2;
+}
+
+// QualityChangeRequestItemKind is one typed change a request carries. Red-line
+// actions (silent, close, publish, acknowledge schema change, owner, criticality)
+// are deliberately not representable.
+enum QualityChangeRequestItemKind {
+  QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED = 0;
+  // Accept one pending proposal through the existing accept path.
+  QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF = 1;
+  // Add, change or remove one plan declaration.
+  QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE = 2;
+}
+
+// QualityChangeRejectionReason is the structured reason a person rejected a
+// request. It is the first decision-memory signal: free text alone cannot be
+// evaluated later.
+enum QualityChangeRejectionReason {
+  QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED = 0;
+  QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT = 1;
+  QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT = 2;
+  QUALITY_CHANGE_REJECTION_REASON_NOISE = 3;
+  QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM = 4;
+  QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN = 5;
+  QUALITY_CHANGE_REJECTION_REASON_DEFER = 6;
+  QUALITY_CHANGE_REJECTION_REASON_OTHER = 7;
+}
+
+// QualityChangeRequestItem is one typed change. Which fields are read depends on
+// kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes
+// one plan declaration.
+message QualityChangeRequestItem {
+  QualityChangeRequestItemKind kind = 1;
+  // SUGGESTION_REF: the proposal's immutable resource id.
+  string suggestion_resource_id = 2;
+  // COVERAGE_CHANGE: the declaration to add or modify.
+  QualityCoverageProperty property = 3;
+  string column = 4;
+  int32 min_checks = 5;
+  // COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
+  bool remove = 6;
+  // SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
+  // dimension of its own and a rule requires one.
+  QualityDimension dimension = 7;
+}
+
+// QualityChangeRequestItems is the JSONB payload of quality_change_request.items.
+message QualityChangeRequestItems {
+  repeated QualityChangeRequestItem items = 1;
+}
+
+// QualityChangeRequestItemResult is one item's outcome. A request returns a result
+// per item: a batch never reports only "the whole request succeeded or failed".
+message QualityChangeRequestItemResult {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_APPLIED = 1;
+    STATUS_FAILED = 2;
+    // Already true, so there was nothing to apply.
+    STATUS_SKIPPED = 3;
+  }
+  int32 index = 1;
+  Status status = 2;
+  string detail = 3;
+  // The resource the item created, when it created one.
+  string applied_resource_id = 4;
+}
+
+// QualityChangeRequestItemResults is the JSONB payload of
+// quality_change_request.item_results.
+message QualityChangeRequestItemResults {
+  repeated QualityChangeRequestItemResult results = 1;
+}
+
+// QualityChangeRejectionReasons is the JSONB payload of
+// quality_change_request.rationale_codes.
+message QualityChangeRejectionReasons {
+  repeated QualityChangeRejectionReason reasons = 1;
+}
+
 // QualityContractPlan is a plan payload: either a published version's declaration
 // plus the cadence it was published under, or the target's current declaration
 // (coverage only; the cadence lives in the target's schedule). The checks that

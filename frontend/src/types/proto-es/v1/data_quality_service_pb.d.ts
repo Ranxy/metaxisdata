@@ -7446,6 +7446,392 @@ export declare type ListQualityPlansResponse = Message<"metaxisdata.v1.ListQuali
 export declare const ListQualityPlansResponseSchema: GenMessage<ListQualityPlansResponse>;
 
 /**
+ * QualityChangeRequestItem is one typed change.
+ *
+ * @generated from message metaxisdata.v1.QualityChangeRequestItem
+ */
+export declare type QualityChangeRequestItem = Message<"metaxisdata.v1.QualityChangeRequestItem"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityChangeRequestItemKind kind = 1;
+   */
+  kind: QualityChangeRequestItemKind;
+
+  /**
+   * SUGGESTION_REF: Format: workspaces/{workspace}/qualitySuggestions/{id}
+   *
+   * @generated from field: string suggestion = 2;
+   */
+  suggestion: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageProperty property = 3;
+   */
+  property: QualityCoverageProperty;
+
+  /**
+   * @generated from field: string column = 4;
+   */
+  column: string;
+
+  /**
+   * @generated from field: int32 min_checks = 5;
+   */
+  minChecks: number;
+
+  /**
+   * COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
+   *
+   * @generated from field: bool remove = 6;
+   */
+  remove: boolean;
+
+  /**
+   * SUGGESTION_REF: the dimension the created rule carries; required because a
+   * rule draft has no dimension and a rule needs one.
+   *
+   * @generated from field: metaxisdata.v1.QualityDimension dimension = 7;
+   */
+  dimension: QualityDimension;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityChangeRequestItem.
+ * Use `create(QualityChangeRequestItemSchema)` to create a new message.
+ */
+export declare const QualityChangeRequestItemSchema: GenMessage<QualityChangeRequestItem>;
+
+/**
+ * QualityChangeRequestItemResult is one item's outcome.
+ *
+ * @generated from message metaxisdata.v1.QualityChangeRequestItemResult
+ */
+export declare type QualityChangeRequestItemResult = Message<"metaxisdata.v1.QualityChangeRequestItemResult"> & {
+  /**
+   * @generated from field: int32 index = 1;
+   */
+  index: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityChangeRequestItemResult.Status status = 2;
+   */
+  status: QualityChangeRequestItemResult_Status;
+
+  /**
+   * @generated from field: string detail = 3;
+   */
+  detail: string;
+
+  /**
+   * @generated from field: string applied_resource_id = 4;
+   */
+  appliedResourceId: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityChangeRequestItemResult.
+ * Use `create(QualityChangeRequestItemResultSchema)` to create a new message.
+ */
+export declare const QualityChangeRequestItemResultSchema: GenMessage<QualityChangeRequestItemResult>;
+
+/**
+ * @generated from enum metaxisdata.v1.QualityChangeRequestItemResult.Status
+ */
+export enum QualityChangeRequestItemResult_Status {
+  /**
+   * @generated from enum value: STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: STATUS_APPLIED = 1;
+   */
+  APPLIED = 1,
+
+  /**
+   * @generated from enum value: STATUS_FAILED = 2;
+   */
+  FAILED = 2,
+
+  /**
+   * @generated from enum value: STATUS_SKIPPED = 3;
+   */
+  SKIPPED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityChangeRequestItemResult.Status.
+ */
+export declare const QualityChangeRequestItemResult_StatusSchema: GenEnum<QualityChangeRequestItemResult_Status>;
+
+/**
+ * QualityChangeRequest is one approve-or-reject batch of typed changes against one
+ * target. Approving applies each item independently and returns a result per item.
+ *
+ * @generated from message metaxisdata.v1.QualityChangeRequest
+ */
+export declare type QualityChangeRequest = Message<"metaxisdata.v1.QualityChangeRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 2;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityChangeRequestState state = 3;
+   */
+  state: QualityChangeRequestState;
+
+  /**
+   * The published version the request was written against; a decision on a stale
+   * base expires the request instead of rebasing it.
+   *
+   * @generated from field: int32 base_version = 4;
+   */
+  baseVersion: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityChangeRequestSource source = 5;
+   */
+  source: QualityChangeRequestSource;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRequestItem items = 6;
+   */
+  items: QualityChangeRequestItem[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRequestItemResult item_results = 7;
+   */
+  itemResults: QualityChangeRequestItemResult[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRejectionReason rejection_reasons = 8;
+   */
+  rejectionReasons: QualityChangeRejectionReason[];
+
+  /**
+   * @generated from field: string decision_note = 9;
+   */
+  decisionNote: string;
+
+  /**
+   * Format: users/{user}. Empty when unknown.
+   *
+   * @generated from field: string created_by = 10;
+   */
+  createdBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 11;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: string decided_by = 12;
+   */
+  decidedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp decided_at = 13;
+   */
+  decidedAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityChangeRequest.
+ * Use `create(QualityChangeRequestSchema)` to create a new message.
+ */
+export declare const QualityChangeRequestSchema: GenMessage<QualityChangeRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityChangeRequestRequest
+ */
+export declare type CreateQualityChangeRequestRequest = Message<"metaxisdata.v1.CreateQualityChangeRequestRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The newest published version the request is written against. Required, but 0
+   * is a valid value for a target that has never been published.
+   *
+   * @generated from field: int32 base_version = 4;
+   */
+  baseVersion: number;
+
+  /**
+   * At most 20 items.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRequestItem items = 5;
+   */
+  items: QualityChangeRequestItem[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityChangeRequestRequest.
+ * Use `create(CreateQualityChangeRequestRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityChangeRequestRequestSchema: GenMessage<CreateQualityChangeRequestRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityChangeRequestRequest
+ */
+export declare type GetQualityChangeRequestRequest = Message<"metaxisdata.v1.GetQualityChangeRequestRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityChangeRequestRequest.
+ * Use `create(GetQualityChangeRequestRequestSchema)` to create a new message.
+ */
+export declare const GetQualityChangeRequestRequestSchema: GenMessage<GetQualityChangeRequestRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityChangeRequestsRequest
+ */
+export declare type ListQualityChangeRequestsRequest = Message<"metaxisdata.v1.ListQualityChangeRequestsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityChangeRequestState state = 3;
+   */
+  state: QualityChangeRequestState;
+
+  /**
+   * @generated from field: int32 page_size = 4;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 5;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityChangeRequestsRequest.
+ * Use `create(ListQualityChangeRequestsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityChangeRequestsRequestSchema: GenMessage<ListQualityChangeRequestsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityChangeRequestsResponse
+ */
+export declare type ListQualityChangeRequestsResponse = Message<"metaxisdata.v1.ListQualityChangeRequestsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRequest quality_change_requests = 1;
+   */
+  qualityChangeRequests: QualityChangeRequest[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityChangeRequestsResponse.
+ * Use `create(ListQualityChangeRequestsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityChangeRequestsResponseSchema: GenMessage<ListQualityChangeRequestsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.DecideQualityChangeRequestRequest
+ */
+export declare type DecideQualityChangeRequestRequest = Message<"metaxisdata.v1.DecideQualityChangeRequestRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.DecideQualityChangeRequestRequest.Decision decision = 2;
+   */
+  decision: DecideQualityChangeRequestRequest_Decision;
+
+  /**
+   * Why the request was rejected; required for REJECT.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityChangeRejectionReason rejection_reasons = 3;
+   */
+  rejectionReasons: QualityChangeRejectionReason[];
+
+  /**
+   * @generated from field: string decision_note = 4;
+   */
+  decisionNote: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DecideQualityChangeRequestRequest.
+ * Use `create(DecideQualityChangeRequestRequestSchema)` to create a new message.
+ */
+export declare const DecideQualityChangeRequestRequestSchema: GenMessage<DecideQualityChangeRequestRequest>;
+
+/**
+ * APPROVE applies the request's items; REJECT records the refusal.
+ *
+ * @generated from enum metaxisdata.v1.DecideQualityChangeRequestRequest.Decision
+ */
+export enum DecideQualityChangeRequestRequest_Decision {
+  /**
+   * @generated from enum value: DECISION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DECISION_APPROVE = 1;
+   */
+  APPROVE = 1,
+
+  /**
+   * @generated from enum value: DECISION_REJECT = 2;
+   */
+  REJECT = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.DecideQualityChangeRequestRequest.Decision.
+ */
+export declare const DecideQualityChangeRequestRequest_DecisionSchema: GenEnum<DecideQualityChangeRequestRequest_Decision>;
+
+/**
  * QualityCoverageGap is one required property a target's plan does not satisfy.
  *
  * @generated from message metaxisdata.v1.QualityCoverageGap
@@ -10404,6 +10790,155 @@ export enum QualityCoverageSource {
 export declare const QualityCoverageSourceSchema: GenEnum<QualityCoverageSource>;
 
 /**
+ * QualityChangeRequestState is the lifecycle of one change request.
+ *
+ * @generated from enum metaxisdata.v1.QualityChangeRequestState
+ */
+export enum QualityChangeRequestState {
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_STATE_PROPOSED = 1;
+   */
+  PROPOSED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_STATE_APPROVED = 2;
+   */
+  APPROVED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_STATE_APPLIED = 3;
+   */
+  APPLIED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_STATE_REJECTED = 4;
+   */
+  REJECTED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_STATE_EXPIRED = 5;
+   */
+  EXPIRED = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityChangeRequestState.
+ */
+export declare const QualityChangeRequestStateSchema: GenEnum<QualityChangeRequestState>;
+
+/**
+ * QualityChangeRequestSource records who wrote the request.
+ *
+ * @generated from enum metaxisdata.v1.QualityChangeRequestSource
+ */
+export enum QualityChangeRequestSource {
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_SOURCE_HUMAN = 1;
+   */
+  HUMAN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_SOURCE_AGENT = 2;
+   */
+  AGENT = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityChangeRequestSource.
+ */
+export declare const QualityChangeRequestSourceSchema: GenEnum<QualityChangeRequestSource>;
+
+/**
+ * QualityChangeRequestItemKind is one typed change a request carries.
+ *
+ * @generated from enum metaxisdata.v1.QualityChangeRequestItemKind
+ */
+export enum QualityChangeRequestItemKind {
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF = 1;
+   */
+  SUGGESTION_REF = 1,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE = 2;
+   */
+  COVERAGE_CHANGE = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityChangeRequestItemKind.
+ */
+export declare const QualityChangeRequestItemKindSchema: GenEnum<QualityChangeRequestItemKind>;
+
+/**
+ * QualityChangeRejectionReason is the structured reason a person rejected a
+ * request.
+ *
+ * @generated from enum metaxisdata.v1.QualityChangeRejectionReason
+ */
+export enum QualityChangeRejectionReason {
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT = 1;
+   */
+  NOT_IMPORTANT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT = 2;
+   */
+  TOO_TIGHT = 2,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_NOISE = 3;
+   */
+  NOISE = 3,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM = 4;
+   */
+  COVERED_UPSTREAM = 4,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN = 5;
+   */
+  WRONG_COLUMN = 5,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_DEFER = 6;
+   */
+  DEFER = 6,
+
+  /**
+   * @generated from enum value: QUALITY_CHANGE_REJECTION_REASON_OTHER = 7;
+   */
+  OTHER = 7,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityChangeRejectionReason.
+ */
+export declare const QualityChangeRejectionReasonSchema: GenEnum<QualityChangeRejectionReason>;
+
+/**
  * QualityContractChangeKind says which sections of a version changed against its
  * predecessor.
  *
@@ -11198,6 +11733,49 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof PublishQualityContractRequestSchema;
     output: typeof PublishQualityContractResponseSchema;
+  },
+  /**
+   * Create a batch of typed changes against one target. It stays PROPOSED until a
+   * person decides; creating it changes nothing on the target.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityChangeRequest
+   */
+  createQualityChangeRequest: {
+    methodKind: "unary";
+    input: typeof CreateQualityChangeRequestRequestSchema;
+    output: typeof QualityChangeRequestSchema;
+  },
+  /**
+   * Read one change request, with its items and per-item results.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityChangeRequest
+   */
+  getQualityChangeRequest: {
+    methodKind: "unary";
+    input: typeof GetQualityChangeRequestRequestSchema;
+    output: typeof QualityChangeRequestSchema;
+  },
+  /**
+   * List change requests, newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityChangeRequests
+   */
+  listQualityChangeRequests: {
+    methodKind: "unary";
+    input: typeof ListQualityChangeRequestsRequestSchema;
+    output: typeof ListQualityChangeRequestsResponseSchema;
+  },
+  /**
+   * Approve or reject a change request. Approving applies each item through its
+   * existing path and returns a result per item; rejecting records the structured
+   * reasons. A stale base version expires the request instead of rebasing it.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.DecideQualityChangeRequest
+   */
+  decideQualityChangeRequest: {
+    methodKind: "unary";
+    input: typeof DecideQualityChangeRequestRequestSchema;
+    output: typeof QualityChangeRequestSchema;
   },
   /**
    * List the target's published contract versions, newest first.

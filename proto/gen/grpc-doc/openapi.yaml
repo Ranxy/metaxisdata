@@ -5100,6 +5100,163 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityChangeRequests:
+        get:
+            tags:
+                - DataQualityService
+            description: List change requests, newest first.
+            operationId: DataQualityService_ListQualityChangeRequests
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: state
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED
+                        - QUALITY_CHANGE_REQUEST_STATE_PROPOSED
+                        - QUALITY_CHANGE_REQUEST_STATE_APPROVED
+                        - QUALITY_CHANGE_REQUEST_STATE_APPLIED
+                        - QUALITY_CHANGE_REQUEST_STATE_REJECTED
+                        - QUALITY_CHANGE_REQUEST_STATE_EXPIRED
+                    type: string
+                    format: enum
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityChangeRequestsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create a batch of typed changes against one target. It stays PROPOSED until a
+                 person decides; creating it changes nothing on the target.
+            operationId: DataQualityService_CreateQualityChangeRequest
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateQualityChangeRequestRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityChangeRequest'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityChangeRequests/{qualityChangeRequest}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one change request, with its items and per-item results.
+            operationId: DataQualityService_GetQualityChangeRequest
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityChangeRequest
+                  in: path
+                  description: The qualityChangeRequest id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityChangeRequest'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityChangeRequests/{qualityChangeRequest}:decide:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Approve or reject a change request. Approving applies each item through its
+                 existing path and returns a result per item; rejecting records the structured
+                 reasons. A stale base version expires the request instead of rebasing it.
+            operationId: DataQualityService_DecideQualityChangeRequest
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityChangeRequest
+                  in: path
+                  description: The qualityChangeRequest id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DecideQualityChangeRequestRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityChangeRequest'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityCodeTables:
         get:
             tags:
@@ -9256,6 +9413,52 @@ components:
                     type: integer
                     description: The minimum polling interval in seconds.
                     format: int32
+        CreateQualityChangeRequestRequest:
+            required:
+                - parent
+                - targetGuid
+                - baseVersion
+                - items
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                baseVersion:
+                    type: integer
+                    description: |-
+                        The newest published version the request is written against. Required, but 0
+                         is a valid value for a target that has never been published.
+                    format: int32
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityChangeRequestItem'
+                    description: At most 20 items.
         CreateQualityRuleRequest:
             required:
                 - parent
@@ -9780,6 +9983,39 @@ components:
                         The list of event triggers in a database (PostgreSQL specific).
                          Event triggers are database-level objects, not schema-scoped.
             description: DatabaseSchemaMetadata is the schema metadata for databases.
+        DecideQualityChangeRequestRequest:
+            required:
+                - name
+                - decision
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}'
+                decision:
+                    enum:
+                        - DECISION_UNSPECIFIED
+                        - DECISION_APPROVE
+                        - DECISION_REJECT
+                    type: string
+                    format: enum
+                rejectionReasons:
+                    type: array
+                    items:
+                        enum:
+                            - QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED
+                            - QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT
+                            - QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT
+                            - QUALITY_CHANGE_REJECTION_REASON_NOISE
+                            - QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM
+                            - QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN
+                            - QUALITY_CHANGE_REJECTION_REASON_DEFER
+                            - QUALITY_CHANGE_REJECTION_REASON_OTHER
+                        type: string
+                        format: enum
+                    description: Why the request was rejected; required for REJECT.
+                decisionNote:
+                    type: string
         DeleteIdentityProviderBindingRequest:
             required:
                 - user
@@ -11550,6 +11786,15 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityChangeRequestsResponse:
+            type: object
+            properties:
+                qualityChangeRequests:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityChangeRequest'
+                nextPageToken:
+                    type: string
         ListQualityCodeTablesResponse:
             type: object
             properties:
@@ -13089,6 +13334,150 @@ components:
                     description: |-
                         True when the live state already matched the newest published version, so no
                          new version was created.
+        QualityChangeRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}'
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                state:
+                    enum:
+                        - QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED
+                        - QUALITY_CHANGE_REQUEST_STATE_PROPOSED
+                        - QUALITY_CHANGE_REQUEST_STATE_APPROVED
+                        - QUALITY_CHANGE_REQUEST_STATE_APPLIED
+                        - QUALITY_CHANGE_REQUEST_STATE_REJECTED
+                        - QUALITY_CHANGE_REQUEST_STATE_EXPIRED
+                    type: string
+                    format: enum
+                baseVersion:
+                    type: integer
+                    description: |-
+                        The published version the request was written against; a decision on a stale
+                         base expires the request instead of rebasing it.
+                    format: int32
+                source:
+                    enum:
+                        - QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED
+                        - QUALITY_CHANGE_REQUEST_SOURCE_HUMAN
+                        - QUALITY_CHANGE_REQUEST_SOURCE_AGENT
+                    type: string
+                    format: enum
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityChangeRequestItem'
+                itemResults:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityChangeRequestItemResult'
+                rejectionReasons:
+                    type: array
+                    items:
+                        enum:
+                            - QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED
+                            - QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT
+                            - QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT
+                            - QUALITY_CHANGE_REJECTION_REASON_NOISE
+                            - QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM
+                            - QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN
+                            - QUALITY_CHANGE_REJECTION_REASON_DEFER
+                            - QUALITY_CHANGE_REJECTION_REASON_OTHER
+                        type: string
+                        format: enum
+                decisionNote:
+                    type: string
+                createdBy:
+                    type: string
+                    description: 'Format: users/{user}. Empty when unknown.'
+                createdAt:
+                    type: string
+                    format: date-time
+                decidedBy:
+                    type: string
+                decidedAt:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityChangeRequest is one approve-or-reject batch of typed changes against one
+                 target. Approving applies each item independently and returns a result per item.
+        QualityChangeRequestItem:
+            type: object
+            properties:
+                kind:
+                    enum:
+                        - QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED
+                        - QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF
+                        - QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE
+                    type: string
+                    format: enum
+                suggestionResourceId:
+                    type: string
+                    description: 'SUGGESTION_REF: the proposal''s immutable resource id.'
+                property:
+                    enum:
+                        - QUALITY_COVERAGE_PROPERTY_UNSPECIFIED
+                        - QUALITY_COVERAGE_PROPERTY_VOLUME
+                        - QUALITY_COVERAGE_PROPERTY_FRESHNESS
+                        - QUALITY_COVERAGE_PROPERTY_UNIQUENESS
+                        - QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY
+                        - QUALITY_COVERAGE_PROPERTY_NULL_RATE
+                        - QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES
+                        - QUALITY_COVERAGE_PROPERTY_FORMAT
+                        - QUALITY_COVERAGE_PROPERTY_RANGE
+                    type: string
+                    description: 'COVERAGE_CHANGE: the declaration to add or modify.'
+                    format: enum
+                column:
+                    type: string
+                minChecks:
+                    type: integer
+                    format: int32
+                remove:
+                    type: boolean
+                    description: 'COVERAGE_CHANGE: remove the declaration instead of adding or changing it.'
+                dimension:
+                    enum:
+                        - QUALITY_DIMENSION_UNSPECIFIED
+                        - QUALITY_DIMENSION_COMPLETENESS
+                        - QUALITY_DIMENSION_VALIDITY
+                        - QUALITY_DIMENSION_UNIQUENESS
+                        - QUALITY_DIMENSION_CONSISTENCY
+                        - QUALITY_DIMENSION_TIMELINESS
+                        - QUALITY_DIMENSION_ACCURACY
+                    type: string
+                    description: |-
+                        SUGGESTION_REF: the dimension the created rule carries. A rule draft has no
+                         dimension of its own and a rule requires one.
+                    format: enum
+            description: |-
+                QualityChangeRequestItem is one typed change. Which fields are read depends on
+                 kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes
+                 one plan declaration.
+        QualityChangeRequestItemResult:
+            type: object
+            properties:
+                index:
+                    type: integer
+                    format: int32
+                status:
+                    enum:
+                        - STATUS_UNSPECIFIED
+                        - STATUS_APPLIED
+                        - STATUS_FAILED
+                        - STATUS_SKIPPED
+                    type: string
+                    format: enum
+                detail:
+                    type: string
+                appliedResourceId:
+                    type: string
+                    description: The resource the item created, when it created one.
+            description: |-
+                QualityChangeRequestItemResult is one item's outcome. A request returns a result
+                 per item: a batch never reports only "the whole request succeeded or failed".
         QualityCodeTable:
             type: object
             properties:

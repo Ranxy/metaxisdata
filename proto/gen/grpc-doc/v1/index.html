@@ -1093,6 +1093,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateQualityChangeRequestRequest"><span class="badge">M</span>CreateQualityChangeRequestRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateQualityCodeTableRequest"><span class="badge">M</span>CreateQualityCodeTableRequest</a>
                 </li>
               
@@ -1122,6 +1126,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.CustomSQLConfig"><span class="badge">M</span>CustomSQLConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DecideQualityChangeRequestRequest"><span class="badge">M</span>DecideQualityChangeRequestRequest</a>
                 </li>
               
                 <li>
@@ -1174,6 +1182,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.FreshnessConfig"><span class="badge">M</span>FreshnessConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityChangeRequestRequest"><span class="badge">M</span>GetQualityChangeRequestRequest</a>
                 </li>
               
                 <li>
@@ -1286,6 +1298,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListColumnProfilesResponse"><span class="badge">M</span>ListColumnProfilesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityChangeRequestsRequest"><span class="badge">M</span>ListQualityChangeRequestsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityChangeRequestsResponse"><span class="badge">M</span>ListQualityChangeRequestsResponse</a>
                 </li>
               
                 <li>
@@ -1414,6 +1434,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.PublishQualityContractResponse"><span class="badge">M</span>PublishQualityContractResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequest"><span class="badge">M</span>QualityChangeRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequestItem"><span class="badge">M</span>QualityChangeRequestItem</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequestItemResult"><span class="badge">M</span>QualityChangeRequestItemResult</a>
                 </li>
               
                 <li>
@@ -1770,11 +1802,35 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.DecideQualityChangeRequestRequest.Decision"><span class="badge">E</span>DecideQualityChangeRequestRequest.Decision</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityAggregateFunction"><span class="badge">E</span>QualityAggregateFunction</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAssetCriticality"><span class="badge">E</span>QualityAssetCriticality</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRejectionReason"><span class="badge">E</span>QualityChangeRejectionReason</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequestItemKind"><span class="badge">E</span>QualityChangeRequestItemKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequestItemResult.Status"><span class="badge">E</span>QualityChangeRequestItemResult.Status</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequestSource"><span class="badge">E</span>QualityChangeRequestSource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityChangeRequestState"><span class="badge">E</span>QualityChangeRequestState</a>
                 </li>
               
                 <li>
@@ -13654,6 +13710,59 @@ replaced. The raw value is never returned. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateQualityChangeRequestRequest">CreateQualityChangeRequestRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The newest published version the request is written against. Required, but 0
+is a valid value for a target that has never been published. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>items</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestItem">QualityChangeRequestItem</a></td>
+                  <td>repeated</td>
+                  <td><p>At most 20 items. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateQualityCodeTableRequest">CreateQualityCodeTableRequest</h3>
         <p></p>
 
@@ -14028,6 +14137,51 @@ identity. The GUID and its meta type are the identity. </p></td>
                   <td>warn_threshold</td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DecideQualityChangeRequestRequest">DecideQualityChangeRequestRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decision</td>
+                  <td><a href="#metaxisdata.v1.DecideQualityChangeRequestRequest.Decision">DecideQualityChangeRequestRequest.Decision</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rejection_reasons</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRejectionReason">QualityChangeRejectionReason</a></td>
+                  <td>repeated</td>
+                  <td><p>Why the request was rejected; required for REJECT. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decision_note</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
                   <td><p> </p></td>
                 </tr>
               
@@ -14663,6 +14817,30 @@ combined with worst_status. </p></td>
                   <td><a href="#int32">int32</a></td>
                   <td>optional</td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityChangeRequestRequest">GetQualityChangeRequestRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} </p></td>
                 </tr>
               
             </tbody>
@@ -15738,6 +15916,89 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>column_profiles</td>
                   <td><a href="#metaxisdata.v1.ColumnProfile">ColumnProfile</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityChangeRequestsRequest">ListQualityChangeRequestsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestState">QualityChangeRequestState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityChangeRequestsResponse">ListQualityChangeRequestsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_change_requests</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -17427,6 +17688,227 @@ compiled_sql, which is the case whenever they share a connection. </p></td>
                   <td></td>
                   <td><p>True when the live state already matched the newest published version, so no
 new version was created. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</h3>
+        <p>QualityChangeRequest is one approve-or-reject batch of typed changes against one</p><p>target. Approving applies each item independently and returns a result per item.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestState">QualityChangeRequestState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>base_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The published version the request was written against; a decision on a stale
+base expires the request instead of rebasing it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestSource">QualityChangeRequestSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>items</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestItem">QualityChangeRequestItem</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>item_results</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestItemResult">QualityChangeRequestItemResult</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rejection_reasons</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRejectionReason">QualityChangeRejectionReason</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decision_note</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when unknown. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decided_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decided_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequestItem">QualityChangeRequestItem</h3>
+        <p>QualityChangeRequestItem is one typed change.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestItemKind">QualityChangeRequestItemKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestion</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>SUGGESTION_REF: Format: workspaces/{workspace}/qualitySuggestions/{id} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_checks</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>remove</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>COVERAGE_CHANGE: remove the declaration instead of adding or changing it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dimension</td>
+                  <td><a href="#metaxisdata.v1.QualityDimension">QualityDimension</a></td>
+                  <td></td>
+                  <td><p>SUGGESTION_REF: the dimension the created rule carries; required because a
+rule draft has no dimension and a rule needs one. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequestItemResult">QualityChangeRequestItemResult</h3>
+        <p>QualityChangeRequestItemResult is one item's outcome.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>index</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityChangeRequestItemResult.Status">QualityChangeRequestItemResult.Status</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>detail</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>applied_resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -23117,6 +23599,35 @@ resolved zone is what the target stores and what reads return. </p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.DecideQualityChangeRequestRequest.Decision">DecideQualityChangeRequestRequest.Decision</h3>
+        <p>APPROVE applies the request's items; REJECT records the refusal.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DECISION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DECISION_APPROVE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DECISION_REJECT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityAggregateFunction">QualityAggregateFunction</h3>
         <p>QualityAggregateFunction is the aggregate an aggregate or reconciliation rule</p><p>computes. COUNT is only meaningful for a cross-table reconciliation, and</p><p>PERCENTILE only for an aggregate rule.</p>
         <table class="enum-table">
@@ -23205,6 +23716,205 @@ resolved zone is what the target stores and what reads return. </p></td>
               <tr>
                 <td>QUALITY_ASSET_CRITICALITY_CRITICAL</td>
                 <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityChangeRejectionReason">QualityChangeRejectionReason</h3>
+        <p>QualityChangeRejectionReason is the structured reason a person rejected a</p><p>request.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_NOISE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_DEFER</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_OTHER</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequestItemKind">QualityChangeRequestItemKind</h3>
+        <p>QualityChangeRequestItemKind is one typed change a request carries.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequestItemResult.Status">QualityChangeRequestItemResult.Status</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STATUS_APPLIED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STATUS_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STATUS_SKIPPED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequestSource">QualityChangeRequestSource</h3>
+        <p>QualityChangeRequestSource records who wrote the request.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_SOURCE_HUMAN</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_SOURCE_AGENT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityChangeRequestState">QualityChangeRequestState</h3>
+        <p>QualityChangeRequestState is the lifecycle of one change request.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_PROPOSED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_APPROVED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_APPLIED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_REJECTED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_EXPIRED</td>
+                <td>5</td>
                 <td><p></p></td>
               </tr>
             
@@ -25446,6 +26156,37 @@ version (no_changes=true).</p></td>
               </tr>
             
               <tr>
+                <td>CreateQualityChangeRequest</td>
+                <td><a href="#metaxisdata.v1.CreateQualityChangeRequestRequest">CreateQualityChangeRequestRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
+                <td><p>Create a batch of typed changes against one target. It stays PROPOSED until a
+person decides; creating it changes nothing on the target.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityChangeRequest</td>
+                <td><a href="#metaxisdata.v1.GetQualityChangeRequestRequest">GetQualityChangeRequestRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
+                <td><p>Read one change request, with its items and per-item results.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityChangeRequests</td>
+                <td><a href="#metaxisdata.v1.ListQualityChangeRequestsRequest">ListQualityChangeRequestsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityChangeRequestsResponse">ListQualityChangeRequestsResponse</a></td>
+                <td><p>List change requests, newest first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DecideQualityChangeRequest</td>
+                <td><a href="#metaxisdata.v1.DecideQualityChangeRequestRequest">DecideQualityChangeRequestRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
+                <td><p>Approve or reject a change request. Approving applies each item through its
+existing path and returns a result per item; rejecting records the structured
+reasons. A stale base version expires the request instead of rebasing it.</p></td>
+              </tr>
+            
+              <tr>
                 <td>ListQualityContractRevisions</td>
                 <td><a href="#metaxisdata.v1.ListQualityContractRevisionsRequest">ListQualityContractRevisionsRequest</a></td>
                 <td><a href="#metaxisdata.v1.ListQualityContractRevisionsResponse">ListQualityContractRevisionsResponse</a></td>
@@ -26053,6 +26794,46 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>PublishQualityContract</td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualityContracts:publish</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityChangeRequest</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityChangeRequests</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityChangeRequest</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityChangeRequests/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityChangeRequests</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityChangeRequests</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DecideQualityChangeRequest</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityChangeRequests/*}:decide</td>
                 <td>*</td>
               </tr>
               

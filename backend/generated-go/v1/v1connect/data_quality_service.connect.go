@@ -217,6 +217,18 @@ const (
 	// DataQualityServicePublishQualityContractProcedure is the fully-qualified name of the
 	// DataQualityService's PublishQualityContract RPC.
 	DataQualityServicePublishQualityContractProcedure = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	// DataQualityServiceCreateQualityChangeRequestProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityChangeRequest RPC.
+	DataQualityServiceCreateQualityChangeRequestProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
+	// DataQualityServiceGetQualityChangeRequestProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityChangeRequest RPC.
+	DataQualityServiceGetQualityChangeRequestProcedure = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
+	// DataQualityServiceListQualityChangeRequestsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityChangeRequests RPC.
+	DataQualityServiceListQualityChangeRequestsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityChangeRequests"
+	// DataQualityServiceDecideQualityChangeRequestProcedure is the fully-qualified name of the
+	// DataQualityService's DecideQualityChangeRequest RPC.
+	DataQualityServiceDecideQualityChangeRequestProcedure = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
 	// DataQualityServiceListQualityContractRevisionsProcedure is the fully-qualified name of the
 	// DataQualityService's ListQualityContractRevisions RPC.
 	DataQualityServiceListQualityContractRevisionsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
@@ -483,6 +495,17 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Create a batch of typed changes against one target. It stays PROPOSED until a
+	// person decides; creating it changes nothing on the target.
+	CreateQualityChangeRequest(context.Context, *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
+	// Read one change request, with its items and per-item results.
+	GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
+	// List change requests, newest first.
+	ListQualityChangeRequests(context.Context, *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error)
+	// Approve or reject a change request. Approving applies each item through its
+	// existing path and returns a result per item; rejecting records the structured
+	// reasons. A stale base version expires the request instead of rebasing it.
+	DecideQualityChangeRequest(context.Context, *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
 	// List the target's published contract versions, newest first.
 	ListQualityContractRevisions(context.Context, *connect.Request[v1.ListQualityContractRevisionsRequest]) (*connect.Response[v1.ListQualityContractRevisionsResponse], error)
 	// Read one published contract version with its ordered checks, so a client can
@@ -871,6 +894,30 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualityChangeRequest: connect.NewClient[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityChangeRequestProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityChangeRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityChangeRequest: connect.NewClient[v1.GetQualityChangeRequestRequest, v1.QualityChangeRequest](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityChangeRequestProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityChangeRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityChangeRequests: connect.NewClient[v1.ListQualityChangeRequestsRequest, v1.ListQualityChangeRequestsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityChangeRequestsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityChangeRequests")),
+			connect.WithClientOptions(opts...),
+		),
+		decideQualityChangeRequest: connect.NewClient[v1.DecideQualityChangeRequestRequest, v1.QualityChangeRequest](
+			httpClient,
+			baseURL+DataQualityServiceDecideQualityChangeRequestProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("DecideQualityChangeRequest")),
+			connect.WithClientOptions(opts...),
+		),
 		listQualityContractRevisions: connect.NewClient[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse](
 			httpClient,
 			baseURL+DataQualityServiceListQualityContractRevisionsProcedure,
@@ -955,6 +1002,10 @@ type dataQualityServiceClient struct {
 	listQualityCoverageGaps            *connect.Client[v1.ListQualityCoverageGapsRequest, v1.ListQualityCoverageGapsResponse]
 	updateQualityContract              *connect.Client[v1.UpdateQualityContractRequest, v1.QualityContract]
 	publishQualityContract             *connect.Client[v1.PublishQualityContractRequest, v1.PublishQualityContractResponse]
+	createQualityChangeRequest         *connect.Client[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest]
+	getQualityChangeRequest            *connect.Client[v1.GetQualityChangeRequestRequest, v1.QualityChangeRequest]
+	listQualityChangeRequests          *connect.Client[v1.ListQualityChangeRequestsRequest, v1.ListQualityChangeRequestsResponse]
+	decideQualityChangeRequest         *connect.Client[v1.DecideQualityChangeRequestRequest, v1.QualityChangeRequest]
 	listQualityContractRevisions       *connect.Client[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse]
 	getQualityContractRevision         *connect.Client[v1.GetQualityContractRevisionRequest, v1.GetQualityContractRevisionResponse]
 	getQualityLLMUsage                 *connect.Client[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage]
@@ -1269,6 +1320,26 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, r
 	return c.publishQualityContract.CallUnary(ctx, req)
 }
 
+// CreateQualityChangeRequest calls metaxisdata.v1.DataQualityService.CreateQualityChangeRequest.
+func (c *dataQualityServiceClient) CreateQualityChangeRequest(ctx context.Context, req *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
+	return c.createQualityChangeRequest.CallUnary(ctx, req)
+}
+
+// GetQualityChangeRequest calls metaxisdata.v1.DataQualityService.GetQualityChangeRequest.
+func (c *dataQualityServiceClient) GetQualityChangeRequest(ctx context.Context, req *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
+	return c.getQualityChangeRequest.CallUnary(ctx, req)
+}
+
+// ListQualityChangeRequests calls metaxisdata.v1.DataQualityService.ListQualityChangeRequests.
+func (c *dataQualityServiceClient) ListQualityChangeRequests(ctx context.Context, req *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error) {
+	return c.listQualityChangeRequests.CallUnary(ctx, req)
+}
+
+// DecideQualityChangeRequest calls metaxisdata.v1.DataQualityService.DecideQualityChangeRequest.
+func (c *dataQualityServiceClient) DecideQualityChangeRequest(ctx context.Context, req *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
+	return c.decideQualityChangeRequest.CallUnary(ctx, req)
+}
+
 // ListQualityContractRevisions calls
 // metaxisdata.v1.DataQualityService.ListQualityContractRevisions.
 func (c *dataQualityServiceClient) ListQualityContractRevisions(ctx context.Context, req *connect.Request[v1.ListQualityContractRevisionsRequest]) (*connect.Response[v1.ListQualityContractRevisionsResponse], error) {
@@ -1540,6 +1611,17 @@ type DataQualityServiceHandler interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Create a batch of typed changes against one target. It stays PROPOSED until a
+	// person decides; creating it changes nothing on the target.
+	CreateQualityChangeRequest(context.Context, *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
+	// Read one change request, with its items and per-item results.
+	GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
+	// List change requests, newest first.
+	ListQualityChangeRequests(context.Context, *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error)
+	// Approve or reject a change request. Approving applies each item through its
+	// existing path and returns a result per item; rejecting records the structured
+	// reasons. A stale base version expires the request instead of rebasing it.
+	DecideQualityChangeRequest(context.Context, *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
 	// List the target's published contract versions, newest first.
 	ListQualityContractRevisions(context.Context, *connect.Request[v1.ListQualityContractRevisionsRequest]) (*connect.Response[v1.ListQualityContractRevisionsResponse], error)
 	// Read one published contract version with its ordered checks, so a client can
@@ -1924,6 +2006,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualityChangeRequestHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityChangeRequestProcedure,
+		svc.CreateQualityChangeRequest,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityChangeRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityChangeRequestHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityChangeRequestProcedure,
+		svc.GetQualityChangeRequest,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityChangeRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityChangeRequestsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityChangeRequestsProcedure,
+		svc.ListQualityChangeRequests,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityChangeRequests")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceDecideQualityChangeRequestHandler := connect.NewUnaryHandler(
+		DataQualityServiceDecideQualityChangeRequestProcedure,
+		svc.DecideQualityChangeRequest,
+		connect.WithSchema(dataQualityServiceMethods.ByName("DecideQualityChangeRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceListQualityContractRevisionsHandler := connect.NewUnaryHandler(
 		DataQualityServiceListQualityContractRevisionsProcedure,
 		svc.ListQualityContractRevisions,
@@ -2066,6 +2172,14 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualityContractHandler.ServeHTTP(w, r)
 		case DataQualityServicePublishQualityContractProcedure:
 			dataQualityServicePublishQualityContractHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityChangeRequestProcedure:
+			dataQualityServiceCreateQualityChangeRequestHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityChangeRequestProcedure:
+			dataQualityServiceGetQualityChangeRequestHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityChangeRequestsProcedure:
+			dataQualityServiceListQualityChangeRequestsHandler.ServeHTTP(w, r)
+		case DataQualityServiceDecideQualityChangeRequestProcedure:
+			dataQualityServiceDecideQualityChangeRequestHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityContractRevisionsProcedure:
 			dataQualityServiceListQualityContractRevisionsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityContractRevisionProcedure:
@@ -2323,6 +2437,22 @@ func (UnimplementedDataQualityServiceHandler) UpdateQualityContract(context.Cont
 
 func (UnimplementedDataQualityServiceHandler) PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.PublishQualityContract is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityChangeRequest(context.Context, *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityChangeRequest is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityChangeRequest is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityChangeRequests(context.Context, *connect.Request[v1.ListQualityChangeRequestsRequest]) (*connect.Response[v1.ListQualityChangeRequestsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityChangeRequests is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) DecideQualityChangeRequest(context.Context, *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DecideQualityChangeRequest is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) ListQualityContractRevisions(context.Context, *connect.Request[v1.ListQualityContractRevisionsRequest]) (*connect.Response[v1.ListQualityContractRevisionsResponse], error) {

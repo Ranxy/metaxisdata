@@ -237,6 +237,14 @@
       "id": "metaxisdata.dataQuality.contracts.publish"
     },
     {
+      "name": "DataQualityPlansUpdate",
+      "id": "metaxisdata.dataQuality.plans.update"
+    },
+    {
+      "name": "DataQualityChangeRequestsDecide",
+      "id": "metaxisdata.dataQuality.changeRequests.decide"
+    },
+    {
       "name": "DataQualityProfileRun",
       "id": "metaxisdata.dataQuality.profile.run"
     },
