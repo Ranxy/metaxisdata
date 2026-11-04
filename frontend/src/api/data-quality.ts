@@ -13,6 +13,8 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
+  type ConfirmQualityMemoryRequest_Decision,
+  ConfirmQualityMemoryRequestSchema,
   CreateQualityAgentRequestSchema,
   type CreateQualityAgentResponse,
   CreateQualityCodeTableRequestSchema,
@@ -62,7 +64,9 @@ import {
   ListQualityCodeTablesRequestSchema,
   ListQualityContractRevisionsRequestSchema,
   ListQualityExecutionsRequestSchema,
+  ListQualityInvestigationsRequestSchema,
   ListQualityIssuesRequestSchema,
+  ListQualityMemoriesRequestSchema,
   ListQualityRulesRequestSchema,
   ListQualityRuleTemplatesRequestSchema,
   ListQualityRunsRequestSchema,
@@ -85,10 +89,12 @@ import {
   type QualityExecution,
   QualityExecutionState,
   QualityExecutionTrigger,
+  type QualityInvestigation,
   type QualityIssue,
   QualityIssueSchema,
   QualityIssueStatus,
   type QualityLLMUsage,
+  type QualityMemory,
   type QualityOverview,
   type QualityPlan,
   QualityResolutionReason,
@@ -1703,4 +1709,61 @@ export async function disableQualityAgent(
 ): Promise<QualityAgent> {
   const request = create(DisableQualityAgentRequestSchema, { name });
   return await dataQualityClient.disableQualityAgent(request, { signal });
+}
+
+// ---- investigations and memories ----
+
+/** The target's investigations, newest first. */
+export async function listQualityInvestigations(
+  targetGuid: string,
+  signal?: AbortSignal
+): Promise<QualityInvestigation[]> {
+  return await listAll(async (pageToken) => {
+    const request = create(ListQualityInvestigationsRequestSchema, {
+      parent: WORKSPACE_PARENT,
+      targetGuid,
+      pageToken,
+    });
+    const response = await dataQualityClient.listQualityInvestigations(
+      request,
+      {
+        signal,
+      }
+    );
+    return {
+      items: response.qualityInvestigations,
+      nextPageToken: response.nextPageToken,
+    };
+  });
+}
+
+/** The memories recorded about one subject (a target GUID here), newest first. */
+export async function listQualityMemories(
+  subject: string,
+  signal?: AbortSignal
+): Promise<QualityMemory[]> {
+  return await listAll(async (pageToken) => {
+    const request = create(ListQualityMemoriesRequestSchema, {
+      parent: WORKSPACE_PARENT,
+      subject,
+      pageToken,
+    });
+    const response = await dataQualityClient.listQualityMemories(request, {
+      signal,
+    });
+    return {
+      items: response.qualityMemories,
+      nextPageToken: response.nextPageToken,
+    };
+  });
+}
+
+/** Confirm or reject a proposed memory: a person is what turns it into knowledge. */
+export async function confirmQualityMemory(
+  name: string,
+  decision: ConfirmQualityMemoryRequest_Decision,
+  signal?: AbortSignal
+): Promise<QualityMemory> {
+  const request = create(ConfirmQualityMemoryRequestSchema, { name, decision });
+  return await dataQualityClient.confirmQualityMemory(request, { signal });
 }
