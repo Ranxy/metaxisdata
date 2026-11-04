@@ -74,6 +74,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_goal_step_seq
     ON quality_agent_goal_step(goal_id, seq);
 CREATE INDEX IF NOT EXISTS idx_quality_agent_goal_step_workspace
     ON quality_agent_goal_step(workspace_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_goal_step_idempotency
+    ON quality_agent_goal_step(goal_id, idempotency_key) WHERE idempotency_key <> '';
 COMMENT ON TABLE quality_agent_goal_step IS 'Append-only journal of one quality agent goal';
 COMMENT ON COLUMN quality_agent_goal_step.kind IS 'Stored as QualityAgentGoalStepKind (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_agent_goal_step.payload IS 'Stored as QualityAgentGoalStepPayload (proto/store/store/data_quality.proto)';

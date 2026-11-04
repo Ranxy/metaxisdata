@@ -1405,7 +1405,8 @@ message QualityAgentGoalStep {
   QualityAgentGoalStepPayload payload = 5;
   // The model tokens this step consumed, for the hourly workspace budget.
   int32 tokens = 6;
-  // Idempotency key of a proposal effect, so a crash cannot duplicate it.
+  // Idempotency key of an effect step; the store returns the existing step for a
+  // retried key, and the effect's own fingerprint keeps the side effect single.
   string idempotency_key = 7;
   google.protobuf.Timestamp created_at = 8;
 }

@@ -351,3 +351,32 @@ func TestValidateTimeZone(t *testing.T) {
 		require.Error(t, ValidateTimeZone(zone), zone)
 	}
 }
+
+// The runner settings resolve explicit values and clamp out-of-band stored numbers, so
+// a bad row can never make the runner stop or run wild.
+func TestSettingsFromProfileResolvesRunnerLimits(t *testing.T) {
+	t.Parallel()
+
+	profile := &storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
+		AgentRunnerEnabled:            true,
+		AgentRunnerDatabases:          []string{" instances/i1/databases/d1 ", "instances/i1/databases/d1", "instances/i2/databases/d2"},
+		AgentRunnerTokensPerHour:      500_000_000,
+		AgentRunnerGoalsPerHour:       50,
+		AgentRunnerMaxConcurrentGoals: 4,
+	}}
+	resolved := SettingsFromProfile(profile)
+	require.True(t, resolved.AgentRunnerEnabled)
+	require.Equal(t, []string{"instances/i1/databases/d1", "instances/i2/databases/d2"}, resolved.AgentRunnerDatabases)
+	require.Equal(t, int64(500_000_000), resolved.AgentRunnerTokensPerHour)
+	require.Equal(t, 50, resolved.AgentRunnerGoalsPerHour)
+	require.Equal(t, 4, resolved.AgentRunnerMaxConcurrentGoals)
+
+	outOfRange := SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
+		AgentRunnerTokensPerHour:      -5,
+		AgentRunnerGoalsPerHour:       100_000,
+		AgentRunnerMaxConcurrentGoals: 1000,
+	}})
+	require.Equal(t, DefaultAgentRunnerTokensPerHour, outOfRange.AgentRunnerTokensPerHour)
+	require.Equal(t, MaxAgentRunnerGoalsPerHour, outOfRange.AgentRunnerGoalsPerHour)
+	require.Equal(t, MaxAgentRunnerConcurrentGoals, outOfRange.AgentRunnerMaxConcurrentGoals)
+}

@@ -20,6 +20,7 @@ type fakeGoalStore struct {
 	steps       []*store.QualityAgentGoalStepMessage
 	released    map[string]time.Time
 	releaseMiss bool
+	blocked     map[string]string
 }
 
 func (f *fakeGoalStore) ResetStaleQualityAgentGoalLeases(_ context.Context, _ time.Time, _ int32) (int64, error) {
@@ -35,6 +36,18 @@ func (f *fakeGoalStore) ClaimDueQualityAgentGoals(_ context.Context, _ time.Time
 func (f *fakeGoalStore) AppendQualityAgentGoalStep(_ context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error) {
 	f.steps = append(f.steps, step)
 	return step, nil
+}
+
+func (f *fakeGoalStore) UpdateQualityAgentGoalState(_ context.Context, resourceID string, _ int32, phase storepb.QualityAgentGoalPhase, blockedCode, blockedReason string, _ *time.Time) (*store.QualityAgentGoalMessage, bool, error) {
+	if f.blocked == nil {
+		f.blocked = map[string]string{}
+	}
+	f.blocked[resourceID] = blockedCode + ": " + blockedReason
+	return &store.QualityAgentGoalMessage{ResourceID: resourceID, Phase: phase}, true, nil
+}
+
+func (f *fakeGoalStore) GetQualityAgentByID(_ context.Context, id int64) (*store.QualityAgentMessage, error) {
+	return &store.QualityAgentMessage{ID: id, Enabled: true}, nil
 }
 
 func (f *fakeGoalStore) ReleaseQualityAgentGoalLease(_ context.Context, resourceID string, nextWakeAt *time.Time) (bool, error) {
@@ -67,7 +80,9 @@ func TestRunnerRespectsTheSwitch(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	store := &fakeGoalStore{reset: 2, claimed: []*store.QualityAgentGoalMessage{{ID: 1, ResourceID: "g1"}}}
+	store := &fakeGoalStore{reset: 2, claimed: []*store.QualityAgentGoalMessage{{
+		ID: 1, ResourceID: "g1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1,
+	}}}
 	runner := newTestRunner(store, dataquality.Settings{AgentRunnerEnabled: false}, now)
 	runner.runOnce(context.Background())
 
@@ -85,11 +100,12 @@ func TestRunnerHostsClaimedGoals(t *testing.T) {
 
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	store := &fakeGoalStore{claimed: []*store.QualityAgentGoalMessage{
-		{ID: 1, ResourceID: "g1", WorkspaceID: "ws1"},
-		{ID: 2, ResourceID: "g2", WorkspaceID: "ws1"},
+		{ID: 1, ResourceID: "g1", WorkspaceID: "ws1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1},
+		{ID: 2, ResourceID: "g2", WorkspaceID: "ws1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1},
 	}}
 	runner := newTestRunner(store, dataquality.Settings{
 		AgentRunnerEnabled:            true,
+		AgentRunnerDatabases:          []string{"instances/i1/databases/d1"},
 		AgentRunnerMaxConcurrentGoals: 2,
 	}, now)
 	runner.runOnce(context.Background())
@@ -97,7 +113,7 @@ func TestRunnerHostsClaimedGoals(t *testing.T) {
 	require.Equal(t, 2, store.claimLimit)
 	require.Len(t, store.steps, 2)
 	for i, step := range store.steps {
-		require.Equal(t, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE, step.Kind)
+		require.Equal(t, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED, step.Kind)
 		require.Equal(t, store.claimed[i].ID, step.GoalID)
 		require.Equal(t, store.claimed[i].WorkspaceID, step.WorkspaceID)
 	}
@@ -111,11 +127,34 @@ func TestRunnerLeavesNonLeasedGoalAlone(t *testing.T) {
 
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	store := &fakeGoalStore{
-		claimed:     []*store.QualityAgentGoalMessage{{ID: 1, ResourceID: "g1"}},
+		claimed:     []*store.QualityAgentGoalMessage{{ID: 1, ResourceID: "g1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1}},
 		releaseMiss: true,
 	}
-	runner := newTestRunner(store, dataquality.Settings{AgentRunnerEnabled: true}, now)
+	runner := newTestRunner(store, dataquality.Settings{
+		AgentRunnerEnabled:   true,
+		AgentRunnerDatabases: []string{"instances/i1/databases/d1"},
+	}, now)
 	runner.runOnce(context.Background())
 
 	require.Len(t, store.steps, 1, "the claim is journaled even if the goal was paused")
+}
+
+// A goal whose database left the allowlist is parked for a person instead of being
+// hosted; the run-time scope check is the second half of the creation check.
+func TestRunnerBlocksOutOfScopeGoal(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := &fakeGoalStore{claimed: []*store.QualityAgentGoalMessage{
+		{ID: 1, ResourceID: "g1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1, Revision: 4},
+	}}
+	runner := newTestRunner(store, dataquality.Settings{
+		AgentRunnerEnabled:   true,
+		AgentRunnerDatabases: []string{"instances/i1/databases/other"},
+	}, now)
+	runner.runOnce(context.Background())
+
+	require.Equal(t, "needs-human: the goal's database is no longer in the runner's allowlist", store.blocked["g1"])
+	require.Len(t, store.steps, 1, "the block is journaled")
+	require.Equal(t, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_STOP, store.steps[0].Kind)
 }

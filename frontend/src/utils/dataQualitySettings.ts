@@ -174,9 +174,8 @@ export function formToSetting(
     agentAutonomyEnabled: form.agentAutonomyEnabled,
     agentRunnerEnabled: form.agentRunnerEnabled,
     agentRunnerDatabases: form.agentRunnerDatabases,
-    agentRunnerTokensPerHour: BigInt(
-      inputToInt(form.agentRunnerTokensPerHour) ?? 0
-    ),
+    agentRunnerTokensPerHour:
+      inputToBigInt(form.agentRunnerTokensPerHour) ?? 0n,
     agentRunnerGoalsPerHour: inputToInt(form.agentRunnerGoalsPerHour) ?? 0,
     agentRunnerMaxConcurrentGoals:
       inputToInt(form.agentRunnerMaxConcurrentGoals) ?? 0,
@@ -347,6 +346,15 @@ function checkNonNegative(value: string): RangeCheck {
 /** A stored number as an input value; 0 means "server default" and is blank. */
 function numberToInput(value: number | undefined): string {
   return value !== undefined && value > 0 ? String(value) : "";
+}
+
+/** An input value as a non-negative int64, or undefined when blank or malformed. */
+function inputToBigInt(value: string): bigint | undefined {
+  const text = value.trim();
+  if (!/^[0-9]+$/.test(text)) {
+    return undefined;
+  }
+  return BigInt(text);
 }
 
 /** An input value as a non-negative integer, or undefined when blank. */

@@ -78,6 +78,10 @@ const (
 	DefaultAgentRunnerMaxConcurrentGoals = 2
 	// MaxAgentRunnerConcurrentGoals is the hard concurrency ceiling.
 	MaxAgentRunnerConcurrentGoals = 16
+	// MaxAgentRunnerTokensPerHour is the hard ceiling of the hourly token budget.
+	MaxAgentRunnerTokensPerHour int64 = 1_000_000_000_000
+	// MaxAgentRunnerGoalsPerHour is the hard ceiling of the hourly goal budget.
+	MaxAgentRunnerGoalsPerHour = 1000
 
 	// DefaultCheckTimeout is how long one check's query may run when its config
 	// does not say.
@@ -192,7 +196,7 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.AgentRunnerEnabled = dataQuality.GetAgentRunnerEnabled()
 	settings.AgentRunnerDatabases = normalizeDatabaseRefs(dataQuality.GetAgentRunnerDatabases())
 	settings.AgentRunnerTokensPerHour = positiveInt64OrDefault(dataQuality.GetAgentRunnerTokensPerHour(), DefaultAgentRunnerTokensPerHour)
-	settings.AgentRunnerGoalsPerHour = positiveOrDefault(dataQuality.GetAgentRunnerGoalsPerHour(), DefaultAgentRunnerGoalsPerHour)
+	settings.AgentRunnerGoalsPerHour = boundedLimit(int(dataQuality.GetAgentRunnerGoalsPerHour()), DefaultAgentRunnerGoalsPerHour, MaxAgentRunnerGoalsPerHour)
 	settings.AgentRunnerMaxConcurrentGoals = boundedLimit(int(dataQuality.GetAgentRunnerMaxConcurrentGoals()), DefaultAgentRunnerMaxConcurrentGoals, MaxAgentRunnerConcurrentGoals)
 	return settings
 }

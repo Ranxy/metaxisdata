@@ -8443,7 +8443,8 @@ type QualityAgentGoalStep struct {
 	Payload *QualityAgentGoalStepPayload `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
 	// The model tokens this step consumed, for the hourly workspace budget.
 	Tokens int32 `protobuf:"varint,6,opt,name=tokens,proto3" json:"tokens,omitempty"`
-	// Idempotency key of a proposal effect, so a crash cannot duplicate it.
+	// Idempotency key of an effect step; the store returns the existing step for a
+	// retried key, and the effect's own fingerprint keeps the side effect single.
 	IdempotencyKey string                 `protobuf:"bytes,7,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields  protoimpl.UnknownFields

@@ -212,6 +212,19 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	if provider != "" && !validLLMProviderProfileName(provider) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("invalid LLM provider profile %q", dataQuality.GetLlmProviderProfile()))
 	}
+	if value := dataQuality.GetAgentRunnerTokensPerHour(); value < 0 || value > dataquality.MaxAgentRunnerTokensPerHour {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_tokens_per_hour must be between 0 and %d", dataquality.MaxAgentRunnerTokensPerHour))
+	}
+	if value := dataQuality.GetAgentRunnerGoalsPerHour(); value < 0 || value > dataquality.MaxAgentRunnerGoalsPerHour {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_goals_per_hour must be between 0 and %d", dataquality.MaxAgentRunnerGoalsPerHour))
+	}
+	if value := dataQuality.GetAgentRunnerMaxConcurrentGoals(); value < 0 || value > dataquality.MaxAgentRunnerConcurrentGoals {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_max_concurrent_goals must be between 0 and %d", dataquality.MaxAgentRunnerConcurrentGoals))
+	}
+	runnerDatabases, err := normalizeRunnerDatabases(dataQuality.GetAgentRunnerDatabases())
+	if err != nil {
+		return nil, err
+	}
 
 	var digest *storepb.QualityDigestSetting
 	if weeklyDigest := dataQuality.GetWeeklyDigest(); weeklyDigest != nil {
@@ -243,7 +256,7 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 		TimeZone:                      timeZone,
 		AgentAutonomyEnabled:          dataQuality.GetAgentAutonomyEnabled(),
 		AgentRunnerEnabled:            dataQuality.GetAgentRunnerEnabled(),
-		AgentRunnerDatabases:          append([]string(nil), dataQuality.GetAgentRunnerDatabases()...),
+		AgentRunnerDatabases:          runnerDatabases,
 		AgentRunnerTokensPerHour:      dataQuality.GetAgentRunnerTokensPerHour(),
 		AgentRunnerGoalsPerHour:       dataQuality.GetAgentRunnerGoalsPerHour(),
 		AgentRunnerMaxConcurrentGoals: dataQuality.GetAgentRunnerMaxConcurrentGoals(),
@@ -897,4 +910,27 @@ func convertToV1QuietHoursSetting(setting *storepb.QuietHoursSetting) *v1pb.Quie
 		result.MaintenanceWindows = append(result.MaintenanceWindows, converted)
 	}
 	return result
+}
+
+// normalizeRunnerDatabases trims, de-duplicates and validates the runner's database
+// allowlist. A database is a resource name, so a typo is refused at the boundary
+// instead of silently making the runner see nothing.
+func normalizeRunnerDatabases(databases []string) ([]string, error) {
+	if len(databases) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]bool, len(databases))
+	out := make([]string, 0, len(databases))
+	for _, database := range databases {
+		database = strings.TrimSpace(database)
+		if database == "" || seen[database] {
+			continue
+		}
+		if _, err := common.GetNameParentTokens(database, common.InstanceNamePrefix, common.DatabaseIDPrefix); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.Errorf("agent_runner_databases entry %q is not a database resource name", database))
+		}
+		seen[database] = true
+		out = append(out, database)
+	}
+	return out, nil
 }

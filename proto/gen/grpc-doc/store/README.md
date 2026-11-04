@@ -916,7 +916,7 @@ QualityAgentGoalStep is one append-only journal entry of a goal.
 | kind | [QualityAgentGoalStepKind](#metaxisdata-store-QualityAgentGoalStepKind) |  |  |
 | payload | [QualityAgentGoalStepPayload](#metaxisdata-store-QualityAgentGoalStepPayload) |  |  |
 | tokens | [int32](#int32) |  | The model tokens this step consumed, for the hourly workspace budget. |
-| idempotency_key | [string](#string) |  | Idempotency key of a proposal effect, so a crash cannot duplicate it. |
+| idempotency_key | [string](#string) |  | Idempotency key of an effect step; the store returns the existing step for a retried key, and the effect&#39;s own fingerprint keeps the side effect single. |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 

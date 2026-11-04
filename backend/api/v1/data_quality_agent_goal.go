@@ -42,15 +42,19 @@ func (s *DataQualityService) CreateQualityAgentGoal(ctx context.Context, req *co
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the quality agent runner is disabled in this workspace"))
 	}
+	if len(settings.AgentRunnerDatabases) == 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the runner has no database in scope; enable at least one"))
+	}
 	kind := storepb.QualityAgentGoalKind(req.Msg.GetKind())
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
 	triggerRef := strings.TrimSpace(req.Msg.GetTriggerRef())
 	objective := strings.TrimSpace(req.Msg.GetObjective())
+	if targetGUID == "" {
+		return nil, connectErrorInvalid("a goal needs a target so the runner can scope it")
+	}
 	switch kind {
 	case storepb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET:
-		if targetGUID == "" {
-			return nil, connectErrorInvalid("a maintain goal needs a target")
-		}
 	case storepb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT:
 		if req.Msg.GetTrigger() == v1pb.QualityAgentGoalTrigger_QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED {
 			return nil, connectErrorInvalid("an event goal needs a trigger")
@@ -279,13 +283,27 @@ func (s *DataQualityService) ClearQualityAgentGoal(ctx context.Context, req *con
 }
 
 // transitionGoal applies one human phase change with a revision compare-and-set.
+// Only the phase transitions the lifecycle allows are accepted, and a stale revision
+// stops the change instead of applying it over a newer state.
 func (s *DataQualityService) transitionGoal(ctx context.Context, name string, expectedRevision int32, phase storepb.QualityAgentGoalPhase) (*connect.Response[v1pb.QualityAgentGoal], error) {
 	workspaceID, resourceID, err := s.qualityAgentGoalResourceID(ctx, name)
 	if err != nil {
 		return nil, err
 	}
+	current, err := s.fetchQualityAgentGoal(ctx, resourceID)
+	if err != nil {
+		return nil, err
+	}
+	if !goalPhaseTransitionAllowed(current.Phase, phase) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.Errorf("a goal in phase %s cannot become %s", current.Phase, phase))
+	}
 	message, applied, err := s.store.UpdateQualityAgentGoalState(ctx, resourceID, expectedRevision, phase, "", "", nil)
 	if err != nil {
+		if store.IsUniqueViolation(err) {
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("another goal already covers this scope"))
+		}
 		return nil, err
 	}
 	if !applied {
@@ -293,6 +311,24 @@ func (s *DataQualityService) transitionGoal(ctx context.Context, name string, ex
 			errors.New("the goal changed since it was read; reload and try again"))
 	}
 	return connect.NewResponse(convertQualityAgentGoalToV1(workspaceID, message)), nil
+}
+
+// goalPhaseTransitionAllowed is the lifecycle's transition table: resume reopens a
+// paused or blocked goal, pause stops a running one, and complete ends any non-complete
+// goal. A completed goal never goes back.
+func goalPhaseTransitionAllowed(from, to storepb.QualityAgentGoalPhase) bool {
+	switch to {
+	case storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED:
+		return from == storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE ||
+			from == storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED
+	case storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE:
+		return from == storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED ||
+			from == storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED
+	case storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE:
+		return from != storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE
+	default:
+		return false
+	}
 }
 
 // qualityAgentGoalResourceID resolves a goal name to its workspace and resource id.

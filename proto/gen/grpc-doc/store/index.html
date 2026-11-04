@@ -3008,7 +3008,8 @@ the limit that applies. </p></td>
                   <td>idempotency_key</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Idempotency key of a proposal effect, so a crash cannot duplicate it. </p></td>
+                  <td><p>Idempotency key of an effect step; the store returns the existing step for a
+retried key, and the effect&#39;s own fingerprint keeps the side effect single. </p></td>
                 </tr>
               
                 <tr>

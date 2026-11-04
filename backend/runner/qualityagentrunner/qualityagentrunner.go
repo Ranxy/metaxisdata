@@ -38,6 +38,8 @@ type GoalStore interface {
 	ClaimDueQualityAgentGoals(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]*store.QualityAgentGoalMessage, error)
 	AppendQualityAgentGoalStep(ctx context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error)
 	ReleaseQualityAgentGoalLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
+	UpdateQualityAgentGoalState(ctx context.Context, resourceID string, expectedRevision int32, phase storepb.QualityAgentGoalPhase, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentGoalMessage, bool, error)
+	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 }
 
 // Runner is the goal-host loop.
@@ -112,21 +114,25 @@ func (r *Runner) runOnce(ctx context.Context) {
 		return
 	}
 	for _, goal := range goals {
-		r.hostGoal(ctx, goal)
+		r.hostGoal(ctx, settings, goal)
 	}
 }
 
-// hostGoal is M1's placeholder turn: it journals the claim, checks the goal's scope,
-// and schedules the next look. The deterministic survey lands in M2 and the model
-// loop in M3.
-func (r *Runner) hostGoal(ctx context.Context, goal *store.QualityAgentGoalMessage) {
+// hostGoal is M1's placeholder turn: it checks the run-time scope (database allowlist
+// and agent enabled), journals the reservation, and schedules the next look. The
+// deterministic survey lands in M2 and the model loop in M3.
+func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, goal *store.QualityAgentGoalMessage) {
+	if reason := r.scopeBlocker(ctx, settings, goal); reason != "" {
+		r.blockGoal(ctx, goal, reason)
+		return
+	}
 	step := &store.QualityAgentGoalStepMessage{
 		GoalID:      goal.ID,
 		WorkspaceID: goal.WorkspaceID,
-		Kind:        storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE,
+		Kind:        storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED,
 		Payload: &storepb.QualityAgentGoalStepPayload{
 			Tool:    "runner",
-			Summary: "claimed by the quality agent runner",
+			Summary: "goal turn reserved (M1 has no turn yet)",
 		},
 	}
 	if _, err := r.store.AppendQualityAgentGoalStep(ctx, step); err != nil {
@@ -136,6 +142,46 @@ func (r *Runner) hostGoal(ctx context.Context, goal *store.QualityAgentGoalMessa
 	next := r.now().Add(placeholderWake)
 	if _, err := r.store.ReleaseQualityAgentGoalLease(ctx, goal.ResourceID, &next); err != nil {
 		slog.Error("failed to release a quality agent goal lease",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+	}
+}
+
+// scopeBlocker reports why a goal may not run any more, or "" when it is in scope.
+// It is the run-time half of the allowlist: an administrator can remove a database or
+// disable the agent after the goal was created, and the next round must stop.
+func (r *Runner) scopeBlocker(ctx context.Context, settings dataquality.Settings, goal *store.QualityAgentGoalMessage) string {
+	if goal.DatabaseRef == "" || !settings.AgentRunnerDatabaseEnabled(goal.DatabaseRef) {
+		return "the goal's database is no longer in the runner's allowlist"
+	}
+	agent, err := r.store.GetQualityAgentByID(ctx, goal.AgentID)
+	if err != nil {
+		return "the goal's agent could not be read"
+	}
+	if agent == nil || !agent.Enabled {
+		return "the goal's agent is disabled"
+	}
+	return ""
+}
+
+// blockGoal parks a goal that may not run with a stable needs-human code, keeping the
+// journal and the durable state for a person to inspect.
+func (r *Runner) blockGoal(ctx context.Context, goal *store.QualityAgentGoalMessage, reason string) {
+	if _, err := r.store.AppendQualityAgentGoalStep(ctx, &store.QualityAgentGoalStepMessage{
+		GoalID:      goal.ID,
+		WorkspaceID: goal.WorkspaceID,
+		Kind:        storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_STOP,
+		Payload:     &storepb.QualityAgentGoalStepPayload{Tool: "runner", Summary: reason, Error: reason},
+	}); err != nil {
+		slog.Error("failed to append the blocked-goal step",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+	}
+	if _, _, err := r.store.UpdateQualityAgentGoalState(ctx, goal.ResourceID, goal.Revision,
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED, "needs-human", reason, nil); err != nil {
+		slog.Error("failed to block an out-of-scope goal",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+	}
+	if _, err := r.store.ReleaseQualityAgentGoalLease(ctx, goal.ResourceID, nil); err != nil {
+		slog.Error("failed to release a blocked goal lease",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
 	}
 }

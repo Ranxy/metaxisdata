@@ -250,7 +250,7 @@ func (s *Store) UpdateQualityAgentGoalState(ctx context.Context, resourceID stri
 	message, err := scanQualityAgentGoal(s.GetDB().QueryRowContext(ctx, `
 		UPDATE quality_agent_goal
 		SET phase = $2, blocked_code = $3, blocked_reason = $4, next_wake_at = $5,
-			revision = revision + 1, updated_at = NOW()
+			lease_until = NULL, revision = revision + 1, updated_at = NOW()
 		WHERE resource_id = $1 AND revision = $6 AND cleared_at IS NULL
 		RETURNING `+qualityAgentGoalColumns,
 		resourceID, int16(phase), blockedCode, blockedReason, nextWakeAt, expectedRevision))
@@ -319,9 +319,10 @@ func (s *Store) ResetStaleQualityAgentGoalLeases(ctx context.Context, now time.T
 				ELSE blocked_reason END,
 			revision = revision + 1,
 			updated_at = NOW()
-		WHERE lease_until IS NOT NULL AND lease_until <= $1`,
+		WHERE phase = $4 AND cleared_at IS NULL AND lease_until IS NOT NULL AND lease_until <= $1`,
 		now, restartLimit,
-		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED))
+		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED),
+		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE))
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to reset the stale goal leases")
 	}
@@ -336,7 +337,7 @@ func (s *Store) ResetStaleQualityAgentGoalLeases(ctx context.Context, now time.T
 func (s *Store) ClearQualityAgentGoal(ctx context.Context, resourceID string, expectedRevision int32, now time.Time) (bool, error) {
 	result, err := s.GetDB().ExecContext(ctx, `
 		UPDATE quality_agent_goal
-		SET cleared_at = $2, revision = revision + 1, updated_at = NOW()
+		SET cleared_at = $2, lease_until = NULL, revision = revision + 1, updated_at = NOW()
 		WHERE resource_id = $1 AND revision = $3 AND cleared_at IS NULL`,
 		resourceID, now, expectedRevision)
 	if err != nil {
@@ -373,6 +374,17 @@ func (s *Store) AppendQualityAgentGoalStep(ctx context.Context, input *QualityAg
 		input.GoalID, input.WorkspaceID, int16(input.Kind), payload, input.Tokens,
 		input.IdempotencyKey))
 	if err != nil {
+		if isUniqueViolation(err) && input.IdempotencyKey != "" {
+			// A retried effect reuses its journal entry instead of failing; the
+			// effect itself is made idempotent by its own fingerprint.
+			existing, findErr := scanQualityAgentGoalStep(s.GetDB().QueryRowContext(ctx,
+				`SELECT `+qualityAgentGoalStepColumns+` FROM quality_agent_goal_step
+				 WHERE goal_id = $1 AND idempotency_key = $2`, input.GoalID, input.IdempotencyKey))
+			if findErr != nil {
+				return nil, errors.Wrap(findErr, "failed to read the existing goal step")
+			}
+			return existing, nil
+		}
 		return nil, errors.Wrap(err, "failed to append the goal step")
 	}
 	return message, nil
