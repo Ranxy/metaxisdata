@@ -6895,6 +6895,13 @@ export declare type QualityContractSettings = Message<"metaxisdata.v1.QualityCon
    * @generated from field: metaxisdata.v1.QualitySeverity default_severity = 3;
    */
   defaultSeverity: QualitySeverity;
+
+  /**
+   * What the target promises above its checks.
+   *
+   * @generated from field: metaxisdata.v1.QualityContractIntent intent = 4;
+   */
+  intent?: QualityContractIntent;
 };
 
 /**
@@ -6902,6 +6909,139 @@ export declare type QualityContractSettings = Message<"metaxisdata.v1.QualityCon
  * Use `create(QualityContractSettingsSchema)` to create a new message.
  */
 export declare const QualityContractSettingsSchema: GenMessage<QualityContractSettings>;
+
+/**
+ * QualityContractIntentStatement is one property the target promises for a scope.
+ *
+ * @generated from message metaxisdata.v1.QualityContractIntentStatement
+ */
+export declare type QualityContractIntentStatement = Message<"metaxisdata.v1.QualityContractIntentStatement"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageProperty property = 1;
+   */
+  property: QualityCoverageProperty;
+
+  /**
+   * The column the promise is scoped to; empty means the whole table.
+   *
+   * @generated from field: string column = 2;
+   */
+  column: string;
+
+  /**
+   * A free-text tolerance kept for reviewers. It is not evaluated yet.
+   *
+   * @generated from field: string tolerance = 3;
+   */
+  tolerance: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractIntentStatement.
+ * Use `create(QualityContractIntentStatementSchema)` to create a new message.
+ */
+export declare const QualityContractIntentStatementSchema: GenMessage<QualityContractIntentStatement>;
+
+/**
+ * QualityContractIntentExemption waives one declared requirement: the requirement
+ * stays visible, produces no gap, and never counts as satisfied.
+ *
+ * @generated from message metaxisdata.v1.QualityContractIntentExemption
+ */
+export declare type QualityContractIntentExemption = Message<"metaxisdata.v1.QualityContractIntentExemption"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageProperty property = 1;
+   */
+  property: QualityCoverageProperty;
+
+  /**
+   * @generated from field: string column = 2;
+   */
+  column: string;
+
+  /**
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
+
+  /**
+   * Format: users/{user}. Empty when the editor is unknown.
+   *
+   * @generated from field: string approved_by = 4;
+   */
+  approvedBy: string;
+
+  /**
+   * 0 means the exemption never expires.
+   *
+   * @generated from field: google.protobuf.Timestamp expires_at = 5;
+   */
+  expiresAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractIntentExemption.
+ * Use `create(QualityContractIntentExemptionSchema)` to create a new message.
+ */
+export declare const QualityContractIntentExemptionSchema: GenMessage<QualityContractIntentExemption>;
+
+/**
+ * QualityContractIntent is the target's declaration above the checks: its
+ * criticality, the properties it commits to, its dependents and the requirements
+ * it explicitly waived. Editing it is part of UpdateQualityContract, and it is
+ * versioned with the contract on every publish.
+ *
+ * @generated from message metaxisdata.v1.QualityContractIntent
+ */
+export declare type QualityContractIntent = Message<"metaxisdata.v1.QualityContractIntent"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAssetCriticality criticality = 1;
+   */
+  criticality: QualityAssetCriticality;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityContractIntentStatement statements = 2;
+   */
+  statements: QualityContractIntentStatement[];
+
+  /**
+   * Downstream assets or external tags that depend on this one. Recorded only;
+   * they feed impact and criticality derivation later.
+   *
+   * @generated from field: repeated string dependents = 3;
+   */
+  dependents: string[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityContractIntentExemption exemptions = 4;
+   */
+  exemptions: QualityContractIntentExemption[];
+
+  /**
+   * When the declaration takes effect; unset means immediately.
+   *
+   * @generated from field: google.protobuf.Timestamp effective_from = 5;
+   */
+  effectiveFrom?: Timestamp;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityContractIntentSource source = 6;
+   */
+  source: QualityContractIntentSource;
+
+  /**
+   * Reserved for domain-level intent; stored, not resolved in this phase.
+   *
+   * @generated from field: string domain_ref = 7;
+   */
+  domainRef: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractIntent.
+ * Use `create(QualityContractIntentSchema)` to create a new message.
+ */
+export declare const QualityContractIntentSchema: GenMessage<QualityContractIntent>;
 
 /**
  * QualityContractChangeSummary counts how the live rules differ from the
@@ -6934,7 +7074,7 @@ export declare const QualityContractChangeSummarySchema: GenMessage<QualityContr
 
 /**
  * QualityCoverageRequirement is one required property and whether a live rule
- * currently satisfies it. Gap = required and not satisfied.
+ * currently satisfies it. Gap = required, not satisfied and not exempted.
  *
  * @generated from message metaxisdata.v1.QualityCoverageRequirement
  */
@@ -6948,6 +7088,26 @@ export declare type QualityCoverageRequirement = Message<"metaxisdata.v1.Quality
    * @generated from field: bool satisfied = 2;
    */
   satisfied: boolean;
+
+  /**
+   * The scope column; empty means the whole table.
+   *
+   * @generated from field: string column = 3;
+   */
+  column: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityCoverageSource source = 4;
+   */
+  source: QualityCoverageSource;
+
+  /**
+   * A declared exemption waives the gap without counting the requirement as
+   * satisfied.
+   *
+   * @generated from field: bool exempted = 5;
+   */
+  exempted: boolean;
 };
 
 /**
@@ -7100,6 +7260,13 @@ export declare type QualityCoverageGap = Message<"metaxisdata.v1.QualityCoverage
    * @generated from field: metaxisdata.v1.QualityAssetCriticality criticality = 3;
    */
   criticality: QualityAssetCriticality;
+
+  /**
+   * The scope column; empty means the whole table.
+   *
+   * @generated from field: string column = 4;
+   */
+  column: string;
 };
 
 /**
@@ -7224,6 +7391,14 @@ export declare type QualityContractRevision = Message<"metaxisdata.v1.QualityCon
    * @generated from field: metaxisdata.v1.QualityContractChangeSummary change_summary = 6;
    */
   changeSummary?: QualityContractChangeSummary;
+
+  /**
+   * The intent this version recorded; absent on a version published before intent
+   * existed, which is not the same as an empty one.
+   *
+   * @generated from field: metaxisdata.v1.QualityContractIntent intent = 7;
+   */
+  intent?: QualityContractIntent;
 };
 
 /**
@@ -9811,6 +9986,38 @@ export enum QualityTargetOrder {
 export declare const QualityTargetOrderSchema: GenEnum<QualityTargetOrder>;
 
 /**
+ * QualityContractIntentSource records who wrote the intent.
+ *
+ * @generated from enum metaxisdata.v1.QualityContractIntentSource
+ */
+export enum QualityContractIntentSource {
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_INTENT_SOURCE_HUMAN = 1;
+   */
+  HUMAN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT = 2;
+   */
+  AGENT_DRAFT = 2,
+
+  /**
+   * @generated from enum value: QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED = 3;
+   */
+  IMPORTED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityContractIntentSource.
+ */
+export declare const QualityContractIntentSourceSchema: GenEnum<QualityContractIntentSource>;
+
+/**
  * QualityPlanState says whether a target has a plan at all. A target with rules
  * but no contract row is UNPLANNED: its checks are real, but nothing records
  * what it promised.
@@ -9873,7 +10080,8 @@ export enum QualityAssetCriticality {
 export declare const QualityAssetCriticalitySchema: GenEnum<QualityAssetCriticality>;
 
 /**
- * QualityCoverageProperty is one kind of monitoring a declaration can require.
+ * QualityCoverageProperty is one kind of monitoring an intent promise or a plan
+ * declaration can require.
  *
  * @generated from enum metaxisdata.v1.QualityCoverageProperty
  */
@@ -9902,12 +10110,60 @@ export enum QualityCoverageProperty {
    * @generated from enum value: QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY = 4;
    */
   SCHEMA_STABILITY = 4,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_NULL_RATE = 5;
+   */
+  NULL_RATE = 5,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES = 6;
+   */
+  ACCEPTED_VALUES = 6,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_FORMAT = 7;
+   */
+  FORMAT = 7,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_PROPERTY_RANGE = 8;
+   */
+  RANGE = 8,
 }
 
 /**
  * Describes the enum metaxisdata.v1.QualityCoverageProperty.
  */
 export declare const QualityCoveragePropertySchema: GenEnum<QualityCoverageProperty>;
+
+/**
+ * QualityCoverageSource says where a requirement came from: the criticality
+ * template or an explicit intent statement.
+ *
+ * @generated from enum metaxisdata.v1.QualityCoverageSource
+ */
+export enum QualityCoverageSource {
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_SOURCE_TEMPLATE = 1;
+   */
+  TEMPLATE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_COVERAGE_SOURCE_INTENT = 2;
+   */
+  INTENT = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityCoverageSource.
+ */
+export declare const QualityCoverageSourceSchema: GenEnum<QualityCoverageSource>;
 
 /**
  * DataQualityService manages the checks that watch the data itself: rules and

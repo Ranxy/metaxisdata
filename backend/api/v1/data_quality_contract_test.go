@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -139,7 +141,8 @@ func TestConvertQualityContractSettings(t *testing.T) {
 	require.Equal(t, "id", public.GetFilter().GetClauses()[0].GetColumn())
 	require.Equal(t, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING, public.GetDefaultSeverity())
 
-	back := convertQualityContractSettingsFromV1(public)
+	back, err := convertQualityContractSettingsFromV1(public)
+	require.NoError(t, err)
 	require.Equal(t, stored.GetFilter().GetClauses()[0].GetColumn(), back.GetFilter().GetClauses()[0].GetColumn())
 	require.Equal(t, stored.GetDefaultSeverity(), back.GetDefaultSeverity())
 }
@@ -253,4 +256,124 @@ func TestQualityContractViewLegacyHasUnpublishedChanges(t *testing.T) {
 	view, err = service.qualityContractViewWith(ctx, "inst;shop;public;orders", storepb.MetaType_TABLE, contract, changed, revision)
 	require.NoError(t, err)
 	require.True(t, view.GetHasUnpublishedChanges())
+}
+
+// An intent crosses the API boundary with its criticality, statements, dependents,
+// exemptions and timestamps intact.
+func TestConvertQualityContractIntentRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	public := &v1pb.QualityContractIntent{
+		Criticality: v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL,
+		Statements: []*v1pb.QualityContractIntentStatement{
+			{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS, Tolerance: "6h"},
+			{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_NULL_RATE, Column: "email"},
+		},
+		Dependents:    []string{"inst-1;shop;public;orders_upstream"},
+		EffectiveFrom: timestamppb.New(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)),
+		Source:        v1pb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED,
+		DomainRef:     "domain/sales",
+		Exemptions: []*v1pb.QualityContractIntentExemption{
+			{
+				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY,
+				Reason:    "pinned upstream",
+				ExpiresAt: timestamppb.New(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)),
+			},
+		},
+	}
+	stored, err := convertQualityContractIntentFromV1(public)
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL, stored.GetCriticality())
+	require.Len(t, stored.GetStatements(), 2)
+	require.Zero(t, stored.GetExemptions()[0].GetApprovedBy(), "approved_by is output only")
+	require.NotZero(t, stored.GetExemptions()[0].GetExpiresAtUnixMs())
+	require.Equal(t, int64(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).UnixMilli()), stored.GetEffectiveFromUnixMs())
+
+	back := convertQualityContractIntentToV1(stored)
+	require.Equal(t, public.GetCriticality(), back.GetCriticality())
+	require.Equal(t, public.GetStatements()[0].GetTolerance(), back.GetStatements()[0].GetTolerance())
+	require.Equal(t, public.GetStatements()[1].GetColumn(), back.GetStatements()[1].GetColumn())
+	require.Equal(t, public.GetDependents(), back.GetDependents())
+	require.Equal(t, public.GetSource(), back.GetSource())
+	require.Equal(t, public.GetDomainRef(), back.GetDomainRef())
+	require.Equal(t, public.GetEffectiveFrom().AsTime(), back.GetEffectiveFrom().AsTime())
+	require.Equal(t, public.GetExemptions()[0].GetExpiresAt().AsTime(), back.GetExemptions()[0].GetExpiresAt().AsTime())
+}
+
+// The shape validation rejects what the store must not hold.
+func TestValidateQualityContractIntentShape(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateQualityContractIntentShape(&v1pb.QualityContractIntent{}))
+
+	for name, intent := range map[string]*v1pb.QualityContractIntent{
+		"unknown criticality": {Criticality: v1pb.QualityAssetCriticality(99)},
+		"unknown property":    {Statements: []*v1pb.QualityContractIntentStatement{{Property: v1pb.QualityCoverageProperty(99)}}},
+		"too many statements": {Statements: make([]*v1pb.QualityContractIntentStatement, maxContractIntentStatements+1)},
+		"empty dependent":     {Dependents: []string{" "}},
+		"to many dependents":  {Dependents: make([]string, maxContractIntentDependents+1)},
+		"reasonless exemption": {
+			Exemptions: []*v1pb.QualityContractIntentExemption{
+				{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME},
+			},
+		},
+		"exemption without property": {
+			Exemptions: []*v1pb.QualityContractIntentExemption{{Reason: "because"}},
+		},
+		"invalid timestamp": {
+			EffectiveFrom: &timestamppb.Timestamp{Seconds: 1e18},
+		},
+	} {
+		require.Error(t, validateQualityContractIntentShape(intent), name)
+	}
+}
+
+// The server records the editor as the exemptions' approver and defaults the
+// source, and an intent that declares nothing is dropped.
+func TestNormalizeQualityContractIntent(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, normalizeQualityContractIntent(nil, 7, nil))
+	require.Nil(t, normalizeQualityContractIntent(&storepb.QualityContractIntent{
+		Source: storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_HUMAN,
+	}, 7, nil), "a source alone is not a declaration")
+
+	previous := &storepb.QualityContractIntent{
+		Exemptions: []*storepb.QualityContractIntentExemption{
+			{Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, Reason: "no volume drift expected", ApprovedBy: 3},
+		},
+	}
+	intent := normalizeQualityContractIntent(&storepb.QualityContractIntent{
+		Criticality: storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_IMPORTANT,
+		Exemptions: []*storepb.QualityContractIntentExemption{
+			{Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, Reason: "no volume drift expected"},
+			{Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS, Reason: "refreshed hourly"},
+		},
+	}, 7, previous)
+	require.NotNil(t, intent)
+	require.Equal(t, storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_HUMAN, intent.GetSource())
+	require.Equal(t, int32(3), intent.GetExemptions()[0].GetApprovedBy(), "an unchanged exemption keeps its approver")
+	require.Equal(t, int32(7), intent.GetExemptions()[1].GetApprovedBy(), "a new exemption records the editor")
+}
+
+// A published version exposes the intent it recorded; a version published before
+// intent existed reads as absent rather than empty.
+func TestConvertQualityContractRevisionIntent(t *testing.T) {
+	t.Parallel()
+
+	revision := &store.QualityContractRevisionMessage{
+		Version: 3,
+		Snapshot: &storepb.QualityContractSnapshot{
+			Settings: &storepb.QualityContractSettings{
+				Intent: &storepb.QualityContractIntent{
+					Criticality: storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL,
+				},
+			},
+		},
+	}
+	require.Equal(t, v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL,
+		convertQualityContractRevisionToV1(revision).GetIntent().GetCriticality())
+
+	legacy := convertQualityContractRevisionToV1(&store.QualityContractRevisionMessage{Version: 1})
+	require.Nil(t, legacy.GetIntent())
 }

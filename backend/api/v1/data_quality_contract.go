@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"slices"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
@@ -54,7 +55,10 @@ func (s *DataQualityService) UpdateQualityContract(ctx context.Context, req *con
 	if req.Msg.GetSettings() == nil {
 		return nil, connectErrorInvalid("settings is required")
 	}
-	settings := convertQualityContractSettingsFromV1(req.Msg.GetSettings())
+	settings, err := convertQualityContractSettingsFromV1(req.Msg.GetSettings())
+	if err != nil {
+		return nil, err
+	}
 	if err := validateQualityContractSettings(settings); err != nil {
 		return nil, err
 	}
@@ -69,7 +73,19 @@ func (s *DataQualityService) UpdateQualityContract(ctx context.Context, req *con
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		return nil, connectErrorInvalid("meta_type is required when the target has no rules")
 	}
+	existing, err := s.store.GetQualityContract(ctx, targetGUID, metaType)
+	if err != nil {
+		return nil, err
+	}
+	var previousIntent *storepb.QualityContractIntent
+	if existing != nil {
+		previousIntent = existing.Settings.GetIntent()
+	}
+	settings.Intent = normalizeQualityContractIntent(settings.GetIntent(), currentUserID(ctx), previousIntent)
 	if err := dataquality.ValidateTargetFilter(ctx, s.store, targetGUID, metaType, settings.GetFilter()); err != nil {
+		return nil, err
+	}
+	if err := dataquality.ValidateContractIntent(ctx, s.store, targetGUID, metaType, settings.GetIntent()); err != nil {
 		return nil, err
 	}
 	if _, err := s.store.UpsertQualityContractSettings(ctx, targetGUID, metaType, settings); err != nil {
@@ -273,7 +289,7 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 	// The plan is a read-only projection of the same rules; it joins the contract
 	// view so the workspace can show what the target promises and what it lacks
 	// without a second request.
-	view.Plan = qualityPlanView(targetGUID, metaType, rules, contract != nil)
+	view.Plan = qualityPlanView(targetGUID, metaType, rules, contract)
 	if latest != nil {
 		added, modified, removed := store.QualityContractCheckDiff(latest.Snapshot.GetChecks(), checks)
 		view.ChangeSummary = qualityContractChangeSummary(added, modified, removed)
@@ -458,7 +474,21 @@ func qualityContractChangeSummary(added, modified, removed int32) *v1pb.QualityC
 // qualityContractSettingsEmpty reports whether settings carry anything.
 func qualityContractSettingsEmpty(settings *storepb.QualityContractSettings) bool {
 	return len(settings.GetFilter().GetClauses()) == 0 &&
-		settings.GetDefaultSeverity() == storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED
+		settings.GetDefaultSeverity() == storepb.QualitySeverity_QUALITY_SEVERITY_UNSPECIFIED &&
+		qualityContractIntentEmpty(settings.GetIntent())
+}
+
+// qualityContractIntentEmpty reports whether the intent declares nothing. A source
+// alone is not a declaration: setting it does not make an empty intent look like a
+// change.
+func qualityContractIntentEmpty(intent *storepb.QualityContractIntent) bool {
+	return intent == nil ||
+		(intent.GetCriticality() == storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_UNSPECIFIED &&
+			len(intent.GetStatements()) == 0 &&
+			len(intent.GetDependents()) == 0 &&
+			len(intent.GetExemptions()) == 0 &&
+			intent.GetEffectiveFromUnixMs() == 0 &&
+			intent.GetDomainRef() == "")
 }
 
 // maxQualityContractNoteBytes bounds a published version's note. The UI limits
@@ -499,18 +529,65 @@ func convertQualityContractSettingsToV1(settings *storepb.QualityContractSetting
 	return &v1pb.QualityContractSettings{
 		Filter:          convertQualityFilterToV1(settings.GetFilter()),
 		DefaultSeverity: v1pb.QualitySeverity(settings.GetDefaultSeverity()),
+		Intent:          convertQualityContractIntentToV1(settings.GetIntent()),
 	}
 }
 
-// convertQualityContractSettingsFromV1 renders the request settings.
-func convertQualityContractSettingsFromV1(settings *v1pb.QualityContractSettings) *storepb.QualityContractSettings {
+// convertQualityContractSettingsFromV1 renders the request settings and rejects an
+// intent whose shape is invalid. The enums are validated here because the
+// conversions are casts: an unknown value must not reach the store.
+func convertQualityContractSettingsFromV1(settings *v1pb.QualityContractSettings) (*storepb.QualityContractSettings, error) {
 	if settings == nil {
-		return &storepb.QualityContractSettings{}
+		return &storepb.QualityContractSettings{}, nil
+	}
+	intent, err := convertQualityContractIntentFromV1(settings.GetIntent())
+	if err != nil {
+		return nil, err
 	}
 	return &storepb.QualityContractSettings{
 		Filter:          convertQualityFilterFromV1(settings.GetFilter()),
 		DefaultSeverity: storepb.QualitySeverity(settings.GetDefaultSeverity()),
+		Intent:          intent,
+	}, nil
+}
+
+// normalizeQualityContractIntent records who wrote the intent and treats an intent
+// that declares nothing as absent. This phase has no approval workflow, so an
+// exemption keeps the approver it already had and a new one records the editor; the
+// workflow replaces that attribution later. Replacing settings (for example to
+// change the contract filter) must not rewrite an existing exemption's approver.
+func normalizeQualityContractIntent(intent *storepb.QualityContractIntent, editorID int, previous *storepb.QualityContractIntent) *storepb.QualityContractIntent {
+	if intent == nil || qualityContractIntentEmpty(intent) {
+		return nil
 	}
+	if intent.GetSource() == storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED {
+		intent.Source = storepb.QualityContractIntentSource_QUALITY_CONTRACT_INTENT_SOURCE_HUMAN
+	}
+	for _, exemption := range intent.GetExemptions() {
+		if approver := retainedQualityContractExemptionApprover(exemption, previous); approver > 0 {
+			exemption.ApprovedBy = approver
+		} else if editorID > 0 {
+			exemption.ApprovedBy = int32(editorID)
+		}
+	}
+	return intent
+}
+
+// retainedQualityContractExemptionApprover returns the approver an identical
+// previously stored exemption already records. Identity is the full declaration:
+// editing its reason or expiry makes it a new exemption, attributed to this editor.
+func retainedQualityContractExemptionApprover(exemption *storepb.QualityContractIntentExemption, previous *storepb.QualityContractIntent) int32 {
+	for _, candidate := range previous.GetExemptions() {
+		if candidate.GetApprovedBy() == 0 ||
+			candidate.GetProperty() != exemption.GetProperty() ||
+			candidate.GetColumn() != exemption.GetColumn() ||
+			candidate.GetReason() != exemption.GetReason() ||
+			candidate.GetExpiresAtUnixMs() != exemption.GetExpiresAtUnixMs() {
+			continue
+		}
+		return candidate.GetApprovedBy()
+	}
+	return 0
 }
 
 // convertQualityContractRevisionToV1 renders one published version's metadata.
@@ -529,6 +606,7 @@ func convertQualityContractRevisionToV1(revision *store.QualityContractRevisionM
 			Modified: revision.ModifiedCount,
 			Removed:  revision.RemovedCount,
 		},
+		Intent: convertQualityContractIntentToV1(revision.Snapshot.GetSettings().GetIntent()),
 	}
 }
 
@@ -562,4 +640,187 @@ func qualityContractPublishedVersion(contract *store.QualityContractMessage) int
 		return 0
 	}
 	return contract.PublishedVersion
+}
+
+// Bounds for an intent declaration: the whole intent lives inside the contract
+// settings JSONB, so it must not be an unbounded payload.
+const (
+	maxContractIntentStatements  = 32
+	maxContractIntentDependents  = 32
+	maxContractIntentExemptions  = 32
+	maxContractIntentTextBytes   = 500
+	maxContractIntentDomainBytes = 200
+)
+
+// convertQualityContractIntentToV1 renders a stored intent.
+func convertQualityContractIntentToV1(intent *storepb.QualityContractIntent) *v1pb.QualityContractIntent {
+	if intent == nil {
+		return nil
+	}
+	converted := &v1pb.QualityContractIntent{
+		Criticality:   v1pb.QualityAssetCriticality(intent.GetCriticality()),
+		Dependents:    slices.Clone(intent.GetDependents()),
+		EffectiveFrom: qualityContractTimestampFromMillis(intent.GetEffectiveFromUnixMs()),
+		Source:        v1pb.QualityContractIntentSource(intent.GetSource()),
+		DomainRef:     intent.GetDomainRef(),
+	}
+	for _, statement := range intent.GetStatements() {
+		converted.Statements = append(converted.Statements, &v1pb.QualityContractIntentStatement{
+			Property:  v1pb.QualityCoverageProperty(statement.GetProperty()),
+			Column:    statement.GetColumn(),
+			Tolerance: statement.GetTolerance(),
+		})
+	}
+	for _, exemption := range intent.GetExemptions() {
+		var approvedBy string
+		if exemption.GetApprovedBy() > 0 {
+			id := exemption.GetApprovedBy()
+			approvedBy = formatQualityContractPublisher(&id)
+		}
+		converted.Exemptions = append(converted.Exemptions, &v1pb.QualityContractIntentExemption{
+			Property:   v1pb.QualityCoverageProperty(exemption.GetProperty()),
+			Column:     exemption.GetColumn(),
+			Reason:     exemption.GetReason(),
+			ApprovedBy: approvedBy,
+			ExpiresAt:  qualityContractTimestampFromMillis(exemption.GetExpiresAtUnixMs()),
+		})
+	}
+	return converted
+}
+
+// convertQualityContractIntentFromV1 renders a request intent after validating its
+// shape. The approved_by field is output only: the server records the editor.
+func convertQualityContractIntentFromV1(intent *v1pb.QualityContractIntent) (*storepb.QualityContractIntent, error) {
+	if intent == nil {
+		return nil, nil
+	}
+	if err := validateQualityContractIntentShape(intent); err != nil {
+		return nil, err
+	}
+	converted := &storepb.QualityContractIntent{
+		Criticality:         storepb.QualityContractCriticality(intent.GetCriticality()),
+		EffectiveFromUnixMs: qualityContractMillisFromTimestamp(intent.GetEffectiveFrom()),
+		Source:              storepb.QualityContractIntentSource(intent.GetSource()),
+		DomainRef:           strings.TrimSpace(intent.GetDomainRef()),
+	}
+	for _, dependent := range intent.GetDependents() {
+		if dependent = strings.TrimSpace(dependent); dependent != "" {
+			converted.Dependents = append(converted.Dependents, dependent)
+		}
+	}
+	for _, statement := range intent.GetStatements() {
+		converted.Statements = append(converted.Statements, &storepb.QualityContractIntentStatement{
+			Property:  storepb.QualityCoverageProperty(statement.GetProperty()),
+			Column:    strings.TrimSpace(statement.GetColumn()),
+			Tolerance: strings.TrimSpace(statement.GetTolerance()),
+		})
+	}
+	for _, exemption := range intent.GetExemptions() {
+		converted.Exemptions = append(converted.Exemptions, &storepb.QualityContractIntentExemption{
+			Property:        storepb.QualityCoverageProperty(exemption.GetProperty()),
+			Column:          strings.TrimSpace(exemption.GetColumn()),
+			Reason:          strings.TrimSpace(exemption.GetReason()),
+			ExpiresAtUnixMs: qualityContractMillisFromTimestamp(exemption.GetExpiresAt()),
+		})
+	}
+	return converted, nil
+}
+
+// validateQualityContractIntentShape rejects an intent the store must not hold:
+// unknown enum values, unbounded lists or malformed timestamps.
+func validateQualityContractIntentShape(intent *v1pb.QualityContractIntent) error {
+	switch intent.GetCriticality() {
+	case v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_UNSPECIFIED,
+		v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_EXPERIMENTAL,
+		v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_IMPORTANT,
+		v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL:
+	default:
+		return connectErrorInvalid("unknown intent criticality %d", intent.GetCriticality())
+	}
+	if err := checkQualityContractIntentTimestamp(intent.GetEffectiveFrom(), "effective_from"); err != nil {
+		return err
+	}
+	if len(intent.GetStatements()) > maxContractIntentStatements {
+		return connectErrorInvalid("an intent carries at most %d statements", maxContractIntentStatements)
+	}
+	for _, statement := range intent.GetStatements() {
+		if err := validateQualityCoverageProperty(statement.GetProperty()); err != nil {
+			return err
+		}
+		if len(statement.GetTolerance()) > maxContractIntentTextBytes {
+			return connectErrorInvalid("an intent statement tolerance is too long (max %d bytes)", maxContractIntentTextBytes)
+		}
+	}
+	if len(intent.GetDependents()) > maxContractIntentDependents {
+		return connectErrorInvalid("an intent names at most %d dependents", maxContractIntentDependents)
+	}
+	for _, dependent := range intent.GetDependents() {
+		if strings.TrimSpace(dependent) == "" {
+			return connectErrorInvalid("an intent dependent must not be empty")
+		}
+		if len(dependent) > maxContractIntentTextBytes {
+			return connectErrorInvalid("an intent dependent is too long (max %d bytes)", maxContractIntentTextBytes)
+		}
+	}
+	if len(intent.GetExemptions()) > maxContractIntentExemptions {
+		return connectErrorInvalid("an intent carries at most %d exemptions", maxContractIntentExemptions)
+	}
+	for _, exemption := range intent.GetExemptions() {
+		if err := validateQualityCoverageProperty(exemption.GetProperty()); err != nil {
+			return err
+		}
+		if len(strings.TrimSpace(exemption.GetReason())) == 0 {
+			return connectErrorInvalid("an intent exemption needs a reason")
+		}
+		if len(exemption.GetReason()) > maxContractIntentTextBytes {
+			return connectErrorInvalid("an intent exemption reason is too long (max %d bytes)", maxContractIntentTextBytes)
+		}
+		if err := checkQualityContractIntentTimestamp(exemption.GetExpiresAt(), "expires_at"); err != nil {
+			return err
+		}
+	}
+	if len(intent.GetDomainRef()) > maxContractIntentDomainBytes {
+		return connectErrorInvalid("an intent domain_ref is too long (max %d bytes)", maxContractIntentDomainBytes)
+	}
+	return nil
+}
+
+// validateQualityCoverageProperty rejects a property outside the declared range;
+// the store and API enums share their numbering, so the conversion is a cast.
+func validateQualityCoverageProperty(property v1pb.QualityCoverageProperty) error {
+	if property < v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME ||
+		property > v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_RANGE {
+		return connectErrorInvalid("unknown coverage property %d", property)
+	}
+	return nil
+}
+
+// checkQualityContractIntentTimestamp rejects a timestamp outside the protobuf
+// range instead of letting the cast store a meaningless value.
+func checkQualityContractIntentTimestamp(timestamp *timestamppb.Timestamp, field string) error {
+	if timestamp == nil {
+		return nil
+	}
+	if err := timestamp.CheckValid(); err != nil {
+		return connectErrorInvalid("intent %s is not a valid timestamp", field)
+	}
+	return nil
+}
+
+// qualityContractTimestampFromMillis renders a stored millisecond instant; zero
+// means unset.
+func qualityContractTimestampFromMillis(millis int64) *timestamppb.Timestamp {
+	if millis <= 0 {
+		return nil
+	}
+	return timestamppb.New(time.UnixMilli(millis))
+}
+
+// qualityContractMillisFromTimestamp reads an API instant as milliseconds; unset
+// stays zero.
+func qualityContractMillisFromTimestamp(timestamp *timestamppb.Timestamp) int64 {
+	if timestamp == nil {
+		return 0
+	}
+	return timestamp.AsTime().UnixMilli()
 }

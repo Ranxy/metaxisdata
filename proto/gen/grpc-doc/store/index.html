@@ -320,6 +320,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityContractIntent"><span class="badge">M</span>QualityContractIntent</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractIntentExemption"><span class="badge">M</span>QualityContractIntentExemption</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractIntentStatement"><span class="badge">M</span>QualityContractIntentStatement</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityContractSettings"><span class="badge">M</span>QualityContractSettings</a>
                 </li>
               
@@ -462,6 +474,18 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityComparisonOperator"><span class="badge">E</span>QualityComparisonOperator</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractCriticality"><span class="badge">E</span>QualityContractCriticality</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityContractIntentSource"><span class="badge">E</span>QualityContractIntentSource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityCoverageProperty"><span class="badge">E</span>QualityCoverageProperty</a>
                 </li>
               
                 <li>
@@ -2628,6 +2652,165 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
 
         
       
+        <h3 id="metaxisdata.store.QualityContractIntent">QualityContractIntent</h3>
+        <p>QualityContractIntent is what a target promises above its checks: its</p><p>criticality, the properties it commits to, its dependents and the requirements</p><p>it explicitly waived. It lives in the contract settings, so it is versioned with</p><p>the contract for free.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>criticality</td>
+                  <td><a href="#metaxisdata.store.QualityContractCriticality">QualityContractCriticality</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statements</td>
+                  <td><a href="#metaxisdata.store.QualityContractIntentStatement">QualityContractIntentStatement</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dependents</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Downstream assets or external tags that depend on this one. Recorded only;
+they feed impact and criticality derivation in a later phase. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>exemptions</td>
+                  <td><a href="#metaxisdata.store.QualityContractIntentExemption">QualityContractIntentExemption</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>effective_from_unix_ms</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>When the declaration takes effect; 0 means immediately. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.store.QualityContractIntentSource">QualityContractIntentSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>domain_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Reserved for domain-level intent (the P2 answer to O1); stored, not resolved. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractIntentExemption">QualityContractIntentExemption</h3>
+        <p>QualityContractIntentExemption waives one declared requirement: the requirement</p><p>stays visible, produces no gap, and never counts as satisfied.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.store.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>approved_by</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The principal who recorded the exemption. This phase records the editor; the
+approval workflow replaces that later. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_at_unix_ms</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>0 means the exemption never expires. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityContractIntentStatement">QualityContractIntentStatement</h3>
+        <p>QualityContractIntentStatement is one property the target promises for a scope.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.store.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The column the promise is scoped to; empty means the whole table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tolerance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A free-text tolerance kept for reviewers. It is not evaluated: expectations
+that drive checks arrive with the plan evaluator. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityContractSettings">QualityContractSettings</h3>
         <p>QualityContractSettings is the target-level layer above the rules: defaults the</p><p>workspace UI uses when authoring, and the filter every rule on the target is</p><p>checked with. Rule-level fields always win where they are set.</p>
 
@@ -2652,6 +2835,13 @@ without rewriting the rules. </p></td>
                   <td><a href="#metaxisdata.store.QualitySeverity">QualitySeverity</a></td>
                   <td></td>
                   <td><p>The severity a newly authored rule starts with; UNSPECIFIED means no default. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#metaxisdata.store.QualityContractIntent">QualityContractIntent</a></td>
+                  <td></td>
+                  <td><p>What the target promises above its checks. </p></td>
                 </tr>
               
             </tbody>
@@ -4645,6 +4835,141 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_COMPARISON_OPERATOR_GTE</td>
                 <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityContractCriticality">QualityContractCriticality</h3>
+        <p>QualityContractCriticality ranks a target for the autonomy policy. It is read</p><p>from the intent when declared; otherwise the plan derives a display value and</p><p>never writes it back.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CRITICALITY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CRITICALITY_EXPERIMENTAL</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CRITICALITY_IMPORTANT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CRITICALITY_CRITICAL</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityContractIntentSource">QualityContractIntentSource</h3>
+        <p>QualityContractIntentSource records who wrote the intent.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_HUMAN</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityCoverageProperty">QualityCoverageProperty</h3>
+        <p>QualityCoverageProperty is one kind of monitoring an intent promise or a plan</p><p>declaration can require. The numbers match the API enum, so the two convert by</p><p>cast.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_VOLUME</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_FRESHNESS</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_UNIQUENESS</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_NULL_RATE</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_FORMAT</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_RANGE</td>
+                <td>8</td>
                 <td><p></p></td>
               </tr>
             

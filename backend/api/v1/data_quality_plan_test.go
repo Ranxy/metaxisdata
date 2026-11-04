@@ -22,7 +22,7 @@ func TestQualityPlanViewUnplanned(t *testing.T) {
 	t.Parallel()
 
 	plan := qualityPlanView("inst-1;shop;public;orders", storepb.MetaType_TABLE,
-		[]*store.QualityRuleMessage{qualityPlanRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)}, false)
+		[]*store.QualityRuleMessage{qualityPlanRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)}, nil)
 	require.Equal(t, v1pb.QualityPlanState_QUALITY_PLAN_STATE_UNPLANNED, plan.GetState())
 	require.Equal(t, v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_EXPERIMENTAL, plan.GetCriticality())
 	require.Empty(t, plan.GetRequirements())
@@ -34,12 +34,12 @@ func TestQualityPlanViewPlanned(t *testing.T) {
 	t.Parallel()
 
 	plan := qualityPlanView("inst-1;shop;public;orders", storepb.MetaType_TABLE,
-		[]*store.QualityRuleMessage{qualityPlanRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)}, true)
+		[]*store.QualityRuleMessage{qualityPlanRule(storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT)}, &store.QualityContractMessage{})
 	require.Equal(t, v1pb.QualityPlanState_QUALITY_PLAN_STATE_PLANNED, plan.GetState())
 	require.Equal(t, v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_IMPORTANT, plan.GetCriticality())
 	require.Equal(t, []*v1pb.QualityCoverageRequirement{
-		{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, Satisfied: true},
-		{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY, Satisfied: false},
+		{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, Satisfied: true, Source: v1pb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE},
+		{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY, Source: v1pb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE},
 	}, plan.GetRequirements())
 	require.Equal(t, int32(1), plan.GetGapCount())
 }

@@ -39,6 +39,9 @@
     - [ProfileValue](#metaxisdata-store-ProfileValue)
     - [QualityCodeTableValues](#metaxisdata-store-QualityCodeTableValues)
     - [QualityContractCheck](#metaxisdata-store-QualityContractCheck)
+    - [QualityContractIntent](#metaxisdata-store-QualityContractIntent)
+    - [QualityContractIntentExemption](#metaxisdata-store-QualityContractIntentExemption)
+    - [QualityContractIntentStatement](#metaxisdata-store-QualityContractIntentStatement)
     - [QualityContractSettings](#metaxisdata-store-QualityContractSettings)
     - [QualityContractSnapshot](#metaxisdata-store-QualityContractSnapshot)
     - [QualityExecutionEvidence](#metaxisdata-store-QualityExecutionEvidence)
@@ -76,6 +79,9 @@
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
     - [QualityComparison](#metaxisdata-store-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-store-QualityComparisonOperator)
+    - [QualityContractCriticality](#metaxisdata-store-QualityContractCriticality)
+    - [QualityContractIntentSource](#metaxisdata-store-QualityContractIntentSource)
+    - [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty)
     - [QualityDimension](#metaxisdata-store-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior)
     - [QualityExecutionState](#metaxisdata-store-QualityExecutionState)
@@ -838,6 +844,67 @@ QualityContractCheck is one rule as a published contract records it.
 
 
 
+<a name="metaxisdata-store-QualityContractIntent"></a>
+
+### QualityContractIntent
+QualityContractIntent is what a target promises above its checks: its
+criticality, the properties it commits to, its dependents and the requirements
+it explicitly waived. It lives in the contract settings, so it is versioned with
+the contract for free.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| criticality | [QualityContractCriticality](#metaxisdata-store-QualityContractCriticality) |  |  |
+| statements | [QualityContractIntentStatement](#metaxisdata-store-QualityContractIntentStatement) | repeated |  |
+| dependents | [string](#string) | repeated | Downstream assets or external tags that depend on this one. Recorded only; they feed impact and criticality derivation in a later phase. |
+| exemptions | [QualityContractIntentExemption](#metaxisdata-store-QualityContractIntentExemption) | repeated |  |
+| effective_from_unix_ms | [int64](#int64) |  | When the declaration takes effect; 0 means immediately. |
+| source | [QualityContractIntentSource](#metaxisdata-store-QualityContractIntentSource) |  |  |
+| domain_ref | [string](#string) |  | Reserved for domain-level intent (the P2 answer to O1); stored, not resolved. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractIntentExemption"></a>
+
+### QualityContractIntentExemption
+QualityContractIntentExemption waives one declared requirement: the requirement
+stays visible, produces no gap, and never counts as satisfied.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  |  |
+| reason | [string](#string) |  |  |
+| approved_by | [int32](#int32) |  | The principal who recorded the exemption. This phase records the editor; the approval workflow replaces that later. |
+| expires_at_unix_ms | [int64](#int64) |  | 0 means the exemption never expires. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityContractIntentStatement"></a>
+
+### QualityContractIntentStatement
+QualityContractIntentStatement is one property the target promises for a scope.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  | The column the promise is scoped to; empty means the whole table. |
+| tolerance | [string](#string) |  | A free-text tolerance kept for reviewers. It is not evaluated: expectations that drive checks arrive with the plan evaluator. |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityContractSettings"></a>
 
 ### QualityContractSettings
@@ -850,6 +917,7 @@ checked with. Rule-level fields always win where they are set.
 | ----- | ---- | ----- | ----------- |
 | filter | [QualityFilter](#metaxisdata-store-QualityFilter) |  | Applied to every rule on the target, ANDed with the rule&#39;s own filter. It is evaluated at compile time, so a contract change affects the next execution without rewriting the rules. |
 | default_severity | [QualitySeverity](#metaxisdata-store-QualitySeverity) |  | The severity a newly authored rule starts with; UNSPECIFIED means no default. |
+| intent | [QualityContractIntent](#metaxisdata-store-QualityContractIntent) |  | What the target promises above its checks. |
 
 
 
@@ -1582,6 +1650,57 @@ between two columns of the same row.
 | QUALITY_COMPARISON_OPERATOR_LTE | 4 |  |
 | QUALITY_COMPARISON_OPERATOR_GT | 5 |  |
 | QUALITY_COMPARISON_OPERATOR_GTE | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualityContractCriticality"></a>
+
+### QualityContractCriticality
+QualityContractCriticality ranks a target for the autonomy policy. It is read
+from the intent when declared; otherwise the plan derives a display value and
+never writes it back.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CONTRACT_CRITICALITY_UNSPECIFIED | 0 |  |
+| QUALITY_CONTRACT_CRITICALITY_EXPERIMENTAL | 1 |  |
+| QUALITY_CONTRACT_CRITICALITY_IMPORTANT | 2 |  |
+| QUALITY_CONTRACT_CRITICALITY_CRITICAL | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityContractIntentSource"></a>
+
+### QualityContractIntentSource
+QualityContractIntentSource records who wrote the intent.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_CONTRACT_INTENT_SOURCE_HUMAN | 1 |  |
+| QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT | 2 |  |
+| QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityCoverageProperty"></a>
+
+### QualityCoverageProperty
+QualityCoverageProperty is one kind of monitoring an intent promise or a plan
+declaration can require. The numbers match the API enum, so the two convert by
+cast.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COVERAGE_PROPERTY_UNSPECIFIED | 0 |  |
+| QUALITY_COVERAGE_PROPERTY_VOLUME | 1 |  |
+| QUALITY_COVERAGE_PROPERTY_FRESHNESS | 2 |  |
+| QUALITY_COVERAGE_PROPERTY_UNIQUENESS | 3 |  |
+| QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY | 4 |  |
+| QUALITY_COVERAGE_PROPERTY_NULL_RATE | 5 |  |
+| QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES | 6 |  |
+| QUALITY_COVERAGE_PROPERTY_FORMAT | 7 |  |
+| QUALITY_COVERAGE_PROPERTY_RANGE | 8 |  |
 
 
 

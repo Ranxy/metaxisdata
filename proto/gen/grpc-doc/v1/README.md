@@ -326,6 +326,9 @@
     - [QualityContract](#metaxisdata-v1-QualityContract)
     - [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary)
     - [QualityContractCheck](#metaxisdata-v1-QualityContractCheck)
+    - [QualityContractIntent](#metaxisdata-v1-QualityContractIntent)
+    - [QualityContractIntentExemption](#metaxisdata-v1-QualityContractIntentExemption)
+    - [QualityContractIntentStatement](#metaxisdata-v1-QualityContractIntentStatement)
     - [QualityContractRevision](#metaxisdata-v1-QualityContractRevision)
     - [QualityContractSettings](#metaxisdata-v1-QualityContractSettings)
     - [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown)
@@ -407,7 +410,9 @@
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
+    - [QualityContractIntentSource](#metaxisdata-v1-QualityContractIntentSource)
     - [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty)
+    - [QualityCoverageSource](#metaxisdata-v1-QualityCoverageSource)
     - [QualityDimension](#metaxisdata-v1-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior)
     - [QualityExecutionState](#metaxisdata-v1-QualityExecutionState)
@@ -6127,6 +6132,67 @@ QualityContractCheck is one rule as a published version records it.
 
 
 
+<a name="metaxisdata-v1-QualityContractIntent"></a>
+
+### QualityContractIntent
+QualityContractIntent is the target&#39;s declaration above the checks: its
+criticality, the properties it commits to, its dependents and the requirements
+it explicitly waived. Editing it is part of UpdateQualityContract, and it is
+versioned with the contract on every publish.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| criticality | [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality) |  |  |
+| statements | [QualityContractIntentStatement](#metaxisdata-v1-QualityContractIntentStatement) | repeated |  |
+| dependents | [string](#string) | repeated | Downstream assets or external tags that depend on this one. Recorded only; they feed impact and criticality derivation later. |
+| exemptions | [QualityContractIntentExemption](#metaxisdata-v1-QualityContractIntentExemption) | repeated |  |
+| effective_from | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the declaration takes effect; unset means immediately. |
+| source | [QualityContractIntentSource](#metaxisdata-v1-QualityContractIntentSource) |  |  |
+| domain_ref | [string](#string) |  | Reserved for domain-level intent; stored, not resolved in this phase. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractIntentExemption"></a>
+
+### QualityContractIntentExemption
+QualityContractIntentExemption waives one declared requirement: the requirement
+stays visible, produces no gap, and never counts as satisfied.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  |  |
+| reason | [string](#string) |  |  |
+| approved_by | [string](#string) |  | Format: users/{user}. Empty when the editor is unknown. |
+| expires_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | 0 means the exemption never expires. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractIntentStatement"></a>
+
+### QualityContractIntentStatement
+QualityContractIntentStatement is one property the target promises for a scope.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  | The column the promise is scoped to; empty means the whole table. |
+| tolerance | [string](#string) |  | A free-text tolerance kept for reviewers. It is not evaluated yet. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityContractRevision"></a>
 
 ### QualityContractRevision
@@ -6141,6 +6207,7 @@ QualityContractRevision is one published version&#39;s metadata.
 | note | [string](#string) |  |  |
 | check_count | [int32](#int32) |  |  |
 | change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  |  |
+| intent | [QualityContractIntent](#metaxisdata-v1-QualityContractIntent) |  | The intent this version recorded; absent on a version published before intent existed, which is not the same as an empty one. |
 
 
 
@@ -6157,6 +6224,7 @@ QualityContractSettings is the target-level layer&#39;s mutable configuration.
 | ----- | ---- | ----- | ----------- |
 | filter | [QualityFilter](#metaxisdata-v1-QualityFilter) |  | Applied to every rule on the target, ANDed with the rule&#39;s own filter. |
 | default_severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  | The severity a newly authored rule starts with; UNSPECIFIED means no default. |
+| intent | [QualityContractIntent](#metaxisdata-v1-QualityContractIntent) |  | What the target promises above its checks. |
 
 
 
@@ -6196,6 +6264,7 @@ QualityCoverageGap is one required property a target&#39;s plan does not satisfy
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
 | property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
 | criticality | [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality) |  |  |
+| column | [string](#string) |  | The scope column; empty means the whole table. |
 
 
 
@@ -6206,13 +6275,16 @@ QualityCoverageGap is one required property a target&#39;s plan does not satisfy
 
 ### QualityCoverageRequirement
 QualityCoverageRequirement is one required property and whether a live rule
-currently satisfies it. Gap = required and not satisfied.
+currently satisfies it. Gap = required, not satisfied and not exempted.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
 | satisfied | [bool](#bool) |  |  |
+| column | [string](#string) |  | The scope column; empty means the whole table. |
+| source | [QualityCoverageSource](#metaxisdata-v1-QualityCoverageSource) |  |  |
+| exempted | [bool](#bool) |  | A declared exemption waives the gap without counting the requirement as satisfied. |
 
 
 
@@ -7829,10 +7901,25 @@ between two columns of the same row.
 
 
 
+<a name="metaxisdata-v1-QualityContractIntentSource"></a>
+
+### QualityContractIntentSource
+QualityContractIntentSource records who wrote the intent.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_CONTRACT_INTENT_SOURCE_HUMAN | 1 |  |
+| QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT | 2 |  |
+| QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED | 3 |  |
+
+
+
 <a name="metaxisdata-v1-QualityCoverageProperty"></a>
 
 ### QualityCoverageProperty
-QualityCoverageProperty is one kind of monitoring a declaration can require.
+QualityCoverageProperty is one kind of monitoring an intent promise or a plan
+declaration can require.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
@@ -7841,6 +7928,24 @@ QualityCoverageProperty is one kind of monitoring a declaration can require.
 | QUALITY_COVERAGE_PROPERTY_FRESHNESS | 2 |  |
 | QUALITY_COVERAGE_PROPERTY_UNIQUENESS | 3 |  |
 | QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY | 4 |  |
+| QUALITY_COVERAGE_PROPERTY_NULL_RATE | 5 |  |
+| QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES | 6 |  |
+| QUALITY_COVERAGE_PROPERTY_FORMAT | 7 |  |
+| QUALITY_COVERAGE_PROPERTY_RANGE | 8 |  |
+
+
+
+<a name="metaxisdata-v1-QualityCoverageSource"></a>
+
+### QualityCoverageSource
+QualityCoverageSource says where a requirement came from: the criticality
+template or an explicit intent statement.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COVERAGE_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_COVERAGE_SOURCE_TEMPLATE | 1 |  |
+| QUALITY_COVERAGE_SOURCE_INTENT | 2 |  |
 
 
 

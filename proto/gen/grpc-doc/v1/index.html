@@ -1437,6 +1437,18 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityContractIntent"><span class="badge">M</span>QualityContractIntent</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContractIntentExemption"><span class="badge">M</span>QualityContractIntentExemption</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityContractIntentStatement"><span class="badge">M</span>QualityContractIntentStatement</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityContractRevision"><span class="badge">M</span>QualityContractRevision</a>
                 </li>
               
@@ -1758,7 +1770,15 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityContractIntentSource"><span class="badge">E</span>QualityContractIntentSource</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityCoverageProperty"><span class="badge">E</span>QualityCoverageProperty</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityCoverageSource"><span class="badge">E</span>QualityCoverageSource</a>
                 </li>
               
                 <li>
@@ -17694,6 +17714,163 @@ write path. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.QualityContractIntent">QualityContractIntent</h3>
+        <p>QualityContractIntent is the target's declaration above the checks: its</p><p>criticality, the properties it commits to, its dependents and the requirements</p><p>it explicitly waived. Editing it is part of UpdateQualityContract, and it is</p><p>versioned with the contract on every publish.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>criticality</td>
+                  <td><a href="#metaxisdata.v1.QualityAssetCriticality">QualityAssetCriticality</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statements</td>
+                  <td><a href="#metaxisdata.v1.QualityContractIntentStatement">QualityContractIntentStatement</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>dependents</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Downstream assets or external tags that depend on this one. Recorded only;
+they feed impact and criticality derivation later. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>exemptions</td>
+                  <td><a href="#metaxisdata.v1.QualityContractIntentExemption">QualityContractIntentExemption</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>effective_from</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>When the declaration takes effect; unset means immediately. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.v1.QualityContractIntentSource">QualityContractIntentSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>domain_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Reserved for domain-level intent; stored, not resolved in this phase. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractIntentExemption">QualityContractIntentExemption</h3>
+        <p>QualityContractIntentExemption waives one declared requirement: the requirement</p><p>stays visible, produces no gap, and never counts as satisfied.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>approved_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when the editor is unknown. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p>0 means the exemption never expires. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractIntentStatement">QualityContractIntentStatement</h3>
+        <p>QualityContractIntentStatement is one property the target promises for a scope.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The column the promise is scoped to; empty means the whole table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tolerance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A free-text tolerance kept for reviewers. It is not evaluated yet. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.QualityContractRevision">QualityContractRevision</h3>
         <p>QualityContractRevision is one published version's metadata.</p>
 
@@ -17746,6 +17923,14 @@ write path. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#metaxisdata.v1.QualityContractIntent">QualityContractIntent</a></td>
+                  <td></td>
+                  <td><p>The intent this version recorded; absent on a version published before intent
+existed, which is not the same as an empty one. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17775,6 +17960,13 @@ write path. </p></td>
                   <td><a href="#metaxisdata.v1.QualitySeverity">QualitySeverity</a></td>
                   <td></td>
                   <td><p>The severity a newly authored rule starts with; UNSPECIFIED means no default. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>intent</td>
+                  <td><a href="#metaxisdata.v1.QualityContractIntent">QualityContractIntent</a></td>
+                  <td></td>
+                  <td><p>What the target promises above its checks. </p></td>
                 </tr>
               
             </tbody>
@@ -17876,6 +18068,13 @@ or the id no longer resolves. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The scope column; empty means the whole table. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17884,7 +18083,7 @@ or the id no longer resolves. </p></td>
         
       
         <h3 id="metaxisdata.v1.QualityCoverageRequirement">QualityCoverageRequirement</h3>
-        <p>QualityCoverageRequirement is one required property and whether a live rule</p><p>currently satisfies it. Gap = required and not satisfied.</p>
+        <p>QualityCoverageRequirement is one required property and whether a live rule</p><p>currently satisfies it. Gap = required, not satisfied and not exempted.</p>
 
         
           <table class="field-table">
@@ -17905,6 +18104,28 @@ or the id no longer resolves. </p></td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The scope column; empty means the whole table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageSource">QualityCoverageSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>exempted</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>A declared exemption waives the gap without counting the requirement as
+satisfied. </p></td>
                 </tr>
               
             </tbody>
@@ -22834,8 +23055,43 @@ accepted range expressed as a pass band.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityContractIntentSource">QualityContractIntentSource</h3>
+        <p>QualityContractIntentSource records who wrote the intent.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_HUMAN</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</h3>
-        <p>QualityCoverageProperty is one kind of monitoring a declaration can require.</p>
+        <p>QualityCoverageProperty is one kind of monitoring an intent promise or a plan</p><p>declaration can require.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -22869,6 +23125,59 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY</td>
                 <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_NULL_RATE</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_FORMAT</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_RANGE</td>
+                <td>8</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityCoverageSource">QualityCoverageSource</h3>
+        <p>QualityCoverageSource says where a requirement came from: the criticality</p><p>template or an explicit intent statement.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_SOURCE_TEMPLATE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_SOURCE_INTENT</td>
+                <td>2</td>
                 <td><p></p></td>
               </tr>
             

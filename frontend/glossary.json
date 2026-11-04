@@ -1847,6 +1847,76 @@
         "en-US": "industry classification code",
         "zh-CN": "行业分类代码"
       }
+    },
+    {
+      "id": "contract",
+      "category": "Data Quality",
+      "definition": "The target-level layer above the checks: the shared filter, the default severity, the declared intent and the published version history.",
+      "translations": {
+        "en-US": "contract",
+        "zh-CN": "契约"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "合同"
+        ]
+      }
+    },
+    {
+      "id": "intent",
+      "category": "Data Quality",
+      "definition": "What a target promises above its checks: how critical it is, the properties it commits to and the requirements it has explicitly waived.",
+      "translations": {
+        "en-US": "intent",
+        "zh-CN": "意图"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "plan",
+      "category": "Data Quality",
+      "definition": "The declared coverage a target promises plus the enabled checks that implement it; a target with checks but no contract has no plan.",
+      "translations": {
+        "en-US": "plan",
+        "zh-CN": "计划"
+      },
+      "scope": [
+        "dataQuality."
+      ]
+    },
+    {
+      "id": "coverage-declaration",
+      "category": "Data Quality",
+      "definition": "One property and scope a plan promises to monitor, whether from the criticality template or from an explicit intent statement.",
+      "translations": {
+        "en-US": "coverage declaration",
+        "zh-CN": "覆盖声明"
+      },
+      "scope": [
+        "dataQuality."
+      ],
+      "avoid": {
+        "zh-CN": [
+          "覆盖要求"
+        ]
+      }
+    },
+    {
+      "id": "coverage-gap",
+      "category": "Data Quality",
+      "definition": "A declared requirement that no enabled check satisfies and that no valid exemption waives. It is not the same number as the coverage rate.",
+      "translations": {
+        "en-US": "coverage gap",
+        "zh-CN": "覆盖缺口"
+      },
+      "scope": [
+        "dataQuality."
+      ]
     }
   ]
 }
