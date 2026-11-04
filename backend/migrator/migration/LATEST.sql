@@ -1331,9 +1331,10 @@ CREATE TABLE IF NOT EXISTS quality_contract (
     -- Newest published version; 0 means the target has never been published.
     published_version INT4 NOT NULL DEFAULT 0,
     -- Stored as QualityContractPlan (proto/store/store/data_quality.proto); the
-    -- unpublished plan draft. Publishing consumes it.
+    -- current plan declaration (published or not).
     staged JSONB NOT NULL DEFAULT '{}',
-    -- Published version the draft was written against; 0 when nothing is staged.
+    -- Newest published version the declaration is aligned to; equals
+    -- published_version when nothing is staged.
     staged_base_version INT4 NOT NULL DEFAULT 0,
     staged_updated_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
     staged_updated_at TIMESTAMPTZ,
@@ -1366,7 +1367,9 @@ CREATE INDEX IF NOT EXISTS idx_quality_contract_revision_published
 COMMENT ON TABLE quality_contract IS 'Target-level quality contract settings and newest published version';
 COMMENT ON COLUMN quality_contract.settings IS 'Stored as QualityContractSettings (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_contract.published_version IS 'Newest published version; 0 means never published';
-COMMENT ON COLUMN quality_contract.staged IS 'Stored as QualityContractPlan (proto/store/store/data_quality.proto); the unpublished plan draft';
+COMMENT ON COLUMN quality_contract.staged IS 'Stored as QualityContractPlan (proto/store/store/data_quality.proto); the current plan declaration';
+COMMENT ON COLUMN quality_contract.staged_base_version IS 'Newest published version the declaration is aligned to; equals published_version when nothing is staged';
+COMMENT ON COLUMN quality_contract.staged_updated_by IS 'Principal id of the last declaration writer';
 COMMENT ON TABLE quality_contract_revision IS 'Append-only published quality contract versions';
 COMMENT ON COLUMN quality_contract_revision.snapshot IS 'Stored as QualityContractSnapshot (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_contract_revision.published_by IS 'Principal id of the publisher';

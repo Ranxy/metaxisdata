@@ -3586,11 +3586,14 @@ message QualityContract {
   // contract.
   QualityPlan plan = 10;
 
-  // The plan draft a person staged but has not published. Absent when no draft
-  // exists; an empty draft clears it.
+  // The plan declaration the target currently holds, published or not. Absent when
+  // the target has none; an empty declaration clears it and returns the target to
+  // the projection derived from the intent and the live rules.
   QualityPlan staged_plan = 11;
 
-  // The published version the draft is based on. Zero when nothing is staged.
+  // The newest published version the declaration is aligned to. It always equals
+  // published_version after a publish, so a client echoes it back as the base of its
+  // next declaration edit.
   int32 staged_base_version = 12;
 
   // How the working state (the draft when one exists, otherwise the live
@@ -3598,7 +3601,9 @@ message QualityContract {
   QualityContractDiff diff = 13;
 }
 
-// QualityPlanChange is one declaration added, removed or modified by a draft.
+// QualityPlanChange is one declaration added, removed or modified by the working
+// plan (the staged declaration, or the projection derived from the intent and the
+// live rules when nothing is staged).
 message QualityPlanChange {
   enum Kind {
     KIND_UNSPECIFIED = 0;
@@ -3616,7 +3621,7 @@ message QualityPlanChange {
 message QualityContractDiff {
   // True when the live intent differs from the published version's.
   bool intent_changed = 1;
-  // The declaration changes the draft would publish.
+  // The declaration changes the working plan would publish.
   repeated QualityPlanChange plan_changes = 2;
   // True when the newest published version predates the plan payload, so a plan
   // diff cannot be shown. It is not the same as "no plan changes".

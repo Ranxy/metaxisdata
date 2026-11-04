@@ -88,11 +88,19 @@ func (s *DataQualityService) UpdateQualityContract(ctx context.Context, req *con
 	if err := dataquality.ValidateContractIntent(ctx, s.store, targetGUID, metaType, settings.GetIntent()); err != nil {
 		return nil, err
 	}
+	// Validate everything before the first write: a bad draft must not leave the
+	// settings half-applied.
+	draft, err := s.planQualityContractDraft(ctx, targetGUID, metaType, existing, req.Msg.GetDraft(), req.Msg.GetStagedBaseVersion())
+	if err != nil {
+		return nil, err
+	}
 	if _, err := s.store.UpsertQualityContractSettings(ctx, targetGUID, metaType, settings); err != nil {
 		return nil, err
 	}
-	if err := s.updateQualityContractDraft(ctx, targetGUID, metaType, existing, req.Msg.GetDraft(), req.Msg.GetStagedBaseVersion()); err != nil {
-		return nil, err
+	if draft != nil {
+		if err := s.writeQualityContractDraft(ctx, targetGUID, metaType, existing, draft, req.Msg.GetStagedBaseVersion()); err != nil {
+			return nil, err
+		}
 	}
 	contract, err := s.qualityContractView(ctx, targetGUID, metaType)
 	if err != nil {
@@ -101,42 +109,51 @@ func (s *DataQualityService) UpdateQualityContract(ctx context.Context, req *con
 	return connect.NewResponse(contract), nil
 }
 
-// updateQualityContractDraft writes or clears the plan draft. A draft only changes
-// the staged state; publishing it is a separate, explicit step. The base version
-// must be the newest published one, and the store's compare-and-set refuses a
-// draft that changed since the caller read it instead of rebasing silently.
-func (s *DataQualityService) updateQualityContractDraft(ctx context.Context, targetGUID string, metaType storepb.MetaType, existing *store.QualityContractMessage, draft *v1pb.QualityPlan, baseVersion int32) error {
+// planQualityContractDraft validates a draft request and returns the stored plan, or
+// nil when the caller did not send one. It performs every check before the settings
+// write, so a rejected draft never leaves a half-applied update.
+func (s *DataQualityService) planQualityContractDraft(ctx context.Context, targetGUID string, metaType storepb.MetaType, existing *store.QualityContractMessage, draft *v1pb.QualityPlan, baseVersion int32) (*storepb.QualityContractPlan, error) {
 	if draft == nil {
-		return nil
+		return nil, nil
 	}
 	plan, err := convertQualityPlanDraftFromV1(draft)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if published := qualityContractPublishedVersion(existing); baseVersion != published {
-		return connect.NewError(connect.CodeAborted, errors.Errorf(
+		return nil, connect.NewError(connect.CodeAborted, errors.Errorf(
 			"the plan draft is based on version %d, but the newest published version is %d; reload and edit again",
 			baseVersion, published))
 	}
 	if err := dataquality.ValidatePlanCoverage(ctx, s.store, targetGUID, metaType, plan.GetCoverage()); err != nil {
-		return err
+		return nil, err
 	}
+	return plan, nil
+}
+
+// writeQualityContractDraft stages the validated plan declaration. Publishing it is
+// a separate, explicit step; the store refuses a declaration that changed since the
+// caller read it instead of rebasing silently.
+func (s *DataQualityService) writeQualityContractDraft(ctx context.Context, targetGUID string, metaType storepb.MetaType, existing *store.QualityContractMessage, plan *storepb.QualityContractPlan, baseVersion int32) error {
 	var expected *storepb.QualityContractPlan
+	var expectedBase int32
 	var updatedBy *int32
 	if existing != nil {
 		expected = existing.Staged
+		expectedBase = existing.StagedBaseVersion
 	}
 	if id := currentUserID(ctx); id > 0 {
 		principalID := int32(id)
 		updatedBy = &principalID
 	}
 	if _, err := s.store.SetQualityContractStaged(ctx, &store.SetQualityContractStagedInput{
-		TargetGUID:     targetGUID,
-		TargetType:     metaType,
-		Plan:           plan,
-		BaseVersion:    baseVersion,
-		UpdatedBy:      updatedBy,
-		ExpectedStaged: expected,
+		TargetGUID:          targetGUID,
+		TargetType:          metaType,
+		Plan:                plan,
+		BaseVersion:         baseVersion,
+		UpdatedBy:           updatedBy,
+		ExpectedStaged:      expected,
+		ExpectedBaseVersion: expectedBase,
 	}); err != nil {
 		if common.ErrorCode(err) == common.Conflict {
 			return connect.NewError(connect.CodeAborted, err)
@@ -372,6 +389,8 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 	view.Plan = qualityPlanView(targetGUID, metaType, rules, contract)
 	if staged := qualityContractStagedPlan(contract); staged != nil {
 		view.StagedPlan = convertQualityContractPlanToV1(staged)
+	}
+	if contract != nil {
 		view.StagedBaseVersion = contract.StagedBaseVersion
 	}
 	view.Diff = qualityContractDiff(settings, rules, contract, latest)
@@ -409,7 +428,7 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 		}
 	} else {
 		view.ChangeSummary = &v1pb.QualityContractChangeSummary{Added: int32(len(checks))}
-		view.HasUnpublishedChanges = len(checks) > 0 || !qualityContractSettingsEmpty(settings)
+		view.HasUnpublishedChanges = qualityContractUnpublishedWithoutVersion(settings, contract, checks)
 	}
 	return view, nil
 }
@@ -974,6 +993,13 @@ func qualityContractMillisFromTimestamp(timestamp *timestamppb.Timestamp) int64 
 		return 0
 	}
 	return timestamp.AsTime().UnixMilli()
+}
+
+// qualityContractUnpublishedWithoutVersion reports whether a target that has never
+// published has content to publish: a declaration alone is enough, even with no
+// checks and empty settings.
+func qualityContractUnpublishedWithoutVersion(settings *storepb.QualityContractSettings, contract *store.QualityContractMessage, checks []*storepb.QualityContractCheck) bool {
+	return qualityContractStagedPlan(contract) != nil || len(checks) > 0 || !qualityContractSettingsEmpty(settings)
 }
 
 // qualityContractWorkingPlan is the plan the live state would publish: the staged

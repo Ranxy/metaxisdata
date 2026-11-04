@@ -14691,10 +14691,13 @@ type QualityContract struct {
 	// The target's monitoring plan as derived from the live rules and the
 	// contract.
 	Plan *QualityPlan `protobuf:"bytes,10,opt,name=plan,proto3" json:"plan,omitempty"`
-	// The plan draft a person staged but has not published. Absent when no draft
-	// exists; an empty draft clears it.
+	// The plan declaration the target currently holds, published or not. Absent when
+	// the target has none; an empty declaration clears it and returns the target to
+	// the projection derived from the intent and the live rules.
 	StagedPlan *QualityPlan `protobuf:"bytes,11,opt,name=staged_plan,json=stagedPlan,proto3" json:"staged_plan,omitempty"`
-	// The published version the draft is based on. Zero when nothing is staged.
+	// The newest published version the declaration is aligned to. It always equals
+	// published_version after a publish, so a client echoes it back as the base of its
+	// next declaration edit.
 	StagedBaseVersion int32 `protobuf:"varint,12,opt,name=staged_base_version,json=stagedBaseVersion,proto3" json:"staged_base_version,omitempty"`
 	// How the working state (the draft when one exists, otherwise the live
 	// projection) differs from the newest published version.
@@ -14824,7 +14827,9 @@ func (x *QualityContract) GetDiff() *QualityContractDiff {
 	return nil
 }
 
-// QualityPlanChange is one declaration added, removed or modified by a draft.
+// QualityPlanChange is one declaration added, removed or modified by the working
+// plan (the staged declaration, or the projection derived from the intent and the
+// live rules when nothing is staged).
 type QualityPlanChange struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          QualityPlanChange_Kind `protobuf:"varint,1,opt,name=kind,proto3,enum=metaxisdata.v1.QualityPlanChange_Kind" json:"kind,omitempty"`
@@ -14884,7 +14889,7 @@ type QualityContractDiff struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// True when the live intent differs from the published version's.
 	IntentChanged bool `protobuf:"varint,1,opt,name=intent_changed,json=intentChanged,proto3" json:"intent_changed,omitempty"`
-	// The declaration changes the draft would publish.
+	// The declaration changes the working plan would publish.
 	PlanChanges []*QualityPlanChange `protobuf:"bytes,2,rep,name=plan_changes,json=planChanges,proto3" json:"plan_changes,omitempty"`
 	// True when the newest published version predates the plan payload, so a plan
 	// diff cannot be shown. It is not the same as "no plan changes".

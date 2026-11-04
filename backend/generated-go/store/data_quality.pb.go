@@ -6849,9 +6849,11 @@ func (x *QualityContractPlanCadence) GetTimezone() string {
 	return ""
 }
 
-// QualityContractPlan is the published plan payload: the declared coverage and
-// the cadence it was published under. The checks that implement plan membership
-// are the snapshot's ordered checks, which stay the only source of rule data.
+// QualityContractPlan is a plan payload: either a published version's declaration
+// plus the cadence it was published under, or the target's current declaration
+// (coverage only; the cadence lives in the target's schedule). The checks that
+// implement plan membership are the snapshot's ordered checks, which stay the only
+// source of rule data.
 type QualityContractPlan struct {
 	state         protoimpl.MessageState         `protogen:"open.v1"`
 	Coverage      []*QualityContractPlanCoverage `protobuf:"bytes,1,rep,name=coverage,proto3" json:"coverage,omitempty"`

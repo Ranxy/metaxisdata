@@ -6094,8 +6094,8 @@ contract immediately, and publishing records that state as a version.
 | change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  | The live rules compared with the published snapshot. Zero counts when the target has never been published. |
 | has_unpublished_changes | [bool](#bool) |  | True when the live rules or settings differ from the published snapshot (or nothing has been published yet and the target has content). |
 | plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The target&#39;s monitoring plan as derived from the live rules and the contract. |
-| staged_plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The plan draft a person staged but has not published. Absent when no draft exists; an empty draft clears it. |
-| staged_base_version | [int32](#int32) |  | The published version the draft is based on. Zero when nothing is staged. |
+| staged_plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The plan declaration the target currently holds, published or not. Absent when the target has none; an empty declaration clears it and returns the target to the projection derived from the intent and the live rules. |
+| staged_base_version | [int32](#int32) |  | The newest published version the declaration is aligned to. It always equals published_version after a publish, so a client echoes it back as the base of its next declaration edit. |
 | diff | [QualityContractDiff](#metaxisdata-v1-QualityContractDiff) |  | How the working state (the draft when one exists, otherwise the live projection) differs from the newest published version. |
 
 
@@ -6152,7 +6152,7 @@ sections the version&#39;s plan payload made comparable.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | intent_changed | [bool](#bool) |  | True when the live intent differs from the published version&#39;s. |
-| plan_changes | [QualityPlanChange](#metaxisdata-v1-QualityPlanChange) | repeated | The declaration changes the draft would publish. |
+| plan_changes | [QualityPlanChange](#metaxisdata-v1-QualityPlanChange) | repeated | The declaration changes the working plan would publish. |
 | plan_not_recorded | [bool](#bool) |  | True when the newest published version predates the plan payload, so a plan diff cannot be shown. It is not the same as &#34;no plan changes&#34;. |
 
 
@@ -6653,7 +6653,9 @@ way to change it.
 <a name="metaxisdata-v1-QualityPlanChange"></a>
 
 ### QualityPlanChange
-QualityPlanChange is one declaration added, removed or modified by a draft.
+QualityPlanChange is one declaration added, removed or modified by the working
+plan (the staged declaration, or the projection derived from the intent and the
+live rules when nothing is staged).
 
 
 | Field | Type | Label | Description |

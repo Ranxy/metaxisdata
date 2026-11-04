@@ -21,10 +21,11 @@ type QualityContractMessage struct {
 	TargetType       storepb.MetaType
 	Settings         *storepb.QualityContractSettings
 	PublishedVersion int32
-	// Staged is the unpublished plan draft. It is nil when nothing is staged; an
-	// empty plan is not a draft.
+	// Staged is the target's current plan declaration. It is nil when nothing is
+	// declared; an empty plan is not a declaration.
 	Staged *storepb.QualityContractPlan
-	// StagedBaseVersion is the published version the draft was written against.
+	// StagedBaseVersion is the newest published version the declaration is aligned
+	// to; it equals PublishedVersion when nothing is staged.
 	StagedBaseVersion int32
 	StagedUpdatedBy   *int32
 	StagedUpdatedAt   *time.Time
@@ -138,8 +139,9 @@ type PublishQualityContractInput struct {
 	Snapshot    *storepb.QualityContractSnapshot
 	Note        string
 	PublishedBy *int32
-	// ConsumeStaged means the snapshot's plan came from the staged draft: the
-	// publish clears the draft and fails if the draft changed under the row lock.
+	// ConsumeStaged means the snapshot's plan came from the staged declaration: the
+	// publish records it, advances the declaration's base version and fails if the
+	// declaration changed under the row lock.
 	ConsumeStaged bool
 }
 
@@ -301,10 +303,11 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 	if err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to insert the contract revision")
 	}
-	// Publishing consumes the draft in the same transaction as the version: the
-	// declarations it recorded are now the published plan, so the declaration's base
-	// advances with the version. Keeping the content (rather than clearing it) is
-	// what makes the next publish a no-op until someone edits the declaration again.
+	// Publishing aligns the declaration with the new version in the same
+	// transaction: the declarations it recorded are now the published plan, so the
+	// declaration's base advances with the version. Keeping the content (rather than
+	// clearing it) is what makes the next publish a no-op until someone edits the
+	// declaration again.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE quality_contract
 		SET published_version = $2, staged_base_version = $2, updated_at = NOW()
@@ -584,11 +587,17 @@ type SetQualityContractStagedInput struct {
 	BaseVersion    int32
 	UpdatedBy      *int32
 	ExpectedStaged *storepb.QualityContractPlan
+	// ExpectedBaseVersion is the staged_base_version the caller read. The update only
+	// applies while the row still carries it, so a write prepared before a publish
+	// cannot regress the declaration's base version.
+	ExpectedBaseVersion int32
 }
 
-// SetQualityContractStaged replaces a contract's plan draft under a compare-and-set
-// on the previously read draft. A zero-row update means the draft changed or the
-// contract disappeared; the caller reloads instead of writing a stale draft.
+// SetQualityContractStaged replaces a contract's plan declaration under a
+// compare-and-set on the previously read declaration and its base version. A
+// zero-row update means the declaration changed (a concurrent edit or a publish
+// that advanced the base) or the contract disappeared; the caller reloads instead of
+// writing a stale declaration.
 func (s *Store) SetQualityContractStaged(ctx context.Context, input *SetQualityContractStagedInput) (*QualityContractMessage, error) {
 	if input == nil || input.TargetGUID == "" {
 		return nil, common.Errorf(common.Invalid, "a target GUID is required")
@@ -614,8 +623,9 @@ func (s *Store) SetQualityContractStaged(ctx context.Context, input *SetQualityC
 		SET staged = $3, staged_base_version = $4, staged_updated_by = $5,
 			staged_updated_at = NOW(), updated_at = NOW()
 		WHERE target_guid = $1 AND target_type = $2 AND staged = $6::jsonb
+			AND staged_base_version = $7
 		RETURNING `+qualityContractColumns,
-		input.TargetGUID, int16(input.TargetType), planPayload, input.BaseVersion, input.UpdatedBy, expectedPayload)
+		input.TargetGUID, int16(input.TargetType), planPayload, input.BaseVersion, input.UpdatedBy, expectedPayload, input.ExpectedBaseVersion)
 	message, err := scanQualityContract(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -279,6 +279,11 @@ func convertQualityPlanDraftFromV1(draft *v1pb.QualityPlan) (*storepb.QualityCon
 	if draft.GetCadence() != nil {
 		return nil, connectErrorInvalid("a plan draft carries no cadence; edit the target schedule instead")
 	}
+	if draft.GetTarget() != nil || draft.GetState() != v1pb.QualityPlanState_QUALITY_PLAN_STATE_UNSPECIFIED ||
+		draft.GetCriticality() != v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_UNSPECIFIED ||
+		draft.GetCheckCount() != 0 || len(draft.GetRequirements()) > 0 || draft.GetGapCount() != 0 {
+		return nil, connectErrorInvalid("a plan draft carries declarations only; the rest of the plan is a projection")
+	}
 	if len(draft.GetCoverage()) > maxQualityPlanCoverage {
 		return nil, connectErrorInvalid("a plan draft carries at most %d declarations", maxQualityPlanCoverage)
 	}

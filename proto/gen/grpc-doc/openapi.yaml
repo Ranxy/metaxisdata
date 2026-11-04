@@ -13191,11 +13191,15 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/QualityPlan'
                     description: |-
-                        The plan draft a person staged but has not published. Absent when no draft
-                         exists; an empty draft clears it.
+                        The plan declaration the target currently holds, published or not. Absent when
+                         the target has none; an empty declaration clears it and returns the target to
+                         the projection derived from the intent and the live rules.
                 stagedBaseVersion:
                     type: integer
-                    description: The published version the draft is based on. Zero when nothing is staged.
+                    description: |-
+                        The newest published version the declaration is aligned to. It always equals
+                         published_version after a publish, so a client echoes it back as the base of its
+                         next declaration edit.
                     format: int32
                 diff:
                     allOf:
@@ -13282,7 +13286,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityPlanChange'
-                    description: The declaration changes the draft would publish.
+                    description: The declaration changes the working plan would publish.
                 planNotRecorded:
                     type: boolean
                     description: |-
@@ -14253,7 +14257,10 @@ components:
                     format: enum
                 coverage:
                     $ref: '#/components/schemas/QualityPlanCoverage'
-            description: QualityPlanChange is one declaration added, removed or modified by a draft.
+            description: |-
+                QualityPlanChange is one declaration added, removed or modified by the working
+                 plan (the staged declaration, or the projection derived from the intent and the
+                 live rules when nothing is staged).
         QualityPlanCoverage:
             type: object
             properties:

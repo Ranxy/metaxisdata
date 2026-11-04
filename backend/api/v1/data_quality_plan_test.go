@@ -132,6 +132,12 @@ func TestConvertQualityPlanDraftFromV1(t *testing.T) {
 	_, err = convertQualityPlanDraftFromV1(&v1pb.QualityPlan{Cadence: &v1pb.QualityPlanCadence{Cron: "0 * * * *"}})
 	require.Error(t, err, "cadence belongs to the target schedule, not to a plan draft")
 
+	_, err = convertQualityPlanDraftFromV1(&v1pb.QualityPlan{
+		Coverage: []*v1pb.QualityPlanCoverage{{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME}},
+		Target:   &v1pb.QualityTarget{MetaGuid: "inst;shop;public;orders"},
+	})
+	require.Error(t, err, "the read-only projection fields are not part of a draft")
+
 	_, err = convertQualityPlanDraftFromV1(&v1pb.QualityPlan{Coverage: []*v1pb.QualityPlanCoverage{
 		{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME},
 		{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME},

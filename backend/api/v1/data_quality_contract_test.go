@@ -588,3 +588,38 @@ func TestQualityContractViewStagedPlan(t *testing.T) {
 	require.True(t, view.GetHasUnpublishedChanges(), "a declaration cannot be represented in a v2 version")
 	require.True(t, view.GetDiff().GetPlanNotRecorded())
 }
+
+// A declaration on a target that has never been published is still an unpublished
+// change: the declaration alone is content to publish.
+func TestQualityContractUnpublishedWithoutVersion(t *testing.T) {
+	t.Parallel()
+
+	settings := &storepb.QualityContractSettings{}
+	require.False(t, qualityContractUnpublishedWithoutVersion(settings, nil, nil))
+	declared := &store.QualityContractMessage{
+		Staged: &storepb.QualityContractPlan{Coverage: []*storepb.QualityContractPlanCoverage{{MinChecks: 1}}},
+	}
+	require.True(t, qualityContractUnpublishedWithoutVersion(settings, declared, nil),
+		"a declaration with no published version is unpublished")
+}
+
+// The working plan is the declaration when one exists and the derived projection
+// otherwise.
+func TestQualityContractWorkingPlan(t *testing.T) {
+	t.Parallel()
+
+	declared := &store.QualityContractMessage{
+		Staged: &storepb.QualityContractPlan{Coverage: []*storepb.QualityContractPlanCoverage{{
+			Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_NULL_RATE,
+			Column:   "email",
+		}}},
+	}
+	settings := &storepb.QualityContractSettings{}
+	plan := qualityContractWorkingPlan(settings, nil, declared, nil)
+	require.Len(t, plan.GetCoverage(), 1)
+	require.Equal(t, "email", plan.GetCoverage()[0].GetColumn())
+
+	derived := qualityContractWorkingPlan(settings, nil, &store.QualityContractMessage{Settings: settings}, nil)
+	require.Len(t, derived.GetCoverage(), 2, "no declaration falls back to the IMPORTANT template")
+	require.Equal(t, storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, derived.GetCoverage()[0].GetProperty())
+}

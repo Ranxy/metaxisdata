@@ -913,9 +913,11 @@ QualityContractIntentStatement is one property the target promises for a scope.
 <a name="metaxisdata-store-QualityContractPlan"></a>
 
 ### QualityContractPlan
-QualityContractPlan is the published plan payload: the declared coverage and
-the cadence it was published under. The checks that implement plan membership
-are the snapshot&#39;s ordered checks, which stay the only source of rule data.
+QualityContractPlan is a plan payload: either a published version&#39;s declaration
+plus the cadence it was published under, or the target&#39;s current declaration
+(coverage only; the cadence lives in the target&#39;s schedule). The checks that
+implement plan membership are the snapshot&#39;s ordered checks, which stay the only
+source of rule data.
 
 
 | Field | Type | Label | Description |

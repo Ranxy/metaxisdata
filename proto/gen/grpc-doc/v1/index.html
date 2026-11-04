@@ -17637,15 +17637,18 @@ contract. </p></td>
                   <td>staged_plan</td>
                   <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
                   <td></td>
-                  <td><p>The plan draft a person staged but has not published. Absent when no draft
-exists; an empty draft clears it. </p></td>
+                  <td><p>The plan declaration the target currently holds, published or not. Absent when
+the target has none; an empty declaration clears it and returns the target to
+the projection derived from the intent and the live rules. </p></td>
                 </tr>
               
                 <tr>
                   <td>staged_base_version</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>The published version the draft is based on. Zero when nothing is staged. </p></td>
+                  <td><p>The newest published version the declaration is aligned to. It always equals
+published_version after a publish, so a client echoes it back as the base of its
+next declaration edit. </p></td>
                 </tr>
               
                 <tr>
@@ -17781,7 +17784,7 @@ projection) differs from the newest published version. </p></td>
                   <td>plan_changes</td>
                   <td><a href="#metaxisdata.v1.QualityPlanChange">QualityPlanChange</a></td>
                   <td>repeated</td>
-                  <td><p>The declaration changes the draft would publish. </p></td>
+                  <td><p>The declaration changes the working plan would publish. </p></td>
                 </tr>
               
                 <tr>
@@ -19395,7 +19398,7 @@ records the expression&#39;s nominal gap here and its expression in cron. </p></
         
       
         <h3 id="metaxisdata.v1.QualityPlanChange">QualityPlanChange</h3>
-        <p>QualityPlanChange is one declaration added, removed or modified by a draft.</p>
+        <p>QualityPlanChange is one declaration added, removed or modified by the working</p><p>plan (the staged declaration, or the projection derived from the intent and the</p><p>live rules when nothing is staged).</p>
 
         
           <table class="field-table">

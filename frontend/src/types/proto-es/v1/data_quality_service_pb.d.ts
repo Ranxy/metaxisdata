@@ -6869,15 +6869,18 @@ export declare type QualityContract = Message<"metaxisdata.v1.QualityContract"> 
   plan?: QualityPlan;
 
   /**
-   * The plan draft a person staged but has not published. Absent when no draft
-   * exists; an empty draft clears it.
+   * The plan declaration the target currently holds, published or not. Absent when
+   * the target has none; an empty declaration clears it and returns the target to
+   * the projection derived from the intent and the live rules.
    *
    * @generated from field: metaxisdata.v1.QualityPlan staged_plan = 11;
    */
   stagedPlan?: QualityPlan;
 
   /**
-   * The published version the draft is based on. Zero when nothing is staged.
+   * The newest published version the declaration is aligned to. It always equals
+   * published_version after a publish, so a client echoes it back as the base of its
+   * next declaration edit.
    *
    * @generated from field: int32 staged_base_version = 12;
    */
@@ -6899,7 +6902,9 @@ export declare type QualityContract = Message<"metaxisdata.v1.QualityContract"> 
 export declare const QualityContractSchema: GenMessage<QualityContract>;
 
 /**
- * QualityPlanChange is one declaration added, removed or modified by a draft.
+ * QualityPlanChange is one declaration added, removed or modified by the working
+ * plan (the staged declaration, or the projection derived from the intent and the
+ * live rules when nothing is staged).
  *
  * @generated from message metaxisdata.v1.QualityPlanChange
  */
@@ -6967,7 +6972,7 @@ export declare type QualityContractDiff = Message<"metaxisdata.v1.QualityContrac
   intentChanged: boolean;
 
   /**
-   * The declaration changes the draft would publish.
+   * The declaration changes the working plan would publish.
    *
    * @generated from field: repeated metaxisdata.v1.QualityPlanChange plan_changes = 2;
    */

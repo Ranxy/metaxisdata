@@ -2833,7 +2833,7 @@ that drive checks arrive with the plan evaluator. </p></td>
         
       
         <h3 id="metaxisdata.store.QualityContractPlan">QualityContractPlan</h3>
-        <p>QualityContractPlan is the published plan payload: the declared coverage and</p><p>the cadence it was published under. The checks that implement plan membership</p><p>are the snapshot's ordered checks, which stay the only source of rule data.</p>
+        <p>QualityContractPlan is a plan payload: either a published version's declaration</p><p>plus the cadence it was published under, or the target's current declaration</p><p>(coverage only; the cadence lives in the target's schedule). The checks that</p><p>implement plan membership are the snapshot's ordered checks, which stay the only</p><p>source of rule data.</p>
 
         
           <table class="field-table">
