@@ -237,6 +237,8 @@
           @retry="loadContract()"
         />
 
+        <TargetPlanCard :contract="contract" />
+
         <p
           v-if="orphaned"
           class="text-xs text-danger"
@@ -756,6 +758,7 @@ import TargetContractCard from "@/components/data-quality/TargetContractCard.vue
 import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
 import TargetCoverageCard from "@/components/data-quality/TargetCoverageCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
+import TargetPlanCard from "@/components/data-quality/TargetPlanCard.vue";
 import TargetRecentScanCard from "@/components/data-quality/TargetRecentScanCard.vue";
 import TargetRuleComposer from "@/components/data-quality/TargetRuleComposer.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";

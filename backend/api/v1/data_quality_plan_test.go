@@ -48,10 +48,8 @@ func TestQualityPlanMatchesScope(t *testing.T) {
 	t.Parallel()
 
 	guid := "inst-1;shop;public;orders"
-	require.True(t, qualityPlanMatchesScope(guid, &v1pb.ListQualityPlansRequest{}))
-	require.True(t, qualityPlanMatchesScope(guid, &v1pb.ListQualityPlansRequest{
-		Instance: "inst-1", Database: "shop", Schema: "public", Table: "ord",
-	}))
-	require.False(t, qualityPlanMatchesScope(guid, &v1pb.ListQualityPlansRequest{Instance: "inst-2"}))
-	require.False(t, qualityPlanMatchesScope(guid, &v1pb.ListQualityPlansRequest{Table: "customers"}))
+	require.True(t, qualityPlanMatchesScope(guid, "", "", "", ""))
+	require.True(t, qualityPlanMatchesScope(guid, "inst-1", "shop", "public", "ord"))
+	require.False(t, qualityPlanMatchesScope(guid, "inst-2", "", "", ""))
+	require.False(t, qualityPlanMatchesScope(guid, "", "", "", "customers"))
 }

@@ -619,6 +619,14 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // ListQualityCoverageGaps flattens the plan projection to the unsatisfied
+  // declared coverage: one row per target property that a live rule does not
+  // implement. Read-only, like ListQualityPlans.
+  rpc ListQualityCoverageGaps(ListQualityCoverageGapsRequest) returns (ListQualityCoverageGapsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityCoverageGaps"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Update the target-level defaults. The filter is ANDed into every rule on the
   // target at compile time; the default severity only seeds newly authored rules
   // and never rewrites an existing rule. The target's schedule is updated through
@@ -3661,6 +3669,31 @@ message ListQualityPlansRequest {
 
 message ListQualityPlansResponse {
   repeated QualityPlan plans = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+
+// QualityCoverageGap is one required property a target's plan does not satisfy.
+message QualityCoverageGap {
+  QualityTarget target = 1;
+  QualityCoverageProperty property = 2;
+  QualityAssetCriticality criticality = 3;
+}
+
+message ListQualityCoverageGapsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 page_size = 2;
+  string page_token = 3;
+  string instance = 4;
+  string database = 5;
+  string schema = 6;
+  string table = 7;
+  string search = 8;
+}
+
+message ListQualityCoverageGapsResponse {
+  repeated QualityCoverageGap gaps = 1;
   string next_page_token = 2;
   int32 total_size = 3;
 }

@@ -17,10 +17,10 @@ import (
 // projection over the live rules and the contract rows, so this slice has no write
 // path: a target with rules but no contract is UNPLANNED rather than silently
 // treated as covered.
-func (s *DataQualityService) ListQualityPlans(ctx context.Context, req *connect.Request[v1pb.ListQualityPlansRequest]) (*connect.Response[v1pb.ListQualityPlansResponse], error) {
-	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
-		return nil, err
-	}
+// qualityPlansFor derives the workspace's plans and applies the directory scope.
+// Both list RPCs share it so the plan directory and the gap list can never
+// disagree about a target's state.
+func (s *DataQualityService) qualityPlansFor(ctx context.Context, instance, database, schema, table, search string) ([]*v1pb.QualityPlan, error) {
 	rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{})
 	if err != nil {
 		return nil, err
@@ -52,12 +52,12 @@ func (s *DataQualityService) ListQualityPlans(ctx context.Context, req *connect.
 
 	plans := make([]*v1pb.QualityPlan, 0, len(byTarget))
 	for key, entry := range byTarget {
-		if !qualityPlanMatchesScope(key.GUID, req.Msg) {
+		if !qualityPlanMatchesScope(key.GUID, instance, database, schema, table) {
 			continue
 		}
 		_, hasContract := contracted[key]
 		plan := qualityPlanView(key.GUID, entry.types, entry.rules, hasContract)
-		if search := strings.ToLower(strings.TrimSpace(req.Msg.GetSearch())); search != "" &&
+		if search := strings.ToLower(strings.TrimSpace(search)); search != "" &&
 			!strings.Contains(strings.ToLower(qualityPlanSearchText(plan)), search) {
 			continue
 		}
@@ -67,6 +67,17 @@ func (s *DataQualityService) ListQualityPlans(ctx context.Context, req *connect.
 		return strings.Compare(left.GetTarget().GetMetaGuid(), right.GetTarget().GetMetaGuid())
 	})
 
+	return plans, nil
+}
+
+func (s *DataQualityService) ListQualityPlans(ctx context.Context, req *connect.Request[v1pb.ListQualityPlansRequest]) (*connect.Response[v1pb.ListQualityPlansResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	plans, err := s.qualityPlansFor(ctx, req.Msg.GetInstance(), req.Msg.GetDatabase(), req.Msg.GetSchema(), req.Msg.GetTable(), req.Msg.GetSearch())
+	if err != nil {
+		return nil, err
+	}
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:        req.Msg.GetPageToken(),
 		limit:        int(req.Msg.GetPageSize()),
@@ -83,6 +94,51 @@ func (s *DataQualityService) ListQualityPlans(ctx context.Context, req *connect.
 	}
 	return connect.NewResponse(&v1pb.ListQualityPlansResponse{
 		Plans:         page,
+		NextPageToken: next,
+		TotalSize:     total,
+	}), nil
+}
+
+// ListQualityCoverageGaps flattens the same plan projection to the unsatisfied
+// declared properties. It reads exactly like ListQualityPlans and writes nothing.
+func (s *DataQualityService) ListQualityCoverageGaps(ctx context.Context, req *connect.Request[v1pb.ListQualityCoverageGapsRequest]) (*connect.Response[v1pb.ListQualityCoverageGapsResponse], error) {
+	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
+		return nil, err
+	}
+	plans, err := s.qualityPlansFor(ctx, req.Msg.GetInstance(), req.Msg.GetDatabase(), req.Msg.GetSchema(), req.Msg.GetTable(), req.Msg.GetSearch())
+	if err != nil {
+		return nil, err
+	}
+	gaps := make([]*v1pb.QualityCoverageGap, 0)
+	for _, plan := range plans {
+		for _, requirement := range plan.GetRequirements() {
+			if requirement.GetSatisfied() {
+				continue
+			}
+			gaps = append(gaps, &v1pb.QualityCoverageGap{
+				Target:      plan.GetTarget(),
+				Property:    requirement.GetProperty(),
+				Criticality: plan.GetCriticality(),
+			})
+		}
+	}
+
+	offset, err := parseLimitAndOffset(&pageSize{
+		token:        req.Msg.GetPageToken(),
+		limit:        int(req.Msg.GetPageSize()),
+		maximum:      200,
+		defaultLimit: 50,
+	})
+	if err != nil {
+		return nil, err
+	}
+	total := int32(len(gaps))
+	page, next, err := paginateInMemory(gaps, offset)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&v1pb.ListQualityCoverageGapsResponse{
+		Gaps:          page,
 		NextPageToken: next,
 		TotalSize:     total,
 	}), nil
@@ -125,21 +181,21 @@ func qualityPlanView(guid string, metaType storepb.MetaType, rules []*store.Qual
 // qualityPlanMatchesScope filters the plan page by the same instance → table
 // path the target directory uses. Table is a prefix, matching the directory's
 // table filter.
-func qualityPlanMatchesScope(guid string, msg *v1pb.ListQualityPlansRequest) bool {
+func qualityPlanMatchesScope(guid, instance, database, schema, table string) bool {
 	parts := strings.Split(guid, ";")
 	for len(parts) < 4 {
 		parts = append(parts, "")
 	}
-	if instance := strings.TrimSpace(msg.GetInstance()); instance != "" && parts[0] != instance {
+	if instance := strings.TrimSpace(instance); instance != "" && parts[0] != instance {
 		return false
 	}
-	if database := strings.TrimSpace(msg.GetDatabase()); database != "" && parts[1] != database {
+	if database := strings.TrimSpace(database); database != "" && parts[1] != database {
 		return false
 	}
-	if schema := strings.TrimSpace(msg.GetSchema()); schema != "" && parts[2] != schema {
+	if schema := strings.TrimSpace(schema); schema != "" && parts[2] != schema {
 		return false
 	}
-	if table := strings.TrimSpace(msg.GetTable()); table != "" && !strings.HasPrefix(parts[3], table) {
+	if table := strings.TrimSpace(table); table != "" && !strings.HasPrefix(parts[3], table) {
 		return false
 	}
 	return true
