@@ -145,6 +145,16 @@
           <Badge :variant="failingCount > 0 ? 'destructive' : 'neutral'">
             {{ t("dataQuality.workspace.summaryFailing", { count: failingCount }) }}
           </Badge>
+          <!-- A check that could not run is not a data failure; keeping it out of
+               the failing badge prevents a broken check from being read as bad data,
+               while its own badge keeps it visible. -->
+          <Badge
+            v-if="cannotRunCount > 0"
+            variant="warning"
+            :title="t('dataQuality.workspace.summaryCannotRunHint')"
+          >
+            {{ t("dataQuality.workspace.summaryCannotRun", { count: cannotRunCount }) }}
+          </Badge>
           <Badge :variant="summary.pendingDraftCount > 0 ? 'info' : 'neutral'">
             {{ t("dataQuality.workspace.summaryDrafts", { count: summary.pendingDraftCount }) }}
           </Badge>
@@ -1060,10 +1070,14 @@ const passingCount = computed(
 );
 const failingCount = computed(
   () =>
-    rules.value.filter((rule) => {
-      const status = rule.lastResult?.status;
-      return status === QualityStatus.FAIL || status === QualityStatus.ERROR;
-    }).length
+    rules.value.filter((rule) => rule.lastResult?.status === QualityStatus.FAIL)
+      .length
+);
+const cannotRunCount = computed(
+  () =>
+    rules.value.filter(
+      (rule) => rule.lastResult?.status === QualityStatus.ERROR
+    ).length
 );
 
 const lastRunText = computed(() =>

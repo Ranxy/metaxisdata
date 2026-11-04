@@ -6356,6 +6356,7 @@ queries rather than paging through every result.
 | last_day_counts | [QualityStatusCounts](#metaxisdata-v1-QualityStatusCounts) |  |  |
 | trend | [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint) | repeated | The per-day tallies of the trend window, oldest first. |
 | trend_days | [int32](#int32) |  | How many days the trend covers. |
+| cannot_run_rule_count | [int32](#int32) |  | Enabled rules whose latest completed execution is ERROR: the check could not run, so its data was not judged. These are not failing rules and are not scored; the UI shows them as their own &#34;cannot run&#34; count so a broken check is visible without being mistaken for bad data. |
 
 
 

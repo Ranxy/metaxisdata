@@ -362,7 +362,7 @@ meta_registry_resource（只读）──< quality_rule >──< quality_rule_rev
 
 ### 3.10 覆盖率、质量分与最近通过率（P0-3）
 
-> 只读聚合：不新增表、不写库、不审计、不改变判定/问题/通知；所有数字都能从 registry 行与 `quality_execution` 现算（D-75/D-76）。新增字段见 proto `QualityOverview`（字段 13–23）、`QualityCoverageBreakdown`、`QualityDimensionScore`、`QualityOwnerScore` 与 `QualityTargetSummary`（字段 16–19）。
+> 只读聚合：不新增表、不写库、不审计、不改变判定/问题/通知；所有数字都能从 registry 行与 `quality_execution` 现算（D-75/D-76）。新增字段见 proto `QualityOverview`（字段 13–24；`cannot_run_rule_count` 是最近一次执行为 ERROR 的启用规则数，独立于 `failing_rule_count`，不进分数）、`QualityCoverageBreakdown`、`QualityDimensionScore`、`QualityOwnerScore` 与 `QualityTargetSummary`（字段 16–19）。
 
 **覆盖率**（`QualityOverview` 与 `coverage_by_instance`/`coverage_by_environment`）：
 

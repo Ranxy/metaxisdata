@@ -234,6 +234,15 @@ func assembleQualityScoreOverview(enabledRules []*store.QualityRuleMessage, targ
 		judgedTargets[rule.TargetGUID] = struct{}{}
 	}
 
+	var cannotRun int32
+	for _, rule := range enabledRules {
+		if execution := ruleLatestResult(rule, latest); execution != nil &&
+			execution.Status == storepb.QualityStatus_QUALITY_STATUS_ERROR {
+			cannotRun++
+		}
+	}
+	overview.CannotRunRuleCount = cannotRun
+
 	overview.MonitoredTableCount = int32(len(monitoredTargets))
 	overview.CoveredColumnCount = int32(len(coveredColumns))
 	overview.JudgedTableCount = int32(len(judgedTargets))

@@ -535,7 +535,11 @@ completes, its outcome is one of six statuses:
 | `SKIPPED` | Deliberately not run: the target disappeared, the check is archived, or the same check was already executing. |
 | `NOT_EVALUATED` | The check ran but had nothing to judge (no rows after the filter, a NULL timestamp or aggregate). |
 
-An abandoned execution has no outcome. Failed executions can be expanded for
+An abandoned execution has no outcome. A check that cannot run is surfaced
+separately: the target header and the workspace overview show a **cannot run**
+count, and those checks are left out of *failing*, the recent pass rate and the
+quality score — a broken check must never look like bad data, and must never hide
+behind a green score. Failed executions can be expanded for
 samples and the exact SQL. For a column check on a table whose metadata records
 a primary key, each sample is a numbered failed row led by the key columns and
 then the checked column(s), so two failures on the same column do not look like

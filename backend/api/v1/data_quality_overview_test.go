@@ -125,6 +125,8 @@ func TestAssembleQualityScoreOverview(t *testing.T) {
 	require.Equal(t, int32(2), overview.GetJudgedTableCount(), "the ERROR rule leaves its target unjudged")
 	require.Equal(t, int32(3), overview.GetScoredRuleCount())
 	require.Equal(t, int32(1), overview.GetUnscoredRuleCount())
+	require.Equal(t, int32(1), overview.GetCannotRunRuleCount(),
+		"a rule whose latest execution errored is visible without being failing")
 
 	require.NotNil(t, overview.QualityScore, "three judged checks produce a score")
 	require.InDelta(t, 100*5.6/6, overview.GetQualityScore(), 1e-9)

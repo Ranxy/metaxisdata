@@ -18548,6 +18548,16 @@ were planned (any lifecycle state), and how the completed ones tallied. </p></td
                   <td><p>How many days the trend covers. </p></td>
                 </tr>
               
+                <tr>
+                  <td>cannot_run_rule_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Enabled rules whose latest completed execution is ERROR: the check could not
+run, so its data was not judged. These are not failing rules and are not
+scored; the UI shows them as their own &#34;cannot run&#34; count so a broken check
+is visible without being mistaken for bad data. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 

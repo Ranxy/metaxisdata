@@ -5584,6 +5584,16 @@ export declare type QualityOverview = Message<"metaxisdata.v1.QualityOverview"> 
    * @generated from field: int32 trend_days = 12;
    */
   trendDays: number;
+
+  /**
+   * Enabled rules whose latest completed execution is ERROR: the check could not
+   * run, so its data was not judged. These are not failing rules and are not
+   * scored; the UI shows them as their own "cannot run" count so a broken check
+   * is visible without being mistaken for bad data.
+   *
+   * @generated from field: int32 cannot_run_rule_count = 24;
+   */
+  cannotRunRuleCount: number;
 };
 
 /**

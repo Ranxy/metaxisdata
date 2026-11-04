@@ -3057,6 +3057,12 @@ message QualityOverview {
   repeated QualityTrendPoint trend = 11;
   // How many days the trend covers.
   int32 trend_days = 12;
+
+  // Enabled rules whose latest completed execution is ERROR: the check could not
+  // run, so its data was not judged. These are not failing rules and are not
+  // scored; the UI shows them as their own "cannot run" count so a broken check
+  // is visible without being mistaken for bad data.
+  int32 cannot_run_rule_count = 24;
 }
 
 // QualityCoverageBreakdown is one instance's or one environment's share of the
