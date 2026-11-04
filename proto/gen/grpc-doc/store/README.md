@@ -85,8 +85,8 @@
     - [QualityContractChangeKind](#metaxisdata-store-QualityContractChangeKind)
     - [QualityContractCriticality](#metaxisdata-store-QualityContractCriticality)
     - [QualityContractIntentSource](#metaxisdata-store-QualityContractIntentSource)
-    - [QualityContractPlanSource](#metaxisdata-store-QualityContractPlanSource)
     - [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty)
+    - [QualityCoverageSource](#metaxisdata-store-QualityCoverageSource)
     - [QualityDimension](#metaxisdata-store-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-store-QualityEmptyBehavior)
     - [QualityExecutionState](#metaxisdata-store-QualityExecutionState)
@@ -938,7 +938,7 @@ version is self-contained; the schedule table keeps the single timer.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| interval_seconds | [int64](#int64) |  | Seconds between runs; 0 when the target runs on cron or has no schedule. |
+| interval_seconds | [int64](#int64) |  | Seconds between runs; 0 only when the target has no schedule. A cron target records the expression&#39;s nominal gap here and its expression in cron. |
 | cron | [string](#string) |  |  |
 | timezone | [string](#string) |  |  |
 
@@ -959,8 +959,7 @@ published plan records it.
 | property | [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty) |  |  |
 | column | [string](#string) |  | The scope column; empty means the whole table. |
 | min_checks | [int32](#int32) |  | How many checks the declaration needs; 0 reads as one. |
-| source | [QualityContractPlanSource](#metaxisdata-store-QualityContractPlanSource) |  |  |
-| note | [string](#string) |  |  |
+| source | [QualityCoverageSource](#metaxisdata-store-QualityCoverageSource) |  |  |
 
 
 
@@ -1762,20 +1761,6 @@ QualityContractIntentSource records who wrote the intent.
 
 
 
-<a name="metaxisdata-store-QualityContractPlanSource"></a>
-
-### QualityContractPlanSource
-QualityContractPlanSource records where one declaration came from.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED | 0 |  |
-| QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE | 1 |  |
-| QUALITY_CONTRACT_PLAN_SOURCE_INTENT | 2 |  |
-| QUALITY_CONTRACT_PLAN_SOURCE_AGENT | 3 |  |
-
-
-
 <a name="metaxisdata-store-QualityCoverageProperty"></a>
 
 ### QualityCoverageProperty
@@ -1794,6 +1779,20 @@ cast.
 | QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES | 6 |  |
 | QUALITY_COVERAGE_PROPERTY_FORMAT | 7 |  |
 | QUALITY_COVERAGE_PROPERTY_RANGE | 8 |  |
+
+
+
+<a name="metaxisdata-store-QualityCoverageSource"></a>
+
+### QualityCoverageSource
+QualityCoverageSource records where one declaration came from. The numbers match
+the API enum so the two convert by cast.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COVERAGE_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_COVERAGE_SOURCE_TEMPLATE | 1 |  |
+| QUALITY_COVERAGE_SOURCE_INTENT | 2 |  |
 
 
 

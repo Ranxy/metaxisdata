@@ -3712,14 +3712,6 @@ message QualityCoverageRequirement {
   bool exempted = 5;
 }
 
-// QualityPlanSource records where one declaration came from.
-enum QualityPlanSource {
-  QUALITY_PLAN_SOURCE_UNSPECIFIED = 0;
-  QUALITY_PLAN_SOURCE_TEMPLATE = 1;
-  QUALITY_PLAN_SOURCE_INTENT = 2;
-  QUALITY_PLAN_SOURCE_AGENT = 3;
-}
-
 // QualityPlanCoverage is one required property at one scope, as a published plan
 // records it.
 message QualityPlanCoverage {
@@ -3728,15 +3720,15 @@ message QualityPlanCoverage {
   string column = 2;
   // How many checks the declaration needs; 0 reads as one.
   int32 min_checks = 3;
-  QualityPlanSource source = 4;
-  string note = 5;
+  QualityCoverageSource source = 4;
 }
 
 // QualityPlanCadence is the target schedule a plan version recorded. It is a
 // projection of the target's schedule; editing the schedule is still the only
 // way to change it.
 message QualityPlanCadence {
-  // Seconds between runs; 0 when the target runs on cron or has no schedule.
+  // Seconds between runs; 0 only when the target has no schedule. A cron target
+  // records the expression's nominal gap here and its expression in cron.
   int64 interval_seconds = 1;
   string cron = 2;
   string timezone = 3;
@@ -3755,8 +3747,8 @@ message QualityPlan {
   // The declarations the plan is built from (template plus intent statements), as
   // a published version records them.
   repeated QualityPlanCoverage coverage = 7;
-  // The cadence a published version recorded; absent when nothing is published
-  // yet.
+  // The cadence a published version recorded. Absent in the live projection,
+  // which reads the target's current schedule instead.
   QualityPlanCadence cadence = 8;
 }
 
@@ -3907,9 +3899,6 @@ message GetQualityContractRevisionRequest {
 message GetQualityContractRevisionResponse {
   QualityContractRevision revision = 1;
   repeated QualityContractCheck checks = 2;
-  // The plan this version recorded; absent on a version published before plan
-  // payloads existed.
-  QualityPlan plan = 3;
 }
 
 // ExportQualityDataChunk is one slice of a streamed CSV export. A client

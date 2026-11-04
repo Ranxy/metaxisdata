@@ -496,13 +496,13 @@ func TestQualityContractPlanSnapshot(t *testing.T) {
 	plan := qualityContractPlanSnapshot(intent, rules, schedule)
 	require.Len(t, plan.GetCoverage(), 5, "four critical template requirements plus the statement")
 	require.Equal(t, int64(6*60*60), plan.GetCadence().GetIntervalSeconds())
-	sourceByProperty := map[storepb.QualityCoverageProperty]storepb.QualityContractPlanSource{}
+	sourceByProperty := map[storepb.QualityCoverageProperty]storepb.QualityCoverageSource{}
 	for _, declaration := range plan.GetCoverage() {
 		sourceByProperty[declaration.GetProperty()] = declaration.GetSource()
 	}
-	require.Equal(t, storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE,
+	require.Equal(t, storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE,
 		sourceByProperty[storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME])
-	require.Equal(t, storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_INTENT,
+	require.Equal(t, storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT,
 		sourceByProperty[storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_NULL_RATE])
 }
 
@@ -518,7 +518,7 @@ func TestConvertQualityContractRevisionChangeKindAndPlan(t *testing.T) {
 				Coverage: []*storepb.QualityContractPlanCoverage{{
 					Property:  storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
 					MinChecks: 1,
-					Source:    storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE,
+					Source:    storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE,
 				}},
 			},
 		},
@@ -526,4 +526,39 @@ func TestConvertQualityContractRevisionChangeKindAndPlan(t *testing.T) {
 	converted := convertQualityContractRevisionToV1(revision)
 	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN, converted.GetChangeKind())
 	require.Len(t, converted.GetPlan().GetCoverage(), 1)
+}
+
+// A contract whose newest version is v2 still compares with the v2 schema after the
+// plan payload lands: an unchanged contract must not look unpublished, and a real
+// drift must.
+func TestQualityContractViewV2HasUnpublishedChanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	settings := &storepb.QualityContractSettings{}
+	rules := []*store.QualityRuleMessage{{
+		ResourceID: "a",
+		Revision:   1,
+		Title:      "rows",
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+	}}
+	checks := buildQualityContractChecks(rules)
+	revision := &store.QualityContractRevisionMessage{Snapshot: &storepb.QualityContractSnapshot{
+		Settings:        settings,
+		Checks:          checks,
+		Fingerprint:     qualityContractFingerprintV2(settings, checks),
+		SnapshotVersion: 2,
+	}}
+	contract := &store.QualityContractMessage{Settings: settings}
+	service := &DataQualityService{}
+
+	view, err := service.qualityContractViewWith(ctx, "inst;shop;public;orders", storepb.MetaType_TABLE, contract, rules, revision)
+	require.NoError(t, err)
+	require.False(t, view.GetHasUnpublishedChanges(), "an untouched v2 contract must not look unpublished after the v3 upgrade")
+
+	changed := append([]*store.QualityRuleMessage{}, rules...)
+	changed = append(changed, &store.QualityRuleMessage{ResourceID: "b", Revision: 1, Title: "fresh", RuleType: storepb.QualityRuleType_QUALITY_RULE_TYPE_FRESHNESS})
+	view, err = service.qualityContractViewWith(ctx, "inst;shop;public;orders", storepb.MetaType_TABLE, contract, changed, revision)
+	require.NoError(t, err)
+	require.True(t, view.GetHasUnpublishedChanges())
 }

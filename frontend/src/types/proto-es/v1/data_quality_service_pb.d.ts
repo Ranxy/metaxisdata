@@ -7144,14 +7144,9 @@ export declare type QualityPlanCoverage = Message<"metaxisdata.v1.QualityPlanCov
   minChecks: number;
 
   /**
-   * @generated from field: metaxisdata.v1.QualityPlanSource source = 4;
+   * @generated from field: metaxisdata.v1.QualityCoverageSource source = 4;
    */
-  source: QualityPlanSource;
-
-  /**
-   * @generated from field: string note = 5;
-   */
-  note: string;
+  source: QualityCoverageSource;
 };
 
 /**
@@ -7169,7 +7164,8 @@ export declare const QualityPlanCoverageSchema: GenMessage<QualityPlanCoverage>;
  */
 export declare type QualityPlanCadence = Message<"metaxisdata.v1.QualityPlanCadence"> & {
   /**
-   * Seconds between runs; 0 when the target runs on cron or has no schedule.
+   * Seconds between runs; 0 only when the target has no schedule. A cron target
+   * records the expression's nominal gap here and its expression in cron.
    *
    * @generated from field: int64 interval_seconds = 1;
    */
@@ -7239,8 +7235,8 @@ export declare type QualityPlan = Message<"metaxisdata.v1.QualityPlan"> & {
   coverage: QualityPlanCoverage[];
 
   /**
-   * The cadence a published version recorded; absent when nothing is published
-   * yet.
+   * The cadence a published version recorded. Absent in the live projection,
+   * which reads the target's current schedule instead.
    *
    * @generated from field: metaxisdata.v1.QualityPlanCadence cadence = 8;
    */
@@ -7796,14 +7792,6 @@ export declare type GetQualityContractRevisionResponse = Message<"metaxisdata.v1
    * @generated from field: repeated metaxisdata.v1.QualityContractCheck checks = 2;
    */
   checks: QualityContractCheck[];
-
-  /**
-   * The plan this version recorded; absent on a version published before plan
-   * payloads existed.
-   *
-   * @generated from field: metaxisdata.v1.QualityPlan plan = 3;
-   */
-  plan?: QualityPlan;
 };
 
 /**
@@ -10280,38 +10268,6 @@ export enum QualityCoverageSource {
  * Describes the enum metaxisdata.v1.QualityCoverageSource.
  */
 export declare const QualityCoverageSourceSchema: GenEnum<QualityCoverageSource>;
-
-/**
- * QualityPlanSource records where one declaration came from.
- *
- * @generated from enum metaxisdata.v1.QualityPlanSource
- */
-export enum QualityPlanSource {
-  /**
-   * @generated from enum value: QUALITY_PLAN_SOURCE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: QUALITY_PLAN_SOURCE_TEMPLATE = 1;
-   */
-  TEMPLATE = 1,
-
-  /**
-   * @generated from enum value: QUALITY_PLAN_SOURCE_INTENT = 2;
-   */
-  INTENT = 2,
-
-  /**
-   * @generated from enum value: QUALITY_PLAN_SOURCE_AGENT = 3;
-   */
-  AGENT = 3,
-}
-
-/**
- * Describes the enum metaxisdata.v1.QualityPlanSource.
- */
-export declare const QualityPlanSourceSchema: GenEnum<QualityPlanSource>;
 
 /**
  * QualityContractChangeKind says which sections of a version changed against its

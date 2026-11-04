@@ -248,7 +248,6 @@ func (s *DataQualityService) GetQualityContractRevision(ctx context.Context, req
 	}
 	response := &v1pb.GetQualityContractRevisionResponse{
 		Revision: convertQualityContractRevisionToV1(revision),
-		Plan:     convertQualityContractPlanToV1(revision.Snapshot.GetPlan()),
 	}
 	for _, check := range revision.Snapshot.GetChecks() {
 		response.Checks = append(response.Checks, convertQualityContractCheckToV1(workspaceID, check))
@@ -466,7 +465,8 @@ func qualityContractFingerprintV2(settings *storepb.QualityContractSettings, che
 	return contractSnapshotVersionPrefixV2 + hex.EncodeToString(sum[:])
 }
 
-// contractSnapshotVersionV2 is the schema version every new publish records.
+// contractSnapshotVersionV2 is the deterministic-fingerprint schema (settings and
+// checks, no plan payload) that v2 rows were published with.
 const contractSnapshotVersionV2 = 2
 
 // contractSnapshotVersionPrefixV2 tags a v2 fingerprint. The prefix is derived
@@ -511,8 +511,10 @@ func qualityContractSnapshotV3(settings *storepb.QualityContractSettings, plan *
 	}
 }
 
-// qualityContractSnapshotV2 builds the snapshot a publish writes: settings, the
-// ordered checks, the schema version and the deterministic fingerprint.
+// qualityContractSnapshotV2 builds a v2 snapshot: settings, the ordered checks, the
+// schema version and the deterministic fingerprint. New publishes write v3; this
+// shape is kept so v2 rows keep being compared with the schema they were written
+// with.
 func qualityContractSnapshotV2(settings *storepb.QualityContractSettings, checks []*storepb.QualityContractCheck) *storepb.QualityContractSnapshot {
 	return &storepb.QualityContractSnapshot{
 		Settings:        settings,

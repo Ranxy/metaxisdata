@@ -1346,10 +1346,10 @@ CREATE TABLE IF NOT EXISTS quality_contract_revision (
     added_count INT4 NOT NULL DEFAULT 0,
     modified_count INT4 NOT NULL DEFAULT 0,
     removed_count INT4 NOT NULL DEFAULT 0,
-    change_kind INT2 NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
     published_by INT4 REFERENCES principal(id) ON DELETE SET NULL,
-    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    change_kind INT2 NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_contract_revision_version
     ON quality_contract_revision(contract_id, version);

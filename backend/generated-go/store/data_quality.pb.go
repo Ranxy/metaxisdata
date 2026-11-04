@@ -1846,56 +1846,54 @@ func (QualityContractIntentSource) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{28}
 }
 
-// QualityContractPlanSource records where one declaration came from.
-type QualityContractPlanSource int32
+// QualityCoverageSource records where one declaration came from. The numbers match
+// the API enum so the two convert by cast.
+type QualityCoverageSource int32
 
 const (
-	QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED QualityContractPlanSource = 0
-	QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE    QualityContractPlanSource = 1
-	QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_INTENT      QualityContractPlanSource = 2
-	QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_AGENT       QualityContractPlanSource = 3
+	QualityCoverageSource_QUALITY_COVERAGE_SOURCE_UNSPECIFIED QualityCoverageSource = 0
+	QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE    QualityCoverageSource = 1
+	QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT      QualityCoverageSource = 2
 )
 
-// Enum value maps for QualityContractPlanSource.
+// Enum value maps for QualityCoverageSource.
 var (
-	QualityContractPlanSource_name = map[int32]string{
-		0: "QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED",
-		1: "QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE",
-		2: "QUALITY_CONTRACT_PLAN_SOURCE_INTENT",
-		3: "QUALITY_CONTRACT_PLAN_SOURCE_AGENT",
+	QualityCoverageSource_name = map[int32]string{
+		0: "QUALITY_COVERAGE_SOURCE_UNSPECIFIED",
+		1: "QUALITY_COVERAGE_SOURCE_TEMPLATE",
+		2: "QUALITY_COVERAGE_SOURCE_INTENT",
 	}
-	QualityContractPlanSource_value = map[string]int32{
-		"QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED": 0,
-		"QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE":    1,
-		"QUALITY_CONTRACT_PLAN_SOURCE_INTENT":      2,
-		"QUALITY_CONTRACT_PLAN_SOURCE_AGENT":       3,
+	QualityCoverageSource_value = map[string]int32{
+		"QUALITY_COVERAGE_SOURCE_UNSPECIFIED": 0,
+		"QUALITY_COVERAGE_SOURCE_TEMPLATE":    1,
+		"QUALITY_COVERAGE_SOURCE_INTENT":      2,
 	}
 )
 
-func (x QualityContractPlanSource) Enum() *QualityContractPlanSource {
-	p := new(QualityContractPlanSource)
+func (x QualityCoverageSource) Enum() *QualityCoverageSource {
+	p := new(QualityCoverageSource)
 	*p = x
 	return p
 }
 
-func (x QualityContractPlanSource) String() string {
+func (x QualityCoverageSource) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (QualityContractPlanSource) Descriptor() protoreflect.EnumDescriptor {
+func (QualityCoverageSource) Descriptor() protoreflect.EnumDescriptor {
 	return file_store_data_quality_proto_enumTypes[29].Descriptor()
 }
 
-func (QualityContractPlanSource) Type() protoreflect.EnumType {
+func (QualityCoverageSource) Type() protoreflect.EnumType {
 	return &file_store_data_quality_proto_enumTypes[29]
 }
 
-func (x QualityContractPlanSource) Number() protoreflect.EnumNumber {
+func (x QualityCoverageSource) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use QualityContractPlanSource.Descriptor instead.
-func (QualityContractPlanSource) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use QualityCoverageSource.Descriptor instead.
+func (QualityCoverageSource) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{29}
 }
 
@@ -6722,9 +6720,8 @@ type QualityContractPlanCoverage struct {
 	// The scope column; empty means the whole table.
 	Column string `protobuf:"bytes,2,opt,name=column,proto3" json:"column,omitempty"`
 	// How many checks the declaration needs; 0 reads as one.
-	MinChecks     int32                     `protobuf:"varint,3,opt,name=min_checks,json=minChecks,proto3" json:"min_checks,omitempty"`
-	Source        QualityContractPlanSource `protobuf:"varint,4,opt,name=source,proto3,enum=metaxisdata.store.QualityContractPlanSource" json:"source,omitempty"`
-	Note          string                    `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
+	MinChecks     int32                 `protobuf:"varint,3,opt,name=min_checks,json=minChecks,proto3" json:"min_checks,omitempty"`
+	Source        QualityCoverageSource `protobuf:"varint,4,opt,name=source,proto3,enum=metaxisdata.store.QualityCoverageSource" json:"source,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6780,18 +6777,11 @@ func (x *QualityContractPlanCoverage) GetMinChecks() int32 {
 	return 0
 }
 
-func (x *QualityContractPlanCoverage) GetSource() QualityContractPlanSource {
+func (x *QualityContractPlanCoverage) GetSource() QualityCoverageSource {
 	if x != nil {
 		return x.Source
 	}
-	return QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED
-}
-
-func (x *QualityContractPlanCoverage) GetNote() string {
-	if x != nil {
-		return x.Note
-	}
-	return ""
+	return QualityCoverageSource_QUALITY_COVERAGE_SOURCE_UNSPECIFIED
 }
 
 // QualityContractPlanCadence is the target schedule the plan was published
@@ -6799,7 +6789,8 @@ func (x *QualityContractPlanCoverage) GetNote() string {
 // version is self-contained; the schedule table keeps the single timer.
 type QualityContractPlanCadence struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Seconds between runs; 0 when the target runs on cron or has no schedule.
+	// Seconds between runs; 0 only when the target has no schedule. A cron target
+	// records the expression's nominal gap here and its expression in cron.
 	IntervalSeconds int64  `protobuf:"varint,1,opt,name=interval_seconds,json=intervalSeconds,proto3" json:"interval_seconds,omitempty"`
 	Cron            string `protobuf:"bytes,2,opt,name=cron,proto3" json:"cron,omitempty"`
 	Timezone        string `protobuf:"bytes,3,opt,name=timezone,proto3" json:"timezone,omitempty"`
@@ -7567,14 +7558,13 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x17QualityContractSettings\x128\n" +
 	"\x06filter\x18\x01 \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12M\n" +
 	"\x10default_severity\x18\x03 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\x0fdefaultSeverity\x12@\n" +
-	"\x06intent\x18\x04 \x01(\v2(.metaxisdata.store.QualityContractIntentR\x06intentJ\x04\b\x02\x10\x03R!default_schedule_interval_seconds\"\xf6\x01\n" +
+	"\x06intent\x18\x04 \x01(\v2(.metaxisdata.store.QualityContractIntentR\x06intentJ\x04\b\x02\x10\x03R!default_schedule_interval_seconds\"\xde\x01\n" +
 	"\x1bQualityContractPlanCoverage\x12F\n" +
 	"\bproperty\x18\x01 \x01(\x0e2*.metaxisdata.store.QualityCoveragePropertyR\bproperty\x12\x16\n" +
 	"\x06column\x18\x02 \x01(\tR\x06column\x12\x1d\n" +
 	"\n" +
-	"min_checks\x18\x03 \x01(\x05R\tminChecks\x12D\n" +
-	"\x06source\x18\x04 \x01(\x0e2,.metaxisdata.store.QualityContractPlanSourceR\x06source\x12\x12\n" +
-	"\x04note\x18\x05 \x01(\tR\x04note\"w\n" +
+	"min_checks\x18\x03 \x01(\x05R\tminChecks\x12@\n" +
+	"\x06source\x18\x04 \x01(\x0e2(.metaxisdata.store.QualityCoverageSourceR\x06source\"w\n" +
 	"\x1aQualityContractPlanCadence\x12)\n" +
 	"\x10interval_seconds\x18\x01 \x01(\x03R\x0fintervalSeconds\x12\x12\n" +
 	"\x04cron\x18\x02 \x01(\tR\x04cron\x12\x1a\n" +
@@ -7813,12 +7803,11 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"*QUALITY_CONTRACT_INTENT_SOURCE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$QUALITY_CONTRACT_INTENT_SOURCE_HUMAN\x10\x01\x12.\n" +
 	"*QUALITY_CONTRACT_INTENT_SOURCE_AGENT_DRAFT\x10\x02\x12+\n" +
-	"'QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED\x10\x03*\xc5\x01\n" +
-	"\x19QualityContractPlanSource\x12,\n" +
-	"(QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED\x10\x00\x12)\n" +
-	"%QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE\x10\x01\x12'\n" +
-	"#QUALITY_CONTRACT_PLAN_SOURCE_INTENT\x10\x02\x12&\n" +
-	"\"QUALITY_CONTRACT_PLAN_SOURCE_AGENT\x10\x03*\xe9\x01\n" +
+	"'QUALITY_CONTRACT_INTENT_SOURCE_IMPORTED\x10\x03*\x8a\x01\n" +
+	"\x15QualityCoverageSource\x12'\n" +
+	"#QUALITY_COVERAGE_SOURCE_UNSPECIFIED\x10\x00\x12$\n" +
+	" QUALITY_COVERAGE_SOURCE_TEMPLATE\x10\x01\x12\"\n" +
+	"\x1eQUALITY_COVERAGE_SOURCE_INTENT\x10\x02*\xe9\x01\n" +
 	"\x19QualityContractChangeKind\x12,\n" +
 	"(QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED\x10\x00\x12'\n" +
 	"#QUALITY_CONTRACT_CHANGE_KIND_INTENT\x10\x01\x12%\n" +
@@ -7870,7 +7859,7 @@ var file_store_data_quality_proto_goTypes = []any{
 	(QualityContractCriticality)(0),        // 26: metaxisdata.store.QualityContractCriticality
 	(QualityCoverageProperty)(0),           // 27: metaxisdata.store.QualityCoverageProperty
 	(QualityContractIntentSource)(0),       // 28: metaxisdata.store.QualityContractIntentSource
-	(QualityContractPlanSource)(0),         // 29: metaxisdata.store.QualityContractPlanSource
+	(QualityCoverageSource)(0),             // 29: metaxisdata.store.QualityCoverageSource
 	(QualityContractChangeKind)(0),         // 30: metaxisdata.store.QualityContractChangeKind
 	(*QualityTargetPath)(nil),              // 31: metaxisdata.store.QualityTargetPath
 	(*QualityFilter)(nil),                  // 32: metaxisdata.store.QualityFilter
@@ -8009,7 +7998,7 @@ var file_store_data_quality_proto_depIdxs = []int32{
 	3,  // 71: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
 	83, // 72: metaxisdata.store.QualityContractSettings.intent:type_name -> metaxisdata.store.QualityContractIntent
 	27, // 73: metaxisdata.store.QualityContractPlanCoverage.property:type_name -> metaxisdata.store.QualityCoverageProperty
-	29, // 74: metaxisdata.store.QualityContractPlanCoverage.source:type_name -> metaxisdata.store.QualityContractPlanSource
+	29, // 74: metaxisdata.store.QualityContractPlanCoverage.source:type_name -> metaxisdata.store.QualityCoverageSource
 	85, // 75: metaxisdata.store.QualityContractPlan.coverage:type_name -> metaxisdata.store.QualityContractPlanCoverage
 	86, // 76: metaxisdata.store.QualityContractPlan.cadence:type_name -> metaxisdata.store.QualityContractPlanCadence
 	84, // 77: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings

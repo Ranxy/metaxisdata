@@ -38,6 +38,14 @@ func TestQualityContractChangeKindOf(t *testing.T) {
 	}
 	require.Equal(t, storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN,
 		QualityContractChangeKindOf(base, plan, 0, 0, 0))
+	// The plan is derived from the intent, so an edit that moves both is INTENT.
+	bothPlanAndIntent := &storepb.QualityContractSnapshot{
+		Settings: intent.GetSettings(),
+		Plan:     plan.GetPlan(),
+		Checks:   base.GetChecks(),
+	}
+	require.Equal(t, storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_INTENT,
+		QualityContractChangeKindOf(base, bothPlanAndIntent, 0, 0, 0))
 	require.Equal(t, storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_CHECKS,
 		QualityContractChangeKindOf(base, base, 1, 0, 0))
 	require.Equal(t, storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_BOTH,

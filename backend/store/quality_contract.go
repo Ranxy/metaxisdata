@@ -226,9 +226,10 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 	switch {
 	case latestErr == nil:
 		// A legacy (v1) row is compared by content, not by re-hashing: its
-		// fingerprint came from a build-dependent encoder. A v2 row is compared by
-		// the deterministic fingerprint. Doing this under the row lock is what
-		// makes the version choice safe against a concurrent publish.
+		// fingerprint came from a build-dependent encoder. A v2 or v3 row is
+		// compared by its own fingerprint schema (v2 before the plan payload, v3
+		// after). Doing this under the row lock is what makes the version choice
+		// safe against a concurrent publish.
 		unchanged := false
 		if publishedSnapshot.GetSnapshotVersion() == 0 {
 			unchanged = QualityContractSnapshotContentEqual(publishedSnapshot, input.Snapshot)
@@ -458,7 +459,13 @@ func qualityContractCheckEqual(a, b *storepb.QualityContractCheck) bool {
 
 // QualityContractChangeKindOf classifies a version against its predecessor: which of
 // intent, plan and checks changed. Counts are passed in because the publish
-// transaction already computed them; an unchanged snapshot returns UNSPECIFIED.
+// transaction already computed them; an unchanged snapshot returns UNSPECIFIED. With
+// no predecessor every recorded section counts as added, so version 1 is BOTH or
+// the single section it recorded.
+//
+// The plan is derived from the intent, so a statement or criticality edit changes
+// both payloads. That edit is classified INTENT: the plan moved because its
+// declaration moved, and PLAN keeps meaning "only the recorded plan/cadence moved".
 func QualityContractChangeKindOf(published, next *storepb.QualityContractSnapshot, added, modified, removed int32) storepb.QualityContractChangeKind {
 	intentChanged := !qualityContractIntentEqual(published.GetSettings().GetIntent(), next.GetSettings().GetIntent())
 	planChanged := !qualityContractPlanEqual(published.GetPlan(), next.GetPlan())
@@ -469,7 +476,7 @@ func QualityContractChangeKindOf(published, next *storepb.QualityContractSnapsho
 		kind = storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_INTENT
 		changed++
 	}
-	if planChanged {
+	if planChanged && !intentChanged {
 		kind = storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN
 		changed++
 	}

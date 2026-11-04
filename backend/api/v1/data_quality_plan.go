@@ -268,8 +268,7 @@ func coverageToV1(coverage []*storepb.QualityContractPlanCoverage) []*v1pb.Quali
 			Property:  v1pb.QualityCoverageProperty(declaration.GetProperty()),
 			Column:    declaration.GetColumn(),
 			MinChecks: declaration.GetMinChecks(),
-			Source:    v1pb.QualityPlanSource(declaration.GetSource()),
-			Note:      declaration.GetNote(),
+			Source:    v1pb.QualityCoverageSource(declaration.GetSource()),
 		})
 	}
 	return rendered
@@ -295,14 +294,14 @@ func convertQualityContractPlanToV1(plan *storepb.QualityContractPlan) *v1pb.Qua
 
 // qualityContractPlanSource maps a plan requirement's source onto the stored
 // declaration source.
-func qualityContractPlanSource(source dataquality.RequirementSource) storepb.QualityContractPlanSource {
+func qualityContractPlanSource(source dataquality.RequirementSource) storepb.QualityCoverageSource {
 	switch source {
 	case dataquality.RequirementTemplate:
-		return storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE
+		return storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE
 	case dataquality.RequirementIntent:
-		return storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_INTENT
+		return storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT
 	default:
-		return storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_UNSPECIFIED
+		return storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_UNSPECIFIED
 	}
 }
 

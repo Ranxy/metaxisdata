@@ -426,7 +426,6 @@
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
     - [QualityObservedKind](#metaxisdata-v1-QualityObservedKind)
-    - [QualityPlanSource](#metaxisdata-v1-QualityPlanSource)
     - [QualityPlanState](#metaxisdata-v1-QualityPlanState)
     - [QualityResolutionReason](#metaxisdata-v1-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-v1-QualityRuleState)
@@ -5040,7 +5039,6 @@ timestamp follows on_empty.
 | ----- | ---- | ----- | ----------- |
 | revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
 | checks | [QualityContractCheck](#metaxisdata-v1-QualityContractCheck) | repeated |  |
-| plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The plan this version recorded; absent on a version published before plan payloads existed. |
 
 
 
@@ -6601,7 +6599,7 @@ coverage it currently satisfies.
 | requirements | [QualityCoverageRequirement](#metaxisdata-v1-QualityCoverageRequirement) | repeated |  |
 | gap_count | [int32](#int32) |  |  |
 | coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) | repeated | The declarations the plan is built from (template plus intent statements), as a published version records them. |
-| cadence | [QualityPlanCadence](#metaxisdata-v1-QualityPlanCadence) |  | The cadence a published version recorded; absent when nothing is published yet. |
+| cadence | [QualityPlanCadence](#metaxisdata-v1-QualityPlanCadence) |  | The cadence a published version recorded. Absent in the live projection, which reads the target&#39;s current schedule instead. |
 
 
 
@@ -6618,7 +6616,7 @@ way to change it.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| interval_seconds | [int64](#int64) |  | Seconds between runs; 0 when the target runs on cron or has no schedule. |
+| interval_seconds | [int64](#int64) |  | Seconds between runs; 0 only when the target has no schedule. A cron target records the expression&#39;s nominal gap here and its expression in cron. |
 | cron | [string](#string) |  |  |
 | timezone | [string](#string) |  |  |
 
@@ -6639,8 +6637,7 @@ records it.
 | property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
 | column | [string](#string) |  | The scope column; empty means the whole table. |
 | min_checks | [int32](#int32) |  | How many checks the declaration needs; 0 reads as one. |
-| source | [QualityPlanSource](#metaxisdata-v1-QualityPlanSource) |  |  |
-| note | [string](#string) |  |  |
+| source | [QualityCoverageSource](#metaxisdata-v1-QualityCoverageSource) |  |  |
 
 
 
@@ -8170,20 +8167,6 @@ QualityObservedKind is the unit of the observed value a result records.
 | QUALITY_OBSERVED_KIND_SECONDS | 3 |  |
 | QUALITY_OBSERVED_KIND_TIMESTAMP | 4 |  |
 | QUALITY_OBSERVED_KIND_NUMBER | 5 |  |
-
-
-
-<a name="metaxisdata-v1-QualityPlanSource"></a>
-
-### QualityPlanSource
-QualityPlanSource records where one declaration came from.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_PLAN_SOURCE_UNSPECIFIED | 0 |  |
-| QUALITY_PLAN_SOURCE_TEMPLATE | 1 |  |
-| QUALITY_PLAN_SOURCE_INTENT | 2 |  |
-| QUALITY_PLAN_SOURCE_AGENT | 3 |  |
 
 
 

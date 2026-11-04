@@ -1834,10 +1834,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.v1.QualityPlanSource"><span class="badge">E</span>QualityPlanSource</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.v1.QualityPlanState"><span class="badge">E</span>QualityPlanState</a>
                 </li>
               
@@ -14874,14 +14870,6 @@ not the overview&#39;s: there, every monitorable object counts. </p></td>
                   <td><p> </p></td>
                 </tr>
               
-                <tr>
-                  <td>plan</td>
-                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
-                  <td></td>
-                  <td><p>The plan this version recorded; absent on a version published before plan
-payloads existed. </p></td>
-                </tr>
-              
             </tbody>
           </table>
 
@@ -19283,8 +19271,8 @@ a published version records them. </p></td>
                   <td>cadence</td>
                   <td><a href="#metaxisdata.v1.QualityPlanCadence">QualityPlanCadence</a></td>
                   <td></td>
-                  <td><p>The cadence a published version recorded; absent when nothing is published
-yet. </p></td>
+                  <td><p>The cadence a published version recorded. Absent in the live projection,
+which reads the target&#39;s current schedule instead. </p></td>
                 </tr>
               
             </tbody>
@@ -19308,7 +19296,8 @@ yet. </p></td>
                   <td>interval_seconds</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p>Seconds between runs; 0 when the target runs on cron or has no schedule. </p></td>
+                  <td><p>Seconds between runs; 0 only when the target has no schedule. A cron target
+records the expression&#39;s nominal gap here and its expression in cron. </p></td>
                 </tr>
               
                 <tr>
@@ -19365,14 +19354,7 @@ yet. </p></td>
               
                 <tr>
                   <td>source</td>
-                  <td><a href="#metaxisdata.v1.QualityPlanSource">QualityPlanSource</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>note</td>
-                  <td><a href="#string">string</a></td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageSource">QualityCoverageSource</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -23782,41 +23764,6 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_OBSERVED_KIND_NUMBER</td>
                 <td>5</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.v1.QualityPlanSource">QualityPlanSource</h3>
-        <p>QualityPlanSource records where one declaration came from.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_PLAN_SOURCE_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_PLAN_SOURCE_TEMPLATE</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_PLAN_SOURCE_INTENT</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_PLAN_SOURCE_AGENT</td>
-                <td>3</td>
                 <td><p></p></td>
               </tr>
             
