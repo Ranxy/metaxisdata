@@ -46,7 +46,7 @@ func (f *fakeGoalStore) UpdateQualityAgentGoalState(_ context.Context, resourceI
 	return &store.QualityAgentGoalMessage{ResourceID: resourceID, Phase: phase}, true, nil
 }
 
-func (f *fakeGoalStore) GetQualityAgentByID(_ context.Context, id int64) (*store.QualityAgentMessage, error) {
+func (*fakeGoalStore) GetQualityAgentByID(_ context.Context, id int64) (*store.QualityAgentMessage, error) {
 	return &store.QualityAgentMessage{ID: id, Enabled: true}, nil
 }
 

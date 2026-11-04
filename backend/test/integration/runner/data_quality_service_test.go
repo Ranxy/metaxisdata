@@ -4734,7 +4734,8 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 	current, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
 		withToken(token, &v1pb.GetWorkspaceProfileSettingRequest{}))
 	require.NoError(t, err)
-	original := proto.Clone(current.Msg.GetDataQuality()).(*v1pb.DataQualitySetting)
+	original, ok := proto.Clone(current.Msg.GetDataQuality()).(*v1pb.DataQualitySetting)
+	require.True(t, ok)
 	applySettings := func(dataQuality *v1pb.DataQualitySetting) {
 		t.Helper()
 		_, err := fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
@@ -4745,7 +4746,8 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 		require.NoError(t, err)
 	}
 	runnerSettings := func(enabled bool, databases []string) *v1pb.DataQualitySetting {
-		dataQuality := proto.Clone(original).(*v1pb.DataQualitySetting)
+		dataQuality, ok := proto.Clone(original).(*v1pb.DataQualitySetting)
+		require.True(t, ok)
 		dataQuality.AgentRunnerEnabled = enabled
 		dataQuality.AgentRunnerDatabases = databases
 		dataQuality.AgentRunnerTokensPerHour = 100_000_000

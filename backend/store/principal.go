@@ -90,9 +90,9 @@ type UserStat struct {
 // 500. Both error shapes are checked: the store talks to PostgreSQL through the
 // pgx stdlib driver, which returns *pgconn.PgError, while lib/pq types appear
 // through helper code that still uses the pq package.
-// IsUniqueViolation reports whether err is PostgreSQL's unique violation, exposed for
+// IsDuplicateKey reports whether err is PostgreSQL's unique violation, exposed for
 // API layers that must map a duplicate to AlreadyExists.
-func IsUniqueViolation(err error) bool {
+func IsDuplicateKey(err error) bool {
 	return isUniqueViolation(err)
 }
 

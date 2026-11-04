@@ -300,7 +300,7 @@ func (s *DataQualityService) transitionGoal(ctx context.Context, name string, ex
 	}
 	message, applied, err := s.store.UpdateQualityAgentGoalState(ctx, resourceID, expectedRevision, phase, "", "", nil)
 	if err != nil {
-		if store.IsUniqueViolation(err) {
+		if store.IsDuplicateKey(err) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
 				errors.New("another goal already covers this scope"))
 		}
