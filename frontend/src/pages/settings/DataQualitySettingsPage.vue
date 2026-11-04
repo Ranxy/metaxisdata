@@ -451,6 +451,8 @@
           </CardContent>
         </Card>
 
+        <QualityAgentsCard :can-update="canUpdate" />
+
         <Card>
           <CardHeader>
             <CardTitle>{{ t("dataQualitySettings.digestSection") }}</CardTitle>
@@ -750,6 +752,7 @@ import {
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import QualityAgentsCard from "@/components/data-quality/QualityAgentsCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";

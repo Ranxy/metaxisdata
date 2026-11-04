@@ -402,7 +402,7 @@ agent 是**独立主体**，不是“以某管理员身份运行”：管理员�
 - **token**：普通用户 API access token（同一签发/验签机制，90 天）；`RotateQualityAgentToken` 换发新 token 并通过“password 变更时间”使旧 token 失效（走 `UpdateUser` 以刷新 principal 缓存）；`DisableQualityAgent` 软删 principal + 标记 agent 停用，令牌立即失效，行保留供审计。管理 RPC 仅 `settings.update`（管理员）并审计；列表不返回 token。
 - **kill switch**：`DataQualitySetting.agent_autonomy_enabled`（默认 false，迁移/设置字段 `14`）。关闭时 agent 仍可读，所有 agent 写入（`StageQualityPlan`、创建变更单）被拒绝；打开是工作区级“允许自治写入”的总开关。注意该检查只识别带 `quality_agent` 行的主体：管理员手工建的其他 SERVICE_ACCOUNT 若被绑到含 `plans.update` 的自定义角色，不经过此开关（发布/决策等仍需人类权限，且质量 agent 角色永远不申请这些权限）。
 - **审计**：agent 请求走同一 auth/audit 链，actor 是 agent 的 principal id；动作归属 `agent:<id>`（S3b 的写路径把 source 记为 AGENT）。
-- **写路径（S3b）**：`StageQualityPlan`（`plans.update`，审计）只写计划声明、不碰 settings 与已发布版本；`CreateQualityChangeRequest` 的权限改为 `plans.update`（管理员全权限仍可创建），agent 创建时 `source=AGENT`。两类写入口在读取/写入前检查工作区 kill switch 与 agent 自身 enabled，不满足返回 `FailedPrecondition`；agent 永远没有 `changeRequests.decide`/`contracts.publish`，不能批准或发布自己的提议。人类路径不受 agent 开关影响。设置页新增“Agent 自治”开关（`agent_autonomy_enabled`），管理 agent 的 UI 仍只有 API（管理员）。
+- **写路径（S3b）**：`StageQualityPlan`（`plans.update`，审计）只写计划声明、不碰 settings 与已发布版本；`CreateQualityChangeRequest` 的权限改为 `plans.update`（管理员全权限仍可创建），agent 创建时 `source=AGENT`。两类写入口在读取/写入前检查工作区 kill switch 与 agent 自身 enabled，不满足返回 `FailedPrecondition`；agent 永远没有 `changeRequests.decide`/`contracts.publish`，不能批准或发布自己的提议。人类路径不受 agent 开关影响。设置页新增“Agent 自治”开关（`agent_autonomy_enabled`）与“质量 agent”卡片（管理员）：列表、创建（token 仅展示一次并可复制）、轮换、停用二次确认；token 不在列表返回，停用后立即失效。
 
 ### 3.9e 动作目录与自治策略（WS2）
 
