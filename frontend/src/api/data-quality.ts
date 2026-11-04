@@ -13,6 +13,8 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
+  CreateQualityAgentRequestSchema,
+  type CreateQualityAgentResponse,
   CreateQualityCodeTableRequestSchema,
   CreateQualityRuleRequestSchema,
   CreateQualityRuleTemplateRequestSchema,
@@ -22,6 +24,7 @@ import {
   DeleteQualityCodeTableRequestSchema,
   DeleteQualityRuleRequestSchema,
   DeleteQualityRuleTemplateRequestSchema,
+  DisableQualityAgentRequestSchema,
   ExplainQualityExecutionRequestSchema,
   type ExplainQualityExecutionResponse,
   ExportQualityExecutionsRequestSchema,
@@ -54,6 +57,7 @@ import {
   GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityAgentsRequestSchema,
   ListQualityChangeRequestsRequestSchema,
   ListQualityCodeTablesRequestSchema,
   ListQualityContractRevisionsRequestSchema,
@@ -69,6 +73,7 @@ import {
   ProfileColumnsRequestSchema,
   PublishQualityContractRequestSchema,
   type PublishQualityContractResponse,
+  type QualityAgent,
   QualityChangeRejectionReason,
   type QualityChangeRequest,
   QualityChangeRequestState,
@@ -109,6 +114,8 @@ import {
   type QualityTargetSummary,
   RecommendQualityChecksRequestSchema,
   type RecommendQualityChecksResponse,
+  RotateQualityAgentTokenRequestSchema,
+  type RotateQualityAgentTokenResponse,
   RunQualityRulesRequestSchema,
   SuggestColumnLabelsRequestSchema,
   type SuggestColumnLabelsResponse,
@@ -1647,4 +1654,53 @@ export async function decideQualityChangeRequest(options: {
   return await dataQualityClient.decideQualityChangeRequest(request, {
     signal: options.signal,
   });
+}
+
+// ---- quality agents ----
+
+/** Create an agent principal; the returned token is shown exactly once. */
+export async function createQualityAgent(options: {
+  displayName: string;
+  description?: string;
+  signal?: AbortSignal;
+}): Promise<CreateQualityAgentResponse> {
+  const request = create(CreateQualityAgentRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    displayName: options.displayName,
+    description: options.description ?? "",
+  });
+  return await dataQualityClient.createQualityAgent(request, {
+    signal: options.signal,
+  });
+}
+
+/** The workspace's agent principals; tokens are never listed. */
+export async function listQualityAgents(
+  signal?: AbortSignal
+): Promise<QualityAgent[]> {
+  const request = create(ListQualityAgentsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+  });
+  const response = await dataQualityClient.listQualityAgents(request, {
+    signal,
+  });
+  return response.qualityAgents;
+}
+
+/** Mint a new token for an agent and invalidate the previous ones. */
+export async function rotateQualityAgentToken(
+  name: string,
+  signal?: AbortSignal
+): Promise<RotateQualityAgentTokenResponse> {
+  const request = create(RotateQualityAgentTokenRequestSchema, { name });
+  return await dataQualityClient.rotateQualityAgentToken(request, { signal });
+}
+
+/** Disable an agent: every token it holds stops authenticating. */
+export async function disableQualityAgent(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualityAgent> {
+  const request = create(DisableQualityAgentRequestSchema, { name });
+  return await dataQualityClient.disableQualityAgent(request, { signal });
 }

@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   createQualityCodeTable: vi.fn(),
   updateQualityCodeTable: vi.fn(),
   deleteQualityCodeTable: vi.fn(),
+  listQualityAgents: vi.fn(),
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -49,6 +50,7 @@ vi.mock("@/api/data-quality", () => ({
   createQualityCodeTable: mocks.createQualityCodeTable,
   updateQualityCodeTable: mocks.updateQualityCodeTable,
   deleteQualityCodeTable: mocks.deleteQualityCodeTable,
+  listQualityAgents: mocks.listQualityAgents,
 }));
 
 const PERMISSIONS = [
@@ -136,6 +138,7 @@ describe("DataQualitySettingsPage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    mocks.listQualityAgents.mockResolvedValue([]);
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
         allowedLlmProviderProfiles: ["llmProfiles/p1"],
@@ -226,6 +229,19 @@ describe("DataQualitySettingsPage", () => {
     ).toBe("12");
     // The LLM profile select lists the allowed profile.
     expect(wrapper.text()).toContain("Primary");
+  });
+
+  it("mounts the agent management card for an administrator", async () => {
+    mocks.listQualityAgents.mockResolvedValue([]);
+    const wrapper = await mountPage();
+    await flushPromises();
+
+    expect(mocks.listQualityAgents).toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.agentsSection")
+    );
+    await wrapper.find("#dq-setting-agent-autonomy").trigger("click");
+    await flushPromises();
   });
 
   it("saves the whole section with the expected setting", async () => {
