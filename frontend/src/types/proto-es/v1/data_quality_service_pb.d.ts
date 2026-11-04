@@ -7650,6 +7650,48 @@ export declare type QualityChangeRequest = Message<"metaxisdata.v1.QualityChange
 export declare const QualityChangeRequestSchema: GenMessage<QualityChangeRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.StageQualityPlanRequest
+ */
+export declare type StageQualityPlanRequest = Message<"metaxisdata.v1.StageQualityPlanRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * The newest published version the declaration is written against.
+   *
+   * @generated from field: int32 base_version = 4;
+   */
+  baseVersion: number;
+
+  /**
+   * The complete declaration: coverage only, like UpdateQualityContract's draft.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityPlanCoverage coverage = 5;
+   */
+  coverage: QualityPlanCoverage[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.StageQualityPlanRequest.
+ * Use `create(StageQualityPlanRequestSchema)` to create a new message.
+ */
+export declare const StageQualityPlanRequestSchema: GenMessage<StageQualityPlanRequest>;
+
+/**
  * @generated from message metaxisdata.v1.CreateQualityChangeRequestRequest
  */
 export declare type CreateQualityChangeRequestRequest = Message<"metaxisdata.v1.CreateQualityChangeRequestRequest"> & {
@@ -11942,8 +11984,21 @@ export declare const DataQualityService: GenService<{
     output: typeof PublishQualityContractResponseSchema;
   },
   /**
+   * Write the target's plan declaration without touching its settings. This is the
+   * one write an agent principal may make; an agent call is refused while the
+   * workspace kill switch or the agent itself is disabled.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.StageQualityPlan
+   */
+  stageQualityPlan: {
+    methodKind: "unary";
+    input: typeof StageQualityPlanRequestSchema;
+    output: typeof QualityContractSchema;
+  },
+  /**
    * Create a batch of typed changes against one target. It stays PROPOSED until a
-   * person decides; creating it changes nothing on the target.
+   * person decides; creating it changes nothing on the target. An agent principal
+   * may only create PROPOSED requests, and only while autonomy is enabled.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityChangeRequest
    */

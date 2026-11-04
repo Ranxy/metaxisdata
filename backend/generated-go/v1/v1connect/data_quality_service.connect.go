@@ -217,6 +217,9 @@ const (
 	// DataQualityServicePublishQualityContractProcedure is the fully-qualified name of the
 	// DataQualityService's PublishQualityContract RPC.
 	DataQualityServicePublishQualityContractProcedure = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	// DataQualityServiceStageQualityPlanProcedure is the fully-qualified name of the
+	// DataQualityService's StageQualityPlan RPC.
+	DataQualityServiceStageQualityPlanProcedure = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
 	// DataQualityServiceCreateQualityChangeRequestProcedure is the fully-qualified name of the
 	// DataQualityService's CreateQualityChangeRequest RPC.
 	DataQualityServiceCreateQualityChangeRequestProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
@@ -507,8 +510,13 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Write the target's plan declaration without touching its settings. This is the
+	// one write an agent principal may make; an agent call is refused while the
+	// workspace kill switch or the agent itself is disabled.
+	StageQualityPlan(context.Context, *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error)
 	// Create a batch of typed changes against one target. It stays PROPOSED until a
-	// person decides; creating it changes nothing on the target.
+	// person decides; creating it changes nothing on the target. An agent principal
+	// may only create PROPOSED requests, and only while autonomy is enabled.
 	CreateQualityChangeRequest(context.Context, *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
 	// Read one change request, with its items and per-item results.
 	GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
@@ -919,6 +927,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 			connect.WithClientOptions(opts...),
 		),
+		stageQualityPlan: connect.NewClient[v1.StageQualityPlanRequest, v1.QualityContract](
+			httpClient,
+			baseURL+DataQualityServiceStageQualityPlanProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("StageQualityPlan")),
+			connect.WithClientOptions(opts...),
+		),
 		createQualityChangeRequest: connect.NewClient[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest](
 			httpClient,
 			baseURL+DataQualityServiceCreateQualityChangeRequestProcedure,
@@ -1051,6 +1065,7 @@ type dataQualityServiceClient struct {
 	listQualityCoverageGaps            *connect.Client[v1.ListQualityCoverageGapsRequest, v1.ListQualityCoverageGapsResponse]
 	updateQualityContract              *connect.Client[v1.UpdateQualityContractRequest, v1.QualityContract]
 	publishQualityContract             *connect.Client[v1.PublishQualityContractRequest, v1.PublishQualityContractResponse]
+	stageQualityPlan                   *connect.Client[v1.StageQualityPlanRequest, v1.QualityContract]
 	createQualityChangeRequest         *connect.Client[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest]
 	getQualityChangeRequest            *connect.Client[v1.GetQualityChangeRequestRequest, v1.QualityChangeRequest]
 	listQualityChangeRequests          *connect.Client[v1.ListQualityChangeRequestsRequest, v1.ListQualityChangeRequestsResponse]
@@ -1373,6 +1388,11 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, r
 	return c.publishQualityContract.CallUnary(ctx, req)
 }
 
+// StageQualityPlan calls metaxisdata.v1.DataQualityService.StageQualityPlan.
+func (c *dataQualityServiceClient) StageQualityPlan(ctx context.Context, req *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error) {
+	return c.stageQualityPlan.CallUnary(ctx, req)
+}
+
 // CreateQualityChangeRequest calls metaxisdata.v1.DataQualityService.CreateQualityChangeRequest.
 func (c *dataQualityServiceClient) CreateQualityChangeRequest(ctx context.Context, req *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
 	return c.createQualityChangeRequest.CallUnary(ctx, req)
@@ -1684,8 +1704,13 @@ type DataQualityServiceHandler interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Write the target's plan declaration without touching its settings. This is the
+	// one write an agent principal may make; an agent call is refused while the
+	// workspace kill switch or the agent itself is disabled.
+	StageQualityPlan(context.Context, *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error)
 	// Create a batch of typed changes against one target. It stays PROPOSED until a
-	// person decides; creating it changes nothing on the target.
+	// person decides; creating it changes nothing on the target. An agent principal
+	// may only create PROPOSED requests, and only while autonomy is enabled.
 	CreateQualityChangeRequest(context.Context, *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
 	// Read one change request, with its items and per-item results.
 	GetQualityChangeRequest(context.Context, *connect.Request[v1.GetQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error)
@@ -2092,6 +2117,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceStageQualityPlanHandler := connect.NewUnaryHandler(
+		DataQualityServiceStageQualityPlanProcedure,
+		svc.StageQualityPlan,
+		connect.WithSchema(dataQualityServiceMethods.ByName("StageQualityPlan")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceCreateQualityChangeRequestHandler := connect.NewUnaryHandler(
 		DataQualityServiceCreateQualityChangeRequestProcedure,
 		svc.CreateQualityChangeRequest,
@@ -2282,6 +2313,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualityContractHandler.ServeHTTP(w, r)
 		case DataQualityServicePublishQualityContractProcedure:
 			dataQualityServicePublishQualityContractHandler.ServeHTTP(w, r)
+		case DataQualityServiceStageQualityPlanProcedure:
+			dataQualityServiceStageQualityPlanHandler.ServeHTTP(w, r)
 		case DataQualityServiceCreateQualityChangeRequestProcedure:
 			dataQualityServiceCreateQualityChangeRequestHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityChangeRequestProcedure:
@@ -2555,6 +2588,10 @@ func (UnimplementedDataQualityServiceHandler) UpdateQualityContract(context.Cont
 
 func (UnimplementedDataQualityServiceHandler) PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.PublishQualityContract is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) StageQualityPlan(context.Context, *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.StageQualityPlan is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) CreateQualityChangeRequest(context.Context, *connect.Request[v1.CreateQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {

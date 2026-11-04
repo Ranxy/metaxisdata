@@ -4288,3 +4288,125 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, settings.Msg.GetDataQuality().GetAgentAutonomyEnabled())
 }
+
+// TestDataQualityAgentWritesRealServerIntegration covers the one write an agent
+// owns: staging a plan declaration and proposing a change request, both gated by the
+// workspace kill switch, and the agent never being able to decide its own proposal.
+func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	adminToken := fixture.env.AdminToken()
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+	publish := func() {
+		t.Helper()
+		_, err := fixture.dataQuality.PublishQualityContract(fixture.ctx,
+			withToken(adminToken, &v1pb.PublishQualityContractRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+			}))
+		require.NoError(t, err, "publish the quality contract")
+	}
+	publish()
+
+	created, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.CreateQualityAgentRequest{
+			Parent:      "workspaces/-",
+			DisplayName: "writing agent",
+		}))
+	require.NoError(t, err)
+	agentToken := created.Msg.GetToken()
+	agentClient := v1connect.NewDataQualityServiceClient(&http.Client{Timeout: 10 * time.Second}, fixture.env.BaseURL)
+
+	stage := func(baseVersion int32) (*v1pb.QualityContract, error) {
+		response, err := agentClient.StageQualityPlan(fixture.ctx,
+			withToken(agentToken, &v1pb.StageQualityPlanRequest{
+				Parent:      "workspaces/-",
+				TargetGuid:  fixture.usersGUID,
+				MetaType:    v1pb.MetaType_TABLE,
+				BaseVersion: baseVersion,
+				Coverage: []*v1pb.QualityPlanCoverage{{
+					Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
+					MinChecks: 1,
+				}},
+			}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+
+	// The kill switch is the workspace's total gate: off (the default) refuses the
+	// write before anything changes.
+	_, err = stage(1)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+	t.Cleanup(func() {
+		_, _ = fixture.settings.UpdateWorkspaceProfileSetting(context.Background(), withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting:    &v1pb.WorkspaceProfileSetting{},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	})
+	_, err = fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
+		withToken(adminToken, &v1pb.UpdateWorkspaceProfileSettingRequest{
+			Setting: &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
+				AgentAutonomyEnabled: true,
+			}},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+		}))
+	require.NoError(t, err)
+
+	staged, err := stage(1)
+	require.NoError(t, err, "the enabled agent stages a declaration")
+	require.NotNil(t, staged.GetStagedPlan())
+	found := false
+	for _, declaration := range staged.GetStagedPlan().GetCoverage() {
+		if declaration.GetProperty() == v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS {
+			found = true
+		}
+	}
+	require.True(t, found)
+
+	// The agent can propose a batch, attributed to the agent principal, but cannot
+	// decide it: deciding is a human permission.
+	proposed, err := agentClient.CreateQualityChangeRequest(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityChangeRequestRequest{
+			Parent:      "workspaces/-",
+			TargetGuid:  fixture.usersGUID,
+			MetaType:    v1pb.MetaType_TABLE,
+			BaseVersion: 1,
+			Items: []*v1pb.QualityChangeRequestItem{{
+				Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+				Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+				MinChecks: 2,
+			}},
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_AGENT, proposed.Msg.GetSource())
+	_, err = agentClient.DecideQualityChangeRequest(fixture.ctx,
+		withToken(agentToken, &v1pb.DecideQualityChangeRequestRequest{
+			Name:     proposed.Msg.GetName(),
+			Decision: v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE,
+		}))
+	require.Error(t, err, "an agent cannot approve its own proposal")
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+	// A human decides it; the per-item result appears on the request.
+	decided, err := fixture.dataQuality.DecideQualityChangeRequest(fixture.ctx,
+		withToken(adminToken, &v1pb.DecideQualityChangeRequestRequest{
+			Name:     proposed.Msg.GetName(),
+			Decision: v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, decided.Msg.GetState())
+
+	// Disabling the agent ends its ability to write (and to read).
+	_, err = fixture.dataQuality.DisableQualityAgent(fixture.ctx,
+		withToken(adminToken, &v1pb.DisableQualityAgentRequest{Name: created.Msg.GetAgent().GetName()}))
+	require.NoError(t, err)
+	_, err = stage(1)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}

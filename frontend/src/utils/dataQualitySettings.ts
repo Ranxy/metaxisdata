@@ -92,6 +92,8 @@ export interface DataQualitySettingsForm {
    * returns the resolved value, so a workspace that never chose one shows "UTC".
    */
   checkTimeZone: string;
+  /** The workspace kill switch for agent writes; off unless an administrator opts in. */
+  agentAutonomyEnabled: boolean;
   weeklyDigest: WeeklyDigestForm;
 }
 
@@ -117,6 +119,7 @@ export function settingsToForm(
     // A blank zone is UTC; the field shows that only as a placeholder so an
     // unconfigured workspace is not made to look explicitly configured.
     checkTimeZone: setting?.timeZone ?? "",
+    agentAutonomyEnabled: setting?.agentAutonomyEnabled ?? false,
     weeklyDigest: {
       enabled: digest?.enabled ?? DEFAULT_DIGEST.enabled,
       // An unset weekday is not a weekday; show the default the server resolves.
@@ -149,6 +152,7 @@ export function formToSetting(
     maxColumnsPerAnalysis: inputToInt(form.maxColumnsPerAnalysis) ?? 0,
     sendSampleValuesToLlm: form.sendSampleValuesToLlm,
     timeZone: form.checkTimeZone.trim(),
+    agentAutonomyEnabled: form.agentAutonomyEnabled,
     // The whole `data_quality` field is written on save, so the digest has to be
     // part of the message even when this page did not touch it; otherwise the
     // write would clear a schedule configured elsewhere.

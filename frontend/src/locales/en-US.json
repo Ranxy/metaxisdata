@@ -1965,6 +1965,10 @@
   },
   "dataQualitySettings": {
     "addCodeTable": "Add code table",
+    "agentAutonomy": "Allow agents to write",
+    "agentAutonomyHint": "Off by default. Turning this off is the kill switch: it stops every agent write, including proposals already in progress. Approving and publishing always stay with people.",
+    "agentSection": "Agent autonomy",
+    "agentSectionDescription": "Whether the workspace's agent principals may write plan declarations and proposed change requests. They can always read.",
     "checkTimeZone": "Check time zone",
     "checkTimeZoneHint": "IANA time zone, for example Asia/Shanghai; blank means UTC. The time variables in check filters and custom SQL resolve in this zone; a check's schedule is not affected.",
     "codeTableColumnDescription": "Description",

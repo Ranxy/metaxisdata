@@ -424,6 +424,35 @@
 
         <Card>
           <CardHeader>
+            <CardTitle>{{ t("dataQualitySettings.agentSection") }}</CardTitle>
+            <CardDescription>
+              {{ t("dataQualitySettings.agentSectionDescription") }}
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-3">
+            <!-- The kill switch is the workspace's total gate for agent writes. Off
+                 is the default: agents may read, and no agent write applies. -->
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="dq-setting-agent-autonomy"
+                :checked="form.agentAutonomyEnabled"
+                :disabled="!canUpdate"
+                @update:checked="form.agentAutonomyEnabled = $event === true"
+              />
+              <div class="grid gap-1">
+                <Label for="dq-setting-agent-autonomy">
+                  {{ t("dataQualitySettings.agentAutonomy") }}
+                </Label>
+                <p class="text-sm text-muted-foreground">
+                  {{ t("dataQualitySettings.agentAutonomyHint") }}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>{{ t("dataQualitySettings.digestSection") }}</CardTitle>
             <CardDescription>
               {{ t("dataQualitySettings.digestSectionDescription") }}

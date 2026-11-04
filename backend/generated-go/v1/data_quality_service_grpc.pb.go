@@ -81,6 +81,7 @@ const (
 	DataQualityService_ListQualityCoverageGaps_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListQualityCoverageGaps"
 	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
 	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	DataQualityService_StageQualityPlan_FullMethodName                   = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
 	DataQualityService_CreateQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
 	DataQualityService_GetQualityChangeRequest_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
 	DataQualityService_ListQualityChangeRequests_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityChangeRequests"
@@ -362,8 +363,13 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(ctx context.Context, in *PublishQualityContractRequest, opts ...grpc.CallOption) (*PublishQualityContractResponse, error)
+	// Write the target's plan declaration without touching its settings. This is the
+	// one write an agent principal may make; an agent call is refused while the
+	// workspace kill switch or the agent itself is disabled.
+	StageQualityPlan(ctx context.Context, in *StageQualityPlanRequest, opts ...grpc.CallOption) (*QualityContract, error)
 	// Create a batch of typed changes against one target. It stays PROPOSED until a
-	// person decides; creating it changes nothing on the target.
+	// person decides; creating it changes nothing on the target. An agent principal
+	// may only create PROPOSED requests, and only while autonomy is enabled.
 	CreateQualityChangeRequest(ctx context.Context, in *CreateQualityChangeRequestRequest, opts ...grpc.CallOption) (*QualityChangeRequest, error)
 	// Read one change request, with its items and per-item results.
 	GetQualityChangeRequest(ctx context.Context, in *GetQualityChangeRequestRequest, opts ...grpc.CallOption) (*QualityChangeRequest, error)
@@ -1051,6 +1057,16 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) StageQualityPlan(ctx context.Context, in *StageQualityPlanRequest, opts ...grpc.CallOption) (*QualityContract, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityContract)
+	err := c.cc.Invoke(ctx, DataQualityService_StageQualityPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) CreateQualityChangeRequest(ctx context.Context, in *CreateQualityChangeRequestRequest, opts ...grpc.CallOption) (*QualityChangeRequest, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityChangeRequest)
@@ -1429,8 +1445,13 @@ type DataQualityServiceServer interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error)
+	// Write the target's plan declaration without touching its settings. This is the
+	// one write an agent principal may make; an agent call is refused while the
+	// workspace kill switch or the agent itself is disabled.
+	StageQualityPlan(context.Context, *StageQualityPlanRequest) (*QualityContract, error)
 	// Create a batch of typed changes against one target. It stays PROPOSED until a
-	// person decides; creating it changes nothing on the target.
+	// person decides; creating it changes nothing on the target. An agent principal
+	// may only create PROPOSED requests, and only while autonomy is enabled.
 	CreateQualityChangeRequest(context.Context, *CreateQualityChangeRequestRequest) (*QualityChangeRequest, error)
 	// Read one change request, with its items and per-item results.
 	GetQualityChangeRequest(context.Context, *GetQualityChangeRequestRequest) (*QualityChangeRequest, error)
@@ -1654,6 +1675,9 @@ func (UnimplementedDataQualityServiceServer) UpdateQualityContract(context.Conte
 }
 func (UnimplementedDataQualityServiceServer) PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PublishQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) StageQualityPlan(context.Context, *StageQualityPlanRequest) (*QualityContract, error) {
+	return nil, status.Error(codes.Unimplemented, "method StageQualityPlan not implemented")
 }
 func (UnimplementedDataQualityServiceServer) CreateQualityChangeRequest(context.Context, *CreateQualityChangeRequestRequest) (*QualityChangeRequest, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateQualityChangeRequest not implemented")
@@ -2779,6 +2803,24 @@ func _DataQualityService_PublishQualityContract_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_StageQualityPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageQualityPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).StageQualityPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_StageQualityPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).StageQualityPlan(ctx, req.(*StageQualityPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_CreateQualityChangeRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateQualityChangeRequestRequest)
 	if err := dec(in); err != nil {
@@ -3211,6 +3253,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PublishQualityContract",
 			Handler:    _DataQualityService_PublishQualityContract_Handler,
+		},
+		{
+			MethodName: "StageQualityPlan",
+			Handler:    _DataQualityService_StageQualityPlan_Handler,
 		},
 		{
 			MethodName: "CreateQualityChangeRequest",
