@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -162,16 +163,16 @@ func (s *Store) ListQualityInvestigations(ctx context.Context, find *FindQuality
 		for _, status := range find.Statuses {
 			statuses = append(statuses, int16(status))
 		}
-		args = append(args, statuses)
-		where += ` AND status = ANY($` + strconv.Itoa(len(args)) + `)`
+		args = append(args, pq.Array(statuses))
+		where += ` AND status = ANY($` + strconv.Itoa(len(args)) + `::int2[])`
 	}
 	if len(find.Triggers) > 0 {
 		triggers := make([]int16, 0, len(find.Triggers))
 		for _, trigger := range find.Triggers {
 			triggers = append(triggers, int16(trigger))
 		}
-		args = append(args, triggers)
-		where += ` AND "trigger" = ANY($` + strconv.Itoa(len(args)) + `)`
+		args = append(args, pq.Array(triggers))
+		where += ` AND "trigger" = ANY($` + strconv.Itoa(len(args)) + `::int2[])`
 	}
 	limit, offset := 100, 0
 	if find.Limit != nil && *find.Limit > 0 {

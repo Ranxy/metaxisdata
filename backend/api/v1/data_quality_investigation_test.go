@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -72,6 +73,17 @@ func TestValidateQualityInvestigationRequest(t *testing.T) {
 	noTrigger.Trigger = v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED
 	_, err = validateQualityInvestigationRequest(noTrigger, "inst;db;public;orders", storepb.MetaType_TABLE, 7)
 	require.Error(t, err)
+
+	// A concluded investigation cannot carry a failure reason, and the fingerprint is
+	// bounded so a caller cannot use it as an unbounded payload.
+	withFailure := base()
+	withFailure.FailureReason = "not actually failed"
+	_, err = validateQualityInvestigationRequest(withFailure, "inst;db;public;orders", storepb.MetaType_TABLE, 7)
+	require.Error(t, err)
+	tooLongFingerprint := base()
+	tooLongFingerprint.RequestFingerprint = strings.Repeat("x", maxInvestigationFingerprint+1)
+	_, err = validateQualityInvestigationRequest(tooLongFingerprint, "inst;db;public;orders", storepb.MetaType_TABLE, 7)
+	require.Error(t, err)
 }
 
 // The same work product hashes identically, so a retried agent run does not record a
@@ -96,4 +108,26 @@ func TestQualityInvestigationFingerprint(t *testing.T) {
 		v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION, "qualityExecutions/7",
 		storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
 		storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, "a different summary", hypotheses, evidence, refs))
+	// The identity parts are part of the key: another target, trigger or evidence set is
+	// a different investigation.
+	require.NotEqual(t, first, qualityInvestigationFingerprint("inst;db;public;customers", storepb.MetaType_TABLE,
+		v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION, "qualityExecutions/7",
+		storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
+		storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, "row count drop", hypotheses, evidence, refs))
+	require.NotEqual(t, first, qualityInvestigationFingerprint("inst;db;public;orders", storepb.MetaType_TABLE,
+		v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_ISSUE, "qualityExecutions/7",
+		storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
+		storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, "row count drop", hypotheses, evidence, refs))
+	otherEvidence := &storepb.QualityInvestigationEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{{
+		Kind: "ISSUE", Reference: "qualityIssues/3",
+	}}}
+	require.NotEqual(t, first, qualityInvestigationFingerprint("inst;db;public;orders", storepb.MetaType_TABLE,
+		v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION, "qualityExecutions/7",
+		storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
+		storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, "row count drop", hypotheses, otherEvidence, refs))
+	otherRefs := &storepb.QualityInvestigationActionRefs{Refs: []string{"workspaces/ws1/qualityChangeRequests/cr1"}}
+	require.NotEqual(t, first, qualityInvestigationFingerprint("inst;db;public;orders", storepb.MetaType_TABLE,
+		v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION, "qualityExecutions/7",
+		storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED,
+		storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, "row count drop", hypotheses, evidence, otherRefs))
 }

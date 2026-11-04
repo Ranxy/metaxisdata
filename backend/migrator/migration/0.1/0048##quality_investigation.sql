@@ -42,5 +42,10 @@ CREATE INDEX IF NOT EXISTS idx_quality_investigation_target
 CREATE INDEX IF NOT EXISTS idx_quality_investigation_status
     ON quality_investigation(status, created_at DESC);
 COMMENT ON TABLE quality_investigation IS 'Agent work products on one event: hypotheses, evidence references, verdict and cost';
+COMMENT ON COLUMN quality_investigation.hypotheses IS 'Stored as QualityInvestigationHypothesisList (proto/store/store/data_quality.proto)';
 COMMENT ON COLUMN quality_investigation.evidence IS 'Stored as QualityInvestigationEvidenceList (proto/store/store/data_quality.proto); references only, never sample payloads';
+COMMENT ON COLUMN quality_investigation.action_refs IS 'Stored as QualityInvestigationActionRefs (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_investigation.trigger IS 'Stored as QualityInvestigationTrigger (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_investigation.status IS 'Stored as QualityInvestigationStatus (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_investigation.verdict IS 'Stored as QualityInvestigationVerdict (proto/store/store/data_quality.proto)';
 ALTER SEQUENCE quality_investigation_id_seq RESTART WITH 101;

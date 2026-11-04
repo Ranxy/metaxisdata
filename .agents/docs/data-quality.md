@@ -410,7 +410,7 @@ agent 是**独立主体**，不是“以某管理员身份运行”：管理员�
 - **静态约束优先**：红线（mute、archive、ack schema、publish、close/reassign、authority expansion）与 HUMAN-only 动作对 agent 直接拒绝，不论开关；`implemented=false` 的动作以“尚未实现”拒绝；`implemented=true` 但 `agent_reachable=false` 的动作以 `DENIED_NOT_EXPOSED` 拒绝——代码有写路径不等于 agent 有入口（例如人建检查、agent 只能提议）。未知 actor 直接拒绝（fail closed）。
 - **动态开关**：agent 写入要求工作区 `agent_autonomy_enabled` 且 agent 自身 enabled；人不受影响。
 - **关键度是放大器**：写 handler 在读取目标后、写入前用真实 criticality 重新判定；critical 资产上 A1+ 或批量提议交人逐项（`DENIED_CRITICAL`），A0 单项提议仍可；人执行 A2/A3 视为已批准（不再要求二次批准）；`REQUIRES_APPROVAL` 表示“允许作为提案但人须批准”，执行 helper 同样拒绝，不会有人未批就执行。
-- **ACL 仍是执行边界**：策略不是第二套权限；agent 角色只持有两项写 RPC 所需的 `plans.update`，其余 RPC 的权限注解仍会直接拒绝。当前已实现的 agent 写只有 A0-4（`StageQualityPlan` 与创建 PROPOSED 变更单）；A1-1 rerun 有代码路径但 agent 角色无 `rules.run`。
+- **ACL 仍是执行边界**：策略不是第二套权限；agent 角色只持有两项写 RPC 所需的 `plans.update`，其余 RPC 的权限注解仍会直接拒绝。当前已实现的 agent 写为 A0-4（`StageQualityPlan` 与创建 PROPOSED 变更单）与 A0-3（创建 Investigation）；A1-1 rerun 有代码路径但 agent 角色无 `rules.run`。
 - 策略卡只读，不在本切片改变任何写路径的权限；`GetQualityActionPolicy` 对 agent 展示它自己的 enabled 状态，对人类展示“已启用 agent”的假设判定（verdict 字段只描述 agent 判定）。
 
 ### 3.9f Investigation（A0-3）

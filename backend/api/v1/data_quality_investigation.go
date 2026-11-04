@@ -20,12 +20,13 @@ import (
 )
 
 const (
-	qualityInvestigationPrefix = "qualityInvestigations/"
-	maxInvestigationSummary    = 4000
-	maxInvestigationHypotheses = 32
-	maxInvestigationEvidence   = 64
-	maxInvestigationActionRefs = 20
-	maxInvestigationText       = 1000
+	qualityInvestigationPrefix  = "qualityInvestigations/"
+	maxInvestigationSummary     = 4000
+	maxInvestigationHypotheses  = 32
+	maxInvestigationEvidence    = 64
+	maxInvestigationActionRefs  = 20
+	maxInvestigationText        = 1000
+	maxInvestigationFingerprint = 128
 )
 
 // CreateQualityInvestigation records an agent's work product on one event. It never
@@ -68,6 +69,9 @@ func (s *DataQualityService) CreateQualityInvestigation(ctx context.Context, req
 	}
 	input, err := validateQualityInvestigationRequest(req.Msg, targetGUID, metaType, currentUserID(ctx))
 	if err != nil {
+		return nil, err
+	}
+	if err := s.validateInvestigationActionRefs(ctx, input.ActionRefs, targetGUID, metaType); err != nil {
 		return nil, err
 	}
 	resourceID, err := common.RandomString(12)
@@ -151,6 +155,29 @@ func (s *DataQualityService) ListQualityInvestigations(ctx context.Context, req 
 	return connect.NewResponse(response), nil
 }
 
+// validateInvestigationActionRefs checks that a proposed change request exists and
+// belongs to the same target: an investigation must not claim a proposal it could not
+// have made.
+func (s *DataQualityService) validateInvestigationActionRefs(ctx context.Context, refs *storepb.QualityInvestigationActionRefs, targetGUID string, metaType storepb.MetaType) error {
+	for _, ref := range refs.GetRefs() {
+		_, resourceID, err := s.qualityChangeRequestResourceID(ctx, ref)
+		if err != nil {
+			return err
+		}
+		request, err := s.store.GetQualityChangeRequest(ctx, resourceID)
+		if err != nil {
+			return errors.Wrap(err, "failed to read a referenced change request")
+		}
+		if request == nil {
+			return connectErrorInvalid("action reference %q does not exist", ref)
+		}
+		if request.TargetGUID != targetGUID || request.TargetType != metaType {
+			return connectErrorInvalid("action reference %q belongs to another target", ref)
+		}
+	}
+	return nil
+}
+
 // validateQualityInvestigationRequest validates the shape and the invariants: a
 // concluded investigation needs a verdict and at least one evidence reference, and a
 // failed one records why. It computes the idempotency fingerprint when the caller did
@@ -181,6 +208,9 @@ func validateQualityInvestigationRequest(request *v1pb.CreateQualityInvestigatio
 		}
 		if len(request.GetEvidence()) == 0 {
 			return nil, connectErrorInvalid("a concluded investigation needs at least one evidence reference")
+		}
+		if strings.TrimSpace(request.GetFailureReason()) != "" {
+			return nil, connectErrorInvalid("a concluded investigation cannot carry a failure reason")
 		}
 	case storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_FAILED,
 		storepb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_INTERRUPTED:
@@ -230,10 +260,14 @@ func validateQualityInvestigationRequest(request *v1pb.CreateQualityInvestigatio
 		if kind == "" || value == "" || len(kind) > 64 || len(value) > maxInvestigationText {
 			return nil, connectErrorInvalid("an evidence reference needs a kind and a reference (max %d bytes)", maxInvestigationText)
 		}
+		note := strings.TrimSpace(reference.GetNote())
+		if len(note) > maxInvestigationText {
+			return nil, connectErrorInvalid("an evidence note is too long (max %d bytes)", maxInvestigationText)
+		}
 		evidence.Evidence = append(evidence.Evidence, &storepb.QualityInvestigationEvidence{
 			Kind:      kind,
 			Reference: value,
-			Note:      strings.TrimSpace(reference.GetNote()),
+			Note:      note,
 		})
 	}
 	if len(request.GetActionRefs()) > maxInvestigationActionRefs {
@@ -242,13 +276,27 @@ func validateQualityInvestigationRequest(request *v1pb.CreateQualityInvestigatio
 	actionRefs := &storepb.QualityInvestigationActionRefs{}
 	for _, ref := range request.GetActionRefs() {
 		if ref = strings.TrimSpace(ref); ref != "" {
+			if len(ref) > maxInvestigationText {
+				return nil, connectErrorInvalid("an action reference is too long (max %d bytes)", maxInvestigationText)
+			}
 			actionRefs.Refs = append(actionRefs.Refs, ref)
 		}
 	}
 	if request.GetPromptTokens() < 0 || request.GetCompletionTokens() < 0 {
 		return nil, connectErrorInvalid("token counts cannot be negative")
 	}
+	provider := strings.TrimSpace(request.GetProvider())
+	model := strings.TrimSpace(request.GetModel())
+	promptVersion := strings.TrimSpace(request.GetPromptVersion())
+	for _, value := range []string{provider, model, promptVersion} {
+		if len(value) > maxInvestigationText {
+			return nil, connectErrorInvalid("the provider, model and prompt version are bounded to %d bytes", maxInvestigationText)
+		}
+	}
 	fingerprint := strings.TrimSpace(request.GetRequestFingerprint())
+	if len(fingerprint) > maxInvestigationFingerprint {
+		return nil, connectErrorInvalid("request_fingerprint is too long (max %d bytes)", maxInvestigationFingerprint)
+	}
 	if fingerprint == "" {
 		fingerprint = qualityInvestigationFingerprint(targetGUID, metaType, request.GetTrigger(),
 			triggerReference, status, verdict, summary, hypotheses, evidence, actionRefs)
@@ -264,9 +312,9 @@ func validateQualityInvestigationRequest(request *v1pb.CreateQualityInvestigatio
 		Hypotheses:         hypotheses,
 		Evidence:           evidence,
 		ActionRefs:         actionRefs,
-		Provider:           strings.TrimSpace(request.GetProvider()),
-		Model:              strings.TrimSpace(request.GetModel()),
-		PromptVersion:      strings.TrimSpace(request.GetPromptVersion()),
+		Provider:           provider,
+		Model:              model,
+		PromptVersion:      promptVersion,
 		PromptTokens:       request.GetPromptTokens(),
 		CompletionTokens:   request.GetCompletionTokens(),
 		FailureReason:      failureReason,
@@ -307,8 +355,10 @@ func qualityInvestigationFingerprint(targetGUID string, metaType storepb.MetaTyp
 	triggerReference string, status storepb.QualityInvestigationStatus, verdict storepb.QualityInvestigationVerdict,
 	summary string, hypotheses *storepb.QualityInvestigationHypothesisList,
 	evidence *storepb.QualityInvestigationEvidenceList, actionRefs *storepb.QualityInvestigationActionRefs) string {
+	// The identity is (target, type, trigger, reference); the work product is the rest.
+	// Hashing a message that has no target field keeps the display-path type out of the
+	// key entirely.
 	payload, err := proto.MarshalOptions{Deterministic: true}.Marshal(&storepb.QualityInvestigation{
-		Target:           &storepb.QualityTargetPath{Object: targetGUID},
 		Trigger:          storepb.QualityInvestigationTrigger(trigger),
 		TriggerReference: triggerReference,
 		Status:           status,
@@ -321,7 +371,8 @@ func qualityInvestigationFingerprint(targetGUID string, metaType storepb.MetaTyp
 	if err != nil {
 		return ""
 	}
-	sum := sha256.Sum256(append([]byte("investigation|"+strconv.Itoa(int(metaType))+"|"), payload...))
+	identity := "investigation|" + targetGUID + "|" + strconv.Itoa(int(metaType)) + "|"
+	sum := sha256.Sum256(append([]byte(identity), payload...))
 	return "inv:" + hex.EncodeToString(sum[:])
 }
 

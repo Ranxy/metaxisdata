@@ -4289,9 +4289,10 @@ func TestDataQualityAgentRealServerIntegration(t *testing.T) {
 	require.True(t, settings.Msg.GetDataQuality().GetAgentAutonomyEnabled())
 }
 
-// TestDataQualityAgentWritesRealServerIntegration covers the one write an agent
-// owns: staging a plan declaration and proposing a change request, both gated by the
-// workspace kill switch, and the agent never being able to decide its own proposal.
+// TestDataQualityAgentWritesRealServerIntegration covers the writes an agent owns:
+// staging a plan declaration, proposing a change request and recording an
+// investigation, all gated by the workspace kill switch, and the agent never being
+// able to decide its own proposal.
 func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	fixture := setupQualityMySQLFixture(t, true)
 	adminToken := fixture.env.AdminToken()
@@ -4516,6 +4517,24 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		}))
 	require.NoError(t, err)
 	require.Equal(t, investigation.Msg.GetName(), retried.Msg.GetName())
+
+	// An investigation cannot claim a change request that does not exist.
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	missingActionRef := common.FormatWorkspace(workspaceID) + "/qualityChangeRequests/missing"
+	_, err = agentClient.CreateQualityInvestigation(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityInvestigationRequest{
+			Parent:           "workspaces/-",
+			TargetGuid:       fixture.usersGUID,
+			MetaType:         v1pb.MetaType_TABLE,
+			Trigger:          v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_ISSUE,
+			TriggerReference: "qualityIssues/1",
+			Verdict:          v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE,
+			Evidence:         []*v1pb.QualityInvestigationEvidence{{Kind: "ISSUE", Reference: "qualityIssues/1"}},
+			ActionRefs:       []string{missingActionRef},
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 
 	listedInvestigations, err := fixture.dataQuality.ListQualityInvestigations(fixture.ctx,
 		withToken(adminToken, &v1pb.ListQualityInvestigationsRequest{Parent: "workspaces/-"}))
