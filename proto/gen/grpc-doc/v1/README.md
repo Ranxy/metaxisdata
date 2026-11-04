@@ -244,6 +244,7 @@
     - [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse)
     - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
     - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
+    - [CreateQualityInvestigationRequest](#metaxisdata-v1-CreateQualityInvestigationRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest)
     - [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest)
@@ -275,6 +276,7 @@
     - [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest)
     - [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse)
     - [GetQualityExecutionRequest](#metaxisdata-v1-GetQualityExecutionRequest)
+    - [GetQualityInvestigationRequest](#metaxisdata-v1-GetQualityInvestigationRequest)
     - [GetQualityIssueRequest](#metaxisdata-v1-GetQualityIssueRequest)
     - [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest)
     - [GetQualityOverviewRequest](#metaxisdata-v1-GetQualityOverviewRequest)
@@ -308,6 +310,8 @@
     - [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse)
     - [ListQualityExecutionsRequest](#metaxisdata-v1-ListQualityExecutionsRequest)
     - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
+    - [ListQualityInvestigationsRequest](#metaxisdata-v1-ListQualityInvestigationsRequest)
+    - [ListQualityInvestigationsResponse](#metaxisdata-v1-ListQualityInvestigationsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
     - [ListQualityPlansRequest](#metaxisdata-v1-ListQualityPlansRequest)
@@ -358,6 +362,9 @@
     - [QualityFilter](#metaxisdata-v1-QualityFilter)
     - [QualityFilterClause](#metaxisdata-v1-QualityFilterClause)
     - [QualityImpactAsset](#metaxisdata-v1-QualityImpactAsset)
+    - [QualityInvestigation](#metaxisdata-v1-QualityInvestigation)
+    - [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence)
+    - [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis)
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
@@ -450,6 +457,9 @@
     - [QualityExecutionTrigger](#metaxisdata-v1-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-v1-QualityFilterOperator)
     - [QualityFrequencyTier](#metaxisdata-v1-QualityFrequencyTier)
+    - [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus)
+    - [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger)
+    - [QualityInvestigationVerdict](#metaxisdata-v1-QualityInvestigationVerdict)
     - [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
@@ -4642,6 +4652,38 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
+<a name="metaxisdata-v1-CreateQualityInvestigationRequest"></a>
+
+### CreateQualityInvestigationRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| trigger | [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger) |  |  |
+| trigger_reference | [string](#string) |  | The triggering object&#39;s resource name or value. |
+| status | [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus) |  |  |
+| verdict | [QualityInvestigationVerdict](#metaxisdata-v1-QualityInvestigationVerdict) |  |  |
+| summary | [string](#string) |  |  |
+| hypotheses | [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis) | repeated |  |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated |  |
+| action_refs | [string](#string) | repeated |  |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| prompt_tokens | [int64](#int64) |  |  |
+| completion_tokens | [int64](#int64) |  |  |
+| failure_reason | [string](#string) |  |  |
+| request_fingerprint | [string](#string) |  | An idempotency key from the agent&#39;s run; a retry with the same key returns the recorded investigation instead of writing a second one. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateQualityRuleRequest"></a>
 
 ### CreateQualityRuleRequest
@@ -5198,6 +5240,21 @@ timestamp follows on_empty.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityExecutions/{quality_execution} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityInvestigationRequest"></a>
+
+### GetQualityInvestigationRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation} |
 
 
 
@@ -5776,6 +5833,42 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_executions | [QualityExecution](#metaxisdata-v1-QualityExecution) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityInvestigationsRequest"></a>
+
+### ListQualityInvestigationsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| status | [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus) |  |  |
+| trigger | [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityInvestigationsResponse"></a>
+
+### ListQualityInvestigationsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_investigations | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -6796,6 +6889,73 @@ state.
 | target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The asset. Its path is built from the GUID, so it names where the object lives now rather than a value a rule once saved. |
 | distance | [int32](#int32) |  | How many lineage hops downstream of the target it sits: 1 is a direct dependent, 2 a dependent of a dependent. |
 | summary | [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary) |  | The asset&#39;s quality state, read through the same exact-target selection the metadata browser uses. Unset when the asset has no non-archived check, which is &#34;unmonitored&#34;, not &#34;healthy&#34;; a target whose checks are all paused is present with enabled_rule_count = 0. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityInvestigation"></a>
+
+### QualityInvestigation
+QualityInvestigation is one agent&#39;s work product on one event. It is read-only
+after creation in this slice: it never changes a check&#39;s verdict or an issue.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation} |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| trigger | [QualityInvestigationTrigger](#metaxisdata-v1-QualityInvestigationTrigger) |  |  |
+| trigger_reference | [string](#string) |  |  |
+| status | [QualityInvestigationStatus](#metaxisdata-v1-QualityInvestigationStatus) |  |  |
+| verdict | [QualityInvestigationVerdict](#metaxisdata-v1-QualityInvestigationVerdict) |  |  |
+| summary | [string](#string) |  |  |
+| hypotheses | [QualityInvestigationHypothesis](#metaxisdata-v1-QualityInvestigationHypothesis) | repeated |  |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated |  |
+| action_refs | [string](#string) | repeated | Names of change requests the investigation proposed. |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| prompt_tokens | [int64](#int64) |  |  |
+| completion_tokens | [int64](#int64) |  |  |
+| failure_reason | [string](#string) |  |  |
+| created_by | [string](#string) |  | Format: users/{user}. The agent principal that wrote it, when recorded. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityInvestigationEvidence"></a>
+
+### QualityInvestigationEvidence
+QualityInvestigationEvidence is one deterministic reference behind an
+investigation. It is a reference, never a copy of samples.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [string](#string) |  | EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE. |
+| reference | [string](#string) |  |  |
+| note | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityInvestigationHypothesis"></a>
+
+### QualityInvestigationHypothesis
+QualityInvestigationHypothesis is one candidate explanation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| statement | [string](#string) |  |  |
+| status | [string](#string) |  | CONFIRMED, REJECTED or OPEN. |
 
 
 
@@ -8633,6 +8793,53 @@ scheduled runs only; a manual run always runs the check.
 
 
 
+<a name="metaxisdata-v1-QualityInvestigationStatus"></a>
+
+### QualityInvestigationStatus
+QualityInvestigationStatus is where one investigation stands.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_INVESTIGATION_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_INVESTIGATION_STATUS_CONCLUDED | 1 |  |
+| QUALITY_INVESTIGATION_STATUS_FAILED | 2 |  |
+| QUALITY_INVESTIGATION_STATUS_INTERRUPTED | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityInvestigationTrigger"></a>
+
+### QualityInvestigationTrigger
+QualityInvestigationTrigger says what started the investigation.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_INVESTIGATION_TRIGGER_EXECUTION | 1 |  |
+| QUALITY_INVESTIGATION_TRIGGER_ISSUE | 2 |  |
+| QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE | 3 |  |
+| QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP | 4 |  |
+| QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT | 5 |  |
+| QUALITY_INVESTIGATION_TRIGGER_MANUAL | 6 |  |
+
+
+
+<a name="metaxisdata-v1-QualityInvestigationVerdict"></a>
+
+### QualityInvestigationVerdict
+QualityInvestigationVerdict is the investigation&#39;s classification of the event. It
+never replaces the engine&#39;s verdict.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED | 0 |  |
+| QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE | 1 |  |
+| QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR | 2 |  |
+| QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE | 3 |  |
+| QUALITY_INVESTIGATION_VERDICT_UNRELATED | 4 |  |
+
+
+
 <a name="metaxisdata-v1-QualityIssueStatus"></a>
 
 ### QualityIssueStatus
@@ -9134,6 +9341,9 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityCoverageGaps | [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest) | [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse) | ListQualityCoverageGaps flattens the plan projection to the unsatisfied declared coverage: one row per target property that a live rule does not implement. Read-only, like ListQualityPlans. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
+| CreateQualityInvestigation | [CreateQualityInvestigationRequest](#metaxisdata-v1-CreateQualityInvestigationRequest) | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | Record one investigation: an agent&#39;s hypotheses, deterministic evidence references, verdict and cost on one event. It never changes the check&#39;s verdict or an issue&#39;s state. The agent needs autonomy enabled. |
+| GetQualityInvestigation | [GetQualityInvestigationRequest](#metaxisdata-v1-GetQualityInvestigationRequest) | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | Read one investigation. |
+| ListQualityInvestigations | [ListQualityInvestigationsRequest](#metaxisdata-v1-ListQualityInvestigationsRequest) | [ListQualityInvestigationsResponse](#metaxisdata-v1-ListQualityInvestigationsResponse) | List investigations, newest first. |
 | GetQualityActionPolicy | [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest) | [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy) | Read the WS2 action catalog and how the autonomy policy would decide each action for an agent right now. Read-only: it exposes the policy, it does not change it. |
 | StageQualityPlan | [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Write the target&#39;s plan declaration without touching its settings. This is the one write an agent principal may make; an agent call is refused while the workspace kill switch or the agent itself is disabled. |
 | CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. An agent principal may only create PROPOSED requests, and only while autonomy is enabled. |

@@ -81,6 +81,9 @@ const (
 	DataQualityService_ListQualityCoverageGaps_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListQualityCoverageGaps"
 	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
 	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	DataQualityService_CreateQualityInvestigation_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityInvestigation"
+	DataQualityService_GetQualityInvestigation_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityInvestigation"
+	DataQualityService_ListQualityInvestigations_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityInvestigations"
 	DataQualityService_GetQualityActionPolicy_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
 	DataQualityService_StageQualityPlan_FullMethodName                   = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
 	DataQualityService_CreateQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
@@ -364,6 +367,14 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(ctx context.Context, in *PublishQualityContractRequest, opts ...grpc.CallOption) (*PublishQualityContractResponse, error)
+	// Record one investigation: an agent's hypotheses, deterministic evidence
+	// references, verdict and cost on one event. It never changes the check's verdict
+	// or an issue's state. The agent needs autonomy enabled.
+	CreateQualityInvestigation(ctx context.Context, in *CreateQualityInvestigationRequest, opts ...grpc.CallOption) (*QualityInvestigation, error)
+	// Read one investigation.
+	GetQualityInvestigation(ctx context.Context, in *GetQualityInvestigationRequest, opts ...grpc.CallOption) (*QualityInvestigation, error)
+	// List investigations, newest first.
+	ListQualityInvestigations(ctx context.Context, in *ListQualityInvestigationsRequest, opts ...grpc.CallOption) (*ListQualityInvestigationsResponse, error)
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(ctx context.Context, in *GetQualityActionPolicyRequest, opts ...grpc.CallOption) (*QualityActionPolicy, error)
@@ -1061,6 +1072,36 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) CreateQualityInvestigation(ctx context.Context, in *CreateQualityInvestigationRequest, opts ...grpc.CallOption) (*QualityInvestigation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityInvestigation)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityInvestigation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityInvestigation(ctx context.Context, in *GetQualityInvestigationRequest, opts ...grpc.CallOption) (*QualityInvestigation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityInvestigation)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityInvestigation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityInvestigations(ctx context.Context, in *ListQualityInvestigationsRequest, opts ...grpc.CallOption) (*ListQualityInvestigationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityInvestigationsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityInvestigations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) GetQualityActionPolicy(ctx context.Context, in *GetQualityActionPolicyRequest, opts ...grpc.CallOption) (*QualityActionPolicy, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityActionPolicy)
@@ -1459,6 +1500,14 @@ type DataQualityServiceServer interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error)
+	// Record one investigation: an agent's hypotheses, deterministic evidence
+	// references, verdict and cost on one event. It never changes the check's verdict
+	// or an issue's state. The agent needs autonomy enabled.
+	CreateQualityInvestigation(context.Context, *CreateQualityInvestigationRequest) (*QualityInvestigation, error)
+	// Read one investigation.
+	GetQualityInvestigation(context.Context, *GetQualityInvestigationRequest) (*QualityInvestigation, error)
+	// List investigations, newest first.
+	ListQualityInvestigations(context.Context, *ListQualityInvestigationsRequest) (*ListQualityInvestigationsResponse, error)
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(context.Context, *GetQualityActionPolicyRequest) (*QualityActionPolicy, error)
@@ -1692,6 +1741,15 @@ func (UnimplementedDataQualityServiceServer) UpdateQualityContract(context.Conte
 }
 func (UnimplementedDataQualityServiceServer) PublishQualityContract(context.Context, *PublishQualityContractRequest) (*PublishQualityContractResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PublishQualityContract not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualityInvestigation(context.Context, *CreateQualityInvestigationRequest) (*QualityInvestigation, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualityInvestigation not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityInvestigation(context.Context, *GetQualityInvestigationRequest) (*QualityInvestigation, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityInvestigation not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityInvestigations(context.Context, *ListQualityInvestigationsRequest) (*ListQualityInvestigationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityInvestigations not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityActionPolicy(context.Context, *GetQualityActionPolicyRequest) (*QualityActionPolicy, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityActionPolicy not implemented")
@@ -2823,6 +2881,60 @@ func _DataQualityService_PublishQualityContract_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_CreateQualityInvestigation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualityInvestigationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualityInvestigation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualityInvestigation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualityInvestigation(ctx, req.(*CreateQualityInvestigationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityInvestigation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityInvestigationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityInvestigation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityInvestigation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityInvestigation(ctx, req.(*GetQualityInvestigationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityInvestigations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityInvestigationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityInvestigations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityInvestigations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityInvestigations(ctx, req.(*ListQualityInvestigationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_GetQualityActionPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQualityActionPolicyRequest)
 	if err := dec(in); err != nil {
@@ -3291,6 +3403,18 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PublishQualityContract",
 			Handler:    _DataQualityService_PublishQualityContract_Handler,
+		},
+		{
+			MethodName: "CreateQualityInvestigation",
+			Handler:    _DataQualityService_CreateQualityInvestigation_Handler,
+		},
+		{
+			MethodName: "GetQualityInvestigation",
+			Handler:    _DataQualityService_GetQualityInvestigation_Handler,
+		},
+		{
+			MethodName: "ListQualityInvestigations",
+			Handler:    _DataQualityService_ListQualityInvestigations_Handler,
 		},
 		{
 			MethodName: "GetQualityActionPolicy",

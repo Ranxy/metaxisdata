@@ -67,7 +67,9 @@ func TestDecideActionRedLines(t *testing.T) {
 	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionPublishContract)).Code)
 	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionCloseOrReassign)).Code)
 	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionExpandAuthority)).Code)
-	require.Equal(t, DecisionDeniedNotImplemented, DecideAction(on(ActionWriteInvestigation)).Code)
+	require.Equal(t, DecisionDeniedNotImplemented, DecideAction(on(ActionWriteAssetFact)).Code)
+	// Writing an investigation is implemented and exposed to an agent (A0-3).
+	require.Equal(t, DecisionAllowed, DecideAction(on(ActionWriteInvestigation)).Code)
 	require.Equal(t, DecisionDeniedNotImplemented, DecideAction(PolicyInput{Action: "A9-9", Actor: ActorAgent, AutonomyEnabled: true, AgentEnabled: true}).Code)
 
 	// An action the codebase implements but the agent role does not expose is refused

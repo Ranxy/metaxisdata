@@ -652,6 +652,30 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.contracts.publish";
   }
 
+  // Record one investigation: an agent's hypotheses, deterministic evidence
+  // references, verdict and cost on one event. It never changes the check's verdict
+  // or an issue's state. The agent needs autonomy enabled.
+  rpc CreateQualityInvestigation(CreateQualityInvestigationRequest) returns (QualityInvestigation) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityInvestigations"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
+  }
+
+  // Read one investigation.
+  rpc GetQualityInvestigation(GetQualityInvestigationRequest) returns (QualityInvestigation) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityInvestigations/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // List investigations, newest first.
+  rpc ListQualityInvestigations(ListQualityInvestigationsRequest) returns (ListQualityInvestigationsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityInvestigations"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Read the WS2 action catalog and how the autonomy policy would decide each action
   // for an agent right now. Read-only: it exposes the policy, it does not change it.
   rpc GetQualityActionPolicy(GetQualityActionPolicyRequest) returns (QualityActionPolicy) {
@@ -4053,6 +4077,122 @@ message DecideQualityChangeRequestRequest {
   // Why the request was rejected; required for REJECT.
   repeated QualityChangeRejectionReason rejection_reasons = 3;
   string decision_note = 4;
+}
+
+// QualityInvestigationStatus is where one investigation stands.
+enum QualityInvestigationStatus {
+  QUALITY_INVESTIGATION_STATUS_UNSPECIFIED = 0;
+  QUALITY_INVESTIGATION_STATUS_CONCLUDED = 1;
+  QUALITY_INVESTIGATION_STATUS_FAILED = 2;
+  QUALITY_INVESTIGATION_STATUS_INTERRUPTED = 3;
+}
+
+// QualityInvestigationTrigger says what started the investigation.
+enum QualityInvestigationTrigger {
+  QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED = 0;
+  QUALITY_INVESTIGATION_TRIGGER_EXECUTION = 1;
+  QUALITY_INVESTIGATION_TRIGGER_ISSUE = 2;
+  QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE = 3;
+  QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP = 4;
+  QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT = 5;
+  QUALITY_INVESTIGATION_TRIGGER_MANUAL = 6;
+}
+
+// QualityInvestigationVerdict is the investigation's classification of the event. It
+// never replaces the engine's verdict.
+enum QualityInvestigationVerdict {
+  QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED = 0;
+  QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE = 1;
+  QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR = 2;
+  QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE = 3;
+  QUALITY_INVESTIGATION_VERDICT_UNRELATED = 4;
+}
+
+// QualityInvestigationEvidence is one deterministic reference behind an
+// investigation. It is a reference, never a copy of samples.
+message QualityInvestigationEvidence {
+  // EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE.
+  string kind = 1;
+  string reference = 2;
+  string note = 3;
+}
+
+// QualityInvestigationHypothesis is one candidate explanation.
+message QualityInvestigationHypothesis {
+  string statement = 1;
+  // CONFIRMED, REJECTED or OPEN.
+  string status = 2;
+}
+
+// QualityInvestigation is one agent's work product on one event. It is read-only
+// after creation in this slice: it never changes a check's verdict or an issue.
+message QualityInvestigation {
+  // Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation}
+  string name = 1;
+  QualityTarget target = 2;
+  QualityInvestigationTrigger trigger = 3;
+  string trigger_reference = 4;
+  QualityInvestigationStatus status = 5;
+  QualityInvestigationVerdict verdict = 6;
+  string summary = 7;
+  repeated QualityInvestigationHypothesis hypotheses = 8;
+  repeated QualityInvestigationEvidence evidence = 9;
+  // Names of change requests the investigation proposed.
+  repeated string action_refs = 10;
+  string provider = 11;
+  string model = 12;
+  string prompt_version = 13;
+  int64 prompt_tokens = 14;
+  int64 completion_tokens = 15;
+  string failure_reason = 16;
+  // Format: users/{user}. The agent principal that wrote it, when recorded.
+  string created_by = 17;
+  google.protobuf.Timestamp create_time = 18;
+}
+
+message CreateQualityInvestigationRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  QualityInvestigationTrigger trigger = 4 [(google.api.field_behavior) = REQUIRED];
+  // The triggering object's resource name or value.
+  string trigger_reference = 5 [(google.api.field_behavior) = REQUIRED];
+  QualityInvestigationStatus status = 6;
+  QualityInvestigationVerdict verdict = 7;
+  string summary = 8;
+  repeated QualityInvestigationHypothesis hypotheses = 9;
+  repeated QualityInvestigationEvidence evidence = 10;
+  repeated string action_refs = 11;
+  string provider = 12;
+  string model = 13;
+  string prompt_version = 14;
+  int64 prompt_tokens = 15;
+  int64 completion_tokens = 16;
+  string failure_reason = 17;
+  // An idempotency key from the agent's run; a retry with the same key returns the
+  // recorded investigation instead of writing a second one.
+  string request_fingerprint = 18;
+}
+
+message GetQualityInvestigationRequest {
+  // Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListQualityInvestigationsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2;
+  QualityInvestigationStatus status = 3;
+  QualityInvestigationTrigger trigger = 4;
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message ListQualityInvestigationsResponse {
+  repeated QualityInvestigation quality_investigations = 1;
+  string next_page_token = 2;
 }
 
 // QualityAction is one card of the WS2 action catalog with its live policy verdict.

@@ -34,7 +34,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	agent, err := s.authorizeAgentAction(ctx, len(req.Msg.GetItems()), 0)
+	agent, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, len(req.Msg.GetItems()), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	// Re-evaluate with the real criticality now that it is known: a critical target's
 	// batch is handed to a person, still before any write.
 	if agent != nil {
-		if _, err := s.authorizeAgentAction(ctx, len(items),
+		if _, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, len(items),
 			qualityChangeRequestCriticality(contract, rules)); err != nil {
 			return nil, err
 		}

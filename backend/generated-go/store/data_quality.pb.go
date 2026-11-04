@@ -2130,6 +2130,181 @@ func (QualityChangeRejectionReason) EnumDescriptor() ([]byte, []int) {
 	return file_store_data_quality_proto_rawDescGZIP(), []int{33}
 }
 
+// QualityInvestigationStatus is where one investigation stands. A concluded
+// investigation is the normal result; a failed one records why the analysis could
+// not finish.
+type QualityInvestigationStatus int32
+
+const (
+	QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_UNSPECIFIED QualityInvestigationStatus = 0
+	QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED   QualityInvestigationStatus = 1
+	QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_FAILED      QualityInvestigationStatus = 2
+	QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_INTERRUPTED QualityInvestigationStatus = 3
+)
+
+// Enum value maps for QualityInvestigationStatus.
+var (
+	QualityInvestigationStatus_name = map[int32]string{
+		0: "QUALITY_INVESTIGATION_STATUS_UNSPECIFIED",
+		1: "QUALITY_INVESTIGATION_STATUS_CONCLUDED",
+		2: "QUALITY_INVESTIGATION_STATUS_FAILED",
+		3: "QUALITY_INVESTIGATION_STATUS_INTERRUPTED",
+	}
+	QualityInvestigationStatus_value = map[string]int32{
+		"QUALITY_INVESTIGATION_STATUS_UNSPECIFIED": 0,
+		"QUALITY_INVESTIGATION_STATUS_CONCLUDED":   1,
+		"QUALITY_INVESTIGATION_STATUS_FAILED":      2,
+		"QUALITY_INVESTIGATION_STATUS_INTERRUPTED": 3,
+	}
+)
+
+func (x QualityInvestigationStatus) Enum() *QualityInvestigationStatus {
+	p := new(QualityInvestigationStatus)
+	*p = x
+	return p
+}
+
+func (x QualityInvestigationStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityInvestigationStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_data_quality_proto_enumTypes[34].Descriptor()
+}
+
+func (QualityInvestigationStatus) Type() protoreflect.EnumType {
+	return &file_store_data_quality_proto_enumTypes[34]
+}
+
+func (x QualityInvestigationStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityInvestigationStatus.Descriptor instead.
+func (QualityInvestigationStatus) EnumDescriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{34}
+}
+
+// QualityInvestigationTrigger says what started the investigation. The reference is
+// the triggering object's resource name; it is never a payload snapshot.
+type QualityInvestigationTrigger int32
+
+const (
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED    QualityInvestigationTrigger = 0
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION      QualityInvestigationTrigger = 1
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_ISSUE          QualityInvestigationTrigger = 2
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE  QualityInvestigationTrigger = 3
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP   QualityInvestigationTrigger = 4
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT QualityInvestigationTrigger = 5
+	QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_MANUAL         QualityInvestigationTrigger = 6
+)
+
+// Enum value maps for QualityInvestigationTrigger.
+var (
+	QualityInvestigationTrigger_name = map[int32]string{
+		0: "QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED",
+		1: "QUALITY_INVESTIGATION_TRIGGER_EXECUTION",
+		2: "QUALITY_INVESTIGATION_TRIGGER_ISSUE",
+		3: "QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE",
+		4: "QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP",
+		5: "QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT",
+		6: "QUALITY_INVESTIGATION_TRIGGER_MANUAL",
+	}
+	QualityInvestigationTrigger_value = map[string]int32{
+		"QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED":    0,
+		"QUALITY_INVESTIGATION_TRIGGER_EXECUTION":      1,
+		"QUALITY_INVESTIGATION_TRIGGER_ISSUE":          2,
+		"QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE":  3,
+		"QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP":   4,
+		"QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT": 5,
+		"QUALITY_INVESTIGATION_TRIGGER_MANUAL":         6,
+	}
+)
+
+func (x QualityInvestigationTrigger) Enum() *QualityInvestigationTrigger {
+	p := new(QualityInvestigationTrigger)
+	*p = x
+	return p
+}
+
+func (x QualityInvestigationTrigger) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityInvestigationTrigger) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_data_quality_proto_enumTypes[35].Descriptor()
+}
+
+func (QualityInvestigationTrigger) Type() protoreflect.EnumType {
+	return &file_store_data_quality_proto_enumTypes[35]
+}
+
+func (x QualityInvestigationTrigger) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityInvestigationTrigger.Descriptor instead.
+func (QualityInvestigationTrigger) EnumDescriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{35}
+}
+
+// QualityInvestigationVerdict is the investigation's classification of the event. It
+// never replaces the engine's verdict; it explains it.
+type QualityInvestigationVerdict int32
+
+const (
+	QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED         QualityInvestigationVerdict = 0
+	QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE          QualityInvestigationVerdict = 1
+	QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR QualityInvestigationVerdict = 2
+	QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE        QualityInvestigationVerdict = 3
+	QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_UNRELATED           QualityInvestigationVerdict = 4
+)
+
+// Enum value maps for QualityInvestigationVerdict.
+var (
+	QualityInvestigationVerdict_name = map[int32]string{
+		0: "QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED",
+		1: "QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE",
+		2: "QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR",
+		3: "QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE",
+		4: "QUALITY_INVESTIGATION_VERDICT_UNRELATED",
+	}
+	QualityInvestigationVerdict_value = map[string]int32{
+		"QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED":         0,
+		"QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE":          1,
+		"QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR": 2,
+		"QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE":        3,
+		"QUALITY_INVESTIGATION_VERDICT_UNRELATED":           4,
+	}
+)
+
+func (x QualityInvestigationVerdict) Enum() *QualityInvestigationVerdict {
+	p := new(QualityInvestigationVerdict)
+	*p = x
+	return p
+}
+
+func (x QualityInvestigationVerdict) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityInvestigationVerdict) Descriptor() protoreflect.EnumDescriptor {
+	return file_store_data_quality_proto_enumTypes[36].Descriptor()
+}
+
+func (QualityInvestigationVerdict) Type() protoreflect.EnumType {
+	return &file_store_data_quality_proto_enumTypes[36]
+}
+
+func (x QualityInvestigationVerdict) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityInvestigationVerdict.Descriptor instead.
+func (QualityInvestigationVerdict) EnumDescriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{36}
+}
+
 // QualityContractChangeKind says which sections of a version changed against its
 // predecessor.
 type QualityContractChangeKind int32
@@ -2172,11 +2347,11 @@ func (x QualityContractChangeKind) String() string {
 }
 
 func (QualityContractChangeKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_store_data_quality_proto_enumTypes[34].Descriptor()
+	return file_store_data_quality_proto_enumTypes[37].Descriptor()
 }
 
 func (QualityContractChangeKind) Type() protoreflect.EnumType {
-	return &file_store_data_quality_proto_enumTypes[34]
+	return &file_store_data_quality_proto_enumTypes[37]
 }
 
 func (x QualityContractChangeKind) Number() protoreflect.EnumNumber {
@@ -2185,7 +2360,7 @@ func (x QualityContractChangeKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QualityContractChangeKind.Descriptor instead.
 func (QualityContractChangeKind) EnumDescriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{34}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{37}
 }
 
 type QualityChangeRequestItemResult_Status int32
@@ -2225,11 +2400,11 @@ func (x QualityChangeRequestItemResult_Status) String() string {
 }
 
 func (QualityChangeRequestItemResult_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_store_data_quality_proto_enumTypes[35].Descriptor()
+	return file_store_data_quality_proto_enumTypes[38].Descriptor()
 }
 
 func (QualityChangeRequestItemResult_Status) Type() protoreflect.EnumType {
-	return &file_store_data_quality_proto_enumTypes[35]
+	return &file_store_data_quality_proto_enumTypes[38]
 }
 
 func (x QualityChangeRequestItemResult_Status) Number() protoreflect.EnumNumber {
@@ -7443,6 +7618,426 @@ func (x *QualityChangeRejectionReasons) GetReasons() []QualityChangeRejectionRea
 	return nil
 }
 
+// QualityInvestigationEvidence is one deterministic reference behind an
+// investigation: an execution, an issue, a schema fingerprint, a lineage edge. It is
+// a reference, never a copy of samples or payloads.
+type QualityInvestigationEvidence struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// A short kind such as EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE.
+	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	// The referenced resource name or value.
+	Reference     string `protobuf:"bytes,2,opt,name=reference,proto3" json:"reference,omitempty"`
+	Note          string `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityInvestigationEvidence) Reset() {
+	*x = QualityInvestigationEvidence{}
+	mi := &file_store_data_quality_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityInvestigationEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityInvestigationEvidence) ProtoMessage() {}
+
+func (x *QualityInvestigationEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityInvestigationEvidence.ProtoReflect.Descriptor instead.
+func (*QualityInvestigationEvidence) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *QualityInvestigationEvidence) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *QualityInvestigationEvidence) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
+}
+
+func (x *QualityInvestigationEvidence) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+// QualityInvestigationHypothesis is one candidate explanation and what the evidence
+// did to it.
+type QualityInvestigationHypothesis struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Statement string                 `protobuf:"bytes,1,opt,name=statement,proto3" json:"statement,omitempty"`
+	// CONFIRMED, REJECTED or OPEN.
+	Status        string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityInvestigationHypothesis) Reset() {
+	*x = QualityInvestigationHypothesis{}
+	mi := &file_store_data_quality_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityInvestigationHypothesis) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityInvestigationHypothesis) ProtoMessage() {}
+
+func (x *QualityInvestigationHypothesis) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityInvestigationHypothesis.ProtoReflect.Descriptor instead.
+func (*QualityInvestigationHypothesis) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *QualityInvestigationHypothesis) GetStatement() string {
+	if x != nil {
+		return x.Statement
+	}
+	return ""
+}
+
+func (x *QualityInvestigationHypothesis) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+// QualityInvestigation is one agent's work product on one event: hypotheses,
+// deterministic evidence references, a verdict and its cost. It is not a second
+// verdict engine: an investigation conclusion never replaces the check's result and
+// never opens or closes an issue by itself.
+type QualityInvestigation struct {
+	state            protoimpl.MessageState            `protogen:"open.v1"`
+	Target           *QualityTargetPath                `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Trigger          QualityInvestigationTrigger       `protobuf:"varint,2,opt,name=trigger,proto3,enum=metaxisdata.store.QualityInvestigationTrigger" json:"trigger,omitempty"`
+	TriggerReference string                            `protobuf:"bytes,3,opt,name=trigger_reference,json=triggerReference,proto3" json:"trigger_reference,omitempty"`
+	Status           QualityInvestigationStatus        `protobuf:"varint,4,opt,name=status,proto3,enum=metaxisdata.store.QualityInvestigationStatus" json:"status,omitempty"`
+	Verdict          QualityInvestigationVerdict       `protobuf:"varint,5,opt,name=verdict,proto3,enum=metaxisdata.store.QualityInvestigationVerdict" json:"verdict,omitempty"`
+	Summary          string                            `protobuf:"bytes,6,opt,name=summary,proto3" json:"summary,omitempty"`
+	Hypotheses       []*QualityInvestigationHypothesis `protobuf:"bytes,7,rep,name=hypotheses,proto3" json:"hypotheses,omitempty"`
+	Evidence         []*QualityInvestigationEvidence   `protobuf:"bytes,8,rep,name=evidence,proto3" json:"evidence,omitempty"`
+	// Names of change requests the investigation proposed.
+	ActionRefs       []string `protobuf:"bytes,9,rep,name=action_refs,json=actionRefs,proto3" json:"action_refs,omitempty"`
+	Provider         string   `protobuf:"bytes,10,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model            string   `protobuf:"bytes,11,opt,name=model,proto3" json:"model,omitempty"`
+	PromptVersion    string   `protobuf:"bytes,12,opt,name=prompt_version,json=promptVersion,proto3" json:"prompt_version,omitempty"`
+	PromptTokens     int64    `protobuf:"varint,13,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens int64    `protobuf:"varint,14,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	// Set when the analysis failed; empty otherwise.
+	FailureReason string `protobuf:"bytes,15,opt,name=failure_reason,json=failureReason,proto3" json:"failure_reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityInvestigation) Reset() {
+	*x = QualityInvestigation{}
+	mi := &file_store_data_quality_proto_msgTypes[63]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityInvestigation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityInvestigation) ProtoMessage() {}
+
+func (x *QualityInvestigation) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[63]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityInvestigation.ProtoReflect.Descriptor instead.
+func (*QualityInvestigation) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{63}
+}
+
+func (x *QualityInvestigation) GetTarget() *QualityTargetPath {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *QualityInvestigation) GetTrigger() QualityInvestigationTrigger {
+	if x != nil {
+		return x.Trigger
+	}
+	return QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED
+}
+
+func (x *QualityInvestigation) GetTriggerReference() string {
+	if x != nil {
+		return x.TriggerReference
+	}
+	return ""
+}
+
+func (x *QualityInvestigation) GetStatus() QualityInvestigationStatus {
+	if x != nil {
+		return x.Status
+	}
+	return QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_UNSPECIFIED
+}
+
+func (x *QualityInvestigation) GetVerdict() QualityInvestigationVerdict {
+	if x != nil {
+		return x.Verdict
+	}
+	return QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED
+}
+
+func (x *QualityInvestigation) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *QualityInvestigation) GetHypotheses() []*QualityInvestigationHypothesis {
+	if x != nil {
+		return x.Hypotheses
+	}
+	return nil
+}
+
+func (x *QualityInvestigation) GetEvidence() []*QualityInvestigationEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+func (x *QualityInvestigation) GetActionRefs() []string {
+	if x != nil {
+		return x.ActionRefs
+	}
+	return nil
+}
+
+func (x *QualityInvestigation) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *QualityInvestigation) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *QualityInvestigation) GetPromptVersion() string {
+	if x != nil {
+		return x.PromptVersion
+	}
+	return ""
+}
+
+func (x *QualityInvestigation) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *QualityInvestigation) GetCompletionTokens() int64 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *QualityInvestigation) GetFailureReason() string {
+	if x != nil {
+		return x.FailureReason
+	}
+	return ""
+}
+
+// QualityInvestigationEvidenceList is the JSONB payload of
+// quality_investigation.evidence.
+type QualityInvestigationEvidenceList struct {
+	state         protoimpl.MessageState          `protogen:"open.v1"`
+	Evidence      []*QualityInvestigationEvidence `protobuf:"bytes,1,rep,name=evidence,proto3" json:"evidence,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityInvestigationEvidenceList) Reset() {
+	*x = QualityInvestigationEvidenceList{}
+	mi := &file_store_data_quality_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityInvestigationEvidenceList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityInvestigationEvidenceList) ProtoMessage() {}
+
+func (x *QualityInvestigationEvidenceList) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityInvestigationEvidenceList.ProtoReflect.Descriptor instead.
+func (*QualityInvestigationEvidenceList) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *QualityInvestigationEvidenceList) GetEvidence() []*QualityInvestigationEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+// QualityInvestigationHypothesisList is the JSONB payload of
+// quality_investigation.hypotheses.
+type QualityInvestigationHypothesisList struct {
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	Hypotheses    []*QualityInvestigationHypothesis `protobuf:"bytes,1,rep,name=hypotheses,proto3" json:"hypotheses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityInvestigationHypothesisList) Reset() {
+	*x = QualityInvestigationHypothesisList{}
+	mi := &file_store_data_quality_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityInvestigationHypothesisList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityInvestigationHypothesisList) ProtoMessage() {}
+
+func (x *QualityInvestigationHypothesisList) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityInvestigationHypothesisList.ProtoReflect.Descriptor instead.
+func (*QualityInvestigationHypothesisList) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *QualityInvestigationHypothesisList) GetHypotheses() []*QualityInvestigationHypothesis {
+	if x != nil {
+		return x.Hypotheses
+	}
+	return nil
+}
+
+// QualityInvestigationActionRefs is the JSONB payload of
+// quality_investigation.action_refs.
+type QualityInvestigationActionRefs struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Refs          []string               `protobuf:"bytes,1,rep,name=refs,proto3" json:"refs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityInvestigationActionRefs) Reset() {
+	*x = QualityInvestigationActionRefs{}
+	mi := &file_store_data_quality_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityInvestigationActionRefs) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityInvestigationActionRefs) ProtoMessage() {}
+
+func (x *QualityInvestigationActionRefs) ProtoReflect() protoreflect.Message {
+	mi := &file_store_data_quality_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityInvestigationActionRefs.ProtoReflect.Descriptor instead.
+func (*QualityInvestigationActionRefs) Descriptor() ([]byte, []int) {
+	return file_store_data_quality_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *QualityInvestigationActionRefs) GetRefs() []string {
+	if x != nil {
+		return x.Refs
+	}
+	return nil
+}
+
 // QualityContractPlan is a plan payload: either a published version's declaration
 // plus the cadence it was published under, or the target's current declaration
 // (coverage only; the cadence lives in the target's schedule). The checks that
@@ -7458,7 +8053,7 @@ type QualityContractPlan struct {
 
 func (x *QualityContractPlan) Reset() {
 	*x = QualityContractPlan{}
-	mi := &file_store_data_quality_proto_msgTypes[61]
+	mi := &file_store_data_quality_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7470,7 +8065,7 @@ func (x *QualityContractPlan) String() string {
 func (*QualityContractPlan) ProtoMessage() {}
 
 func (x *QualityContractPlan) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[61]
+	mi := &file_store_data_quality_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7483,7 +8078,7 @@ func (x *QualityContractPlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractPlan.ProtoReflect.Descriptor instead.
 func (*QualityContractPlan) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{61}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *QualityContractPlan) GetCoverage() []*QualityContractPlanCoverage {
@@ -7527,7 +8122,7 @@ type QualityContractSnapshot struct {
 
 func (x *QualityContractSnapshot) Reset() {
 	*x = QualityContractSnapshot{}
-	mi := &file_store_data_quality_proto_msgTypes[62]
+	mi := &file_store_data_quality_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7539,7 +8134,7 @@ func (x *QualityContractSnapshot) String() string {
 func (*QualityContractSnapshot) ProtoMessage() {}
 
 func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[62]
+	mi := &file_store_data_quality_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7552,7 +8147,7 @@ func (x *QualityContractSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractSnapshot.ProtoReflect.Descriptor instead.
 func (*QualityContractSnapshot) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{62}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *QualityContractSnapshot) GetSettings() *QualityContractSettings {
@@ -7608,7 +8203,7 @@ type QualityContractCheck struct {
 
 func (x *QualityContractCheck) Reset() {
 	*x = QualityContractCheck{}
-	mi := &file_store_data_quality_proto_msgTypes[63]
+	mi := &file_store_data_quality_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7620,7 +8215,7 @@ func (x *QualityContractCheck) String() string {
 func (*QualityContractCheck) ProtoMessage() {}
 
 func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_store_data_quality_proto_msgTypes[63]
+	mi := &file_store_data_quality_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7633,7 +8228,7 @@ func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractCheck.ProtoReflect.Descriptor instead.
 func (*QualityContractCheck) Descriptor() ([]byte, []int) {
-	return file_store_data_quality_proto_rawDescGZIP(), []int{63}
+	return file_store_data_quality_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *QualityContractCheck) GetRuleResourceId() string {
@@ -8189,7 +8784,42 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1fQualityChangeRequestItemResults\x12K\n" +
 	"\aresults\x18\x01 \x03(\v21.metaxisdata.store.QualityChangeRequestItemResultR\aresults\"j\n" +
 	"\x1dQualityChangeRejectionReasons\x12I\n" +
-	"\areasons\x18\x01 \x03(\x0e2/.metaxisdata.store.QualityChangeRejectionReasonR\areasons\"\xaa\x01\n" +
+	"\areasons\x18\x01 \x03(\x0e2/.metaxisdata.store.QualityChangeRejectionReasonR\areasons\"d\n" +
+	"\x1cQualityInvestigationEvidence\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1c\n" +
+	"\treference\x18\x02 \x01(\tR\treference\x12\x12\n" +
+	"\x04note\x18\x03 \x01(\tR\x04note\"V\n" +
+	"\x1eQualityInvestigationHypothesis\x12\x1c\n" +
+	"\tstatement\x18\x01 \x01(\tR\tstatement\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\x89\x06\n" +
+	"\x14QualityInvestigation\x12<\n" +
+	"\x06target\x18\x01 \x01(\v2$.metaxisdata.store.QualityTargetPathR\x06target\x12H\n" +
+	"\atrigger\x18\x02 \x01(\x0e2..metaxisdata.store.QualityInvestigationTriggerR\atrigger\x12+\n" +
+	"\x11trigger_reference\x18\x03 \x01(\tR\x10triggerReference\x12E\n" +
+	"\x06status\x18\x04 \x01(\x0e2-.metaxisdata.store.QualityInvestigationStatusR\x06status\x12H\n" +
+	"\averdict\x18\x05 \x01(\x0e2..metaxisdata.store.QualityInvestigationVerdictR\averdict\x12\x18\n" +
+	"\asummary\x18\x06 \x01(\tR\asummary\x12Q\n" +
+	"\n" +
+	"hypotheses\x18\a \x03(\v21.metaxisdata.store.QualityInvestigationHypothesisR\n" +
+	"hypotheses\x12K\n" +
+	"\bevidence\x18\b \x03(\v2/.metaxisdata.store.QualityInvestigationEvidenceR\bevidence\x12\x1f\n" +
+	"\vaction_refs\x18\t \x03(\tR\n" +
+	"actionRefs\x12\x1a\n" +
+	"\bprovider\x18\n" +
+	" \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\v \x01(\tR\x05model\x12%\n" +
+	"\x0eprompt_version\x18\f \x01(\tR\rpromptVersion\x12#\n" +
+	"\rprompt_tokens\x18\r \x01(\x03R\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\x0e \x01(\x03R\x10completionTokens\x12%\n" +
+	"\x0efailure_reason\x18\x0f \x01(\tR\rfailureReason\"o\n" +
+	" QualityInvestigationEvidenceList\x12K\n" +
+	"\bevidence\x18\x01 \x03(\v2/.metaxisdata.store.QualityInvestigationEvidenceR\bevidence\"w\n" +
+	"\"QualityInvestigationHypothesisList\x12Q\n" +
+	"\n" +
+	"hypotheses\x18\x01 \x03(\v21.metaxisdata.store.QualityInvestigationHypothesisR\n" +
+	"hypotheses\"4\n" +
+	"\x1eQualityInvestigationActionRefs\x12\x12\n" +
+	"\x04refs\x18\x01 \x03(\tR\x04refs\"\xaa\x01\n" +
 	"\x13QualityContractPlan\x12J\n" +
 	"\bcoverage\x18\x01 \x03(\v2..metaxisdata.store.QualityContractPlanCoverageR\bcoverage\x12G\n" +
 	"\acadence\x18\x02 \x01(\v2-.metaxisdata.store.QualityContractPlanCadenceR\acadence\"\xab\x02\n" +
@@ -8452,7 +9082,26 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"0QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM\x10\x04\x120\n" +
 	",QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN\x10\x05\x12)\n" +
 	"%QUALITY_CHANGE_REJECTION_REASON_DEFER\x10\x06\x12)\n" +
-	"%QUALITY_CHANGE_REJECTION_REASON_OTHER\x10\a*\xe9\x01\n" +
+	"%QUALITY_CHANGE_REJECTION_REASON_OTHER\x10\a*\xcd\x01\n" +
+	"\x1aQualityInvestigationStatus\x12,\n" +
+	"(QUALITY_INVESTIGATION_STATUS_UNSPECIFIED\x10\x00\x12*\n" +
+	"&QUALITY_INVESTIGATION_STATUS_CONCLUDED\x10\x01\x12'\n" +
+	"#QUALITY_INVESTIGATION_STATUS_FAILED\x10\x02\x12,\n" +
+	"(QUALITY_INVESTIGATION_STATUS_INTERRUPTED\x10\x03*\xdf\x02\n" +
+	"\x1bQualityInvestigationTrigger\x12-\n" +
+	")QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED\x10\x00\x12+\n" +
+	"'QUALITY_INVESTIGATION_TRIGGER_EXECUTION\x10\x01\x12'\n" +
+	"#QUALITY_INVESTIGATION_TRIGGER_ISSUE\x10\x02\x12/\n" +
+	"+QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE\x10\x03\x12.\n" +
+	"*QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP\x10\x04\x120\n" +
+	",QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT\x10\x05\x12(\n" +
+	"$QUALITY_INVESTIGATION_TRIGGER_MANUAL\x10\x06*\x8e\x02\n" +
+	"\x1bQualityInvestigationVerdict\x12-\n" +
+	")QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED\x10\x00\x12,\n" +
+	"(QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE\x10\x01\x125\n" +
+	"1QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR\x10\x02\x12.\n" +
+	"*QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE\x10\x03\x12+\n" +
+	"'QUALITY_INVESTIGATION_VERDICT_UNRELATED\x10\x04*\xe9\x01\n" +
 	"\x19QualityContractChangeKind\x12,\n" +
 	"(QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED\x10\x00\x12'\n" +
 	"#QUALITY_CONTRACT_CHANGE_KIND_INTENT\x10\x01\x12%\n" +
@@ -8472,8 +9121,8 @@ func file_store_data_quality_proto_rawDescGZIP() []byte {
 	return file_store_data_quality_proto_rawDescData
 }
 
-var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 36)
-var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 64)
+var file_store_data_quality_proto_enumTypes = make([]protoimpl.EnumInfo, 39)
+var file_store_data_quality_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
 var file_store_data_quality_proto_goTypes = []any{
 	(QualityRuleType)(0),                       // 0: metaxisdata.store.QualityRuleType
 	(QualityStandardCode)(0),                   // 1: metaxisdata.store.QualityStandardCode
@@ -8509,170 +9158,187 @@ var file_store_data_quality_proto_goTypes = []any{
 	(QualityChangeRequestSource)(0),            // 31: metaxisdata.store.QualityChangeRequestSource
 	(QualityChangeRequestItemKind)(0),          // 32: metaxisdata.store.QualityChangeRequestItemKind
 	(QualityChangeRejectionReason)(0),          // 33: metaxisdata.store.QualityChangeRejectionReason
-	(QualityContractChangeKind)(0),             // 34: metaxisdata.store.QualityContractChangeKind
-	(QualityChangeRequestItemResult_Status)(0), // 35: metaxisdata.store.QualityChangeRequestItemResult.Status
-	(*QualityTargetPath)(nil),                  // 36: metaxisdata.store.QualityTargetPath
-	(*QualityFilter)(nil),                      // 37: metaxisdata.store.QualityFilter
-	(*QualityFilterClause)(nil),                // 38: metaxisdata.store.QualityFilterClause
-	(*QualityThresholds)(nil),                  // 39: metaxisdata.store.QualityThresholds
-	(*QualityStatusCounts)(nil),                // 40: metaxisdata.store.QualityStatusCounts
-	(*QualityExecutionEvidence)(nil),           // 41: metaxisdata.store.QualityExecutionEvidence
-	(*SegmentObservation)(nil),                 // 42: metaxisdata.store.SegmentObservation
-	(*SegmentRecord)(nil),                      // 43: metaxisdata.store.SegmentRecord
-	(*FailureSample)(nil),                      // 44: metaxisdata.store.FailureSample
-	(*ColumnValue)(nil),                        // 45: metaxisdata.store.ColumnValue
-	(*ColumnProfile)(nil),                      // 46: metaxisdata.store.ColumnProfile
-	(*ProfileValue)(nil),                       // 47: metaxisdata.store.ProfileValue
-	(*SemanticLabelEvidence)(nil),              // 48: metaxisdata.store.SemanticLabelEvidence
-	(*QualitySuggestionPayload)(nil),           // 49: metaxisdata.store.QualitySuggestionPayload
-	(*QualitySuggestionQueueSummary)(nil),      // 50: metaxisdata.store.QualitySuggestionQueueSummary
-	(*QualityRuleDraftConfig)(nil),             // 51: metaxisdata.store.QualityRuleDraftConfig
-	(*SemanticLabelSuggestion)(nil),            // 52: metaxisdata.store.SemanticLabelSuggestion
-	(*DataQualityLLMResult)(nil),               // 53: metaxisdata.store.DataQualityLLMResult
-	(*RuleDraftResult)(nil),                    // 54: metaxisdata.store.RuleDraftResult
-	(*ExplanationResult)(nil),                  // 55: metaxisdata.store.ExplanationResult
-	(*ExplanationHypothesis)(nil),              // 56: metaxisdata.store.ExplanationHypothesis
-	(*QualityRuleConfig)(nil),                  // 57: metaxisdata.store.QualityRuleConfig
-	(*QualityRuleSampling)(nil),                // 58: metaxisdata.store.QualityRuleSampling
-	(*RowCountConfig)(nil),                     // 59: metaxisdata.store.RowCountConfig
-	(*RowCountChangeConfig)(nil),               // 60: metaxisdata.store.RowCountChangeConfig
-	(*NullPercentConfig)(nil),                  // 61: metaxisdata.store.NullPercentConfig
-	(*UniqueConfig)(nil),                       // 62: metaxisdata.store.UniqueConfig
-	(*UniqueCombinationConfig)(nil),            // 63: metaxisdata.store.UniqueCombinationConfig
-	(*AcceptedValuesConfig)(nil),               // 64: metaxisdata.store.AcceptedValuesConfig
-	(*AcceptedValuesQuery)(nil),                // 65: metaxisdata.store.AcceptedValuesQuery
-	(*SegmentCheckConfig)(nil),                 // 66: metaxisdata.store.SegmentCheckConfig
-	(*RangeConfig)(nil),                        // 67: metaxisdata.store.RangeConfig
-	(*RegexConfig)(nil),                        // 68: metaxisdata.store.RegexConfig
-	(*StringLengthConfig)(nil),                 // 69: metaxisdata.store.StringLengthConfig
-	(*ReferentialIntegrityConfig)(nil),         // 70: metaxisdata.store.ReferentialIntegrityConfig
-	(*CrossColumnConfig)(nil),                  // 71: metaxisdata.store.CrossColumnConfig
-	(*FreshnessConfig)(nil),                    // 72: metaxisdata.store.FreshnessConfig
-	(*CustomSQLConfig)(nil),                    // 73: metaxisdata.store.CustomSQLConfig
-	(*CelExpressionConfig)(nil),                // 74: metaxisdata.store.CelExpressionConfig
-	(*StandardCodeConfig)(nil),                 // 75: metaxisdata.store.StandardCodeConfig
-	(*QualityCodeTableValues)(nil),             // 76: metaxisdata.store.QualityCodeTableValues
-	(*SchemaDriftColumn)(nil),                  // 77: metaxisdata.store.SchemaDriftColumn
-	(*SchemaDriftConfig)(nil),                  // 78: metaxisdata.store.SchemaDriftConfig
-	(*GroupCheckConfig)(nil),                   // 79: metaxisdata.store.GroupCheckConfig
-	(*AggregateConfig)(nil),                    // 80: metaxisdata.store.AggregateConfig
-	(*CrossTableReference)(nil),                // 81: metaxisdata.store.CrossTableReference
-	(*CrossTableConfig)(nil),                   // 82: metaxisdata.store.CrossTableConfig
-	(*QualityLLMDiagnostic)(nil),               // 83: metaxisdata.store.QualityLLMDiagnostic
-	(*QualitySuggestionJobTarget)(nil),         // 84: metaxisdata.store.QualitySuggestionJobTarget
-	(*QualitySuggestionJobTargets)(nil),        // 85: metaxisdata.store.QualitySuggestionJobTargets
-	(*QualityContractIntentStatement)(nil),     // 86: metaxisdata.store.QualityContractIntentStatement
-	(*QualityContractIntentExemption)(nil),     // 87: metaxisdata.store.QualityContractIntentExemption
-	(*QualityContractIntent)(nil),              // 88: metaxisdata.store.QualityContractIntent
-	(*QualityContractSettings)(nil),            // 89: metaxisdata.store.QualityContractSettings
-	(*QualityContractPlanCoverage)(nil),        // 90: metaxisdata.store.QualityContractPlanCoverage
-	(*QualityContractPlanCadence)(nil),         // 91: metaxisdata.store.QualityContractPlanCadence
-	(*QualityChangeRequestItem)(nil),           // 92: metaxisdata.store.QualityChangeRequestItem
-	(*QualityChangeRequestItems)(nil),          // 93: metaxisdata.store.QualityChangeRequestItems
-	(*QualityChangeRequestItemResult)(nil),     // 94: metaxisdata.store.QualityChangeRequestItemResult
-	(*QualityChangeRequestItemResults)(nil),    // 95: metaxisdata.store.QualityChangeRequestItemResults
-	(*QualityChangeRejectionReasons)(nil),      // 96: metaxisdata.store.QualityChangeRejectionReasons
-	(*QualityContractPlan)(nil),                // 97: metaxisdata.store.QualityContractPlan
-	(*QualityContractSnapshot)(nil),            // 98: metaxisdata.store.QualityContractSnapshot
-	(*QualityContractCheck)(nil),               // 99: metaxisdata.store.QualityContractCheck
-	(*timestamppb.Timestamp)(nil),              // 100: google.protobuf.Timestamp
-	(MetaType)(0),                              // 101: metaxisdata.store.MetaType
+	(QualityInvestigationStatus)(0),            // 34: metaxisdata.store.QualityInvestigationStatus
+	(QualityInvestigationTrigger)(0),           // 35: metaxisdata.store.QualityInvestigationTrigger
+	(QualityInvestigationVerdict)(0),           // 36: metaxisdata.store.QualityInvestigationVerdict
+	(QualityContractChangeKind)(0),             // 37: metaxisdata.store.QualityContractChangeKind
+	(QualityChangeRequestItemResult_Status)(0), // 38: metaxisdata.store.QualityChangeRequestItemResult.Status
+	(*QualityTargetPath)(nil),                  // 39: metaxisdata.store.QualityTargetPath
+	(*QualityFilter)(nil),                      // 40: metaxisdata.store.QualityFilter
+	(*QualityFilterClause)(nil),                // 41: metaxisdata.store.QualityFilterClause
+	(*QualityThresholds)(nil),                  // 42: metaxisdata.store.QualityThresholds
+	(*QualityStatusCounts)(nil),                // 43: metaxisdata.store.QualityStatusCounts
+	(*QualityExecutionEvidence)(nil),           // 44: metaxisdata.store.QualityExecutionEvidence
+	(*SegmentObservation)(nil),                 // 45: metaxisdata.store.SegmentObservation
+	(*SegmentRecord)(nil),                      // 46: metaxisdata.store.SegmentRecord
+	(*FailureSample)(nil),                      // 47: metaxisdata.store.FailureSample
+	(*ColumnValue)(nil),                        // 48: metaxisdata.store.ColumnValue
+	(*ColumnProfile)(nil),                      // 49: metaxisdata.store.ColumnProfile
+	(*ProfileValue)(nil),                       // 50: metaxisdata.store.ProfileValue
+	(*SemanticLabelEvidence)(nil),              // 51: metaxisdata.store.SemanticLabelEvidence
+	(*QualitySuggestionPayload)(nil),           // 52: metaxisdata.store.QualitySuggestionPayload
+	(*QualitySuggestionQueueSummary)(nil),      // 53: metaxisdata.store.QualitySuggestionQueueSummary
+	(*QualityRuleDraftConfig)(nil),             // 54: metaxisdata.store.QualityRuleDraftConfig
+	(*SemanticLabelSuggestion)(nil),            // 55: metaxisdata.store.SemanticLabelSuggestion
+	(*DataQualityLLMResult)(nil),               // 56: metaxisdata.store.DataQualityLLMResult
+	(*RuleDraftResult)(nil),                    // 57: metaxisdata.store.RuleDraftResult
+	(*ExplanationResult)(nil),                  // 58: metaxisdata.store.ExplanationResult
+	(*ExplanationHypothesis)(nil),              // 59: metaxisdata.store.ExplanationHypothesis
+	(*QualityRuleConfig)(nil),                  // 60: metaxisdata.store.QualityRuleConfig
+	(*QualityRuleSampling)(nil),                // 61: metaxisdata.store.QualityRuleSampling
+	(*RowCountConfig)(nil),                     // 62: metaxisdata.store.RowCountConfig
+	(*RowCountChangeConfig)(nil),               // 63: metaxisdata.store.RowCountChangeConfig
+	(*NullPercentConfig)(nil),                  // 64: metaxisdata.store.NullPercentConfig
+	(*UniqueConfig)(nil),                       // 65: metaxisdata.store.UniqueConfig
+	(*UniqueCombinationConfig)(nil),            // 66: metaxisdata.store.UniqueCombinationConfig
+	(*AcceptedValuesConfig)(nil),               // 67: metaxisdata.store.AcceptedValuesConfig
+	(*AcceptedValuesQuery)(nil),                // 68: metaxisdata.store.AcceptedValuesQuery
+	(*SegmentCheckConfig)(nil),                 // 69: metaxisdata.store.SegmentCheckConfig
+	(*RangeConfig)(nil),                        // 70: metaxisdata.store.RangeConfig
+	(*RegexConfig)(nil),                        // 71: metaxisdata.store.RegexConfig
+	(*StringLengthConfig)(nil),                 // 72: metaxisdata.store.StringLengthConfig
+	(*ReferentialIntegrityConfig)(nil),         // 73: metaxisdata.store.ReferentialIntegrityConfig
+	(*CrossColumnConfig)(nil),                  // 74: metaxisdata.store.CrossColumnConfig
+	(*FreshnessConfig)(nil),                    // 75: metaxisdata.store.FreshnessConfig
+	(*CustomSQLConfig)(nil),                    // 76: metaxisdata.store.CustomSQLConfig
+	(*CelExpressionConfig)(nil),                // 77: metaxisdata.store.CelExpressionConfig
+	(*StandardCodeConfig)(nil),                 // 78: metaxisdata.store.StandardCodeConfig
+	(*QualityCodeTableValues)(nil),             // 79: metaxisdata.store.QualityCodeTableValues
+	(*SchemaDriftColumn)(nil),                  // 80: metaxisdata.store.SchemaDriftColumn
+	(*SchemaDriftConfig)(nil),                  // 81: metaxisdata.store.SchemaDriftConfig
+	(*GroupCheckConfig)(nil),                   // 82: metaxisdata.store.GroupCheckConfig
+	(*AggregateConfig)(nil),                    // 83: metaxisdata.store.AggregateConfig
+	(*CrossTableReference)(nil),                // 84: metaxisdata.store.CrossTableReference
+	(*CrossTableConfig)(nil),                   // 85: metaxisdata.store.CrossTableConfig
+	(*QualityLLMDiagnostic)(nil),               // 86: metaxisdata.store.QualityLLMDiagnostic
+	(*QualitySuggestionJobTarget)(nil),         // 87: metaxisdata.store.QualitySuggestionJobTarget
+	(*QualitySuggestionJobTargets)(nil),        // 88: metaxisdata.store.QualitySuggestionJobTargets
+	(*QualityContractIntentStatement)(nil),     // 89: metaxisdata.store.QualityContractIntentStatement
+	(*QualityContractIntentExemption)(nil),     // 90: metaxisdata.store.QualityContractIntentExemption
+	(*QualityContractIntent)(nil),              // 91: metaxisdata.store.QualityContractIntent
+	(*QualityContractSettings)(nil),            // 92: metaxisdata.store.QualityContractSettings
+	(*QualityContractPlanCoverage)(nil),        // 93: metaxisdata.store.QualityContractPlanCoverage
+	(*QualityContractPlanCadence)(nil),         // 94: metaxisdata.store.QualityContractPlanCadence
+	(*QualityChangeRequestItem)(nil),           // 95: metaxisdata.store.QualityChangeRequestItem
+	(*QualityChangeRequestItems)(nil),          // 96: metaxisdata.store.QualityChangeRequestItems
+	(*QualityChangeRequestItemResult)(nil),     // 97: metaxisdata.store.QualityChangeRequestItemResult
+	(*QualityChangeRequestItemResults)(nil),    // 98: metaxisdata.store.QualityChangeRequestItemResults
+	(*QualityChangeRejectionReasons)(nil),      // 99: metaxisdata.store.QualityChangeRejectionReasons
+	(*QualityInvestigationEvidence)(nil),       // 100: metaxisdata.store.QualityInvestigationEvidence
+	(*QualityInvestigationHypothesis)(nil),     // 101: metaxisdata.store.QualityInvestigationHypothesis
+	(*QualityInvestigation)(nil),               // 102: metaxisdata.store.QualityInvestigation
+	(*QualityInvestigationEvidenceList)(nil),   // 103: metaxisdata.store.QualityInvestigationEvidenceList
+	(*QualityInvestigationHypothesisList)(nil), // 104: metaxisdata.store.QualityInvestigationHypothesisList
+	(*QualityInvestigationActionRefs)(nil),     // 105: metaxisdata.store.QualityInvestigationActionRefs
+	(*QualityContractPlan)(nil),                // 106: metaxisdata.store.QualityContractPlan
+	(*QualityContractSnapshot)(nil),            // 107: metaxisdata.store.QualityContractSnapshot
+	(*QualityContractCheck)(nil),               // 108: metaxisdata.store.QualityContractCheck
+	(*timestamppb.Timestamp)(nil),              // 109: google.protobuf.Timestamp
+	(MetaType)(0),                              // 110: metaxisdata.store.MetaType
 }
 var file_store_data_quality_proto_depIdxs = []int32{
-	38,  // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
+	41,  // 0: metaxisdata.store.QualityFilter.clauses:type_name -> metaxisdata.store.QualityFilterClause
 	15,  // 1: metaxisdata.store.QualityFilterClause.op:type_name -> metaxisdata.store.QualityFilterOperator
 	14,  // 2: metaxisdata.store.QualityThresholds.comparison:type_name -> metaxisdata.store.QualityComparison
 	13,  // 3: metaxisdata.store.QualityThresholds.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	44,  // 4: metaxisdata.store.QualityExecutionEvidence.samples:type_name -> metaxisdata.store.FailureSample
-	44,  // 5: metaxisdata.store.QualityExecutionEvidence.passing_samples:type_name -> metaxisdata.store.FailureSample
-	42,  // 6: metaxisdata.store.QualityExecutionEvidence.segments:type_name -> metaxisdata.store.SegmentObservation
-	43,  // 7: metaxisdata.store.SegmentObservation.observed:type_name -> metaxisdata.store.SegmentRecord
-	43,  // 8: metaxisdata.store.SegmentObservation.new_segments:type_name -> metaxisdata.store.SegmentRecord
-	43,  // 9: metaxisdata.store.SegmentObservation.disappeared:type_name -> metaxisdata.store.SegmentRecord
-	100, // 10: metaxisdata.store.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
-	45,  // 11: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
-	47,  // 12: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
-	51,  // 13: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
-	52,  // 14: metaxisdata.store.QualitySuggestionPayload.label:type_name -> metaxisdata.store.SemanticLabelSuggestion
-	57,  // 15: metaxisdata.store.QualityRuleDraftConfig.config:type_name -> metaxisdata.store.QualityRuleConfig
+	47,  // 4: metaxisdata.store.QualityExecutionEvidence.samples:type_name -> metaxisdata.store.FailureSample
+	47,  // 5: metaxisdata.store.QualityExecutionEvidence.passing_samples:type_name -> metaxisdata.store.FailureSample
+	45,  // 6: metaxisdata.store.QualityExecutionEvidence.segments:type_name -> metaxisdata.store.SegmentObservation
+	46,  // 7: metaxisdata.store.SegmentObservation.observed:type_name -> metaxisdata.store.SegmentRecord
+	46,  // 8: metaxisdata.store.SegmentObservation.new_segments:type_name -> metaxisdata.store.SegmentRecord
+	46,  // 9: metaxisdata.store.SegmentObservation.disappeared:type_name -> metaxisdata.store.SegmentRecord
+	109, // 10: metaxisdata.store.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
+	48,  // 11: metaxisdata.store.FailureSample.columns:type_name -> metaxisdata.store.ColumnValue
+	50,  // 12: metaxisdata.store.ColumnProfile.top_values:type_name -> metaxisdata.store.ProfileValue
+	54,  // 13: metaxisdata.store.QualitySuggestionPayload.rule:type_name -> metaxisdata.store.QualityRuleDraftConfig
+	55,  // 14: metaxisdata.store.QualitySuggestionPayload.label:type_name -> metaxisdata.store.SemanticLabelSuggestion
+	60,  // 15: metaxisdata.store.QualityRuleDraftConfig.config:type_name -> metaxisdata.store.QualityRuleConfig
 	3,   // 16: metaxisdata.store.QualityRuleDraftConfig.severity:type_name -> metaxisdata.store.QualitySeverity
 	17,  // 17: metaxisdata.store.SemanticLabelSuggestion.label:type_name -> metaxisdata.store.QualitySemanticType
-	48,  // 18: metaxisdata.store.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.store.SemanticLabelEvidence
+	51,  // 18: metaxisdata.store.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.store.SemanticLabelEvidence
 	0,   // 19: metaxisdata.store.SemanticLabelSuggestion.suggested_rule_types:type_name -> metaxisdata.store.QualityRuleType
-	54,  // 20: metaxisdata.store.DataQualityLLMResult.rule_draft:type_name -> metaxisdata.store.RuleDraftResult
-	55,  // 21: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
-	51,  // 22: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
-	56,  // 23: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
-	59,  // 24: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
-	60,  // 25: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
-	61,  // 26: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
-	62,  // 27: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
-	63,  // 28: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
-	64,  // 29: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
-	67,  // 30: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
-	68,  // 31: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
-	69,  // 32: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
-	70,  // 33: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
-	71,  // 34: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
-	72,  // 35: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
-	73,  // 36: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
-	74,  // 37: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
-	78,  // 38: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
-	79,  // 39: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
-	80,  // 40: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
-	82,  // 41: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
-	75,  // 42: metaxisdata.store.QualityRuleConfig.standard_code:type_name -> metaxisdata.store.StandardCodeConfig
-	66,  // 43: metaxisdata.store.QualityRuleConfig.segment_check:type_name -> metaxisdata.store.SegmentCheckConfig
+	57,  // 20: metaxisdata.store.DataQualityLLMResult.rule_draft:type_name -> metaxisdata.store.RuleDraftResult
+	58,  // 21: metaxisdata.store.DataQualityLLMResult.explanation:type_name -> metaxisdata.store.ExplanationResult
+	54,  // 22: metaxisdata.store.RuleDraftResult.suggestions:type_name -> metaxisdata.store.QualityRuleDraftConfig
+	59,  // 23: metaxisdata.store.ExplanationResult.hypotheses:type_name -> metaxisdata.store.ExplanationHypothesis
+	62,  // 24: metaxisdata.store.QualityRuleConfig.row_count:type_name -> metaxisdata.store.RowCountConfig
+	63,  // 25: metaxisdata.store.QualityRuleConfig.row_count_change:type_name -> metaxisdata.store.RowCountChangeConfig
+	64,  // 26: metaxisdata.store.QualityRuleConfig.null_percent:type_name -> metaxisdata.store.NullPercentConfig
+	65,  // 27: metaxisdata.store.QualityRuleConfig.unique:type_name -> metaxisdata.store.UniqueConfig
+	66,  // 28: metaxisdata.store.QualityRuleConfig.unique_combination:type_name -> metaxisdata.store.UniqueCombinationConfig
+	67,  // 29: metaxisdata.store.QualityRuleConfig.accepted_values:type_name -> metaxisdata.store.AcceptedValuesConfig
+	70,  // 30: metaxisdata.store.QualityRuleConfig.range:type_name -> metaxisdata.store.RangeConfig
+	71,  // 31: metaxisdata.store.QualityRuleConfig.regex:type_name -> metaxisdata.store.RegexConfig
+	72,  // 32: metaxisdata.store.QualityRuleConfig.string_length:type_name -> metaxisdata.store.StringLengthConfig
+	73,  // 33: metaxisdata.store.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.store.ReferentialIntegrityConfig
+	74,  // 34: metaxisdata.store.QualityRuleConfig.cross_column:type_name -> metaxisdata.store.CrossColumnConfig
+	75,  // 35: metaxisdata.store.QualityRuleConfig.freshness:type_name -> metaxisdata.store.FreshnessConfig
+	76,  // 36: metaxisdata.store.QualityRuleConfig.custom_sql:type_name -> metaxisdata.store.CustomSQLConfig
+	77,  // 37: metaxisdata.store.QualityRuleConfig.cel_expression:type_name -> metaxisdata.store.CelExpressionConfig
+	81,  // 38: metaxisdata.store.QualityRuleConfig.schema_drift:type_name -> metaxisdata.store.SchemaDriftConfig
+	82,  // 39: metaxisdata.store.QualityRuleConfig.group_check:type_name -> metaxisdata.store.GroupCheckConfig
+	83,  // 40: metaxisdata.store.QualityRuleConfig.aggregate:type_name -> metaxisdata.store.AggregateConfig
+	85,  // 41: metaxisdata.store.QualityRuleConfig.cross_table:type_name -> metaxisdata.store.CrossTableConfig
+	78,  // 42: metaxisdata.store.QualityRuleConfig.standard_code:type_name -> metaxisdata.store.StandardCodeConfig
+	69,  // 43: metaxisdata.store.QualityRuleConfig.segment_check:type_name -> metaxisdata.store.SegmentCheckConfig
 	12,  // 44: metaxisdata.store.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.store.QualityThresholdMetric
-	37,  // 45: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
+	40,  // 45: metaxisdata.store.QualityRuleConfig.filter:type_name -> metaxisdata.store.QualityFilter
 	13,  // 46: metaxisdata.store.QualityRuleConfig.on_empty:type_name -> metaxisdata.store.QualityEmptyBehavior
-	58,  // 47: metaxisdata.store.QualityRuleConfig.sampling:type_name -> metaxisdata.store.QualityRuleSampling
-	65,  // 48: metaxisdata.store.AcceptedValuesConfig.query:type_name -> metaxisdata.store.AcceptedValuesQuery
+	61,  // 47: metaxisdata.store.QualityRuleConfig.sampling:type_name -> metaxisdata.store.QualityRuleSampling
+	68,  // 48: metaxisdata.store.AcceptedValuesConfig.query:type_name -> metaxisdata.store.AcceptedValuesQuery
 	16,  // 49: metaxisdata.store.CrossColumnConfig.op:type_name -> metaxisdata.store.QualityComparisonOperator
 	1,   // 50: metaxisdata.store.StandardCodeConfig.standard:type_name -> metaxisdata.store.QualityStandardCode
-	77,  // 51: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
+	80,  // 51: metaxisdata.store.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.store.SchemaDriftColumn
 	23,  // 52: metaxisdata.store.AggregateConfig.function:type_name -> metaxisdata.store.QualityAggregateFunction
-	101, // 53: metaxisdata.store.CrossTableReference.meta_type:type_name -> metaxisdata.store.MetaType
-	36,  // 54: metaxisdata.store.CrossTableReference.path:type_name -> metaxisdata.store.QualityTargetPath
+	110, // 53: metaxisdata.store.CrossTableReference.meta_type:type_name -> metaxisdata.store.MetaType
+	39,  // 54: metaxisdata.store.CrossTableReference.path:type_name -> metaxisdata.store.QualityTargetPath
 	23,  // 55: metaxisdata.store.CrossTableConfig.left_function:type_name -> metaxisdata.store.QualityAggregateFunction
 	23,  // 56: metaxisdata.store.CrossTableConfig.right_function:type_name -> metaxisdata.store.QualityAggregateFunction
-	81,  // 57: metaxisdata.store.CrossTableConfig.reference:type_name -> metaxisdata.store.CrossTableReference
-	37,  // 58: metaxisdata.store.CrossTableConfig.right_filter:type_name -> metaxisdata.store.QualityFilter
-	36,  // 59: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
+	84,  // 57: metaxisdata.store.CrossTableConfig.reference:type_name -> metaxisdata.store.CrossTableReference
+	40,  // 58: metaxisdata.store.CrossTableConfig.right_filter:type_name -> metaxisdata.store.QualityFilter
+	39,  // 59: metaxisdata.store.QualitySuggestionJobTarget.path:type_name -> metaxisdata.store.QualityTargetPath
 	25,  // 60: metaxisdata.store.QualitySuggestionJobTarget.state:type_name -> metaxisdata.store.QualitySuggestionJobTargetState
-	83,  // 61: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
-	50,  // 62: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
-	84,  // 63: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
+	86,  // 61: metaxisdata.store.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.store.QualityLLMDiagnostic
+	53,  // 62: metaxisdata.store.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.store.QualitySuggestionQueueSummary
+	87,  // 63: metaxisdata.store.QualitySuggestionJobTargets.targets:type_name -> metaxisdata.store.QualitySuggestionJobTarget
 	27,  // 64: metaxisdata.store.QualityContractIntentStatement.property:type_name -> metaxisdata.store.QualityCoverageProperty
 	27,  // 65: metaxisdata.store.QualityContractIntentExemption.property:type_name -> metaxisdata.store.QualityCoverageProperty
 	26,  // 66: metaxisdata.store.QualityContractIntent.criticality:type_name -> metaxisdata.store.QualityContractCriticality
-	86,  // 67: metaxisdata.store.QualityContractIntent.statements:type_name -> metaxisdata.store.QualityContractIntentStatement
-	87,  // 68: metaxisdata.store.QualityContractIntent.exemptions:type_name -> metaxisdata.store.QualityContractIntentExemption
+	89,  // 67: metaxisdata.store.QualityContractIntent.statements:type_name -> metaxisdata.store.QualityContractIntentStatement
+	90,  // 68: metaxisdata.store.QualityContractIntent.exemptions:type_name -> metaxisdata.store.QualityContractIntentExemption
 	28,  // 69: metaxisdata.store.QualityContractIntent.source:type_name -> metaxisdata.store.QualityContractIntentSource
-	37,  // 70: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
+	40,  // 70: metaxisdata.store.QualityContractSettings.filter:type_name -> metaxisdata.store.QualityFilter
 	3,   // 71: metaxisdata.store.QualityContractSettings.default_severity:type_name -> metaxisdata.store.QualitySeverity
-	88,  // 72: metaxisdata.store.QualityContractSettings.intent:type_name -> metaxisdata.store.QualityContractIntent
+	91,  // 72: metaxisdata.store.QualityContractSettings.intent:type_name -> metaxisdata.store.QualityContractIntent
 	27,  // 73: metaxisdata.store.QualityContractPlanCoverage.property:type_name -> metaxisdata.store.QualityCoverageProperty
 	29,  // 74: metaxisdata.store.QualityContractPlanCoverage.source:type_name -> metaxisdata.store.QualityCoverageSource
 	32,  // 75: metaxisdata.store.QualityChangeRequestItem.kind:type_name -> metaxisdata.store.QualityChangeRequestItemKind
 	27,  // 76: metaxisdata.store.QualityChangeRequestItem.property:type_name -> metaxisdata.store.QualityCoverageProperty
 	2,   // 77: metaxisdata.store.QualityChangeRequestItem.dimension:type_name -> metaxisdata.store.QualityDimension
-	92,  // 78: metaxisdata.store.QualityChangeRequestItems.items:type_name -> metaxisdata.store.QualityChangeRequestItem
-	35,  // 79: metaxisdata.store.QualityChangeRequestItemResult.status:type_name -> metaxisdata.store.QualityChangeRequestItemResult.Status
-	94,  // 80: metaxisdata.store.QualityChangeRequestItemResults.results:type_name -> metaxisdata.store.QualityChangeRequestItemResult
+	95,  // 78: metaxisdata.store.QualityChangeRequestItems.items:type_name -> metaxisdata.store.QualityChangeRequestItem
+	38,  // 79: metaxisdata.store.QualityChangeRequestItemResult.status:type_name -> metaxisdata.store.QualityChangeRequestItemResult.Status
+	97,  // 80: metaxisdata.store.QualityChangeRequestItemResults.results:type_name -> metaxisdata.store.QualityChangeRequestItemResult
 	33,  // 81: metaxisdata.store.QualityChangeRejectionReasons.reasons:type_name -> metaxisdata.store.QualityChangeRejectionReason
-	90,  // 82: metaxisdata.store.QualityContractPlan.coverage:type_name -> metaxisdata.store.QualityContractPlanCoverage
-	91,  // 83: metaxisdata.store.QualityContractPlan.cadence:type_name -> metaxisdata.store.QualityContractPlanCadence
-	89,  // 84: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
-	99,  // 85: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
-	97,  // 86: metaxisdata.store.QualityContractSnapshot.plan:type_name -> metaxisdata.store.QualityContractPlan
-	0,   // 87: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
-	3,   // 88: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
-	89,  // [89:89] is the sub-list for method output_type
-	89,  // [89:89] is the sub-list for method input_type
-	89,  // [89:89] is the sub-list for extension type_name
-	89,  // [89:89] is the sub-list for extension extendee
-	0,   // [0:89] is the sub-list for field type_name
+	39,  // 82: metaxisdata.store.QualityInvestigation.target:type_name -> metaxisdata.store.QualityTargetPath
+	35,  // 83: metaxisdata.store.QualityInvestigation.trigger:type_name -> metaxisdata.store.QualityInvestigationTrigger
+	34,  // 84: metaxisdata.store.QualityInvestigation.status:type_name -> metaxisdata.store.QualityInvestigationStatus
+	36,  // 85: metaxisdata.store.QualityInvestigation.verdict:type_name -> metaxisdata.store.QualityInvestigationVerdict
+	101, // 86: metaxisdata.store.QualityInvestigation.hypotheses:type_name -> metaxisdata.store.QualityInvestigationHypothesis
+	100, // 87: metaxisdata.store.QualityInvestigation.evidence:type_name -> metaxisdata.store.QualityInvestigationEvidence
+	100, // 88: metaxisdata.store.QualityInvestigationEvidenceList.evidence:type_name -> metaxisdata.store.QualityInvestigationEvidence
+	101, // 89: metaxisdata.store.QualityInvestigationHypothesisList.hypotheses:type_name -> metaxisdata.store.QualityInvestigationHypothesis
+	93,  // 90: metaxisdata.store.QualityContractPlan.coverage:type_name -> metaxisdata.store.QualityContractPlanCoverage
+	94,  // 91: metaxisdata.store.QualityContractPlan.cadence:type_name -> metaxisdata.store.QualityContractPlanCadence
+	92,  // 92: metaxisdata.store.QualityContractSnapshot.settings:type_name -> metaxisdata.store.QualityContractSettings
+	108, // 93: metaxisdata.store.QualityContractSnapshot.checks:type_name -> metaxisdata.store.QualityContractCheck
+	106, // 94: metaxisdata.store.QualityContractSnapshot.plan:type_name -> metaxisdata.store.QualityContractPlan
+	0,   // 95: metaxisdata.store.QualityContractCheck.rule_type:type_name -> metaxisdata.store.QualityRuleType
+	3,   // 96: metaxisdata.store.QualityContractCheck.severity:type_name -> metaxisdata.store.QualitySeverity
+	97,  // [97:97] is the sub-list for method output_type
+	97,  // [97:97] is the sub-list for method input_type
+	97,  // [97:97] is the sub-list for extension type_name
+	97,  // [97:97] is the sub-list for extension extendee
+	0,   // [0:97] is the sub-list for field type_name
 }
 
 func init() { file_store_data_quality_proto_init() }
@@ -8744,8 +9410,8 @@ func file_store_data_quality_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_store_data_quality_proto_rawDesc), len(file_store_data_quality_proto_rawDesc)),
-			NumEnums:      36,
-			NumMessages:   64,
+			NumEnums:      39,
+			NumMessages:   70,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

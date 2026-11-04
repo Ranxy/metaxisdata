@@ -7878,6 +7878,362 @@ export enum DecideQualityChangeRequestRequest_Decision {
 export declare const DecideQualityChangeRequestRequest_DecisionSchema: GenEnum<DecideQualityChangeRequestRequest_Decision>;
 
 /**
+ * QualityInvestigationEvidence is one deterministic reference behind an
+ * investigation. It is a reference, never a copy of samples.
+ *
+ * @generated from message metaxisdata.v1.QualityInvestigationEvidence
+ */
+export declare type QualityInvestigationEvidence = Message<"metaxisdata.v1.QualityInvestigationEvidence"> & {
+  /**
+   * EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE.
+   *
+   * @generated from field: string kind = 1;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: string reference = 2;
+   */
+  reference: string;
+
+  /**
+   * @generated from field: string note = 3;
+   */
+  note: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityInvestigationEvidence.
+ * Use `create(QualityInvestigationEvidenceSchema)` to create a new message.
+ */
+export declare const QualityInvestigationEvidenceSchema: GenMessage<QualityInvestigationEvidence>;
+
+/**
+ * QualityInvestigationHypothesis is one candidate explanation.
+ *
+ * @generated from message metaxisdata.v1.QualityInvestigationHypothesis
+ */
+export declare type QualityInvestigationHypothesis = Message<"metaxisdata.v1.QualityInvestigationHypothesis"> & {
+  /**
+   * @generated from field: string statement = 1;
+   */
+  statement: string;
+
+  /**
+   * CONFIRMED, REJECTED or OPEN.
+   *
+   * @generated from field: string status = 2;
+   */
+  status: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityInvestigationHypothesis.
+ * Use `create(QualityInvestigationHypothesisSchema)` to create a new message.
+ */
+export declare const QualityInvestigationHypothesisSchema: GenMessage<QualityInvestigationHypothesis>;
+
+/**
+ * QualityInvestigation is one agent's work product on one event. It is read-only
+ * after creation in this slice: it never changes a check's verdict or an issue.
+ *
+ * @generated from message metaxisdata.v1.QualityInvestigation
+ */
+export declare type QualityInvestigation = Message<"metaxisdata.v1.QualityInvestigation"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 2;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationTrigger trigger = 3;
+   */
+  trigger: QualityInvestigationTrigger;
+
+  /**
+   * @generated from field: string trigger_reference = 4;
+   */
+  triggerReference: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationStatus status = 5;
+   */
+  status: QualityInvestigationStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationVerdict verdict = 6;
+   */
+  verdict: QualityInvestigationVerdict;
+
+  /**
+   * @generated from field: string summary = 7;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigationHypothesis hypotheses = 8;
+   */
+  hypotheses: QualityInvestigationHypothesis[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigationEvidence evidence = 9;
+   */
+  evidence: QualityInvestigationEvidence[];
+
+  /**
+   * Names of change requests the investigation proposed.
+   *
+   * @generated from field: repeated string action_refs = 10;
+   */
+  actionRefs: string[];
+
+  /**
+   * @generated from field: string provider = 11;
+   */
+  provider: string;
+
+  /**
+   * @generated from field: string model = 12;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string prompt_version = 13;
+   */
+  promptVersion: string;
+
+  /**
+   * @generated from field: int64 prompt_tokens = 14;
+   */
+  promptTokens: bigint;
+
+  /**
+   * @generated from field: int64 completion_tokens = 15;
+   */
+  completionTokens: bigint;
+
+  /**
+   * @generated from field: string failure_reason = 16;
+   */
+  failureReason: string;
+
+  /**
+   * Format: users/{user}. The agent principal that wrote it, when recorded.
+   *
+   * @generated from field: string created_by = 17;
+   */
+  createdBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 18;
+   */
+  createTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityInvestigation.
+ * Use `create(QualityInvestigationSchema)` to create a new message.
+ */
+export declare const QualityInvestigationSchema: GenMessage<QualityInvestigation>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityInvestigationRequest
+ */
+export declare type CreateQualityInvestigationRequest = Message<"metaxisdata.v1.CreateQualityInvestigationRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationTrigger trigger = 4;
+   */
+  trigger: QualityInvestigationTrigger;
+
+  /**
+   * The triggering object's resource name or value.
+   *
+   * @generated from field: string trigger_reference = 5;
+   */
+  triggerReference: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationStatus status = 6;
+   */
+  status: QualityInvestigationStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationVerdict verdict = 7;
+   */
+  verdict: QualityInvestigationVerdict;
+
+  /**
+   * @generated from field: string summary = 8;
+   */
+  summary: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigationHypothesis hypotheses = 9;
+   */
+  hypotheses: QualityInvestigationHypothesis[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigationEvidence evidence = 10;
+   */
+  evidence: QualityInvestigationEvidence[];
+
+  /**
+   * @generated from field: repeated string action_refs = 11;
+   */
+  actionRefs: string[];
+
+  /**
+   * @generated from field: string provider = 12;
+   */
+  provider: string;
+
+  /**
+   * @generated from field: string model = 13;
+   */
+  model: string;
+
+  /**
+   * @generated from field: string prompt_version = 14;
+   */
+  promptVersion: string;
+
+  /**
+   * @generated from field: int64 prompt_tokens = 15;
+   */
+  promptTokens: bigint;
+
+  /**
+   * @generated from field: int64 completion_tokens = 16;
+   */
+  completionTokens: bigint;
+
+  /**
+   * @generated from field: string failure_reason = 17;
+   */
+  failureReason: string;
+
+  /**
+   * An idempotency key from the agent's run; a retry with the same key returns the
+   * recorded investigation instead of writing a second one.
+   *
+   * @generated from field: string request_fingerprint = 18;
+   */
+  requestFingerprint: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityInvestigationRequest.
+ * Use `create(CreateQualityInvestigationRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityInvestigationRequestSchema: GenMessage<CreateQualityInvestigationRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityInvestigationRequest
+ */
+export declare type GetQualityInvestigationRequest = Message<"metaxisdata.v1.GetQualityInvestigationRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityInvestigationRequest.
+ * Use `create(GetQualityInvestigationRequestSchema)` to create a new message.
+ */
+export declare const GetQualityInvestigationRequestSchema: GenMessage<GetQualityInvestigationRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityInvestigationsRequest
+ */
+export declare type ListQualityInvestigationsRequest = Message<"metaxisdata.v1.ListQualityInvestigationsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationStatus status = 3;
+   */
+  status: QualityInvestigationStatus;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityInvestigationTrigger trigger = 4;
+   */
+  trigger: QualityInvestigationTrigger;
+
+  /**
+   * @generated from field: int32 page_size = 5;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 6;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityInvestigationsRequest.
+ * Use `create(ListQualityInvestigationsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityInvestigationsRequestSchema: GenMessage<ListQualityInvestigationsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityInvestigationsResponse
+ */
+export declare type ListQualityInvestigationsResponse = Message<"metaxisdata.v1.ListQualityInvestigationsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigation quality_investigations = 1;
+   */
+  qualityInvestigations: QualityInvestigation[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityInvestigationsResponse.
+ * Use `create(ListQualityInvestigationsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityInvestigationsResponseSchema: GenMessage<ListQualityInvestigationsResponse>;
+
+/**
  * QualityAction is one card of the WS2 action catalog with its live policy verdict.
  *
  * @generated from message metaxisdata.v1.QualityAction
@@ -11328,6 +11684,123 @@ export enum QualityChangeRejectionReason {
 export declare const QualityChangeRejectionReasonSchema: GenEnum<QualityChangeRejectionReason>;
 
 /**
+ * QualityInvestigationStatus is where one investigation stands.
+ *
+ * @generated from enum metaxisdata.v1.QualityInvestigationStatus
+ */
+export enum QualityInvestigationStatus {
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_STATUS_CONCLUDED = 1;
+   */
+  CONCLUDED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_STATUS_FAILED = 2;
+   */
+  FAILED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_STATUS_INTERRUPTED = 3;
+   */
+  INTERRUPTED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityInvestigationStatus.
+ */
+export declare const QualityInvestigationStatusSchema: GenEnum<QualityInvestigationStatus>;
+
+/**
+ * QualityInvestigationTrigger says what started the investigation.
+ *
+ * @generated from enum metaxisdata.v1.QualityInvestigationTrigger
+ */
+export enum QualityInvestigationTrigger {
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_EXECUTION = 1;
+   */
+  EXECUTION = 1,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_ISSUE = 2;
+   */
+  ISSUE = 2,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE = 3;
+   */
+  SCHEMA_CHANGE = 3,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP = 4;
+   */
+  COVERAGE_GAP = 4,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT = 5;
+   */
+  CONTRACT_DRIFT = 5,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_TRIGGER_MANUAL = 6;
+   */
+  MANUAL = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityInvestigationTrigger.
+ */
+export declare const QualityInvestigationTriggerSchema: GenEnum<QualityInvestigationTrigger>;
+
+/**
+ * QualityInvestigationVerdict is the investigation's classification of the event. It
+ * never replaces the engine's verdict.
+ *
+ * @generated from enum metaxisdata.v1.QualityInvestigationVerdict
+ */
+export enum QualityInvestigationVerdict {
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE = 1;
+   */
+  ROOT_CAUSE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR = 2;
+   */
+  CONTRIBUTING_FACTOR = 2,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE = 3;
+   */
+  INCONCLUSIVE = 3,
+
+  /**
+   * @generated from enum value: QUALITY_INVESTIGATION_VERDICT_UNRELATED = 4;
+   */
+  UNRELATED = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityInvestigationVerdict.
+ */
+export declare const QualityInvestigationVerdictSchema: GenEnum<QualityInvestigationVerdict>;
+
+/**
  * QualityContractChangeKind says which sections of a version changed against its
  * predecessor.
  *
@@ -12122,6 +12595,38 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof PublishQualityContractRequestSchema;
     output: typeof PublishQualityContractResponseSchema;
+  },
+  /**
+   * Record one investigation: an agent's hypotheses, deterministic evidence
+   * references, verdict and cost on one event. It never changes the check's verdict
+   * or an issue's state. The agent needs autonomy enabled.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityInvestigation
+   */
+  createQualityInvestigation: {
+    methodKind: "unary";
+    input: typeof CreateQualityInvestigationRequestSchema;
+    output: typeof QualityInvestigationSchema;
+  },
+  /**
+   * Read one investigation.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityInvestigation
+   */
+  getQualityInvestigation: {
+    methodKind: "unary";
+    input: typeof GetQualityInvestigationRequestSchema;
+    output: typeof QualityInvestigationSchema;
+  },
+  /**
+   * List investigations, newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityInvestigations
+   */
+  listQualityInvestigations: {
+    methodKind: "unary";
+    input: typeof ListQualityInvestigationsRequestSchema;
+    output: typeof ListQualityInvestigationsResponseSchema;
   },
   /**
    * Read the WS2 action catalog and how the autonomy policy would decide each action

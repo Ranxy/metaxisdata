@@ -4414,6 +4414,7 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
 	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(policy.Msg, "A2-1"))
 	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(policy.Msg, "A1-1"))
+	require.Equal(t, "ALLOWED", actionDecision(policy.Msg, "A0-3"), "the agent may record an investigation")
 
 	// The agent can read the same policy and see its own verdicts: proposal allowed,
 	// person-only writes not exposed.
@@ -4469,6 +4470,57 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		}))
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, decided.Msg.GetState())
+
+	// The agent records an investigation: evidence references, a verdict and the
+	// cost, attributed to the agent principal, idempotently.
+	investigation, err := agentClient.CreateQualityInvestigation(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityInvestigationRequest{
+			Parent:           "workspaces/-",
+			TargetGuid:       fixture.usersGUID,
+			MetaType:         v1pb.MetaType_TABLE,
+			Trigger:          v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
+			TriggerReference: "qualityExecutions/1",
+			Verdict:          v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE,
+			Summary:          "the upstream batch was short",
+			Hypotheses: []*v1pb.QualityInvestigationHypothesis{{
+				Statement: "upstream delivered fewer rows", Status: "CONFIRMED",
+			}},
+			Evidence: []*v1pb.QualityInvestigationEvidence{{
+				Kind: "EXECUTION", Reference: "qualityExecutions/1",
+			}},
+			PromptTokens: 120, CompletionTokens: 40,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityInvestigationStatus_QUALITY_INVESTIGATION_STATUS_CONCLUDED, investigation.Msg.GetStatus())
+	require.Equal(t, v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE, investigation.Msg.GetVerdict())
+	require.Len(t, investigation.Msg.GetEvidence(), 1)
+	require.NotEmpty(t, investigation.Msg.GetCreatedBy())
+
+	// A retry with the same work product returns the recorded investigation.
+	retried, err := agentClient.CreateQualityInvestigation(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityInvestigationRequest{
+			Parent:           "workspaces/-",
+			TargetGuid:       fixture.usersGUID,
+			MetaType:         v1pb.MetaType_TABLE,
+			Trigger:          v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
+			TriggerReference: "qualityExecutions/1",
+			Verdict:          v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE,
+			Summary:          "the upstream batch was short",
+			Hypotheses: []*v1pb.QualityInvestigationHypothesis{{
+				Statement: "upstream delivered fewer rows", Status: "CONFIRMED",
+			}},
+			Evidence: []*v1pb.QualityInvestigationEvidence{{
+				Kind: "EXECUTION", Reference: "qualityExecutions/1",
+			}},
+			PromptTokens: 120, CompletionTokens: 40,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, investigation.Msg.GetName(), retried.Msg.GetName())
+
+	listedInvestigations, err := fixture.dataQuality.ListQualityInvestigations(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityInvestigationsRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.Len(t, listedInvestigations.Msg.GetQualityInvestigations(), 1)
 
 	// Disabling the agent ends its ability to write (and to read).
 	_, err = fixture.dataQuality.DisableQualityAgent(fixture.ctx,
