@@ -1109,6 +1109,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateQualityInvestigationRequest"><span class="badge">M</span>CreateQualityInvestigationRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateQualityRuleRequest"><span class="badge">M</span>CreateQualityRuleRequest</a>
                 </li>
               
@@ -1230,6 +1234,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetQualityExecutionRequest"><span class="badge">M</span>GetQualityExecutionRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityInvestigationRequest"><span class="badge">M</span>GetQualityInvestigationRequest</a>
                 </li>
               
                 <li>
@@ -1362,6 +1370,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListQualityExecutionsResponse"><span class="badge">M</span>ListQualityExecutionsResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityInvestigationsRequest"><span class="badge">M</span>ListQualityInvestigationsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityInvestigationsResponse"><span class="badge">M</span>ListQualityInvestigationsResponse</a>
                 </li>
               
                 <li>
@@ -1562,6 +1578,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityImpactAsset"><span class="badge">M</span>QualityImpactAsset</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityInvestigation"><span class="badge">M</span>QualityInvestigation</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityInvestigationEvidence"><span class="badge">M</span>QualityInvestigationEvidence</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityInvestigationHypothesis"><span class="badge">M</span>QualityInvestigationHypothesis</a>
                 </li>
               
                 <li>
@@ -1927,6 +1955,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityFrequencyTier"><span class="badge">E</span>QualityFrequencyTier</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityInvestigationStatus"><span class="badge">E</span>QualityInvestigationStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityInvestigationTrigger"><span class="badge">E</span>QualityInvestigationTrigger</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityInvestigationVerdict"><span class="badge">E</span>QualityInvestigationVerdict</a>
                 </li>
               
                 <li>
@@ -13912,6 +13952,150 @@ is a valid value for a target that has never been published. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateQualityInvestigationRequest">CreateQualityInvestigationRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationTrigger">QualityInvestigationTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger_reference</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The triggering object&#39;s resource name or value. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationStatus">QualityInvestigationStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>verdict</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationVerdict">QualityInvestigationVerdict</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>hypotheses</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationHypothesis">QualityInvestigationHypothesis</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>evidence</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationEvidence">QualityInvestigationEvidence</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>action_refs</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completion_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failure_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_fingerprint</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>An idempotency key from the agent&#39;s run; a retry with the same key returns the
+recorded investigation instead of writing a second one. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateQualityRuleRequest">CreateQualityRuleRequest</h3>
         <p></p>
 
@@ -15248,6 +15432,30 @@ not the overview&#39;s: there, every monitorable object counts. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityExecutions/{quality_execution} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityInvestigationRequest">GetQualityInvestigationRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation} </p></td>
                 </tr>
               
             </tbody>
@@ -16643,6 +16851,96 @@ Format: workspaces/{workspace}/qualityRuns/{quality_run} </p></td>
                 <tr>
                   <td>quality_executions</td>
                   <td><a href="#metaxisdata.v1.QualityExecution">QualityExecution</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityInvestigationsRequest">ListQualityInvestigationsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationStatus">QualityInvestigationStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationTrigger">QualityInvestigationTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityInvestigationsResponse">ListQualityInvestigationsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_investigations</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigation">QualityInvestigation</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -19623,6 +19921,218 @@ dependent, 2 a dependent of a dependent. </p></td>
 metadata browser uses. Unset when the asset has no non-archived check, which
 is &#34;unmonitored&#34;, not &#34;healthy&#34;; a target whose checks are all paused is
 present with enabled_rule_count = 0. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityInvestigation">QualityInvestigation</h3>
+        <p>QualityInvestigation is one agent's work product on one event. It is read-only</p><p>after creation in this slice: it never changes a check's verdict or an issue.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityInvestigations/{quality_investigation} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationTrigger">QualityInvestigationTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger_reference</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationStatus">QualityInvestigationStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>verdict</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationVerdict">QualityInvestigationVerdict</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>hypotheses</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationHypothesis">QualityInvestigationHypothesis</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>evidence</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationEvidence">QualityInvestigationEvidence</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>action_refs</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Names of change requests the investigation proposed. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>provider</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>model</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_version</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completion_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>failure_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. The agent principal that wrote it, when recorded. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityInvestigationEvidence">QualityInvestigationEvidence</h3>
+        <p>QualityInvestigationEvidence is one deterministic reference behind an</p><p>investigation. It is a reference, never a copy of samples.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>note</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityInvestigationHypothesis">QualityInvestigationHypothesis</h3>
+        <p>QualityInvestigationHypothesis is one candidate explanation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>statement</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>CONFIRMED, REJECTED or OPEN. </p></td>
                 </tr>
               
             </tbody>
@@ -24995,6 +25505,135 @@ accepted range expressed as a pass band.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityInvestigationStatus">QualityInvestigationStatus</h3>
+        <p>QualityInvestigationStatus is where one investigation stands.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_STATUS_CONCLUDED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_STATUS_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_STATUS_INTERRUPTED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityInvestigationTrigger">QualityInvestigationTrigger</h3>
+        <p>QualityInvestigationTrigger says what started the investigation.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_EXECUTION</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_ISSUE</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_TRIGGER_MANUAL</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityInvestigationVerdict">QualityInvestigationVerdict</h3>
+        <p>QualityInvestigationVerdict is the investigation's classification of the event. It</p><p>never replaces the engine's verdict.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_INVESTIGATION_VERDICT_UNRELATED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityIssueStatus">QualityIssueStatus</h3>
         <p>QualityIssueStatus is the lifecycle of a persistent problem behind a rule's</p><p>failures. RESOLVED is terminal: the next failing run opens a new issue rather</p><p>than reopening one.</p>
         <table class="enum-table">
@@ -26693,6 +27332,29 @@ version (no_changes=true).</p></td>
               </tr>
             
               <tr>
+                <td>CreateQualityInvestigation</td>
+                <td><a href="#metaxisdata.v1.CreateQualityInvestigationRequest">CreateQualityInvestigationRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityInvestigation">QualityInvestigation</a></td>
+                <td><p>Record one investigation: an agent&#39;s hypotheses, deterministic evidence
+references, verdict and cost on one event. It never changes the check&#39;s verdict
+or an issue&#39;s state. The agent needs autonomy enabled.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityInvestigation</td>
+                <td><a href="#metaxisdata.v1.GetQualityInvestigationRequest">GetQualityInvestigationRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityInvestigation">QualityInvestigation</a></td>
+                <td><p>Read one investigation.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityInvestigations</td>
+                <td><a href="#metaxisdata.v1.ListQualityInvestigationsRequest">ListQualityInvestigationsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityInvestigationsResponse">ListQualityInvestigationsResponse</a></td>
+                <td><p>List investigations, newest first.</p></td>
+              </tr>
+            
+              <tr>
                 <td>GetQualityActionPolicy</td>
                 <td><a href="#metaxisdata.v1.GetQualityActionPolicyRequest">GetQualityActionPolicyRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityActionPolicy">QualityActionPolicy</a></td>
@@ -27383,6 +28045,36 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualityContracts:publish</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityInvestigation</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityInvestigations</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityInvestigation</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityInvestigations/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityInvestigations</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityInvestigations</td>
+                <td></td>
               </tr>
               
             

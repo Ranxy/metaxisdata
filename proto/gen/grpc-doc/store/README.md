@@ -55,6 +55,12 @@
     - [QualityExecutionEvidence](#metaxisdata-store-QualityExecutionEvidence)
     - [QualityFilter](#metaxisdata-store-QualityFilter)
     - [QualityFilterClause](#metaxisdata-store-QualityFilterClause)
+    - [QualityInvestigation](#metaxisdata-store-QualityInvestigation)
+    - [QualityInvestigationActionRefs](#metaxisdata-store-QualityInvestigationActionRefs)
+    - [QualityInvestigationEvidence](#metaxisdata-store-QualityInvestigationEvidence)
+    - [QualityInvestigationEvidenceList](#metaxisdata-store-QualityInvestigationEvidenceList)
+    - [QualityInvestigationHypothesis](#metaxisdata-store-QualityInvestigationHypothesis)
+    - [QualityInvestigationHypothesisList](#metaxisdata-store-QualityInvestigationHypothesisList)
     - [QualityLLMDiagnostic](#metaxisdata-store-QualityLLMDiagnostic)
     - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
@@ -103,6 +109,9 @@
     - [QualityExecutionTrigger](#metaxisdata-store-QualityExecutionTrigger)
     - [QualityFilterOperator](#metaxisdata-store-QualityFilterOperator)
     - [QualityFrequencyTier](#metaxisdata-store-QualityFrequencyTier)
+    - [QualityInvestigationStatus](#metaxisdata-store-QualityInvestigationStatus)
+    - [QualityInvestigationTrigger](#metaxisdata-store-QualityInvestigationTrigger)
+    - [QualityInvestigationVerdict](#metaxisdata-store-QualityInvestigationVerdict)
     - [QualityIssueStatus](#metaxisdata-store-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-store-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-store-QualityLabelStatus)
@@ -1162,6 +1171,122 @@ QualityFilterClause is one comparison in a QualityFilter.
 
 
 
+<a name="metaxisdata-store-QualityInvestigation"></a>
+
+### QualityInvestigation
+QualityInvestigation is one agent&#39;s work product on one event: hypotheses,
+deterministic evidence references, a verdict and its cost. It is not a second
+verdict engine: an investigation conclusion never replaces the check&#39;s result and
+never opens or closes an issue by itself.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTargetPath](#metaxisdata-store-QualityTargetPath) |  |  |
+| trigger | [QualityInvestigationTrigger](#metaxisdata-store-QualityInvestigationTrigger) |  |  |
+| trigger_reference | [string](#string) |  |  |
+| status | [QualityInvestigationStatus](#metaxisdata-store-QualityInvestigationStatus) |  |  |
+| verdict | [QualityInvestigationVerdict](#metaxisdata-store-QualityInvestigationVerdict) |  |  |
+| summary | [string](#string) |  |  |
+| hypotheses | [QualityInvestigationHypothesis](#metaxisdata-store-QualityInvestigationHypothesis) | repeated |  |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-store-QualityInvestigationEvidence) | repeated |  |
+| action_refs | [string](#string) | repeated | Names of change requests the investigation proposed. |
+| provider | [string](#string) |  |  |
+| model | [string](#string) |  |  |
+| prompt_version | [string](#string) |  |  |
+| prompt_tokens | [int64](#int64) |  |  |
+| completion_tokens | [int64](#int64) |  |  |
+| failure_reason | [string](#string) |  | Set when the analysis failed; empty otherwise. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityInvestigationActionRefs"></a>
+
+### QualityInvestigationActionRefs
+QualityInvestigationActionRefs is the JSONB payload of
+quality_investigation.action_refs.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| refs | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityInvestigationEvidence"></a>
+
+### QualityInvestigationEvidence
+QualityInvestigationEvidence is one deterministic reference behind an
+investigation: an execution, an issue, a schema fingerprint, a lineage edge. It is
+a reference, never a copy of samples or payloads.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [string](#string) |  | A short kind such as EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE. |
+| reference | [string](#string) |  | The referenced resource name or value. |
+| note | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityInvestigationEvidenceList"></a>
+
+### QualityInvestigationEvidenceList
+QualityInvestigationEvidenceList is the JSONB payload of
+quality_investigation.evidence.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-store-QualityInvestigationEvidence) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityInvestigationHypothesis"></a>
+
+### QualityInvestigationHypothesis
+QualityInvestigationHypothesis is one candidate explanation and what the evidence
+did to it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| statement | [string](#string) |  |  |
+| status | [string](#string) |  | CONFIRMED, REJECTED or OPEN. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityInvestigationHypothesisList"></a>
+
+### QualityInvestigationHypothesisList
+QualityInvestigationHypothesisList is the JSONB payload of
+quality_investigation.hypotheses.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| hypotheses | [QualityInvestigationHypothesis](#metaxisdata-store-QualityInvestigationHypothesis) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityLLMDiagnostic"></a>
 
 ### QualityLLMDiagnostic
@@ -2075,6 +2200,56 @@ revision.
 | QUALITY_FREQUENCY_TIER_HOURLY | 1 |  |
 | QUALITY_FREQUENCY_TIER_DAILY | 2 |  |
 | QUALITY_FREQUENCY_TIER_WEEKLY | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityInvestigationStatus"></a>
+
+### QualityInvestigationStatus
+QualityInvestigationStatus is where one investigation stands. A concluded
+investigation is the normal result; a failed one records why the analysis could
+not finish.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_INVESTIGATION_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_INVESTIGATION_STATUS_CONCLUDED | 1 |  |
+| QUALITY_INVESTIGATION_STATUS_FAILED | 2 |  |
+| QUALITY_INVESTIGATION_STATUS_INTERRUPTED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityInvestigationTrigger"></a>
+
+### QualityInvestigationTrigger
+QualityInvestigationTrigger says what started the investigation. The reference is
+the triggering object&#39;s resource name; it is never a payload snapshot.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_INVESTIGATION_TRIGGER_EXECUTION | 1 |  |
+| QUALITY_INVESTIGATION_TRIGGER_ISSUE | 2 |  |
+| QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE | 3 |  |
+| QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP | 4 |  |
+| QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT | 5 |  |
+| QUALITY_INVESTIGATION_TRIGGER_MANUAL | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualityInvestigationVerdict"></a>
+
+### QualityInvestigationVerdict
+QualityInvestigationVerdict is the investigation&#39;s classification of the event. It
+never replaces the engine&#39;s verdict; it explains it.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED | 0 |  |
+| QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE | 1 |  |
+| QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR | 2 |  |
+| QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE | 3 |  |
+| QUALITY_INVESTIGATION_VERDICT_UNRELATED | 4 |  |
 
 
 

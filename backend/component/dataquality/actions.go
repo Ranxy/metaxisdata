@@ -69,7 +69,7 @@ type ActionCard struct {
 var actionCatalog = []ActionCard{
 	{ID: ActionReadEvidence, Title: "Read evidence", Level: AutonomyA0, Actor: ActorAgent, Implemented: true},
 	{ID: ActionPreviewProbe, Title: "Run a preview probe", Level: AutonomyA0, Actor: ActorAgent, Implemented: true},
-	{ID: ActionWriteInvestigation, Title: "Write an investigation", Level: AutonomyA0, Actor: ActorAgent},
+	{ID: ActionWriteInvestigation, Title: "Write an investigation", Level: AutonomyA0, Actor: ActorAgent, Implemented: true, AgentReachable: true},
 	{ID: ActionProposePlanChange, Title: "Propose a plan change", Level: AutonomyA0, Actor: ActorAgent, Implemented: true, AgentReachable: true},
 	{ID: ActionWriteAssetFact, Title: "Record an asset fact", Level: AutonomyA0, Actor: ActorAgent},
 	{ID: ActionProduceReport, Title: "Produce a coverage or trust report", Level: AutonomyA0, Actor: ActorAgent, Implemented: true, AgentReachable: true},

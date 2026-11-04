@@ -101,7 +101,7 @@ var PredefinedRoles = []*RoleMessage{
 	{
 		ResourceID:  QualityAgentRole,
 		Name:        "Quality agent",
-		Description: "Autonomous quality work: read quality plans and checks, write plan declarations and proposed change requests. It cannot publish, approve or edit rules.",
+		Description: "Autonomous quality work: read quality plans and checks, write plan declarations, proposed change requests and evidence-backed investigations. It cannot publish, approve or edit rules.",
 		Permissions: qualityAgentPermissions,
 	},
 }

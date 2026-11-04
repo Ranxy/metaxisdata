@@ -217,6 +217,15 @@ const (
 	// DataQualityServicePublishQualityContractProcedure is the fully-qualified name of the
 	// DataQualityService's PublishQualityContract RPC.
 	DataQualityServicePublishQualityContractProcedure = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	// DataQualityServiceCreateQualityInvestigationProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityInvestigation RPC.
+	DataQualityServiceCreateQualityInvestigationProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityInvestigation"
+	// DataQualityServiceGetQualityInvestigationProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityInvestigation RPC.
+	DataQualityServiceGetQualityInvestigationProcedure = "/metaxisdata.v1.DataQualityService/GetQualityInvestigation"
+	// DataQualityServiceListQualityInvestigationsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityInvestigations RPC.
+	DataQualityServiceListQualityInvestigationsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityInvestigations"
 	// DataQualityServiceGetQualityActionPolicyProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityActionPolicy RPC.
 	DataQualityServiceGetQualityActionPolicyProcedure = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
@@ -513,6 +522,14 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Record one investigation: an agent's hypotheses, deterministic evidence
+	// references, verdict and cost on one event. It never changes the check's verdict
+	// or an issue's state. The agent needs autonomy enabled.
+	CreateQualityInvestigation(context.Context, *connect.Request[v1.CreateQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error)
+	// Read one investigation.
+	GetQualityInvestigation(context.Context, *connect.Request[v1.GetQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error)
+	// List investigations, newest first.
+	ListQualityInvestigations(context.Context, *connect.Request[v1.ListQualityInvestigationsRequest]) (*connect.Response[v1.ListQualityInvestigationsResponse], error)
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error)
@@ -933,6 +950,24 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualityInvestigation: connect.NewClient[v1.CreateQualityInvestigationRequest, v1.QualityInvestigation](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityInvestigationProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityInvestigation")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityInvestigation: connect.NewClient[v1.GetQualityInvestigationRequest, v1.QualityInvestigation](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityInvestigationProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityInvestigation")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityInvestigations: connect.NewClient[v1.ListQualityInvestigationsRequest, v1.ListQualityInvestigationsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityInvestigationsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityInvestigations")),
+			connect.WithClientOptions(opts...),
+		),
 		getQualityActionPolicy: connect.NewClient[v1.GetQualityActionPolicyRequest, v1.QualityActionPolicy](
 			httpClient,
 			baseURL+DataQualityServiceGetQualityActionPolicyProcedure,
@@ -1077,6 +1112,9 @@ type dataQualityServiceClient struct {
 	listQualityCoverageGaps            *connect.Client[v1.ListQualityCoverageGapsRequest, v1.ListQualityCoverageGapsResponse]
 	updateQualityContract              *connect.Client[v1.UpdateQualityContractRequest, v1.QualityContract]
 	publishQualityContract             *connect.Client[v1.PublishQualityContractRequest, v1.PublishQualityContractResponse]
+	createQualityInvestigation         *connect.Client[v1.CreateQualityInvestigationRequest, v1.QualityInvestigation]
+	getQualityInvestigation            *connect.Client[v1.GetQualityInvestigationRequest, v1.QualityInvestigation]
+	listQualityInvestigations          *connect.Client[v1.ListQualityInvestigationsRequest, v1.ListQualityInvestigationsResponse]
 	getQualityActionPolicy             *connect.Client[v1.GetQualityActionPolicyRequest, v1.QualityActionPolicy]
 	stageQualityPlan                   *connect.Client[v1.StageQualityPlanRequest, v1.QualityContract]
 	createQualityChangeRequest         *connect.Client[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest]
@@ -1401,6 +1439,21 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, r
 	return c.publishQualityContract.CallUnary(ctx, req)
 }
 
+// CreateQualityInvestigation calls metaxisdata.v1.DataQualityService.CreateQualityInvestigation.
+func (c *dataQualityServiceClient) CreateQualityInvestigation(ctx context.Context, req *connect.Request[v1.CreateQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error) {
+	return c.createQualityInvestigation.CallUnary(ctx, req)
+}
+
+// GetQualityInvestigation calls metaxisdata.v1.DataQualityService.GetQualityInvestigation.
+func (c *dataQualityServiceClient) GetQualityInvestigation(ctx context.Context, req *connect.Request[v1.GetQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error) {
+	return c.getQualityInvestigation.CallUnary(ctx, req)
+}
+
+// ListQualityInvestigations calls metaxisdata.v1.DataQualityService.ListQualityInvestigations.
+func (c *dataQualityServiceClient) ListQualityInvestigations(ctx context.Context, req *connect.Request[v1.ListQualityInvestigationsRequest]) (*connect.Response[v1.ListQualityInvestigationsResponse], error) {
+	return c.listQualityInvestigations.CallUnary(ctx, req)
+}
+
 // GetQualityActionPolicy calls metaxisdata.v1.DataQualityService.GetQualityActionPolicy.
 func (c *dataQualityServiceClient) GetQualityActionPolicy(ctx context.Context, req *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error) {
 	return c.getQualityActionPolicy.CallUnary(ctx, req)
@@ -1722,6 +1775,14 @@ type DataQualityServiceHandler interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Record one investigation: an agent's hypotheses, deterministic evidence
+	// references, verdict and cost on one event. It never changes the check's verdict
+	// or an issue's state. The agent needs autonomy enabled.
+	CreateQualityInvestigation(context.Context, *connect.Request[v1.CreateQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error)
+	// Read one investigation.
+	GetQualityInvestigation(context.Context, *connect.Request[v1.GetQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error)
+	// List investigations, newest first.
+	ListQualityInvestigations(context.Context, *connect.Request[v1.ListQualityInvestigationsRequest]) (*connect.Response[v1.ListQualityInvestigationsResponse], error)
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error)
@@ -2138,6 +2199,24 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualityInvestigationHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityInvestigationProcedure,
+		svc.CreateQualityInvestigation,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityInvestigation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityInvestigationHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityInvestigationProcedure,
+		svc.GetQualityInvestigation,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityInvestigation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityInvestigationsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityInvestigationsProcedure,
+		svc.ListQualityInvestigations,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityInvestigations")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceGetQualityActionPolicyHandler := connect.NewUnaryHandler(
 		DataQualityServiceGetQualityActionPolicyProcedure,
 		svc.GetQualityActionPolicy,
@@ -2340,6 +2419,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualityContractHandler.ServeHTTP(w, r)
 		case DataQualityServicePublishQualityContractProcedure:
 			dataQualityServicePublishQualityContractHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityInvestigationProcedure:
+			dataQualityServiceCreateQualityInvestigationHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityInvestigationProcedure:
+			dataQualityServiceGetQualityInvestigationHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityInvestigationsProcedure:
+			dataQualityServiceListQualityInvestigationsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityActionPolicyProcedure:
 			dataQualityServiceGetQualityActionPolicyHandler.ServeHTTP(w, r)
 		case DataQualityServiceStageQualityPlanProcedure:
@@ -2617,6 +2702,18 @@ func (UnimplementedDataQualityServiceHandler) UpdateQualityContract(context.Cont
 
 func (UnimplementedDataQualityServiceHandler) PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.PublishQualityContract is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityInvestigation(context.Context, *connect.Request[v1.CreateQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityInvestigation is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityInvestigation(context.Context, *connect.Request[v1.GetQualityInvestigationRequest]) (*connect.Response[v1.QualityInvestigation], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityInvestigation is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityInvestigations(context.Context, *connect.Request[v1.ListQualityInvestigationsRequest]) (*connect.Response[v1.ListQualityInvestigationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityInvestigations is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error) {

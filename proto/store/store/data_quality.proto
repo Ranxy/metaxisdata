@@ -1291,6 +1291,99 @@ message QualityChangeRejectionReasons {
   repeated QualityChangeRejectionReason reasons = 1;
 }
 
+// QualityInvestigationStatus is where one investigation stands. A concluded
+// investigation is the normal result; a failed one records why the analysis could
+// not finish.
+enum QualityInvestigationStatus {
+  QUALITY_INVESTIGATION_STATUS_UNSPECIFIED = 0;
+  QUALITY_INVESTIGATION_STATUS_CONCLUDED = 1;
+  QUALITY_INVESTIGATION_STATUS_FAILED = 2;
+  QUALITY_INVESTIGATION_STATUS_INTERRUPTED = 3;
+}
+
+// QualityInvestigationTrigger says what started the investigation. The reference is
+// the triggering object's resource name; it is never a payload snapshot.
+enum QualityInvestigationTrigger {
+  QUALITY_INVESTIGATION_TRIGGER_UNSPECIFIED = 0;
+  QUALITY_INVESTIGATION_TRIGGER_EXECUTION = 1;
+  QUALITY_INVESTIGATION_TRIGGER_ISSUE = 2;
+  QUALITY_INVESTIGATION_TRIGGER_SCHEMA_CHANGE = 3;
+  QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP = 4;
+  QUALITY_INVESTIGATION_TRIGGER_CONTRACT_DRIFT = 5;
+  QUALITY_INVESTIGATION_TRIGGER_MANUAL = 6;
+}
+
+// QualityInvestigationVerdict is the investigation's classification of the event. It
+// never replaces the engine's verdict; it explains it.
+enum QualityInvestigationVerdict {
+  QUALITY_INVESTIGATION_VERDICT_UNSPECIFIED = 0;
+  QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE = 1;
+  QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR = 2;
+  QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE = 3;
+  QUALITY_INVESTIGATION_VERDICT_UNRELATED = 4;
+}
+
+// QualityInvestigationEvidence is one deterministic reference behind an
+// investigation: an execution, an issue, a schema fingerprint, a lineage edge. It is
+// a reference, never a copy of samples or payloads.
+message QualityInvestigationEvidence {
+  // A short kind such as EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE.
+  string kind = 1;
+  // The referenced resource name or value.
+  string reference = 2;
+  string note = 3;
+}
+
+// QualityInvestigationHypothesis is one candidate explanation and what the evidence
+// did to it.
+message QualityInvestigationHypothesis {
+  string statement = 1;
+  // CONFIRMED, REJECTED or OPEN.
+  string status = 2;
+}
+
+// QualityInvestigation is one agent's work product on one event: hypotheses,
+// deterministic evidence references, a verdict and its cost. It is not a second
+// verdict engine: an investigation conclusion never replaces the check's result and
+// never opens or closes an issue by itself.
+message QualityInvestigation {
+  QualityTargetPath target = 1;
+  QualityInvestigationTrigger trigger = 2;
+  string trigger_reference = 3;
+  QualityInvestigationStatus status = 4;
+  QualityInvestigationVerdict verdict = 5;
+  string summary = 6;
+  repeated QualityInvestigationHypothesis hypotheses = 7;
+  repeated QualityInvestigationEvidence evidence = 8;
+  // Names of change requests the investigation proposed.
+  repeated string action_refs = 9;
+  string provider = 10;
+  string model = 11;
+  string prompt_version = 12;
+  int64 prompt_tokens = 13;
+  int64 completion_tokens = 14;
+  // Set when the analysis failed; empty otherwise.
+  string failure_reason = 15;
+}
+
+// QualityInvestigationEvidenceList is the JSONB payload of
+// quality_investigation.evidence.
+message QualityInvestigationEvidenceList {
+  repeated QualityInvestigationEvidence evidence = 1;
+}
+
+// QualityInvestigationHypothesisList is the JSONB payload of
+// quality_investigation.hypotheses.
+message QualityInvestigationHypothesisList {
+  repeated QualityInvestigationHypothesis hypotheses = 1;
+}
+
+// QualityInvestigationActionRefs is the JSONB payload of
+// quality_investigation.action_refs.
+message QualityInvestigationActionRefs {
+  repeated string refs = 1;
+}
+
 // QualityContractPlan is a plan payload: either a published version's declaration
 // plus the cadence it was published under, or the target's current declaration
 // (coverage only; the cadence lives in the target's schedule). The checks that
