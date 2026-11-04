@@ -1197,6 +1197,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityActionPolicyRequest"><span class="badge">M</span>GetQualityActionPolicyRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityChangeRequestRequest"><span class="badge">M</span>GetQualityChangeRequestRequest</a>
                 </li>
               
@@ -1454,6 +1458,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.PublishQualityContractResponse"><span class="badge">M</span>PublishQualityContractResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAction"><span class="badge">M</span>QualityAction</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityActionPolicy"><span class="badge">M</span>QualityActionPolicy</a>
                 </li>
               
                 <li>
@@ -14956,6 +14968,30 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityActionPolicyRequest">GetQualityActionPolicyRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityChangeRequestRequest">GetQualityChangeRequestRequest</h3>
         <p></p>
 
@@ -17887,6 +17923,127 @@ compiled_sql, which is the case whenever they share a connection. </p></td>
                   <td></td>
                   <td><p>True when the live state already matched the newest published version, so no
 new version was created. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAction">QualityAction</h3>
+        <p>QualityAction is one card of the WS2 action catalog with its live policy verdict.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The stable catalog id, e.g. &#34;A0-4&#34; or &#34;A3-1&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A short developer-facing title; the UI owns the localized copy. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>autonomy_level</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3
+(changes promises, responsibility or irreversible state). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>actor</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>AGENT or HUMAN: who may ever perform it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>red_line</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>A red line never accepts a pure model proposal, even with autonomy on. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>implemented</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>False when this codebase has no write path for the action yet; such an action is
+refused with its own reason instead of pretending to work. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_allowed</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether an enabled agent would be allowed to do it under the current policy. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>requires_approval</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether a person must still approve the action after the policy allows it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decision_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
+DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityActionPolicy">QualityActionPolicy</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>agent_autonomy_enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>The workspace kill switch the agent verdicts were computed with. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>actions</td>
+                  <td><a href="#metaxisdata.v1.QualityAction">QualityAction</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -26525,6 +26682,14 @@ version (no_changes=true).</p></td>
               </tr>
             
               <tr>
+                <td>GetQualityActionPolicy</td>
+                <td><a href="#metaxisdata.v1.GetQualityActionPolicyRequest">GetQualityActionPolicyRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityActionPolicy">QualityActionPolicy</a></td>
+                <td><p>Read the WS2 action catalog and how the autonomy policy would decide each action
+for an agent right now. Read-only: it exposes the policy, it does not change it.</p></td>
+              </tr>
+            
+              <tr>
                 <td>StageQualityPlan</td>
                 <td><a href="#metaxisdata.v1.StageQualityPlanRequest">StageQualityPlanRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
@@ -27207,6 +27372,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>POST</td>
                 <td>/v1/{parent=workspaces/*}/qualityContracts:publish</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityActionPolicy</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityActionPolicy</td>
+                <td></td>
               </tr>
               
             

@@ -34,7 +34,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	agent, err := s.currentWritingAgent(ctx)
+	agent, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, len(req.Msg.GetItems()))
 	if err != nil {
 		return nil, err
 	}

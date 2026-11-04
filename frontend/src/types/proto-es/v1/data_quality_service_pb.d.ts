@@ -7878,6 +7878,131 @@ export enum DecideQualityChangeRequestRequest_Decision {
 export declare const DecideQualityChangeRequestRequest_DecisionSchema: GenEnum<DecideQualityChangeRequestRequest_Decision>;
 
 /**
+ * QualityAction is one card of the WS2 action catalog with its live policy verdict.
+ *
+ * @generated from message metaxisdata.v1.QualityAction
+ */
+export declare type QualityAction = Message<"metaxisdata.v1.QualityAction"> & {
+  /**
+   * The stable catalog id, e.g. "A0-4" or "A3-1".
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * A short developer-facing title; the UI owns the localized copy.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3
+   * (changes promises, responsibility or irreversible state).
+   *
+   * @generated from field: string autonomy_level = 3;
+   */
+  autonomyLevel: string;
+
+  /**
+   * AGENT or HUMAN: who may ever perform it.
+   *
+   * @generated from field: string actor = 4;
+   */
+  actor: string;
+
+  /**
+   * A red line never accepts a pure model proposal, even with autonomy on.
+   *
+   * @generated from field: bool red_line = 5;
+   */
+  redLine: boolean;
+
+  /**
+   * False when this codebase has no write path for the action yet; such an action is
+   * refused with its own reason instead of pretending to work.
+   *
+   * @generated from field: bool implemented = 6;
+   */
+  implemented: boolean;
+
+  /**
+   * Whether an enabled agent would be allowed to do it under the current policy.
+   *
+   * @generated from field: bool agent_allowed = 7;
+   */
+  agentAllowed: boolean;
+
+  /**
+   * Whether a person must still approve the action after the policy allows it.
+   *
+   * @generated from field: bool requires_approval = 8;
+   */
+  requiresApproval: boolean;
+
+  /**
+   * The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
+   * DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL.
+   *
+   * @generated from field: string decision_code = 9;
+   */
+  decisionCode: string;
+
+  /**
+   * @generated from field: string reason = 10;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAction.
+ * Use `create(QualityActionSchema)` to create a new message.
+ */
+export declare const QualityActionSchema: GenMessage<QualityAction>;
+
+/**
+ * @generated from message metaxisdata.v1.QualityActionPolicy
+ */
+export declare type QualityActionPolicy = Message<"metaxisdata.v1.QualityActionPolicy"> & {
+  /**
+   * The workspace kill switch the agent verdicts were computed with.
+   *
+   * @generated from field: bool agent_autonomy_enabled = 1;
+   */
+  agentAutonomyEnabled: boolean;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAction actions = 2;
+   */
+  actions: QualityAction[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityActionPolicy.
+ * Use `create(QualityActionPolicySchema)` to create a new message.
+ */
+export declare const QualityActionPolicySchema: GenMessage<QualityActionPolicy>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityActionPolicyRequest
+ */
+export declare type GetQualityActionPolicyRequest = Message<"metaxisdata.v1.GetQualityActionPolicyRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityActionPolicyRequest.
+ * Use `create(GetQualityActionPolicyRequestSchema)` to create a new message.
+ */
+export declare const GetQualityActionPolicyRequestSchema: GenMessage<GetQualityActionPolicyRequest>;
+
+/**
  * QualityAgent is one agent principal: an independent identity an administrator
  * creates for autonomous quality work. Its token is issued once, and disabling the
  * agent ends every token it holds.
@@ -11986,6 +12111,17 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof PublishQualityContractRequestSchema;
     output: typeof PublishQualityContractResponseSchema;
+  },
+  /**
+   * Read the WS2 action catalog and how the autonomy policy would decide each action
+   * for an agent right now. Read-only: it exposes the policy, it does not change it.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityActionPolicy
+   */
+  getQualityActionPolicy: {
+    methodKind: "unary";
+    input: typeof GetQualityActionPolicyRequestSchema;
+    output: typeof QualityActionPolicySchema;
   },
   /**
    * Write the target's plan declaration without touching its settings. This is the

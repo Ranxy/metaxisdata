@@ -217,6 +217,9 @@ const (
 	// DataQualityServicePublishQualityContractProcedure is the fully-qualified name of the
 	// DataQualityService's PublishQualityContract RPC.
 	DataQualityServicePublishQualityContractProcedure = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	// DataQualityServiceGetQualityActionPolicyProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityActionPolicy RPC.
+	DataQualityServiceGetQualityActionPolicyProcedure = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
 	// DataQualityServiceStageQualityPlanProcedure is the fully-qualified name of the
 	// DataQualityService's StageQualityPlan RPC.
 	DataQualityServiceStageQualityPlanProcedure = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
@@ -510,6 +513,9 @@ type DataQualityServiceClient interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Read the WS2 action catalog and how the autonomy policy would decide each action
+	// for an agent right now. Read-only: it exposes the policy, it does not change it.
+	GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -927,6 +933,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualityActionPolicy: connect.NewClient[v1.GetQualityActionPolicyRequest, v1.QualityActionPolicy](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityActionPolicyProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityActionPolicy")),
+			connect.WithClientOptions(opts...),
+		),
 		stageQualityPlan: connect.NewClient[v1.StageQualityPlanRequest, v1.QualityContract](
 			httpClient,
 			baseURL+DataQualityServiceStageQualityPlanProcedure,
@@ -1065,6 +1077,7 @@ type dataQualityServiceClient struct {
 	listQualityCoverageGaps            *connect.Client[v1.ListQualityCoverageGapsRequest, v1.ListQualityCoverageGapsResponse]
 	updateQualityContract              *connect.Client[v1.UpdateQualityContractRequest, v1.QualityContract]
 	publishQualityContract             *connect.Client[v1.PublishQualityContractRequest, v1.PublishQualityContractResponse]
+	getQualityActionPolicy             *connect.Client[v1.GetQualityActionPolicyRequest, v1.QualityActionPolicy]
 	stageQualityPlan                   *connect.Client[v1.StageQualityPlanRequest, v1.QualityContract]
 	createQualityChangeRequest         *connect.Client[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest]
 	getQualityChangeRequest            *connect.Client[v1.GetQualityChangeRequestRequest, v1.QualityChangeRequest]
@@ -1388,6 +1401,11 @@ func (c *dataQualityServiceClient) PublishQualityContract(ctx context.Context, r
 	return c.publishQualityContract.CallUnary(ctx, req)
 }
 
+// GetQualityActionPolicy calls metaxisdata.v1.DataQualityService.GetQualityActionPolicy.
+func (c *dataQualityServiceClient) GetQualityActionPolicy(ctx context.Context, req *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error) {
+	return c.getQualityActionPolicy.CallUnary(ctx, req)
+}
+
 // StageQualityPlan calls metaxisdata.v1.DataQualityService.StageQualityPlan.
 func (c *dataQualityServiceClient) StageQualityPlan(ctx context.Context, req *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error) {
 	return c.stageQualityPlan.CallUnary(ctx, req)
@@ -1704,6 +1722,9 @@ type DataQualityServiceHandler interface {
 	// Republishing an unchanged contract is a no-op that returns the existing
 	// version (no_changes=true).
 	PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error)
+	// Read the WS2 action catalog and how the autonomy policy would decide each action
+	// for an agent right now. Read-only: it exposes the policy, it does not change it.
+	GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -2117,6 +2138,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("PublishQualityContract")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualityActionPolicyHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityActionPolicyProcedure,
+		svc.GetQualityActionPolicy,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityActionPolicy")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceStageQualityPlanHandler := connect.NewUnaryHandler(
 		DataQualityServiceStageQualityPlanProcedure,
 		svc.StageQualityPlan,
@@ -2313,6 +2340,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceUpdateQualityContractHandler.ServeHTTP(w, r)
 		case DataQualityServicePublishQualityContractProcedure:
 			dataQualityServicePublishQualityContractHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityActionPolicyProcedure:
+			dataQualityServiceGetQualityActionPolicyHandler.ServeHTTP(w, r)
 		case DataQualityServiceStageQualityPlanProcedure:
 			dataQualityServiceStageQualityPlanHandler.ServeHTTP(w, r)
 		case DataQualityServiceCreateQualityChangeRequestProcedure:
@@ -2588,6 +2617,10 @@ func (UnimplementedDataQualityServiceHandler) UpdateQualityContract(context.Cont
 
 func (UnimplementedDataQualityServiceHandler) PublishQualityContract(context.Context, *connect.Request[v1.PublishQualityContractRequest]) (*connect.Response[v1.PublishQualityContractResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.PublishQualityContract is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityActionPolicy is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) StageQualityPlan(context.Context, *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error) {

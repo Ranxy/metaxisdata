@@ -266,6 +266,7 @@
     - [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
     - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
@@ -331,6 +332,8 @@
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
+    - [QualityAction](#metaxisdata-v1-QualityAction)
+    - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
     - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
     - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
@@ -5056,6 +5059,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityActionPolicyRequest"></a>
+
+### GetQualityActionPolicyRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
 
 ### GetQualityChangeRequestRequest
@@ -6216,6 +6234,46 @@ ProfileValue is one frequent value of a low-cardinality column.
 | contract | [QualityContract](#metaxisdata-v1-QualityContract) |  |  |
 | revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
 | no_changes | [bool](#bool) |  | True when the live state already matched the newest published version, so no new version was created. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAction"></a>
+
+### QualityAction
+QualityAction is one card of the WS2 action catalog with its live policy verdict.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  | The stable catalog id, e.g. &#34;A0-4&#34; or &#34;A3-1&#34;. |
+| title | [string](#string) |  | A short developer-facing title; the UI owns the localized copy. |
+| autonomy_level | [string](#string) |  | A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3 (changes promises, responsibility or irreversible state). |
+| actor | [string](#string) |  | AGENT or HUMAN: who may ever perform it. |
+| red_line | [bool](#bool) |  | A red line never accepts a pure model proposal, even with autonomy on. |
+| implemented | [bool](#bool) |  | False when this codebase has no write path for the action yet; such an action is refused with its own reason instead of pretending to work. |
+| agent_allowed | [bool](#bool) |  | Whether an enabled agent would be allowed to do it under the current policy. |
+| requires_approval | [bool](#bool) |  | Whether a person must still approve the action after the policy allows it. |
+| decision_code | [string](#string) |  | The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY, DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL. |
+| reason | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityActionPolicy"></a>
+
+### QualityActionPolicy
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent_autonomy_enabled | [bool](#bool) |  | The workspace kill switch the agent verdicts were computed with. |
+| actions | [QualityAction](#metaxisdata-v1-QualityAction) | repeated |  |
 
 
 
@@ -9075,6 +9133,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityCoverageGaps | [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest) | [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse) | ListQualityCoverageGaps flattens the plan projection to the unsatisfied declared coverage: one row per target property that a live rule does not implement. Read-only, like ListQualityPlans. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
+| GetQualityActionPolicy | [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest) | [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy) | Read the WS2 action catalog and how the autonomy policy would decide each action for an agent right now. Read-only: it exposes the policy, it does not change it. |
 | StageQualityPlan | [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Write the target&#39;s plan declaration without touching its settings. This is the one write an agent principal may make; an agent call is refused while the workspace kill switch or the agent itself is disabled. |
 | CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. An agent principal may only create PROPOSED requests, and only while autonomy is enabled. |
 | GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |

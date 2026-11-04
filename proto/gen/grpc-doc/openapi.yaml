@@ -5100,6 +5100,34 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityActionPolicy:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read the WS2 action catalog and how the autonomy policy would decide each action
+                 for an agent right now. Read-only: it exposes the policy, it does not change it.
+            operationId: DataQualityService_GetQualityActionPolicy
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityActionPolicy'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents:
         get:
             tags:
@@ -13566,6 +13594,55 @@ components:
                     description: |-
                         True when the live state already matched the newest published version, so no
                          new version was created.
+        QualityAction:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: The stable catalog id, e.g. "A0-4" or "A3-1".
+                title:
+                    type: string
+                    description: A short developer-facing title; the UI owns the localized copy.
+                autonomyLevel:
+                    type: string
+                    description: |-
+                        A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3
+                         (changes promises, responsibility or irreversible state).
+                actor:
+                    type: string
+                    description: 'AGENT or HUMAN: who may ever perform it.'
+                redLine:
+                    type: boolean
+                    description: A red line never accepts a pure model proposal, even with autonomy on.
+                implemented:
+                    type: boolean
+                    description: |-
+                        False when this codebase has no write path for the action yet; such an action is
+                         refused with its own reason instead of pretending to work.
+                agentAllowed:
+                    type: boolean
+                    description: Whether an enabled agent would be allowed to do it under the current policy.
+                requiresApproval:
+                    type: boolean
+                    description: Whether a person must still approve the action after the policy allows it.
+                decisionCode:
+                    type: string
+                    description: |-
+                        The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
+                         DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL.
+                reason:
+                    type: string
+            description: QualityAction is one card of the WS2 action catalog with its live policy verdict.
+        QualityActionPolicy:
+            type: object
+            properties:
+                agentAutonomyEnabled:
+                    type: boolean
+                    description: The workspace kill switch the agent verdicts were computed with.
+                actions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAction'
         QualityAgent:
             type: object
             properties:

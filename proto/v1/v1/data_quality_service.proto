@@ -652,6 +652,13 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.contracts.publish";
   }
 
+  // Read the WS2 action catalog and how the autonomy policy would decide each action
+  // for an agent right now. Read-only: it exposes the policy, it does not change it.
+  rpc GetQualityActionPolicy(GetQualityActionPolicyRequest) returns (QualityActionPolicy) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityActionPolicy"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
   // Write the target's plan declaration without touching its settings. This is the
   // one write an agent principal may make; an agent call is refused while the
   // workspace kill switch or the agent itself is disabled.
@@ -4046,6 +4053,43 @@ message DecideQualityChangeRequestRequest {
   // Why the request was rejected; required for REJECT.
   repeated QualityChangeRejectionReason rejection_reasons = 3;
   string decision_note = 4;
+}
+
+// QualityAction is one card of the WS2 action catalog with its live policy verdict.
+message QualityAction {
+  // The stable catalog id, e.g. "A0-4" or "A3-1".
+  string id = 1;
+  // A short developer-facing title; the UI owns the localized copy.
+  string title = 2;
+  // A0 (read/propose), A1 (reversible action), A2 (changes future judging) or A3
+  // (changes promises, responsibility or irreversible state).
+  string autonomy_level = 3;
+  // AGENT or HUMAN: who may ever perform it.
+  string actor = 4;
+  // A red line never accepts a pure model proposal, even with autonomy on.
+  bool red_line = 5;
+  // False when this codebase has no write path for the action yet; such an action is
+  // refused with its own reason instead of pretending to work.
+  bool implemented = 6;
+  // Whether an enabled agent would be allowed to do it under the current policy.
+  bool agent_allowed = 7;
+  // Whether a person must still approve the action after the policy allows it.
+  bool requires_approval = 8;
+  // The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
+  // DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL.
+  string decision_code = 9;
+  string reason = 10;
+}
+
+message QualityActionPolicy {
+  // The workspace kill switch the agent verdicts were computed with.
+  bool agent_autonomy_enabled = 1;
+  repeated QualityAction actions = 2;
+}
+
+message GetQualityActionPolicyRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // QualityAgent is one agent principal: an independent identity an administrator

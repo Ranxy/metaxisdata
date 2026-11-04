@@ -4337,6 +4337,17 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		return response.Msg, nil
 	}
 
+	// The action policy is readable and reflects the switch: with autonomy off, the
+	// proposal card is refused before the agent tries anything.
+	policy, err := fixture.dataQuality.GetQualityActionPolicy(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityActionPolicyRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.Len(t, policy.Msg.GetActions(), 21)
+	require.False(t, policy.Msg.GetAgentAutonomyEnabled())
+	require.Equal(t, "DENIED_AUTONOMY_OFF", actionDecision(policy.Msg, "A0-4"))
+	require.True(t, actionRedLine(policy.Msg, "A3-1"))
+	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
+
 	// The kill switch is the workspace's total gate: off (the default) refuses the
 	// agent's declaration write before anything changes.
 	_, err = stage(1)
@@ -4394,6 +4405,15 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
+	// With the switch on, the proposal card is allowed and the red lines stay closed.
+	policy, err = fixture.dataQuality.GetQualityActionPolicy(fixture.ctx,
+		withToken(adminToken, &v1pb.GetQualityActionPolicyRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.True(t, policy.Msg.GetAgentAutonomyEnabled())
+	require.Equal(t, "ALLOWED", actionDecision(policy.Msg, "A0-4"))
+	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
+	require.Equal(t, "DENIED_NOT_IMPLEMENTED", actionDecision(policy.Msg, "A2-1"))
+
 	staged, err := stage(1)
 	require.NoError(t, err, "the enabled agent stages a declaration")
 	// Staging a declaration does not publish: the version is where it was.
@@ -4447,4 +4467,24 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	_, err = stage(1)
 	require.Error(t, err)
 	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+// actionDecision returns one card's decision code from a policy response.
+func actionDecision(policy *v1pb.QualityActionPolicy, id string) string {
+	for _, action := range policy.GetActions() {
+		if action.GetId() == id {
+			return action.GetDecisionCode()
+		}
+	}
+	return ""
+}
+
+// actionRedLine reports whether one catalog card is a red line.
+func actionRedLine(policy *v1pb.QualityActionPolicy, id string) bool {
+	for _, action := range policy.GetActions() {
+		if action.GetId() == id {
+			return action.GetRedLine()
+		}
+	}
+	return false
 }

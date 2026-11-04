@@ -138,11 +138,9 @@ func (s *DataQualityService) RotateQualityAgentToken(ctx context.Context, req *c
 	}), nil
 }
 
-// currentWritingAgent returns the agent a request is made by, or nil for a human
-// caller. It enforces the two switches every agent write needs: the workspace kill
-// switch and the agent's own enabled flag. A disabled agent may still read; it just
-// cannot write.
-func (s *DataQualityService) currentWritingAgent(ctx context.Context) (*store.QualityAgentMessage, error) {
+// qualityAgentActor returns the agent the request is made by, or nil for a human.
+// It only identifies the actor: whether the action is allowed is the policy's call.
+func (s *DataQualityService) qualityAgentActor(ctx context.Context) (*store.QualityAgentMessage, error) {
 	user, ok := GetUserFromContext(ctx)
 	if !ok || user == nil || user.Type != storepb.PrincipalType_SERVICE_ACCOUNT {
 		return nil, nil
@@ -151,22 +149,36 @@ func (s *DataQualityService) currentWritingAgent(ctx context.Context) (*store.Qu
 	if err != nil {
 		return nil, err
 	}
-	if agent == nil {
-		// A service account that is not a quality agent is not managed here; the ACL
-		// decides whether it may call the RPC at all.
-		return nil, nil
+	return agent, nil
+}
+
+// authorizeAgentAction identifies the caller and, for an agent, runs the WS2 action
+// policy before the handler reads or writes anything. A human caller returns nil and
+// is never filtered by the agent switches. The returned agent is the write's
+// attribution.
+func (s *DataQualityService) authorizeAgentAction(ctx context.Context, action dataquality.ActionID, itemCount int) (*store.QualityAgentMessage, error) {
+	agent, err := s.qualityAgentActor(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if !agent.Enabled {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("this agent is disabled; an administrator must create or enable one"))
+	if agent == nil {
+		// Human caller, or a service account the data-quality domain does not manage;
+		// the ACL decides whether the RPC may run at all.
+		return nil, nil
 	}
 	settings, err := dataquality.LoadSettings(ctx, s.store)
 	if err != nil {
 		return nil, errLoadQualitySettings(err)
 	}
-	if !settings.AgentAutonomyEnabled {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("agent autonomy is disabled in this workspace"))
+	decision := dataquality.DecideAction(dataquality.PolicyInput{
+		Action:          action,
+		Actor:           dataquality.ActorAgent,
+		AutonomyEnabled: settings.AgentAutonomyEnabled,
+		AgentEnabled:    agent.Enabled,
+		ItemCount:       itemCount,
+	})
+	if !decision.Allowed {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(decision.Reason))
 	}
 	return agent, nil
 }
@@ -178,7 +190,7 @@ func (s *DataQualityService) StageQualityPlan(ctx context.Context, req *connect.
 	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
 		return nil, err
 	}
-	if _, err := s.currentWritingAgent(ctx); err != nil {
+	if _, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, 0); err != nil {
 		return nil, err
 	}
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
