@@ -236,11 +236,14 @@
     - [BatchUpdateQualitySuggestionsResponse](#metaxisdata-v1-BatchUpdateQualitySuggestionsResponse)
     - [CancelQualitySuggestionJobRequest](#metaxisdata-v1-CancelQualitySuggestionJobRequest)
     - [CelExpressionConfig](#metaxisdata-v1-CelExpressionConfig)
+    - [ClearQualityAgentGoalRequest](#metaxisdata-v1-ClearQualityAgentGoalRequest)
     - [ColumnProfile](#metaxisdata-v1-ColumnProfile)
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
+    - [CompleteQualityAgentGoalRequest](#metaxisdata-v1-CompleteQualityAgentGoalRequest)
     - [ConfirmQualityMemoryRequest](#metaxisdata-v1-ConfirmQualityMemoryRequest)
+    - [CreateQualityAgentGoalRequest](#metaxisdata-v1-CreateQualityAgentGoalRequest)
     - [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest)
     - [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse)
     - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
@@ -271,6 +274,7 @@
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
+    - [GetQualityAgentGoalRequest](#metaxisdata-v1-GetQualityAgentGoalRequest)
     - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
@@ -301,6 +305,8 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityAgentGoalsRequest](#metaxisdata-v1-ListQualityAgentGoalsRequest)
+    - [ListQualityAgentGoalsResponse](#metaxisdata-v1-ListQualityAgentGoalsResponse)
     - [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest)
     - [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse)
     - [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest)
@@ -334,6 +340,7 @@
     - [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest)
     - [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
+    - [PauseQualityAgentGoalRequest](#metaxisdata-v1-PauseQualityAgentGoalRequest)
     - [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest)
     - [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse)
     - [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest)
@@ -344,6 +351,7 @@
     - [QualityAction](#metaxisdata-v1-QualityAction)
     - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
+    - [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal)
     - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
     - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
     - [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult)
@@ -410,6 +418,7 @@
     - [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
+    - [ResumeQualityAgentGoalRequest](#metaxisdata-v1-ResumeQualityAgentGoalRequest)
     - [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest)
     - [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
@@ -445,6 +454,9 @@
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
     - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
+    - [QualityAgentGoalKind](#metaxisdata-v1-QualityAgentGoalKind)
+    - [QualityAgentGoalPhase](#metaxisdata-v1-QualityAgentGoalPhase)
+    - [QualityAgentGoalTrigger](#metaxisdata-v1-QualityAgentGoalTrigger)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
     - [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason)
@@ -4500,6 +4512,22 @@ v1.1; the message exists so that the config shape does not change then.
 
 
 
+<a name="metaxisdata-v1-ClearQualityAgentGoalRequest"></a>
+
+### ClearQualityAgentGoalRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ColumnProfile"></a>
 
 ### ColumnProfile
@@ -4594,6 +4622,22 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
+<a name="metaxisdata-v1-CompleteQualityAgentGoalRequest"></a>
+
+### CompleteQualityAgentGoalRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ConfirmQualityMemoryRequest"></a>
 
 ### ConfirmQualityMemoryRequest
@@ -4604,6 +4648,29 @@ they are returned, so a wide text column cannot bloat the response.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
 | decision | [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateQualityAgentGoalRequest"></a>
+
+### CreateQualityAgentGoalRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| kind | [QualityAgentGoalKind](#metaxisdata-v1-QualityAgentGoalKind) |  |  |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| trigger | [QualityAgentGoalTrigger](#metaxisdata-v1-QualityAgentGoalTrigger) |  |  |
+| trigger_ref | [string](#string) |  | The triggering object&#39;s resource name or value. |
+| objective | [string](#string) |  |  |
+| agent | [string](#string) |  | Format: users/{user}. Empty uses the first enabled quality agent. |
+| max_rounds | [int32](#int32) |  | Zero uses the server default (256). |
 
 
 
@@ -5178,6 +5245,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityAgentGoalRequest"></a>
+
+### GetQualityAgentGoalRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
 
 ### GetQualityChangeRequestRequest
@@ -5677,6 +5759,42 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | column_profiles | [ColumnProfile](#metaxisdata-v1-ColumnProfile) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentGoalsRequest"></a>
+
+### ListQualityAgentGoalsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| database | [string](#string) |  |  |
+| phase | [QualityAgentGoalPhase](#metaxisdata-v1-QualityAgentGoalPhase) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentGoalsResponse"></a>
+
+### ListQualityAgentGoalsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_goals | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -6312,6 +6430,22 @@ optional and must not exceed the fail threshold.
 
 
 
+<a name="metaxisdata-v1-PauseQualityAgentGoalRequest"></a>
+
+### PauseQualityAgentGoalRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-PreviewQualityRuleRequest"></a>
 
 ### PreviewQualityRuleRequest
@@ -6488,6 +6622,38 @@ agent ends every token it holds.
 | enabled | [bool](#bool) |  |  |
 | created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentGoal"></a>
+
+### QualityAgentGoal
+QualityAgentGoal is one durable objective of the built-in quality agent runner.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal} |
+| kind | [QualityAgentGoalKind](#metaxisdata-v1-QualityAgentGoalKind) |  |  |
+| trigger | [QualityAgentGoalTrigger](#metaxisdata-v1-QualityAgentGoalTrigger) |  |  |
+| trigger_ref | [string](#string) |  |  |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| database | [string](#string) |  | The database allowlist entry the goal is scoped to. |
+| agent | [string](#string) |  | Format: users/{user}. The agent principal that runs the goal. |
+| objective | [string](#string) |  |  |
+| phase | [QualityAgentGoalPhase](#metaxisdata-v1-QualityAgentGoalPhase) |  |  |
+| blocked_code | [string](#string) |  | Stable blocked code and its explanation; empty unless blocked. |
+| blocked_reason | [string](#string) |  |  |
+| revision | [int32](#int32) |  | Incremented by every mutation; mutations carry the revision they saw. |
+| rounds_started | [int32](#int32) |  |  |
+| max_rounds | [int32](#int32) |  |  |
+| tokens_used | [int64](#int64) |  | Tokens this goal consumed; observability only, the hourly budget is the limit. |
+| next_wake_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -8010,6 +8176,22 @@ engine&#39;s own regex operator.
 
 
 
+<a name="metaxisdata-v1-ResumeQualityAgentGoalRequest"></a>
+
+### ResumeQualityAgentGoalRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-RotateQualityAgentTokenRequest"></a>
 
 ### RotateQualityAgentTokenRequest
@@ -8622,6 +8804,51 @@ APPROVE applies the request&#39;s items; REJECT records the refusal.
 | DECISION_UNSPECIFIED | 0 |  |
 | DECISION_APPROVE | 1 |  |
 | DECISION_REJECT | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentGoalKind"></a>
+
+### QualityAgentGoalKind
+QualityAgentGoalKind is the kind of objective one goal pursues.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_GOAL_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET | 1 | Keep one target trustworthy: inspect coverage gaps and recent failures. |
+| QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT | 2 | Investigate one event (a failed execution, a schema change, a drift). |
+| QUALITY_AGENT_GOAL_KIND_CUSTOM | 3 | A person asked the agent to look at something. |
+
+
+
+<a name="metaxisdata-v1-QualityAgentGoalPhase"></a>
+
+### QualityAgentGoalPhase
+QualityAgentGoalPhase is the durable lifecycle of a goal.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_GOAL_PHASE_ACTIVE | 1 |  |
+| QUALITY_AGENT_GOAL_PHASE_PAUSED | 2 |  |
+| QUALITY_AGENT_GOAL_PHASE_BLOCKED | 3 | Blocked means &#34;waiting for a person, a window or a dependency&#34;, not failed. |
+| QUALITY_AGENT_GOAL_PHASE_COMPLETE | 4 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentGoalTrigger"></a>
+
+### QualityAgentGoalTrigger
+QualityAgentGoalTrigger is what created the goal.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED | 1 |  |
+| QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED | 2 |  |
+| QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED | 3 |  |
+| QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP | 4 |  |
+| QUALITY_AGENT_GOAL_TRIGGER_MANUAL | 5 |  |
 
 
 
@@ -9541,6 +9768,13 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityAgents | [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest) | [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse) | List the workspace&#39;s agent principals, without tokens. |
 | DisableQualityAgent | [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Disable an agent principal. Its tokens stop authenticating immediately; the agent row stays for the audit trail. |
 | RotateQualityAgentToken | [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest) | [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse) | Rotate an agent&#39;s bearer token: mint a new one and invalidate every token minted before this call. The token is returned once. |
+| CreateQualityAgentGoal | [CreateQualityAgentGoalRequest](#metaxisdata-v1-CreateQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Create one durable objective for the built-in quality agent runner: keep a target trustworthy, investigate one event, or a person&#39;s request. The target&#39;s database must be in the workspace&#39;s runner allowlist, and the runner must be enabled. |
+| ListQualityAgentGoals | [ListQualityAgentGoalsRequest](#metaxisdata-v1-ListQualityAgentGoalsRequest) | [ListQualityAgentGoalsResponse](#metaxisdata-v1-ListQualityAgentGoalsResponse) | List the workspace&#39;s goals, newest first. |
+| GetQualityAgentGoal | [GetQualityAgentGoalRequest](#metaxisdata-v1-GetQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Read one goal. |
+| PauseQualityAgentGoal | [PauseQualityAgentGoalRequest](#metaxisdata-v1-PauseQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Pause a goal: the runner stops starting new rounds, the state and journal stay. |
+| ResumeQualityAgentGoal | [ResumeQualityAgentGoalRequest](#metaxisdata-v1-ResumeQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Resume a paused or blocked goal. A stale revision is rejected. |
+| CompleteQualityAgentGoal | [CompleteQualityAgentGoalRequest](#metaxisdata-v1-CompleteQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Mark a goal complete. A person can always do so; the runner&#39;s own completion is recorded the same way. |
+| ClearQualityAgentGoal | [ClearQualityAgentGoalRequest](#metaxisdata-v1-ClearQualityAgentGoalRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Clear a goal (a tombstone). The journal stays for the audit trail. |
 | DecideQualityChangeRequest | [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Approve or reject a change request. Approving applies each item through its existing path and returns a result per item; rejecting records the structured reasons. A stale base version expires the request instead of rebasing it. |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
@@ -12908,6 +13142,11 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
 | time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
 | agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: turning it off is the kill switch that returns the workspace to human-only edits. |
+| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run goals. Off by default: turning it off stops new goal rounds; recorded proposals stay for review. |
+| agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means no database is in scope and the runner creates no goal. |
+| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner goals; 0 means the server default (100000000). A goal has no individual token cap. |
+| agent_runner_goals_per_hour | [int32](#int32) |  | How many goals the workspace may create per hour; 0 means the server default (20). |
+| agent_runner_max_concurrent_goals | [int32](#int32) |  | How many goals may run at once; 0 means the server default (2). |
 
 
 

@@ -82,7 +82,10 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			Minute:   45,
 			Timezone: "Asia/Shanghai",
 		},
-		TimeZone: "Asia/Shanghai",
+		TimeZone:                      "Asia/Shanghai",
+		AgentRunnerTokensPerHour:      DefaultAgentRunnerTokensPerHour,
+		AgentRunnerGoalsPerHour:       DefaultAgentRunnerGoalsPerHour,
+		AgentRunnerMaxConcurrentGoals: DefaultAgentRunnerMaxConcurrentGoals,
 	}, SettingsFromProfile(profile))
 }
 

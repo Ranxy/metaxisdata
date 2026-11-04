@@ -595,8 +595,21 @@ type DataQualitySetting struct {
 	// proposed change requests. Off by default: the kill switch returns the
 	// workspace to human-only edits, and the agent still reads.
 	AgentAutonomyEnabled bool `protobuf:"varint,14,opt,name=agent_autonomy_enabled,json=agentAutonomyEnabled,proto3" json:"agent_autonomy_enabled,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Whether the built-in quality agent runner may run goals. Off by default.
+	AgentRunnerEnabled bool `protobuf:"varint,15,opt,name=agent_runner_enabled,json=agentRunnerEnabled,proto3" json:"agent_runner_enabled,omitempty"`
+	// The databases the runner may see and work on, as database resource names
+	// (instances/{instance}/databases/{database}). Empty means none.
+	AgentRunnerDatabases []string `protobuf:"bytes,16,rep,name=agent_runner_databases,json=agentRunnerDatabases,proto3" json:"agent_runner_databases,omitempty"`
+	// The workspace's hourly token ceiling for runner goals. Zero means the server
+	// default (100000000).
+	AgentRunnerTokensPerHour int64 `protobuf:"varint,17,opt,name=agent_runner_tokens_per_hour,json=agentRunnerTokensPerHour,proto3" json:"agent_runner_tokens_per_hour,omitempty"`
+	// How many goals the workspace may create per hour. Zero means the server
+	// default (20).
+	AgentRunnerGoalsPerHour int32 `protobuf:"varint,18,opt,name=agent_runner_goals_per_hour,json=agentRunnerGoalsPerHour,proto3" json:"agent_runner_goals_per_hour,omitempty"`
+	// How many goals may run at once. Zero means the server default (2).
+	AgentRunnerMaxConcurrentGoals int32 `protobuf:"varint,19,opt,name=agent_runner_max_concurrent_goals,json=agentRunnerMaxConcurrentGoals,proto3" json:"agent_runner_max_concurrent_goals,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -725,6 +738,41 @@ func (x *DataQualitySetting) GetAgentAutonomyEnabled() bool {
 		return x.AgentAutonomyEnabled
 	}
 	return false
+}
+
+func (x *DataQualitySetting) GetAgentRunnerEnabled() bool {
+	if x != nil {
+		return x.AgentRunnerEnabled
+	}
+	return false
+}
+
+func (x *DataQualitySetting) GetAgentRunnerDatabases() []string {
+	if x != nil {
+		return x.AgentRunnerDatabases
+	}
+	return nil
+}
+
+func (x *DataQualitySetting) GetAgentRunnerTokensPerHour() int64 {
+	if x != nil {
+		return x.AgentRunnerTokensPerHour
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerGoalsPerHour() int32 {
+	if x != nil {
+		return x.AgentRunnerGoalsPerHour
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerMaxConcurrentGoals() int32 {
+	if x != nil {
+		return x.AgentRunnerMaxConcurrentGoals
+	}
+	return 0
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest
@@ -1250,7 +1298,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa7\x06\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd7\b\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1266,7 +1314,12 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12L\n" +
 	"\rweekly_digest\x18\f \x01(\v2'.metaxisdata.store.QualityDigestSettingR\fweeklyDigest\x12\x1b\n" +
 	"\ttime_zone\x18\r \x01(\tR\btimeZone\x124\n" +
-	"\x16agent_autonomy_enabled\x18\x0e \x01(\bR\x14agentAutonomyEnabled\"\x9e\x01\n" +
+	"\x16agent_autonomy_enabled\x18\x0e \x01(\bR\x14agentAutonomyEnabled\x120\n" +
+	"\x14agent_runner_enabled\x18\x0f \x01(\bR\x12agentRunnerEnabled\x124\n" +
+	"\x16agent_runner_databases\x18\x10 \x03(\tR\x14agentRunnerDatabases\x12>\n" +
+	"\x1cagent_runner_tokens_per_hour\x18\x11 \x01(\x03R\x18agentRunnerTokensPerHour\x12<\n" +
+	"\x1bagent_runner_goals_per_hour\x18\x12 \x01(\x05R\x17agentRunnerGoalsPerHour\x12H\n" +
+	"!agent_runner_max_concurrent_goals\x18\x13 \x01(\x05R\x1dagentRunnerMaxConcurrentGoals\"\x9e\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12<\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x1c.metaxisdata.store.DayOfWeekR\tdayOfWeek\x12\x12\n" +

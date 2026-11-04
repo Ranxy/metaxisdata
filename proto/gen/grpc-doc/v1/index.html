@@ -1077,6 +1077,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ClearQualityAgentGoalRequest"><span class="badge">M</span>ClearQualityAgentGoalRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ColumnProfile"><span class="badge">M</span>ColumnProfile</a>
                 </li>
               
@@ -1093,7 +1097,15 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CompleteQualityAgentGoalRequest"><span class="badge">M</span>CompleteQualityAgentGoalRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ConfirmQualityMemoryRequest"><span class="badge">M</span>ConfirmQualityMemoryRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateQualityAgentGoalRequest"><span class="badge">M</span>CreateQualityAgentGoalRequest</a>
                 </li>
               
                 <li>
@@ -1217,6 +1229,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.GetQualityAgentGoalRequest"><span class="badge">M</span>GetQualityAgentGoalRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.GetQualityChangeRequestRequest"><span class="badge">M</span>GetQualityChangeRequestRequest</a>
                 </li>
               
@@ -1334,6 +1350,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListColumnProfilesResponse"><span class="badge">M</span>ListColumnProfilesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentGoalsRequest"><span class="badge">M</span>ListQualityAgentGoalsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentGoalsResponse"><span class="badge">M</span>ListQualityAgentGoalsResponse</a>
                 </li>
               
                 <li>
@@ -1469,6 +1493,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.PauseQualityAgentGoalRequest"><span class="badge">M</span>PauseQualityAgentGoalRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.PreviewQualityRuleRequest"><span class="badge">M</span>PreviewQualityRuleRequest</a>
                 </li>
               
@@ -1506,6 +1534,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityAgent"><span class="badge">M</span>QualityAgent</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentGoal"><span class="badge">M</span>QualityAgentGoal</a>
                 </li>
               
                 <li>
@@ -1773,6 +1805,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ResumeQualityAgentGoalRequest"><span class="badge">M</span>ResumeQualityAgentGoalRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.RotateQualityAgentTokenRequest"><span class="badge">M</span>RotateQualityAgentTokenRequest</a>
                 </li>
               
@@ -1907,6 +1943,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DecideQualityChangeRequestRequest.Decision"><span class="badge">E</span>DecideQualityChangeRequestRequest.Decision</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentGoalKind"><span class="badge">E</span>QualityAgentGoalKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentGoalPhase"><span class="badge">E</span>QualityAgentGoalPhase</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgentGoalTrigger"><span class="badge">E</span>QualityAgentGoalTrigger</a>
                 </li>
               
                 <li>
@@ -13524,6 +13572,37 @@ names one suggestion and is applied independently. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ClearQualityAgentGoalRequest">ClearQualityAgentGoalRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ColumnProfile">ColumnProfile</h3>
         <p>ColumnProfile is the cached deterministic statistics of one column plus how</p><p>they were measured.</p>
 
@@ -13838,6 +13917,37 @@ replaced. The raw value is never returned. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CompleteQualityAgentGoalRequest">CompleteQualityAgentGoalRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ConfirmQualityMemoryRequest">ConfirmQualityMemoryRequest</h3>
         <p></p>
 
@@ -13860,6 +13970,86 @@ replaced. The raw value is never returned. </p></td>
                   <td><a href="#metaxisdata.v1.ConfirmQualityMemoryRequest.Decision">ConfirmQualityMemoryRequest.Decision</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateQualityAgentGoalRequest">CreateQualityAgentGoalRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalKind">QualityAgentGoalKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalTrigger">QualityAgentGoalTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The triggering object&#39;s resource name or value. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>objective</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty uses the first enabled quality agent. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_rounds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Zero uses the server default (256). </p></td>
                 </tr>
               
             </tbody>
@@ -15337,6 +15527,30 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityAgentGoalRequest">GetQualityAgentGoalRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityChangeRequestRequest">GetQualityChangeRequestRequest</h3>
         <p></p>
 
@@ -16451,6 +16665,96 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>column_profiles</td>
                   <td><a href="#metaxisdata.v1.ColumnProfile">ColumnProfile</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentGoalsRequest">ListQualityAgentGoalsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>phase</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalPhase">QualityAgentGoalPhase</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentGoalsResponse">ListQualityAgentGoalsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_agent_goals</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -18211,6 +18515,37 @@ converted with the column&#39;s type; at most 20. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.PauseQualityAgentGoalRequest">PauseQualityAgentGoalRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The revision the caller saw; a stale value is rejected. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.PreviewQualityRuleRequest">PreviewQualityRuleRequest</h3>
         <p></p>
 
@@ -18660,6 +18995,149 @@ must still approve). </p></td>
               
                 <tr>
                   <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</h3>
+        <p>QualityAgentGoal is one durable objective of the built-in quality agent runner.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalKind">QualityAgentGoalKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalTrigger">QualityAgentGoalTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The database allowlist entry the goal is scoped to. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. The agent principal that runs the goal. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>objective</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>phase</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentGoalPhase">QualityAgentGoalPhase</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>blocked_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Stable blocked code and its explanation; empty unless blocked. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>blocked_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Incremented by every mutation; mutations carry the revision they saw. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rounds_started</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_rounds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens_used</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Tokens this goal consumed; observability only, the hourly budget is the limit. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_wake_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>update_time</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -23515,6 +23993,37 @@ for. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ResumeQualityAgentGoalRequest">ResumeQualityAgentGoalRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.RotateQualityAgentTokenRequest">RotateQualityAgentTokenRequest</h3>
         <p></p>
 
@@ -25064,6 +25573,129 @@ resolved zone is what the target stores and what reads return. </p></td>
               <tr>
                 <td>DECISION_REJECT</td>
                 <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityAgentGoalKind">QualityAgentGoalKind</h3>
+        <p>QualityAgentGoalKind is the kind of objective one goal pursues.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET</td>
+                <td>1</td>
+                <td><p>Keep one target trustworthy: inspect coverage gaps and recent failures.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT</td>
+                <td>2</td>
+                <td><p>Investigate one event (a failed execution, a schema change, a drift).</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_CUSTOM</td>
+                <td>3</td>
+                <td><p>A person asked the agent to look at something.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityAgentGoalPhase">QualityAgentGoalPhase</h3>
+        <p>QualityAgentGoalPhase is the durable lifecycle of a goal.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_ACTIVE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_PAUSED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_BLOCKED</td>
+                <td>3</td>
+                <td><p>Blocked means &#34;waiting for a person, a window or a dependency&#34;, not failed.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_COMPLETE</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityAgentGoalTrigger">QualityAgentGoalTrigger</h3>
+        <p>QualityAgentGoalTrigger is what created the goal.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_MANUAL</td>
+                <td>5</td>
                 <td><p></p></td>
               </tr>
             
@@ -27973,6 +28605,59 @@ minted before this call. The token is returned once.</p></td>
               </tr>
             
               <tr>
+                <td>CreateQualityAgentGoal</td>
+                <td><a href="#metaxisdata.v1.CreateQualityAgentGoalRequest">CreateQualityAgentGoalRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
+                <td><p>Create one durable objective for the built-in quality agent runner: keep a
+target trustworthy, investigate one event, or a person&#39;s request. The target&#39;s
+database must be in the workspace&#39;s runner allowlist, and the runner must be
+enabled.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityAgentGoals</td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentGoalsRequest">ListQualityAgentGoalsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentGoalsResponse">ListQualityAgentGoalsResponse</a></td>
+                <td><p>List the workspace&#39;s goals, newest first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityAgentGoal</td>
+                <td><a href="#metaxisdata.v1.GetQualityAgentGoalRequest">GetQualityAgentGoalRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
+                <td><p>Read one goal.</p></td>
+              </tr>
+            
+              <tr>
+                <td>PauseQualityAgentGoal</td>
+                <td><a href="#metaxisdata.v1.PauseQualityAgentGoalRequest">PauseQualityAgentGoalRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
+                <td><p>Pause a goal: the runner stops starting new rounds, the state and journal stay.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ResumeQualityAgentGoal</td>
+                <td><a href="#metaxisdata.v1.ResumeQualityAgentGoalRequest">ResumeQualityAgentGoalRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
+                <td><p>Resume a paused or blocked goal. A stale revision is rejected.</p></td>
+              </tr>
+            
+              <tr>
+                <td>CompleteQualityAgentGoal</td>
+                <td><a href="#metaxisdata.v1.CompleteQualityAgentGoalRequest">CompleteQualityAgentGoalRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentGoal">QualityAgentGoal</a></td>
+                <td><p>Mark a goal complete. A person can always do so; the runner&#39;s own completion is
+recorded the same way.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ClearQualityAgentGoal</td>
+                <td><a href="#metaxisdata.v1.ClearQualityAgentGoalRequest">ClearQualityAgentGoalRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Clear a goal (a tombstone). The journal stays for the audit trail.</p></td>
+              </tr>
+            
+              <tr>
                 <td>DecideQualityChangeRequest</td>
                 <td><a href="#metaxisdata.v1.DecideQualityChangeRequestRequest">DecideQualityChangeRequestRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
@@ -28750,6 +29435,76 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>POST</td>
                 <td>/v1/{name=workspaces/*/qualityAgents/*}:rotateToken</td>
                 <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityAgentGoal</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentGoals</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityAgentGoals</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentGoals</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityAgentGoal</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityAgentGoals/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>PauseQualityAgentGoal</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgentGoals/*}:pause</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ResumeQualityAgentGoal</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgentGoals/*}:resume</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CompleteQualityAgentGoal</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgentGoals/*}:complete</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ClearQualityAgentGoal</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/qualityAgentGoals/*}</td>
+                <td></td>
               </tr>
               
             
@@ -37812,6 +38567,46 @@ which belongs to the target. </p></td>
                   <td><p>Whether the workspace&#39;s agent principals may write plan declarations and
 proposed change requests. Off by default: turning it off is the kill
 switch that returns the workspace to human-only edits. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the built-in quality agent runner may run goals. Off by default:
+turning it off stops new goal rounds; recorded proposals stay for review. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_databases</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The databases the runner may see and work on, as database resource names
+(instances/{instance}/databases/{database}). Empty means no database is in
+scope and the runner creates no goal. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_tokens_per_hour</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The workspace&#39;s hourly token ceiling for runner goals; 0 means the server
+default (100000000). A goal has no individual token cap. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_goals_per_hour</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many goals the workspace may create per hour; 0 means the server
+default (20). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_max_concurrent_goals</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many goals may run at once; 0 means the server default (2). </p></td>
                 </tr>
               
             </tbody>

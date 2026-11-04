@@ -146,6 +146,20 @@ message DataQualitySetting {
   // proposed change requests. Off by default: the kill switch returns the
   // workspace to human-only edits, and the agent still reads.
   bool agent_autonomy_enabled = 14;
+
+  // Whether the built-in quality agent runner may run goals. Off by default.
+  bool agent_runner_enabled = 15;
+  // The databases the runner may see and work on, as database resource names
+  // (instances/{instance}/databases/{database}). Empty means none.
+  repeated string agent_runner_databases = 16;
+  // The workspace's hourly token ceiling for runner goals. Zero means the server
+  // default (100000000).
+  int64 agent_runner_tokens_per_hour = 17;
+  // How many goals the workspace may create per hour. Zero means the server
+  // default (20).
+  int32 agent_runner_goals_per_hour = 18;
+  // How many goals may run at once. Zero means the server default (2).
+  int32 agent_runner_max_concurrent_goals = 19;
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest

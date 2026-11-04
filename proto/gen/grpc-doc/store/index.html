@@ -312,6 +312,22 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentGoal"><span class="badge">M</span>QualityAgentGoal</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalCheckpoint"><span class="badge">M</span>QualityAgentGoalCheckpoint</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalStep"><span class="badge">M</span>QualityAgentGoalStep</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalStepPayload"><span class="badge">M</span>QualityAgentGoalStepPayload</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityChangeRejectionReasons"><span class="badge">M</span>QualityChangeRejectionReasons</a>
                 </li>
               
@@ -523,6 +539,22 @@
                   <a href="#metaxisdata.store.UniqueConfig"><span class="badge">M</span>UniqueConfig</a>
                 </li>
               
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalKind"><span class="badge">E</span>QualityAgentGoalKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalPhase"><span class="badge">E</span>QualityAgentGoalPhase</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalStepKind"><span class="badge">E</span>QualityAgentGoalStepKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentGoalTrigger"><span class="badge">E</span>QualityAgentGoalTrigger</a>
+                </li>
               
                 <li>
                   <a href="#metaxisdata.store.QualityAggregateFunction"><span class="badge">E</span>QualityAggregateFunction</a>
@@ -2672,6 +2704,377 @@ converted with the column&#39;s type; at most 20. </p></td>
                   <td></td>
                   <td><p>True when the observed value was longer than the display bound and was cut for
 storage. A consumer that turns the value into a rule parameter must skip it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentGoal">QualityAgentGoal</h3>
+        <p>QualityAgentGoal is one durable objective of the built-in quality agent runner.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>workspace_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.store.QualityAgentGoalKind">QualityAgentGoalKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger</td>
+                  <td><a href="#metaxisdata.store.QualityAgentGoalTrigger">QualityAgentGoalTrigger</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>trigger_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_type</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The database allowlist entry this goal is scoped to; the runner refuses a
+goal whose database is not enabled. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_id</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>objective</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>phase</td>
+                  <td><a href="#metaxisdata.store.QualityAgentGoalPhase">QualityAgentGoalPhase</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>blocked_code</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Stable blocked code and its human-readable explanation; empty unless blocked. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>blocked_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>Incremented by every mutation; compare-and-set rejects stale writers. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>checkpoint</td>
+                  <td><a href="#metaxisdata.store.QualityAgentGoalCheckpoint">QualityAgentGoalCheckpoint</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>rounds_started</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_rounds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens_used</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Tokens this goal consumed; observability only, the hourly workspace budget is
+the limit that applies. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_wake_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>lease_until</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>restart_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cleared_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalCheckpoint">QualityAgentGoalCheckpoint</h3>
+        <p>QualityAgentGoalCheckpoint is the JSONB payload of quality_agent_goal.checkpoint:</p><p>the engine's private progress, never shown as the user-facing result.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>phase</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The engine phase, for example &#34;survey&#34;, &#34;reason&#34; or &#34;act&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A compacted summary of the steps that no longer need their full payload. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>done</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>Things already done, as short labels. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalStep">QualityAgentGoalStep</h3>
+        <p>QualityAgentGoalStep is one append-only journal entry of a goal.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>goal_id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>seq</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.store.QualityAgentGoalStepKind">QualityAgentGoalStepKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>payload</td>
+                  <td><a href="#metaxisdata.store.QualityAgentGoalStepPayload">QualityAgentGoalStepPayload</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The model tokens this step consumed, for the hourly workspace budget. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>idempotency_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Idempotency key of a proposal effect, so a crash cannot duplicate it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalStepPayload">QualityAgentGoalStepPayload</h3>
+        <p>QualityAgentGoalStepPayload is the JSONB payload of quality_agent_goal_step.payload.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>tool</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The tool or engine phase the step is about. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A bounded human-readable summary; the full transcript is not stored. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>resource</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completion_tokens</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -5391,6 +5794,200 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
         
       
 
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalKind">QualityAgentGoalKind</h3>
+        <p>QualityAgentGoalKind is the kind of objective one goal pursues.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET</td>
+                <td>1</td>
+                <td><p>Keep one target trustworthy: inspect coverage gaps and recent failures.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT</td>
+                <td>2</td>
+                <td><p>Investigate one event (a failed execution, a schema change, a drift).</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_KIND_CUSTOM</td>
+                <td>3</td>
+                <td><p>A person asked the agent to look at something.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalPhase">QualityAgentGoalPhase</h3>
+        <p>QualityAgentGoalPhase is the durable lifecycle of a goal: the four phases the</p><p>agent goal design borrows from the harness's goal service.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_ACTIVE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_PAUSED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_BLOCKED</td>
+                <td>3</td>
+                <td><p>Blocked is &#34;waiting for a person, a window or a dependency&#34;, not a failure.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_PHASE_COMPLETE</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalStepKind">QualityAgentGoalStepKind</h3>
+        <p>QualityAgentGoalStepKind is one entry in the append-only goal journal.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_ASSISTANT</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_TOOL_CALL</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_TOOL_RESULT</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE</td>
+                <td>8</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_STEP_KIND_STOP</td>
+                <td>9</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentGoalTrigger">QualityAgentGoalTrigger</h3>
+        <p>QualityAgentGoalTrigger is what created the goal.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_GOAL_TRIGGER_MANUAL</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
       
         <h3 id="metaxisdata.store.QualityAggregateFunction">QualityAggregateFunction</h3>
         <p>QualityAggregateFunction is the aggregate an aggregate or reconciliation rule</p><p>computes. COUNT is only meaningful for a cross-table reconciliation, and</p><p>PERCENTILE only for an aggregate rule.</p>
@@ -13069,6 +13666,44 @@ resolved in, for example &#34;Asia/Shanghai&#34;. Empty means UTC. </p></td>
                   <td><p>Whether the workspace&#39;s agent principals may write plan declarations and
 proposed change requests. Off by default: the kill switch returns the
 workspace to human-only edits, and the agent still reads. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the built-in quality agent runner may run goals. Off by default. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_databases</td>
+                  <td><a href="#string">string</a></td>
+                  <td>repeated</td>
+                  <td><p>The databases the runner may see and work on, as database resource names
+(instances/{instance}/databases/{database}). Empty means none. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_tokens_per_hour</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The workspace&#39;s hourly token ceiling for runner goals. Zero means the server
+default (100000000). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_goals_per_hour</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many goals the workspace may create per hour. Zero means the server
+default (20). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_max_concurrent_goals</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many goals may run at once. Zero means the server default (2). </p></td>
                 </tr>
               
             </tbody>

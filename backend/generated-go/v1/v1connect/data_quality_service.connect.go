@@ -265,6 +265,27 @@ const (
 	// DataQualityServiceRotateQualityAgentTokenProcedure is the fully-qualified name of the
 	// DataQualityService's RotateQualityAgentToken RPC.
 	DataQualityServiceRotateQualityAgentTokenProcedure = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
+	// DataQualityServiceCreateQualityAgentGoalProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityAgentGoal RPC.
+	DataQualityServiceCreateQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityAgentGoal"
+	// DataQualityServiceListQualityAgentGoalsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentGoals RPC.
+	DataQualityServiceListQualityAgentGoalsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentGoals"
+	// DataQualityServiceGetQualityAgentGoalProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentGoal RPC.
+	DataQualityServiceGetQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentGoal"
+	// DataQualityServicePauseQualityAgentGoalProcedure is the fully-qualified name of the
+	// DataQualityService's PauseQualityAgentGoal RPC.
+	DataQualityServicePauseQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/PauseQualityAgentGoal"
+	// DataQualityServiceResumeQualityAgentGoalProcedure is the fully-qualified name of the
+	// DataQualityService's ResumeQualityAgentGoal RPC.
+	DataQualityServiceResumeQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentGoal"
+	// DataQualityServiceCompleteQualityAgentGoalProcedure is the fully-qualified name of the
+	// DataQualityService's CompleteQualityAgentGoal RPC.
+	DataQualityServiceCompleteQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/CompleteQualityAgentGoal"
+	// DataQualityServiceClearQualityAgentGoalProcedure is the fully-qualified name of the
+	// DataQualityService's ClearQualityAgentGoal RPC.
+	DataQualityServiceClearQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/ClearQualityAgentGoal"
 	// DataQualityServiceDecideQualityChangeRequestProcedure is the fully-qualified name of the
 	// DataQualityService's DecideQualityChangeRequest RPC.
 	DataQualityServiceDecideQualityChangeRequestProcedure = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
@@ -583,6 +604,24 @@ type DataQualityServiceClient interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error)
+	// Create one durable objective for the built-in quality agent runner: keep a
+	// target trustworthy, investigate one event, or a person's request. The target's
+	// database must be in the workspace's runner allowlist, and the runner must be
+	// enabled.
+	CreateQualityAgentGoal(context.Context, *connect.Request[v1.CreateQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// List the workspace's goals, newest first.
+	ListQualityAgentGoals(context.Context, *connect.Request[v1.ListQualityAgentGoalsRequest]) (*connect.Response[v1.ListQualityAgentGoalsResponse], error)
+	// Read one goal.
+	GetQualityAgentGoal(context.Context, *connect.Request[v1.GetQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Pause a goal: the runner stops starting new rounds, the state and journal stay.
+	PauseQualityAgentGoal(context.Context, *connect.Request[v1.PauseQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Resume a paused or blocked goal. A stale revision is rejected.
+	ResumeQualityAgentGoal(context.Context, *connect.Request[v1.ResumeQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Mark a goal complete. A person can always do so; the runner's own completion is
+	// recorded the same way.
+	CompleteQualityAgentGoal(context.Context, *connect.Request[v1.CompleteQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Clear a goal (a tombstone). The journal stays for the audit trail.
+	ClearQualityAgentGoal(context.Context, *connect.Request[v1.ClearQualityAgentGoalRequest]) (*connect.Response[emptypb.Empty], error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -1071,6 +1110,48 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("RotateQualityAgentToken")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualityAgentGoal: connect.NewClient[v1.CreateQualityAgentGoalRequest, v1.QualityAgentGoal](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityAgentGoalProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityAgentGoal")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityAgentGoals: connect.NewClient[v1.ListQualityAgentGoalsRequest, v1.ListQualityAgentGoalsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentGoalsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentGoals")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentGoal: connect.NewClient[v1.GetQualityAgentGoalRequest, v1.QualityAgentGoal](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentGoalProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentGoal")),
+			connect.WithClientOptions(opts...),
+		),
+		pauseQualityAgentGoal: connect.NewClient[v1.PauseQualityAgentGoalRequest, v1.QualityAgentGoal](
+			httpClient,
+			baseURL+DataQualityServicePauseQualityAgentGoalProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("PauseQualityAgentGoal")),
+			connect.WithClientOptions(opts...),
+		),
+		resumeQualityAgentGoal: connect.NewClient[v1.ResumeQualityAgentGoalRequest, v1.QualityAgentGoal](
+			httpClient,
+			baseURL+DataQualityServiceResumeQualityAgentGoalProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ResumeQualityAgentGoal")),
+			connect.WithClientOptions(opts...),
+		),
+		completeQualityAgentGoal: connect.NewClient[v1.CompleteQualityAgentGoalRequest, v1.QualityAgentGoal](
+			httpClient,
+			baseURL+DataQualityServiceCompleteQualityAgentGoalProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CompleteQualityAgentGoal")),
+			connect.WithClientOptions(opts...),
+		),
+		clearQualityAgentGoal: connect.NewClient[v1.ClearQualityAgentGoalRequest, emptypb.Empty](
+			httpClient,
+			baseURL+DataQualityServiceClearQualityAgentGoalProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ClearQualityAgentGoal")),
+			connect.WithClientOptions(opts...),
+		),
 		decideQualityChangeRequest: connect.NewClient[v1.DecideQualityChangeRequestRequest, v1.QualityChangeRequest](
 			httpClient,
 			baseURL+DataQualityServiceDecideQualityChangeRequestProcedure,
@@ -1177,6 +1258,13 @@ type dataQualityServiceClient struct {
 	listQualityAgents                  *connect.Client[v1.ListQualityAgentsRequest, v1.ListQualityAgentsResponse]
 	disableQualityAgent                *connect.Client[v1.DisableQualityAgentRequest, v1.QualityAgent]
 	rotateQualityAgentToken            *connect.Client[v1.RotateQualityAgentTokenRequest, v1.RotateQualityAgentTokenResponse]
+	createQualityAgentGoal             *connect.Client[v1.CreateQualityAgentGoalRequest, v1.QualityAgentGoal]
+	listQualityAgentGoals              *connect.Client[v1.ListQualityAgentGoalsRequest, v1.ListQualityAgentGoalsResponse]
+	getQualityAgentGoal                *connect.Client[v1.GetQualityAgentGoalRequest, v1.QualityAgentGoal]
+	pauseQualityAgentGoal              *connect.Client[v1.PauseQualityAgentGoalRequest, v1.QualityAgentGoal]
+	resumeQualityAgentGoal             *connect.Client[v1.ResumeQualityAgentGoalRequest, v1.QualityAgentGoal]
+	completeQualityAgentGoal           *connect.Client[v1.CompleteQualityAgentGoalRequest, v1.QualityAgentGoal]
+	clearQualityAgentGoal              *connect.Client[v1.ClearQualityAgentGoalRequest, emptypb.Empty]
 	decideQualityChangeRequest         *connect.Client[v1.DecideQualityChangeRequestRequest, v1.QualityChangeRequest]
 	listQualityContractRevisions       *connect.Client[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse]
 	getQualityContractRevision         *connect.Client[v1.GetQualityContractRevisionRequest, v1.GetQualityContractRevisionResponse]
@@ -1572,6 +1660,41 @@ func (c *dataQualityServiceClient) RotateQualityAgentToken(ctx context.Context, 
 	return c.rotateQualityAgentToken.CallUnary(ctx, req)
 }
 
+// CreateQualityAgentGoal calls metaxisdata.v1.DataQualityService.CreateQualityAgentGoal.
+func (c *dataQualityServiceClient) CreateQualityAgentGoal(ctx context.Context, req *connect.Request[v1.CreateQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return c.createQualityAgentGoal.CallUnary(ctx, req)
+}
+
+// ListQualityAgentGoals calls metaxisdata.v1.DataQualityService.ListQualityAgentGoals.
+func (c *dataQualityServiceClient) ListQualityAgentGoals(ctx context.Context, req *connect.Request[v1.ListQualityAgentGoalsRequest]) (*connect.Response[v1.ListQualityAgentGoalsResponse], error) {
+	return c.listQualityAgentGoals.CallUnary(ctx, req)
+}
+
+// GetQualityAgentGoal calls metaxisdata.v1.DataQualityService.GetQualityAgentGoal.
+func (c *dataQualityServiceClient) GetQualityAgentGoal(ctx context.Context, req *connect.Request[v1.GetQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return c.getQualityAgentGoal.CallUnary(ctx, req)
+}
+
+// PauseQualityAgentGoal calls metaxisdata.v1.DataQualityService.PauseQualityAgentGoal.
+func (c *dataQualityServiceClient) PauseQualityAgentGoal(ctx context.Context, req *connect.Request[v1.PauseQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return c.pauseQualityAgentGoal.CallUnary(ctx, req)
+}
+
+// ResumeQualityAgentGoal calls metaxisdata.v1.DataQualityService.ResumeQualityAgentGoal.
+func (c *dataQualityServiceClient) ResumeQualityAgentGoal(ctx context.Context, req *connect.Request[v1.ResumeQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return c.resumeQualityAgentGoal.CallUnary(ctx, req)
+}
+
+// CompleteQualityAgentGoal calls metaxisdata.v1.DataQualityService.CompleteQualityAgentGoal.
+func (c *dataQualityServiceClient) CompleteQualityAgentGoal(ctx context.Context, req *connect.Request[v1.CompleteQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return c.completeQualityAgentGoal.CallUnary(ctx, req)
+}
+
+// ClearQualityAgentGoal calls metaxisdata.v1.DataQualityService.ClearQualityAgentGoal.
+func (c *dataQualityServiceClient) ClearQualityAgentGoal(ctx context.Context, req *connect.Request[v1.ClearQualityAgentGoalRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.clearQualityAgentGoal.CallUnary(ctx, req)
+}
+
 // DecideQualityChangeRequest calls metaxisdata.v1.DataQualityService.DecideQualityChangeRequest.
 func (c *dataQualityServiceClient) DecideQualityChangeRequest(ctx context.Context, req *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {
 	return c.decideQualityChangeRequest.CallUnary(ctx, req)
@@ -1897,6 +2020,24 @@ type DataQualityServiceHandler interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error)
+	// Create one durable objective for the built-in quality agent runner: keep a
+	// target trustworthy, investigate one event, or a person's request. The target's
+	// database must be in the workspace's runner allowlist, and the runner must be
+	// enabled.
+	CreateQualityAgentGoal(context.Context, *connect.Request[v1.CreateQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// List the workspace's goals, newest first.
+	ListQualityAgentGoals(context.Context, *connect.Request[v1.ListQualityAgentGoalsRequest]) (*connect.Response[v1.ListQualityAgentGoalsResponse], error)
+	// Read one goal.
+	GetQualityAgentGoal(context.Context, *connect.Request[v1.GetQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Pause a goal: the runner stops starting new rounds, the state and journal stay.
+	PauseQualityAgentGoal(context.Context, *connect.Request[v1.PauseQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Resume a paused or blocked goal. A stale revision is rejected.
+	ResumeQualityAgentGoal(context.Context, *connect.Request[v1.ResumeQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Mark a goal complete. A person can always do so; the runner's own completion is
+	// recorded the same way.
+	CompleteQualityAgentGoal(context.Context, *connect.Request[v1.CompleteQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error)
+	// Clear a goal (a tombstone). The journal stays for the audit trail.
+	ClearQualityAgentGoal(context.Context, *connect.Request[v1.ClearQualityAgentGoalRequest]) (*connect.Response[emptypb.Empty], error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -2381,6 +2522,48 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("RotateQualityAgentToken")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualityAgentGoalHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityAgentGoalProcedure,
+		svc.CreateQualityAgentGoal,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityAgentGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityAgentGoalsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentGoalsProcedure,
+		svc.ListQualityAgentGoals,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentGoals")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentGoalHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentGoalProcedure,
+		svc.GetQualityAgentGoal,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServicePauseQualityAgentGoalHandler := connect.NewUnaryHandler(
+		DataQualityServicePauseQualityAgentGoalProcedure,
+		svc.PauseQualityAgentGoal,
+		connect.WithSchema(dataQualityServiceMethods.ByName("PauseQualityAgentGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceResumeQualityAgentGoalHandler := connect.NewUnaryHandler(
+		DataQualityServiceResumeQualityAgentGoalProcedure,
+		svc.ResumeQualityAgentGoal,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ResumeQualityAgentGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceCompleteQualityAgentGoalHandler := connect.NewUnaryHandler(
+		DataQualityServiceCompleteQualityAgentGoalProcedure,
+		svc.CompleteQualityAgentGoal,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CompleteQualityAgentGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceClearQualityAgentGoalHandler := connect.NewUnaryHandler(
+		DataQualityServiceClearQualityAgentGoalProcedure,
+		svc.ClearQualityAgentGoal,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ClearQualityAgentGoal")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceDecideQualityChangeRequestHandler := connect.NewUnaryHandler(
 		DataQualityServiceDecideQualityChangeRequestProcedure,
 		svc.DecideQualityChangeRequest,
@@ -2561,6 +2744,20 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceDisableQualityAgentHandler.ServeHTTP(w, r)
 		case DataQualityServiceRotateQualityAgentTokenProcedure:
 			dataQualityServiceRotateQualityAgentTokenHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityAgentGoalProcedure:
+			dataQualityServiceCreateQualityAgentGoalHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentGoalsProcedure:
+			dataQualityServiceListQualityAgentGoalsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentGoalProcedure:
+			dataQualityServiceGetQualityAgentGoalHandler.ServeHTTP(w, r)
+		case DataQualityServicePauseQualityAgentGoalProcedure:
+			dataQualityServicePauseQualityAgentGoalHandler.ServeHTTP(w, r)
+		case DataQualityServiceResumeQualityAgentGoalProcedure:
+			dataQualityServiceResumeQualityAgentGoalHandler.ServeHTTP(w, r)
+		case DataQualityServiceCompleteQualityAgentGoalProcedure:
+			dataQualityServiceCompleteQualityAgentGoalHandler.ServeHTTP(w, r)
+		case DataQualityServiceClearQualityAgentGoalProcedure:
+			dataQualityServiceClearQualityAgentGoalHandler.ServeHTTP(w, r)
 		case DataQualityServiceDecideQualityChangeRequestProcedure:
 			dataQualityServiceDecideQualityChangeRequestHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityContractRevisionsProcedure:
@@ -2884,6 +3081,34 @@ func (UnimplementedDataQualityServiceHandler) DisableQualityAgent(context.Contex
 
 func (UnimplementedDataQualityServiceHandler) RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.RotateQualityAgentToken is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityAgentGoal(context.Context, *connect.Request[v1.CreateQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityAgentGoal is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentGoals(context.Context, *connect.Request[v1.ListQualityAgentGoalsRequest]) (*connect.Response[v1.ListQualityAgentGoalsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentGoals is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentGoal(context.Context, *connect.Request[v1.GetQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentGoal is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) PauseQualityAgentGoal(context.Context, *connect.Request[v1.PauseQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.PauseQualityAgentGoal is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ResumeQualityAgentGoal(context.Context, *connect.Request[v1.ResumeQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ResumeQualityAgentGoal is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CompleteQualityAgentGoal(context.Context, *connect.Request[v1.CompleteQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CompleteQualityAgentGoal is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ClearQualityAgentGoal(context.Context, *connect.Request[v1.ClearQualityAgentGoalRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ClearQualityAgentGoal is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) DecideQualityChangeRequest(context.Context, *connect.Request[v1.DecideQualityChangeRequestRequest]) (*connect.Response[v1.QualityChangeRequest], error) {

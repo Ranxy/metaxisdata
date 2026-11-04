@@ -4717,3 +4717,123 @@ func actionRedLine(policy *v1pb.QualityActionPolicy, id string) bool {
 	}
 	return false
 }
+
+// TestQualityAgentGoalRealServerIntegration covers the durable goal substrate: scope
+// and switch checks, the four phases with revision CAS, the one-active-goal-per-target
+// rule and the settings the runner reads.
+func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+	token := fixture.env.AdminToken()
+	segments := common.SplitMetaGUID(fixture.usersGUID)
+	require.GreaterOrEqual(t, len(segments), 2)
+	databaseRef := common.FormatDatabase(segments[0], segments[1])
+
+	updateSettings := func(enabled bool, databases []string) {
+		t.Helper()
+		_, err := fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
+			withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+				Setting: &v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
+					AgentRunnerEnabled:            enabled,
+					AgentRunnerDatabases:          databases,
+					AgentRunnerTokensPerHour:      100_000_000,
+					AgentRunnerGoalsPerHour:       20,
+					AgentRunnerMaxConcurrentGoals: 2,
+				}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+			}))
+		require.NoError(t, err)
+	}
+	updateSettings(true, []string{databaseRef})
+	t.Cleanup(func() { updateSettings(false, nil) })
+
+	// A goal runs as an enabled quality agent; create one for this scenario.
+	_, err := fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(token, &v1pb.CreateQualityAgentRequest{Parent: "workspaces/-", DisplayName: "goal runner"}))
+	require.NoError(t, err)
+
+	// The runner settings round-trip as the runner reads them.
+	setting, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx, withToken(token, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	require.True(t, setting.Msg.GetDataQuality().GetAgentRunnerEnabled())
+	require.Equal(t, []string{databaseRef}, setting.Msg.GetDataQuality().GetAgentRunnerDatabases())
+
+	createGoal := func(kind v1pb.QualityAgentGoalKind) (*v1pb.QualityAgentGoal, error) {
+		t.Helper()
+		response, err := fixture.dataQuality.CreateQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.CreateQualityAgentGoalRequest{
+				Parent:     "workspaces/-",
+				Kind:       kind,
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+				Trigger:    v1pb.QualityAgentGoalTrigger_QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED,
+				Objective:  "keep this table trustworthy",
+			}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+
+	goal, err := createGoal(v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE, goal.GetPhase())
+	require.NotEmpty(t, goal.GetAgent())
+	require.Equal(t, databaseRef, goal.GetDatabase())
+	require.Equal(t, int32(256), goal.GetMaxRounds())
+	t.Cleanup(func() {
+		_, _ = fixture.dataQuality.ClearQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.ClearQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: goal.GetRevision()}))
+	})
+
+	// A second active maintain goal for the same target conflicts.
+	_, err = createGoal(v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeAlreadyExists, connect.CodeOf(err))
+
+	listed, err := fixture.dataQuality.ListQualityAgentGoals(fixture.ctx,
+		withToken(token, &v1pb.ListQualityAgentGoalsRequest{Parent: "workspaces/-", TargetGuid: fixture.usersGUID}))
+	require.NoError(t, err)
+	require.Len(t, listed.Msg.GetQualityAgentGoals(), 1)
+
+	paused, err := fixture.dataQuality.PauseQualityAgentGoal(fixture.ctx,
+		withToken(token, &v1pb.PauseQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: goal.GetRevision()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED, paused.Msg.GetPhase())
+	require.Equal(t, goal.GetRevision()+1, paused.Msg.GetRevision())
+
+	// A stale revision is rejected, not silently applied.
+	_, err = fixture.dataQuality.ResumeQualityAgentGoal(fixture.ctx,
+		withToken(token, &v1pb.ResumeQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: goal.GetRevision()}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
+
+	resumed, err := fixture.dataQuality.ResumeQualityAgentGoal(fixture.ctx,
+		withToken(token, &v1pb.ResumeQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: paused.Msg.GetRevision()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE, resumed.Msg.GetPhase())
+
+	completed, err := fixture.dataQuality.CompleteQualityAgentGoal(fixture.ctx,
+		withToken(token, &v1pb.CompleteQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: resumed.Msg.GetRevision()}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE, completed.Msg.GetPhase())
+
+	// A completed goal no longer occupies the target, so a new one may start.
+	goal2, err := createGoal(v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = fixture.dataQuality.ClearQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.ClearQualityAgentGoalRequest{Name: goal2.GetName(), ExpectedRevision: goal2.GetRevision()}))
+	})
+
+	// The allowlist is a hard boundary: an empty scope refuses creation.
+	updateSettings(true, nil)
+	_, err = createGoal(v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
+	// And the switch is another one.
+	updateSettings(false, []string{databaseRef})
+	_, err = createGoal(v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+}

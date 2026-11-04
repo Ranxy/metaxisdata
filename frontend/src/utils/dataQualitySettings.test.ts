@@ -39,6 +39,11 @@ function baseForm(
     sendSampleValuesToLlm: false,
     checkTimeZone: "",
     agentAutonomyEnabled: false,
+    agentRunnerEnabled: false,
+    agentRunnerDatabases: [],
+    agentRunnerTokensPerHour: "",
+    agentRunnerGoalsPerHour: "",
+    agentRunnerMaxConcurrentGoals: "",
     weeklyDigest: {
       enabled: false,
       dayOfWeek: DayOfWeek.MONDAY,
@@ -89,6 +94,11 @@ describe("settingsToForm", () => {
       checkTimeZone: "Asia/Shanghai",
       // Agent writes are off unless the stored setting opts in.
       agentAutonomyEnabled: false,
+      agentRunnerEnabled: false,
+      agentRunnerDatabases: [],
+      agentRunnerTokensPerHour: "",
+      agentRunnerGoalsPerHour: "",
+      agentRunnerMaxConcurrentGoals: "",
       // No digest stored yet: show the schedule the server resolves instead.
       weeklyDigest: {
         enabled: false,

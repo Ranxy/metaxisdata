@@ -229,19 +229,24 @@ func normalizeDataQualitySetting(dataQuality *v1pb.DataQualitySetting) (*storepb
 	}
 
 	result := &storepb.DataQualitySetting{
-		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
-		LlmProviderProfile:       provider,
-		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
-		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
-		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
-		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
-		DailyLlmAnalysisLimit:    dataQuality.GetDailyLlmAnalysisLimit(),
-		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
-		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
-		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
-		WeeklyDigest:             digest,
-		TimeZone:                 timeZone,
-		AgentAutonomyEnabled:     dataQuality.GetAgentAutonomyEnabled(),
+		EnableLlmAnalysis:             dataQuality.GetEnableLlmAnalysis(),
+		LlmProviderProfile:            provider,
+		StoreFailureSamples:           dataQuality.GetStoreFailureSamples(),
+		FailureSampleLimit:            dataQuality.GetFailureSampleLimit(),
+		DailyExecutionLimit:           dataQuality.GetDailyExecutionLimit(),
+		DailyColumnAnalysisLimit:      dataQuality.GetDailyColumnAnalysisLimit(),
+		DailyLlmAnalysisLimit:         dataQuality.GetDailyLlmAnalysisLimit(),
+		LlmConcurrencyLimit:           dataQuality.GetLlmConcurrencyLimit(),
+		MaxColumnsPerAnalysis:         dataQuality.GetMaxColumnsPerAnalysis(),
+		SendSampleValuesToLlm:         dataQuality.GetSendSampleValuesToLlm(),
+		WeeklyDigest:                  digest,
+		TimeZone:                      timeZone,
+		AgentAutonomyEnabled:          dataQuality.GetAgentAutonomyEnabled(),
+		AgentRunnerEnabled:            dataQuality.GetAgentRunnerEnabled(),
+		AgentRunnerDatabases:          append([]string(nil), dataQuality.GetAgentRunnerDatabases()...),
+		AgentRunnerTokensPerHour:      dataQuality.GetAgentRunnerTokensPerHour(),
+		AgentRunnerGoalsPerHour:       dataQuality.GetAgentRunnerGoalsPerHour(),
+		AgentRunnerMaxConcurrentGoals: dataQuality.GetAgentRunnerMaxConcurrentGoals(),
 	}
 	if interval != nil {
 		result.DefaultScheduleInterval = durationpb.New(intervalDuration)
@@ -289,20 +294,25 @@ func convertDataQualitySetting(dataQuality *storepb.DataQualitySetting) *v1pb.Da
 		}
 	}
 	return &v1pb.DataQualitySetting{
-		EnableLlmAnalysis:        dataQuality.GetEnableLlmAnalysis(),
-		LlmProviderProfile:       dataQuality.GetLlmProviderProfile(),
-		StoreFailureSamples:      dataQuality.GetStoreFailureSamples(),
-		FailureSampleLimit:       dataQuality.GetFailureSampleLimit(),
-		DefaultScheduleInterval:  dataQuality.GetDefaultScheduleInterval(),
-		DailyExecutionLimit:      dataQuality.GetDailyExecutionLimit(),
-		DailyColumnAnalysisLimit: dataQuality.GetDailyColumnAnalysisLimit(),
-		DailyLlmAnalysisLimit:    dataQuality.GetDailyLlmAnalysisLimit(),
-		LlmConcurrencyLimit:      dataQuality.GetLlmConcurrencyLimit(),
-		MaxColumnsPerAnalysis:    dataQuality.GetMaxColumnsPerAnalysis(),
-		SendSampleValuesToLlm:    dataQuality.GetSendSampleValuesToLlm(),
-		WeeklyDigest:             digest,
-		TimeZone:                 dataQuality.GetTimeZone(),
-		AgentAutonomyEnabled:     dataQuality.GetAgentAutonomyEnabled(),
+		EnableLlmAnalysis:             dataQuality.GetEnableLlmAnalysis(),
+		LlmProviderProfile:            dataQuality.GetLlmProviderProfile(),
+		StoreFailureSamples:           dataQuality.GetStoreFailureSamples(),
+		FailureSampleLimit:            dataQuality.GetFailureSampleLimit(),
+		DefaultScheduleInterval:       dataQuality.GetDefaultScheduleInterval(),
+		DailyExecutionLimit:           dataQuality.GetDailyExecutionLimit(),
+		DailyColumnAnalysisLimit:      dataQuality.GetDailyColumnAnalysisLimit(),
+		DailyLlmAnalysisLimit:         dataQuality.GetDailyLlmAnalysisLimit(),
+		LlmConcurrencyLimit:           dataQuality.GetLlmConcurrencyLimit(),
+		MaxColumnsPerAnalysis:         dataQuality.GetMaxColumnsPerAnalysis(),
+		SendSampleValuesToLlm:         dataQuality.GetSendSampleValuesToLlm(),
+		WeeklyDigest:                  digest,
+		TimeZone:                      dataQuality.GetTimeZone(),
+		AgentAutonomyEnabled:          dataQuality.GetAgentAutonomyEnabled(),
+		AgentRunnerEnabled:            dataQuality.GetAgentRunnerEnabled(),
+		AgentRunnerDatabases:          append([]string(nil), dataQuality.GetAgentRunnerDatabases()...),
+		AgentRunnerTokensPerHour:      dataQuality.GetAgentRunnerTokensPerHour(),
+		AgentRunnerGoalsPerHour:       dataQuality.GetAgentRunnerGoalsPerHour(),
+		AgentRunnerMaxConcurrentGoals: dataQuality.GetAgentRunnerMaxConcurrentGoals(),
 	}
 }
 
@@ -333,7 +343,12 @@ func resolveDataQualitySetting(setting *storepb.WorkspaceProfileSetting) *storep
 			Time:      fmt.Sprintf("%02d:%02d", resolved.Digest.Hour, resolved.Digest.Minute),
 			Timezone:  resolved.Digest.Timezone,
 		},
-		AgentAutonomyEnabled: resolved.AgentAutonomyEnabled,
+		AgentAutonomyEnabled:          resolved.AgentAutonomyEnabled,
+		AgentRunnerEnabled:            resolved.AgentRunnerEnabled,
+		AgentRunnerDatabases:          append([]string(nil), resolved.AgentRunnerDatabases...),
+		AgentRunnerTokensPerHour:      resolved.AgentRunnerTokensPerHour,
+		AgentRunnerGoalsPerHour:       int32(resolved.AgentRunnerGoalsPerHour),
+		AgentRunnerMaxConcurrentGoals: int32(resolved.AgentRunnerMaxConcurrentGoals),
 	}
 }
 
