@@ -63,6 +63,31 @@ func (s *Store) GetQualityContract(ctx context.Context, targetGUID string, targe
 	return message, nil
 }
 
+// ListQualityContracts reads every contract row in the workspace. The workspace
+// rule cap bounds the number of targets; callers that need one target should use
+// GetQualityContract instead.
+func (s *Store) ListQualityContracts(ctx context.Context) ([]*QualityContractMessage, error) {
+	rows, err := s.GetDB().QueryContext(ctx, `SELECT `+qualityContractColumns+`
+		FROM quality_contract ORDER BY target_guid, target_type`)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list the quality contracts")
+	}
+	defer rows.Close()
+
+	var contracts []*QualityContractMessage
+	for rows.Next() {
+		message, scanErr := scanQualityContract(rows)
+		if scanErr != nil {
+			return nil, errors.Wrap(scanErr, "failed to scan a quality contract")
+		}
+		contracts = append(contracts, message)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the quality contracts")
+	}
+	return contracts, nil
+}
+
 // UpsertQualityContractSettings writes the target's settings, creating the
 // contract row on first use, and returns the stored row.
 func (s *Store) UpsertQualityContractSettings(ctx context.Context, targetGUID string, targetType storepb.MetaType, settings *storepb.QualityContractSettings) (*QualityContractMessage, error) {

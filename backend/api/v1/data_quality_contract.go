@@ -270,6 +270,10 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 		CheckCount:       int32(len(checks)),
 		PublishedVersion: qualityContractPublishedVersion(contract),
 	}
+	// The plan is a read-only projection of the same rules; it joins the contract
+	// view so the workspace can show what the target promises and what it lacks
+	// without a second request.
+	view.Plan = qualityPlanView(targetGUID, metaType, rules, contract != nil)
 	if latest != nil {
 		added, modified, removed := store.QualityContractCheckDiff(latest.Snapshot.GetChecks(), checks)
 		view.ChangeSummary = qualityContractChangeSummary(added, modified, removed)

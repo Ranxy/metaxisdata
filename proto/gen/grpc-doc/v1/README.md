@@ -297,6 +297,8 @@
     - [ListQualityExecutionsResponse](#metaxisdata-v1-ListQualityExecutionsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
+    - [ListQualityPlansRequest](#metaxisdata-v1-ListQualityPlansRequest)
+    - [ListQualityPlansResponse](#metaxisdata-v1-ListQualityPlansResponse)
     - [ListQualityRuleTemplatesRequest](#metaxisdata-v1-ListQualityRuleTemplatesRequest)
     - [ListQualityRuleTemplatesResponse](#metaxisdata-v1-ListQualityRuleTemplatesResponse)
     - [ListQualityRulesRequest](#metaxisdata-v1-ListQualityRulesRequest)
@@ -325,6 +327,7 @@
     - [QualityContractRevision](#metaxisdata-v1-QualityContractRevision)
     - [QualityContractSettings](#metaxisdata-v1-QualityContractSettings)
     - [QualityCoverageBreakdown](#metaxisdata-v1-QualityCoverageBreakdown)
+    - [QualityCoverageRequirement](#metaxisdata-v1-QualityCoverageRequirement)
     - [QualityDimensionScore](#metaxisdata-v1-QualityDimensionScore)
     - [QualityExecution](#metaxisdata-v1-QualityExecution)
     - [QualityExecutionSummary](#metaxisdata-v1-QualityExecutionSummary)
@@ -336,6 +339,7 @@
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
+    - [QualityPlan](#metaxisdata-v1-QualityPlan)
     - [QualityRootCauseCandidate](#metaxisdata-v1-QualityRootCauseCandidate)
     - [QualityRule](#metaxisdata-v1-QualityRule)
     - [QualityRuleConfig](#metaxisdata-v1-QualityRuleConfig)
@@ -397,8 +401,10 @@
   
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
+    - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
+    - [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty)
     - [QualityDimension](#metaxisdata-v1-QualityDimension)
     - [QualityEmptyBehavior](#metaxisdata-v1-QualityEmptyBehavior)
     - [QualityExecutionState](#metaxisdata-v1-QualityExecutionState)
@@ -409,6 +415,7 @@
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
     - [QualityObservedKind](#metaxisdata-v1-QualityObservedKind)
+    - [QualityPlanState](#metaxisdata-v1-QualityPlanState)
     - [QualityResolutionReason](#metaxisdata-v1-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-v1-QualityRuleState)
     - [QualityRuleType](#metaxisdata-v1-QualityRuleType)
@@ -5554,6 +5561,45 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityPlansRequest"></a>
+
+### ListQualityPlansRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| instance | [string](#string) |  |  |
+| database | [string](#string) |  |  |
+| schema | [string](#string) |  |  |
+| table | [string](#string) |  |  |
+| search | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityPlansResponse"></a>
+
+### ListQualityPlansResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| plans | [QualityPlan](#metaxisdata-v1-QualityPlan) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+| total_size | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityRuleTemplatesRequest"></a>
 
 ### ListQualityRuleTemplatesRequest
@@ -5994,6 +6040,7 @@ contract immediately, and publishing records that state as a version.
 | check_count | [int32](#int32) |  | How many live (non-archived) rules the target has. |
 | change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  | The live rules compared with the published snapshot. Zero counts when the target has never been published. |
 | has_unpublished_changes | [bool](#bool) |  | True when the live rules or settings differ from the published snapshot (or nothing has been published yet and the target has content). |
+| plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The target&#39;s monitoring plan as derived from the live rules and the contract. Read-only in this slice; staged editing arrives with the plan write path. |
 
 
 
@@ -6090,6 +6137,23 @@ denominator as QualityOverview.
 | monitored_table_count | [int32](#int32) |  |  |
 | total_column_count | [int32](#int32) |  |  |
 | covered_column_count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityCoverageRequirement"></a>
+
+### QualityCoverageRequirement
+QualityCoverageRequirement is one required property and whether a live rule
+currently satisfies it. Gap = required and not satisfied.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
+| satisfied | [bool](#bool) |  |  |
 
 
 
@@ -6376,6 +6440,28 @@ QualityOwnerScore is the quality score rolled up by rule owner.
 | scored_rule_count | [int32](#int32) |  |  |
 | failing_rule_count | [int32](#int32) |  |  |
 | quality_score | [double](#double) | optional | 0-100; unset when none of the owner&#39;s rules has a judged result. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityPlan"></a>
+
+### QualityPlan
+QualityPlan is the read-only projection of a target&#39;s monitoring plan: its
+state, derived criticality, the checks that implement it and the declared
+coverage it currently satisfies.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| state | [QualityPlanState](#metaxisdata-v1-QualityPlanState) |  |  |
+| criticality | [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality) |  |  |
+| check_count | [int32](#int32) |  |  |
+| requirements | [QualityCoverageRequirement](#metaxisdata-v1-QualityCoverageRequirement) | repeated |  |
+| gap_count | [int32](#int32) |  |  |
 
 
 
@@ -7636,6 +7722,21 @@ PERCENTILE only for an aggregate rule.
 
 
 
+<a name="metaxisdata-v1-QualityAssetCriticality"></a>
+
+### QualityAssetCriticality
+QualityAssetCriticality ranks a target for the autonomy policy. Derived
+criticality is a display/policy input, never written back to the contract.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_ASSET_CRITICALITY_UNSPECIFIED | 0 |  |
+| QUALITY_ASSET_CRITICALITY_EXPERIMENTAL | 1 |  |
+| QUALITY_ASSET_CRITICALITY_IMPORTANT | 2 |  |
+| QUALITY_ASSET_CRITICALITY_CRITICAL | 3 |  |
+
+
+
 <a name="metaxisdata-v1-QualityComparison"></a>
 
 ### QualityComparison
@@ -7666,6 +7767,21 @@ between two columns of the same row.
 | QUALITY_COMPARISON_OPERATOR_LTE | 4 |  |
 | QUALITY_COMPARISON_OPERATOR_GT | 5 |  |
 | QUALITY_COMPARISON_OPERATOR_GTE | 6 |  |
+
+
+
+<a name="metaxisdata-v1-QualityCoverageProperty"></a>
+
+### QualityCoverageProperty
+QualityCoverageProperty is one kind of monitoring a declaration can require.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_COVERAGE_PROPERTY_UNSPECIFIED | 0 |  |
+| QUALITY_COVERAGE_PROPERTY_VOLUME | 1 |  |
+| QUALITY_COVERAGE_PROPERTY_FRESHNESS | 2 |  |
+| QUALITY_COVERAGE_PROPERTY_UNIQUENESS | 3 |  |
+| QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY | 4 |  |
 
 
 
@@ -7826,6 +7942,21 @@ QualityObservedKind is the unit of the observed value a result records.
 | QUALITY_OBSERVED_KIND_SECONDS | 3 |  |
 | QUALITY_OBSERVED_KIND_TIMESTAMP | 4 |  |
 | QUALITY_OBSERVED_KIND_NUMBER | 5 |  |
+
+
+
+<a name="metaxisdata-v1-QualityPlanState"></a>
+
+### QualityPlanState
+QualityPlanState says whether a target has a plan at all. A target with rules
+but no contract row is UNPLANNED: its checks are real, but nothing records
+what it promised.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_PLAN_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_PLAN_STATE_PLANNED | 1 |  |
+| QUALITY_PLAN_STATE_UNPLANNED | 2 |  |
 
 
 
@@ -8238,6 +8369,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | UpdateQualityTargetSchedule | [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Update one target&#39;s schedule: how often its enabled checks run. Scheduling is per target, so this replaces the per-check schedule; a change takes effect from the next slot and never runs the target immediately. |
 | GetQualityTargetSchedule | [GetQualityTargetScheduleRequest](#metaxisdata-v1-GetQualityTargetScheduleRequest) | [QualityTargetSchedule](#metaxisdata-v1-QualityTargetSchedule) | Read one target&#39;s schedule without the target&#39;s rules, results and issues. A rule lifecycle change can move the target&#39;s next run; the workspace re-reads just this instead of the whole target after every check edit. |
 | GetQualityContract | [GetQualityContractRequest](#metaxisdata-v1-GetQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Read one target&#39;s contract: its target-level defaults, the published version, and whether the live rules differ from that snapshot. |
+| ListQualityPlans | [ListQualityPlansRequest](#metaxisdata-v1-ListQualityPlansRequest) | [ListQualityPlansResponse](#metaxisdata-v1-ListQualityPlansResponse) | ListQualityPlans lists the read-only monitoring plan projection for every target with live rules. It is the directory the plan write path will grow from; it does not write anything. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |

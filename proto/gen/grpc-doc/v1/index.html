@@ -1321,6 +1321,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListQualityPlansRequest"><span class="badge">M</span>ListQualityPlansRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityPlansResponse"><span class="badge">M</span>ListQualityPlansResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListQualityRuleTemplatesRequest"><span class="badge">M</span>ListQualityRuleTemplatesRequest</a>
                 </li>
               
@@ -1433,6 +1441,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityCoverageRequirement"><span class="badge">M</span>QualityCoverageRequirement</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityDimensionScore"><span class="badge">M</span>QualityDimensionScore</a>
                 </li>
               
@@ -1474,6 +1486,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityOwnerScore"><span class="badge">M</span>QualityOwnerScore</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityPlan"><span class="badge">M</span>QualityPlan</a>
                 </li>
               
                 <li>
@@ -1718,11 +1734,19 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityAssetCriticality"><span class="badge">E</span>QualityAssetCriticality</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityComparison"><span class="badge">E</span>QualityComparison</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.v1.QualityComparisonOperator"><span class="badge">E</span>QualityComparisonOperator</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityCoverageProperty"><span class="badge">E</span>QualityCoverageProperty</a>
                 </li>
               
                 <li>
@@ -1763,6 +1787,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityObservedKind"><span class="badge">E</span>QualityObservedKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityPlanState"><span class="badge">E</span>QualityPlanState</a>
                 </li>
               
                 <li>
@@ -16090,6 +16118,117 @@ to retrieve the subsequent page. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ListQualityPlansRequest">ListQualityPlansRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>instance</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>schema</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>table</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>search</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityPlansResponse">ListQualityPlansResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>plans</td>
+                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>total_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.ListQualityRuleTemplatesRequest">ListQualityRuleTemplatesRequest</h3>
         <p></p>
 
@@ -17319,6 +17458,15 @@ target has never been published. </p></td>
 nothing has been published yet and the target has content). </p></td>
                 </tr>
               
+                <tr>
+                  <td>plan</td>
+                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
+                  <td></td>
+                  <td><p>The target&#39;s monitoring plan as derived from the live rules and the
+contract. Read-only in this slice; staged editing arrives with the plan
+write path. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17563,6 +17711,37 @@ or the id no longer resolves. </p></td>
                 <tr>
                   <td>covered_column_count</td>
                   <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityCoverageRequirement">QualityCoverageRequirement</h3>
+        <p>QualityCoverageRequirement is one required property and whether a live rule</p><p>currently satisfies it. Gap = required and not satisfied.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>satisfied</td>
+                  <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -18608,6 +18787,65 @@ is visible without being mistaken for bad data. </p></td>
                   <td><a href="#double">double</a></td>
                   <td>optional</td>
                   <td><p>0-100; unset when none of the owner&#39;s rules has a judged result. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityPlan">QualityPlan</h3>
+        <p>QualityPlan is the read-only projection of a target's monitoring plan: its</p><p>state, derived criticality, the checks that implement it and the declared</p><p>coverage it currently satisfies.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>target</td>
+                  <td><a href="#metaxisdata.v1.QualityTarget">QualityTarget</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanState">QualityPlanState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>criticality</td>
+                  <td><a href="#metaxisdata.v1.QualityAssetCriticality">QualityAssetCriticality</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>check_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>requirements</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageRequirement">QualityCoverageRequirement</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>gap_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -22303,6 +22541,41 @@ resolved zone is what the target stores and what reads return. </p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityAssetCriticality">QualityAssetCriticality</h3>
+        <p>QualityAssetCriticality ranks a target for the autonomy policy. Derived</p><p>criticality is a display/policy input, never written back to the contract.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_ASSET_CRITICALITY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_ASSET_CRITICALITY_EXPERIMENTAL</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_ASSET_CRITICALITY_IMPORTANT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_ASSET_CRITICALITY_CRITICAL</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityComparison">QualityComparison</h3>
         <p>QualityComparison is how the observed value is compared with a threshold.</p>
         <table class="enum-table">
@@ -22394,6 +22667,47 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_COMPARISON_OPERATOR_GTE</td>
                 <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</h3>
+        <p>QualityCoverageProperty is one kind of monitoring a declaration can require.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_VOLUME</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_FRESHNESS</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_UNIQUENESS</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY</td>
+                <td>4</td>
                 <td><p></p></td>
               </tr>
             
@@ -22810,6 +23124,35 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_OBSERVED_KIND_NUMBER</td>
                 <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityPlanState">QualityPlanState</h3>
+        <p>QualityPlanState says whether a target has a plan at all. A target with rules</p><p>but no contract row is UNPLANNED: its checks are real, but nothing records</p><p>what it promised.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_PLAN_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_PLAN_STATE_PLANNED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_PLAN_STATE_UNPLANNED</td>
+                <td>2</td>
                 <td><p></p></td>
               </tr>
             
@@ -24267,6 +24610,15 @@ and whether the live rules differ from that snapshot.</p></td>
               </tr>
             
               <tr>
+                <td>ListQualityPlans</td>
+                <td><a href="#metaxisdata.v1.ListQualityPlansRequest">ListQualityPlansRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityPlansResponse">ListQualityPlansResponse</a></td>
+                <td><p>ListQualityPlans lists the read-only monitoring plan projection for every
+target with live rules. It is the directory the plan write path will grow
+from; it does not write anything.</p></td>
+              </tr>
+            
+              <tr>
                 <td>UpdateQualityContract</td>
                 <td><a href="#metaxisdata.v1.UpdateQualityContractRequest">UpdateQualityContractRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
@@ -24853,6 +25205,16 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityContract</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityContracts:get</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityPlans</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityPlans</td>
                 <td></td>
               </tr>
               

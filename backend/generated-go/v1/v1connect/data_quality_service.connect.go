@@ -205,6 +205,9 @@ const (
 	// DataQualityServiceGetQualityContractProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityContract RPC.
 	DataQualityServiceGetQualityContractProcedure = "/metaxisdata.v1.DataQualityService/GetQualityContract"
+	// DataQualityServiceListQualityPlansProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityPlans RPC.
+	DataQualityServiceListQualityPlansProcedure = "/metaxisdata.v1.DataQualityService/ListQualityPlans"
 	// DataQualityServiceUpdateQualityContractProcedure is the fully-qualified name of the
 	// DataQualityService's UpdateQualityContract RPC.
 	DataQualityServiceUpdateQualityContractProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
@@ -460,6 +463,10 @@ type DataQualityServiceClient interface {
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(context.Context, *connect.Request[v1.GetQualityContractRequest]) (*connect.Response[v1.QualityContract], error)
+	// ListQualityPlans lists the read-only monitoring plan projection for every
+	// target with live rules. It is the directory the plan write path will grow
+	// from; it does not write anything.
+	ListQualityPlans(context.Context, *connect.Request[v1.ListQualityPlansRequest]) (*connect.Response[v1.ListQualityPlansResponse], error)
 	// Update the target-level defaults. The filter is ANDed into every rule on the
 	// target at compile time; the default severity only seeds newly authored rules
 	// and never rewrites an existing rule. The target's schedule is updated through
@@ -833,6 +840,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityContract")),
 			connect.WithClientOptions(opts...),
 		),
+		listQualityPlans: connect.NewClient[v1.ListQualityPlansRequest, v1.ListQualityPlansResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityPlansProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityPlans")),
+			connect.WithClientOptions(opts...),
+		),
 		updateQualityContract: connect.NewClient[v1.UpdateQualityContractRequest, v1.QualityContract](
 			httpClient,
 			baseURL+DataQualityServiceUpdateQualityContractProcedure,
@@ -925,6 +938,7 @@ type dataQualityServiceClient struct {
 	updateQualityTargetSchedule        *connect.Client[v1.UpdateQualityTargetScheduleRequest, v1.QualityTargetSchedule]
 	getQualityTargetSchedule           *connect.Client[v1.GetQualityTargetScheduleRequest, v1.QualityTargetSchedule]
 	getQualityContract                 *connect.Client[v1.GetQualityContractRequest, v1.QualityContract]
+	listQualityPlans                   *connect.Client[v1.ListQualityPlansRequest, v1.ListQualityPlansResponse]
 	updateQualityContract              *connect.Client[v1.UpdateQualityContractRequest, v1.QualityContract]
 	publishQualityContract             *connect.Client[v1.PublishQualityContractRequest, v1.PublishQualityContractResponse]
 	listQualityContractRevisions       *connect.Client[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse]
@@ -1221,6 +1235,11 @@ func (c *dataQualityServiceClient) GetQualityContract(ctx context.Context, req *
 	return c.getQualityContract.CallUnary(ctx, req)
 }
 
+// ListQualityPlans calls metaxisdata.v1.DataQualityService.ListQualityPlans.
+func (c *dataQualityServiceClient) ListQualityPlans(ctx context.Context, req *connect.Request[v1.ListQualityPlansRequest]) (*connect.Response[v1.ListQualityPlansResponse], error) {
+	return c.listQualityPlans.CallUnary(ctx, req)
+}
+
 // UpdateQualityContract calls metaxisdata.v1.DataQualityService.UpdateQualityContract.
 func (c *dataQualityServiceClient) UpdateQualityContract(ctx context.Context, req *connect.Request[v1.UpdateQualityContractRequest]) (*connect.Response[v1.QualityContract], error) {
 	return c.updateQualityContract.CallUnary(ctx, req)
@@ -1485,6 +1504,10 @@ type DataQualityServiceHandler interface {
 	// Read one target's contract: its target-level defaults, the published version,
 	// and whether the live rules differ from that snapshot.
 	GetQualityContract(context.Context, *connect.Request[v1.GetQualityContractRequest]) (*connect.Response[v1.QualityContract], error)
+	// ListQualityPlans lists the read-only monitoring plan projection for every
+	// target with live rules. It is the directory the plan write path will grow
+	// from; it does not write anything.
+	ListQualityPlans(context.Context, *connect.Request[v1.ListQualityPlansRequest]) (*connect.Response[v1.ListQualityPlansResponse], error)
 	// Update the target-level defaults. The filter is ANDed into every rule on the
 	// target at compile time; the default severity only seeds newly authored rules
 	// and never rewrites an existing rule. The target's schedule is updated through
@@ -1854,6 +1877,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityContract")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceListQualityPlansHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityPlansProcedure,
+		svc.ListQualityPlans,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityPlans")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceUpdateQualityContractHandler := connect.NewUnaryHandler(
 		DataQualityServiceUpdateQualityContractProcedure,
 		svc.UpdateQualityContract,
@@ -2000,6 +2029,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityTargetScheduleHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityContractProcedure:
 			dataQualityServiceGetQualityContractHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityPlansProcedure:
+			dataQualityServiceListQualityPlansHandler.ServeHTTP(w, r)
 		case DataQualityServiceUpdateQualityContractProcedure:
 			dataQualityServiceUpdateQualityContractHandler.ServeHTTP(w, r)
 		case DataQualityServicePublishQualityContractProcedure:
@@ -2245,6 +2276,10 @@ func (UnimplementedDataQualityServiceHandler) GetQualityTargetSchedule(context.C
 
 func (UnimplementedDataQualityServiceHandler) GetQualityContract(context.Context, *connect.Request[v1.GetQualityContractRequest]) (*connect.Response[v1.QualityContract], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityContract is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityPlans(context.Context, *connect.Request[v1.ListQualityPlansRequest]) (*connect.Response[v1.ListQualityPlansResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityPlans is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) UpdateQualityContract(context.Context, *connect.Request[v1.UpdateQualityContractRequest]) (*connect.Response[v1.QualityContract], error) {
