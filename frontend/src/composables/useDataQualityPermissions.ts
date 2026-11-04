@@ -29,6 +29,8 @@ export function useDataQualityPermissions() {
     canViewIssue: check("metaxisdata.dataQuality.issues.get"),
     canUpdateIssue: check("metaxisdata.dataQuality.issues.update"),
     canPublish: check("metaxisdata.dataQuality.contracts.publish"),
+    /** Approve or reject a batch of proposed changes. */
+    canDecideChanges: check("metaxisdata.dataQuality.changeRequests.decide"),
     canViewExecution: check("metaxisdata.dataQuality.executions.get"),
     canListExecutions: check("metaxisdata.dataQuality.executions.list"),
     canExplain: check("metaxisdata.dataQuality.explain"),

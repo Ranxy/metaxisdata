@@ -13,10 +13,13 @@ import {
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
+  CreateQualityChangeRequestRequestSchema,
   CreateQualityCodeTableRequestSchema,
   CreateQualityRuleRequestSchema,
   CreateQualityRuleTemplateRequestSchema,
   CreateQualitySuggestionJobRequestSchema,
+  DecideQualityChangeRequestRequest_Decision,
+  DecideQualityChangeRequestRequestSchema,
   DeleteQualityCodeTableRequestSchema,
   DeleteQualityRuleRequestSchema,
   DeleteQualityRuleTemplateRequestSchema,
@@ -27,6 +30,7 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
+  GetQualityChangeRequestRequestSchema,
   GetQualityCodeTableRequestSchema,
   GetQualityConsumptionCoverageRequestSchema,
   type GetQualityConsumptionCoverageResponse,
@@ -52,6 +56,7 @@ import {
   GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityChangeRequestsRequestSchema,
   ListQualityCodeTablesRequestSchema,
   ListQualityContractRevisionsRequestSchema,
   ListQualityExecutionsRequestSchema,
@@ -66,6 +71,10 @@ import {
   ProfileColumnsRequestSchema,
   PublishQualityContractRequestSchema,
   type PublishQualityContractResponse,
+  QualityChangeRejectionReason,
+  type QualityChangeRequest,
+  type QualityChangeRequestItem,
+  QualityChangeRequestState,
   type QualityCodeTable,
   type QualityContract,
   type QualityContractRevision,
@@ -1594,6 +1603,82 @@ export async function exportQualityReport(options: {
     language: options.language ?? "",
   });
   return await dataQualityClient.exportQualityReport(request, {
+    signal: options.signal,
+  });
+}
+
+// ---- change requests ----
+
+/** Create a proposed batch of typed changes against one target. */
+export async function createQualityChangeRequest(options: {
+  targetGuid: string;
+  metaType?: MetaType;
+  baseVersion: number;
+  items: QualityChangeRequestItem[];
+  signal?: AbortSignal;
+}): Promise<QualityChangeRequest> {
+  const request = create(CreateQualityChangeRequestRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid,
+    metaType: options.metaType ?? MetaType.UNSPECIFIED,
+    baseVersion: options.baseVersion,
+    items: options.items,
+  });
+  return await dataQualityClient.createQualityChangeRequest(request, {
+    signal: options.signal,
+  });
+}
+
+/** Read one change request by resource name. */
+export async function getQualityChangeRequest(
+  name: string,
+  signal?: AbortSignal
+): Promise<QualityChangeRequest> {
+  const request = create(GetQualityChangeRequestRequestSchema, { name });
+  return await dataQualityClient.getQualityChangeRequest(request, {
+    signal,
+  });
+}
+
+/** One page of change requests, newest first. */
+export async function listQualityChangeRequests(options: {
+  targetGuid?: string;
+  state?: QualityChangeRequestState;
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
+}): Promise<ListPage<QualityChangeRequest>> {
+  const request = create(ListQualityChangeRequestsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    targetGuid: options.targetGuid ?? "",
+    state: options.state ?? QualityChangeRequestState.UNSPECIFIED,
+    pageSize: options.pageSize ?? 20,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityChangeRequests(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityChangeRequests,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/** Approve (applying each item) or reject one change request. */
+export async function decideQualityChangeRequest(options: {
+  name: string;
+  decision: DecideQualityChangeRequestRequest_Decision;
+  rejectionReasons?: QualityChangeRejectionReason[];
+  decisionNote?: string;
+  signal?: AbortSignal;
+}): Promise<QualityChangeRequest> {
+  const request = create(DecideQualityChangeRequestRequestSchema, {
+    name: options.name,
+    decision: options.decision,
+    rejectionReasons: options.rejectionReasons ?? [],
+    decisionNote: options.decisionNote ?? "",
+  });
+  return await dataQualityClient.decideQualityChangeRequest(request, {
     signal: options.signal,
   });
 }
