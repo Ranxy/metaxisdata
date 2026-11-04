@@ -7,7 +7,12 @@ import {
   PublishQualityContractResponseSchema,
   type QualityContract,
   QualityContractChangeSummarySchema,
+  QualityContractDiffSchema,
   QualityContractSchema,
+  QualityCoverageProperty,
+  QualityPlanChange_Kind,
+  QualityPlanChangeSchema,
+  QualityPlanCoverageSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import ContractPublishDialog from "./ContractPublishDialog.vue";
@@ -200,4 +205,67 @@ describe("ContractPublishDialog", () => {
     expect(wrapper.emitted("update:open")).toBeUndefined();
     wrapper.unmount();
   });
+});
+
+// The publish dialog shows the two sections the plan payload made comparable: the
+// intent and the declaration changes, next to the check counts.
+it("shows the intent and plan sections of the next version", async () => {
+  const contract = create(QualityContractSchema, {
+    publishedVersion: 2,
+    hasUnpublishedChanges: true,
+    changeSummary: create(QualityContractChangeSummarySchema),
+    diff: create(QualityContractDiffSchema, {
+      intentChanged: true,
+      planChanges: [
+        create(QualityPlanChangeSchema, {
+          kind: QualityPlanChange_Kind.ADDED,
+          coverage: create(QualityPlanCoverageSchema, {
+            property: QualityCoverageProperty.FRESHNESS,
+          }),
+        }),
+        create(QualityPlanChangeSchema, {
+          kind: QualityPlanChange_Kind.REMOVED,
+          coverage: create(QualityPlanCoverageSchema, {
+            property: QualityCoverageProperty.SCHEMA_STABILITY,
+            minChecks: 1,
+          }),
+        }),
+      ],
+    }),
+  });
+  const wrapper = mountDialog(contract);
+  await flushPromises();
+
+  const text = document.body.textContent ?? "";
+  expect(text).toContain(label("dataQuality.contract.publishIntentChanged"));
+  expect(text).toContain(
+    label("dataQuality.contract.publishPlanAdded", {
+      scope: label("dataQuality.workspace.planPropertyFreshness"),
+    })
+  );
+  expect(text).toContain(
+    label("dataQuality.contract.publishPlanRemoved", {
+      scope: label("dataQuality.workspace.planPropertySchemaStability"),
+    })
+  );
+  wrapper.unmount();
+});
+
+// A version published before declarations existed cannot show a plan difference, and
+// the dialog says so instead of implying nothing changed.
+it("says when the newest version predates plan declarations", async () => {
+  const wrapper = mountDialog(
+    create(QualityContractSchema, {
+      publishedVersion: 1,
+      hasUnpublishedChanges: true,
+      changeSummary: create(QualityContractChangeSummarySchema, { added: 1 }),
+      diff: create(QualityContractDiffSchema, { planNotRecorded: true }),
+    })
+  );
+  await flushPromises();
+
+  expect(document.body.textContent ?? "").toContain(
+    label("dataQuality.contract.publishPlanNotRecorded")
+  );
+  wrapper.unmount();
 });

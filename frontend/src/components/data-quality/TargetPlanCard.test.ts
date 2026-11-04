@@ -7,6 +7,7 @@ import {
   QualityContractSchema,
   QualityCoverageProperty,
   QualityCoverageRequirementSchema,
+  QualityPlanCoverageSchema,
   QualityPlanSchema,
   QualityPlanState,
   QualityTargetSchema,
@@ -75,4 +76,39 @@ describe("TargetPlanCard", () => {
       i18n.global.t("dataQuality.workspace.planUnplannedHint")
     );
   });
+});
+
+// A declared plan is labelled as such and offers the editor to a writer; a derived
+// plan does not pretend to be one.
+it("labels a declared plan and offers the editor to a writer", () => {
+  const contract = create(QualityContractSchema, {
+    target: create(QualityTargetSchema, {
+      metaGuid: "inst;shop;public;orders",
+      metaType: MetaType.TABLE,
+    }),
+    plan: create(QualityPlanSchema, {
+      state: QualityPlanState.PLANNED,
+      criticality: QualityAssetCriticality.IMPORTANT,
+      requirements: [],
+    }),
+    stagedPlan: create(QualityPlanSchema, {
+      coverage: [
+        create(QualityPlanCoverageSchema, {
+          property: QualityCoverageProperty.VOLUME,
+          minChecks: 1,
+        }),
+      ],
+    }),
+    stagedBaseVersion: 2,
+  });
+  const wrapper = mount(TargetPlanCard, {
+    props: { contract, canUpdate: true },
+    global: { plugins: [i18n] },
+  });
+  expect(wrapper.text()).toContain(
+    i18n.global.t("dataQuality.workspace.planDeclared")
+  );
+  expect(wrapper.text()).toContain(
+    i18n.global.t("dataQuality.workspace.planEdit")
+  );
 });

@@ -45,6 +45,48 @@
           </Badge>
         </div>
 
+        <!-- The version also records a plan declaration and the intent it was
+             published with; show those sections next to the check counts. -->
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <Badge
+              v-if="intentChanged"
+              variant="secondary"
+            >
+              {{ t("dataQuality.contract.publishIntentChanged") }}
+            </Badge>
+            <Badge
+              v-for="(change, index) in visiblePlanChanges"
+              :key="`${change.kind}:${index}`"
+              variant="secondary"
+            >
+              {{ planChangeLabel(change) }}
+            </Badge>
+            <span
+              v-if="hiddenPlanChangeCount > 0"
+              class="text-xs text-muted-foreground"
+            >
+              {{
+                t("dataQuality.contract.publishPlanMore", {
+                  count: hiddenPlanChangeCount,
+                })
+              }}
+            </span>
+          </div>
+          <p
+            v-if="planNotRecorded"
+            class="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground"
+          >
+            {{ t("dataQuality.contract.publishPlanNotRecorded") }}
+          </p>
+          <p
+            v-else-if="planChanges.length > 0"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t("dataQuality.contract.publishPlanHint") }}
+          </p>
+        </div>
+
         <p
           v-if="showNoChanges"
           class="rounded-md border border-dashed p-3 text-sm text-muted-foreground"
@@ -106,7 +148,12 @@ import {
 import { Label } from "@/components/ui/label";
 import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
-import type { QualityContract } from "@/types/proto-es/v1/data_quality_service_pb";
+import {
+  type QualityContract,
+  QualityCoverageProperty,
+  type QualityPlanChange,
+  QualityPlanChange_Kind,
+} from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 
 /**
@@ -154,6 +201,68 @@ const summary = computed(() => ({
   modified: props.contract?.changeSummary?.modified ?? 0,
   removed: props.contract?.changeSummary?.removed ?? 0,
 }));
+
+const intentChanged = computed(
+  () => props.contract?.diff?.intentChanged ?? false
+);
+
+const planChanges = computed<QualityPlanChange[]>(
+  () => props.contract?.diff?.planChanges ?? []
+);
+
+const planNotRecorded = computed(
+  () => props.contract?.diff?.planNotRecorded ?? false
+);
+
+/** The section shows the first few changes; the rest is a count. */
+const maxPlanChanges = 6;
+const visiblePlanChanges = computed(() =>
+  planChanges.value.slice(0, maxPlanChanges)
+);
+const hiddenPlanChangeCount = computed(
+  () => planChanges.value.length - visiblePlanChanges.value.length
+);
+
+function propertyLabel(property: QualityCoverageProperty): string {
+  switch (property) {
+    case QualityCoverageProperty.VOLUME:
+      return t("dataQuality.workspace.planPropertyVolume");
+    case QualityCoverageProperty.FRESHNESS:
+      return t("dataQuality.workspace.planPropertyFreshness");
+    case QualityCoverageProperty.NULL_RATE:
+      return t("dataQuality.workspace.planPropertyNullRate");
+    case QualityCoverageProperty.UNIQUENESS:
+      return t("dataQuality.workspace.planPropertyUniqueness");
+    case QualityCoverageProperty.ACCEPTED_VALUES:
+      return t("dataQuality.workspace.planPropertyAcceptedValues");
+    case QualityCoverageProperty.FORMAT:
+      return t("dataQuality.workspace.planPropertyFormat");
+    case QualityCoverageProperty.RANGE:
+      return t("dataQuality.workspace.planPropertyRange");
+    case QualityCoverageProperty.SCHEMA_STABILITY:
+      return t("dataQuality.workspace.planPropertySchemaStability");
+    default:
+      return t("dataQuality.workspace.planPropertyUnspecified");
+  }
+}
+
+function planChangeLabel(change: QualityPlanChange): string {
+  const scope = change.coverage?.column
+    ? `${propertyLabel(change.coverage.property)} · ${change.coverage.column}`
+    : propertyLabel(
+        change.coverage?.property ?? QualityCoverageProperty.UNSPECIFIED
+      );
+  switch (change.kind) {
+    case QualityPlanChange_Kind.ADDED:
+      return t("dataQuality.contract.publishPlanAdded", { scope });
+    case QualityPlanChange_Kind.REMOVED:
+      return t("dataQuality.contract.publishPlanRemoved", { scope });
+    case QualityPlanChange_Kind.MODIFIED:
+      return t("dataQuality.contract.publishPlanModified", { scope });
+    default:
+      return scope;
+  }
+}
 
 watch(
   () => props.open,
