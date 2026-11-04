@@ -6862,12 +6862,37 @@ export declare type QualityContract = Message<"metaxisdata.v1.QualityContract"> 
 
   /**
    * The target's monitoring plan as derived from the live rules and the
-   * contract. Read-only in this slice; staged editing arrives with the plan
-   * write path.
+   * contract.
    *
    * @generated from field: metaxisdata.v1.QualityPlan plan = 10;
    */
   plan?: QualityPlan;
+
+  /**
+   * The plan declaration the target currently holds, published or not. Absent when
+   * the target has none; an empty declaration clears it and returns the target to
+   * the projection derived from the intent and the live rules.
+   *
+   * @generated from field: metaxisdata.v1.QualityPlan staged_plan = 11;
+   */
+  stagedPlan?: QualityPlan;
+
+  /**
+   * The newest published version the declaration is aligned to. It always equals
+   * published_version after a publish, so a client echoes it back as the base of its
+   * next declaration edit.
+   *
+   * @generated from field: int32 staged_base_version = 12;
+   */
+  stagedBaseVersion: number;
+
+  /**
+   * How the working state (the draft when one exists, otherwise the live
+   * projection) differs from the newest published version.
+   *
+   * @generated from field: metaxisdata.v1.QualityContractDiff diff = 13;
+   */
+  diff?: QualityContractDiff;
 };
 
 /**
@@ -6875,6 +6900,98 @@ export declare type QualityContract = Message<"metaxisdata.v1.QualityContract"> 
  * Use `create(QualityContractSchema)` to create a new message.
  */
 export declare const QualityContractSchema: GenMessage<QualityContract>;
+
+/**
+ * QualityPlanChange is one declaration added, removed or modified by the working
+ * plan (the staged declaration, or the projection derived from the intent and the
+ * live rules when nothing is staged).
+ *
+ * @generated from message metaxisdata.v1.QualityPlanChange
+ */
+export declare type QualityPlanChange = Message<"metaxisdata.v1.QualityPlanChange"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityPlanChange.Kind kind = 1;
+   */
+  kind: QualityPlanChange_Kind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityPlanCoverage coverage = 2;
+   */
+  coverage?: QualityPlanCoverage;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityPlanChange.
+ * Use `create(QualityPlanChangeSchema)` to create a new message.
+ */
+export declare const QualityPlanChangeSchema: GenMessage<QualityPlanChange>;
+
+/**
+ * @generated from enum metaxisdata.v1.QualityPlanChange.Kind
+ */
+export enum QualityPlanChange_Kind {
+  /**
+   * @generated from enum value: KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: KIND_ADDED = 1;
+   */
+  ADDED = 1,
+
+  /**
+   * @generated from enum value: KIND_REMOVED = 2;
+   */
+  REMOVED = 2,
+
+  /**
+   * @generated from enum value: KIND_MODIFIED = 3;
+   */
+  MODIFIED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityPlanChange.Kind.
+ */
+export declare const QualityPlanChange_KindSchema: GenEnum<QualityPlanChange_Kind>;
+
+/**
+ * QualityContractDiff compares the working state with the newest published version.
+ * The check diff is QualityContract.change_summary; this message carries the two
+ * sections the version's plan payload made comparable.
+ *
+ * @generated from message metaxisdata.v1.QualityContractDiff
+ */
+export declare type QualityContractDiff = Message<"metaxisdata.v1.QualityContractDiff"> & {
+  /**
+   * True when the live intent differs from the published version's.
+   *
+   * @generated from field: bool intent_changed = 1;
+   */
+  intentChanged: boolean;
+
+  /**
+   * The declaration changes the working plan would publish.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityPlanChange plan_changes = 2;
+   */
+  planChanges: QualityPlanChange[];
+
+  /**
+   * True when the newest published version predates the plan payload, so a plan
+   * diff cannot be shown. It is not the same as "no plan changes".
+   *
+   * @generated from field: bool plan_not_recorded = 3;
+   */
+  planNotRecorded: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityContractDiff.
+ * Use `create(QualityContractDiffSchema)` to create a new message.
+ */
+export declare const QualityContractDiffSchema: GenMessage<QualityContractDiff>;
 
 /**
  * QualityContractSettings is the target-level layer's mutable configuration.
@@ -7615,6 +7732,23 @@ export declare type UpdateQualityContractRequest = Message<"metaxisdata.v1.Updat
    * @generated from field: metaxisdata.v1.QualityContractSettings settings = 4;
    */
   settings?: QualityContractSettings;
+
+  /**
+   * The complete plan draft, when the caller is editing the plan. Absent leaves
+   * the staged draft untouched; an empty draft clears it. A draft only changes the
+   * staged state: publishing is still PublishQualityContract.
+   *
+   * @generated from field: metaxisdata.v1.QualityPlan draft = 5;
+   */
+  draft?: QualityPlan;
+
+  /**
+   * The published version the draft was written against. Required when draft is
+   * set; a stale value is refused with Aborted instead of rebasing silently.
+   *
+   * @generated from field: int32 staged_base_version = 6;
+   */
+  stagedBaseVersion: number;
 };
 
 /**

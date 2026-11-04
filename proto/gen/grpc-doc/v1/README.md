@@ -326,6 +326,7 @@
     - [QualityContract](#metaxisdata-v1-QualityContract)
     - [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary)
     - [QualityContractCheck](#metaxisdata-v1-QualityContractCheck)
+    - [QualityContractDiff](#metaxisdata-v1-QualityContractDiff)
     - [QualityContractIntent](#metaxisdata-v1-QualityContractIntent)
     - [QualityContractIntentExemption](#metaxisdata-v1-QualityContractIntentExemption)
     - [QualityContractIntentStatement](#metaxisdata-v1-QualityContractIntentStatement)
@@ -347,6 +348,7 @@
     - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
     - [QualityPlan](#metaxisdata-v1-QualityPlan)
     - [QualityPlanCadence](#metaxisdata-v1-QualityPlanCadence)
+    - [QualityPlanChange](#metaxisdata-v1-QualityPlanChange)
     - [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage)
     - [QualityRootCauseCandidate](#metaxisdata-v1-QualityRootCauseCandidate)
     - [QualityRule](#metaxisdata-v1-QualityRule)
@@ -426,6 +428,7 @@
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
     - [QualityObservedKind](#metaxisdata-v1-QualityObservedKind)
+    - [QualityPlanChange.Kind](#metaxisdata-v1-QualityPlanChange-Kind)
     - [QualityPlanState](#metaxisdata-v1-QualityPlanState)
     - [QualityResolutionReason](#metaxisdata-v1-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-v1-QualityRuleState)
@@ -6090,7 +6093,10 @@ contract immediately, and publishing records that state as a version.
 | check_count | [int32](#int32) |  | How many live (non-archived) rules the target has. |
 | change_summary | [QualityContractChangeSummary](#metaxisdata-v1-QualityContractChangeSummary) |  | The live rules compared with the published snapshot. Zero counts when the target has never been published. |
 | has_unpublished_changes | [bool](#bool) |  | True when the live rules or settings differ from the published snapshot (or nothing has been published yet and the target has content). |
-| plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The target&#39;s monitoring plan as derived from the live rules and the contract. Read-only in this slice; staged editing arrives with the plan write path. |
+| plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The target&#39;s monitoring plan as derived from the live rules and the contract. |
+| staged_plan | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The plan declaration the target currently holds, published or not. Absent when the target has none; an empty declaration clears it and returns the target to the projection derived from the intent and the live rules. |
+| staged_base_version | [int32](#int32) |  | The newest published version the declaration is aligned to. It always equals published_version after a publish, so a client echoes it back as the base of its next declaration edit. |
+| diff | [QualityContractDiff](#metaxisdata-v1-QualityContractDiff) |  | How the working state (the draft when one exists, otherwise the live projection) differs from the newest published version. |
 
 
 
@@ -6129,6 +6135,25 @@ QualityContractCheck is one rule as a published version records it.
 | rule_type | [QualityRuleType](#metaxisdata-v1-QualityRuleType) |  |  |
 | severity | [QualitySeverity](#metaxisdata-v1-QualitySeverity) |  |  |
 | column | [string](#string) |  | The column the rule watches; empty for a table-level rule. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityContractDiff"></a>
+
+### QualityContractDiff
+QualityContractDiff compares the working state with the newest published version.
+The check diff is QualityContract.change_summary; this message carries the two
+sections the version&#39;s plan payload made comparable.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| intent_changed | [bool](#bool) |  | True when the live intent differs from the published version&#39;s. |
+| plan_changes | [QualityPlanChange](#metaxisdata-v1-QualityPlanChange) | repeated | The declaration changes the working plan would publish. |
+| plan_not_recorded | [bool](#bool) |  | True when the newest published version predates the plan payload, so a plan diff cannot be shown. It is not the same as &#34;no plan changes&#34;. |
 
 
 
@@ -6619,6 +6644,24 @@ way to change it.
 | interval_seconds | [int64](#int64) |  | Seconds between runs; 0 only when the target has no schedule. A cron target records the expression&#39;s nominal gap here and its expression in cron. |
 | cron | [string](#string) |  |  |
 | timezone | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityPlanChange"></a>
+
+### QualityPlanChange
+QualityPlanChange is one declaration added, removed or modified by the working
+plan (the staged declaration, or the projection derived from the intent and the
+live rules when nothing is staged).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [QualityPlanChange.Kind](#metaxisdata-v1-QualityPlanChange-Kind) |  |  |
+| coverage | [QualityPlanCoverage](#metaxisdata-v1-QualityPlanCoverage) |  |  |
 
 
 
@@ -7771,6 +7814,8 @@ measured per threshold_metric; the default fail threshold is zero.
 | target_guid | [string](#string) |  |  |
 | meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
 | settings | [QualityContractSettings](#metaxisdata-v1-QualityContractSettings) |  | The complete settings; the update replaces them rather than patching fields. |
+| draft | [QualityPlan](#metaxisdata-v1-QualityPlan) |  | The complete plan draft, when the caller is editing the plan. Absent leaves the staged draft untouched; an empty draft clears it. A draft only changes the staged state: publishing is still PublishQualityContract. |
+| staged_base_version | [int32](#int32) |  | The published version the draft was written against. Required when draft is set; a stale value is refused with Aborted instead of rebasing silently. |
 
 
 
@@ -8167,6 +8212,20 @@ QualityObservedKind is the unit of the observed value a result records.
 | QUALITY_OBSERVED_KIND_SECONDS | 3 |  |
 | QUALITY_OBSERVED_KIND_TIMESTAMP | 4 |  |
 | QUALITY_OBSERVED_KIND_NUMBER | 5 |  |
+
+
+
+<a name="metaxisdata-v1-QualityPlanChange-Kind"></a>
+
+### QualityPlanChange.Kind
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| KIND_UNSPECIFIED | 0 |  |
+| KIND_ADDED | 1 |  |
+| KIND_REMOVED | 2 |  |
+| KIND_MODIFIED | 3 |  |
 
 
 

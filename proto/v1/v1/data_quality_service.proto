@@ -3583,9 +3583,49 @@ message QualityContract {
   bool has_unpublished_changes = 9;
 
   // The target's monitoring plan as derived from the live rules and the
-  // contract. Read-only in this slice; staged editing arrives with the plan
-  // write path.
+  // contract.
   QualityPlan plan = 10;
+
+  // The plan declaration the target currently holds, published or not. Absent when
+  // the target has none; an empty declaration clears it and returns the target to
+  // the projection derived from the intent and the live rules.
+  QualityPlan staged_plan = 11;
+
+  // The newest published version the declaration is aligned to. It always equals
+  // published_version after a publish, so a client echoes it back as the base of its
+  // next declaration edit.
+  int32 staged_base_version = 12;
+
+  // How the working state (the draft when one exists, otherwise the live
+  // projection) differs from the newest published version.
+  QualityContractDiff diff = 13;
+}
+
+// QualityPlanChange is one declaration added, removed or modified by the working
+// plan (the staged declaration, or the projection derived from the intent and the
+// live rules when nothing is staged).
+message QualityPlanChange {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_ADDED = 1;
+    KIND_REMOVED = 2;
+    KIND_MODIFIED = 3;
+  }
+  Kind kind = 1;
+  QualityPlanCoverage coverage = 2;
+}
+
+// QualityContractDiff compares the working state with the newest published version.
+// The check diff is QualityContract.change_summary; this message carries the two
+// sections the version's plan payload made comparable.
+message QualityContractDiff {
+  // True when the live intent differs from the published version's.
+  bool intent_changed = 1;
+  // The declaration changes the working plan would publish.
+  repeated QualityPlanChange plan_changes = 2;
+  // True when the newest published version predates the plan payload, so a plan
+  // diff cannot be shown. It is not the same as "no plan changes".
+  bool plan_not_recorded = 3;
 }
 
 // QualityContractSettings is the target-level layer's mutable configuration.
@@ -3855,6 +3895,15 @@ message UpdateQualityContractRequest {
   MetaType meta_type = 3;
   // The complete settings; the update replaces them rather than patching fields.
   QualityContractSettings settings = 4 [(google.api.field_behavior) = REQUIRED];
+
+  // The complete plan draft, when the caller is editing the plan. Absent leaves
+  // the staged draft untouched; an empty draft clears it. A draft only changes the
+  // staged state: publishing is still PublishQualityContract.
+  QualityPlan draft = 5;
+
+  // The published version the draft was written against. Required when draft is
+  // set; a stale value is refused with Aborted instead of rebasing silently.
+  int32 staged_base_version = 6;
 }
 
 message PublishQualityContractRequest {
