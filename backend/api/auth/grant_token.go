@@ -24,3 +24,12 @@ func GenerateGrantAccessToken(userName string, userID int, clientID string, gran
 func GenerateCLIAccessToken(userName string, userID int, clientID string, grantID int64, mode common.ReleaseMode, secret string, tokenDuration time.Duration) (string, error) {
 	return GenerateGrantAccessToken(userName, userID, clientID, grantID, AccessTokenAudience(mode), "", secret, tokenDuration)
 }
+
+// GenerateAgentAccessToken mints an agent principal's bearer token: an ordinary
+// user-API access token for a SERVICE_ACCOUNT principal with no connected app, so
+// disabling the principal (or rotating the token) ends it. Agent tokens outlive a
+// human session; the caller chooses the duration.
+func GenerateAgentAccessToken(principalName string, principalID int, mode common.ReleaseMode, secret string, tokenDuration time.Duration) (string, error) {
+	return generateToken(principalName, principalID, AccessTokenAudience(mode), "",
+		time.Now().Add(tokenDuration), []byte(secret), "", "", 0)
+}

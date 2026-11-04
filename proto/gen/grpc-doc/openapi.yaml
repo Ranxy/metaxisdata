@@ -5100,6 +5100,156 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents:
+        get:
+            tags:
+                - DataQualityService
+            description: List the workspace's agent principals, without tokens.
+            operationId: DataQualityService_ListQualityAgents
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create an agent principal and return its bearer token once. The agent is an
+                 independent principal whose only workspace role is the quality agent role; its
+                 token is a normal access token for that principal, so disabling the agent makes
+                 every token it issued unusable. Administrator only.
+            operationId: DataQualityService_CreateQualityAgent
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateQualityAgentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateQualityAgentResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:disable:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Disable an agent principal. Its tokens stop authenticating immediately; the
+                 agent row stays for the audit trail.
+            operationId: DataQualityService_DisableQualityAgent
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DisableQualityAgentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgent'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:rotateToken:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Rotate an agent's bearer token: mint a new one and invalidate every token
+                 minted before this call. The token is returned once.
+            operationId: DataQualityService_RotateQualityAgentToken
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RotateQualityAgentTokenRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RotateQualityAgentTokenResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityChangeRequests:
         get:
             tags:
@@ -9413,6 +9563,29 @@ components:
                     type: integer
                     description: The minimum polling interval in seconds.
                     format: int32
+        CreateQualityAgentRequest:
+            required:
+                - parent
+                - displayName
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                displayName:
+                    type: string
+                description:
+                    type: string
+        CreateQualityAgentResponse:
+            type: object
+            properties:
+                agent:
+                    $ref: '#/components/schemas/QualityAgent'
+                token:
+                    type: string
+                    description: |-
+                        The bearer token, returned exactly once. It authenticates as the agent
+                         principal and cannot be retrieved again; rotate it if lost.
         CreateQualityChangeRequestRequest:
             required:
                 - parent
@@ -9796,6 +9969,12 @@ components:
                     description: |-
                         IANA time zone the time variables of check filters and custom SQL are
                          resolved in, for example "Asia/Shanghai". Empty means UTC.
+                agentAutonomyEnabled:
+                    type: boolean
+                    description: |-
+                        Whether the workspace's agent principals may write plan declarations and
+                         proposed change requests. Off by default: the kill switch returns the
+                         workspace to human-only edits, and the agent still reads.
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -10136,6 +10315,14 @@ components:
                 sign:
                     type: boolean
                     description: Whether the robot request is signed with the channel's signing secret.
+        DisableQualityAgentRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
         EmailChannelConfig:
             type: object
             properties:
@@ -11786,6 +11973,15 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityAgentsResponse:
+            type: object
+            properties:
+                qualityAgents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgent'
+                nextPageToken:
+                    type: string
         ListQualityChangeRequestsResponse:
             type: object
             properties:
@@ -13334,6 +13530,28 @@ components:
                     description: |-
                         True when the live state already matched the newest published version, so no
                          new version was created.
+        QualityAgent:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                displayName:
+                    type: string
+                description:
+                    type: string
+                enabled:
+                    type: boolean
+                createdBy:
+                    type: string
+                    description: 'Format: users/{user}. Empty when unknown.'
+                createTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgent is one agent principal: an independent identity an administrator
+                 creates for autonomous quality work. Its token is issued once, and disabling the
+                 agent ends every token it holds.
         QualityChangeRequest:
             type: object
             properties:
@@ -16095,6 +16313,21 @@ components:
                  workspaceMember) are defined in Go and never stored in the DB; custom roles
                  live in the role table. Both resolve identically in the IAM engine.
                  Predefined roles are read-only over this API.
+        RotateQualityAgentTokenRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+        RotateQualityAgentTokenResponse:
+            type: object
+            properties:
+                agent:
+                    $ref: '#/components/schemas/QualityAgent'
+                token:
+                    type: string
         RowCountChangeConfig:
             type: object
             properties:

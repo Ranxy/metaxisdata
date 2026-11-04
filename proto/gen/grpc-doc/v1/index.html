@@ -1093,6 +1093,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.CreateQualityAgentRequest"><span class="badge">M</span>CreateQualityAgentRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateQualityAgentResponse"><span class="badge">M</span>CreateQualityAgentResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateQualityChangeRequestRequest"><span class="badge">M</span>CreateQualityChangeRequestRequest</a>
                 </li>
               
@@ -1142,6 +1150,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DeleteQualityRuleTemplateRequest"><span class="badge">M</span>DeleteQualityRuleTemplateRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DisableQualityAgentRequest"><span class="badge">M</span>DisableQualityAgentRequest</a>
                 </li>
               
                 <li>
@@ -1301,6 +1313,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentsRequest"><span class="badge">M</span>ListQualityAgentsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentsResponse"><span class="badge">M</span>ListQualityAgentsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListQualityChangeRequestsRequest"><span class="badge">M</span>ListQualityChangeRequestsRequest</a>
                 </li>
               
@@ -1434,6 +1454,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.PublishQualityContractResponse"><span class="badge">M</span>PublishQualityContractResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityAgent"><span class="badge">M</span>QualityAgent</a>
                 </li>
               
                 <li>
@@ -1682,6 +1706,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.RegexConfig"><span class="badge">M</span>RegexConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RotateQualityAgentTokenRequest"><span class="badge">M</span>RotateQualityAgentTokenRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.RotateQualityAgentTokenResponse"><span class="badge">M</span>RotateQualityAgentTokenResponse</a>
                 </li>
               
                 <li>
@@ -13710,6 +13742,76 @@ replaced. The raw value is never returned. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.CreateQualityAgentRequest">CreateQualityAgentRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateQualityAgentResponse">CreateQualityAgentResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The bearer token, returned exactly once. It authenticates as the agent
+principal and cannot be retrieved again; rotate it if lost. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateQualityChangeRequestRequest">CreateQualityChangeRequestRequest</h3>
         <p></p>
 
@@ -14255,6 +14357,30 @@ identity. The GUID and its meta type are the identity. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DisableQualityAgentRequest">DisableQualityAgentRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
                 </tr>
               
             </tbody>
@@ -15916,6 +16042,75 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>column_profiles</td>
                   <td><a href="#metaxisdata.v1.ColumnProfile">ColumnProfile</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentsRequest">ListQualityAgentsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentsResponse">ListQualityAgentsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_agents</td>
+                  <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -17688,6 +17883,65 @@ compiled_sql, which is the case whenever they share a connection. </p></td>
                   <td></td>
                   <td><p>True when the live state already matched the newest published version, so no
 new version was created. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityAgent">QualityAgent</h3>
+        <p>QualityAgent is one agent principal: an independent identity an administrator</p><p>creates for autonomous quality work. Its token is issued once, and disabling the</p><p>agent ends every token it holds.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>display_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>description</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty when unknown. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -22213,6 +22467,61 @@ for. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.RotateQualityAgentTokenRequest">RotateQualityAgentTokenRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.RotateQualityAgentTokenResponse">RotateQualityAgentTokenResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.RowCountChangeConfig">RowCountChangeConfig</h3>
         <p>RowCountChangeConfig bounds the change against the rule's last successful</p><p>observation. Without a recent baseline the result is NOT_EVALUATED.</p>
 
@@ -26178,6 +26487,39 @@ person decides; creating it changes nothing on the target.</p></td>
               </tr>
             
               <tr>
+                <td>CreateQualityAgent</td>
+                <td><a href="#metaxisdata.v1.CreateQualityAgentRequest">CreateQualityAgentRequest</a></td>
+                <td><a href="#metaxisdata.v1.CreateQualityAgentResponse">CreateQualityAgentResponse</a></td>
+                <td><p>Create an agent principal and return its bearer token once. The agent is an
+independent principal whose only workspace role is the quality agent role; its
+token is a normal access token for that principal, so disabling the agent makes
+every token it issued unusable. Administrator only.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityAgents</td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentsRequest">ListQualityAgentsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentsResponse">ListQualityAgentsResponse</a></td>
+                <td><p>List the workspace&#39;s agent principals, without tokens.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DisableQualityAgent</td>
+                <td><a href="#metaxisdata.v1.DisableQualityAgentRequest">DisableQualityAgentRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgent">QualityAgent</a></td>
+                <td><p>Disable an agent principal. Its tokens stop authenticating immediately; the
+agent row stays for the audit trail.</p></td>
+              </tr>
+            
+              <tr>
+                <td>RotateQualityAgentToken</td>
+                <td><a href="#metaxisdata.v1.RotateQualityAgentTokenRequest">RotateQualityAgentTokenRequest</a></td>
+                <td><a href="#metaxisdata.v1.RotateQualityAgentTokenResponse">RotateQualityAgentTokenResponse</a></td>
+                <td><p>Rotate an agent&#39;s bearer token: mint a new one and invalidate every token
+minted before this call. The token is returned once.</p></td>
+              </tr>
+            
+              <tr>
                 <td>DecideQualityChangeRequest</td>
                 <td><a href="#metaxisdata.v1.DecideQualityChangeRequestRequest">DecideQualityChangeRequestRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityChangeRequest">QualityChangeRequest</a></td>
@@ -26825,6 +27167,46 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityChangeRequests</td>
                 <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityAgent</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgents</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityAgents</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgents</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DisableQualityAgent</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgents/*}:disable</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>RotateQualityAgentToken</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgents/*}:rotateToken</td>
+                <td>*</td>
               </tr>
               
             
@@ -35878,6 +36260,15 @@ sending the message explicitly replaces it, including with enabled=false. </p></
 check filters and custom SQL are resolved in: ${today}, ${yesterday} and
 the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule,
 which belongs to the target. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_autonomy_enabled</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the workspace&#39;s agent principals may write plan declarations and
+proposed change requests. Off by default: turning it off is the kill
+switch that returns the workspace to human-only edits. </p></td>
                 </tr>
               
             </tbody>

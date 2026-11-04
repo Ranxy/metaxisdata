@@ -240,6 +240,8 @@
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
+    - [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest)
+    - [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse)
     - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
     - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
@@ -253,6 +255,7 @@
     - [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
+    - [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest)
     - [ExplainQualityExecutionRequest](#metaxisdata-v1-ExplainQualityExecutionRequest)
     - [ExplainQualityExecutionResponse](#metaxisdata-v1-ExplainQualityExecutionResponse)
     - [ExportQualityDataChunk](#metaxisdata-v1-ExportQualityDataChunk)
@@ -292,6 +295,8 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest)
+    - [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse)
     - [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest)
     - [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse)
     - [ListQualityCodeTablesRequest](#metaxisdata-v1-ListQualityCodeTablesRequest)
@@ -326,6 +331,7 @@
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
+    - [QualityAgent](#metaxisdata-v1-QualityAgent)
     - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
     - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
     - [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult)
@@ -388,6 +394,8 @@
     - [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
+    - [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest)
+    - [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
     - [RowCountConfig](#metaxisdata-v1-RowCountConfig)
     - [RunQualityRulesRequest](#metaxisdata-v1-RunQualityRulesRequest)
@@ -4562,6 +4570,39 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
+<a name="metaxisdata-v1-CreateQualityAgentRequest"></a>
+
+### CreateQualityAgentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| display_name | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateQualityAgentResponse"></a>
+
+### CreateQualityAgentResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
+| token | [string](#string) |  | The bearer token, returned exactly once. It authenticates as the agent principal and cannot be retrieved again; rotate it if lost. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateQualityChangeRequestRequest"></a>
 
 ### CreateQualityChangeRequestRequest
@@ -4791,6 +4832,21 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityRuleTemplates/{quality_rule_template} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DisableQualityAgentRequest"></a>
+
+### DisableQualityAgentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
 
 
 
@@ -5490,6 +5546,39 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityAgentsRequest"></a>
+
+### ListQualityAgentsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentsResponse"></a>
+
+### ListQualityAgentsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agents | [QualityAgent](#metaxisdata-v1-QualityAgent) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityChangeRequestsRequest"></a>
 
 ### ListQualityChangeRequestsRequest
@@ -6126,6 +6215,28 @@ ProfileValue is one frequent value of a low-cardinality column.
 | contract | [QualityContract](#metaxisdata-v1-QualityContract) |  |  |
 | revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
 | no_changes | [bool](#bool) |  | True when the live state already matched the newest published version, so no new version was created. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgent"></a>
+
+### QualityAgent
+QualityAgent is one agent principal: an independent identity an administrator
+creates for autonomous quality work. Its token is issued once, and disabling the
+agent ends every token it holds.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+| display_name | [string](#string) |  |  |
+| description | [string](#string) |  |  |
+| enabled | [bool](#bool) |  |  |
+| created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -7552,6 +7663,37 @@ engine&#39;s own regex operator.
 
 
 
+<a name="metaxisdata-v1-RotateQualityAgentTokenRequest"></a>
+
+### RotateQualityAgentTokenRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgents/{quality_agent} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-RotateQualityAgentTokenResponse"></a>
+
+### RotateQualityAgentTokenResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
+| token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-RowCountChangeConfig"></a>
 
 ### RowCountChangeConfig
@@ -8916,6 +9058,10 @@ The report includes real sample values from failed checks (capped), so it is a w
 | CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. |
 | GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |
 | ListQualityChangeRequests | [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest) | [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse) | List change requests, newest first. |
+| CreateQualityAgent | [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest) | [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse) | Create an agent principal and return its bearer token once. The agent is an independent principal whose only workspace role is the quality agent role; its token is a normal access token for that principal, so disabling the agent makes every token it issued unusable. Administrator only. |
+| ListQualityAgents | [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest) | [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse) | List the workspace&#39;s agent principals, without tokens. |
+| DisableQualityAgent | [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Disable an agent principal. Its tokens stop authenticating immediately; the agent row stays for the audit trail. |
+| RotateQualityAgentToken | [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest) | [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse) | Rotate an agent&#39;s bearer token: mint a new one and invalidate every token minted before this call. The token is returned once. |
 | DecideQualityChangeRequest | [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Approve or reject a change request. Approving applies each item through its existing path and returns a result per item; rejecting records the structured reasons. A stale base version expires the request instead of rebasing it. |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
@@ -12282,6 +12428,7 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | llm_concurrency_limit | [int32](#int32) |  | How many data quality LLM analyses may run at once in this process. Zero means the server default (8); accepted range 1-64. |
 | weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
 | time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
+| agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: turning it off is the kill switch that returns the workspace to human-only edits. |
 
 
 

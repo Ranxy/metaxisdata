@@ -141,6 +141,11 @@ message DataQualitySetting {
   // IANA time zone the time variables of check filters and custom SQL are
   // resolved in, for example "Asia/Shanghai". Empty means UTC.
   string time_zone = 13;
+
+  // Whether the workspace's agent principals may write plan declarations and
+  // proposed change requests. Off by default: the kill switch returns the
+  // workspace to human-only edits, and the agent still reads.
+  bool agent_autonomy_enabled = 14;
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest

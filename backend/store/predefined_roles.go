@@ -8,6 +8,11 @@ import "github.com/Ranxy/metaxisdata/backend/common/permission"
 const (
 	WorkspaceAdminRole  = "workspaceAdmin"
 	WorkspaceMemberRole = "workspaceMember"
+	// QualityAgentRole is the minimum an autonomous quality agent needs: read the
+	// plans, checks and published versions it reasons about, and write plan
+	// declarations and proposed change requests. It deliberately cannot publish,
+	// decide, edit rules or touch settings.
+	QualityAgentRole = "qualityAgent"
 )
 
 func permissionSet(perms ...permission.Permission) map[permission.Permission]bool {
@@ -93,7 +98,21 @@ var PredefinedRoles = []*RoleMessage{
 		Description: "Read access to metadata, lineage, OpenLineage and manual SQL, and the ability to explain SQL.",
 		Permissions: memberBaselinePermissions,
 	},
+	{
+		ResourceID:  QualityAgentRole,
+		Name:        "Quality agent",
+		Description: "Autonomous quality work: read quality plans and checks, write plan declarations and proposed change requests. It cannot publish, approve or edit rules.",
+		Permissions: qualityAgentPermissions,
+	},
 }
+
+// qualityAgentPermissions is the agent role's minimum. It stays a subset of the
+// member read baseline plus the one write an agent owns.
+var qualityAgentPermissions = permissionSet(
+	permission.DataQualityRulesGet,
+	permission.DataQualityRulesList,
+	permission.DataQualityPlansUpdate,
+)
 
 var predefinedRolesMap = func() map[string]*RoleMessage {
 	m := make(map[string]*RoleMessage, len(PredefinedRoles))

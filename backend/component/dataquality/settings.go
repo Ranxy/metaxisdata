@@ -107,6 +107,9 @@ type Settings struct {
 	// TimeZone is the IANA name the time variables of a check's filter and custom
 	// SQL are resolved in. Always populated: DefaultTimeZone when unset.
 	TimeZone string
+	// AgentAutonomyEnabled is the workspace kill switch for agent writes. Off by
+	// default: an agent principal can still read, and no agent write applies.
+	AgentAutonomyEnabled bool
 }
 
 // DefaultSettings returns the settings of a workspace that never saved any.
@@ -157,6 +160,7 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.MaxColumnsPerAnalysis = positiveOrDefault(dataQuality.GetMaxColumnsPerAnalysis(), DefaultMaxColumnsPerAnalysis)
 	settings.Digest = DigestScheduleFromStore(dataQuality.GetWeeklyDigest())
 	settings.TimeZone = timeZoneFromStore(dataQuality.GetTimeZone())
+	settings.AgentAutonomyEnabled = dataQuality.GetAgentAutonomyEnabled()
 	return settings
 }
 

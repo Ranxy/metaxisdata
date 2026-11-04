@@ -4404,6 +4404,7 @@ metaxisdata.v1.DataQualitySetting.
 | llm_concurrency_limit | [int32](#int32) |  |  |
 | weekly_digest | [QualityDigestSetting](#metaxisdata-store-QualityDigestSetting) |  |  |
 | time_zone | [string](#string) |  | IANA time zone the time variables of check filters and custom SQL are resolved in, for example &#34;Asia/Shanghai&#34;. Empty means UTC. |
+| agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: the kill switch returns the workspace to human-only edits, and the agent still reads. |
 
 
 

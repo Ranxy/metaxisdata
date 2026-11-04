@@ -393,9 +393,13 @@ type DataQualitySetting struct {
 	// check filters and custom SQL are resolved in: ${today}, ${yesterday} and
 	// the ${now} family. Empty means UTC. It does not affect a check's schedule,
 	// which belongs to the target.
-	TimeZone      string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TimeZone string `protobuf:"bytes,13,opt,name=time_zone,json=timeZone,proto3" json:"time_zone,omitempty"`
+	// Whether the workspace's agent principals may write plan declarations and
+	// proposed change requests. Off by default: turning it off is the kill
+	// switch that returns the workspace to human-only edits.
+	AgentAutonomyEnabled bool `protobuf:"varint,14,opt,name=agent_autonomy_enabled,json=agentAutonomyEnabled,proto3" json:"agent_autonomy_enabled,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -517,6 +521,13 @@ func (x *DataQualitySetting) GetTimeZone() string {
 		return x.TimeZone
 	}
 	return ""
+}
+
+func (x *DataQualitySetting) GetAgentAutonomyEnabled() bool {
+	if x != nil {
+		return x.AgentAutonomyEnabled
+	}
+	return false
 }
 
 // QualityDigestSetting is the schedule of the weekly data quality digest.
@@ -1491,7 +1502,7 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x17sso_email_identity_idps\x18\n" +
 	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
 	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"\xee\x05\n" +
+	"R\x18allow_sso_email_identity\"\xa4\x06\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1506,7 +1517,8 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	" \x01(\x05R\x15dailyLlmAnalysisLimit\x122\n" +
 	"\x15llm_concurrency_limit\x18\v \x01(\x05R\x13llmConcurrencyLimit\x12I\n" +
 	"\rweekly_digest\x18\f \x01(\v2$.metaxisdata.v1.QualityDigestSettingR\fweeklyDigest\x12\x1b\n" +
-	"\ttime_zone\x18\r \x01(\tR\btimeZone\"\x9b\x01\n" +
+	"\ttime_zone\x18\r \x01(\tR\btimeZone\x124\n" +
+	"\x16agent_autonomy_enabled\x18\x0e \x01(\bR\x14agentAutonomyEnabled\"\x9b\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x129\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x19.metaxisdata.v1.DayOfWeekR\tdayOfWeek\x12\x12\n" +
