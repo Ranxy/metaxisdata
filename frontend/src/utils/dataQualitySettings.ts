@@ -26,6 +26,9 @@ import {
  */
 
 export const FAILURE_SAMPLE_LIMIT_MAX = 100;
+export const MAX_AGENT_RUNNER_TOKENS_PER_HOUR = 1_000_000_000_000;
+export const MAX_AGENT_RUNNER_GOALS_PER_HOUR = 1000;
+export const MAX_AGENT_RUNNER_CONCURRENT_GOALS = 16;
 export const MAX_COLUMNS_PER_ANALYSIS_MAX = 200;
 export const DAILY_LLM_ANALYSIS_LIMIT_MAX = 1_000_000;
 export const MAX_DAILY_COLUMN_ANALYSIS_LIMIT = 1_000_000;
@@ -272,6 +275,36 @@ export function validateSettingsForm(
   if (concurrency === "invalid") {
     issue("llmConcurrencyLimitInvalid", { max: LLM_CONCURRENCY_LIMIT_MAX });
   }
+  const runnerTokens = checkRange64(
+    form.agentRunnerTokensPerHour,
+    0,
+    MAX_AGENT_RUNNER_TOKENS_PER_HOUR
+  );
+  if (runnerTokens === "invalid") {
+    issue("runnerTokensPerHourInvalid", {
+      max: MAX_AGENT_RUNNER_TOKENS_PER_HOUR.toString(),
+    });
+  }
+  const runnerGoals = checkRange(
+    form.agentRunnerGoalsPerHour,
+    0,
+    MAX_AGENT_RUNNER_GOALS_PER_HOUR
+  );
+  if (runnerGoals === "invalid") {
+    issue("runnerGoalsPerHourInvalid", {
+      max: MAX_AGENT_RUNNER_GOALS_PER_HOUR,
+    });
+  }
+  const runnerConcurrency = checkRange(
+    form.agentRunnerMaxConcurrentGoals,
+    0,
+    MAX_AGENT_RUNNER_CONCURRENT_GOALS
+  );
+  if (runnerConcurrency === "invalid") {
+    issue("runnerConcurrencyInvalid", {
+      max: MAX_AGENT_RUNNER_CONCURRENT_GOALS,
+    });
+  }
   const maxColumns = checkRange(
     form.maxColumnsPerAnalysis,
     0,
@@ -321,6 +354,26 @@ function validateDigest(
 
 /** A number field: blank is allowed (server default); anything else is checked. */
 type RangeCheck = "empty" | "valid" | "invalid";
+
+/** A non-negative int64 input within [0, max], blank as 0; "invalid" otherwise. */
+function checkRange64(
+  value: string,
+  min: number,
+  max: number
+): number | "invalid" {
+  const text = value.trim();
+  if (text === "") {
+    return 0;
+  }
+  if (!/^[0-9]+$/.test(text)) {
+    return "invalid";
+  }
+  const parsed = BigInt(text);
+  if (parsed < BigInt(min) || parsed > BigInt(max)) {
+    return "invalid";
+  }
+  return Number(parsed);
+}
 
 function checkRange(value: string, min: number, max: number): RangeCheck {
   const text = value.trim();

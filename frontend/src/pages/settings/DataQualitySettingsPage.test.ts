@@ -265,15 +265,24 @@ describe("DataQualitySettingsPage", () => {
     mocks.listDatabases.mockResolvedValue({
       databases: [{ name: "instances/i1/databases/warehouse" }],
     });
+    // The saved allowlist must render as checked, and unchecking it must remove the
+    // scope on save rather than being silently re-saved.
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          agentRunnerEnabled: true,
+          agentRunnerDatabases: ["instances/i1/databases/warehouse"],
+        }),
+      })
+    );
     const wrapper = await mountPage();
     await flushPromises();
 
-    await wrapper.find("#dq-setting-agent-runner").trigger("click");
     const database = wrapper.find(
       '[data-testid="dq-runner-db-instances/i1/databases/warehouse"]'
     );
-    (database.element as HTMLInputElement).checked = true;
-    await database.trigger("change");
+    expect((database.element as HTMLInputElement).checked).toBe(true);
+    await database.setValue(false);
     await wrapper.find("#dq-setting-runner-tokens").setValue("250000000");
     await wrapper.find("#dq-setting-runner-goals").setValue("40");
     await wrapper.find("#dq-setting-runner-concurrency").setValue("3");
@@ -282,10 +291,11 @@ describe("DataQualitySettingsPage", () => {
     await saveButton(wrapper)?.trigger("click");
     await flushPromises();
 
+    expect(mocks.updateDataQualitySetting).toHaveBeenCalledTimes(1);
     const setting = mocks.updateDataQualitySetting.mock.calls[0]?.[0];
     expect(setting).toMatchObject({
       agentRunnerEnabled: true,
-      agentRunnerDatabases: ["instances/i1/databases/warehouse"],
+      agentRunnerDatabases: [],
       agentRunnerGoalsPerHour: 40,
       agentRunnerMaxConcurrentGoals: 3,
     });

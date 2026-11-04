@@ -477,12 +477,37 @@
             </div>
 
             <div class="space-y-2">
-              <Label>{{ t("dataQualitySettings.runnerDatabases") }}</Label>
+              <fieldset class="space-y-1">
+                <legend class="text-sm font-medium">
+                  {{ t("dataQualitySettings.runnerDatabases") }}
+                </legend>
               <p class="text-sm text-muted-foreground">
                 {{ t("dataQualitySettings.runnerDatabasesHint") }}
               </p>
               <p
-                v-if="runnerDatabases.length === 0"
+                v-if="runnerDatabasesLoading"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("common.loading") }}
+              </p>
+              <Alert
+                v-else-if="runnerDatabasesError"
+                variant="destructive"
+              >
+                <AlertTriangle class="h-4 w-4" />
+                <AlertDescription class="flex flex-wrap items-center gap-2">
+                  {{ runnerDatabasesError }}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="loadRunnerDatabases"
+                  >
+                    {{ t("common.retry") }}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+              <p
+                v-else-if="runnerDatabases.length === 0"
                 class="text-sm text-muted-foreground"
               >
                 {{ t("dataQualitySettings.runnerDatabasesEmpty") }}
@@ -510,6 +535,7 @@
                   </label>
                 </div>
               </div>
+              </fieldset>
             </div>
 
             <div class="grid gap-3 sm:grid-cols-3">
@@ -850,7 +876,7 @@ import {
   updateQualityCodeTable,
 } from "@/api/data-quality";
 import { listDatabases } from "@/api/database";
-import { listAllInstances } from "@/api/instance";
+import { listAll } from "@/api/list";
 import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
@@ -942,33 +968,60 @@ interface RunnerDatabaseGroup {
   databases: Array<{ name: string }>;
 }
 const runnerDatabases = ref<RunnerDatabaseGroup[]>([]);
+const runnerDatabasesLoading = ref(true);
+const runnerDatabasesError = ref("");
 
+/** Load the whole estate in one paginated read and group it by instance. */
 async function loadRunnerDatabases() {
-  if (!canUpdate.value) {
-    return;
-  }
+  runnerDatabasesLoading.value = true;
+  runnerDatabasesError.value = "";
   try {
-    const instances = await listAllInstances();
-    const groups: RunnerDatabaseGroup[] = [];
-    for (const instance of instances) {
+    const databases = await listAll(async (pageToken) => {
       const response = await listDatabases({
-        parent: instance.name,
-        pageSize: 100,
+        parent: "workspaces/-",
+        pageSize: 1000,
+        pageToken,
       });
-      groups.push({
-        instance: instance.name,
-        title:
-          instance.title || instance.name.split("/").pop() || instance.name,
-        databases: response.databases.map((database) => ({
-          name: database.name,
-        })),
+      return {
+        items: response.databases,
+        nextPageToken: response.nextPageToken,
+      };
+    });
+    const groups = new Map<string, RunnerDatabaseGroup>();
+    for (const database of databases) {
+      const segments = database.name.split("/");
+      const instance = segments.slice(0, 2).join("/");
+      let group = groups.get(instance);
+      if (!group) {
+        group = {
+          instance,
+          title: instance.split("/").pop() || instance,
+          databases: [],
+        };
+        groups.set(instance, group);
+      }
+      group.databases.push({ name: database.name });
+    }
+    // A saved name whose database is gone or no longer synced stays visible and
+    // removable; the server still enforces the scope.
+    const known = new Set(databases.map((database) => database.name));
+    const missing = form.value.agentRunnerDatabases.filter(
+      (name) => !known.has(name)
+    );
+    if (missing.length > 0) {
+      groups.set("out-of-sync", {
+        instance: "out-of-sync",
+        title: t("dataQualitySettings.runnerDatabasesOutOfSync"),
+        databases: missing.map((name) => ({ name })),
       });
     }
-    runnerDatabases.value = groups;
+    runnerDatabases.value = [...groups.values()].filter(
+      (group) => group.databases.length > 0
+    );
   } catch {
-    // A failed estate read leaves the saved allowlist untouched; the server still
-    // enforces the scope.
-    runnerDatabases.value = [];
+    runnerDatabasesError.value = t("dataQualitySettings.runnerDatabasesFailed");
+  } finally {
+    runnerDatabasesLoading.value = false;
   }
 }
 
