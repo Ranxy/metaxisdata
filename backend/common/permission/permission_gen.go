@@ -102,6 +102,8 @@ const (
 	ConnectedAppsList                  Permission = "metaxisdata.connectedApps.list"
 	ConnectedAppsRevoke                Permission = "metaxisdata.connectedApps.revoke"
 	AuditLogsSearch                    Permission = "metaxisdata.auditLogs.search"
+	DataQualityPlansUpdate             Permission = "metaxisdata.dataQuality.plans.update"
+	DataQualityChangeRequestsDecide    Permission = "metaxisdata.dataQuality.changeRequests.decide"
 )
 
 // allPermissions is the complete, authoritative list of valid permission
@@ -205,6 +207,8 @@ var allPermissions = []Permission{
 	ConnectedAppsList,
 	ConnectedAppsRevoke,
 	AuditLogsSearch,
+	DataQualityPlansUpdate,
+	DataQualityChangeRequestsDecide,
 }
 
 var allPermissionsMap = func() map[Permission]bool {

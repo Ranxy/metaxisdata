@@ -652,6 +652,41 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.contracts.publish";
   }
 
+  // Create a batch of typed changes against one target. It stays PROPOSED until a
+  // person decides; creating it changes nothing on the target.
+  rpc CreateQualityChangeRequest(CreateQualityChangeRequestRequest) returns (QualityChangeRequest) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityChangeRequests"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Read one change request, with its items and per-item results.
+  rpc GetQualityChangeRequest(GetQualityChangeRequestRequest) returns (QualityChangeRequest) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityChangeRequests/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // List change requests, newest first.
+  rpc ListQualityChangeRequests(ListQualityChangeRequestsRequest) returns (ListQualityChangeRequestsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityChangeRequests"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Approve or reject a change request. Approving applies each item through its
+  // existing path and returns a result per item; rejecting records the structured
+  // reasons. A stale base version expires the request instead of rebasing it.
+  rpc DecideQualityChangeRequest(DecideQualityChangeRequestRequest) returns (QualityChangeRequest) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityChangeRequests/*}:decide"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.changeRequests.decide";
+  }
+
   // List the target's published contract versions, newest first.
   rpc ListQualityContractRevisions(ListQualityContractRevisionsRequest) returns (ListQualityContractRevisionsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityContractRevisions"};
@@ -3808,6 +3843,136 @@ message ListQualityPlansResponse {
   repeated QualityPlan plans = 1;
   string next_page_token = 2;
   int32 total_size = 3;
+}
+
+// QualityChangeRequestState is the lifecycle of one change request.
+enum QualityChangeRequestState {
+  QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED = 0;
+  QUALITY_CHANGE_REQUEST_STATE_PROPOSED = 1;
+  QUALITY_CHANGE_REQUEST_STATE_APPROVED = 2;
+  QUALITY_CHANGE_REQUEST_STATE_APPLIED = 3;
+  QUALITY_CHANGE_REQUEST_STATE_REJECTED = 4;
+  QUALITY_CHANGE_REQUEST_STATE_EXPIRED = 5;
+}
+
+// QualityChangeRequestSource records who wrote the request.
+enum QualityChangeRequestSource {
+  QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED = 0;
+  QUALITY_CHANGE_REQUEST_SOURCE_HUMAN = 1;
+  QUALITY_CHANGE_REQUEST_SOURCE_AGENT = 2;
+}
+
+// QualityChangeRequestItemKind is one typed change a request carries.
+enum QualityChangeRequestItemKind {
+  QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED = 0;
+  QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF = 1;
+  QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE = 2;
+}
+
+// QualityChangeRejectionReason is the structured reason a person rejected a
+// request.
+enum QualityChangeRejectionReason {
+  QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED = 0;
+  QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT = 1;
+  QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT = 2;
+  QUALITY_CHANGE_REJECTION_REASON_NOISE = 3;
+  QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM = 4;
+  QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN = 5;
+  QUALITY_CHANGE_REJECTION_REASON_DEFER = 6;
+  QUALITY_CHANGE_REJECTION_REASON_OTHER = 7;
+}
+
+// QualityChangeRequestItem is one typed change.
+message QualityChangeRequestItem {
+  QualityChangeRequestItemKind kind = 1;
+  // SUGGESTION_REF: Format: workspaces/{workspace}/qualitySuggestions/{id}
+  string suggestion = 2 [(google.api.resource_reference) = {type: "metaxisdata/QualitySuggestion"}];
+  QualityCoverageProperty property = 3;
+  string column = 4;
+  int32 min_checks = 5;
+  // COVERAGE_CHANGE: remove the declaration instead of adding or changing it.
+  bool remove = 6;
+}
+
+// QualityChangeRequestItemResult is one item's outcome.
+message QualityChangeRequestItemResult {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_APPLIED = 1;
+    STATUS_FAILED = 2;
+    STATUS_SKIPPED = 3;
+  }
+  int32 index = 1;
+  Status status = 2;
+  string detail = 3;
+  string applied_resource_id = 4;
+}
+
+// QualityChangeRequest is one approve-or-reject batch of typed changes against one
+// target. Approving applies each item independently and returns a result per item.
+message QualityChangeRequest {
+  // Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
+  string name = 1;
+  QualityTarget target = 2;
+  QualityChangeRequestState state = 3;
+  // The published version the request was written against; a decision on a stale
+  // base expires the request instead of rebasing it.
+  int32 base_version = 4;
+  QualityChangeRequestSource source = 5;
+  repeated QualityChangeRequestItem items = 6;
+  repeated QualityChangeRequestItemResult item_results = 7;
+  repeated QualityChangeRejectionReason rejection_reasons = 8;
+  string decision_note = 9;
+  // Format: users/{user}. Empty when unknown.
+  string created_by = 10;
+  google.protobuf.Timestamp created_at = 11;
+  string decided_by = 12;
+  google.protobuf.Timestamp decided_at = 13;
+}
+
+message CreateQualityChangeRequestRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  // The newest published version the request is written against.
+  int32 base_version = 4;
+  // At most 20 items.
+  repeated QualityChangeRequestItem items = 5 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetQualityChangeRequestRequest {
+  // Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListQualityChangeRequestsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2;
+  QualityChangeRequestState state = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListQualityChangeRequestsResponse {
+  repeated QualityChangeRequest change_requests = 1;
+  string next_page_token = 2;
+}
+
+message DecideQualityChangeRequestRequest {
+  // Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  // APPROVE applies the request's items; REJECT records the refusal.
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_APPROVE = 1;
+    DECISION_REJECT = 2;
+  }
+  Decision decision = 2 [(google.api.field_behavior) = REQUIRED];
+  // Why the request was rejected; required for REJECT.
+  repeated QualityChangeRejectionReason rejection_reasons = 3;
+  string decision_note = 4;
 }
 
 // QualityCoverageGap is one required property a target's plan does not satisfy.

@@ -312,6 +312,26 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityChangeRejectionReasons"><span class="badge">M</span>QualityChangeRejectionReasons</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestItem"><span class="badge">M</span>QualityChangeRequestItem</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestItemResult"><span class="badge">M</span>QualityChangeRequestItemResult</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestItemResults"><span class="badge">M</span>QualityChangeRequestItemResults</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestItems"><span class="badge">M</span>QualityChangeRequestItems</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityCodeTableValues"><span class="badge">M</span>QualityCodeTableValues</a>
                 </li>
               
@@ -478,6 +498,26 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityAggregateFunction"><span class="badge">E</span>QualityAggregateFunction</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRejectionReason"><span class="badge">E</span>QualityChangeRejectionReason</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestItemKind"><span class="badge">E</span>QualityChangeRequestItemKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestItemResult.Status"><span class="badge">E</span>QualityChangeRequestItemResult.Status</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestSource"><span class="badge">E</span>QualityChangeRequestSource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityChangeRequestState"><span class="badge">E</span>QualityChangeRequestState</a>
                 </li>
               
                 <li>
@@ -2580,6 +2620,182 @@ converted with the column&#39;s type; at most 20. </p></td>
                   <td></td>
                   <td><p>True when the observed value was longer than the display bound and was cut for
 storage. A consumer that turns the value into a rule parameter must skip it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityChangeRejectionReasons">QualityChangeRejectionReasons</h3>
+        <p>QualityChangeRejectionReasons is the JSONB payload of</p><p>quality_change_request.rationale_codes.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>reasons</td>
+                  <td><a href="#metaxisdata.store.QualityChangeRejectionReason">QualityChangeRejectionReason</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestItem">QualityChangeRequestItem</h3>
+        <p>QualityChangeRequestItem is one typed change. Which fields are read depends on</p><p>kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes</p><p>one plan declaration.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.store.QualityChangeRequestItemKind">QualityChangeRequestItemKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>suggestion_resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>SUGGESTION_REF: the proposal&#39;s immutable resource id. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.store.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p>COVERAGE_CHANGE: the declaration to add or modify. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_checks</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>remove</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>COVERAGE_CHANGE: remove the declaration instead of adding or changing it. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestItemResult">QualityChangeRequestItemResult</h3>
+        <p>QualityChangeRequestItemResult is one item's outcome. A request returns a result</p><p>per item: a batch never reports only "the whole request succeeded or failed".</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>index</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.store.QualityChangeRequestItemResult.Status">QualityChangeRequestItemResult.Status</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>detail</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>applied_resource_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The resource the item created, when it created one. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestItemResults">QualityChangeRequestItemResults</h3>
+        <p>QualityChangeRequestItemResults is the JSONB payload of</p><p>quality_change_request.item_results.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#metaxisdata.store.QualityChangeRequestItemResult">QualityChangeRequestItemResult</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestItems">QualityChangeRequestItems</h3>
+        <p>QualityChangeRequestItems is the JSONB payload of quality_change_request.items.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>items</td>
+                  <td><a href="#metaxisdata.store.QualityChangeRequestItem">QualityChangeRequestItem</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -4883,6 +5099,205 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
                 <td>QUALITY_AGGREGATE_FUNCTION_PERCENTILE</td>
                 <td>7</td>
                 <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityChangeRejectionReason">QualityChangeRejectionReason</h3>
+        <p>QualityChangeRejectionReason is the structured reason a person rejected a</p><p>request. It is the first decision-memory signal: free text alone cannot be</p><p>evaluated later.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_NOISE</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN</td>
+                <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_DEFER</td>
+                <td>6</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REJECTION_REASON_OTHER</td>
+                <td>7</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestItemKind">QualityChangeRequestItemKind</h3>
+        <p>QualityChangeRequestItemKind is one typed change a request carries. Red-line</p><p>actions (silent, close, publish, acknowledge schema change, owner, criticality)</p><p>are deliberately not representable.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF</td>
+                <td>1</td>
+                <td><p>Accept one pending proposal through the existing accept path.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE</td>
+                <td>2</td>
+                <td><p>Add, change or remove one plan declaration.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestItemResult.Status">QualityChangeRequestItemResult.Status</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STATUS_APPLIED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STATUS_FAILED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>STATUS_SKIPPED</td>
+                <td>3</td>
+                <td><p>Already true, so there was nothing to apply.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestSource">QualityChangeRequestSource</h3>
+        <p>QualityChangeRequestSource records who wrote the request.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_SOURCE_HUMAN</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_SOURCE_AGENT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityChangeRequestState">QualityChangeRequestState</h3>
+        <p>QualityChangeRequestState is the lifecycle of one change request.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_PROPOSED</td>
+                <td>1</td>
+                <td><p>Waiting for a person&#39;s decision.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_APPROVED</td>
+                <td>2</td>
+                <td><p>Approved, but not every item applied yet (a failed item can be retried).</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_APPLIED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_REJECTED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CHANGE_REQUEST_STATE_EXPIRED</td>
+                <td>5</td>
+                <td><p>The published version it was written against is gone; it is not rebased.</p></td>
               </tr>
             
           </tbody>

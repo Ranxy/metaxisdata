@@ -240,6 +240,7 @@
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
+    - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
     - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest)
@@ -248,6 +249,7 @@
     - [CrossTableConfig](#metaxisdata-v1-CrossTableConfig)
     - [CrossTableReference](#metaxisdata-v1-CrossTableReference)
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
+    - [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest)
     - [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
@@ -261,6 +263,7 @@
     - [ExportQualityTargetsRequest](#metaxisdata-v1-ExportQualityTargetsRequest)
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
+    - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
     - [GetQualityConsumptionCoverageResponse](#metaxisdata-v1-GetQualityConsumptionCoverageResponse)
@@ -289,6 +292,8 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest)
+    - [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse)
     - [ListQualityCodeTablesRequest](#metaxisdata-v1-ListQualityCodeTablesRequest)
     - [ListQualityCodeTablesResponse](#metaxisdata-v1-ListQualityCodeTablesResponse)
     - [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest)
@@ -321,6 +326,9 @@
     - [ProfileValue](#metaxisdata-v1-ProfileValue)
     - [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest)
     - [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse)
+    - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
+    - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
+    - [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult)
     - [QualityCodeTable](#metaxisdata-v1-QualityCodeTable)
     - [QualityConsumptionGap](#metaxisdata-v1-QualityConsumptionGap)
     - [QualityContract](#metaxisdata-v1-QualityContract)
@@ -410,8 +418,14 @@
     - [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest)
   
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
+    - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
+    - [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason)
+    - [QualityChangeRequestItemKind](#metaxisdata-v1-QualityChangeRequestItemKind)
+    - [QualityChangeRequestItemResult.Status](#metaxisdata-v1-QualityChangeRequestItemResult-Status)
+    - [QualityChangeRequestSource](#metaxisdata-v1-QualityChangeRequestSource)
+    - [QualityChangeRequestState](#metaxisdata-v1-QualityChangeRequestState)
     - [QualityComparison](#metaxisdata-v1-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-v1-QualityComparisonOperator)
     - [QualityContractChangeKind](#metaxisdata-v1-QualityContractChangeKind)
@@ -4548,6 +4562,25 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
+<a name="metaxisdata-v1-CreateQualityChangeRequestRequest"></a>
+
+### CreateQualityChangeRequestRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| base_version | [int32](#int32) |  | The newest published version the request is written against. |
+| items | [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem) | repeated | At most 20 items. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateQualityCodeTableRequest"></a>
 
 ### CreateQualityCodeTableRequest
@@ -4695,6 +4728,24 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 | sql | [string](#string) |  |  |
 | fail_threshold | [double](#double) | optional |  |
 | warn_threshold | [double](#double) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DecideQualityChangeRequestRequest"></a>
+
+### DecideQualityChangeRequestRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} |
+| decision | [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision) |  |  |
+| rejection_reasons | [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason) | repeated | Why the request was rejected; required for REJECT. |
+| decision_note | [string](#string) |  |  |
 
 
 
@@ -4942,6 +4993,21 @@ timestamp follows on_empty.
 | timestamp_column | [string](#string) |  |  |
 | max_lag_seconds | [int32](#int32) |  |  |
 | warn_lag_seconds | [int32](#int32) | optional |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
+
+### GetQualityChangeRequestRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} |
 
 
 
@@ -5417,6 +5483,41 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | column_profiles | [ColumnProfile](#metaxisdata-v1-ColumnProfile) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityChangeRequestsRequest"></a>
+
+### ListQualityChangeRequestsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| state | [QualityChangeRequestState](#metaxisdata-v1-QualityChangeRequestState) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityChangeRequestsResponse"></a>
+
+### ListQualityChangeRequestsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| change_requests | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -6025,6 +6126,72 @@ ProfileValue is one frequent value of a low-cardinality column.
 | contract | [QualityContract](#metaxisdata-v1-QualityContract) |  |  |
 | revision | [QualityContractRevision](#metaxisdata-v1-QualityContractRevision) |  |  |
 | no_changes | [bool](#bool) |  | True when the live state already matched the newest published version, so no new version was created. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequest"></a>
+
+### QualityChangeRequest
+QualityChangeRequest is one approve-or-reject batch of typed changes against one
+target. Approving applies each item independently and returns a result per item.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityChangeRequests/{quality_change_request} |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| state | [QualityChangeRequestState](#metaxisdata-v1-QualityChangeRequestState) |  |  |
+| base_version | [int32](#int32) |  | The published version the request was written against; a decision on a stale base expires the request instead of rebasing it. |
+| source | [QualityChangeRequestSource](#metaxisdata-v1-QualityChangeRequestSource) |  |  |
+| items | [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem) | repeated |  |
+| item_results | [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult) | repeated |  |
+| rejection_reasons | [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason) | repeated |  |
+| decision_note | [string](#string) |  |  |
+| created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| decided_by | [string](#string) |  |  |
+| decided_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequestItem"></a>
+
+### QualityChangeRequestItem
+QualityChangeRequestItem is one typed change.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [QualityChangeRequestItemKind](#metaxisdata-v1-QualityChangeRequestItemKind) |  |  |
+| suggestion | [string](#string) |  | SUGGESTION_REF: Format: workspaces/{workspace}/qualitySuggestions/{id} |
+| property | [QualityCoverageProperty](#metaxisdata-v1-QualityCoverageProperty) |  |  |
+| column | [string](#string) |  |  |
+| min_checks | [int32](#int32) |  |  |
+| remove | [bool](#bool) |  | COVERAGE_CHANGE: remove the declaration instead of adding or changing it. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequestItemResult"></a>
+
+### QualityChangeRequestItemResult
+QualityChangeRequestItemResult is one item&#39;s outcome.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| index | [int32](#int32) |  |  |
+| status | [QualityChangeRequestItemResult.Status](#metaxisdata-v1-QualityChangeRequestItemResult-Status) |  |  |
+| detail | [string](#string) |  |  |
+| applied_resource_id | [string](#string) |  |  |
 
 
 
@@ -7923,6 +8090,19 @@ ColumnLabelAction is what UpdateColumnLabel does with one column&#39;s label.
 
 
 
+<a name="metaxisdata-v1-DecideQualityChangeRequestRequest-Decision"></a>
+
+### DecideQualityChangeRequestRequest.Decision
+APPROVE applies the request&#39;s items; REJECT records the refusal.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DECISION_UNSPECIFIED | 0 |  |
+| DECISION_APPROVE | 1 |  |
+| DECISION_REJECT | 2 |  |
+
+
+
 <a name="metaxisdata-v1-QualityAggregateFunction"></a>
 
 ### QualityAggregateFunction
@@ -7955,6 +8135,81 @@ criticality is a display/policy input, never written back to the contract.
 | QUALITY_ASSET_CRITICALITY_EXPERIMENTAL | 1 |  |
 | QUALITY_ASSET_CRITICALITY_IMPORTANT | 2 |  |
 | QUALITY_ASSET_CRITICALITY_CRITICAL | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityChangeRejectionReason"></a>
+
+### QualityChangeRejectionReason
+QualityChangeRejectionReason is the structured reason a person rejected a
+request.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT | 1 |  |
+| QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT | 2 |  |
+| QUALITY_CHANGE_REJECTION_REASON_NOISE | 3 |  |
+| QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM | 4 |  |
+| QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN | 5 |  |
+| QUALITY_CHANGE_REJECTION_REASON_DEFER | 6 |  |
+| QUALITY_CHANGE_REJECTION_REASON_OTHER | 7 |  |
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequestItemKind"></a>
+
+### QualityChangeRequestItemKind
+QualityChangeRequestItemKind is one typed change a request carries.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF | 1 |  |
+| QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequestItemResult-Status"></a>
+
+### QualityChangeRequestItemResult.Status
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| STATUS_UNSPECIFIED | 0 |  |
+| STATUS_APPLIED | 1 |  |
+| STATUS_FAILED | 2 |  |
+| STATUS_SKIPPED | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequestSource"></a>
+
+### QualityChangeRequestSource
+QualityChangeRequestSource records who wrote the request.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REQUEST_SOURCE_HUMAN | 1 |  |
+| QUALITY_CHANGE_REQUEST_SOURCE_AGENT | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualityChangeRequestState"></a>
+
+### QualityChangeRequestState
+QualityChangeRequestState is the lifecycle of one change request.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REQUEST_STATE_PROPOSED | 1 |  |
+| QUALITY_CHANGE_REQUEST_STATE_APPROVED | 2 |  |
+| QUALITY_CHANGE_REQUEST_STATE_APPLIED | 3 |  |
+| QUALITY_CHANGE_REQUEST_STATE_REJECTED | 4 |  |
+| QUALITY_CHANGE_REQUEST_STATE_EXPIRED | 5 |  |
 
 
 
@@ -8657,6 +8912,10 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityCoverageGaps | [ListQualityCoverageGapsRequest](#metaxisdata-v1-ListQualityCoverageGapsRequest) | [ListQualityCoverageGapsResponse](#metaxisdata-v1-ListQualityCoverageGapsResponse) | ListQualityCoverageGaps flattens the plan projection to the unsatisfied declared coverage: one row per target property that a live rule does not implement. Read-only, like ListQualityPlans. |
 | UpdateQualityContract | [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Update the target-level defaults. The filter is ANDed into every rule on the target at compile time; the default severity only seeds newly authored rules and never rewrites an existing rule. The target&#39;s schedule is updated through UpdateQualityTargetSchedule. |
 | PublishQualityContract | [PublishQualityContractRequest](#metaxisdata-v1-PublishQualityContractRequest) | [PublishQualityContractResponse](#metaxisdata-v1-PublishQualityContractResponse) | Publish the live rules and settings as the target&#39;s next contract version. Republishing an unchanged contract is a no-op that returns the existing version (no_changes=true). |
+| CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. |
+| GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |
+| ListQualityChangeRequests | [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest) | [ListQualityChangeRequestsResponse](#metaxisdata-v1-ListQualityChangeRequestsResponse) | List change requests, newest first. |
+| DecideQualityChangeRequest | [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Approve or reject a change request. Approving applies each item through its existing path and returns a result per item; rejecting records the structured reasons. A stale base version expires the request instead of rebasing it. |
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |

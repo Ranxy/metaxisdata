@@ -37,6 +37,11 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityChangeRejectionReasons](#metaxisdata-store-QualityChangeRejectionReasons)
+    - [QualityChangeRequestItem](#metaxisdata-store-QualityChangeRequestItem)
+    - [QualityChangeRequestItemResult](#metaxisdata-store-QualityChangeRequestItemResult)
+    - [QualityChangeRequestItemResults](#metaxisdata-store-QualityChangeRequestItemResults)
+    - [QualityChangeRequestItems](#metaxisdata-store-QualityChangeRequestItems)
     - [QualityCodeTableValues](#metaxisdata-store-QualityCodeTableValues)
     - [QualityContractCheck](#metaxisdata-store-QualityContractCheck)
     - [QualityContractIntent](#metaxisdata-store-QualityContractIntent)
@@ -80,6 +85,11 @@
     - [UniqueConfig](#metaxisdata-store-UniqueConfig)
   
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
+    - [QualityChangeRejectionReason](#metaxisdata-store-QualityChangeRejectionReason)
+    - [QualityChangeRequestItemKind](#metaxisdata-store-QualityChangeRequestItemKind)
+    - [QualityChangeRequestItemResult.Status](#metaxisdata-store-QualityChangeRequestItemResult-Status)
+    - [QualityChangeRequestSource](#metaxisdata-store-QualityChangeRequestSource)
+    - [QualityChangeRequestState](#metaxisdata-store-QualityChangeRequestState)
     - [QualityComparison](#metaxisdata-store-QualityComparison)
     - [QualityComparisonOperator](#metaxisdata-store-QualityComparisonOperator)
     - [QualityContractChangeKind](#metaxisdata-store-QualityContractChangeKind)
@@ -807,6 +817,94 @@ value the column holds.
 | value | [string](#string) |  |  |
 | count | [int64](#int64) |  |  |
 | truncated | [bool](#bool) |  | True when the observed value was longer than the display bound and was cut for storage. A consumer that turns the value into a rule parameter must skip it. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityChangeRejectionReasons"></a>
+
+### QualityChangeRejectionReasons
+QualityChangeRejectionReasons is the JSONB payload of
+quality_change_request.rationale_codes.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| reasons | [QualityChangeRejectionReason](#metaxisdata-store-QualityChangeRejectionReason) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestItem"></a>
+
+### QualityChangeRequestItem
+QualityChangeRequestItem is one typed change. Which fields are read depends on
+kind: a SUGGESTION_REF names a proposal, a COVERAGE_CHANGE declares or removes
+one plan declaration.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [QualityChangeRequestItemKind](#metaxisdata-store-QualityChangeRequestItemKind) |  |  |
+| suggestion_resource_id | [string](#string) |  | SUGGESTION_REF: the proposal&#39;s immutable resource id. |
+| property | [QualityCoverageProperty](#metaxisdata-store-QualityCoverageProperty) |  | COVERAGE_CHANGE: the declaration to add or modify. |
+| column | [string](#string) |  |  |
+| min_checks | [int32](#int32) |  |  |
+| remove | [bool](#bool) |  | COVERAGE_CHANGE: remove the declaration instead of adding or changing it. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestItemResult"></a>
+
+### QualityChangeRequestItemResult
+QualityChangeRequestItemResult is one item&#39;s outcome. A request returns a result
+per item: a batch never reports only &#34;the whole request succeeded or failed&#34;.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| index | [int32](#int32) |  |  |
+| status | [QualityChangeRequestItemResult.Status](#metaxisdata-store-QualityChangeRequestItemResult-Status) |  |  |
+| detail | [string](#string) |  |  |
+| applied_resource_id | [string](#string) |  | The resource the item created, when it created one. |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestItemResults"></a>
+
+### QualityChangeRequestItemResults
+QualityChangeRequestItemResults is the JSONB payload of
+quality_change_request.item_results.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| results | [QualityChangeRequestItemResult](#metaxisdata-store-QualityChangeRequestItemResult) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestItems"></a>
+
+### QualityChangeRequestItems
+QualityChangeRequestItems is the JSONB payload of quality_change_request.items.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| items | [QualityChangeRequestItem](#metaxisdata-store-QualityChangeRequestItem) | repeated |  |
 
 
 
@@ -1681,6 +1779,84 @@ PERCENTILE only for an aggregate rule.
 | QUALITY_AGGREGATE_FUNCTION_MAX | 5 |  |
 | QUALITY_AGGREGATE_FUNCTION_STDDEV | 6 |  |
 | QUALITY_AGGREGATE_FUNCTION_PERCENTILE | 7 |  |
+
+
+
+<a name="metaxisdata-store-QualityChangeRejectionReason"></a>
+
+### QualityChangeRejectionReason
+QualityChangeRejectionReason is the structured reason a person rejected a
+request. It is the first decision-memory signal: free text alone cannot be
+evaluated later.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REJECTION_REASON_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REJECTION_REASON_NOT_IMPORTANT | 1 |  |
+| QUALITY_CHANGE_REJECTION_REASON_TOO_TIGHT | 2 |  |
+| QUALITY_CHANGE_REJECTION_REASON_NOISE | 3 |  |
+| QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM | 4 |  |
+| QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN | 5 |  |
+| QUALITY_CHANGE_REJECTION_REASON_DEFER | 6 |  |
+| QUALITY_CHANGE_REJECTION_REASON_OTHER | 7 |  |
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestItemKind"></a>
+
+### QualityChangeRequestItemKind
+QualityChangeRequestItemKind is one typed change a request carries. Red-line
+actions (silent, close, publish, acknowledge schema change, owner, criticality)
+are deliberately not representable.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REQUEST_ITEM_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF | 1 | Accept one pending proposal through the existing accept path. |
+| QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE | 2 | Add, change or remove one plan declaration. |
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestItemResult-Status"></a>
+
+### QualityChangeRequestItemResult.Status
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| STATUS_UNSPECIFIED | 0 |  |
+| STATUS_APPLIED | 1 |  |
+| STATUS_FAILED | 2 |  |
+| STATUS_SKIPPED | 3 | Already true, so there was nothing to apply. |
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestSource"></a>
+
+### QualityChangeRequestSource
+QualityChangeRequestSource records who wrote the request.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REQUEST_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REQUEST_SOURCE_HUMAN | 1 |  |
+| QUALITY_CHANGE_REQUEST_SOURCE_AGENT | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualityChangeRequestState"></a>
+
+### QualityChangeRequestState
+QualityChangeRequestState is the lifecycle of one change request.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_CHANGE_REQUEST_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_CHANGE_REQUEST_STATE_PROPOSED | 1 | Waiting for a person&#39;s decision. |
+| QUALITY_CHANGE_REQUEST_STATE_APPROVED | 2 | Approved, but not every item applied yet (a failed item can be retried). |
+| QUALITY_CHANGE_REQUEST_STATE_APPLIED | 3 |  |
+| QUALITY_CHANGE_REQUEST_STATE_REJECTED | 4 |  |
+| QUALITY_CHANGE_REQUEST_STATE_EXPIRED | 5 | The published version it was written against is gone; it is not rebased. |
 
 
 

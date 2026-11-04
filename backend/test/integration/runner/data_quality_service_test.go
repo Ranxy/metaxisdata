@@ -3986,3 +3986,186 @@ func TestDataQualityTargetWithoutScheduleRowRealServerIntegration(t *testing.T) 
 	require.Len(t, detail.Msg.GetQualityRules(), 1)
 	require.Nil(t, detail.Msg.GetSummary().GetSchedule())
 }
+
+// TestDataQualityChangeRequestRealServerIntegration covers the approve-or-reject
+// batch: a pending proposal and a plan declaration applied per item, a request
+// expiring on a stale base, a rejection carrying its taxonomy, and the rule that a
+// critical target decides one item at a time.
+func TestDataQualityChangeRequestRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1))
+
+	getContract := func() *v1pb.QualityContract {
+		t.Helper()
+		response, err := fixture.dataQuality.GetQualityContract(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.GetQualityContractRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+			}))
+		require.NoError(t, err, "get the quality contract")
+		return response.Msg
+	}
+	publish := func(note string) {
+		t.Helper()
+		_, err := fixture.dataQuality.PublishQualityContract(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.PublishQualityContractRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+				Note:       note,
+			}))
+		require.NoError(t, err, "publish the quality contract")
+	}
+	create := func(items []*v1pb.QualityChangeRequestItem, baseVersion int32) (*v1pb.QualityChangeRequest, error) {
+		response, err := fixture.dataQuality.CreateQualityChangeRequest(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.CreateQualityChangeRequestRequest{
+				Parent:      "workspaces/-",
+				TargetGuid:  fixture.usersGUID,
+				MetaType:    v1pb.MetaType_TABLE,
+				BaseVersion: baseVersion,
+				Items:       items,
+			}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+	decide := func(name string, decision v1pb.DecideQualityChangeRequestRequest_Decision, reasons ...v1pb.QualityChangeRejectionReason) (*v1pb.QualityChangeRequest, error) {
+		response, err := fixture.dataQuality.DecideQualityChangeRequest(fixture.ctx,
+			withToken(fixture.env.AdminToken(), &v1pb.DecideQualityChangeRequestRequest{
+				Name:             name,
+				Decision:         decision,
+				RejectionReasons: reasons,
+			}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+
+	publish("first")
+	suggestion := fixture.seedSuggestion(t, storepb.QualitySuggestionKind_QUALITY_SUGGESTION_KIND_RULE_DRAFT,
+		qualityDraftSuggestionPayload("suggested row count"))
+	workspaceID, err := fixture.env.Store.GetWorkspaceID(fixture.ctx)
+	require.NoError(t, err)
+	suggestionName := common.FormatWorkspace(workspaceID) + "/qualitySuggestions/" + suggestion.ResourceID
+
+	// One batch carries both kinds: a pending proposal and a declaration.
+	request, err := create([]*v1pb.QualityChangeRequestItem{
+		{
+			Kind:       v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_SUGGESTION_REF,
+			Suggestion: suggestionName,
+		},
+		{
+			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
+			MinChecks: 1,
+		},
+	}, 1)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED, request.GetState())
+	require.Equal(t, int32(1), request.GetBaseVersion())
+	require.Len(t, request.GetItems(), 2)
+
+	// Reading it back by name is the review surface.
+	read, err := fixture.dataQuality.GetQualityChangeRequest(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.GetQualityChangeRequestRequest{Name: request.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, request.GetName(), read.Msg.GetName())
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED, read.Msg.GetState())
+
+	applied, err := decide(request.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED, applied.GetState())
+	require.Len(t, applied.GetItemResults(), 2)
+	for _, result := range applied.GetItemResults() {
+		require.Equal(t, v1pb.QualityChangeRequestItemResult_STATUS_APPLIED, result.GetStatus(), result.GetDetail())
+	}
+	require.NotEmpty(t, applied.GetItemResults()[0].GetAppliedResourceId(), "the accepted proposal created a rule")
+
+	// The proposal was accepted through the existing path, and the declaration moved
+	// into the staged plan.
+	accepted, err := fixture.dataQuality.ListQualitySuggestions(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.ListQualitySuggestionsRequest{
+			Parent: "workspaces/-",
+			Status: v1pb.QualitySuggestionStatus_QUALITY_SUGGESTION_STATUS_ACCEPTED,
+		}))
+	require.NoError(t, err)
+	require.Len(t, accepted.Msg.GetQualitySuggestions(), 1)
+	contract := getContract()
+	require.NotNil(t, contract.GetStagedPlan(), "the declaration applied to the target")
+	foundFreshness := false
+	for _, declaration := range contract.GetStagedPlan().GetCoverage() {
+		if declaration.GetProperty() == v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS {
+			foundFreshness = true
+		}
+	}
+	require.True(t, foundFreshness)
+
+	// A request written against the version before that publish is expired, not
+	// silently rebased.
+	publish("declared")
+	stale, err := create([]*v1pb.QualityChangeRequestItem{{
+		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+		MinChecks: 2,
+	}}, 1)
+	require.NoError(t, err)
+	expired, err := decide(stale.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_EXPIRED, expired.GetState())
+
+	// Rejection records the structured taxonomy that later decisions learn from.
+	rejected, err := create([]*v1pb.QualityChangeRequestItem{{
+		Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+		Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+		MinChecks: 1,
+	}}, 2)
+	require.NoError(t, err)
+	refused, err := decide(rejected.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_REJECT,
+		v1pb.QualityChangeRejectionReason_QUALITY_CHANGE_REJECTION_REASON_NOISE)
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_REJECTED, refused.GetState())
+	require.Equal(t, []v1pb.QualityChangeRejectionReason{
+		v1pb.QualityChangeRejectionReason_QUALITY_CHANGE_REJECTION_REASON_NOISE,
+	}, refused.GetRejectionReasons())
+	_, err = decide(rejected.GetName(), v1pb.DecideQualityChangeRequestRequest_DECISION_APPROVE)
+	require.Error(t, err, "a decided request cannot be decided again")
+
+	// A critical target decides one item at a time: a batch would hide changes from
+	// the approver.
+	settings := getContract().GetSettings()
+	critical := &v1pb.QualityContractSettings{
+		Filter:          settings.GetFilter(),
+		DefaultSeverity: settings.GetDefaultSeverity(),
+		Intent: &v1pb.QualityContractIntent{
+			Criticality: v1pb.QualityAssetCriticality_QUALITY_ASSET_CRITICALITY_CRITICAL,
+		},
+	}
+	_, err = fixture.dataQuality.UpdateQualityContract(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityContractRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Settings:   critical,
+		}))
+	require.NoError(t, err)
+	publish("critical")
+	_, err = create([]*v1pb.QualityChangeRequestItem{
+		{
+			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+			MinChecks: 1,
+		},
+		{
+			Kind:      v1pb.QualityChangeRequestItemKind_QUALITY_CHANGE_REQUEST_ITEM_KIND_COVERAGE_CHANGE,
+			Property:  v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS,
+			MinChecks: 1,
+		},
+	}, 3)
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}

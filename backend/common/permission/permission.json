@@ -387,6 +387,14 @@
     {
       "name": "AuditLogsSearch",
       "id": "metaxisdata.auditLogs.search"
+    },
+    {
+      "name": "DataQualityPlansUpdate",
+      "id": "metaxisdata.dataQuality.plans.update"
+    },
+    {
+      "name": "DataQualityChangeRequestsDecide",
+      "id": "metaxisdata.dataQuality.changeRequests.decide"
     }
   ]
 }
