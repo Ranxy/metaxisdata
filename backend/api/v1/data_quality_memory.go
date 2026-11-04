@@ -93,6 +93,9 @@ func (s *DataQualityService) CreateQualityMemory(ctx context.Context, req *conne
 // verified it, so a person decides.
 var observedEvidenceKinds = map[string]bool{
 	"EXECUTION": true, "PROFILE": true, "LINEAGE": true, "SCHEMA_FINGERPRINT": true,
+	// The plan is a deterministic read of the contract and live rules, so a coverage
+	// observation backed by it is a fact the runner may record as confirmed.
+	"PLAN": true,
 }
 
 func observedEvidence(evidence []*v1pb.QualityInvestigationEvidence) bool {

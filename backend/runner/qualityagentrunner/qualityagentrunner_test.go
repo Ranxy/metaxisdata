@@ -182,3 +182,24 @@ func TestRunnerBlocksOutOfScopeGoal(t *testing.T) {
 	require.Len(t, store.steps, 1, "the block is journaled")
 	require.Equal(t, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_STOP, store.steps[0].Kind)
 }
+
+// The round limit is the runner's first gate: a goal at its cap is parked, not run.
+func TestRunnerStopsAtRoundLimit(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := &fakeGoalStore{claimed: []*store.QualityAgentGoalMessage{{
+		ID: 1, ResourceID: "g1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1,
+		RoundsStarted: 8, MaxRounds: 8,
+	}}}
+	engine := &fakeEngine{}
+	runner := newTestRunner(store, dataquality.Settings{
+		AgentRunnerEnabled:   true,
+		AgentRunnerDatabases: []string{"instances/i1/databases/d1"},
+	}, now)
+	runner.engine = engine
+	runner.runOnce(context.Background())
+
+	require.Equal(t, 0, engine.calls)
+	require.Equal(t, "round-limit: the goal reached its round limit", store.blocked["g1"])
+}

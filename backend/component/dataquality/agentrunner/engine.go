@@ -23,9 +23,12 @@ import (
 )
 
 const (
-	// maintainWake is how long a surveyed maintain goal sleeps before looking again.
+	// maintainWake is how long a fully surveyed maintain goal sleeps before looking again.
 	maintainWake = 24 * time.Hour
-	// maxGapInvestigations bounds the investigations one survey records.
+	// gapContinueWake is how soon a maintain goal continues when more gaps remain than
+	// one turn records.
+	gapContinueWake = time.Minute
+	// maxGapInvestigations bounds the investigations one turn records.
 	maxGapInvestigations = 5
 )
 
@@ -36,6 +39,7 @@ type Store interface {
 	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)
 	CreateQualityInvestigation(ctx context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error)
 	CreateQualityMemory(ctx context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error)
+	ListQualityMemories(ctx context.Context, find *store.FindQualityMemoryMessage) ([]*store.QualityMemoryMessage, error)
 	AppendQualityAgentGoalStep(ctx context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error)
 }
 
@@ -78,8 +82,9 @@ func (e *Engine) Run(ctx context.Context, goal *store.QualityAgentGoalMessage) (
 	}
 }
 
-// maintain surveys the target's plan. No gaps means the goal rests until the next
-// survey; gaps become investigations, and one asset fact records the survey.
+// maintain surveys the target's plan. A fully surveyed target sleeps until the next
+// daily look; uncovered declared properties become investigations, and one asset fact
+// records the survey.
 func (e *Engine) maintain(ctx context.Context, goal *store.QualityAgentGoalMessage) (Outcome, error) {
 	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &goal.TargetGUID})
 	if err != nil {
@@ -89,17 +94,17 @@ func (e *Engine) maintain(ctx context.Context, goal *store.QualityAgentGoalMessa
 	if err != nil {
 		return Outcome{}, errors.Wrap(err, "failed to read the target's contract")
 	}
-	var settings *storepb.QualityContractSettings
+	var contractSettings *storepb.QualityContractSettings
 	if contract != nil {
-		settings = contract.Settings
+		contractSettings = contract.Settings
 	}
-	intent := dataquality.ActiveIntent(settings.GetIntent(), e.now())
+	intent := dataquality.ActiveIntent(contractSettings.GetIntent(), e.now())
 	plan := dataquality.DerivePlan(contract != nil, intent, ruleShapes(rules))
 	done := doneSet(goal.Checkpoint)
 	checkpoint := &storepb.QualityAgentGoalCheckpoint{Phase: "survey", Summary: "surveyed the target's coverage"}
 	checkpoint.Done = append(checkpoint.Done, goal.Checkpoint.GetDone()...)
 
-	var gapLabels []string
+	gapLabels := make([]string, 0, len(plan.Requirements))
 	for _, requirement := range plan.Requirements {
 		if requirement.Satisfied || requirement.Exempted {
 			continue
@@ -108,21 +113,25 @@ func (e *Engine) maintain(ctx context.Context, goal *store.QualityAgentGoalMessa
 	}
 	if len(gapLabels) == 0 {
 		return Outcome{
-			Phase:         storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED,
-			BlockedCode:   "no-work",
-			BlockedReason: "the target has no declared coverage gap",
-			NextWakeAt:    ptrTime(e.now().Add(maintainWake)),
-			Checkpoint:    checkpoint,
-			Summary:       "surveyed: no coverage gap",
+			Phase:      storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE,
+			NextWakeAt: ptrTime(e.now().Add(maintainWake)),
+			Checkpoint: checkpoint,
+			Summary:    "surveyed: no coverage gap",
 		}, nil
 	}
 
-	for index, label := range gapLabels {
-		if index >= maxGapInvestigations || done["gap:"+label] {
+	written := 0
+	remaining := 0
+	for _, label := range gapLabels {
+		if done["gap:"+label] {
+			continue
+		}
+		if written >= maxGapInvestigations {
+			remaining++
 			continue
 		}
 		fingerprint := "coverage-gap:" + goal.TargetGUID + ":" + label
-		if err := e.recordInvestigation(ctx, goal, &store.CreateQualityInvestigationInput{
+		input := &store.CreateQualityInvestigationInput{
 			TargetGUID:       goal.TargetGUID,
 			TargetType:       storepb.MetaType(goal.TargetType),
 			Trigger:          storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_COVERAGE_GAP,
@@ -135,11 +144,14 @@ func (e *Engine) maintain(ctx context.Context, goal *store.QualityAgentGoalMessa
 				{Kind: "COVERAGE", Reference: label},
 			}},
 			RequestFingerprint: fingerprint,
-		}); err != nil {
+			CreatedBy:          ptrInt32(goal.AgentPrincipalID),
+		}
+		if err := e.recordInvestigation(ctx, goal, input); err != nil {
 			return Outcome{}, err
 		}
 		checkpoint.Done = append(checkpoint.Done, "gap:"+label)
 		done["gap:"+label] = true
+		written++
 	}
 	if !done["asset_fact"] {
 		if err := e.recordAssetFact(ctx, goal, gapLabels); err != nil {
@@ -147,13 +159,19 @@ func (e *Engine) maintain(ctx context.Context, goal *store.QualityAgentGoalMessa
 		}
 		checkpoint.Done = append(checkpoint.Done, "asset_fact")
 	}
+	if remaining > 0 {
+		return Outcome{
+			Phase:      storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE,
+			NextWakeAt: ptrTime(e.now().Add(gapContinueWake)),
+			Checkpoint: checkpoint,
+			Summary:    fmt.Sprintf("surveyed %d uncovered propert(ies); %d remain for the next turn", len(gapLabels), remaining),
+		}, nil
+	}
 	return Outcome{
-		Phase:         storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED,
-		BlockedCode:   "no-work",
-		BlockedReason: "the covered gaps are recorded; the next survey waits for the checks to change",
-		NextWakeAt:    ptrTime(e.now().Add(maintainWake)),
-		Checkpoint:    checkpoint,
-		Summary:       fmt.Sprintf("surveyed %d uncovered propert(ies)", len(gapLabels)),
+		Phase:      storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE,
+		NextWakeAt: ptrTime(e.now().Add(maintainWake)),
+		Checkpoint: checkpoint,
+		Summary:    fmt.Sprintf("surveyed %d uncovered propert(ies)", len(gapLabels)),
 	}, nil
 }
 
@@ -181,12 +199,31 @@ func (e *Engine) investigateEvent(ctx context.Context, goal *store.QualityAgentG
 			Summary:       "blocked: the triggering execution is gone",
 		}, nil
 	}
+	// The goal's target is the scope: an execution of another target is not evidence
+	// for this goal, whatever its id.
+	if execution.TargetGUID != goal.TargetGUID || execution.TargetType != storepb.MetaType(goal.TargetType) {
+		return Outcome{
+			Phase:         storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED,
+			BlockedCode:   "needs-human",
+			BlockedReason: "the triggering execution belongs to another target",
+			Summary:       "blocked: the execution does not match the goal's target",
+		}, nil
+	}
+	if goal.Trigger == storepb.QualityAgentGoalTrigger_QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED &&
+		execution.Status != storepb.QualityStatus_QUALITY_STATUS_FAIL {
+		return Outcome{
+			Phase:         storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED,
+			BlockedCode:   "needs-human",
+			BlockedReason: "the triggering execution did not fail",
+			Summary:       "blocked: the execution is not a failure",
+		}, nil
+	}
 	summary := fmt.Sprintf("execution %s finished %s with %d failed rows",
 		goal.TriggerRef, execution.Status.String(), execution.FailedRows)
 	if execution.ErrorCode != "" {
 		summary = fmt.Sprintf("execution %s ended %s: %s", goal.TriggerRef, execution.ErrorCode, execution.ErrorMessage)
 	}
-	if err := e.recordInvestigation(ctx, goal, &store.CreateQualityInvestigationInput{
+	input := &store.CreateQualityInvestigationInput{
 		TargetGUID:       goal.TargetGUID,
 		TargetType:       storepb.MetaType(goal.TargetType),
 		Trigger:          storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
@@ -198,7 +235,9 @@ func (e *Engine) investigateEvent(ctx context.Context, goal *store.QualityAgentG
 			{Kind: "EXECUTION", Reference: goal.TriggerRef},
 		}},
 		RequestFingerprint: "event-investigation:" + goal.TriggerRef,
-	}); err != nil {
+		CreatedBy:          ptrInt32(goal.AgentPrincipalID),
+	}
+	if err := e.recordInvestigation(ctx, goal, input); err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{
@@ -210,12 +249,13 @@ func (e *Engine) investigateEvent(ctx context.Context, goal *store.QualityAgentG
 
 // recordInvestigation is the effect sandwich around one investigation: the intent is
 // journaled first, the store write is idempotent by fingerprint, and the result is
-// journaled after.
+// journaled after. The two steps carry different keys so neither replaces the other.
 func (e *Engine) recordInvestigation(ctx context.Context, goal *store.QualityAgentGoalMessage, input *store.CreateQualityInvestigationInput) error {
 	key := "investigation:" + input.RequestFingerprint
-	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT, &storepb.QualityAgentGoalStepPayload{
+	intentPayload := &storepb.QualityAgentGoalStepPayload{
 		Tool: "record_investigation", Summary: "record an investigation", Resource: input.RequestFingerprint,
-	}, key); err != nil {
+	}
+	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT, intentPayload, key+":intent"); err != nil {
 		return err
 	}
 	resourceID, err := common.RandomString(12)
@@ -227,19 +267,32 @@ func (e *Engine) recordInvestigation(ctx context.Context, goal *store.QualityAge
 	if err != nil {
 		return errors.Wrap(err, "failed to record the investigation")
 	}
-	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT, &storepb.QualityAgentGoalStepPayload{
+	resultPayload := &storepb.QualityAgentGoalStepPayload{
 		Tool: "record_investigation", Summary: "investigation recorded", Resource: message.ResourceID,
-	}, key)
+	}
+	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT, resultPayload, key+":result")
 }
 
-// recordAssetFact records what the survey observed as one asset fact. The checkpoint's
-// done set keeps a later wake from writing it again.
+// recordAssetFact records what the survey observed as one asset fact. The statement is
+// looked up first, so a turn that failed after writing the fact does not write a second
+// one on the next wake.
 func (e *Engine) recordAssetFact(ctx context.Context, goal *store.QualityAgentGoalMessage, gaps []string) error {
 	statement := fmt.Sprintf("the plan declares %d uncovered propert(ies): %s", len(gaps), strings.Join(gaps, ", "))
+	existing, err := e.store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &goal.TargetGUID})
+	if err != nil {
+		return errors.Wrap(err, "failed to read the target's memories")
+	}
+	for _, memory := range existing {
+		if memory.Subject == goal.TargetGUID && memory.Statement == statement &&
+			memory.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED {
+			return nil
+		}
+	}
 	key := "memory:" + goal.TargetGUID + ":" + strconv.Itoa(len(gaps))
-	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT, &storepb.QualityAgentGoalStepPayload{
+	intentPayload := &storepb.QualityAgentGoalStepPayload{
 		Tool: "record_asset_fact", Summary: "record the coverage observation",
-	}, key); err != nil {
+	}
+	if err := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT, intentPayload, key+":intent"); err != nil {
 		return err
 	}
 	resourceID, err := common.RandomString(12)
@@ -256,13 +309,15 @@ func (e *Engine) recordAssetFact(ctx context.Context, goal *store.QualityAgentGo
 		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
 			{Kind: "PLAN", Reference: goal.TargetGUID},
 		}},
+		CreatedBy: ptrInt32(goal.AgentPrincipalID),
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to record the asset fact")
 	}
-	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT, &storepb.QualityAgentGoalStepPayload{
+	resultPayload := &storepb.QualityAgentGoalStepPayload{
 		Tool: "record_asset_fact", Summary: "asset fact recorded", Resource: message.ResourceID,
-	}, key)
+	}
+	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT, resultPayload, key+":result")
 }
 
 // journal appends one step, using the effect key as the step's idempotency key.
@@ -276,7 +331,7 @@ func (e *Engine) journal(ctx context.Context, goal *store.QualityAgentGoalMessag
 }
 
 // executionIDFromTrigger parses a quality execution reference, either its bare
-// resource id ("value qualityExecutions/7") or its full name
+// resource id ("qualityExecutions/7") or its full name
 // ("workspaces/{workspace}/qualityExecutions/7"). A non-empty reason means the
 // reference is not an execution, which the caller parks as needs-human.
 func executionIDFromTrigger(reference string) (int64, string) {
@@ -349,3 +404,5 @@ func doneSet(checkpoint *storepb.QualityAgentGoalCheckpoint) map[string]bool {
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }
+
+func ptrInt32(value int32) *int32 { return &value }

@@ -4809,11 +4809,32 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, listed.Msg.GetQualityAgentGoals(), 1)
 
-	paused, err := fixture.dataQuality.PauseQualityAgentGoal(fixture.ctx,
-		withToken(token, &v1pb.PauseQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: goal.GetRevision()}))
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED, paused.Msg.GetPhase())
-	require.Equal(t, goal.GetRevision()+1, paused.Msg.GetRevision())
+	// The runner may record a turn between creation and this call, so retry the CAS with
+	// the latest revision instead of assuming the creation revision is still current.
+	pauseGoal := func(name string) *v1pb.QualityAgentGoal {
+		t.Helper()
+		var latest *v1pb.QualityAgentGoal
+		for attempt := 0; attempt < 5; attempt++ {
+			current, err := fixture.dataQuality.GetQualityAgentGoal(fixture.ctx,
+				withToken(token, &v1pb.GetQualityAgentGoalRequest{Name: name}))
+			require.NoError(t, err)
+			latest = current.Msg
+			paused, err := fixture.dataQuality.PauseQualityAgentGoal(fixture.ctx,
+				withToken(token, &v1pb.PauseQualityAgentGoalRequest{Name: name, ExpectedRevision: latest.GetRevision()}))
+			if err == nil {
+				return paused.Msg
+			}
+			if connect.CodeOf(err) != connect.CodeAborted {
+				require.NoError(t, err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		require.FailNow(t, "pause never won the revision race")
+		return nil
+	}
+	paused := pauseGoal(goal.GetName())
+	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED, paused.GetPhase())
+	require.Greater(t, paused.GetRevision(), goal.GetRevision())
 
 	// A stale revision is rejected, not silently applied.
 	_, err = fixture.dataQuality.ResumeQualityAgentGoal(fixture.ctx,
@@ -4822,7 +4843,7 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
 	resumed, err := fixture.dataQuality.ResumeQualityAgentGoal(fixture.ctx,
-		withToken(token, &v1pb.ResumeQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: paused.Msg.GetRevision()}))
+		withToken(token, &v1pb.ResumeQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: paused.GetRevision()}))
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE, resumed.Msg.GetPhase())
 
@@ -5017,11 +5038,14 @@ func TestQualityAgentRunnerDeterministicTurnRealServerIntegration(t *testing.T) 
 		}))
 	require.NoError(t, err)
 	t.Cleanup(func() { clearGoal(maintainGoal.Msg.GetName()) })
+	// A plan-less maintain goal has nothing to record: the turn leaves it active with a
+	// next wake, not blocked, so the daily survey can find a plan later.
 	require.Eventually(t, func() bool {
 		response, err := fixture.dataQuality.GetQualityAgentGoal(fixture.ctx,
 			withToken(token, &v1pb.GetQualityAgentGoalRequest{Name: maintainGoal.Msg.GetName()}))
 		return err == nil &&
-			response.Msg.GetPhase() == v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED &&
-			response.Msg.GetBlockedCode() == "no-work"
-	}, 20*time.Second, 250*time.Millisecond, "the runner parks the empty maintain goal")
+			response.Msg.GetPhase() == v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE &&
+			response.Msg.GetRoundsStarted() >= 1 &&
+			response.Msg.GetNextWakeTime() != nil
+	}, 20*time.Second, 250*time.Millisecond, "the runner surveys and schedules the empty maintain goal")
 }
