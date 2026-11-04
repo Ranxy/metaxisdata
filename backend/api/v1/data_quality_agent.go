@@ -156,7 +156,7 @@ func (s *DataQualityService) qualityAgentActor(ctx context.Context) (*store.Qual
 // policy before the handler reads or writes anything. A human caller returns nil and
 // is never filtered by the agent switches. The returned agent is the write's
 // attribution.
-func (s *DataQualityService) authorizeAgentAction(ctx context.Context, action dataquality.ActionID, itemCount int) (*store.QualityAgentMessage, error) {
+func (s *DataQualityService) authorizeAgentAction(ctx context.Context, itemCount int, criticality dataquality.AssetCriticality) (*store.QualityAgentMessage, error) {
 	agent, err := s.qualityAgentActor(ctx)
 	if err != nil {
 		return nil, err
@@ -170,14 +170,19 @@ func (s *DataQualityService) authorizeAgentAction(ctx context.Context, action da
 	if err != nil {
 		return nil, errLoadQualitySettings(err)
 	}
+	// The proposal card is the only agent write today; a second one adds its action
+	// id here rather than a caller-chosen one, so a handler cannot pick a cheaper card.
 	decision := dataquality.DecideAction(dataquality.PolicyInput{
-		Action:          action,
+		Action:          dataquality.ActionProposePlanChange,
 		Actor:           dataquality.ActorAgent,
 		AutonomyEnabled: settings.AgentAutonomyEnabled,
 		AgentEnabled:    agent.Enabled,
 		ItemCount:       itemCount,
+		Criticality:     criticality,
 	})
-	if !decision.Allowed {
+	// RequiresApproval is not an execution: no handler may run an action a person has
+	// not yet approved, so both a hard denial and an approval-pending verdict refuse.
+	if !decision.Allowed || decision.RequiresApproval {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(decision.Reason))
 	}
 	return agent, nil
@@ -190,7 +195,8 @@ func (s *DataQualityService) StageQualityPlan(ctx context.Context, req *connect.
 	if _, err := s.workspaceID(ctx, req.Msg.GetParent()); err != nil {
 		return nil, err
 	}
-	if _, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, 0); err != nil {
+	agent, err := s.authorizeAgentAction(ctx, 0, 0)
+	if err != nil {
 		return nil, err
 	}
 	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
@@ -211,6 +217,14 @@ func (s *DataQualityService) StageQualityPlan(ctx context.Context, req *connect.
 	existing, err := s.store.GetQualityContract(ctx, targetGUID, metaType)
 	if err != nil {
 		return nil, err
+	}
+	// Re-evaluate with the target's real criticality now that it is known: the
+	// amplifier may only fire after the read, still before the write.
+	if agent != nil {
+		if _, err := s.authorizeAgentAction(ctx, 0,
+			qualityChangeRequestCriticality(existing, rules)); err != nil {
+			return nil, err
+		}
 	}
 	if existing == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,

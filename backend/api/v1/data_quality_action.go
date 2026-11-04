@@ -44,6 +44,7 @@ func (s *DataQualityService) GetQualityActionPolicy(ctx context.Context, req *co
 			Actor:            dataquality.ActorKindName(card.Actor),
 			RedLine:          card.RedLine,
 			Implemented:      card.Implemented,
+			AgentReachable:   card.AgentReachable,
 			AgentAllowed:     decision.Allowed,
 			RequiresApproval: decision.RequiresApproval,
 			DecisionCode:     qualityActionDecisionCode(decision.Code),
@@ -66,6 +67,12 @@ func qualityActionDecisionCode(code dataquality.DecisionCode) string {
 		return "DENIED_RED_LINE"
 	case dataquality.DecisionDeniedNotImplemented:
 		return "DENIED_NOT_IMPLEMENTED"
+	case dataquality.DecisionDeniedNotExposed:
+		return "DENIED_NOT_EXPOSED"
+	case dataquality.DecisionDeniedCritical:
+		return "DENIED_CRITICAL"
+	case dataquality.DecisionDeniedUnknownActor:
+		return "DENIED_UNKNOWN_ACTOR"
 	case dataquality.DecisionRequiresApproval:
 		return "REQUIRES_APPROVAL"
 	default:

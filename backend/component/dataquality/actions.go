@@ -50,45 +50,48 @@ const (
 	ActionExpandAuthority    ActionID = "A3-3"
 )
 
-// ActionCard is one catalog entry. Implemented marks the actions this codebase can
-// actually perform today; the rest are the design's commitments and are refused
-// with a readable reason rather than pretending to work.
+// ActionCard is one catalog entry.
+//
+// Implemented says a shipped server write path performs the action; AgentReachable
+// says the shipped agent role and handlers actually expose it to an agent. The two
+// differ on purpose: a check can be authored by a person while an agent may only
+// propose it through a change request, and the catalog must not call that "allowed".
 type ActionCard struct {
-	ID      ActionID
-	Title   string
-	Level   AutonomyLevel
-	Actor   ActorKind
-	RedLine bool
-	// Implemented is true when a shipped write path performs this action.
-	Implemented bool
+	ID             ActionID
+	Title          string
+	Level          AutonomyLevel
+	Actor          ActorKind
+	RedLine        bool
+	Implemented    bool
+	AgentReachable bool
 }
 
 var actionCatalog = []ActionCard{
-	{ActionReadEvidence, "Read evidence", AutonomyA0, ActorAgent, false, true},
-	{ActionPreviewProbe, "Run a preview probe", AutonomyA0, ActorAgent, false, true},
-	{ActionWriteInvestigation, "Write an investigation", AutonomyA0, ActorAgent, false, false},
-	{ActionProposePlanChange, "Propose a plan change", AutonomyA0, ActorAgent, false, true},
-	{ActionWriteAssetFact, "Record an asset fact", AutonomyA0, ActorAgent, false, false},
-	{ActionProduceReport, "Produce a coverage or trust report", AutonomyA0, ActorAgent, false, true},
-	{ActionRequestEvidence, "Request more evidence", AutonomyA0, ActorAgent, false, true},
-	{ActionRerunCheck, "Re-run one check", AutonomyA1, ActorAgent, false, true},
-	{ActionMuteIssue, "Mute an issue", AutonomyA1, ActorHuman, true, true},
-	{ActionNotifyOwner, "Notify the owner", AutonomyA1, ActorAgent, false, true},
-	{ActionOpenTicket, "Open a repair ticket", AutonomyA1, ActorAgent, false, false},
-	{ActionMarkNoise, "Mark an event as noise", AutonomyA1, ActorAgent, false, false},
-	{ActionRecordDecisionWhy, "Record the reason behind a decision", AutonomyA1, ActorAgent, false, true},
-	{ActionCreateCheck, "Create a low-risk check", AutonomyA2, ActorAgent, false, false},
-	{ActionAdjustExpectation, "Adjust a check's expectation", AutonomyA2, ActorAgent, false, false},
-	{ActionReduceCadence, "Reduce a check's cadence", AutonomyA2, ActorAgent, false, false},
-	{ActionArchiveCheck, "Archive a check", AutonomyA2, ActorHuman, true, true},
-	{ActionAcknowledgeSchema, "Acknowledge a schema change", AutonomyA2, ActorHuman, true, true},
-	{ActionPublishContract, "Publish a contract version", AutonomyA3, ActorHuman, true, true},
-	{ActionCloseOrReassign, "Close an issue, change its owner or criticality", AutonomyA3, ActorHuman, true, true},
-	{ActionExpandAuthority, "Expand authority: agents, cross-target plans, large batches", AutonomyA3, ActorHuman, false, true},
+	{ID: ActionReadEvidence, Title: "Read evidence", Level: AutonomyA0, Actor: ActorAgent, Implemented: true},
+	{ID: ActionPreviewProbe, Title: "Run a preview probe", Level: AutonomyA0, Actor: ActorAgent, Implemented: true},
+	{ID: ActionWriteInvestigation, Title: "Write an investigation", Level: AutonomyA0, Actor: ActorAgent},
+	{ID: ActionProposePlanChange, Title: "Propose a plan change", Level: AutonomyA0, Actor: ActorAgent, Implemented: true, AgentReachable: true},
+	{ID: ActionWriteAssetFact, Title: "Record an asset fact", Level: AutonomyA0, Actor: ActorAgent},
+	{ID: ActionProduceReport, Title: "Produce a coverage or trust report", Level: AutonomyA0, Actor: ActorAgent, Implemented: true, AgentReachable: true},
+	{ID: ActionRequestEvidence, Title: "Request more evidence", Level: AutonomyA0, Actor: ActorAgent, Implemented: true},
+	{ID: ActionRerunCheck, Title: "Re-run one check", Level: AutonomyA1, Actor: ActorAgent, Implemented: true},
+	{ID: ActionMuteIssue, Title: "Mute an issue", Level: AutonomyA1, Actor: ActorHuman, RedLine: true, Implemented: true},
+	{ID: ActionNotifyOwner, Title: "Notify the owner", Level: AutonomyA1, Actor: ActorAgent},
+	{ID: ActionOpenTicket, Title: "Open a repair ticket", Level: AutonomyA1, Actor: ActorAgent},
+	{ID: ActionMarkNoise, Title: "Mark an event as noise", Level: AutonomyA1, Actor: ActorAgent},
+	{ID: ActionRecordDecisionWhy, Title: "Record the reason behind a decision", Level: AutonomyA1, Actor: ActorAgent, Implemented: true},
+	{ID: ActionCreateCheck, Title: "Create a low-risk check", Level: AutonomyA2, Actor: ActorAgent, Implemented: true},
+	{ID: ActionAdjustExpectation, Title: "Adjust a check's expectation", Level: AutonomyA2, Actor: ActorAgent, Implemented: true},
+	{ID: ActionReduceCadence, Title: "Reduce a check's cadence", Level: AutonomyA2, Actor: ActorAgent, Implemented: true},
+	{ID: ActionArchiveCheck, Title: "Archive a check", Level: AutonomyA2, Actor: ActorHuman, RedLine: true, Implemented: true},
+	{ID: ActionAcknowledgeSchema, Title: "Acknowledge a schema change", Level: AutonomyA2, Actor: ActorHuman, RedLine: true, Implemented: true},
+	{ID: ActionPublishContract, Title: "Publish a contract version", Level: AutonomyA3, Actor: ActorHuman, RedLine: true, Implemented: true},
+	{ID: ActionCloseOrReassign, Title: "Close an issue, change its owner or criticality", Level: AutonomyA3, Actor: ActorHuman, RedLine: true, Implemented: true},
+	{ID: ActionExpandAuthority, Title: "Expand authority: agents, cross-target plans, large batches", Level: AutonomyA3, Actor: ActorHuman, RedLine: true, Implemented: true},
 }
 
-// ActionCatalog returns a copy of the catalog, so a caller cannot reorder the
-// policy matrix by accident.
+// ActionCatalog returns a copy of the catalog, so a caller cannot mutate the
+// policy matrix through the returned slice.
 func ActionCatalog() []ActionCard {
 	out := make([]ActionCard, len(actionCatalog))
 	copy(out, actionCatalog)
@@ -114,6 +117,17 @@ const (
 	DecisionDeniedHumanOnly
 	DecisionDeniedRedLine
 	DecisionDeniedNotImplemented
+	// DecisionDeniedNotExposed means the server has the write but the agent role or
+	// a handler does not expose it to agents; it is not "not implemented".
+	DecisionDeniedNotExposed
+	// DecisionDeniedCritical means the criticality amplifier hands the action to a
+	// person instead of letting an agent perform it.
+	DecisionDeniedCritical
+	// DecisionDeniedUnknownActor means the policy input did not say whether the actor
+	// is an agent or a person; the policy fails closed.
+	DecisionDeniedUnknownActor
+	// DecisionRequiresApproval is a verdict for an allowed action that a person must
+	// still approve before it runs. No handler performs it on its own.
 	DecisionRequiresApproval
 )
 
@@ -148,6 +162,12 @@ func DecideAction(input PolicyInput) PolicyDecision {
 	if !ok {
 		return PolicyDecision{Code: DecisionDeniedNotImplemented, Reason: "unknown quality action"}
 	}
+	// Fail closed on an actor the policy cannot classify; a forgotten actor must not
+	// skip the red-line and human-only checks.
+	if input.Actor != ActorAgent && input.Actor != ActorHuman {
+		return PolicyDecision{Code: DecisionDeniedUnknownActor,
+			Reason: "the policy needs to know whether the actor is an agent or a person"}
+	}
 	// Static constraints come first: a red line is closed whatever the switches say,
 	// and an action with no write path is refused as such instead of being promised.
 	if card.Actor == ActorHuman && input.Actor == ActorAgent {
@@ -162,6 +182,10 @@ func DecideAction(input PolicyInput) PolicyDecision {
 		return PolicyDecision{Code: DecisionDeniedNotImplemented,
 			Reason: "this quality action is not implemented yet"}
 	}
+	if input.Actor == ActorAgent && !card.AgentReachable {
+		return PolicyDecision{Code: DecisionDeniedNotExposed,
+			Reason: "the agent role does not expose this action; a person performs it"}
+	}
 	if input.Actor == ActorAgent {
 		if !input.AutonomyEnabled {
 			return PolicyDecision{Code: DecisionDeniedAutonomyOff,
@@ -169,25 +193,25 @@ func DecideAction(input PolicyInput) PolicyDecision {
 		}
 		if !input.AgentEnabled {
 			return PolicyDecision{Code: DecisionDeniedAutonomyOff,
-				Reason: "this agent is disabled"}
+				Reason: "this agent is disabled; an administrator must create a new agent"}
 		}
 	}
 	// The amplifier: a critical asset never lowers the requirement. An action above
 	// A0, or a batch of proposals, is handed to a person instead of being performed.
 	if input.Criticality >= CriticalityCritical && input.Actor == ActorAgent {
 		if card.Level >= AutonomyA1 || input.ItemCount > 1 {
-			return PolicyDecision{RequiresApproval: true, Code: DecisionRequiresApproval,
+			return PolicyDecision{Allowed: false, RequiresApproval: true, Code: DecisionDeniedCritical,
 				Reason: "a critical asset's changes are decided by a person, one item at a time"}
 		}
 	}
-	// A person performing an A2/A3 action is the approval.
-	requiresApproval := card.Level >= AutonomyA2 && input.Actor == ActorAgent
-	return PolicyDecision{
-		Allowed:          true,
-		RequiresApproval: requiresApproval,
-		Code:             DecisionAllowed,
-		Reason:           "allowed by the autonomy policy",
+	// A person performing an A2/A3 action is the approval. An agent's A2+ action is
+	// allowed only as a proposal that still needs a person.
+	if input.Actor == ActorAgent && card.Level >= AutonomyA2 {
+		return PolicyDecision{Allowed: true, RequiresApproval: true, Code: DecisionRequiresApproval,
+			Reason: "allowed as a proposal; a person must still approve it"}
 	}
+	return PolicyDecision{Allowed: true, Code: DecisionAllowed,
+		Reason: "allowed by the autonomy policy"}
 }
 
 // AutonomyLevelName is the stable name the API exposes for a level.

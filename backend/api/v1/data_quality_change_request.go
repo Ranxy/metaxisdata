@@ -34,7 +34,7 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	agent, err := s.authorizeAgentAction(ctx, dataquality.ActionProposePlanChange, len(req.Msg.GetItems()))
+	agent, err := s.authorizeAgentAction(ctx, len(req.Msg.GetItems()), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +77,14 @@ func (s *DataQualityService) CreateQualityChangeRequest(ctx context.Context, req
 	}
 	if existing != nil {
 		return connect.NewResponse(convertQualityChangeRequestToV1(workspaceID, existing)), nil
+	}
+	// Re-evaluate with the real criticality now that it is known: a critical target's
+	// batch is handed to a person, still before any write.
+	if agent != nil {
+		if _, err := s.authorizeAgentAction(ctx, len(items),
+			qualityChangeRequestCriticality(contract, rules)); err != nil {
+			return nil, err
+		}
 	}
 	storedItems, err := s.validateQualityChangeRequestItems(ctx, targetGUID, metaType, contract, items)
 	if err != nil {

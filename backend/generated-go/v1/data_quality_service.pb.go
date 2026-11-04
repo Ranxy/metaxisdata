@@ -16868,12 +16868,18 @@ type QualityAction struct {
 	// False when this codebase has no write path for the action yet; such an action is
 	// refused with its own reason instead of pretending to work.
 	Implemented bool `protobuf:"varint,6,opt,name=implemented,proto3" json:"implemented,omitempty"`
+	// Whether the shipped agent role and handlers actually expose the action to an
+	// agent. It differs from implemented on purpose: a person may author a check while
+	// an agent can only propose it through a change request.
+	AgentReachable bool `protobuf:"varint,11,opt,name=agent_reachable,json=agentReachable,proto3" json:"agent_reachable,omitempty"`
 	// Whether an enabled agent would be allowed to do it under the current policy.
 	AgentAllowed bool `protobuf:"varint,7,opt,name=agent_allowed,json=agentAllowed,proto3" json:"agent_allowed,omitempty"`
 	// Whether a person must still approve the action after the policy allows it.
 	RequiresApproval bool `protobuf:"varint,8,opt,name=requires_approval,json=requiresApproval,proto3" json:"requires_approval,omitempty"`
 	// The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
-	// DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL.
+	// DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED, DENIED_NOT_EXPOSED, DENIED_CRITICAL,
+	// DENIED_UNKNOWN_ACTOR or REQUIRES_APPROVAL (allowed as a proposal that a person
+	// must still approve).
 	DecisionCode  string `protobuf:"bytes,9,opt,name=decision_code,json=decisionCode,proto3" json:"decision_code,omitempty"`
 	Reason        string `protobuf:"bytes,10,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -16948,6 +16954,13 @@ func (x *QualityAction) GetRedLine() bool {
 func (x *QualityAction) GetImplemented() bool {
 	if x != nil {
 		return x.Implemented
+	}
+	return false
+}
+
+func (x *QualityAction) GetAgentReachable() bool {
+	if x != nil {
+		return x.AgentReachable
 	}
 	return false
 }
@@ -21385,14 +21398,15 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\bDecision\x12\x18\n" +
 	"\x14DECISION_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10DECISION_APPROVE\x10\x01\x12\x13\n" +
-	"\x0fDECISION_REJECT\x10\x02\"\xbe\x02\n" +
+	"\x0fDECISION_REJECT\x10\x02\"\xe7\x02\n" +
 	"\rQualityAction\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12%\n" +
 	"\x0eautonomy_level\x18\x03 \x01(\tR\rautonomyLevel\x12\x14\n" +
 	"\x05actor\x18\x04 \x01(\tR\x05actor\x12\x19\n" +
 	"\bred_line\x18\x05 \x01(\bR\aredLine\x12 \n" +
-	"\vimplemented\x18\x06 \x01(\bR\vimplemented\x12#\n" +
+	"\vimplemented\x18\x06 \x01(\bR\vimplemented\x12'\n" +
+	"\x0fagent_reachable\x18\v \x01(\bR\x0eagentReachable\x12#\n" +
 	"\ragent_allowed\x18\a \x01(\bR\fagentAllowed\x12+\n" +
 	"\x11requires_approval\x18\b \x01(\bR\x10requiresApproval\x12#\n" +
 	"\rdecision_code\x18\t \x01(\tR\fdecisionCode\x12\x16\n" +

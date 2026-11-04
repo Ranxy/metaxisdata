@@ -6254,9 +6254,10 @@ QualityAction is one card of the WS2 action catalog with its live policy verdict
 | actor | [string](#string) |  | AGENT or HUMAN: who may ever perform it. |
 | red_line | [bool](#bool) |  | A red line never accepts a pure model proposal, even with autonomy on. |
 | implemented | [bool](#bool) |  | False when this codebase has no write path for the action yet; such an action is refused with its own reason instead of pretending to work. |
+| agent_reachable | [bool](#bool) |  | Whether the shipped agent role and handlers actually expose the action to an agent. It differs from implemented on purpose: a person may author a check while an agent can only propose it through a change request. |
 | agent_allowed | [bool](#bool) |  | Whether an enabled agent would be allowed to do it under the current policy. |
 | requires_approval | [bool](#bool) |  | Whether a person must still approve the action after the policy allows it. |
-| decision_code | [string](#string) |  | The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY, DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL. |
+| decision_code | [string](#string) |  | The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY, DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED, DENIED_NOT_EXPOSED, DENIED_CRITICAL, DENIED_UNKNOWN_ACTOR or REQUIRES_APPROVAL (allowed as a proposal that a person must still approve). |
 | reason | [string](#string) |  |  |
 
 

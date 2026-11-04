@@ -7928,6 +7928,15 @@ export declare type QualityAction = Message<"metaxisdata.v1.QualityAction"> & {
   implemented: boolean;
 
   /**
+   * Whether the shipped agent role and handlers actually expose the action to an
+   * agent. It differs from implemented on purpose: a person may author a check while
+   * an agent can only propose it through a change request.
+   *
+   * @generated from field: bool agent_reachable = 11;
+   */
+  agentReachable: boolean;
+
+  /**
    * Whether an enabled agent would be allowed to do it under the current policy.
    *
    * @generated from field: bool agent_allowed = 7;
@@ -7943,7 +7952,9 @@ export declare type QualityAction = Message<"metaxisdata.v1.QualityAction"> & {
 
   /**
    * The machine-readable verdict: ALLOWED, DENIED_AUTONOMY_OFF, DENIED_HUMAN_ONLY,
-   * DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED or REQUIRES_APPROVAL.
+   * DENIED_RED_LINE, DENIED_NOT_IMPLEMENTED, DENIED_NOT_EXPOSED, DENIED_CRITICAL,
+   * DENIED_UNKNOWN_ACTOR or REQUIRES_APPROVAL (allowed as a proposal that a person
+   * must still approve).
    *
    * @generated from field: string decision_code = 9;
    */

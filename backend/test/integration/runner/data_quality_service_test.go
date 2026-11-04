@@ -4412,7 +4412,17 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.True(t, policy.Msg.GetAgentAutonomyEnabled())
 	require.Equal(t, "ALLOWED", actionDecision(policy.Msg, "A0-4"))
 	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
-	require.Equal(t, "DENIED_NOT_IMPLEMENTED", actionDecision(policy.Msg, "A2-1"))
+	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(policy.Msg, "A2-1"))
+	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(policy.Msg, "A1-1"))
+
+	// The agent can read the same policy and see its own verdicts: proposal allowed,
+	// person-only writes not exposed.
+	agentPolicy, err := agentClient.GetQualityActionPolicy(fixture.ctx,
+		withToken(agentToken, &v1pb.GetQualityActionPolicyRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.Len(t, agentPolicy.Msg.GetActions(), 21)
+	require.Equal(t, "ALLOWED", actionDecision(agentPolicy.Msg, "A0-4"))
+	require.Equal(t, "DENIED_NOT_EXPOSED", actionDecision(agentPolicy.Msg, "A2-1"))
 
 	staged, err := stage(1)
 	require.NoError(t, err, "the enabled agent stages a declaration")

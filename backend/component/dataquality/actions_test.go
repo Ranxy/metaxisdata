@@ -27,7 +27,7 @@ func TestActionCatalog(t *testing.T) {
 	require.Equal(t, map[AutonomyLevel]int{AutonomyA0: 7, AutonomyA1: 6, AutonomyA2: 5, AutonomyA3: 3}, levels)
 	require.Equal(t, map[ActionID]bool{
 		ActionMuteIssue: true, ActionArchiveCheck: true, ActionAcknowledgeSchema: true,
-		ActionPublishContract: true, ActionCloseOrReassign: true,
+		ActionPublishContract: true, ActionCloseOrReassign: true, ActionExpandAuthority: true,
 	}, redLines)
 }
 
@@ -66,14 +66,15 @@ func TestDecideActionRedLines(t *testing.T) {
 	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionAcknowledgeSchema)).Code)
 	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionPublishContract)).Code)
 	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionCloseOrReassign)).Code)
+	require.Equal(t, DecisionDeniedRedLine, DecideAction(on(ActionExpandAuthority)).Code)
 	require.Equal(t, DecisionDeniedNotImplemented, DecideAction(on(ActionWriteInvestigation)).Code)
 	require.Equal(t, DecisionDeniedNotImplemented, DecideAction(PolicyInput{Action: "A9-9", Actor: ActorAgent, AutonomyEnabled: true, AgentEnabled: true}).Code)
 
-	// A2 changes future judging and has no agent write path yet, so it is refused as
-	// not implemented rather than promised; the ACL is a separate, additional gate.
-	require.Equal(t, DecisionDeniedNotImplemented, DecideAction(on(ActionCreateCheck)).Code)
-	// A1 is implemented (re-running one check) and an enabled agent may do it.
-	require.Equal(t, DecisionAllowed, DecideAction(on(ActionRerunCheck)).Code)
+	// An action the codebase implements but the agent role does not expose is refused
+	// as not exposed: authoring a check is a person's write, an agent may only propose.
+	require.Equal(t, DecisionDeniedNotExposed, DecideAction(on(ActionCreateCheck)).Code)
+	require.Equal(t, DecisionDeniedNotExposed, DecideAction(on(ActionRerunCheck)).Code)
+	require.Equal(t, DecisionAllowed, DecideAction(on(ActionProposePlanChange)).Code)
 }
 
 // A critical asset is the amplifier: the same action is handed to a person, and a
@@ -87,14 +88,21 @@ func TestDecideActionCriticalAmplifier(t *testing.T) {
 	})
 	require.False(t, decision.Allowed)
 	require.True(t, decision.RequiresApproval)
-	require.Equal(t, DecisionRequiresApproval, decision.Code)
+	require.Equal(t, DecisionDeniedCritical, decision.Code)
 
+	// A single A0 proposal on a critical asset is still only a proposal.
 	decision = DecideAction(PolicyInput{
-		Action: ActionRerunCheck, Actor: ActorAgent, AutonomyEnabled: true, AgentEnabled: true,
-		Criticality: CriticalityCritical,
+		Action: ActionProposePlanChange, Actor: ActorAgent, AutonomyEnabled: true, AgentEnabled: true,
+		Criticality: CriticalityCritical, ItemCount: 1,
 	})
-	require.False(t, decision.Allowed)
-	require.Equal(t, DecisionRequiresApproval, decision.Code)
+	require.True(t, decision.Allowed)
+
+	// Important is not critical: no amplifier.
+	decision = DecideAction(PolicyInput{
+		Action: ActionProposePlanChange, Actor: ActorAgent, AutonomyEnabled: true, AgentEnabled: true,
+		Criticality: CriticalityImportant, ItemCount: 3,
+	})
+	require.True(t, decision.Allowed)
 
 	// A person performing the same action is the approval, not a pending one.
 	human := DecideAction(PolicyInput{Action: ActionPublishContract, Actor: ActorHuman})
@@ -113,4 +121,28 @@ func TestActionNames(t *testing.T) {
 	require.Equal(t, AutonomyA2, level)
 	_, ok = ParseAutonomyLevel("A9")
 	require.False(t, ok)
+}
+
+// The policy fails closed on an actor it cannot classify: a forgotten actor must not
+// skip the red-line and human-only checks.
+func TestDecideActionUnknownActor(t *testing.T) {
+	t.Parallel()
+
+	decision := DecideAction(PolicyInput{Action: ActionPublishContract})
+	require.False(t, decision.Allowed)
+	require.Equal(t, DecisionDeniedUnknownActor, decision.Code)
+}
+
+// A person is never given an agent verdict: human A2/A3 actions are simply allowed,
+// and performing them is the approval.
+func TestDecideActionHuman(t *testing.T) {
+	t.Parallel()
+
+	create := DecideAction(PolicyInput{Action: ActionCreateCheck, Actor: ActorHuman})
+	require.True(t, create.Allowed)
+	require.False(t, create.RequiresApproval)
+
+	publish := DecideAction(PolicyInput{Action: ActionPublishContract, Actor: ActorHuman})
+	require.True(t, publish.Allowed)
+	require.False(t, publish.RequiresApproval)
 }
