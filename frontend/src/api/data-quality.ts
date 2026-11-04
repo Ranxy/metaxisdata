@@ -18,6 +18,7 @@ import {
   CreateQualityAgentRequestSchema,
   type CreateQualityAgentResponse,
   CreateQualityCodeTableRequestSchema,
+  CreateQualityMemoryRequestSchema,
   CreateQualityRuleRequestSchema,
   CreateQualityRuleTemplateRequestSchema,
   CreateQualitySuggestionJobRequestSchema,
@@ -95,6 +96,7 @@ import {
   QualityIssueStatus,
   type QualityLLMUsage,
   type QualityMemory,
+  type QualityMemoryKind,
   type QualityOverview,
   type QualityPlan,
   QualityResolutionReason,
@@ -1770,4 +1772,28 @@ export async function confirmQualityMemory(
 ): Promise<QualityMemory> {
   const request = create(ConfirmQualityMemoryRequestSchema, { name, decision });
   return await dataQualityClient.confirmQualityMemory(request, { signal });
+}
+
+/** Record a memory: an asset fact, a decision with its reason, or an event. */
+export async function createQualityMemory(options: {
+  kind: QualityMemoryKind;
+  subject: string;
+  statement: string;
+  evidence: Array<{ kind: string; reference: string; note?: string }>;
+  signal?: AbortSignal;
+}): Promise<QualityMemory> {
+  const request = create(CreateQualityMemoryRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    kind: options.kind,
+    subject: options.subject,
+    statement: options.statement,
+    evidence: options.evidence.map((reference) => ({
+      kind: reference.kind,
+      reference: reference.reference,
+      note: reference.note ?? "",
+    })),
+  });
+  return await dataQualityClient.createQualityMemory(request, {
+    signal: options.signal,
+  });
 }

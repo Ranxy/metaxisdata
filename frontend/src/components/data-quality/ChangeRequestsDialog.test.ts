@@ -13,6 +13,7 @@ import {
   QualityChangeRequestSchema,
   QualityChangeRequestState,
   QualityCoverageProperty,
+  QualityMemoryKind,
   QualityRuleDraftConfigSchema,
   QualitySuggestionKind,
   QualitySuggestionPayloadSchema,
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   listQualityChangeRequests: vi.fn(),
   listQualitySuggestions: vi.fn(),
   decideQualityChangeRequest: vi.fn(),
+  createQualityMemory: vi.fn(),
 }));
 
 const notifyMock = vi.hoisted(() => ({
@@ -39,6 +41,7 @@ vi.mock("@/api/data-quality", () => ({
   listQualityChangeRequests: mocks.listQualityChangeRequests,
   listQualitySuggestions: mocks.listQualitySuggestions,
   decideQualityChangeRequest: mocks.decideQualityChangeRequest,
+  createQualityMemory: mocks.createQualityMemory,
 }));
 
 vi.mock("@/lib/notify", () => ({ notify: notifyMock }));
@@ -266,6 +269,44 @@ describe("ChangeRequestsDialog", () => {
     };
     expect(call.decision).toBe(2);
     expect(call.rejectionReasons).toContain(QualityChangeRejectionReason.NOISE);
+    // The structured reason is what later proposals learn from, so the rejection
+    // records it as a confirmed decision memory by default.
+    expect(mocks.createQualityMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: QualityMemoryKind.DECISION,
+        evidence: [expect.objectContaining({ kind: "CHANGE_REQUEST" })],
+      })
+    );
+  });
+
+  it("can reject without recording the reason", async () => {
+    mountDialog({ requests: [requestFixture()] });
+    await flushPromises();
+
+    buttonByText(label("dataQuality.changeRequests.reject"))?.click();
+    await flushPromises();
+    const remember = document.body.querySelector<HTMLInputElement>(
+      '[role="dialog"] input[type="checkbox"][checked]'
+    );
+    // The taxonomy reason and the remember checkbox are both checked; find the
+    // remember one by its label text's sibling.
+    const rememberBox = [
+      ...document.body.querySelectorAll<HTMLInputElement>(
+        '[role="dialog"] input[type="checkbox"]'
+      ),
+    ].find((box) =>
+      box.parentElement?.textContent?.includes(
+        label("dataQuality.changeRequests.rememberReason")
+      )
+    );
+    expect(remember).toBeTruthy();
+    rememberBox?.click();
+    await flushPromises();
+    confirmButton(label("dataQuality.changeRequests.confirmReject"))?.click();
+    await flushPromises();
+
+    expect(mocks.decideQualityChangeRequest).toHaveBeenCalled();
+    expect(mocks.createQualityMemory).not.toHaveBeenCalled();
   });
 
   it("offers no actions for an expired request", async () => {
