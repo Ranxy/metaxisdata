@@ -240,11 +240,13 @@
     - [ColumnProfileStats](#metaxisdata-v1-ColumnProfileStats)
     - [ColumnSemanticLabel](#metaxisdata-v1-ColumnSemanticLabel)
     - [ColumnValue](#metaxisdata-v1-ColumnValue)
+    - [ConfirmQualityMemoryRequest](#metaxisdata-v1-ConfirmQualityMemoryRequest)
     - [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest)
     - [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse)
     - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
     - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
     - [CreateQualityInvestigationRequest](#metaxisdata-v1-CreateQualityInvestigationRequest)
+    - [CreateQualityMemoryRequest](#metaxisdata-v1-CreateQualityMemoryRequest)
     - [CreateQualityRuleRequest](#metaxisdata-v1-CreateQualityRuleRequest)
     - [CreateQualityRuleTemplateRequest](#metaxisdata-v1-CreateQualityRuleTemplateRequest)
     - [CreateQualitySuggestionJobRequest](#metaxisdata-v1-CreateQualitySuggestionJobRequest)
@@ -254,6 +256,7 @@
     - [CustomSQLConfig](#metaxisdata-v1-CustomSQLConfig)
     - [DecideQualityChangeRequestRequest](#metaxisdata-v1-DecideQualityChangeRequestRequest)
     - [DeleteQualityCodeTableRequest](#metaxisdata-v1-DeleteQualityCodeTableRequest)
+    - [DeleteQualityMemoryRequest](#metaxisdata-v1-DeleteQualityMemoryRequest)
     - [DeleteQualityRuleRequest](#metaxisdata-v1-DeleteQualityRuleRequest)
     - [DeleteQualityRuleTemplateRequest](#metaxisdata-v1-DeleteQualityRuleTemplateRequest)
     - [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest)
@@ -314,6 +317,8 @@
     - [ListQualityInvestigationsResponse](#metaxisdata-v1-ListQualityInvestigationsResponse)
     - [ListQualityIssuesRequest](#metaxisdata-v1-ListQualityIssuesRequest)
     - [ListQualityIssuesResponse](#metaxisdata-v1-ListQualityIssuesResponse)
+    - [ListQualityMemoriesRequest](#metaxisdata-v1-ListQualityMemoriesRequest)
+    - [ListQualityMemoriesResponse](#metaxisdata-v1-ListQualityMemoriesResponse)
     - [ListQualityPlansRequest](#metaxisdata-v1-ListQualityPlansRequest)
     - [ListQualityPlansResponse](#metaxisdata-v1-ListQualityPlansResponse)
     - [ListQualityRuleTemplatesRequest](#metaxisdata-v1-ListQualityRuleTemplatesRequest)
@@ -368,6 +373,7 @@
     - [QualityIssue](#metaxisdata-v1-QualityIssue)
     - [QualityLLMDiagnostic](#metaxisdata-v1-QualityLLMDiagnostic)
     - [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage)
+    - [QualityMemory](#metaxisdata-v1-QualityMemory)
     - [QualityOverview](#metaxisdata-v1-QualityOverview)
     - [QualityOwnerScore](#metaxisdata-v1-QualityOwnerScore)
     - [QualityPlan](#metaxisdata-v1-QualityPlan)
@@ -437,6 +443,7 @@
     - [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest)
   
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
+    - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
     - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
@@ -463,6 +470,9 @@
     - [QualityIssueStatus](#metaxisdata-v1-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-v1-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-v1-QualityLabelStatus)
+    - [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind)
+    - [QualityMemorySource](#metaxisdata-v1-QualityMemorySource)
+    - [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus)
     - [QualityObservedKind](#metaxisdata-v1-QualityObservedKind)
     - [QualityPlanChange.Kind](#metaxisdata-v1-QualityPlanChange-Kind)
     - [QualityPlanState](#metaxisdata-v1-QualityPlanState)
@@ -4584,6 +4594,22 @@ they are returned, so a wide text column cannot bloat the response.
 
 
 
+<a name="metaxisdata-v1-ConfirmQualityMemoryRequest"></a>
+
+### ConfirmQualityMemoryRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
+| decision | [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-CreateQualityAgentRequest"></a>
 
 ### CreateQualityAgentRequest
@@ -4678,6 +4704,27 @@ they are returned, so a wide text column cannot bloat the response.
 | completion_tokens | [int64](#int64) |  |  |
 | failure_reason | [string](#string) |  |  |
 | request_fingerprint | [string](#string) |  | An idempotency key from the agent&#39;s run; a retry with the same key returns the recorded investigation instead of writing a second one. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateQualityMemoryRequest"></a>
+
+### CreateQualityMemoryRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
+| subject | [string](#string) |  |  |
+| statement | [string](#string) |  |  |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated |  |
+| domain_ref | [string](#string) |  |  |
+| expires_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -4848,6 +4895,21 @@ statement is single SELECT/WITH, at most 8 KiB, and is never rewritten.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  | Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} |
+
+
+
+
+
+
+<a name="metaxisdata-v1-DeleteQualityMemoryRequest"></a>
+
+### DeleteQualityMemoryRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
 
 
 
@@ -5909,6 +5971,42 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | quality_issues | [QualityIssue](#metaxisdata-v1-QualityIssue) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityMemoriesRequest"></a>
+
+### ListQualityMemoriesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
+| status | [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus) |  |  |
+| subject | [string](#string) |  | An exact subject. |
+| page_size | [int32](#int32) |  | The page size; 0 uses the default (50), and the maximum is 1000. |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityMemoriesResponse"></a>
+
+### ListQualityMemoriesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_memories | [QualityMemory](#metaxisdata-v1-QualityMemory) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -7041,6 +7139,35 @@ analyses. A restart resets the counters.
 | in_flight | [int32](#int32) |  |  |
 | concurrency_limit | [int32](#int32) |  |  |
 | resets_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | When the daily counters roll over (the next 00:00 UTC). |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityMemory"></a>
+
+### QualityMemory
+QualityMemory is one durable piece of knowledge with its evidence and its
+correction path. It never replaces the engine&#39;s verdict; it explains the past.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityMemories/{quality_memory} |
+| kind | [QualityMemoryKind](#metaxisdata-v1-QualityMemoryKind) |  |  |
+| subject | [string](#string) |  | What the memory is about: a target GUID, a rule resource id, a column, an issue. |
+| statement | [string](#string) |  |  |
+| source | [QualityMemorySource](#metaxisdata-v1-QualityMemorySource) |  |  |
+| status | [QualityMemoryStatus](#metaxisdata-v1-QualityMemoryStatus) |  |  |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-v1-QualityInvestigationEvidence) | repeated | Deterministic evidence references; a memory without evidence is not recorded. |
+| domain_ref | [string](#string) |  | Reserved for domain-scoped memory; stored, not resolved. |
+| expires_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| confirmed_by | [string](#string) |  | Format: users/{user}. Set when a person confirmed or rejected it. |
+| confirmed_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| superseded_by | [string](#string) |  | Resource name of the memory that replaced this one. |
+| created_by | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
@@ -8472,6 +8599,19 @@ ColumnLabelAction is what UpdateColumnLabel does with one column&#39;s label.
 
 
 
+<a name="metaxisdata-v1-ConfirmQualityMemoryRequest-Decision"></a>
+
+### ConfirmQualityMemoryRequest.Decision
+
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| DECISION_UNSPECIFIED | 0 |  |
+| DECISION_CONFIRM | 1 |  |
+| DECISION_REJECT | 2 |  |
+
+
+
 <a name="metaxisdata-v1-DecideQualityChangeRequestRequest-Decision"></a>
 
 ### DecideQualityChangeRequestRequest.Decision
@@ -8880,6 +9020,50 @@ QualityLabelStatus is whether a semantic label is in effect.
 | QUALITY_LABEL_STATUS_SUGGESTED | 1 |  |
 | QUALITY_LABEL_STATUS_ACCEPTED | 2 |  |
 | QUALITY_LABEL_STATUS_REJECTED | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityMemoryKind"></a>
+
+### QualityMemoryKind
+QualityMemoryKind is what a memory records.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_MEMORY_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_MEMORY_KIND_ASSET_FACT | 1 |  |
+| QUALITY_MEMORY_KIND_DECISION | 2 |  |
+| QUALITY_MEMORY_KIND_EVENT | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityMemorySource"></a>
+
+### QualityMemorySource
+QualityMemorySource records who wrote the memory.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_MEMORY_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_MEMORY_SOURCE_AGENT | 1 |  |
+| QUALITY_MEMORY_SOURCE_HUMAN | 2 |  |
+| QUALITY_MEMORY_SOURCE_SYSTEM | 3 |  |
+
+
+
+<a name="metaxisdata-v1-QualityMemoryStatus"></a>
+
+### QualityMemoryStatus
+QualityMemoryStatus is where one memory stands.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_MEMORY_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_MEMORY_STATUS_PROPOSED | 1 |  |
+| QUALITY_MEMORY_STATUS_CONFIRMED | 2 |  |
+| QUALITY_MEMORY_STATUS_REJECTED | 3 |  |
+| QUALITY_MEMORY_STATUS_SUPERSEDED | 4 |  |
+| QUALITY_MEMORY_STATUS_EXPIRED | 5 |  |
 
 
 
@@ -9345,6 +9529,10 @@ The report includes real sample values from failed checks (capped), so it is a w
 | GetQualityInvestigation | [GetQualityInvestigationRequest](#metaxisdata-v1-GetQualityInvestigationRequest) | [QualityInvestigation](#metaxisdata-v1-QualityInvestigation) | Read one investigation. |
 | ListQualityInvestigations | [ListQualityInvestigationsRequest](#metaxisdata-v1-ListQualityInvestigationsRequest) | [ListQualityInvestigationsResponse](#metaxisdata-v1-ListQualityInvestigationsResponse) | List investigations, newest first. |
 | GetQualityActionPolicy | [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest) | [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy) | Read the WS2 action catalog and how the autonomy policy would decide each action for an agent right now. Read-only: it exposes the policy, it does not change it. |
+| CreateQualityMemory | [CreateQualityMemoryRequest](#metaxisdata-v1-CreateQualityMemoryRequest) | [QualityMemory](#metaxisdata-v1-QualityMemory) | Record one memory: an asset fact, a decision with its structured reason, or an event. An agent may write asset facts directly; a decision or an event it writes stays PROPOSED until a person confirms it. |
+| ListQualityMemories | [ListQualityMemoriesRequest](#metaxisdata-v1-ListQualityMemoriesRequest) | [ListQualityMemoriesResponse](#metaxisdata-v1-ListQualityMemoriesResponse) | List memories. Expired confirmations read as EXPIRED; superseded ones stay visible for the correction path. |
+| ConfirmQualityMemory | [ConfirmQualityMemoryRequest](#metaxisdata-v1-ConfirmQualityMemoryRequest) | [QualityMemory](#metaxisdata-v1-QualityMemory) | Confirm or reject a PROPOSED memory. A person&#39;s judgment is what turns it into knowledge; nothing else confirms it. |
+| DeleteQualityMemory | [DeleteQualityMemoryRequest](#metaxisdata-v1-DeleteQualityMemoryRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Delete a memory. Administrator cleanup; the row is kept out of reads, and the audit row records who removed it. |
 | StageQualityPlan | [StageQualityPlanRequest](#metaxisdata-v1-StageQualityPlanRequest) | [QualityContract](#metaxisdata-v1-QualityContract) | Write the target&#39;s plan declaration without touching its settings. This is the one write an agent principal may make; an agent call is refused while the workspace kill switch or the agent itself is disabled. |
 | CreateQualityChangeRequest | [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Create a batch of typed changes against one target. It stays PROPOSED until a person decides; creating it changes nothing on the target. An agent principal may only create PROPOSED requests, and only while autonomy is enabled. |
 | GetQualityChangeRequest | [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest) | [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest) | Read one change request, with its items and per-item results. |

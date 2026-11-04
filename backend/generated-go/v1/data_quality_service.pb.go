@@ -2477,6 +2477,171 @@ func (QualityChangeRejectionReason) EnumDescriptor() ([]byte, []int) {
 	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{39}
 }
 
+// QualityMemoryKind is what a memory records.
+type QualityMemoryKind int32
+
+const (
+	QualityMemoryKind_QUALITY_MEMORY_KIND_UNSPECIFIED QualityMemoryKind = 0
+	QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT  QualityMemoryKind = 1
+	QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION    QualityMemoryKind = 2
+	QualityMemoryKind_QUALITY_MEMORY_KIND_EVENT       QualityMemoryKind = 3
+)
+
+// Enum value maps for QualityMemoryKind.
+var (
+	QualityMemoryKind_name = map[int32]string{
+		0: "QUALITY_MEMORY_KIND_UNSPECIFIED",
+		1: "QUALITY_MEMORY_KIND_ASSET_FACT",
+		2: "QUALITY_MEMORY_KIND_DECISION",
+		3: "QUALITY_MEMORY_KIND_EVENT",
+	}
+	QualityMemoryKind_value = map[string]int32{
+		"QUALITY_MEMORY_KIND_UNSPECIFIED": 0,
+		"QUALITY_MEMORY_KIND_ASSET_FACT":  1,
+		"QUALITY_MEMORY_KIND_DECISION":    2,
+		"QUALITY_MEMORY_KIND_EVENT":       3,
+	}
+)
+
+func (x QualityMemoryKind) Enum() *QualityMemoryKind {
+	p := new(QualityMemoryKind)
+	*p = x
+	return p
+}
+
+func (x QualityMemoryKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityMemoryKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_data_quality_service_proto_enumTypes[40].Descriptor()
+}
+
+func (QualityMemoryKind) Type() protoreflect.EnumType {
+	return &file_v1_data_quality_service_proto_enumTypes[40]
+}
+
+func (x QualityMemoryKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityMemoryKind.Descriptor instead.
+func (QualityMemoryKind) EnumDescriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{40}
+}
+
+// QualityMemoryStatus is where one memory stands.
+type QualityMemoryStatus int32
+
+const (
+	QualityMemoryStatus_QUALITY_MEMORY_STATUS_UNSPECIFIED QualityMemoryStatus = 0
+	QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED    QualityMemoryStatus = 1
+	QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED   QualityMemoryStatus = 2
+	QualityMemoryStatus_QUALITY_MEMORY_STATUS_REJECTED    QualityMemoryStatus = 3
+	QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED  QualityMemoryStatus = 4
+	QualityMemoryStatus_QUALITY_MEMORY_STATUS_EXPIRED     QualityMemoryStatus = 5
+)
+
+// Enum value maps for QualityMemoryStatus.
+var (
+	QualityMemoryStatus_name = map[int32]string{
+		0: "QUALITY_MEMORY_STATUS_UNSPECIFIED",
+		1: "QUALITY_MEMORY_STATUS_PROPOSED",
+		2: "QUALITY_MEMORY_STATUS_CONFIRMED",
+		3: "QUALITY_MEMORY_STATUS_REJECTED",
+		4: "QUALITY_MEMORY_STATUS_SUPERSEDED",
+		5: "QUALITY_MEMORY_STATUS_EXPIRED",
+	}
+	QualityMemoryStatus_value = map[string]int32{
+		"QUALITY_MEMORY_STATUS_UNSPECIFIED": 0,
+		"QUALITY_MEMORY_STATUS_PROPOSED":    1,
+		"QUALITY_MEMORY_STATUS_CONFIRMED":   2,
+		"QUALITY_MEMORY_STATUS_REJECTED":    3,
+		"QUALITY_MEMORY_STATUS_SUPERSEDED":  4,
+		"QUALITY_MEMORY_STATUS_EXPIRED":     5,
+	}
+)
+
+func (x QualityMemoryStatus) Enum() *QualityMemoryStatus {
+	p := new(QualityMemoryStatus)
+	*p = x
+	return p
+}
+
+func (x QualityMemoryStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityMemoryStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_data_quality_service_proto_enumTypes[41].Descriptor()
+}
+
+func (QualityMemoryStatus) Type() protoreflect.EnumType {
+	return &file_v1_data_quality_service_proto_enumTypes[41]
+}
+
+func (x QualityMemoryStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityMemoryStatus.Descriptor instead.
+func (QualityMemoryStatus) EnumDescriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{41}
+}
+
+// QualityMemorySource records who wrote the memory.
+type QualityMemorySource int32
+
+const (
+	QualityMemorySource_QUALITY_MEMORY_SOURCE_UNSPECIFIED QualityMemorySource = 0
+	QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT       QualityMemorySource = 1
+	QualityMemorySource_QUALITY_MEMORY_SOURCE_HUMAN       QualityMemorySource = 2
+	QualityMemorySource_QUALITY_MEMORY_SOURCE_SYSTEM      QualityMemorySource = 3
+)
+
+// Enum value maps for QualityMemorySource.
+var (
+	QualityMemorySource_name = map[int32]string{
+		0: "QUALITY_MEMORY_SOURCE_UNSPECIFIED",
+		1: "QUALITY_MEMORY_SOURCE_AGENT",
+		2: "QUALITY_MEMORY_SOURCE_HUMAN",
+		3: "QUALITY_MEMORY_SOURCE_SYSTEM",
+	}
+	QualityMemorySource_value = map[string]int32{
+		"QUALITY_MEMORY_SOURCE_UNSPECIFIED": 0,
+		"QUALITY_MEMORY_SOURCE_AGENT":       1,
+		"QUALITY_MEMORY_SOURCE_HUMAN":       2,
+		"QUALITY_MEMORY_SOURCE_SYSTEM":      3,
+	}
+)
+
+func (x QualityMemorySource) Enum() *QualityMemorySource {
+	p := new(QualityMemorySource)
+	*p = x
+	return p
+}
+
+func (x QualityMemorySource) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QualityMemorySource) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_data_quality_service_proto_enumTypes[42].Descriptor()
+}
+
+func (QualityMemorySource) Type() protoreflect.EnumType {
+	return &file_v1_data_quality_service_proto_enumTypes[42]
+}
+
+func (x QualityMemorySource) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QualityMemorySource.Descriptor instead.
+func (QualityMemorySource) EnumDescriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{42}
+}
+
 // QualityInvestigationStatus is where one investigation stands.
 type QualityInvestigationStatus int32
 
@@ -2514,11 +2679,11 @@ func (x QualityInvestigationStatus) String() string {
 }
 
 func (QualityInvestigationStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[40].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[43].Descriptor()
 }
 
 func (QualityInvestigationStatus) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[40]
+	return &file_v1_data_quality_service_proto_enumTypes[43]
 }
 
 func (x QualityInvestigationStatus) Number() protoreflect.EnumNumber {
@@ -2527,7 +2692,7 @@ func (x QualityInvestigationStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QualityInvestigationStatus.Descriptor instead.
 func (QualityInvestigationStatus) EnumDescriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{40}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{43}
 }
 
 // QualityInvestigationTrigger says what started the investigation.
@@ -2576,11 +2741,11 @@ func (x QualityInvestigationTrigger) String() string {
 }
 
 func (QualityInvestigationTrigger) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[41].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[44].Descriptor()
 }
 
 func (QualityInvestigationTrigger) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[41]
+	return &file_v1_data_quality_service_proto_enumTypes[44]
 }
 
 func (x QualityInvestigationTrigger) Number() protoreflect.EnumNumber {
@@ -2589,7 +2754,7 @@ func (x QualityInvestigationTrigger) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QualityInvestigationTrigger.Descriptor instead.
 func (QualityInvestigationTrigger) EnumDescriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{41}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{44}
 }
 
 // QualityInvestigationVerdict is the investigation's classification of the event. It
@@ -2633,11 +2798,11 @@ func (x QualityInvestigationVerdict) String() string {
 }
 
 func (QualityInvestigationVerdict) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[42].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[45].Descriptor()
 }
 
 func (QualityInvestigationVerdict) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[42]
+	return &file_v1_data_quality_service_proto_enumTypes[45]
 }
 
 func (x QualityInvestigationVerdict) Number() protoreflect.EnumNumber {
@@ -2646,7 +2811,7 @@ func (x QualityInvestigationVerdict) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QualityInvestigationVerdict.Descriptor instead.
 func (QualityInvestigationVerdict) EnumDescriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{42}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{45}
 }
 
 // QualityContractChangeKind says which sections of a version changed against its
@@ -2691,11 +2856,11 @@ func (x QualityContractChangeKind) String() string {
 }
 
 func (QualityContractChangeKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[43].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[46].Descriptor()
 }
 
 func (QualityContractChangeKind) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[43]
+	return &file_v1_data_quality_service_proto_enumTypes[46]
 }
 
 func (x QualityContractChangeKind) Number() protoreflect.EnumNumber {
@@ -2704,7 +2869,7 @@ func (x QualityContractChangeKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QualityContractChangeKind.Descriptor instead.
 func (QualityContractChangeKind) EnumDescriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{43}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{46}
 }
 
 type QualityPlanChange_Kind int32
@@ -2743,11 +2908,11 @@ func (x QualityPlanChange_Kind) String() string {
 }
 
 func (QualityPlanChange_Kind) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[44].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[47].Descriptor()
 }
 
 func (QualityPlanChange_Kind) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[44]
+	return &file_v1_data_quality_service_proto_enumTypes[47]
 }
 
 func (x QualityPlanChange_Kind) Number() protoreflect.EnumNumber {
@@ -2795,11 +2960,11 @@ func (x QualityChangeRequestItemResult_Status) String() string {
 }
 
 func (QualityChangeRequestItemResult_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[45].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[48].Descriptor()
 }
 
 func (QualityChangeRequestItemResult_Status) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[45]
+	return &file_v1_data_quality_service_proto_enumTypes[48]
 }
 
 func (x QualityChangeRequestItemResult_Status) Number() protoreflect.EnumNumber {
@@ -2845,11 +3010,11 @@ func (x DecideQualityChangeRequestRequest_Decision) String() string {
 }
 
 func (DecideQualityChangeRequestRequest_Decision) Descriptor() protoreflect.EnumDescriptor {
-	return file_v1_data_quality_service_proto_enumTypes[46].Descriptor()
+	return file_v1_data_quality_service_proto_enumTypes[49].Descriptor()
 }
 
 func (DecideQualityChangeRequestRequest_Decision) Type() protoreflect.EnumType {
-	return &file_v1_data_quality_service_proto_enumTypes[46]
+	return &file_v1_data_quality_service_proto_enumTypes[49]
 }
 
 func (x DecideQualityChangeRequestRequest_Decision) Number() protoreflect.EnumNumber {
@@ -2859,6 +3024,55 @@ func (x DecideQualityChangeRequestRequest_Decision) Number() protoreflect.EnumNu
 // Deprecated: Use DecideQualityChangeRequestRequest_Decision.Descriptor instead.
 func (DecideQualityChangeRequestRequest_Decision) EnumDescriptor() ([]byte, []int) {
 	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{163, 0}
+}
+
+type ConfirmQualityMemoryRequest_Decision int32
+
+const (
+	ConfirmQualityMemoryRequest_DECISION_UNSPECIFIED ConfirmQualityMemoryRequest_Decision = 0
+	ConfirmQualityMemoryRequest_DECISION_CONFIRM     ConfirmQualityMemoryRequest_Decision = 1
+	ConfirmQualityMemoryRequest_DECISION_REJECT      ConfirmQualityMemoryRequest_Decision = 2
+)
+
+// Enum value maps for ConfirmQualityMemoryRequest_Decision.
+var (
+	ConfirmQualityMemoryRequest_Decision_name = map[int32]string{
+		0: "DECISION_UNSPECIFIED",
+		1: "DECISION_CONFIRM",
+		2: "DECISION_REJECT",
+	}
+	ConfirmQualityMemoryRequest_Decision_value = map[string]int32{
+		"DECISION_UNSPECIFIED": 0,
+		"DECISION_CONFIRM":     1,
+		"DECISION_REJECT":      2,
+	}
+)
+
+func (x ConfirmQualityMemoryRequest_Decision) Enum() *ConfirmQualityMemoryRequest_Decision {
+	p := new(ConfirmQualityMemoryRequest_Decision)
+	*p = x
+	return p
+}
+
+func (x ConfirmQualityMemoryRequest_Decision) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ConfirmQualityMemoryRequest_Decision) Descriptor() protoreflect.EnumDescriptor {
+	return file_v1_data_quality_service_proto_enumTypes[50].Descriptor()
+}
+
+func (ConfirmQualityMemoryRequest_Decision) Type() protoreflect.EnumType {
+	return &file_v1_data_quality_service_proto_enumTypes[50]
+}
+
+func (x ConfirmQualityMemoryRequest_Decision) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ConfirmQualityMemoryRequest_Decision.Descriptor instead.
+func (ConfirmQualityMemoryRequest_Decision) EnumDescriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{168, 0}
 }
 
 // QualityRule is one data quality check.
@@ -17023,6 +17237,492 @@ func (x *DecideQualityChangeRequestRequest) GetDecisionNote() string {
 	return ""
 }
 
+// QualityMemory is one durable piece of knowledge with its evidence and its
+// correction path. It never replaces the engine's verdict; it explains the past.
+type QualityMemory struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+	Name string            `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Kind QualityMemoryKind `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.v1.QualityMemoryKind" json:"kind,omitempty"`
+	// What the memory is about: a target GUID, a rule resource id, a column, an issue.
+	Subject   string              `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Statement string              `protobuf:"bytes,4,opt,name=statement,proto3" json:"statement,omitempty"`
+	Source    QualityMemorySource `protobuf:"varint,5,opt,name=source,proto3,enum=metaxisdata.v1.QualityMemorySource" json:"source,omitempty"`
+	Status    QualityMemoryStatus `protobuf:"varint,6,opt,name=status,proto3,enum=metaxisdata.v1.QualityMemoryStatus" json:"status,omitempty"`
+	// Deterministic evidence references; a memory without evidence is not recorded.
+	Evidence []*QualityInvestigationEvidence `protobuf:"bytes,7,rep,name=evidence,proto3" json:"evidence,omitempty"`
+	// Reserved for domain-scoped memory; stored, not resolved.
+	DomainRef string                 `protobuf:"bytes,8,opt,name=domain_ref,json=domainRef,proto3" json:"domain_ref,omitempty"`
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// Format: users/{user}. Set when a person confirmed or rejected it.
+	ConfirmedBy string                 `protobuf:"bytes,10,opt,name=confirmed_by,json=confirmedBy,proto3" json:"confirmed_by,omitempty"`
+	ConfirmedAt *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=confirmed_at,json=confirmedAt,proto3" json:"confirmed_at,omitempty"`
+	// Resource name of the memory that replaced this one.
+	SupersededBy  string                 `protobuf:"bytes,12,opt,name=superseded_by,json=supersededBy,proto3" json:"superseded_by,omitempty"`
+	CreatedBy     string                 `protobuf:"bytes,13,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QualityMemory) Reset() {
+	*x = QualityMemory{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[164]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QualityMemory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QualityMemory) ProtoMessage() {}
+
+func (x *QualityMemory) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[164]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QualityMemory.ProtoReflect.Descriptor instead.
+func (*QualityMemory) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{164}
+}
+
+func (x *QualityMemory) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetKind() QualityMemoryKind {
+	if x != nil {
+		return x.Kind
+	}
+	return QualityMemoryKind_QUALITY_MEMORY_KIND_UNSPECIFIED
+}
+
+func (x *QualityMemory) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetStatement() string {
+	if x != nil {
+		return x.Statement
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetSource() QualityMemorySource {
+	if x != nil {
+		return x.Source
+	}
+	return QualityMemorySource_QUALITY_MEMORY_SOURCE_UNSPECIFIED
+}
+
+func (x *QualityMemory) GetStatus() QualityMemoryStatus {
+	if x != nil {
+		return x.Status
+	}
+	return QualityMemoryStatus_QUALITY_MEMORY_STATUS_UNSPECIFIED
+}
+
+func (x *QualityMemory) GetEvidence() []*QualityInvestigationEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+func (x *QualityMemory) GetDomainRef() string {
+	if x != nil {
+		return x.DomainRef
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+func (x *QualityMemory) GetConfirmedBy() string {
+	if x != nil {
+		return x.ConfirmedBy
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetConfirmedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ConfirmedAt
+	}
+	return nil
+}
+
+func (x *QualityMemory) GetSupersededBy() string {
+	if x != nil {
+		return x.SupersededBy
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+func (x *QualityMemory) GetCreateTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreateTime
+	}
+	return nil
+}
+
+type CreateQualityMemoryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+	Parent        string                          `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	Kind          QualityMemoryKind               `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.v1.QualityMemoryKind" json:"kind,omitempty"`
+	Subject       string                          `protobuf:"bytes,3,opt,name=subject,proto3" json:"subject,omitempty"`
+	Statement     string                          `protobuf:"bytes,4,opt,name=statement,proto3" json:"statement,omitempty"`
+	Evidence      []*QualityInvestigationEvidence `protobuf:"bytes,5,rep,name=evidence,proto3" json:"evidence,omitempty"`
+	DomainRef     string                          `protobuf:"bytes,6,opt,name=domain_ref,json=domainRef,proto3" json:"domain_ref,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp          `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateQualityMemoryRequest) Reset() {
+	*x = CreateQualityMemoryRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[165]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateQualityMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateQualityMemoryRequest) ProtoMessage() {}
+
+func (x *CreateQualityMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[165]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateQualityMemoryRequest.ProtoReflect.Descriptor instead.
+func (*CreateQualityMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{165}
+}
+
+func (x *CreateQualityMemoryRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateQualityMemoryRequest) GetKind() QualityMemoryKind {
+	if x != nil {
+		return x.Kind
+	}
+	return QualityMemoryKind_QUALITY_MEMORY_KIND_UNSPECIFIED
+}
+
+func (x *CreateQualityMemoryRequest) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *CreateQualityMemoryRequest) GetStatement() string {
+	if x != nil {
+		return x.Statement
+	}
+	return ""
+}
+
+func (x *CreateQualityMemoryRequest) GetEvidence() []*QualityInvestigationEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+func (x *CreateQualityMemoryRequest) GetDomainRef() string {
+	if x != nil {
+		return x.DomainRef
+	}
+	return ""
+}
+
+func (x *CreateQualityMemoryRequest) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+type ListQualityMemoriesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+	Parent string              `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	Kind   QualityMemoryKind   `protobuf:"varint,2,opt,name=kind,proto3,enum=metaxisdata.v1.QualityMemoryKind" json:"kind,omitempty"`
+	Status QualityMemoryStatus `protobuf:"varint,3,opt,name=status,proto3,enum=metaxisdata.v1.QualityMemoryStatus" json:"status,omitempty"`
+	// An exact subject.
+	Subject string `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
+	// The page size; 0 uses the default (50), and the maximum is 1000.
+	PageSize      int32  `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListQualityMemoriesRequest) Reset() {
+	*x = ListQualityMemoriesRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[166]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListQualityMemoriesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListQualityMemoriesRequest) ProtoMessage() {}
+
+func (x *ListQualityMemoriesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[166]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListQualityMemoriesRequest.ProtoReflect.Descriptor instead.
+func (*ListQualityMemoriesRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{166}
+}
+
+func (x *ListQualityMemoriesRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *ListQualityMemoriesRequest) GetKind() QualityMemoryKind {
+	if x != nil {
+		return x.Kind
+	}
+	return QualityMemoryKind_QUALITY_MEMORY_KIND_UNSPECIFIED
+}
+
+func (x *ListQualityMemoriesRequest) GetStatus() QualityMemoryStatus {
+	if x != nil {
+		return x.Status
+	}
+	return QualityMemoryStatus_QUALITY_MEMORY_STATUS_UNSPECIFIED
+}
+
+func (x *ListQualityMemoriesRequest) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *ListQualityMemoriesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListQualityMemoriesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListQualityMemoriesResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	QualityMemories []*QualityMemory       `protobuf:"bytes,1,rep,name=quality_memories,json=qualityMemories,proto3" json:"quality_memories,omitempty"`
+	NextPageToken   string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ListQualityMemoriesResponse) Reset() {
+	*x = ListQualityMemoriesResponse{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[167]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListQualityMemoriesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListQualityMemoriesResponse) ProtoMessage() {}
+
+func (x *ListQualityMemoriesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[167]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListQualityMemoriesResponse.ProtoReflect.Descriptor instead.
+func (*ListQualityMemoriesResponse) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{167}
+}
+
+func (x *ListQualityMemoriesResponse) GetQualityMemories() []*QualityMemory {
+	if x != nil {
+		return x.QualityMemories
+	}
+	return nil
+}
+
+func (x *ListQualityMemoriesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type ConfirmQualityMemoryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+	Name          string                               `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Decision      ConfirmQualityMemoryRequest_Decision `protobuf:"varint,2,opt,name=decision,proto3,enum=metaxisdata.v1.ConfirmQualityMemoryRequest_Decision" json:"decision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfirmQualityMemoryRequest) Reset() {
+	*x = ConfirmQualityMemoryRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[168]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmQualityMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmQualityMemoryRequest) ProtoMessage() {}
+
+func (x *ConfirmQualityMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[168]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmQualityMemoryRequest.ProtoReflect.Descriptor instead.
+func (*ConfirmQualityMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{168}
+}
+
+func (x *ConfirmQualityMemoryRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ConfirmQualityMemoryRequest) GetDecision() ConfirmQualityMemoryRequest_Decision {
+	if x != nil {
+		return x.Decision
+	}
+	return ConfirmQualityMemoryRequest_DECISION_UNSPECIFIED
+}
+
+type DeleteQualityMemoryRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteQualityMemoryRequest) Reset() {
+	*x = DeleteQualityMemoryRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[169]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteQualityMemoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteQualityMemoryRequest) ProtoMessage() {}
+
+func (x *DeleteQualityMemoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[169]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteQualityMemoryRequest.ProtoReflect.Descriptor instead.
+func (*DeleteQualityMemoryRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{169}
+}
+
+func (x *DeleteQualityMemoryRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 // QualityInvestigationEvidence is one deterministic reference behind an
 // investigation. It is a reference, never a copy of samples.
 type QualityInvestigationEvidence struct {
@@ -17037,7 +17737,7 @@ type QualityInvestigationEvidence struct {
 
 func (x *QualityInvestigationEvidence) Reset() {
 	*x = QualityInvestigationEvidence{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[164]
+	mi := &file_v1_data_quality_service_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17049,7 +17749,7 @@ func (x *QualityInvestigationEvidence) String() string {
 func (*QualityInvestigationEvidence) ProtoMessage() {}
 
 func (x *QualityInvestigationEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[164]
+	mi := &file_v1_data_quality_service_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17062,7 +17762,7 @@ func (x *QualityInvestigationEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityInvestigationEvidence.ProtoReflect.Descriptor instead.
 func (*QualityInvestigationEvidence) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{164}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *QualityInvestigationEvidence) GetKind() string {
@@ -17098,7 +17798,7 @@ type QualityInvestigationHypothesis struct {
 
 func (x *QualityInvestigationHypothesis) Reset() {
 	*x = QualityInvestigationHypothesis{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[165]
+	mi := &file_v1_data_quality_service_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17110,7 +17810,7 @@ func (x *QualityInvestigationHypothesis) String() string {
 func (*QualityInvestigationHypothesis) ProtoMessage() {}
 
 func (x *QualityInvestigationHypothesis) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[165]
+	mi := &file_v1_data_quality_service_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17123,7 +17823,7 @@ func (x *QualityInvestigationHypothesis) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityInvestigationHypothesis.ProtoReflect.Descriptor instead.
 func (*QualityInvestigationHypothesis) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{165}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *QualityInvestigationHypothesis) GetStatement() string {
@@ -17171,7 +17871,7 @@ type QualityInvestigation struct {
 
 func (x *QualityInvestigation) Reset() {
 	*x = QualityInvestigation{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[166]
+	mi := &file_v1_data_quality_service_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17183,7 +17883,7 @@ func (x *QualityInvestigation) String() string {
 func (*QualityInvestigation) ProtoMessage() {}
 
 func (x *QualityInvestigation) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[166]
+	mi := &file_v1_data_quality_service_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17196,7 +17896,7 @@ func (x *QualityInvestigation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityInvestigation.ProtoReflect.Descriptor instead.
 func (*QualityInvestigation) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{166}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{172}
 }
 
 func (x *QualityInvestigation) GetName() string {
@@ -17355,7 +18055,7 @@ type CreateQualityInvestigationRequest struct {
 
 func (x *CreateQualityInvestigationRequest) Reset() {
 	*x = CreateQualityInvestigationRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[167]
+	mi := &file_v1_data_quality_service_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17367,7 +18067,7 @@ func (x *CreateQualityInvestigationRequest) String() string {
 func (*CreateQualityInvestigationRequest) ProtoMessage() {}
 
 func (x *CreateQualityInvestigationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[167]
+	mi := &file_v1_data_quality_service_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17380,7 +18080,7 @@ func (x *CreateQualityInvestigationRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use CreateQualityInvestigationRequest.ProtoReflect.Descriptor instead.
 func (*CreateQualityInvestigationRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{167}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *CreateQualityInvestigationRequest) GetParent() string {
@@ -17519,7 +18219,7 @@ type GetQualityInvestigationRequest struct {
 
 func (x *GetQualityInvestigationRequest) Reset() {
 	*x = GetQualityInvestigationRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[168]
+	mi := &file_v1_data_quality_service_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17531,7 +18231,7 @@ func (x *GetQualityInvestigationRequest) String() string {
 func (*GetQualityInvestigationRequest) ProtoMessage() {}
 
 func (x *GetQualityInvestigationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[168]
+	mi := &file_v1_data_quality_service_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17544,7 +18244,7 @@ func (x *GetQualityInvestigationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQualityInvestigationRequest.ProtoReflect.Descriptor instead.
 func (*GetQualityInvestigationRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{168}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *GetQualityInvestigationRequest) GetName() string {
@@ -17569,7 +18269,7 @@ type ListQualityInvestigationsRequest struct {
 
 func (x *ListQualityInvestigationsRequest) Reset() {
 	*x = ListQualityInvestigationsRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[169]
+	mi := &file_v1_data_quality_service_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17581,7 +18281,7 @@ func (x *ListQualityInvestigationsRequest) String() string {
 func (*ListQualityInvestigationsRequest) ProtoMessage() {}
 
 func (x *ListQualityInvestigationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[169]
+	mi := &file_v1_data_quality_service_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17594,7 +18294,7 @@ func (x *ListQualityInvestigationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityInvestigationsRequest.ProtoReflect.Descriptor instead.
 func (*ListQualityInvestigationsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{169}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *ListQualityInvestigationsRequest) GetParent() string {
@@ -17649,7 +18349,7 @@ type ListQualityInvestigationsResponse struct {
 
 func (x *ListQualityInvestigationsResponse) Reset() {
 	*x = ListQualityInvestigationsResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[170]
+	mi := &file_v1_data_quality_service_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17661,7 +18361,7 @@ func (x *ListQualityInvestigationsResponse) String() string {
 func (*ListQualityInvestigationsResponse) ProtoMessage() {}
 
 func (x *ListQualityInvestigationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[170]
+	mi := &file_v1_data_quality_service_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17674,7 +18374,7 @@ func (x *ListQualityInvestigationsResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ListQualityInvestigationsResponse.ProtoReflect.Descriptor instead.
 func (*ListQualityInvestigationsResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{170}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{176}
 }
 
 func (x *ListQualityInvestigationsResponse) GetQualityInvestigations() []*QualityInvestigation {
@@ -17728,7 +18428,7 @@ type QualityAction struct {
 
 func (x *QualityAction) Reset() {
 	*x = QualityAction{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[171]
+	mi := &file_v1_data_quality_service_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17740,7 +18440,7 @@ func (x *QualityAction) String() string {
 func (*QualityAction) ProtoMessage() {}
 
 func (x *QualityAction) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[171]
+	mi := &file_v1_data_quality_service_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17753,7 +18453,7 @@ func (x *QualityAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityAction.ProtoReflect.Descriptor instead.
 func (*QualityAction) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{171}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{177}
 }
 
 func (x *QualityAction) GetId() string {
@@ -17844,7 +18544,7 @@ type QualityActionPolicy struct {
 
 func (x *QualityActionPolicy) Reset() {
 	*x = QualityActionPolicy{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[172]
+	mi := &file_v1_data_quality_service_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17856,7 +18556,7 @@ func (x *QualityActionPolicy) String() string {
 func (*QualityActionPolicy) ProtoMessage() {}
 
 func (x *QualityActionPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[172]
+	mi := &file_v1_data_quality_service_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17869,7 +18569,7 @@ func (x *QualityActionPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityActionPolicy.ProtoReflect.Descriptor instead.
 func (*QualityActionPolicy) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{172}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *QualityActionPolicy) GetAgentAutonomyEnabled() bool {
@@ -17896,7 +18596,7 @@ type GetQualityActionPolicyRequest struct {
 
 func (x *GetQualityActionPolicyRequest) Reset() {
 	*x = GetQualityActionPolicyRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[173]
+	mi := &file_v1_data_quality_service_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17908,7 +18608,7 @@ func (x *GetQualityActionPolicyRequest) String() string {
 func (*GetQualityActionPolicyRequest) ProtoMessage() {}
 
 func (x *GetQualityActionPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[173]
+	mi := &file_v1_data_quality_service_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17921,7 +18621,7 @@ func (x *GetQualityActionPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQualityActionPolicyRequest.ProtoReflect.Descriptor instead.
 func (*GetQualityActionPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{173}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{179}
 }
 
 func (x *GetQualityActionPolicyRequest) GetParent() string {
@@ -17950,7 +18650,7 @@ type QualityAgent struct {
 
 func (x *QualityAgent) Reset() {
 	*x = QualityAgent{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[174]
+	mi := &file_v1_data_quality_service_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17962,7 +18662,7 @@ func (x *QualityAgent) String() string {
 func (*QualityAgent) ProtoMessage() {}
 
 func (x *QualityAgent) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[174]
+	mi := &file_v1_data_quality_service_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17975,7 +18675,7 @@ func (x *QualityAgent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityAgent.ProtoReflect.Descriptor instead.
 func (*QualityAgent) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{174}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{180}
 }
 
 func (x *QualityAgent) GetName() string {
@@ -18032,7 +18732,7 @@ type CreateQualityAgentRequest struct {
 
 func (x *CreateQualityAgentRequest) Reset() {
 	*x = CreateQualityAgentRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[175]
+	mi := &file_v1_data_quality_service_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18044,7 +18744,7 @@ func (x *CreateQualityAgentRequest) String() string {
 func (*CreateQualityAgentRequest) ProtoMessage() {}
 
 func (x *CreateQualityAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[175]
+	mi := &file_v1_data_quality_service_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18057,7 +18757,7 @@ func (x *CreateQualityAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQualityAgentRequest.ProtoReflect.Descriptor instead.
 func (*CreateQualityAgentRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{175}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{181}
 }
 
 func (x *CreateQualityAgentRequest) GetParent() string {
@@ -18093,7 +18793,7 @@ type CreateQualityAgentResponse struct {
 
 func (x *CreateQualityAgentResponse) Reset() {
 	*x = CreateQualityAgentResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[176]
+	mi := &file_v1_data_quality_service_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18105,7 +18805,7 @@ func (x *CreateQualityAgentResponse) String() string {
 func (*CreateQualityAgentResponse) ProtoMessage() {}
 
 func (x *CreateQualityAgentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[176]
+	mi := &file_v1_data_quality_service_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18118,7 +18818,7 @@ func (x *CreateQualityAgentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQualityAgentResponse.ProtoReflect.Descriptor instead.
 func (*CreateQualityAgentResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{176}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *CreateQualityAgentResponse) GetAgent() *QualityAgent {
@@ -18147,7 +18847,7 @@ type ListQualityAgentsRequest struct {
 
 func (x *ListQualityAgentsRequest) Reset() {
 	*x = ListQualityAgentsRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[177]
+	mi := &file_v1_data_quality_service_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18159,7 +18859,7 @@ func (x *ListQualityAgentsRequest) String() string {
 func (*ListQualityAgentsRequest) ProtoMessage() {}
 
 func (x *ListQualityAgentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[177]
+	mi := &file_v1_data_quality_service_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18172,7 +18872,7 @@ func (x *ListQualityAgentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityAgentsRequest.ProtoReflect.Descriptor instead.
 func (*ListQualityAgentsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{177}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *ListQualityAgentsRequest) GetParent() string {
@@ -18206,7 +18906,7 @@ type ListQualityAgentsResponse struct {
 
 func (x *ListQualityAgentsResponse) Reset() {
 	*x = ListQualityAgentsResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[178]
+	mi := &file_v1_data_quality_service_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18218,7 +18918,7 @@ func (x *ListQualityAgentsResponse) String() string {
 func (*ListQualityAgentsResponse) ProtoMessage() {}
 
 func (x *ListQualityAgentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[178]
+	mi := &file_v1_data_quality_service_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18231,7 +18931,7 @@ func (x *ListQualityAgentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityAgentsResponse.ProtoReflect.Descriptor instead.
 func (*ListQualityAgentsResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{178}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *ListQualityAgentsResponse) GetQualityAgents() []*QualityAgent {
@@ -18258,7 +18958,7 @@ type DisableQualityAgentRequest struct {
 
 func (x *DisableQualityAgentRequest) Reset() {
 	*x = DisableQualityAgentRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[179]
+	mi := &file_v1_data_quality_service_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18270,7 +18970,7 @@ func (x *DisableQualityAgentRequest) String() string {
 func (*DisableQualityAgentRequest) ProtoMessage() {}
 
 func (x *DisableQualityAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[179]
+	mi := &file_v1_data_quality_service_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18283,7 +18983,7 @@ func (x *DisableQualityAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableQualityAgentRequest.ProtoReflect.Descriptor instead.
 func (*DisableQualityAgentRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{179}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *DisableQualityAgentRequest) GetName() string {
@@ -18303,7 +19003,7 @@ type RotateQualityAgentTokenRequest struct {
 
 func (x *RotateQualityAgentTokenRequest) Reset() {
 	*x = RotateQualityAgentTokenRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[180]
+	mi := &file_v1_data_quality_service_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18315,7 +19015,7 @@ func (x *RotateQualityAgentTokenRequest) String() string {
 func (*RotateQualityAgentTokenRequest) ProtoMessage() {}
 
 func (x *RotateQualityAgentTokenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[180]
+	mi := &file_v1_data_quality_service_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18328,7 +19028,7 @@ func (x *RotateQualityAgentTokenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateQualityAgentTokenRequest.ProtoReflect.Descriptor instead.
 func (*RotateQualityAgentTokenRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{180}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{186}
 }
 
 func (x *RotateQualityAgentTokenRequest) GetName() string {
@@ -18348,7 +19048,7 @@ type RotateQualityAgentTokenResponse struct {
 
 func (x *RotateQualityAgentTokenResponse) Reset() {
 	*x = RotateQualityAgentTokenResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[181]
+	mi := &file_v1_data_quality_service_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18360,7 +19060,7 @@ func (x *RotateQualityAgentTokenResponse) String() string {
 func (*RotateQualityAgentTokenResponse) ProtoMessage() {}
 
 func (x *RotateQualityAgentTokenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[181]
+	mi := &file_v1_data_quality_service_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18373,7 +19073,7 @@ func (x *RotateQualityAgentTokenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateQualityAgentTokenResponse.ProtoReflect.Descriptor instead.
 func (*RotateQualityAgentTokenResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{181}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *RotateQualityAgentTokenResponse) GetAgent() *QualityAgent {
@@ -18404,7 +19104,7 @@ type QualityCoverageGap struct {
 
 func (x *QualityCoverageGap) Reset() {
 	*x = QualityCoverageGap{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[182]
+	mi := &file_v1_data_quality_service_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18416,7 +19116,7 @@ func (x *QualityCoverageGap) String() string {
 func (*QualityCoverageGap) ProtoMessage() {}
 
 func (x *QualityCoverageGap) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[182]
+	mi := &file_v1_data_quality_service_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18429,7 +19129,7 @@ func (x *QualityCoverageGap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityCoverageGap.ProtoReflect.Descriptor instead.
 func (*QualityCoverageGap) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{182}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *QualityCoverageGap) GetTarget() *QualityTarget {
@@ -18477,7 +19177,7 @@ type ListQualityCoverageGapsRequest struct {
 
 func (x *ListQualityCoverageGapsRequest) Reset() {
 	*x = ListQualityCoverageGapsRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[183]
+	mi := &file_v1_data_quality_service_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18489,7 +19189,7 @@ func (x *ListQualityCoverageGapsRequest) String() string {
 func (*ListQualityCoverageGapsRequest) ProtoMessage() {}
 
 func (x *ListQualityCoverageGapsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[183]
+	mi := &file_v1_data_quality_service_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18502,7 +19202,7 @@ func (x *ListQualityCoverageGapsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityCoverageGapsRequest.ProtoReflect.Descriptor instead.
 func (*ListQualityCoverageGapsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{183}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *ListQualityCoverageGapsRequest) GetParent() string {
@@ -18572,7 +19272,7 @@ type ListQualityCoverageGapsResponse struct {
 
 func (x *ListQualityCoverageGapsResponse) Reset() {
 	*x = ListQualityCoverageGapsResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[184]
+	mi := &file_v1_data_quality_service_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18584,7 +19284,7 @@ func (x *ListQualityCoverageGapsResponse) String() string {
 func (*ListQualityCoverageGapsResponse) ProtoMessage() {}
 
 func (x *ListQualityCoverageGapsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[184]
+	mi := &file_v1_data_quality_service_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18597,7 +19297,7 @@ func (x *ListQualityCoverageGapsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityCoverageGapsResponse.ProtoReflect.Descriptor instead.
 func (*ListQualityCoverageGapsResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{184}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{190}
 }
 
 func (x *ListQualityCoverageGapsResponse) GetGaps() []*QualityCoverageGap {
@@ -18646,7 +19346,7 @@ type QualityContractRevision struct {
 
 func (x *QualityContractRevision) Reset() {
 	*x = QualityContractRevision{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[185]
+	mi := &file_v1_data_quality_service_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18658,7 +19358,7 @@ func (x *QualityContractRevision) String() string {
 func (*QualityContractRevision) ProtoMessage() {}
 
 func (x *QualityContractRevision) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[185]
+	mi := &file_v1_data_quality_service_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18671,7 +19371,7 @@ func (x *QualityContractRevision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractRevision.ProtoReflect.Descriptor instead.
 func (*QualityContractRevision) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{185}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *QualityContractRevision) GetVersion() int32 {
@@ -18754,7 +19454,7 @@ type QualityContractCheck struct {
 
 func (x *QualityContractCheck) Reset() {
 	*x = QualityContractCheck{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[186]
+	mi := &file_v1_data_quality_service_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18766,7 +19466,7 @@ func (x *QualityContractCheck) String() string {
 func (*QualityContractCheck) ProtoMessage() {}
 
 func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[186]
+	mi := &file_v1_data_quality_service_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18779,7 +19479,7 @@ func (x *QualityContractCheck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityContractCheck.ProtoReflect.Descriptor instead.
 func (*QualityContractCheck) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{186}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *QualityContractCheck) GetRule() string {
@@ -18837,7 +19537,7 @@ type GetQualityContractRequest struct {
 
 func (x *GetQualityContractRequest) Reset() {
 	*x = GetQualityContractRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[187]
+	mi := &file_v1_data_quality_service_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18849,7 +19549,7 @@ func (x *GetQualityContractRequest) String() string {
 func (*GetQualityContractRequest) ProtoMessage() {}
 
 func (x *GetQualityContractRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[187]
+	mi := &file_v1_data_quality_service_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18862,7 +19562,7 @@ func (x *GetQualityContractRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQualityContractRequest.ProtoReflect.Descriptor instead.
 func (*GetQualityContractRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{187}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{193}
 }
 
 func (x *GetQualityContractRequest) GetParent() string {
@@ -18907,7 +19607,7 @@ type UpdateQualityContractRequest struct {
 
 func (x *UpdateQualityContractRequest) Reset() {
 	*x = UpdateQualityContractRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[188]
+	mi := &file_v1_data_quality_service_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18919,7 +19619,7 @@ func (x *UpdateQualityContractRequest) String() string {
 func (*UpdateQualityContractRequest) ProtoMessage() {}
 
 func (x *UpdateQualityContractRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[188]
+	mi := &file_v1_data_quality_service_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18932,7 +19632,7 @@ func (x *UpdateQualityContractRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateQualityContractRequest.ProtoReflect.Descriptor instead.
 func (*UpdateQualityContractRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{188}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *UpdateQualityContractRequest) GetParent() string {
@@ -18991,7 +19691,7 @@ type PublishQualityContractRequest struct {
 
 func (x *PublishQualityContractRequest) Reset() {
 	*x = PublishQualityContractRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[189]
+	mi := &file_v1_data_quality_service_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19003,7 +19703,7 @@ func (x *PublishQualityContractRequest) String() string {
 func (*PublishQualityContractRequest) ProtoMessage() {}
 
 func (x *PublishQualityContractRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[189]
+	mi := &file_v1_data_quality_service_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19016,7 +19716,7 @@ func (x *PublishQualityContractRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishQualityContractRequest.ProtoReflect.Descriptor instead.
 func (*PublishQualityContractRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{189}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{195}
 }
 
 func (x *PublishQualityContractRequest) GetParent() string {
@@ -19060,7 +19760,7 @@ type PublishQualityContractResponse struct {
 
 func (x *PublishQualityContractResponse) Reset() {
 	*x = PublishQualityContractResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[190]
+	mi := &file_v1_data_quality_service_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19072,7 +19772,7 @@ func (x *PublishQualityContractResponse) String() string {
 func (*PublishQualityContractResponse) ProtoMessage() {}
 
 func (x *PublishQualityContractResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[190]
+	mi := &file_v1_data_quality_service_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19085,7 +19785,7 @@ func (x *PublishQualityContractResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishQualityContractResponse.ProtoReflect.Descriptor instead.
 func (*PublishQualityContractResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{190}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *PublishQualityContractResponse) GetContract() *QualityContract {
@@ -19123,7 +19823,7 @@ type ListQualityContractRevisionsRequest struct {
 
 func (x *ListQualityContractRevisionsRequest) Reset() {
 	*x = ListQualityContractRevisionsRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[191]
+	mi := &file_v1_data_quality_service_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19135,7 +19835,7 @@ func (x *ListQualityContractRevisionsRequest) String() string {
 func (*ListQualityContractRevisionsRequest) ProtoMessage() {}
 
 func (x *ListQualityContractRevisionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[191]
+	mi := &file_v1_data_quality_service_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19148,7 +19848,7 @@ func (x *ListQualityContractRevisionsRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListQualityContractRevisionsRequest.ProtoReflect.Descriptor instead.
 func (*ListQualityContractRevisionsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{191}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *ListQualityContractRevisionsRequest) GetParent() string {
@@ -19196,7 +19896,7 @@ type ListQualityContractRevisionsResponse struct {
 
 func (x *ListQualityContractRevisionsResponse) Reset() {
 	*x = ListQualityContractRevisionsResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[192]
+	mi := &file_v1_data_quality_service_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19208,7 +19908,7 @@ func (x *ListQualityContractRevisionsResponse) String() string {
 func (*ListQualityContractRevisionsResponse) ProtoMessage() {}
 
 func (x *ListQualityContractRevisionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[192]
+	mi := &file_v1_data_quality_service_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19221,7 +19921,7 @@ func (x *ListQualityContractRevisionsResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ListQualityContractRevisionsResponse.ProtoReflect.Descriptor instead.
 func (*ListQualityContractRevisionsResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{192}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{198}
 }
 
 func (x *ListQualityContractRevisionsResponse) GetRevisions() []*QualityContractRevision {
@@ -19251,7 +19951,7 @@ type GetQualityContractRevisionRequest struct {
 
 func (x *GetQualityContractRevisionRequest) Reset() {
 	*x = GetQualityContractRevisionRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[193]
+	mi := &file_v1_data_quality_service_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19263,7 +19963,7 @@ func (x *GetQualityContractRevisionRequest) String() string {
 func (*GetQualityContractRevisionRequest) ProtoMessage() {}
 
 func (x *GetQualityContractRevisionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[193]
+	mi := &file_v1_data_quality_service_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19276,7 +19976,7 @@ func (x *GetQualityContractRevisionRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetQualityContractRevisionRequest.ProtoReflect.Descriptor instead.
 func (*GetQualityContractRevisionRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{193}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{199}
 }
 
 func (x *GetQualityContractRevisionRequest) GetParent() string {
@@ -19317,7 +20017,7 @@ type GetQualityContractRevisionResponse struct {
 
 func (x *GetQualityContractRevisionResponse) Reset() {
 	*x = GetQualityContractRevisionResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[194]
+	mi := &file_v1_data_quality_service_proto_msgTypes[200]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19329,7 +20029,7 @@ func (x *GetQualityContractRevisionResponse) String() string {
 func (*GetQualityContractRevisionResponse) ProtoMessage() {}
 
 func (x *GetQualityContractRevisionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[194]
+	mi := &file_v1_data_quality_service_proto_msgTypes[200]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19342,7 +20042,7 @@ func (x *GetQualityContractRevisionResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetQualityContractRevisionResponse.ProtoReflect.Descriptor instead.
 func (*GetQualityContractRevisionResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{194}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{200}
 }
 
 func (x *GetQualityContractRevisionResponse) GetRevision() *QualityContractRevision {
@@ -19381,7 +20081,7 @@ type ExportQualityDataChunk struct {
 
 func (x *ExportQualityDataChunk) Reset() {
 	*x = ExportQualityDataChunk{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[195]
+	mi := &file_v1_data_quality_service_proto_msgTypes[201]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19393,7 +20093,7 @@ func (x *ExportQualityDataChunk) String() string {
 func (*ExportQualityDataChunk) ProtoMessage() {}
 
 func (x *ExportQualityDataChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[195]
+	mi := &file_v1_data_quality_service_proto_msgTypes[201]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19406,7 +20106,7 @@ func (x *ExportQualityDataChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportQualityDataChunk.ProtoReflect.Descriptor instead.
 func (*ExportQualityDataChunk) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{195}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{201}
 }
 
 func (x *ExportQualityDataChunk) GetData() []byte {
@@ -19462,7 +20162,7 @@ type ExportQualityExecutionsRequest struct {
 
 func (x *ExportQualityExecutionsRequest) Reset() {
 	*x = ExportQualityExecutionsRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[196]
+	mi := &file_v1_data_quality_service_proto_msgTypes[202]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19474,7 +20174,7 @@ func (x *ExportQualityExecutionsRequest) String() string {
 func (*ExportQualityExecutionsRequest) ProtoMessage() {}
 
 func (x *ExportQualityExecutionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[196]
+	mi := &file_v1_data_quality_service_proto_msgTypes[202]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19487,7 +20187,7 @@ func (x *ExportQualityExecutionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportQualityExecutionsRequest.ProtoReflect.Descriptor instead.
 func (*ExportQualityExecutionsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{196}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{202}
 }
 
 func (x *ExportQualityExecutionsRequest) GetParent() string {
@@ -19601,7 +20301,7 @@ type ExportQualityIssuesRequest struct {
 
 func (x *ExportQualityIssuesRequest) Reset() {
 	*x = ExportQualityIssuesRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[197]
+	mi := &file_v1_data_quality_service_proto_msgTypes[203]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19613,7 +20313,7 @@ func (x *ExportQualityIssuesRequest) String() string {
 func (*ExportQualityIssuesRequest) ProtoMessage() {}
 
 func (x *ExportQualityIssuesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[197]
+	mi := &file_v1_data_quality_service_proto_msgTypes[203]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19626,7 +20326,7 @@ func (x *ExportQualityIssuesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportQualityIssuesRequest.ProtoReflect.Descriptor instead.
 func (*ExportQualityIssuesRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{197}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{203}
 }
 
 func (x *ExportQualityIssuesRequest) GetParent() string {
@@ -19729,7 +20429,7 @@ type ExportQualityTargetsRequest struct {
 
 func (x *ExportQualityTargetsRequest) Reset() {
 	*x = ExportQualityTargetsRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[198]
+	mi := &file_v1_data_quality_service_proto_msgTypes[204]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19741,7 +20441,7 @@ func (x *ExportQualityTargetsRequest) String() string {
 func (*ExportQualityTargetsRequest) ProtoMessage() {}
 
 func (x *ExportQualityTargetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[198]
+	mi := &file_v1_data_quality_service_proto_msgTypes[204]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19754,7 +20454,7 @@ func (x *ExportQualityTargetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportQualityTargetsRequest.ProtoReflect.Descriptor instead.
 func (*ExportQualityTargetsRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{198}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{204}
 }
 
 func (x *ExportQualityTargetsRequest) GetParent() string {
@@ -19863,7 +20563,7 @@ type ExportQualityReportRequest struct {
 
 func (x *ExportQualityReportRequest) Reset() {
 	*x = ExportQualityReportRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[199]
+	mi := &file_v1_data_quality_service_proto_msgTypes[205]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19875,7 +20575,7 @@ func (x *ExportQualityReportRequest) String() string {
 func (*ExportQualityReportRequest) ProtoMessage() {}
 
 func (x *ExportQualityReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[199]
+	mi := &file_v1_data_quality_service_proto_msgTypes[205]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19888,7 +20588,7 @@ func (x *ExportQualityReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportQualityReportRequest.ProtoReflect.Descriptor instead.
 func (*ExportQualityReportRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{199}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{205}
 }
 
 func (x *ExportQualityReportRequest) GetParent() string {
@@ -19945,7 +20645,7 @@ type ExportQualityReportResponse struct {
 
 func (x *ExportQualityReportResponse) Reset() {
 	*x = ExportQualityReportResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[200]
+	mi := &file_v1_data_quality_service_proto_msgTypes[206]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19957,7 +20657,7 @@ func (x *ExportQualityReportResponse) String() string {
 func (*ExportQualityReportResponse) ProtoMessage() {}
 
 func (x *ExportQualityReportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[200]
+	mi := &file_v1_data_quality_service_proto_msgTypes[206]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19970,7 +20670,7 @@ func (x *ExportQualityReportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportQualityReportResponse.ProtoReflect.Descriptor instead.
 func (*ExportQualityReportResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{200}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{206}
 }
 
 func (x *ExportQualityReportResponse) GetFileName() string {
@@ -20015,7 +20715,7 @@ type QualityRuleTemplate struct {
 
 func (x *QualityRuleTemplate) Reset() {
 	*x = QualityRuleTemplate{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[201]
+	mi := &file_v1_data_quality_service_proto_msgTypes[207]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20027,7 +20727,7 @@ func (x *QualityRuleTemplate) String() string {
 func (*QualityRuleTemplate) ProtoMessage() {}
 
 func (x *QualityRuleTemplate) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[201]
+	mi := &file_v1_data_quality_service_proto_msgTypes[207]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20040,7 +20740,7 @@ func (x *QualityRuleTemplate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityRuleTemplate.ProtoReflect.Descriptor instead.
 func (*QualityRuleTemplate) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{201}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{207}
 }
 
 func (x *QualityRuleTemplate) GetName() string {
@@ -20134,7 +20834,7 @@ type ListQualityRuleTemplatesRequest struct {
 
 func (x *ListQualityRuleTemplatesRequest) Reset() {
 	*x = ListQualityRuleTemplatesRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[202]
+	mi := &file_v1_data_quality_service_proto_msgTypes[208]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20146,7 +20846,7 @@ func (x *ListQualityRuleTemplatesRequest) String() string {
 func (*ListQualityRuleTemplatesRequest) ProtoMessage() {}
 
 func (x *ListQualityRuleTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[202]
+	mi := &file_v1_data_quality_service_proto_msgTypes[208]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20159,7 +20859,7 @@ func (x *ListQualityRuleTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityRuleTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListQualityRuleTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{202}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{208}
 }
 
 func (x *ListQualityRuleTemplatesRequest) GetParent() string {
@@ -20193,7 +20893,7 @@ type ListQualityRuleTemplatesResponse struct {
 
 func (x *ListQualityRuleTemplatesResponse) Reset() {
 	*x = ListQualityRuleTemplatesResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[203]
+	mi := &file_v1_data_quality_service_proto_msgTypes[209]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20205,7 +20905,7 @@ func (x *ListQualityRuleTemplatesResponse) String() string {
 func (*ListQualityRuleTemplatesResponse) ProtoMessage() {}
 
 func (x *ListQualityRuleTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[203]
+	mi := &file_v1_data_quality_service_proto_msgTypes[209]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20218,7 +20918,7 @@ func (x *ListQualityRuleTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityRuleTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListQualityRuleTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{203}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{209}
 }
 
 func (x *ListQualityRuleTemplatesResponse) GetQualityRuleTemplates() []*QualityRuleTemplate {
@@ -20245,7 +20945,7 @@ type GetQualityRuleTemplateRequest struct {
 
 func (x *GetQualityRuleTemplateRequest) Reset() {
 	*x = GetQualityRuleTemplateRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[204]
+	mi := &file_v1_data_quality_service_proto_msgTypes[210]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20257,7 +20957,7 @@ func (x *GetQualityRuleTemplateRequest) String() string {
 func (*GetQualityRuleTemplateRequest) ProtoMessage() {}
 
 func (x *GetQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[204]
+	mi := &file_v1_data_quality_service_proto_msgTypes[210]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20270,7 +20970,7 @@ func (x *GetQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQualityRuleTemplateRequest.ProtoReflect.Descriptor instead.
 func (*GetQualityRuleTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{204}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{210}
 }
 
 func (x *GetQualityRuleTemplateRequest) GetName() string {
@@ -20292,7 +20992,7 @@ type CreateQualityRuleTemplateRequest struct {
 
 func (x *CreateQualityRuleTemplateRequest) Reset() {
 	*x = CreateQualityRuleTemplateRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[205]
+	mi := &file_v1_data_quality_service_proto_msgTypes[211]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20304,7 +21004,7 @@ func (x *CreateQualityRuleTemplateRequest) String() string {
 func (*CreateQualityRuleTemplateRequest) ProtoMessage() {}
 
 func (x *CreateQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[205]
+	mi := &file_v1_data_quality_service_proto_msgTypes[211]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20317,7 +21017,7 @@ func (x *CreateQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQualityRuleTemplateRequest.ProtoReflect.Descriptor instead.
 func (*CreateQualityRuleTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{205}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{211}
 }
 
 func (x *CreateQualityRuleTemplateRequest) GetParent() string {
@@ -20345,7 +21045,7 @@ type UpdateQualityRuleTemplateRequest struct {
 
 func (x *UpdateQualityRuleTemplateRequest) Reset() {
 	*x = UpdateQualityRuleTemplateRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[206]
+	mi := &file_v1_data_quality_service_proto_msgTypes[212]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20357,7 +21057,7 @@ func (x *UpdateQualityRuleTemplateRequest) String() string {
 func (*UpdateQualityRuleTemplateRequest) ProtoMessage() {}
 
 func (x *UpdateQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[206]
+	mi := &file_v1_data_quality_service_proto_msgTypes[212]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20370,7 +21070,7 @@ func (x *UpdateQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateQualityRuleTemplateRequest.ProtoReflect.Descriptor instead.
 func (*UpdateQualityRuleTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{206}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{212}
 }
 
 func (x *UpdateQualityRuleTemplateRequest) GetQualityRuleTemplate() *QualityRuleTemplate {
@@ -20397,7 +21097,7 @@ type DeleteQualityRuleTemplateRequest struct {
 
 func (x *DeleteQualityRuleTemplateRequest) Reset() {
 	*x = DeleteQualityRuleTemplateRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[207]
+	mi := &file_v1_data_quality_service_proto_msgTypes[213]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20409,7 +21109,7 @@ func (x *DeleteQualityRuleTemplateRequest) String() string {
 func (*DeleteQualityRuleTemplateRequest) ProtoMessage() {}
 
 func (x *DeleteQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[207]
+	mi := &file_v1_data_quality_service_proto_msgTypes[213]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20422,7 +21122,7 @@ func (x *DeleteQualityRuleTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteQualityRuleTemplateRequest.ProtoReflect.Descriptor instead.
 func (*DeleteQualityRuleTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{207}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{213}
 }
 
 func (x *DeleteQualityRuleTemplateRequest) GetName() string {
@@ -20458,7 +21158,7 @@ type QualityCodeTable struct {
 
 func (x *QualityCodeTable) Reset() {
 	*x = QualityCodeTable{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[208]
+	mi := &file_v1_data_quality_service_proto_msgTypes[214]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20470,7 +21170,7 @@ func (x *QualityCodeTable) String() string {
 func (*QualityCodeTable) ProtoMessage() {}
 
 func (x *QualityCodeTable) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[208]
+	mi := &file_v1_data_quality_service_proto_msgTypes[214]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20483,7 +21183,7 @@ func (x *QualityCodeTable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QualityCodeTable.ProtoReflect.Descriptor instead.
 func (*QualityCodeTable) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{208}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{214}
 }
 
 func (x *QualityCodeTable) GetName() string {
@@ -20563,7 +21263,7 @@ type ListQualityCodeTablesRequest struct {
 
 func (x *ListQualityCodeTablesRequest) Reset() {
 	*x = ListQualityCodeTablesRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[209]
+	mi := &file_v1_data_quality_service_proto_msgTypes[215]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20575,7 +21275,7 @@ func (x *ListQualityCodeTablesRequest) String() string {
 func (*ListQualityCodeTablesRequest) ProtoMessage() {}
 
 func (x *ListQualityCodeTablesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[209]
+	mi := &file_v1_data_quality_service_proto_msgTypes[215]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20588,7 +21288,7 @@ func (x *ListQualityCodeTablesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityCodeTablesRequest.ProtoReflect.Descriptor instead.
 func (*ListQualityCodeTablesRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{209}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{215}
 }
 
 func (x *ListQualityCodeTablesRequest) GetParent() string {
@@ -20622,7 +21322,7 @@ type ListQualityCodeTablesResponse struct {
 
 func (x *ListQualityCodeTablesResponse) Reset() {
 	*x = ListQualityCodeTablesResponse{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[210]
+	mi := &file_v1_data_quality_service_proto_msgTypes[216]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20634,7 +21334,7 @@ func (x *ListQualityCodeTablesResponse) String() string {
 func (*ListQualityCodeTablesResponse) ProtoMessage() {}
 
 func (x *ListQualityCodeTablesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[210]
+	mi := &file_v1_data_quality_service_proto_msgTypes[216]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20647,7 +21347,7 @@ func (x *ListQualityCodeTablesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQualityCodeTablesResponse.ProtoReflect.Descriptor instead.
 func (*ListQualityCodeTablesResponse) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{210}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{216}
 }
 
 func (x *ListQualityCodeTablesResponse) GetQualityCodeTables() []*QualityCodeTable {
@@ -20674,7 +21374,7 @@ type GetQualityCodeTableRequest struct {
 
 func (x *GetQualityCodeTableRequest) Reset() {
 	*x = GetQualityCodeTableRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[211]
+	mi := &file_v1_data_quality_service_proto_msgTypes[217]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20686,7 +21386,7 @@ func (x *GetQualityCodeTableRequest) String() string {
 func (*GetQualityCodeTableRequest) ProtoMessage() {}
 
 func (x *GetQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[211]
+	mi := &file_v1_data_quality_service_proto_msgTypes[217]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20699,7 +21399,7 @@ func (x *GetQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetQualityCodeTableRequest.ProtoReflect.Descriptor instead.
 func (*GetQualityCodeTableRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{211}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{217}
 }
 
 func (x *GetQualityCodeTableRequest) GetName() string {
@@ -20721,7 +21421,7 @@ type CreateQualityCodeTableRequest struct {
 
 func (x *CreateQualityCodeTableRequest) Reset() {
 	*x = CreateQualityCodeTableRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[212]
+	mi := &file_v1_data_quality_service_proto_msgTypes[218]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20733,7 +21433,7 @@ func (x *CreateQualityCodeTableRequest) String() string {
 func (*CreateQualityCodeTableRequest) ProtoMessage() {}
 
 func (x *CreateQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[212]
+	mi := &file_v1_data_quality_service_proto_msgTypes[218]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20746,7 +21446,7 @@ func (x *CreateQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateQualityCodeTableRequest.ProtoReflect.Descriptor instead.
 func (*CreateQualityCodeTableRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{212}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{218}
 }
 
 func (x *CreateQualityCodeTableRequest) GetParent() string {
@@ -20774,7 +21474,7 @@ type UpdateQualityCodeTableRequest struct {
 
 func (x *UpdateQualityCodeTableRequest) Reset() {
 	*x = UpdateQualityCodeTableRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[213]
+	mi := &file_v1_data_quality_service_proto_msgTypes[219]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20786,7 +21486,7 @@ func (x *UpdateQualityCodeTableRequest) String() string {
 func (*UpdateQualityCodeTableRequest) ProtoMessage() {}
 
 func (x *UpdateQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[213]
+	mi := &file_v1_data_quality_service_proto_msgTypes[219]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20799,7 +21499,7 @@ func (x *UpdateQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateQualityCodeTableRequest.ProtoReflect.Descriptor instead.
 func (*UpdateQualityCodeTableRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{213}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{219}
 }
 
 func (x *UpdateQualityCodeTableRequest) GetQualityCodeTable() *QualityCodeTable {
@@ -20826,7 +21526,7 @@ type DeleteQualityCodeTableRequest struct {
 
 func (x *DeleteQualityCodeTableRequest) Reset() {
 	*x = DeleteQualityCodeTableRequest{}
-	mi := &file_v1_data_quality_service_proto_msgTypes[214]
+	mi := &file_v1_data_quality_service_proto_msgTypes[220]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20838,7 +21538,7 @@ func (x *DeleteQualityCodeTableRequest) String() string {
 func (*DeleteQualityCodeTableRequest) ProtoMessage() {}
 
 func (x *DeleteQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_v1_data_quality_service_proto_msgTypes[214]
+	mi := &file_v1_data_quality_service_proto_msgTypes[220]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20851,7 +21551,7 @@ func (x *DeleteQualityCodeTableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteQualityCodeTableRequest.ProtoReflect.Descriptor instead.
 func (*DeleteQualityCodeTableRequest) Descriptor() ([]byte, []int) {
-	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{214}
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{220}
 }
 
 func (x *DeleteQualityCodeTableRequest) GetName() string {
@@ -22238,7 +22938,57 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\bDecision\x12\x18\n" +
 	"\x14DECISION_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10DECISION_APPROVE\x10\x01\x12\x13\n" +
-	"\x0fDECISION_REJECT\x10\x02\"d\n" +
+	"\x0fDECISION_REJECT\x10\x02\"\x93\x05\n" +
+	"\rQualityMemory\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x125\n" +
+	"\x04kind\x18\x02 \x01(\x0e2!.metaxisdata.v1.QualityMemoryKindR\x04kind\x12\x18\n" +
+	"\asubject\x18\x03 \x01(\tR\asubject\x12\x1c\n" +
+	"\tstatement\x18\x04 \x01(\tR\tstatement\x12;\n" +
+	"\x06source\x18\x05 \x01(\x0e2#.metaxisdata.v1.QualityMemorySourceR\x06source\x12;\n" +
+	"\x06status\x18\x06 \x01(\x0e2#.metaxisdata.v1.QualityMemoryStatusR\x06status\x12H\n" +
+	"\bevidence\x18\a \x03(\v2,.metaxisdata.v1.QualityInvestigationEvidenceR\bevidence\x12\x1d\n" +
+	"\n" +
+	"domain_ref\x18\b \x01(\tR\tdomainRef\x129\n" +
+	"\n" +
+	"expires_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12!\n" +
+	"\fconfirmed_by\x18\n" +
+	" \x01(\tR\vconfirmedBy\x12=\n" +
+	"\fconfirmed_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\vconfirmedAt\x12#\n" +
+	"\rsuperseded_by\x18\f \x01(\tR\fsupersededBy\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\r \x01(\tR\tcreatedBy\x12;\n" +
+	"\vcreate_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"createTime\"\xdb\x02\n" +
+	"\x1aCreateQualityMemoryRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12:\n" +
+	"\x04kind\x18\x02 \x01(\x0e2!.metaxisdata.v1.QualityMemoryKindB\x03\xe0A\x02R\x04kind\x12\x1d\n" +
+	"\asubject\x18\x03 \x01(\tB\x03\xe0A\x02R\asubject\x12!\n" +
+	"\tstatement\x18\x04 \x01(\tB\x03\xe0A\x02R\tstatement\x12H\n" +
+	"\bevidence\x18\x05 \x03(\v2,.metaxisdata.v1.QualityInvestigationEvidenceR\bevidence\x12\x1d\n" +
+	"\n" +
+	"domain_ref\x18\x06 \x01(\tR\tdomainRef\x129\n" +
+	"\n" +
+	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x83\x02\n" +
+	"\x1aListQualityMemoriesRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x125\n" +
+	"\x04kind\x18\x02 \x01(\x0e2!.metaxisdata.v1.QualityMemoryKindR\x04kind\x12;\n" +
+	"\x06status\x18\x03 \x01(\x0e2#.metaxisdata.v1.QualityMemoryStatusR\x06status\x12\x18\n" +
+	"\asubject\x18\x04 \x01(\tR\asubject\x12\x1b\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\"\x8f\x01\n" +
+	"\x1bListQualityMemoriesResponse\x12H\n" +
+	"\x10quality_memories\x18\x01 \x03(\v2\x1d.metaxisdata.v1.QualityMemoryR\x0fqualityMemories\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xde\x01\n" +
+	"\x1bConfirmQualityMemoryRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12U\n" +
+	"\bdecision\x18\x02 \x01(\x0e24.metaxisdata.v1.ConfirmQualityMemoryRequest.DecisionB\x03\xe0A\x02R\bdecision\"O\n" +
+	"\bDecision\x12\x18\n" +
+	"\x14DECISION_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10DECISION_CONFIRM\x10\x01\x12\x13\n" +
+	"\x0fDECISION_REJECT\x10\x02\"5\n" +
+	"\x1aDeleteQualityMemoryRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"d\n" +
 	"\x1cQualityInvestigationEvidence\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1c\n" +
 	"\treference\x18\x02 \x01(\tR\treference\x12\x12\n" +
@@ -22863,7 +23613,24 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"0QUALITY_CHANGE_REJECTION_REASON_COVERED_UPSTREAM\x10\x04\x120\n" +
 	",QUALITY_CHANGE_REJECTION_REASON_WRONG_COLUMN\x10\x05\x12)\n" +
 	"%QUALITY_CHANGE_REJECTION_REASON_DEFER\x10\x06\x12)\n" +
-	"%QUALITY_CHANGE_REJECTION_REASON_OTHER\x10\a*\xcd\x01\n" +
+	"%QUALITY_CHANGE_REJECTION_REASON_OTHER\x10\a*\x9d\x01\n" +
+	"\x11QualityMemoryKind\x12#\n" +
+	"\x1fQUALITY_MEMORY_KIND_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eQUALITY_MEMORY_KIND_ASSET_FACT\x10\x01\x12 \n" +
+	"\x1cQUALITY_MEMORY_KIND_DECISION\x10\x02\x12\x1d\n" +
+	"\x19QUALITY_MEMORY_KIND_EVENT\x10\x03*\xf2\x01\n" +
+	"\x13QualityMemoryStatus\x12%\n" +
+	"!QUALITY_MEMORY_STATUS_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eQUALITY_MEMORY_STATUS_PROPOSED\x10\x01\x12#\n" +
+	"\x1fQUALITY_MEMORY_STATUS_CONFIRMED\x10\x02\x12\"\n" +
+	"\x1eQUALITY_MEMORY_STATUS_REJECTED\x10\x03\x12$\n" +
+	" QUALITY_MEMORY_STATUS_SUPERSEDED\x10\x04\x12!\n" +
+	"\x1dQUALITY_MEMORY_STATUS_EXPIRED\x10\x05*\xa0\x01\n" +
+	"\x13QualityMemorySource\x12%\n" +
+	"!QUALITY_MEMORY_SOURCE_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bQUALITY_MEMORY_SOURCE_AGENT\x10\x01\x12\x1f\n" +
+	"\x1bQUALITY_MEMORY_SOURCE_HUMAN\x10\x02\x12 \n" +
+	"\x1cQUALITY_MEMORY_SOURCE_SYSTEM\x10\x03*\xcd\x01\n" +
 	"\x1aQualityInvestigationStatus\x12,\n" +
 	"(QUALITY_INVESTIGATION_STATUS_UNSPECIFIED\x10\x00\x12*\n" +
 	"&QUALITY_INVESTIGATION_STATUS_CONCLUDED\x10\x01\x12'\n" +
@@ -22888,7 +23655,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"#QUALITY_CONTRACT_CHANGE_KIND_INTENT\x10\x01\x12%\n" +
 	"!QUALITY_CONTRACT_CHANGE_KIND_PLAN\x10\x02\x12'\n" +
 	"#QUALITY_CONTRACT_CHANGE_KIND_CHECKS\x10\x03\x12%\n" +
-	"!QUALITY_CONTRACT_CHANGE_KIND_BOTH\x10\x042\xa5\x81\x01\n" +
+	"!QUALITY_CONTRACT_CHANGE_KIND_BOTH\x10\x042\xb5\x87\x01\n" +
 	"\x12DataQualityService\x12\xc4\x01\n" +
 	"\x10ListQualityRules\x12'.metaxisdata.v1.ListQualityRulesRequest\x1a(.metaxisdata.v1.ListQualityRulesResponse\"]\xdaA\x06parent\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02(\x12&/v1/{parent=workspaces/*}/qualityRules\x12\xb0\x01\n" +
 	"\x0eGetQualityRule\x12%.metaxisdata.v1.GetQualityRuleRequest\x1a\x1b.metaxisdata.v1.QualityRule\"Z\xdaA\x04name\x8a\xea0!metaxisdata.dataQuality.rules.get\x82\xd3\xe4\x93\x02(\x12&/v1/{name=workspaces/*/qualityRules/*}\x12\xca\x01\n" +
@@ -22954,7 +23721,11 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x1aCreateQualityInvestigation\x121.metaxisdata.v1.CreateQualityInvestigationRequest\x1a$.metaxisdata.v1.QualityInvestigation\"f\x8a\xea0$metaxisdata.dataQuality.plans.update\x98\xea0\x01\x82\xd3\xe4\x93\x024:\x01*\"//v1/{parent=workspaces/*}/qualityInvestigations\x12\xce\x01\n" +
 	"\x17GetQualityInvestigation\x12..metaxisdata.v1.GetQualityInvestigationRequest\x1a$.metaxisdata.v1.QualityInvestigation\"]\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x021\x12//v1/{name=workspaces/*/qualityInvestigations/*}\x12\xdf\x01\n" +
 	"\x19ListQualityInvestigations\x120.metaxisdata.v1.ListQualityInvestigationsRequest\x1a1.metaxisdata.v1.ListQualityInvestigationsResponse\"]\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x021\x12//v1/{parent=workspaces/*}/qualityInvestigations\x12\xc9\x01\n" +
-	"\x16GetQualityActionPolicy\x12-.metaxisdata.v1.GetQualityActionPolicyRequest\x1a#.metaxisdata.v1.QualityActionPolicy\"[\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02/\x12-/v1/{parent=workspaces/*}/qualityActionPolicy\x12\xc9\x01\n" +
+	"\x16GetQualityActionPolicy\x12-.metaxisdata.v1.GetQualityActionPolicyRequest\x1a#.metaxisdata.v1.QualityActionPolicy\"[\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02/\x12-/v1/{parent=workspaces/*}/qualityActionPolicy\x12\xc2\x01\n" +
+	"\x13CreateQualityMemory\x12*.metaxisdata.v1.CreateQualityMemoryRequest\x1a\x1d.metaxisdata.v1.QualityMemory\"`\x8a\xea0$metaxisdata.dataQuality.plans.update\x98\xea0\x01\x82\xd3\xe4\x93\x02.:\x01*\")/v1/{parent=workspaces/*}/qualityMemories\x12\xc7\x01\n" +
+	"\x13ListQualityMemories\x12*.metaxisdata.v1.ListQualityMemoriesRequest\x1a+.metaxisdata.v1.ListQualityMemoriesResponse\"W\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02+\x12)/v1/{parent=workspaces/*}/qualityMemories\x12\xcc\x01\n" +
+	"\x14ConfirmQualityMemory\x12+.metaxisdata.v1.ConfirmQualityMemoryRequest\x1a\x1d.metaxisdata.v1.QualityMemory\"h\x8a\xea0$metaxisdata.dataQuality.rules.update\x98\xea0\x01\x82\xd3\xe4\x93\x026:\x01*\"1/v1/{name=workspaces/*/qualityMemories/*}:confirm\x12\xaf\x01\n" +
+	"\x13DeleteQualityMemory\x12*.metaxisdata.v1.DeleteQualityMemoryRequest\x1a\x16.google.protobuf.Empty\"T\x8a\xea0\x1bmetaxisdata.settings.update\x98\xea0\x01\x82\xd3\xe4\x93\x02+*)/v1/{name=workspaces/*/qualityMemories/*}\x12\xc9\x01\n" +
 	"\x10StageQualityPlan\x12'.metaxisdata.v1.StageQualityPlanRequest\x1a\x1f.metaxisdata.v1.QualityContract\"k\x8a\xea0$metaxisdata.dataQuality.plans.update\x98\xea0\x01\x82\xd3\xe4\x93\x029:\x01*\"4/v1/{parent=workspaces/*}/qualityContracts:stagePlan\x12\xdd\x01\n" +
 	"\x1aCreateQualityChangeRequest\x121.metaxisdata.v1.CreateQualityChangeRequestRequest\x1a$.metaxisdata.v1.QualityChangeRequest\"f\x8a\xea0$metaxisdata.dataQuality.plans.update\x98\xea0\x01\x82\xd3\xe4\x93\x024:\x01*\"//v1/{parent=workspaces/*}/qualityChangeRequests\x12\xce\x01\n" +
 	"\x17GetQualityChangeRequest\x12..metaxisdata.v1.GetQualityChangeRequestRequest\x1a$.metaxisdata.v1.QualityChangeRequest\"]\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x021\x12//v1/{name=workspaces/*/qualityChangeRequests/*}\x12\xdf\x01\n" +
@@ -22980,8 +23751,8 @@ func file_v1_data_quality_service_proto_rawDescGZIP() []byte {
 	return file_v1_data_quality_service_proto_rawDescData
 }
 
-var file_v1_data_quality_service_proto_enumTypes = make([]protoimpl.EnumInfo, 47)
-var file_v1_data_quality_service_proto_msgTypes = make([]protoimpl.MessageInfo, 215)
+var file_v1_data_quality_service_proto_enumTypes = make([]protoimpl.EnumInfo, 51)
+var file_v1_data_quality_service_proto_msgTypes = make([]protoimpl.MessageInfo, 221)
 var file_v1_data_quality_service_proto_goTypes = []any{
 	(QualityRuleType)(0),                               // 0: metaxisdata.v1.QualityRuleType
 	(QualityStandardCode)(0),                           // 1: metaxisdata.v1.QualityStandardCode
@@ -23023,768 +23794,800 @@ var file_v1_data_quality_service_proto_goTypes = []any{
 	(QualityChangeRequestSource)(0),                    // 37: metaxisdata.v1.QualityChangeRequestSource
 	(QualityChangeRequestItemKind)(0),                  // 38: metaxisdata.v1.QualityChangeRequestItemKind
 	(QualityChangeRejectionReason)(0),                  // 39: metaxisdata.v1.QualityChangeRejectionReason
-	(QualityInvestigationStatus)(0),                    // 40: metaxisdata.v1.QualityInvestigationStatus
-	(QualityInvestigationTrigger)(0),                   // 41: metaxisdata.v1.QualityInvestigationTrigger
-	(QualityInvestigationVerdict)(0),                   // 42: metaxisdata.v1.QualityInvestigationVerdict
-	(QualityContractChangeKind)(0),                     // 43: metaxisdata.v1.QualityContractChangeKind
-	(QualityPlanChange_Kind)(0),                        // 44: metaxisdata.v1.QualityPlanChange.Kind
-	(QualityChangeRequestItemResult_Status)(0),         // 45: metaxisdata.v1.QualityChangeRequestItemResult.Status
-	(DecideQualityChangeRequestRequest_Decision)(0),    // 46: metaxisdata.v1.DecideQualityChangeRequestRequest.Decision
-	(*QualityRule)(nil),                                // 47: metaxisdata.v1.QualityRule
-	(*QualityTarget)(nil),                              // 48: metaxisdata.v1.QualityTarget
-	(*QualityTargetPath)(nil),                          // 49: metaxisdata.v1.QualityTargetPath
-	(*QualityRuleConfig)(nil),                          // 50: metaxisdata.v1.QualityRuleConfig
-	(*QualityRuleSampling)(nil),                        // 51: metaxisdata.v1.QualityRuleSampling
-	(*RowCountConfig)(nil),                             // 52: metaxisdata.v1.RowCountConfig
-	(*RowCountChangeConfig)(nil),                       // 53: metaxisdata.v1.RowCountChangeConfig
-	(*NullPercentConfig)(nil),                          // 54: metaxisdata.v1.NullPercentConfig
-	(*UniqueConfig)(nil),                               // 55: metaxisdata.v1.UniqueConfig
-	(*UniqueCombinationConfig)(nil),                    // 56: metaxisdata.v1.UniqueCombinationConfig
-	(*AcceptedValuesConfig)(nil),                       // 57: metaxisdata.v1.AcceptedValuesConfig
-	(*AcceptedValuesQuery)(nil),                        // 58: metaxisdata.v1.AcceptedValuesQuery
-	(*RangeConfig)(nil),                                // 59: metaxisdata.v1.RangeConfig
-	(*RegexConfig)(nil),                                // 60: metaxisdata.v1.RegexConfig
-	(*StringLengthConfig)(nil),                         // 61: metaxisdata.v1.StringLengthConfig
-	(*ReferentialIntegrityConfig)(nil),                 // 62: metaxisdata.v1.ReferentialIntegrityConfig
-	(*CrossColumnConfig)(nil),                          // 63: metaxisdata.v1.CrossColumnConfig
-	(*FreshnessConfig)(nil),                            // 64: metaxisdata.v1.FreshnessConfig
-	(*CustomSQLConfig)(nil),                            // 65: metaxisdata.v1.CustomSQLConfig
-	(*CelExpressionConfig)(nil),                        // 66: metaxisdata.v1.CelExpressionConfig
-	(*StandardCodeConfig)(nil),                         // 67: metaxisdata.v1.StandardCodeConfig
-	(*SegmentCheckConfig)(nil),                         // 68: metaxisdata.v1.SegmentCheckConfig
-	(*SchemaDriftColumn)(nil),                          // 69: metaxisdata.v1.SchemaDriftColumn
-	(*SchemaDriftConfig)(nil),                          // 70: metaxisdata.v1.SchemaDriftConfig
-	(*GroupCheckConfig)(nil),                           // 71: metaxisdata.v1.GroupCheckConfig
-	(*AggregateConfig)(nil),                            // 72: metaxisdata.v1.AggregateConfig
-	(*CrossTableReference)(nil),                        // 73: metaxisdata.v1.CrossTableReference
-	(*CrossTableConfig)(nil),                           // 74: metaxisdata.v1.CrossTableConfig
-	(*QualityFilter)(nil),                              // 75: metaxisdata.v1.QualityFilter
-	(*QualityFilterClause)(nil),                        // 76: metaxisdata.v1.QualityFilterClause
-	(*QualityThresholds)(nil),                          // 77: metaxisdata.v1.QualityThresholds
-	(*QualityStatusCounts)(nil),                        // 78: metaxisdata.v1.QualityStatusCounts
-	(*QualityExecution)(nil),                           // 79: metaxisdata.v1.QualityExecution
-	(*QualityExecutionSummary)(nil),                    // 80: metaxisdata.v1.QualityExecutionSummary
-	(*QualityRun)(nil),                                 // 81: metaxisdata.v1.QualityRun
-	(*ListQualityRunsRequest)(nil),                     // 82: metaxisdata.v1.ListQualityRunsRequest
-	(*ListQualityRunsResponse)(nil),                    // 83: metaxisdata.v1.ListQualityRunsResponse
-	(*GetQualityRunRequest)(nil),                       // 84: metaxisdata.v1.GetQualityRunRequest
-	(*QualityIssue)(nil),                               // 85: metaxisdata.v1.QualityIssue
-	(*ProfileValue)(nil),                               // 86: metaxisdata.v1.ProfileValue
-	(*ColumnProfileStats)(nil),                         // 87: metaxisdata.v1.ColumnProfileStats
-	(*SemanticLabelEvidence)(nil),                      // 88: metaxisdata.v1.SemanticLabelEvidence
-	(*QualityRuleDraftConfig)(nil),                     // 89: metaxisdata.v1.QualityRuleDraftConfig
-	(*SemanticLabelSuggestion)(nil),                    // 90: metaxisdata.v1.SemanticLabelSuggestion
-	(*QualitySuggestionPayload)(nil),                   // 91: metaxisdata.v1.QualitySuggestionPayload
-	(*QualitySuggestion)(nil),                          // 92: metaxisdata.v1.QualitySuggestion
-	(*QualitySuggestionQueueSummary)(nil),              // 93: metaxisdata.v1.QualitySuggestionQueueSummary
-	(*ColumnProfile)(nil),                              // 94: metaxisdata.v1.ColumnProfile
-	(*ColumnSemanticLabel)(nil),                        // 95: metaxisdata.v1.ColumnSemanticLabel
-	(*FailureSample)(nil),                              // 96: metaxisdata.v1.FailureSample
-	(*SegmentObservation)(nil),                         // 97: metaxisdata.v1.SegmentObservation
-	(*SegmentRecord)(nil),                              // 98: metaxisdata.v1.SegmentRecord
-	(*ColumnValue)(nil),                                // 99: metaxisdata.v1.ColumnValue
-	(*ListQualityRulesRequest)(nil),                    // 100: metaxisdata.v1.ListQualityRulesRequest
-	(*ListQualityRulesResponse)(nil),                   // 101: metaxisdata.v1.ListQualityRulesResponse
-	(*GetQualityRuleRequest)(nil),                      // 102: metaxisdata.v1.GetQualityRuleRequest
-	(*CreateQualityRuleRequest)(nil),                   // 103: metaxisdata.v1.CreateQualityRuleRequest
-	(*BatchCreateQualityRulesRequest)(nil),             // 104: metaxisdata.v1.BatchCreateQualityRulesRequest
-	(*BatchCreateQualityRulesResponse)(nil),            // 105: metaxisdata.v1.BatchCreateQualityRulesResponse
-	(*BatchCreateQualityRuleResult)(nil),               // 106: metaxisdata.v1.BatchCreateQualityRuleResult
-	(*BatchUpdateQualityRulesRequest)(nil),             // 107: metaxisdata.v1.BatchUpdateQualityRulesRequest
-	(*BatchUpdateQualityRulesResponse)(nil),            // 108: metaxisdata.v1.BatchUpdateQualityRulesResponse
-	(*BatchUpdateQualityRuleResult)(nil),               // 109: metaxisdata.v1.BatchUpdateQualityRuleResult
-	(*UpdateQualityRuleRequest)(nil),                   // 110: metaxisdata.v1.UpdateQualityRuleRequest
-	(*DeleteQualityRuleRequest)(nil),                   // 111: metaxisdata.v1.DeleteQualityRuleRequest
-	(*PreviewQualityRuleRequest)(nil),                  // 112: metaxisdata.v1.PreviewQualityRuleRequest
-	(*PreviewQualityRuleResponse)(nil),                 // 113: metaxisdata.v1.PreviewQualityRuleResponse
-	(*RunQualityRulesRequest)(nil),                     // 114: metaxisdata.v1.RunQualityRulesRequest
-	(*RunQualityRulesResponse)(nil),                    // 115: metaxisdata.v1.RunQualityRulesResponse
-	(*ListQualityExecutionsRequest)(nil),               // 116: metaxisdata.v1.ListQualityExecutionsRequest
-	(*ListQualityExecutionsResponse)(nil),              // 117: metaxisdata.v1.ListQualityExecutionsResponse
-	(*GetQualityExecutionRequest)(nil),                 // 118: metaxisdata.v1.GetQualityExecutionRequest
-	(*GetQualityRuleTrendRequest)(nil),                 // 119: metaxisdata.v1.GetQualityRuleTrendRequest
-	(*QualityRuleTrend)(nil),                           // 120: metaxisdata.v1.QualityRuleTrend
-	(*QualityRuleTrendPoint)(nil),                      // 121: metaxisdata.v1.QualityRuleTrendPoint
-	(*QualityThresholdSuggestion)(nil),                 // 122: metaxisdata.v1.QualityThresholdSuggestion
-	(*ListQualityIssuesRequest)(nil),                   // 123: metaxisdata.v1.ListQualityIssuesRequest
-	(*ListQualityIssuesResponse)(nil),                  // 124: metaxisdata.v1.ListQualityIssuesResponse
-	(*GetQualityIssueRequest)(nil),                     // 125: metaxisdata.v1.GetQualityIssueRequest
-	(*UpdateQualityIssueRequest)(nil),                  // 126: metaxisdata.v1.UpdateQualityIssueRequest
-	(*ListQualitySuggestionsRequest)(nil),              // 127: metaxisdata.v1.ListQualitySuggestionsRequest
-	(*ListQualitySuggestionsResponse)(nil),             // 128: metaxisdata.v1.ListQualitySuggestionsResponse
-	(*UpdateQualitySuggestionRequest)(nil),             // 129: metaxisdata.v1.UpdateQualitySuggestionRequest
-	(*GetQualitySuggestionRequest)(nil),                // 130: metaxisdata.v1.GetQualitySuggestionRequest
-	(*BatchUpdateQualitySuggestionsRequest)(nil),       // 131: metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
-	(*BatchUpdateQualitySuggestionsResponse)(nil),      // 132: metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
-	(*BatchUpdateQualitySuggestionResult)(nil),         // 133: metaxisdata.v1.BatchUpdateQualitySuggestionResult
-	(*QualitySuggestionJobTarget)(nil),                 // 134: metaxisdata.v1.QualitySuggestionJobTarget
-	(*QualityLLMDiagnostic)(nil),                       // 135: metaxisdata.v1.QualityLLMDiagnostic
-	(*QualitySuggestionJob)(nil),                       // 136: metaxisdata.v1.QualitySuggestionJob
-	(*CreateQualitySuggestionJobRequest)(nil),          // 137: metaxisdata.v1.CreateQualitySuggestionJobRequest
-	(*GetQualitySuggestionJobRequest)(nil),             // 138: metaxisdata.v1.GetQualitySuggestionJobRequest
-	(*ListQualitySuggestionJobsRequest)(nil),           // 139: metaxisdata.v1.ListQualitySuggestionJobsRequest
-	(*ListQualitySuggestionJobsResponse)(nil),          // 140: metaxisdata.v1.ListQualitySuggestionJobsResponse
-	(*CancelQualitySuggestionJobRequest)(nil),          // 141: metaxisdata.v1.CancelQualitySuggestionJobRequest
-	(*GetQualitySuggestionJobTargetDebugRequest)(nil),  // 142: metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
-	(*GetQualitySuggestionJobTargetDebugResponse)(nil), // 143: metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
-	(*ListColumnProfilesRequest)(nil),                  // 144: metaxisdata.v1.ListColumnProfilesRequest
-	(*ListColumnProfilesResponse)(nil),                 // 145: metaxisdata.v1.ListColumnProfilesResponse
-	(*ListColumnLabelsRequest)(nil),                    // 146: metaxisdata.v1.ListColumnLabelsRequest
-	(*ListColumnLabelsResponse)(nil),                   // 147: metaxisdata.v1.ListColumnLabelsResponse
-	(*UpdateColumnLabelRequest)(nil),                   // 148: metaxisdata.v1.UpdateColumnLabelRequest
-	(*UpdateColumnLabelResponse)(nil),                  // 149: metaxisdata.v1.UpdateColumnLabelResponse
-	(*ProfileColumnsRequest)(nil),                      // 150: metaxisdata.v1.ProfileColumnsRequest
-	(*ProfileColumnsResponse)(nil),                     // 151: metaxisdata.v1.ProfileColumnsResponse
-	(*SuggestQualityRuleRequest)(nil),                  // 152: metaxisdata.v1.SuggestQualityRuleRequest
-	(*SuggestQualityRuleResponse)(nil),                 // 153: metaxisdata.v1.SuggestQualityRuleResponse
-	(*SuggestColumnLabelsRequest)(nil),                 // 154: metaxisdata.v1.SuggestColumnLabelsRequest
-	(*SuggestColumnLabelsResponse)(nil),                // 155: metaxisdata.v1.SuggestColumnLabelsResponse
-	(*RecommendQualityChecksRequest)(nil),              // 156: metaxisdata.v1.RecommendQualityChecksRequest
-	(*RecommendQualityChecksResponse)(nil),             // 157: metaxisdata.v1.RecommendQualityChecksResponse
-	(*ExplainQualityExecutionRequest)(nil),             // 158: metaxisdata.v1.ExplainQualityExecutionRequest
-	(*ExplainQualityExecutionResponse)(nil),            // 159: metaxisdata.v1.ExplainQualityExecutionResponse
-	(*GetQualityOverviewRequest)(nil),                  // 160: metaxisdata.v1.GetQualityOverviewRequest
-	(*GetQualityLLMUsageRequest)(nil),                  // 161: metaxisdata.v1.GetQualityLLMUsageRequest
-	(*QualityLLMUsage)(nil),                            // 162: metaxisdata.v1.QualityLLMUsage
-	(*QualityOverview)(nil),                            // 163: metaxisdata.v1.QualityOverview
-	(*QualityCoverageBreakdown)(nil),                   // 164: metaxisdata.v1.QualityCoverageBreakdown
-	(*QualityDimensionScore)(nil),                      // 165: metaxisdata.v1.QualityDimensionScore
-	(*QualityOwnerScore)(nil),                          // 166: metaxisdata.v1.QualityOwnerScore
-	(*QualityTrendPoint)(nil),                          // 167: metaxisdata.v1.QualityTrendPoint
-	(*QualityTargetKey)(nil),                           // 168: metaxisdata.v1.QualityTargetKey
-	(*ListQualityTargetsRequest)(nil),                  // 169: metaxisdata.v1.ListQualityTargetsRequest
-	(*ListQualityTargetsResponse)(nil),                 // 170: metaxisdata.v1.ListQualityTargetsResponse
-	(*QualityTargetSchedule)(nil),                      // 171: metaxisdata.v1.QualityTargetSchedule
-	(*QualityTargetSummary)(nil),                       // 172: metaxisdata.v1.QualityTargetSummary
-	(*QualityImpactAsset)(nil),                         // 173: metaxisdata.v1.QualityImpactAsset
-	(*QualityRootCauseCandidate)(nil),                  // 174: metaxisdata.v1.QualityRootCauseCandidate
-	(*GetQualityTargetImpactRequest)(nil),              // 175: metaxisdata.v1.GetQualityTargetImpactRequest
-	(*GetQualityTargetImpactResponse)(nil),             // 176: metaxisdata.v1.GetQualityTargetImpactResponse
-	(*QualityConsumptionGap)(nil),                      // 177: metaxisdata.v1.QualityConsumptionGap
-	(*GetQualityConsumptionCoverageRequest)(nil),       // 178: metaxisdata.v1.GetQualityConsumptionCoverageRequest
-	(*GetQualityConsumptionCoverageResponse)(nil),      // 179: metaxisdata.v1.GetQualityConsumptionCoverageResponse
-	(*UpdateQualityTargetScheduleRequest)(nil),         // 180: metaxisdata.v1.UpdateQualityTargetScheduleRequest
-	(*GetQualityTargetScheduleRequest)(nil),            // 181: metaxisdata.v1.GetQualityTargetScheduleRequest
-	(*GetQualityTargetRequest)(nil),                    // 182: metaxisdata.v1.GetQualityTargetRequest
-	(*GetQualityTargetResponse)(nil),                   // 183: metaxisdata.v1.GetQualityTargetResponse
-	(*QualityTargetColumn)(nil),                        // 184: metaxisdata.v1.QualityTargetColumn
-	(*QualityRuleHistory)(nil),                         // 185: metaxisdata.v1.QualityRuleHistory
-	(*AcknowledgeQualityTargetSchemaRequest)(nil),      // 186: metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
-	(*AcknowledgeQualityTargetSchemaResponse)(nil),     // 187: metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
-	(*QualityContract)(nil),                            // 188: metaxisdata.v1.QualityContract
-	(*QualityPlanChange)(nil),                          // 189: metaxisdata.v1.QualityPlanChange
-	(*QualityContractDiff)(nil),                        // 190: metaxisdata.v1.QualityContractDiff
-	(*QualityContractSettings)(nil),                    // 191: metaxisdata.v1.QualityContractSettings
-	(*QualityContractIntentStatement)(nil),             // 192: metaxisdata.v1.QualityContractIntentStatement
-	(*QualityContractIntentExemption)(nil),             // 193: metaxisdata.v1.QualityContractIntentExemption
-	(*QualityContractIntent)(nil),                      // 194: metaxisdata.v1.QualityContractIntent
-	(*QualityContractChangeSummary)(nil),               // 195: metaxisdata.v1.QualityContractChangeSummary
-	(*QualityCoverageRequirement)(nil),                 // 196: metaxisdata.v1.QualityCoverageRequirement
-	(*QualityPlanCoverage)(nil),                        // 197: metaxisdata.v1.QualityPlanCoverage
-	(*QualityPlanCadence)(nil),                         // 198: metaxisdata.v1.QualityPlanCadence
-	(*QualityPlan)(nil),                                // 199: metaxisdata.v1.QualityPlan
-	(*ListQualityPlansRequest)(nil),                    // 200: metaxisdata.v1.ListQualityPlansRequest
-	(*ListQualityPlansResponse)(nil),                   // 201: metaxisdata.v1.ListQualityPlansResponse
-	(*QualityChangeRequestItem)(nil),                   // 202: metaxisdata.v1.QualityChangeRequestItem
-	(*QualityChangeRequestItemResult)(nil),             // 203: metaxisdata.v1.QualityChangeRequestItemResult
-	(*QualityChangeRequest)(nil),                       // 204: metaxisdata.v1.QualityChangeRequest
-	(*StageQualityPlanRequest)(nil),                    // 205: metaxisdata.v1.StageQualityPlanRequest
-	(*CreateQualityChangeRequestRequest)(nil),          // 206: metaxisdata.v1.CreateQualityChangeRequestRequest
-	(*GetQualityChangeRequestRequest)(nil),             // 207: metaxisdata.v1.GetQualityChangeRequestRequest
-	(*ListQualityChangeRequestsRequest)(nil),           // 208: metaxisdata.v1.ListQualityChangeRequestsRequest
-	(*ListQualityChangeRequestsResponse)(nil),          // 209: metaxisdata.v1.ListQualityChangeRequestsResponse
-	(*DecideQualityChangeRequestRequest)(nil),          // 210: metaxisdata.v1.DecideQualityChangeRequestRequest
-	(*QualityInvestigationEvidence)(nil),               // 211: metaxisdata.v1.QualityInvestigationEvidence
-	(*QualityInvestigationHypothesis)(nil),             // 212: metaxisdata.v1.QualityInvestigationHypothesis
-	(*QualityInvestigation)(nil),                       // 213: metaxisdata.v1.QualityInvestigation
-	(*CreateQualityInvestigationRequest)(nil),          // 214: metaxisdata.v1.CreateQualityInvestigationRequest
-	(*GetQualityInvestigationRequest)(nil),             // 215: metaxisdata.v1.GetQualityInvestigationRequest
-	(*ListQualityInvestigationsRequest)(nil),           // 216: metaxisdata.v1.ListQualityInvestigationsRequest
-	(*ListQualityInvestigationsResponse)(nil),          // 217: metaxisdata.v1.ListQualityInvestigationsResponse
-	(*QualityAction)(nil),                              // 218: metaxisdata.v1.QualityAction
-	(*QualityActionPolicy)(nil),                        // 219: metaxisdata.v1.QualityActionPolicy
-	(*GetQualityActionPolicyRequest)(nil),              // 220: metaxisdata.v1.GetQualityActionPolicyRequest
-	(*QualityAgent)(nil),                               // 221: metaxisdata.v1.QualityAgent
-	(*CreateQualityAgentRequest)(nil),                  // 222: metaxisdata.v1.CreateQualityAgentRequest
-	(*CreateQualityAgentResponse)(nil),                 // 223: metaxisdata.v1.CreateQualityAgentResponse
-	(*ListQualityAgentsRequest)(nil),                   // 224: metaxisdata.v1.ListQualityAgentsRequest
-	(*ListQualityAgentsResponse)(nil),                  // 225: metaxisdata.v1.ListQualityAgentsResponse
-	(*DisableQualityAgentRequest)(nil),                 // 226: metaxisdata.v1.DisableQualityAgentRequest
-	(*RotateQualityAgentTokenRequest)(nil),             // 227: metaxisdata.v1.RotateQualityAgentTokenRequest
-	(*RotateQualityAgentTokenResponse)(nil),            // 228: metaxisdata.v1.RotateQualityAgentTokenResponse
-	(*QualityCoverageGap)(nil),                         // 229: metaxisdata.v1.QualityCoverageGap
-	(*ListQualityCoverageGapsRequest)(nil),             // 230: metaxisdata.v1.ListQualityCoverageGapsRequest
-	(*ListQualityCoverageGapsResponse)(nil),            // 231: metaxisdata.v1.ListQualityCoverageGapsResponse
-	(*QualityContractRevision)(nil),                    // 232: metaxisdata.v1.QualityContractRevision
-	(*QualityContractCheck)(nil),                       // 233: metaxisdata.v1.QualityContractCheck
-	(*GetQualityContractRequest)(nil),                  // 234: metaxisdata.v1.GetQualityContractRequest
-	(*UpdateQualityContractRequest)(nil),               // 235: metaxisdata.v1.UpdateQualityContractRequest
-	(*PublishQualityContractRequest)(nil),              // 236: metaxisdata.v1.PublishQualityContractRequest
-	(*PublishQualityContractResponse)(nil),             // 237: metaxisdata.v1.PublishQualityContractResponse
-	(*ListQualityContractRevisionsRequest)(nil),        // 238: metaxisdata.v1.ListQualityContractRevisionsRequest
-	(*ListQualityContractRevisionsResponse)(nil),       // 239: metaxisdata.v1.ListQualityContractRevisionsResponse
-	(*GetQualityContractRevisionRequest)(nil),          // 240: metaxisdata.v1.GetQualityContractRevisionRequest
-	(*GetQualityContractRevisionResponse)(nil),         // 241: metaxisdata.v1.GetQualityContractRevisionResponse
-	(*ExportQualityDataChunk)(nil),                     // 242: metaxisdata.v1.ExportQualityDataChunk
-	(*ExportQualityExecutionsRequest)(nil),             // 243: metaxisdata.v1.ExportQualityExecutionsRequest
-	(*ExportQualityIssuesRequest)(nil),                 // 244: metaxisdata.v1.ExportQualityIssuesRequest
-	(*ExportQualityTargetsRequest)(nil),                // 245: metaxisdata.v1.ExportQualityTargetsRequest
-	(*ExportQualityReportRequest)(nil),                 // 246: metaxisdata.v1.ExportQualityReportRequest
-	(*ExportQualityReportResponse)(nil),                // 247: metaxisdata.v1.ExportQualityReportResponse
-	(*QualityRuleTemplate)(nil),                        // 248: metaxisdata.v1.QualityRuleTemplate
-	(*ListQualityRuleTemplatesRequest)(nil),            // 249: metaxisdata.v1.ListQualityRuleTemplatesRequest
-	(*ListQualityRuleTemplatesResponse)(nil),           // 250: metaxisdata.v1.ListQualityRuleTemplatesResponse
-	(*GetQualityRuleTemplateRequest)(nil),              // 251: metaxisdata.v1.GetQualityRuleTemplateRequest
-	(*CreateQualityRuleTemplateRequest)(nil),           // 252: metaxisdata.v1.CreateQualityRuleTemplateRequest
-	(*UpdateQualityRuleTemplateRequest)(nil),           // 253: metaxisdata.v1.UpdateQualityRuleTemplateRequest
-	(*DeleteQualityRuleTemplateRequest)(nil),           // 254: metaxisdata.v1.DeleteQualityRuleTemplateRequest
-	(*QualityCodeTable)(nil),                           // 255: metaxisdata.v1.QualityCodeTable
-	(*ListQualityCodeTablesRequest)(nil),               // 256: metaxisdata.v1.ListQualityCodeTablesRequest
-	(*ListQualityCodeTablesResponse)(nil),              // 257: metaxisdata.v1.ListQualityCodeTablesResponse
-	(*GetQualityCodeTableRequest)(nil),                 // 258: metaxisdata.v1.GetQualityCodeTableRequest
-	(*CreateQualityCodeTableRequest)(nil),              // 259: metaxisdata.v1.CreateQualityCodeTableRequest
-	(*UpdateQualityCodeTableRequest)(nil),              // 260: metaxisdata.v1.UpdateQualityCodeTableRequest
-	(*DeleteQualityCodeTableRequest)(nil),              // 261: metaxisdata.v1.DeleteQualityCodeTableRequest
-	(*timestamppb.Timestamp)(nil),                      // 262: google.protobuf.Timestamp
-	(MetaType)(0),                                      // 263: metaxisdata.v1.MetaType
-	(*durationpb.Duration)(nil),                        // 264: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),                      // 265: google.protobuf.FieldMask
-	(*ExplainSQLProgress)(nil),                         // 266: metaxisdata.v1.ExplainSQLProgress
-	(*ExplainSQLMetadata)(nil),                         // 267: metaxisdata.v1.ExplainSQLMetadata
-	(*emptypb.Empty)(nil),                              // 268: google.protobuf.Empty
+	(QualityMemoryKind)(0),                             // 40: metaxisdata.v1.QualityMemoryKind
+	(QualityMemoryStatus)(0),                           // 41: metaxisdata.v1.QualityMemoryStatus
+	(QualityMemorySource)(0),                           // 42: metaxisdata.v1.QualityMemorySource
+	(QualityInvestigationStatus)(0),                    // 43: metaxisdata.v1.QualityInvestigationStatus
+	(QualityInvestigationTrigger)(0),                   // 44: metaxisdata.v1.QualityInvestigationTrigger
+	(QualityInvestigationVerdict)(0),                   // 45: metaxisdata.v1.QualityInvestigationVerdict
+	(QualityContractChangeKind)(0),                     // 46: metaxisdata.v1.QualityContractChangeKind
+	(QualityPlanChange_Kind)(0),                        // 47: metaxisdata.v1.QualityPlanChange.Kind
+	(QualityChangeRequestItemResult_Status)(0),         // 48: metaxisdata.v1.QualityChangeRequestItemResult.Status
+	(DecideQualityChangeRequestRequest_Decision)(0),    // 49: metaxisdata.v1.DecideQualityChangeRequestRequest.Decision
+	(ConfirmQualityMemoryRequest_Decision)(0),          // 50: metaxisdata.v1.ConfirmQualityMemoryRequest.Decision
+	(*QualityRule)(nil),                                // 51: metaxisdata.v1.QualityRule
+	(*QualityTarget)(nil),                              // 52: metaxisdata.v1.QualityTarget
+	(*QualityTargetPath)(nil),                          // 53: metaxisdata.v1.QualityTargetPath
+	(*QualityRuleConfig)(nil),                          // 54: metaxisdata.v1.QualityRuleConfig
+	(*QualityRuleSampling)(nil),                        // 55: metaxisdata.v1.QualityRuleSampling
+	(*RowCountConfig)(nil),                             // 56: metaxisdata.v1.RowCountConfig
+	(*RowCountChangeConfig)(nil),                       // 57: metaxisdata.v1.RowCountChangeConfig
+	(*NullPercentConfig)(nil),                          // 58: metaxisdata.v1.NullPercentConfig
+	(*UniqueConfig)(nil),                               // 59: metaxisdata.v1.UniqueConfig
+	(*UniqueCombinationConfig)(nil),                    // 60: metaxisdata.v1.UniqueCombinationConfig
+	(*AcceptedValuesConfig)(nil),                       // 61: metaxisdata.v1.AcceptedValuesConfig
+	(*AcceptedValuesQuery)(nil),                        // 62: metaxisdata.v1.AcceptedValuesQuery
+	(*RangeConfig)(nil),                                // 63: metaxisdata.v1.RangeConfig
+	(*RegexConfig)(nil),                                // 64: metaxisdata.v1.RegexConfig
+	(*StringLengthConfig)(nil),                         // 65: metaxisdata.v1.StringLengthConfig
+	(*ReferentialIntegrityConfig)(nil),                 // 66: metaxisdata.v1.ReferentialIntegrityConfig
+	(*CrossColumnConfig)(nil),                          // 67: metaxisdata.v1.CrossColumnConfig
+	(*FreshnessConfig)(nil),                            // 68: metaxisdata.v1.FreshnessConfig
+	(*CustomSQLConfig)(nil),                            // 69: metaxisdata.v1.CustomSQLConfig
+	(*CelExpressionConfig)(nil),                        // 70: metaxisdata.v1.CelExpressionConfig
+	(*StandardCodeConfig)(nil),                         // 71: metaxisdata.v1.StandardCodeConfig
+	(*SegmentCheckConfig)(nil),                         // 72: metaxisdata.v1.SegmentCheckConfig
+	(*SchemaDriftColumn)(nil),                          // 73: metaxisdata.v1.SchemaDriftColumn
+	(*SchemaDriftConfig)(nil),                          // 74: metaxisdata.v1.SchemaDriftConfig
+	(*GroupCheckConfig)(nil),                           // 75: metaxisdata.v1.GroupCheckConfig
+	(*AggregateConfig)(nil),                            // 76: metaxisdata.v1.AggregateConfig
+	(*CrossTableReference)(nil),                        // 77: metaxisdata.v1.CrossTableReference
+	(*CrossTableConfig)(nil),                           // 78: metaxisdata.v1.CrossTableConfig
+	(*QualityFilter)(nil),                              // 79: metaxisdata.v1.QualityFilter
+	(*QualityFilterClause)(nil),                        // 80: metaxisdata.v1.QualityFilterClause
+	(*QualityThresholds)(nil),                          // 81: metaxisdata.v1.QualityThresholds
+	(*QualityStatusCounts)(nil),                        // 82: metaxisdata.v1.QualityStatusCounts
+	(*QualityExecution)(nil),                           // 83: metaxisdata.v1.QualityExecution
+	(*QualityExecutionSummary)(nil),                    // 84: metaxisdata.v1.QualityExecutionSummary
+	(*QualityRun)(nil),                                 // 85: metaxisdata.v1.QualityRun
+	(*ListQualityRunsRequest)(nil),                     // 86: metaxisdata.v1.ListQualityRunsRequest
+	(*ListQualityRunsResponse)(nil),                    // 87: metaxisdata.v1.ListQualityRunsResponse
+	(*GetQualityRunRequest)(nil),                       // 88: metaxisdata.v1.GetQualityRunRequest
+	(*QualityIssue)(nil),                               // 89: metaxisdata.v1.QualityIssue
+	(*ProfileValue)(nil),                               // 90: metaxisdata.v1.ProfileValue
+	(*ColumnProfileStats)(nil),                         // 91: metaxisdata.v1.ColumnProfileStats
+	(*SemanticLabelEvidence)(nil),                      // 92: metaxisdata.v1.SemanticLabelEvidence
+	(*QualityRuleDraftConfig)(nil),                     // 93: metaxisdata.v1.QualityRuleDraftConfig
+	(*SemanticLabelSuggestion)(nil),                    // 94: metaxisdata.v1.SemanticLabelSuggestion
+	(*QualitySuggestionPayload)(nil),                   // 95: metaxisdata.v1.QualitySuggestionPayload
+	(*QualitySuggestion)(nil),                          // 96: metaxisdata.v1.QualitySuggestion
+	(*QualitySuggestionQueueSummary)(nil),              // 97: metaxisdata.v1.QualitySuggestionQueueSummary
+	(*ColumnProfile)(nil),                              // 98: metaxisdata.v1.ColumnProfile
+	(*ColumnSemanticLabel)(nil),                        // 99: metaxisdata.v1.ColumnSemanticLabel
+	(*FailureSample)(nil),                              // 100: metaxisdata.v1.FailureSample
+	(*SegmentObservation)(nil),                         // 101: metaxisdata.v1.SegmentObservation
+	(*SegmentRecord)(nil),                              // 102: metaxisdata.v1.SegmentRecord
+	(*ColumnValue)(nil),                                // 103: metaxisdata.v1.ColumnValue
+	(*ListQualityRulesRequest)(nil),                    // 104: metaxisdata.v1.ListQualityRulesRequest
+	(*ListQualityRulesResponse)(nil),                   // 105: metaxisdata.v1.ListQualityRulesResponse
+	(*GetQualityRuleRequest)(nil),                      // 106: metaxisdata.v1.GetQualityRuleRequest
+	(*CreateQualityRuleRequest)(nil),                   // 107: metaxisdata.v1.CreateQualityRuleRequest
+	(*BatchCreateQualityRulesRequest)(nil),             // 108: metaxisdata.v1.BatchCreateQualityRulesRequest
+	(*BatchCreateQualityRulesResponse)(nil),            // 109: metaxisdata.v1.BatchCreateQualityRulesResponse
+	(*BatchCreateQualityRuleResult)(nil),               // 110: metaxisdata.v1.BatchCreateQualityRuleResult
+	(*BatchUpdateQualityRulesRequest)(nil),             // 111: metaxisdata.v1.BatchUpdateQualityRulesRequest
+	(*BatchUpdateQualityRulesResponse)(nil),            // 112: metaxisdata.v1.BatchUpdateQualityRulesResponse
+	(*BatchUpdateQualityRuleResult)(nil),               // 113: metaxisdata.v1.BatchUpdateQualityRuleResult
+	(*UpdateQualityRuleRequest)(nil),                   // 114: metaxisdata.v1.UpdateQualityRuleRequest
+	(*DeleteQualityRuleRequest)(nil),                   // 115: metaxisdata.v1.DeleteQualityRuleRequest
+	(*PreviewQualityRuleRequest)(nil),                  // 116: metaxisdata.v1.PreviewQualityRuleRequest
+	(*PreviewQualityRuleResponse)(nil),                 // 117: metaxisdata.v1.PreviewQualityRuleResponse
+	(*RunQualityRulesRequest)(nil),                     // 118: metaxisdata.v1.RunQualityRulesRequest
+	(*RunQualityRulesResponse)(nil),                    // 119: metaxisdata.v1.RunQualityRulesResponse
+	(*ListQualityExecutionsRequest)(nil),               // 120: metaxisdata.v1.ListQualityExecutionsRequest
+	(*ListQualityExecutionsResponse)(nil),              // 121: metaxisdata.v1.ListQualityExecutionsResponse
+	(*GetQualityExecutionRequest)(nil),                 // 122: metaxisdata.v1.GetQualityExecutionRequest
+	(*GetQualityRuleTrendRequest)(nil),                 // 123: metaxisdata.v1.GetQualityRuleTrendRequest
+	(*QualityRuleTrend)(nil),                           // 124: metaxisdata.v1.QualityRuleTrend
+	(*QualityRuleTrendPoint)(nil),                      // 125: metaxisdata.v1.QualityRuleTrendPoint
+	(*QualityThresholdSuggestion)(nil),                 // 126: metaxisdata.v1.QualityThresholdSuggestion
+	(*ListQualityIssuesRequest)(nil),                   // 127: metaxisdata.v1.ListQualityIssuesRequest
+	(*ListQualityIssuesResponse)(nil),                  // 128: metaxisdata.v1.ListQualityIssuesResponse
+	(*GetQualityIssueRequest)(nil),                     // 129: metaxisdata.v1.GetQualityIssueRequest
+	(*UpdateQualityIssueRequest)(nil),                  // 130: metaxisdata.v1.UpdateQualityIssueRequest
+	(*ListQualitySuggestionsRequest)(nil),              // 131: metaxisdata.v1.ListQualitySuggestionsRequest
+	(*ListQualitySuggestionsResponse)(nil),             // 132: metaxisdata.v1.ListQualitySuggestionsResponse
+	(*UpdateQualitySuggestionRequest)(nil),             // 133: metaxisdata.v1.UpdateQualitySuggestionRequest
+	(*GetQualitySuggestionRequest)(nil),                // 134: metaxisdata.v1.GetQualitySuggestionRequest
+	(*BatchUpdateQualitySuggestionsRequest)(nil),       // 135: metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
+	(*BatchUpdateQualitySuggestionsResponse)(nil),      // 136: metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
+	(*BatchUpdateQualitySuggestionResult)(nil),         // 137: metaxisdata.v1.BatchUpdateQualitySuggestionResult
+	(*QualitySuggestionJobTarget)(nil),                 // 138: metaxisdata.v1.QualitySuggestionJobTarget
+	(*QualityLLMDiagnostic)(nil),                       // 139: metaxisdata.v1.QualityLLMDiagnostic
+	(*QualitySuggestionJob)(nil),                       // 140: metaxisdata.v1.QualitySuggestionJob
+	(*CreateQualitySuggestionJobRequest)(nil),          // 141: metaxisdata.v1.CreateQualitySuggestionJobRequest
+	(*GetQualitySuggestionJobRequest)(nil),             // 142: metaxisdata.v1.GetQualitySuggestionJobRequest
+	(*ListQualitySuggestionJobsRequest)(nil),           // 143: metaxisdata.v1.ListQualitySuggestionJobsRequest
+	(*ListQualitySuggestionJobsResponse)(nil),          // 144: metaxisdata.v1.ListQualitySuggestionJobsResponse
+	(*CancelQualitySuggestionJobRequest)(nil),          // 145: metaxisdata.v1.CancelQualitySuggestionJobRequest
+	(*GetQualitySuggestionJobTargetDebugRequest)(nil),  // 146: metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
+	(*GetQualitySuggestionJobTargetDebugResponse)(nil), // 147: metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
+	(*ListColumnProfilesRequest)(nil),                  // 148: metaxisdata.v1.ListColumnProfilesRequest
+	(*ListColumnProfilesResponse)(nil),                 // 149: metaxisdata.v1.ListColumnProfilesResponse
+	(*ListColumnLabelsRequest)(nil),                    // 150: metaxisdata.v1.ListColumnLabelsRequest
+	(*ListColumnLabelsResponse)(nil),                   // 151: metaxisdata.v1.ListColumnLabelsResponse
+	(*UpdateColumnLabelRequest)(nil),                   // 152: metaxisdata.v1.UpdateColumnLabelRequest
+	(*UpdateColumnLabelResponse)(nil),                  // 153: metaxisdata.v1.UpdateColumnLabelResponse
+	(*ProfileColumnsRequest)(nil),                      // 154: metaxisdata.v1.ProfileColumnsRequest
+	(*ProfileColumnsResponse)(nil),                     // 155: metaxisdata.v1.ProfileColumnsResponse
+	(*SuggestQualityRuleRequest)(nil),                  // 156: metaxisdata.v1.SuggestQualityRuleRequest
+	(*SuggestQualityRuleResponse)(nil),                 // 157: metaxisdata.v1.SuggestQualityRuleResponse
+	(*SuggestColumnLabelsRequest)(nil),                 // 158: metaxisdata.v1.SuggestColumnLabelsRequest
+	(*SuggestColumnLabelsResponse)(nil),                // 159: metaxisdata.v1.SuggestColumnLabelsResponse
+	(*RecommendQualityChecksRequest)(nil),              // 160: metaxisdata.v1.RecommendQualityChecksRequest
+	(*RecommendQualityChecksResponse)(nil),             // 161: metaxisdata.v1.RecommendQualityChecksResponse
+	(*ExplainQualityExecutionRequest)(nil),             // 162: metaxisdata.v1.ExplainQualityExecutionRequest
+	(*ExplainQualityExecutionResponse)(nil),            // 163: metaxisdata.v1.ExplainQualityExecutionResponse
+	(*GetQualityOverviewRequest)(nil),                  // 164: metaxisdata.v1.GetQualityOverviewRequest
+	(*GetQualityLLMUsageRequest)(nil),                  // 165: metaxisdata.v1.GetQualityLLMUsageRequest
+	(*QualityLLMUsage)(nil),                            // 166: metaxisdata.v1.QualityLLMUsage
+	(*QualityOverview)(nil),                            // 167: metaxisdata.v1.QualityOverview
+	(*QualityCoverageBreakdown)(nil),                   // 168: metaxisdata.v1.QualityCoverageBreakdown
+	(*QualityDimensionScore)(nil),                      // 169: metaxisdata.v1.QualityDimensionScore
+	(*QualityOwnerScore)(nil),                          // 170: metaxisdata.v1.QualityOwnerScore
+	(*QualityTrendPoint)(nil),                          // 171: metaxisdata.v1.QualityTrendPoint
+	(*QualityTargetKey)(nil),                           // 172: metaxisdata.v1.QualityTargetKey
+	(*ListQualityTargetsRequest)(nil),                  // 173: metaxisdata.v1.ListQualityTargetsRequest
+	(*ListQualityTargetsResponse)(nil),                 // 174: metaxisdata.v1.ListQualityTargetsResponse
+	(*QualityTargetSchedule)(nil),                      // 175: metaxisdata.v1.QualityTargetSchedule
+	(*QualityTargetSummary)(nil),                       // 176: metaxisdata.v1.QualityTargetSummary
+	(*QualityImpactAsset)(nil),                         // 177: metaxisdata.v1.QualityImpactAsset
+	(*QualityRootCauseCandidate)(nil),                  // 178: metaxisdata.v1.QualityRootCauseCandidate
+	(*GetQualityTargetImpactRequest)(nil),              // 179: metaxisdata.v1.GetQualityTargetImpactRequest
+	(*GetQualityTargetImpactResponse)(nil),             // 180: metaxisdata.v1.GetQualityTargetImpactResponse
+	(*QualityConsumptionGap)(nil),                      // 181: metaxisdata.v1.QualityConsumptionGap
+	(*GetQualityConsumptionCoverageRequest)(nil),       // 182: metaxisdata.v1.GetQualityConsumptionCoverageRequest
+	(*GetQualityConsumptionCoverageResponse)(nil),      // 183: metaxisdata.v1.GetQualityConsumptionCoverageResponse
+	(*UpdateQualityTargetScheduleRequest)(nil),         // 184: metaxisdata.v1.UpdateQualityTargetScheduleRequest
+	(*GetQualityTargetScheduleRequest)(nil),            // 185: metaxisdata.v1.GetQualityTargetScheduleRequest
+	(*GetQualityTargetRequest)(nil),                    // 186: metaxisdata.v1.GetQualityTargetRequest
+	(*GetQualityTargetResponse)(nil),                   // 187: metaxisdata.v1.GetQualityTargetResponse
+	(*QualityTargetColumn)(nil),                        // 188: metaxisdata.v1.QualityTargetColumn
+	(*QualityRuleHistory)(nil),                         // 189: metaxisdata.v1.QualityRuleHistory
+	(*AcknowledgeQualityTargetSchemaRequest)(nil),      // 190: metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
+	(*AcknowledgeQualityTargetSchemaResponse)(nil),     // 191: metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
+	(*QualityContract)(nil),                            // 192: metaxisdata.v1.QualityContract
+	(*QualityPlanChange)(nil),                          // 193: metaxisdata.v1.QualityPlanChange
+	(*QualityContractDiff)(nil),                        // 194: metaxisdata.v1.QualityContractDiff
+	(*QualityContractSettings)(nil),                    // 195: metaxisdata.v1.QualityContractSettings
+	(*QualityContractIntentStatement)(nil),             // 196: metaxisdata.v1.QualityContractIntentStatement
+	(*QualityContractIntentExemption)(nil),             // 197: metaxisdata.v1.QualityContractIntentExemption
+	(*QualityContractIntent)(nil),                      // 198: metaxisdata.v1.QualityContractIntent
+	(*QualityContractChangeSummary)(nil),               // 199: metaxisdata.v1.QualityContractChangeSummary
+	(*QualityCoverageRequirement)(nil),                 // 200: metaxisdata.v1.QualityCoverageRequirement
+	(*QualityPlanCoverage)(nil),                        // 201: metaxisdata.v1.QualityPlanCoverage
+	(*QualityPlanCadence)(nil),                         // 202: metaxisdata.v1.QualityPlanCadence
+	(*QualityPlan)(nil),                                // 203: metaxisdata.v1.QualityPlan
+	(*ListQualityPlansRequest)(nil),                    // 204: metaxisdata.v1.ListQualityPlansRequest
+	(*ListQualityPlansResponse)(nil),                   // 205: metaxisdata.v1.ListQualityPlansResponse
+	(*QualityChangeRequestItem)(nil),                   // 206: metaxisdata.v1.QualityChangeRequestItem
+	(*QualityChangeRequestItemResult)(nil),             // 207: metaxisdata.v1.QualityChangeRequestItemResult
+	(*QualityChangeRequest)(nil),                       // 208: metaxisdata.v1.QualityChangeRequest
+	(*StageQualityPlanRequest)(nil),                    // 209: metaxisdata.v1.StageQualityPlanRequest
+	(*CreateQualityChangeRequestRequest)(nil),          // 210: metaxisdata.v1.CreateQualityChangeRequestRequest
+	(*GetQualityChangeRequestRequest)(nil),             // 211: metaxisdata.v1.GetQualityChangeRequestRequest
+	(*ListQualityChangeRequestsRequest)(nil),           // 212: metaxisdata.v1.ListQualityChangeRequestsRequest
+	(*ListQualityChangeRequestsResponse)(nil),          // 213: metaxisdata.v1.ListQualityChangeRequestsResponse
+	(*DecideQualityChangeRequestRequest)(nil),          // 214: metaxisdata.v1.DecideQualityChangeRequestRequest
+	(*QualityMemory)(nil),                              // 215: metaxisdata.v1.QualityMemory
+	(*CreateQualityMemoryRequest)(nil),                 // 216: metaxisdata.v1.CreateQualityMemoryRequest
+	(*ListQualityMemoriesRequest)(nil),                 // 217: metaxisdata.v1.ListQualityMemoriesRequest
+	(*ListQualityMemoriesResponse)(nil),                // 218: metaxisdata.v1.ListQualityMemoriesResponse
+	(*ConfirmQualityMemoryRequest)(nil),                // 219: metaxisdata.v1.ConfirmQualityMemoryRequest
+	(*DeleteQualityMemoryRequest)(nil),                 // 220: metaxisdata.v1.DeleteQualityMemoryRequest
+	(*QualityInvestigationEvidence)(nil),               // 221: metaxisdata.v1.QualityInvestigationEvidence
+	(*QualityInvestigationHypothesis)(nil),             // 222: metaxisdata.v1.QualityInvestigationHypothesis
+	(*QualityInvestigation)(nil),                       // 223: metaxisdata.v1.QualityInvestigation
+	(*CreateQualityInvestigationRequest)(nil),          // 224: metaxisdata.v1.CreateQualityInvestigationRequest
+	(*GetQualityInvestigationRequest)(nil),             // 225: metaxisdata.v1.GetQualityInvestigationRequest
+	(*ListQualityInvestigationsRequest)(nil),           // 226: metaxisdata.v1.ListQualityInvestigationsRequest
+	(*ListQualityInvestigationsResponse)(nil),          // 227: metaxisdata.v1.ListQualityInvestigationsResponse
+	(*QualityAction)(nil),                              // 228: metaxisdata.v1.QualityAction
+	(*QualityActionPolicy)(nil),                        // 229: metaxisdata.v1.QualityActionPolicy
+	(*GetQualityActionPolicyRequest)(nil),              // 230: metaxisdata.v1.GetQualityActionPolicyRequest
+	(*QualityAgent)(nil),                               // 231: metaxisdata.v1.QualityAgent
+	(*CreateQualityAgentRequest)(nil),                  // 232: metaxisdata.v1.CreateQualityAgentRequest
+	(*CreateQualityAgentResponse)(nil),                 // 233: metaxisdata.v1.CreateQualityAgentResponse
+	(*ListQualityAgentsRequest)(nil),                   // 234: metaxisdata.v1.ListQualityAgentsRequest
+	(*ListQualityAgentsResponse)(nil),                  // 235: metaxisdata.v1.ListQualityAgentsResponse
+	(*DisableQualityAgentRequest)(nil),                 // 236: metaxisdata.v1.DisableQualityAgentRequest
+	(*RotateQualityAgentTokenRequest)(nil),             // 237: metaxisdata.v1.RotateQualityAgentTokenRequest
+	(*RotateQualityAgentTokenResponse)(nil),            // 238: metaxisdata.v1.RotateQualityAgentTokenResponse
+	(*QualityCoverageGap)(nil),                         // 239: metaxisdata.v1.QualityCoverageGap
+	(*ListQualityCoverageGapsRequest)(nil),             // 240: metaxisdata.v1.ListQualityCoverageGapsRequest
+	(*ListQualityCoverageGapsResponse)(nil),            // 241: metaxisdata.v1.ListQualityCoverageGapsResponse
+	(*QualityContractRevision)(nil),                    // 242: metaxisdata.v1.QualityContractRevision
+	(*QualityContractCheck)(nil),                       // 243: metaxisdata.v1.QualityContractCheck
+	(*GetQualityContractRequest)(nil),                  // 244: metaxisdata.v1.GetQualityContractRequest
+	(*UpdateQualityContractRequest)(nil),               // 245: metaxisdata.v1.UpdateQualityContractRequest
+	(*PublishQualityContractRequest)(nil),              // 246: metaxisdata.v1.PublishQualityContractRequest
+	(*PublishQualityContractResponse)(nil),             // 247: metaxisdata.v1.PublishQualityContractResponse
+	(*ListQualityContractRevisionsRequest)(nil),        // 248: metaxisdata.v1.ListQualityContractRevisionsRequest
+	(*ListQualityContractRevisionsResponse)(nil),       // 249: metaxisdata.v1.ListQualityContractRevisionsResponse
+	(*GetQualityContractRevisionRequest)(nil),          // 250: metaxisdata.v1.GetQualityContractRevisionRequest
+	(*GetQualityContractRevisionResponse)(nil),         // 251: metaxisdata.v1.GetQualityContractRevisionResponse
+	(*ExportQualityDataChunk)(nil),                     // 252: metaxisdata.v1.ExportQualityDataChunk
+	(*ExportQualityExecutionsRequest)(nil),             // 253: metaxisdata.v1.ExportQualityExecutionsRequest
+	(*ExportQualityIssuesRequest)(nil),                 // 254: metaxisdata.v1.ExportQualityIssuesRequest
+	(*ExportQualityTargetsRequest)(nil),                // 255: metaxisdata.v1.ExportQualityTargetsRequest
+	(*ExportQualityReportRequest)(nil),                 // 256: metaxisdata.v1.ExportQualityReportRequest
+	(*ExportQualityReportResponse)(nil),                // 257: metaxisdata.v1.ExportQualityReportResponse
+	(*QualityRuleTemplate)(nil),                        // 258: metaxisdata.v1.QualityRuleTemplate
+	(*ListQualityRuleTemplatesRequest)(nil),            // 259: metaxisdata.v1.ListQualityRuleTemplatesRequest
+	(*ListQualityRuleTemplatesResponse)(nil),           // 260: metaxisdata.v1.ListQualityRuleTemplatesResponse
+	(*GetQualityRuleTemplateRequest)(nil),              // 261: metaxisdata.v1.GetQualityRuleTemplateRequest
+	(*CreateQualityRuleTemplateRequest)(nil),           // 262: metaxisdata.v1.CreateQualityRuleTemplateRequest
+	(*UpdateQualityRuleTemplateRequest)(nil),           // 263: metaxisdata.v1.UpdateQualityRuleTemplateRequest
+	(*DeleteQualityRuleTemplateRequest)(nil),           // 264: metaxisdata.v1.DeleteQualityRuleTemplateRequest
+	(*QualityCodeTable)(nil),                           // 265: metaxisdata.v1.QualityCodeTable
+	(*ListQualityCodeTablesRequest)(nil),               // 266: metaxisdata.v1.ListQualityCodeTablesRequest
+	(*ListQualityCodeTablesResponse)(nil),              // 267: metaxisdata.v1.ListQualityCodeTablesResponse
+	(*GetQualityCodeTableRequest)(nil),                 // 268: metaxisdata.v1.GetQualityCodeTableRequest
+	(*CreateQualityCodeTableRequest)(nil),              // 269: metaxisdata.v1.CreateQualityCodeTableRequest
+	(*UpdateQualityCodeTableRequest)(nil),              // 270: metaxisdata.v1.UpdateQualityCodeTableRequest
+	(*DeleteQualityCodeTableRequest)(nil),              // 271: metaxisdata.v1.DeleteQualityCodeTableRequest
+	(*timestamppb.Timestamp)(nil),                      // 272: google.protobuf.Timestamp
+	(MetaType)(0),                                      // 273: metaxisdata.v1.MetaType
+	(*durationpb.Duration)(nil),                        // 274: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                      // 275: google.protobuf.FieldMask
+	(*ExplainSQLProgress)(nil),                         // 276: metaxisdata.v1.ExplainSQLProgress
+	(*ExplainSQLMetadata)(nil),                         // 277: metaxisdata.v1.ExplainSQLMetadata
+	(*emptypb.Empty)(nil),                              // 278: google.protobuf.Empty
 }
 var file_v1_data_quality_service_proto_depIdxs = []int32{
 	2,   // 0: metaxisdata.v1.QualityRule.dimension:type_name -> metaxisdata.v1.QualityDimension
 	0,   // 1: metaxisdata.v1.QualityRule.rule_type:type_name -> metaxisdata.v1.QualityRuleType
-	48,  // 2: metaxisdata.v1.QualityRule.target:type_name -> metaxisdata.v1.QualityTarget
-	50,  // 3: metaxisdata.v1.QualityRule.config:type_name -> metaxisdata.v1.QualityRuleConfig
+	52,  // 2: metaxisdata.v1.QualityRule.target:type_name -> metaxisdata.v1.QualityTarget
+	54,  // 3: metaxisdata.v1.QualityRule.config:type_name -> metaxisdata.v1.QualityRuleConfig
 	3,   // 4: metaxisdata.v1.QualityRule.severity:type_name -> metaxisdata.v1.QualitySeverity
 	7,   // 5: metaxisdata.v1.QualityRule.state:type_name -> metaxisdata.v1.QualityRuleState
-	262, // 6: metaxisdata.v1.QualityRule.create_time:type_name -> google.protobuf.Timestamp
-	262, // 7: metaxisdata.v1.QualityRule.update_time:type_name -> google.protobuf.Timestamp
-	80,  // 8: metaxisdata.v1.QualityRule.last_result:type_name -> metaxisdata.v1.QualityExecutionSummary
-	262, // 9: metaxisdata.v1.QualityRule.mute_until:type_name -> google.protobuf.Timestamp
+	272, // 6: metaxisdata.v1.QualityRule.create_time:type_name -> google.protobuf.Timestamp
+	272, // 7: metaxisdata.v1.QualityRule.update_time:type_name -> google.protobuf.Timestamp
+	84,  // 8: metaxisdata.v1.QualityRule.last_result:type_name -> metaxisdata.v1.QualityExecutionSummary
+	272, // 9: metaxisdata.v1.QualityRule.mute_until:type_name -> google.protobuf.Timestamp
 	8,   // 10: metaxisdata.v1.QualityRule.frequency_tier:type_name -> metaxisdata.v1.QualityFrequencyTier
-	263, // 11: metaxisdata.v1.QualityTarget.meta_type:type_name -> metaxisdata.v1.MetaType
-	49,  // 12: metaxisdata.v1.QualityTarget.path:type_name -> metaxisdata.v1.QualityTargetPath
-	52,  // 13: metaxisdata.v1.QualityRuleConfig.row_count:type_name -> metaxisdata.v1.RowCountConfig
-	53,  // 14: metaxisdata.v1.QualityRuleConfig.row_count_change:type_name -> metaxisdata.v1.RowCountChangeConfig
-	54,  // 15: metaxisdata.v1.QualityRuleConfig.null_percent:type_name -> metaxisdata.v1.NullPercentConfig
-	55,  // 16: metaxisdata.v1.QualityRuleConfig.unique:type_name -> metaxisdata.v1.UniqueConfig
-	56,  // 17: metaxisdata.v1.QualityRuleConfig.unique_combination:type_name -> metaxisdata.v1.UniqueCombinationConfig
-	57,  // 18: metaxisdata.v1.QualityRuleConfig.accepted_values:type_name -> metaxisdata.v1.AcceptedValuesConfig
-	59,  // 19: metaxisdata.v1.QualityRuleConfig.range:type_name -> metaxisdata.v1.RangeConfig
-	60,  // 20: metaxisdata.v1.QualityRuleConfig.regex:type_name -> metaxisdata.v1.RegexConfig
-	61,  // 21: metaxisdata.v1.QualityRuleConfig.string_length:type_name -> metaxisdata.v1.StringLengthConfig
-	62,  // 22: metaxisdata.v1.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.v1.ReferentialIntegrityConfig
-	63,  // 23: metaxisdata.v1.QualityRuleConfig.cross_column:type_name -> metaxisdata.v1.CrossColumnConfig
-	64,  // 24: metaxisdata.v1.QualityRuleConfig.freshness:type_name -> metaxisdata.v1.FreshnessConfig
-	65,  // 25: metaxisdata.v1.QualityRuleConfig.custom_sql:type_name -> metaxisdata.v1.CustomSQLConfig
-	66,  // 26: metaxisdata.v1.QualityRuleConfig.cel_expression:type_name -> metaxisdata.v1.CelExpressionConfig
-	70,  // 27: metaxisdata.v1.QualityRuleConfig.schema_drift:type_name -> metaxisdata.v1.SchemaDriftConfig
-	71,  // 28: metaxisdata.v1.QualityRuleConfig.group_check:type_name -> metaxisdata.v1.GroupCheckConfig
-	72,  // 29: metaxisdata.v1.QualityRuleConfig.aggregate:type_name -> metaxisdata.v1.AggregateConfig
-	74,  // 30: metaxisdata.v1.QualityRuleConfig.cross_table:type_name -> metaxisdata.v1.CrossTableConfig
-	67,  // 31: metaxisdata.v1.QualityRuleConfig.standard_code:type_name -> metaxisdata.v1.StandardCodeConfig
-	68,  // 32: metaxisdata.v1.QualityRuleConfig.segment_check:type_name -> metaxisdata.v1.SegmentCheckConfig
+	273, // 11: metaxisdata.v1.QualityTarget.meta_type:type_name -> metaxisdata.v1.MetaType
+	53,  // 12: metaxisdata.v1.QualityTarget.path:type_name -> metaxisdata.v1.QualityTargetPath
+	56,  // 13: metaxisdata.v1.QualityRuleConfig.row_count:type_name -> metaxisdata.v1.RowCountConfig
+	57,  // 14: metaxisdata.v1.QualityRuleConfig.row_count_change:type_name -> metaxisdata.v1.RowCountChangeConfig
+	58,  // 15: metaxisdata.v1.QualityRuleConfig.null_percent:type_name -> metaxisdata.v1.NullPercentConfig
+	59,  // 16: metaxisdata.v1.QualityRuleConfig.unique:type_name -> metaxisdata.v1.UniqueConfig
+	60,  // 17: metaxisdata.v1.QualityRuleConfig.unique_combination:type_name -> metaxisdata.v1.UniqueCombinationConfig
+	61,  // 18: metaxisdata.v1.QualityRuleConfig.accepted_values:type_name -> metaxisdata.v1.AcceptedValuesConfig
+	63,  // 19: metaxisdata.v1.QualityRuleConfig.range:type_name -> metaxisdata.v1.RangeConfig
+	64,  // 20: metaxisdata.v1.QualityRuleConfig.regex:type_name -> metaxisdata.v1.RegexConfig
+	65,  // 21: metaxisdata.v1.QualityRuleConfig.string_length:type_name -> metaxisdata.v1.StringLengthConfig
+	66,  // 22: metaxisdata.v1.QualityRuleConfig.referential_integrity:type_name -> metaxisdata.v1.ReferentialIntegrityConfig
+	67,  // 23: metaxisdata.v1.QualityRuleConfig.cross_column:type_name -> metaxisdata.v1.CrossColumnConfig
+	68,  // 24: metaxisdata.v1.QualityRuleConfig.freshness:type_name -> metaxisdata.v1.FreshnessConfig
+	69,  // 25: metaxisdata.v1.QualityRuleConfig.custom_sql:type_name -> metaxisdata.v1.CustomSQLConfig
+	70,  // 26: metaxisdata.v1.QualityRuleConfig.cel_expression:type_name -> metaxisdata.v1.CelExpressionConfig
+	74,  // 27: metaxisdata.v1.QualityRuleConfig.schema_drift:type_name -> metaxisdata.v1.SchemaDriftConfig
+	75,  // 28: metaxisdata.v1.QualityRuleConfig.group_check:type_name -> metaxisdata.v1.GroupCheckConfig
+	76,  // 29: metaxisdata.v1.QualityRuleConfig.aggregate:type_name -> metaxisdata.v1.AggregateConfig
+	78,  // 30: metaxisdata.v1.QualityRuleConfig.cross_table:type_name -> metaxisdata.v1.CrossTableConfig
+	71,  // 31: metaxisdata.v1.QualityRuleConfig.standard_code:type_name -> metaxisdata.v1.StandardCodeConfig
+	72,  // 32: metaxisdata.v1.QualityRuleConfig.segment_check:type_name -> metaxisdata.v1.SegmentCheckConfig
 	19,  // 33: metaxisdata.v1.QualityRuleConfig.threshold_metric:type_name -> metaxisdata.v1.QualityThresholdMetric
-	75,  // 34: metaxisdata.v1.QualityRuleConfig.filter:type_name -> metaxisdata.v1.QualityFilter
+	79,  // 34: metaxisdata.v1.QualityRuleConfig.filter:type_name -> metaxisdata.v1.QualityFilter
 	20,  // 35: metaxisdata.v1.QualityRuleConfig.on_empty:type_name -> metaxisdata.v1.QualityEmptyBehavior
-	51,  // 36: metaxisdata.v1.QualityRuleConfig.sampling:type_name -> metaxisdata.v1.QualityRuleSampling
-	58,  // 37: metaxisdata.v1.AcceptedValuesConfig.query:type_name -> metaxisdata.v1.AcceptedValuesQuery
+	55,  // 36: metaxisdata.v1.QualityRuleConfig.sampling:type_name -> metaxisdata.v1.QualityRuleSampling
+	62,  // 37: metaxisdata.v1.AcceptedValuesConfig.query:type_name -> metaxisdata.v1.AcceptedValuesQuery
 	23,  // 38: metaxisdata.v1.CrossColumnConfig.op:type_name -> metaxisdata.v1.QualityComparisonOperator
 	1,   // 39: metaxisdata.v1.StandardCodeConfig.standard:type_name -> metaxisdata.v1.QualityStandardCode
-	69,  // 40: metaxisdata.v1.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.v1.SchemaDriftColumn
+	73,  // 40: metaxisdata.v1.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.v1.SchemaDriftColumn
 	24,  // 41: metaxisdata.v1.AggregateConfig.function:type_name -> metaxisdata.v1.QualityAggregateFunction
-	263, // 42: metaxisdata.v1.CrossTableReference.meta_type:type_name -> metaxisdata.v1.MetaType
-	49,  // 43: metaxisdata.v1.CrossTableReference.path:type_name -> metaxisdata.v1.QualityTargetPath
+	273, // 42: metaxisdata.v1.CrossTableReference.meta_type:type_name -> metaxisdata.v1.MetaType
+	53,  // 43: metaxisdata.v1.CrossTableReference.path:type_name -> metaxisdata.v1.QualityTargetPath
 	24,  // 44: metaxisdata.v1.CrossTableConfig.left_function:type_name -> metaxisdata.v1.QualityAggregateFunction
 	24,  // 45: metaxisdata.v1.CrossTableConfig.right_function:type_name -> metaxisdata.v1.QualityAggregateFunction
-	73,  // 46: metaxisdata.v1.CrossTableConfig.reference:type_name -> metaxisdata.v1.CrossTableReference
-	75,  // 47: metaxisdata.v1.CrossTableConfig.right_filter:type_name -> metaxisdata.v1.QualityFilter
-	76,  // 48: metaxisdata.v1.QualityFilter.clauses:type_name -> metaxisdata.v1.QualityFilterClause
+	77,  // 46: metaxisdata.v1.CrossTableConfig.reference:type_name -> metaxisdata.v1.CrossTableReference
+	79,  // 47: metaxisdata.v1.CrossTableConfig.right_filter:type_name -> metaxisdata.v1.QualityFilter
+	80,  // 48: metaxisdata.v1.QualityFilter.clauses:type_name -> metaxisdata.v1.QualityFilterClause
 	22,  // 49: metaxisdata.v1.QualityFilterClause.op:type_name -> metaxisdata.v1.QualityFilterOperator
 	21,  // 50: metaxisdata.v1.QualityThresholds.comparison:type_name -> metaxisdata.v1.QualityComparison
 	20,  // 51: metaxisdata.v1.QualityThresholds.on_empty:type_name -> metaxisdata.v1.QualityEmptyBehavior
-	48,  // 52: metaxisdata.v1.QualityExecution.target:type_name -> metaxisdata.v1.QualityTarget
+	52,  // 52: metaxisdata.v1.QualityExecution.target:type_name -> metaxisdata.v1.QualityTarget
 	6,   // 53: metaxisdata.v1.QualityExecution.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 54: metaxisdata.v1.QualityExecution.outcome:type_name -> metaxisdata.v1.QualityStatus
 	5,   // 55: metaxisdata.v1.QualityExecution.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
 	18,  // 56: metaxisdata.v1.QualityExecution.observed_kind:type_name -> metaxisdata.v1.QualityObservedKind
-	77,  // 57: metaxisdata.v1.QualityExecution.thresholds:type_name -> metaxisdata.v1.QualityThresholds
-	96,  // 58: metaxisdata.v1.QualityExecution.samples:type_name -> metaxisdata.v1.FailureSample
-	264, // 59: metaxisdata.v1.QualityExecution.duration:type_name -> google.protobuf.Duration
-	262, // 60: metaxisdata.v1.QualityExecution.start_time:type_name -> google.protobuf.Timestamp
-	262, // 61: metaxisdata.v1.QualityExecution.finish_time:type_name -> google.protobuf.Timestamp
-	262, // 62: metaxisdata.v1.QualityExecution.baseline_time:type_name -> google.protobuf.Timestamp
-	96,  // 63: metaxisdata.v1.QualityExecution.passing_samples:type_name -> metaxisdata.v1.FailureSample
-	97,  // 64: metaxisdata.v1.QualityExecution.segment_evidence:type_name -> metaxisdata.v1.SegmentObservation
+	81,  // 57: metaxisdata.v1.QualityExecution.thresholds:type_name -> metaxisdata.v1.QualityThresholds
+	100, // 58: metaxisdata.v1.QualityExecution.samples:type_name -> metaxisdata.v1.FailureSample
+	274, // 59: metaxisdata.v1.QualityExecution.duration:type_name -> google.protobuf.Duration
+	272, // 60: metaxisdata.v1.QualityExecution.start_time:type_name -> google.protobuf.Timestamp
+	272, // 61: metaxisdata.v1.QualityExecution.finish_time:type_name -> google.protobuf.Timestamp
+	272, // 62: metaxisdata.v1.QualityExecution.baseline_time:type_name -> google.protobuf.Timestamp
+	100, // 63: metaxisdata.v1.QualityExecution.passing_samples:type_name -> metaxisdata.v1.FailureSample
+	101, // 64: metaxisdata.v1.QualityExecution.segment_evidence:type_name -> metaxisdata.v1.SegmentObservation
 	4,   // 65: metaxisdata.v1.QualityExecutionSummary.status:type_name -> metaxisdata.v1.QualityStatus
 	18,  // 66: metaxisdata.v1.QualityExecutionSummary.observed_kind:type_name -> metaxisdata.v1.QualityObservedKind
-	262, // 67: metaxisdata.v1.QualityExecutionSummary.finish_time:type_name -> google.protobuf.Timestamp
+	272, // 67: metaxisdata.v1.QualityExecutionSummary.finish_time:type_name -> google.protobuf.Timestamp
 	5,   // 68: metaxisdata.v1.QualityRun.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
 	6,   // 69: metaxisdata.v1.QualityRun.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 70: metaxisdata.v1.QualityRun.outcome:type_name -> metaxisdata.v1.QualityStatus
-	78,  // 71: metaxisdata.v1.QualityRun.counts:type_name -> metaxisdata.v1.QualityStatusCounts
-	262, // 72: metaxisdata.v1.QualityRun.start_time:type_name -> google.protobuf.Timestamp
-	262, // 73: metaxisdata.v1.QualityRun.finish_time:type_name -> google.protobuf.Timestamp
-	48,  // 74: metaxisdata.v1.QualityRun.target:type_name -> metaxisdata.v1.QualityTarget
-	263, // 75: metaxisdata.v1.ListQualityRunsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	82,  // 71: metaxisdata.v1.QualityRun.counts:type_name -> metaxisdata.v1.QualityStatusCounts
+	272, // 72: metaxisdata.v1.QualityRun.start_time:type_name -> google.protobuf.Timestamp
+	272, // 73: metaxisdata.v1.QualityRun.finish_time:type_name -> google.protobuf.Timestamp
+	52,  // 74: metaxisdata.v1.QualityRun.target:type_name -> metaxisdata.v1.QualityTarget
+	273, // 75: metaxisdata.v1.ListQualityRunsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	5,   // 76: metaxisdata.v1.ListQualityRunsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
 	6,   // 77: metaxisdata.v1.ListQualityRunsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 78: metaxisdata.v1.ListQualityRunsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
-	262, // 79: metaxisdata.v1.ListQualityRunsRequest.start_time:type_name -> google.protobuf.Timestamp
-	262, // 80: metaxisdata.v1.ListQualityRunsRequest.end_time:type_name -> google.protobuf.Timestamp
-	81,  // 81: metaxisdata.v1.ListQualityRunsResponse.quality_runs:type_name -> metaxisdata.v1.QualityRun
-	48,  // 82: metaxisdata.v1.QualityIssue.target:type_name -> metaxisdata.v1.QualityTarget
+	272, // 79: metaxisdata.v1.ListQualityRunsRequest.start_time:type_name -> google.protobuf.Timestamp
+	272, // 80: metaxisdata.v1.ListQualityRunsRequest.end_time:type_name -> google.protobuf.Timestamp
+	85,  // 81: metaxisdata.v1.ListQualityRunsResponse.quality_runs:type_name -> metaxisdata.v1.QualityRun
+	52,  // 82: metaxisdata.v1.QualityIssue.target:type_name -> metaxisdata.v1.QualityTarget
 	9,   // 83: metaxisdata.v1.QualityIssue.status:type_name -> metaxisdata.v1.QualityIssueStatus
 	3,   // 84: metaxisdata.v1.QualityIssue.severity:type_name -> metaxisdata.v1.QualitySeverity
-	262, // 85: metaxisdata.v1.QualityIssue.first_seen_time:type_name -> google.protobuf.Timestamp
-	262, // 86: metaxisdata.v1.QualityIssue.last_seen_time:type_name -> google.protobuf.Timestamp
-	262, // 87: metaxisdata.v1.QualityIssue.resolved_time:type_name -> google.protobuf.Timestamp
+	272, // 85: metaxisdata.v1.QualityIssue.first_seen_time:type_name -> google.protobuf.Timestamp
+	272, // 86: metaxisdata.v1.QualityIssue.last_seen_time:type_name -> google.protobuf.Timestamp
+	272, // 87: metaxisdata.v1.QualityIssue.resolved_time:type_name -> google.protobuf.Timestamp
 	10,  // 88: metaxisdata.v1.QualityIssue.resolution_reason:type_name -> metaxisdata.v1.QualityResolutionReason
-	262, // 89: metaxisdata.v1.QualityIssue.acknowledged_time:type_name -> google.protobuf.Timestamp
-	262, // 90: metaxisdata.v1.QualityIssue.muted_until:type_name -> google.protobuf.Timestamp
-	86,  // 91: metaxisdata.v1.ColumnProfileStats.top_values:type_name -> metaxisdata.v1.ProfileValue
-	50,  // 92: metaxisdata.v1.QualityRuleDraftConfig.config:type_name -> metaxisdata.v1.QualityRuleConfig
+	272, // 89: metaxisdata.v1.QualityIssue.acknowledged_time:type_name -> google.protobuf.Timestamp
+	272, // 90: metaxisdata.v1.QualityIssue.muted_until:type_name -> google.protobuf.Timestamp
+	90,  // 91: metaxisdata.v1.ColumnProfileStats.top_values:type_name -> metaxisdata.v1.ProfileValue
+	54,  // 92: metaxisdata.v1.QualityRuleDraftConfig.config:type_name -> metaxisdata.v1.QualityRuleConfig
 	3,   // 93: metaxisdata.v1.QualityRuleDraftConfig.severity:type_name -> metaxisdata.v1.QualitySeverity
 	11,  // 94: metaxisdata.v1.SemanticLabelSuggestion.label:type_name -> metaxisdata.v1.QualitySemanticType
-	88,  // 95: metaxisdata.v1.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.v1.SemanticLabelEvidence
+	92,  // 95: metaxisdata.v1.SemanticLabelSuggestion.evidence:type_name -> metaxisdata.v1.SemanticLabelEvidence
 	0,   // 96: metaxisdata.v1.SemanticLabelSuggestion.suggested_rule_types:type_name -> metaxisdata.v1.QualityRuleType
-	89,  // 97: metaxisdata.v1.QualitySuggestionPayload.rule:type_name -> metaxisdata.v1.QualityRuleDraftConfig
-	90,  // 98: metaxisdata.v1.QualitySuggestionPayload.label:type_name -> metaxisdata.v1.SemanticLabelSuggestion
+	93,  // 97: metaxisdata.v1.QualitySuggestionPayload.rule:type_name -> metaxisdata.v1.QualityRuleDraftConfig
+	94,  // 98: metaxisdata.v1.QualitySuggestionPayload.label:type_name -> metaxisdata.v1.SemanticLabelSuggestion
 	12,  // 99: metaxisdata.v1.QualitySuggestion.kind:type_name -> metaxisdata.v1.QualitySuggestionKind
 	14,  // 100: metaxisdata.v1.QualitySuggestion.source:type_name -> metaxisdata.v1.QualitySuggestionSource
-	48,  // 101: metaxisdata.v1.QualitySuggestion.target:type_name -> metaxisdata.v1.QualityTarget
-	91,  // 102: metaxisdata.v1.QualitySuggestion.payload:type_name -> metaxisdata.v1.QualitySuggestionPayload
+	52,  // 101: metaxisdata.v1.QualitySuggestion.target:type_name -> metaxisdata.v1.QualityTarget
+	95,  // 102: metaxisdata.v1.QualitySuggestion.payload:type_name -> metaxisdata.v1.QualitySuggestionPayload
 	13,  // 103: metaxisdata.v1.QualitySuggestion.status:type_name -> metaxisdata.v1.QualitySuggestionStatus
-	262, // 104: metaxisdata.v1.QualitySuggestion.create_time:type_name -> google.protobuf.Timestamp
-	262, // 105: metaxisdata.v1.QualitySuggestion.decide_time:type_name -> google.protobuf.Timestamp
-	262, // 106: metaxisdata.v1.QualitySuggestion.refresh_time:type_name -> google.protobuf.Timestamp
-	263, // 107: metaxisdata.v1.ColumnProfile.meta_type:type_name -> metaxisdata.v1.MetaType
-	87,  // 108: metaxisdata.v1.ColumnProfile.profile:type_name -> metaxisdata.v1.ColumnProfileStats
-	262, // 109: metaxisdata.v1.ColumnProfile.profiled_at:type_name -> google.protobuf.Timestamp
-	263, // 110: metaxisdata.v1.ColumnSemanticLabel.meta_type:type_name -> metaxisdata.v1.MetaType
+	272, // 104: metaxisdata.v1.QualitySuggestion.create_time:type_name -> google.protobuf.Timestamp
+	272, // 105: metaxisdata.v1.QualitySuggestion.decide_time:type_name -> google.protobuf.Timestamp
+	272, // 106: metaxisdata.v1.QualitySuggestion.refresh_time:type_name -> google.protobuf.Timestamp
+	273, // 107: metaxisdata.v1.ColumnProfile.meta_type:type_name -> metaxisdata.v1.MetaType
+	91,  // 108: metaxisdata.v1.ColumnProfile.profile:type_name -> metaxisdata.v1.ColumnProfileStats
+	272, // 109: metaxisdata.v1.ColumnProfile.profiled_at:type_name -> google.protobuf.Timestamp
+	273, // 110: metaxisdata.v1.ColumnSemanticLabel.meta_type:type_name -> metaxisdata.v1.MetaType
 	11,  // 111: metaxisdata.v1.ColumnSemanticLabel.label:type_name -> metaxisdata.v1.QualitySemanticType
 	15,  // 112: metaxisdata.v1.ColumnSemanticLabel.source:type_name -> metaxisdata.v1.QualityLabelSource
 	16,  // 113: metaxisdata.v1.ColumnSemanticLabel.status:type_name -> metaxisdata.v1.QualityLabelStatus
-	88,  // 114: metaxisdata.v1.ColumnSemanticLabel.evidence:type_name -> metaxisdata.v1.SemanticLabelEvidence
-	262, // 115: metaxisdata.v1.ColumnSemanticLabel.accepted_time:type_name -> google.protobuf.Timestamp
-	262, // 116: metaxisdata.v1.ColumnSemanticLabel.update_time:type_name -> google.protobuf.Timestamp
-	99,  // 117: metaxisdata.v1.FailureSample.columns:type_name -> metaxisdata.v1.ColumnValue
-	98,  // 118: metaxisdata.v1.SegmentObservation.observed:type_name -> metaxisdata.v1.SegmentRecord
-	98,  // 119: metaxisdata.v1.SegmentObservation.new_segments:type_name -> metaxisdata.v1.SegmentRecord
-	98,  // 120: metaxisdata.v1.SegmentObservation.disappeared:type_name -> metaxisdata.v1.SegmentRecord
-	262, // 121: metaxisdata.v1.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
+	92,  // 114: metaxisdata.v1.ColumnSemanticLabel.evidence:type_name -> metaxisdata.v1.SemanticLabelEvidence
+	272, // 115: metaxisdata.v1.ColumnSemanticLabel.accepted_time:type_name -> google.protobuf.Timestamp
+	272, // 116: metaxisdata.v1.ColumnSemanticLabel.update_time:type_name -> google.protobuf.Timestamp
+	103, // 117: metaxisdata.v1.FailureSample.columns:type_name -> metaxisdata.v1.ColumnValue
+	102, // 118: metaxisdata.v1.SegmentObservation.observed:type_name -> metaxisdata.v1.SegmentRecord
+	102, // 119: metaxisdata.v1.SegmentObservation.new_segments:type_name -> metaxisdata.v1.SegmentRecord
+	102, // 120: metaxisdata.v1.SegmentObservation.disappeared:type_name -> metaxisdata.v1.SegmentRecord
+	272, // 121: metaxisdata.v1.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
 	2,   // 122: metaxisdata.v1.ListQualityRulesRequest.dimension:type_name -> metaxisdata.v1.QualityDimension
 	0,   // 123: metaxisdata.v1.ListQualityRulesRequest.rule_type:type_name -> metaxisdata.v1.QualityRuleType
 	3,   // 124: metaxisdata.v1.ListQualityRulesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
 	7,   // 125: metaxisdata.v1.ListQualityRulesRequest.state:type_name -> metaxisdata.v1.QualityRuleState
-	47,  // 126: metaxisdata.v1.ListQualityRulesResponse.quality_rules:type_name -> metaxisdata.v1.QualityRule
-	47,  // 127: metaxisdata.v1.CreateQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
-	103, // 128: metaxisdata.v1.BatchCreateQualityRulesRequest.requests:type_name -> metaxisdata.v1.CreateQualityRuleRequest
-	106, // 129: metaxisdata.v1.BatchCreateQualityRulesResponse.results:type_name -> metaxisdata.v1.BatchCreateQualityRuleResult
-	47,  // 130: metaxisdata.v1.BatchCreateQualityRuleResult.rule:type_name -> metaxisdata.v1.QualityRule
-	110, // 131: metaxisdata.v1.BatchUpdateQualityRulesRequest.requests:type_name -> metaxisdata.v1.UpdateQualityRuleRequest
-	109, // 132: metaxisdata.v1.BatchUpdateQualityRulesResponse.results:type_name -> metaxisdata.v1.BatchUpdateQualityRuleResult
-	47,  // 133: metaxisdata.v1.BatchUpdateQualityRuleResult.rule:type_name -> metaxisdata.v1.QualityRule
-	47,  // 134: metaxisdata.v1.UpdateQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
-	265, // 135: metaxisdata.v1.UpdateQualityRuleRequest.update_mask:type_name -> google.protobuf.FieldMask
-	47,  // 136: metaxisdata.v1.PreviewQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
-	79,  // 137: metaxisdata.v1.RunQualityRulesResponse.executions:type_name -> metaxisdata.v1.QualityExecution
+	51,  // 126: metaxisdata.v1.ListQualityRulesResponse.quality_rules:type_name -> metaxisdata.v1.QualityRule
+	51,  // 127: metaxisdata.v1.CreateQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
+	107, // 128: metaxisdata.v1.BatchCreateQualityRulesRequest.requests:type_name -> metaxisdata.v1.CreateQualityRuleRequest
+	110, // 129: metaxisdata.v1.BatchCreateQualityRulesResponse.results:type_name -> metaxisdata.v1.BatchCreateQualityRuleResult
+	51,  // 130: metaxisdata.v1.BatchCreateQualityRuleResult.rule:type_name -> metaxisdata.v1.QualityRule
+	114, // 131: metaxisdata.v1.BatchUpdateQualityRulesRequest.requests:type_name -> metaxisdata.v1.UpdateQualityRuleRequest
+	113, // 132: metaxisdata.v1.BatchUpdateQualityRulesResponse.results:type_name -> metaxisdata.v1.BatchUpdateQualityRuleResult
+	51,  // 133: metaxisdata.v1.BatchUpdateQualityRuleResult.rule:type_name -> metaxisdata.v1.QualityRule
+	51,  // 134: metaxisdata.v1.UpdateQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
+	275, // 135: metaxisdata.v1.UpdateQualityRuleRequest.update_mask:type_name -> google.protobuf.FieldMask
+	51,  // 136: metaxisdata.v1.PreviewQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
+	83,  // 137: metaxisdata.v1.RunQualityRulesResponse.executions:type_name -> metaxisdata.v1.QualityExecution
 	6,   // 138: metaxisdata.v1.ListQualityExecutionsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 139: metaxisdata.v1.ListQualityExecutionsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
 	5,   // 140: metaxisdata.v1.ListQualityExecutionsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
-	262, // 141: metaxisdata.v1.ListQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
-	262, // 142: metaxisdata.v1.ListQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
-	79,  // 143: metaxisdata.v1.ListQualityExecutionsResponse.quality_executions:type_name -> metaxisdata.v1.QualityExecution
+	272, // 141: metaxisdata.v1.ListQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
+	272, // 142: metaxisdata.v1.ListQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
+	83,  // 143: metaxisdata.v1.ListQualityExecutionsResponse.quality_executions:type_name -> metaxisdata.v1.QualityExecution
 	25,  // 144: metaxisdata.v1.QualityRuleTrend.unit:type_name -> metaxisdata.v1.QualityTrendUnit
-	121, // 145: metaxisdata.v1.QualityRuleTrend.points:type_name -> metaxisdata.v1.QualityRuleTrendPoint
-	77,  // 146: metaxisdata.v1.QualityRuleTrend.thresholds:type_name -> metaxisdata.v1.QualityThresholds
+	125, // 145: metaxisdata.v1.QualityRuleTrend.points:type_name -> metaxisdata.v1.QualityRuleTrendPoint
+	81,  // 146: metaxisdata.v1.QualityRuleTrend.thresholds:type_name -> metaxisdata.v1.QualityThresholds
 	27,  // 147: metaxisdata.v1.QualityRuleTrend.band_notice:type_name -> metaxisdata.v1.QualityTrendNotice
-	122, // 148: metaxisdata.v1.QualityRuleTrend.suggestion:type_name -> metaxisdata.v1.QualityThresholdSuggestion
-	262, // 149: metaxisdata.v1.QualityRuleTrendPoint.start_time:type_name -> google.protobuf.Timestamp
+	126, // 148: metaxisdata.v1.QualityRuleTrend.suggestion:type_name -> metaxisdata.v1.QualityThresholdSuggestion
+	272, // 149: metaxisdata.v1.QualityRuleTrendPoint.start_time:type_name -> google.protobuf.Timestamp
 	4,   // 150: metaxisdata.v1.QualityRuleTrendPoint.status:type_name -> metaxisdata.v1.QualityStatus
-	77,  // 151: metaxisdata.v1.QualityThresholdSuggestion.thresholds:type_name -> metaxisdata.v1.QualityThresholds
+	81,  // 151: metaxisdata.v1.QualityThresholdSuggestion.thresholds:type_name -> metaxisdata.v1.QualityThresholds
 	26,  // 152: metaxisdata.v1.QualityThresholdSuggestion.method:type_name -> metaxisdata.v1.QualityThresholdSuggestionMethod
 	27,  // 153: metaxisdata.v1.QualityThresholdSuggestion.notice:type_name -> metaxisdata.v1.QualityTrendNotice
 	9,   // 154: metaxisdata.v1.ListQualityIssuesRequest.status:type_name -> metaxisdata.v1.QualityIssueStatus
 	3,   // 155: metaxisdata.v1.ListQualityIssuesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
-	262, // 156: metaxisdata.v1.ListQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
-	262, // 157: metaxisdata.v1.ListQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
-	85,  // 158: metaxisdata.v1.ListQualityIssuesResponse.quality_issues:type_name -> metaxisdata.v1.QualityIssue
-	85,  // 159: metaxisdata.v1.UpdateQualityIssueRequest.issue:type_name -> metaxisdata.v1.QualityIssue
-	265, // 160: metaxisdata.v1.UpdateQualityIssueRequest.update_mask:type_name -> google.protobuf.FieldMask
+	272, // 156: metaxisdata.v1.ListQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
+	272, // 157: metaxisdata.v1.ListQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
+	89,  // 158: metaxisdata.v1.ListQualityIssuesResponse.quality_issues:type_name -> metaxisdata.v1.QualityIssue
+	89,  // 159: metaxisdata.v1.UpdateQualityIssueRequest.issue:type_name -> metaxisdata.v1.QualityIssue
+	275, // 160: metaxisdata.v1.UpdateQualityIssueRequest.update_mask:type_name -> google.protobuf.FieldMask
 	13,  // 161: metaxisdata.v1.ListQualitySuggestionsRequest.status:type_name -> metaxisdata.v1.QualitySuggestionStatus
 	12,  // 162: metaxisdata.v1.ListQualitySuggestionsRequest.kind:type_name -> metaxisdata.v1.QualitySuggestionKind
 	14,  // 163: metaxisdata.v1.ListQualitySuggestionsRequest.source:type_name -> metaxisdata.v1.QualitySuggestionSource
-	92,  // 164: metaxisdata.v1.ListQualitySuggestionsResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
+	96,  // 164: metaxisdata.v1.ListQualitySuggestionsResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
 	13,  // 165: metaxisdata.v1.UpdateQualitySuggestionRequest.decision:type_name -> metaxisdata.v1.QualitySuggestionStatus
-	129, // 166: metaxisdata.v1.BatchUpdateQualitySuggestionsRequest.requests:type_name -> metaxisdata.v1.UpdateQualitySuggestionRequest
-	133, // 167: metaxisdata.v1.BatchUpdateQualitySuggestionsResponse.results:type_name -> metaxisdata.v1.BatchUpdateQualitySuggestionResult
-	92,  // 168: metaxisdata.v1.BatchUpdateQualitySuggestionResult.suggestion:type_name -> metaxisdata.v1.QualitySuggestion
-	48,  // 169: metaxisdata.v1.QualitySuggestionJobTarget.target:type_name -> metaxisdata.v1.QualityTarget
+	133, // 166: metaxisdata.v1.BatchUpdateQualitySuggestionsRequest.requests:type_name -> metaxisdata.v1.UpdateQualitySuggestionRequest
+	137, // 167: metaxisdata.v1.BatchUpdateQualitySuggestionsResponse.results:type_name -> metaxisdata.v1.BatchUpdateQualitySuggestionResult
+	96,  // 168: metaxisdata.v1.BatchUpdateQualitySuggestionResult.suggestion:type_name -> metaxisdata.v1.QualitySuggestion
+	52,  // 169: metaxisdata.v1.QualitySuggestionJobTarget.target:type_name -> metaxisdata.v1.QualityTarget
 	29,  // 170: metaxisdata.v1.QualitySuggestionJobTarget.state:type_name -> metaxisdata.v1.QualitySuggestionJobTargetState
-	262, // 171: metaxisdata.v1.QualitySuggestionJobTarget.start_time:type_name -> google.protobuf.Timestamp
-	262, // 172: metaxisdata.v1.QualitySuggestionJobTarget.finish_time:type_name -> google.protobuf.Timestamp
-	135, // 173: metaxisdata.v1.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.v1.QualityLLMDiagnostic
-	93,  // 174: metaxisdata.v1.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
+	272, // 171: metaxisdata.v1.QualitySuggestionJobTarget.start_time:type_name -> google.protobuf.Timestamp
+	272, // 172: metaxisdata.v1.QualitySuggestionJobTarget.finish_time:type_name -> google.protobuf.Timestamp
+	139, // 173: metaxisdata.v1.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.v1.QualityLLMDiagnostic
+	97,  // 174: metaxisdata.v1.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
 	28,  // 175: metaxisdata.v1.QualitySuggestionJob.status:type_name -> metaxisdata.v1.QualitySuggestionJobStatus
-	134, // 176: metaxisdata.v1.QualitySuggestionJob.targets:type_name -> metaxisdata.v1.QualitySuggestionJobTarget
-	262, // 177: metaxisdata.v1.QualitySuggestionJob.create_time:type_name -> google.protobuf.Timestamp
-	262, // 178: metaxisdata.v1.QualitySuggestionJob.start_time:type_name -> google.protobuf.Timestamp
-	262, // 179: metaxisdata.v1.QualitySuggestionJob.finish_time:type_name -> google.protobuf.Timestamp
-	48,  // 180: metaxisdata.v1.CreateQualitySuggestionJobRequest.targets:type_name -> metaxisdata.v1.QualityTarget
+	138, // 176: metaxisdata.v1.QualitySuggestionJob.targets:type_name -> metaxisdata.v1.QualitySuggestionJobTarget
+	272, // 177: metaxisdata.v1.QualitySuggestionJob.create_time:type_name -> google.protobuf.Timestamp
+	272, // 178: metaxisdata.v1.QualitySuggestionJob.start_time:type_name -> google.protobuf.Timestamp
+	272, // 179: metaxisdata.v1.QualitySuggestionJob.finish_time:type_name -> google.protobuf.Timestamp
+	52,  // 180: metaxisdata.v1.CreateQualitySuggestionJobRequest.targets:type_name -> metaxisdata.v1.QualityTarget
 	28,  // 181: metaxisdata.v1.ListQualitySuggestionJobsRequest.status:type_name -> metaxisdata.v1.QualitySuggestionJobStatus
-	136, // 182: metaxisdata.v1.ListQualitySuggestionJobsResponse.quality_suggestion_jobs:type_name -> metaxisdata.v1.QualitySuggestionJob
-	263, // 183: metaxisdata.v1.ListColumnProfilesRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	94,  // 184: metaxisdata.v1.ListColumnProfilesResponse.column_profiles:type_name -> metaxisdata.v1.ColumnProfile
-	263, // 185: metaxisdata.v1.ListColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	95,  // 186: metaxisdata.v1.ListColumnLabelsResponse.column_labels:type_name -> metaxisdata.v1.ColumnSemanticLabel
-	263, // 187: metaxisdata.v1.UpdateColumnLabelRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	140, // 182: metaxisdata.v1.ListQualitySuggestionJobsResponse.quality_suggestion_jobs:type_name -> metaxisdata.v1.QualitySuggestionJob
+	273, // 183: metaxisdata.v1.ListColumnProfilesRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	98,  // 184: metaxisdata.v1.ListColumnProfilesResponse.column_profiles:type_name -> metaxisdata.v1.ColumnProfile
+	273, // 185: metaxisdata.v1.ListColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	99,  // 186: metaxisdata.v1.ListColumnLabelsResponse.column_labels:type_name -> metaxisdata.v1.ColumnSemanticLabel
+	273, // 187: metaxisdata.v1.UpdateColumnLabelRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	11,  // 188: metaxisdata.v1.UpdateColumnLabelRequest.label:type_name -> metaxisdata.v1.QualitySemanticType
 	17,  // 189: metaxisdata.v1.UpdateColumnLabelRequest.action:type_name -> metaxisdata.v1.ColumnLabelAction
-	95,  // 190: metaxisdata.v1.UpdateColumnLabelResponse.column_label:type_name -> metaxisdata.v1.ColumnSemanticLabel
-	263, // 191: metaxisdata.v1.ProfileColumnsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	94,  // 192: metaxisdata.v1.ProfileColumnsResponse.column_profiles:type_name -> metaxisdata.v1.ColumnProfile
-	263, // 193: metaxisdata.v1.SuggestQualityRuleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	92,  // 194: metaxisdata.v1.SuggestQualityRuleResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
-	93,  // 195: metaxisdata.v1.SuggestQualityRuleResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
-	263, // 196: metaxisdata.v1.SuggestColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	92,  // 197: metaxisdata.v1.SuggestColumnLabelsResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
-	93,  // 198: metaxisdata.v1.SuggestColumnLabelsResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
-	263, // 199: metaxisdata.v1.RecommendQualityChecksRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	92,  // 200: metaxisdata.v1.RecommendQualityChecksResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
-	93,  // 201: metaxisdata.v1.RecommendQualityChecksResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
-	266, // 202: metaxisdata.v1.ExplainQualityExecutionResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
-	267, // 203: metaxisdata.v1.ExplainQualityExecutionResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
-	262, // 204: metaxisdata.v1.QualityLLMUsage.resets_at:type_name -> google.protobuf.Timestamp
-	164, // 205: metaxisdata.v1.QualityOverview.coverage_by_instance:type_name -> metaxisdata.v1.QualityCoverageBreakdown
-	164, // 206: metaxisdata.v1.QualityOverview.coverage_by_environment:type_name -> metaxisdata.v1.QualityCoverageBreakdown
-	165, // 207: metaxisdata.v1.QualityOverview.score_by_dimension:type_name -> metaxisdata.v1.QualityDimensionScore
-	166, // 208: metaxisdata.v1.QualityOverview.score_by_owner:type_name -> metaxisdata.v1.QualityOwnerScore
-	78,  // 209: metaxisdata.v1.QualityOverview.last_day_counts:type_name -> metaxisdata.v1.QualityStatusCounts
-	167, // 210: metaxisdata.v1.QualityOverview.trend:type_name -> metaxisdata.v1.QualityTrendPoint
+	99,  // 190: metaxisdata.v1.UpdateColumnLabelResponse.column_label:type_name -> metaxisdata.v1.ColumnSemanticLabel
+	273, // 191: metaxisdata.v1.ProfileColumnsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	98,  // 192: metaxisdata.v1.ProfileColumnsResponse.column_profiles:type_name -> metaxisdata.v1.ColumnProfile
+	273, // 193: metaxisdata.v1.SuggestQualityRuleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	96,  // 194: metaxisdata.v1.SuggestQualityRuleResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
+	97,  // 195: metaxisdata.v1.SuggestQualityRuleResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
+	273, // 196: metaxisdata.v1.SuggestColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	96,  // 197: metaxisdata.v1.SuggestColumnLabelsResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
+	97,  // 198: metaxisdata.v1.SuggestColumnLabelsResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
+	273, // 199: metaxisdata.v1.RecommendQualityChecksRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	96,  // 200: metaxisdata.v1.RecommendQualityChecksResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
+	97,  // 201: metaxisdata.v1.RecommendQualityChecksResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
+	276, // 202: metaxisdata.v1.ExplainQualityExecutionResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
+	277, // 203: metaxisdata.v1.ExplainQualityExecutionResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
+	272, // 204: metaxisdata.v1.QualityLLMUsage.resets_at:type_name -> google.protobuf.Timestamp
+	168, // 205: metaxisdata.v1.QualityOverview.coverage_by_instance:type_name -> metaxisdata.v1.QualityCoverageBreakdown
+	168, // 206: metaxisdata.v1.QualityOverview.coverage_by_environment:type_name -> metaxisdata.v1.QualityCoverageBreakdown
+	169, // 207: metaxisdata.v1.QualityOverview.score_by_dimension:type_name -> metaxisdata.v1.QualityDimensionScore
+	170, // 208: metaxisdata.v1.QualityOverview.score_by_owner:type_name -> metaxisdata.v1.QualityOwnerScore
+	82,  // 209: metaxisdata.v1.QualityOverview.last_day_counts:type_name -> metaxisdata.v1.QualityStatusCounts
+	171, // 210: metaxisdata.v1.QualityOverview.trend:type_name -> metaxisdata.v1.QualityTrendPoint
 	2,   // 211: metaxisdata.v1.QualityDimensionScore.dimension:type_name -> metaxisdata.v1.QualityDimension
-	263, // 212: metaxisdata.v1.QualityTargetKey.meta_type:type_name -> metaxisdata.v1.MetaType
+	273, // 212: metaxisdata.v1.QualityTargetKey.meta_type:type_name -> metaxisdata.v1.MetaType
 	4,   // 213: metaxisdata.v1.ListQualityTargetsRequest.worst_status:type_name -> metaxisdata.v1.QualityStatus
 	30,  // 214: metaxisdata.v1.ListQualityTargetsRequest.order_by:type_name -> metaxisdata.v1.QualityTargetOrder
-	168, // 215: metaxisdata.v1.ListQualityTargetsRequest.targets:type_name -> metaxisdata.v1.QualityTargetKey
-	172, // 216: metaxisdata.v1.ListQualityTargetsResponse.quality_targets:type_name -> metaxisdata.v1.QualityTargetSummary
-	264, // 217: metaxisdata.v1.QualityTargetSchedule.schedule_interval:type_name -> google.protobuf.Duration
-	262, // 218: metaxisdata.v1.QualityTargetSchedule.next_run_time:type_name -> google.protobuf.Timestamp
-	48,  // 219: metaxisdata.v1.QualityTargetSummary.target:type_name -> metaxisdata.v1.QualityTarget
+	172, // 215: metaxisdata.v1.ListQualityTargetsRequest.targets:type_name -> metaxisdata.v1.QualityTargetKey
+	176, // 216: metaxisdata.v1.ListQualityTargetsResponse.quality_targets:type_name -> metaxisdata.v1.QualityTargetSummary
+	274, // 217: metaxisdata.v1.QualityTargetSchedule.schedule_interval:type_name -> google.protobuf.Duration
+	272, // 218: metaxisdata.v1.QualityTargetSchedule.next_run_time:type_name -> google.protobuf.Timestamp
+	52,  // 219: metaxisdata.v1.QualityTargetSummary.target:type_name -> metaxisdata.v1.QualityTarget
 	4,   // 220: metaxisdata.v1.QualityTargetSummary.worst_status:type_name -> metaxisdata.v1.QualityStatus
-	262, // 221: metaxisdata.v1.QualityTargetSummary.last_run_time:type_name -> google.protobuf.Timestamp
-	81,  // 222: metaxisdata.v1.QualityTargetSummary.latest_run:type_name -> metaxisdata.v1.QualityRun
-	171, // 223: metaxisdata.v1.QualityTargetSummary.schedule:type_name -> metaxisdata.v1.QualityTargetSchedule
-	48,  // 224: metaxisdata.v1.QualityImpactAsset.target:type_name -> metaxisdata.v1.QualityTarget
-	172, // 225: metaxisdata.v1.QualityImpactAsset.summary:type_name -> metaxisdata.v1.QualityTargetSummary
-	48,  // 226: metaxisdata.v1.QualityRootCauseCandidate.target:type_name -> metaxisdata.v1.QualityTarget
-	262, // 227: metaxisdata.v1.QualityRootCauseCandidate.latest_failure_time:type_name -> google.protobuf.Timestamp
-	262, // 228: metaxisdata.v1.QualityRootCauseCandidate.structure_changed_time:type_name -> google.protobuf.Timestamp
-	168, // 229: metaxisdata.v1.GetQualityTargetImpactRequest.target:type_name -> metaxisdata.v1.QualityTargetKey
-	262, // 230: metaxisdata.v1.GetQualityTargetImpactRequest.as_of:type_name -> google.protobuf.Timestamp
-	173, // 231: metaxisdata.v1.GetQualityTargetImpactResponse.downstream_assets:type_name -> metaxisdata.v1.QualityImpactAsset
-	174, // 232: metaxisdata.v1.GetQualityTargetImpactResponse.root_causes:type_name -> metaxisdata.v1.QualityRootCauseCandidate
-	262, // 233: metaxisdata.v1.GetQualityTargetImpactResponse.window_start:type_name -> google.protobuf.Timestamp
-	262, // 234: metaxisdata.v1.GetQualityTargetImpactResponse.window_end:type_name -> google.protobuf.Timestamp
-	48,  // 235: metaxisdata.v1.QualityConsumptionGap.target:type_name -> metaxisdata.v1.QualityTarget
-	177, // 236: metaxisdata.v1.GetQualityConsumptionCoverageResponse.gaps:type_name -> metaxisdata.v1.QualityConsumptionGap
-	263, // 237: metaxisdata.v1.UpdateQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	264, // 238: metaxisdata.v1.UpdateQualityTargetScheduleRequest.schedule_interval:type_name -> google.protobuf.Duration
-	263, // 239: metaxisdata.v1.GetQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	263, // 240: metaxisdata.v1.GetQualityTargetRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	172, // 241: metaxisdata.v1.GetQualityTargetResponse.summary:type_name -> metaxisdata.v1.QualityTargetSummary
-	47,  // 242: metaxisdata.v1.GetQualityTargetResponse.quality_rules:type_name -> metaxisdata.v1.QualityRule
-	85,  // 243: metaxisdata.v1.GetQualityTargetResponse.open_issues:type_name -> metaxisdata.v1.QualityIssue
-	185, // 244: metaxisdata.v1.GetQualityTargetResponse.rule_history:type_name -> metaxisdata.v1.QualityRuleHistory
-	184, // 245: metaxisdata.v1.GetQualityTargetResponse.target_columns:type_name -> metaxisdata.v1.QualityTargetColumn
-	80,  // 246: metaxisdata.v1.QualityRuleHistory.executions:type_name -> metaxisdata.v1.QualityExecutionSummary
-	263, // 247: metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	48,  // 248: metaxisdata.v1.QualityContract.target:type_name -> metaxisdata.v1.QualityTarget
-	191, // 249: metaxisdata.v1.QualityContract.settings:type_name -> metaxisdata.v1.QualityContractSettings
-	262, // 250: metaxisdata.v1.QualityContract.published_at:type_name -> google.protobuf.Timestamp
-	195, // 251: metaxisdata.v1.QualityContract.change_summary:type_name -> metaxisdata.v1.QualityContractChangeSummary
-	199, // 252: metaxisdata.v1.QualityContract.plan:type_name -> metaxisdata.v1.QualityPlan
-	199, // 253: metaxisdata.v1.QualityContract.staged_plan:type_name -> metaxisdata.v1.QualityPlan
-	190, // 254: metaxisdata.v1.QualityContract.diff:type_name -> metaxisdata.v1.QualityContractDiff
-	44,  // 255: metaxisdata.v1.QualityPlanChange.kind:type_name -> metaxisdata.v1.QualityPlanChange.Kind
-	197, // 256: metaxisdata.v1.QualityPlanChange.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
-	189, // 257: metaxisdata.v1.QualityContractDiff.plan_changes:type_name -> metaxisdata.v1.QualityPlanChange
-	75,  // 258: metaxisdata.v1.QualityContractSettings.filter:type_name -> metaxisdata.v1.QualityFilter
+	272, // 221: metaxisdata.v1.QualityTargetSummary.last_run_time:type_name -> google.protobuf.Timestamp
+	85,  // 222: metaxisdata.v1.QualityTargetSummary.latest_run:type_name -> metaxisdata.v1.QualityRun
+	175, // 223: metaxisdata.v1.QualityTargetSummary.schedule:type_name -> metaxisdata.v1.QualityTargetSchedule
+	52,  // 224: metaxisdata.v1.QualityImpactAsset.target:type_name -> metaxisdata.v1.QualityTarget
+	176, // 225: metaxisdata.v1.QualityImpactAsset.summary:type_name -> metaxisdata.v1.QualityTargetSummary
+	52,  // 226: metaxisdata.v1.QualityRootCauseCandidate.target:type_name -> metaxisdata.v1.QualityTarget
+	272, // 227: metaxisdata.v1.QualityRootCauseCandidate.latest_failure_time:type_name -> google.protobuf.Timestamp
+	272, // 228: metaxisdata.v1.QualityRootCauseCandidate.structure_changed_time:type_name -> google.protobuf.Timestamp
+	172, // 229: metaxisdata.v1.GetQualityTargetImpactRequest.target:type_name -> metaxisdata.v1.QualityTargetKey
+	272, // 230: metaxisdata.v1.GetQualityTargetImpactRequest.as_of:type_name -> google.protobuf.Timestamp
+	177, // 231: metaxisdata.v1.GetQualityTargetImpactResponse.downstream_assets:type_name -> metaxisdata.v1.QualityImpactAsset
+	178, // 232: metaxisdata.v1.GetQualityTargetImpactResponse.root_causes:type_name -> metaxisdata.v1.QualityRootCauseCandidate
+	272, // 233: metaxisdata.v1.GetQualityTargetImpactResponse.window_start:type_name -> google.protobuf.Timestamp
+	272, // 234: metaxisdata.v1.GetQualityTargetImpactResponse.window_end:type_name -> google.protobuf.Timestamp
+	52,  // 235: metaxisdata.v1.QualityConsumptionGap.target:type_name -> metaxisdata.v1.QualityTarget
+	181, // 236: metaxisdata.v1.GetQualityConsumptionCoverageResponse.gaps:type_name -> metaxisdata.v1.QualityConsumptionGap
+	273, // 237: metaxisdata.v1.UpdateQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	274, // 238: metaxisdata.v1.UpdateQualityTargetScheduleRequest.schedule_interval:type_name -> google.protobuf.Duration
+	273, // 239: metaxisdata.v1.GetQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	273, // 240: metaxisdata.v1.GetQualityTargetRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	176, // 241: metaxisdata.v1.GetQualityTargetResponse.summary:type_name -> metaxisdata.v1.QualityTargetSummary
+	51,  // 242: metaxisdata.v1.GetQualityTargetResponse.quality_rules:type_name -> metaxisdata.v1.QualityRule
+	89,  // 243: metaxisdata.v1.GetQualityTargetResponse.open_issues:type_name -> metaxisdata.v1.QualityIssue
+	189, // 244: metaxisdata.v1.GetQualityTargetResponse.rule_history:type_name -> metaxisdata.v1.QualityRuleHistory
+	188, // 245: metaxisdata.v1.GetQualityTargetResponse.target_columns:type_name -> metaxisdata.v1.QualityTargetColumn
+	84,  // 246: metaxisdata.v1.QualityRuleHistory.executions:type_name -> metaxisdata.v1.QualityExecutionSummary
+	273, // 247: metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	52,  // 248: metaxisdata.v1.QualityContract.target:type_name -> metaxisdata.v1.QualityTarget
+	195, // 249: metaxisdata.v1.QualityContract.settings:type_name -> metaxisdata.v1.QualityContractSettings
+	272, // 250: metaxisdata.v1.QualityContract.published_at:type_name -> google.protobuf.Timestamp
+	199, // 251: metaxisdata.v1.QualityContract.change_summary:type_name -> metaxisdata.v1.QualityContractChangeSummary
+	203, // 252: metaxisdata.v1.QualityContract.plan:type_name -> metaxisdata.v1.QualityPlan
+	203, // 253: metaxisdata.v1.QualityContract.staged_plan:type_name -> metaxisdata.v1.QualityPlan
+	194, // 254: metaxisdata.v1.QualityContract.diff:type_name -> metaxisdata.v1.QualityContractDiff
+	47,  // 255: metaxisdata.v1.QualityPlanChange.kind:type_name -> metaxisdata.v1.QualityPlanChange.Kind
+	201, // 256: metaxisdata.v1.QualityPlanChange.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
+	193, // 257: metaxisdata.v1.QualityContractDiff.plan_changes:type_name -> metaxisdata.v1.QualityPlanChange
+	79,  // 258: metaxisdata.v1.QualityContractSettings.filter:type_name -> metaxisdata.v1.QualityFilter
 	3,   // 259: metaxisdata.v1.QualityContractSettings.default_severity:type_name -> metaxisdata.v1.QualitySeverity
-	194, // 260: metaxisdata.v1.QualityContractSettings.intent:type_name -> metaxisdata.v1.QualityContractIntent
+	198, // 260: metaxisdata.v1.QualityContractSettings.intent:type_name -> metaxisdata.v1.QualityContractIntent
 	34,  // 261: metaxisdata.v1.QualityContractIntentStatement.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	34,  // 262: metaxisdata.v1.QualityContractIntentExemption.property:type_name -> metaxisdata.v1.QualityCoverageProperty
-	262, // 263: metaxisdata.v1.QualityContractIntentExemption.expires_at:type_name -> google.protobuf.Timestamp
+	272, // 263: metaxisdata.v1.QualityContractIntentExemption.expires_at:type_name -> google.protobuf.Timestamp
 	33,  // 264: metaxisdata.v1.QualityContractIntent.criticality:type_name -> metaxisdata.v1.QualityAssetCriticality
-	192, // 265: metaxisdata.v1.QualityContractIntent.statements:type_name -> metaxisdata.v1.QualityContractIntentStatement
-	193, // 266: metaxisdata.v1.QualityContractIntent.exemptions:type_name -> metaxisdata.v1.QualityContractIntentExemption
-	262, // 267: metaxisdata.v1.QualityContractIntent.effective_from:type_name -> google.protobuf.Timestamp
+	196, // 265: metaxisdata.v1.QualityContractIntent.statements:type_name -> metaxisdata.v1.QualityContractIntentStatement
+	197, // 266: metaxisdata.v1.QualityContractIntent.exemptions:type_name -> metaxisdata.v1.QualityContractIntentExemption
+	272, // 267: metaxisdata.v1.QualityContractIntent.effective_from:type_name -> google.protobuf.Timestamp
 	31,  // 268: metaxisdata.v1.QualityContractIntent.source:type_name -> metaxisdata.v1.QualityContractIntentSource
 	34,  // 269: metaxisdata.v1.QualityCoverageRequirement.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	35,  // 270: metaxisdata.v1.QualityCoverageRequirement.source:type_name -> metaxisdata.v1.QualityCoverageSource
 	34,  // 271: metaxisdata.v1.QualityPlanCoverage.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	35,  // 272: metaxisdata.v1.QualityPlanCoverage.source:type_name -> metaxisdata.v1.QualityCoverageSource
-	48,  // 273: metaxisdata.v1.QualityPlan.target:type_name -> metaxisdata.v1.QualityTarget
+	52,  // 273: metaxisdata.v1.QualityPlan.target:type_name -> metaxisdata.v1.QualityTarget
 	32,  // 274: metaxisdata.v1.QualityPlan.state:type_name -> metaxisdata.v1.QualityPlanState
 	33,  // 275: metaxisdata.v1.QualityPlan.criticality:type_name -> metaxisdata.v1.QualityAssetCriticality
-	196, // 276: metaxisdata.v1.QualityPlan.requirements:type_name -> metaxisdata.v1.QualityCoverageRequirement
-	197, // 277: metaxisdata.v1.QualityPlan.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
-	198, // 278: metaxisdata.v1.QualityPlan.cadence:type_name -> metaxisdata.v1.QualityPlanCadence
-	199, // 279: metaxisdata.v1.ListQualityPlansResponse.plans:type_name -> metaxisdata.v1.QualityPlan
+	200, // 276: metaxisdata.v1.QualityPlan.requirements:type_name -> metaxisdata.v1.QualityCoverageRequirement
+	201, // 277: metaxisdata.v1.QualityPlan.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
+	202, // 278: metaxisdata.v1.QualityPlan.cadence:type_name -> metaxisdata.v1.QualityPlanCadence
+	203, // 279: metaxisdata.v1.ListQualityPlansResponse.plans:type_name -> metaxisdata.v1.QualityPlan
 	38,  // 280: metaxisdata.v1.QualityChangeRequestItem.kind:type_name -> metaxisdata.v1.QualityChangeRequestItemKind
 	34,  // 281: metaxisdata.v1.QualityChangeRequestItem.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	2,   // 282: metaxisdata.v1.QualityChangeRequestItem.dimension:type_name -> metaxisdata.v1.QualityDimension
-	45,  // 283: metaxisdata.v1.QualityChangeRequestItemResult.status:type_name -> metaxisdata.v1.QualityChangeRequestItemResult.Status
-	48,  // 284: metaxisdata.v1.QualityChangeRequest.target:type_name -> metaxisdata.v1.QualityTarget
+	48,  // 283: metaxisdata.v1.QualityChangeRequestItemResult.status:type_name -> metaxisdata.v1.QualityChangeRequestItemResult.Status
+	52,  // 284: metaxisdata.v1.QualityChangeRequest.target:type_name -> metaxisdata.v1.QualityTarget
 	36,  // 285: metaxisdata.v1.QualityChangeRequest.state:type_name -> metaxisdata.v1.QualityChangeRequestState
 	37,  // 286: metaxisdata.v1.QualityChangeRequest.source:type_name -> metaxisdata.v1.QualityChangeRequestSource
-	202, // 287: metaxisdata.v1.QualityChangeRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
-	203, // 288: metaxisdata.v1.QualityChangeRequest.item_results:type_name -> metaxisdata.v1.QualityChangeRequestItemResult
+	206, // 287: metaxisdata.v1.QualityChangeRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
+	207, // 288: metaxisdata.v1.QualityChangeRequest.item_results:type_name -> metaxisdata.v1.QualityChangeRequestItemResult
 	39,  // 289: metaxisdata.v1.QualityChangeRequest.rejection_reasons:type_name -> metaxisdata.v1.QualityChangeRejectionReason
-	262, // 290: metaxisdata.v1.QualityChangeRequest.created_at:type_name -> google.protobuf.Timestamp
-	262, // 291: metaxisdata.v1.QualityChangeRequest.decided_at:type_name -> google.protobuf.Timestamp
-	263, // 292: metaxisdata.v1.StageQualityPlanRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	197, // 293: metaxisdata.v1.StageQualityPlanRequest.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
-	263, // 294: metaxisdata.v1.CreateQualityChangeRequestRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	202, // 295: metaxisdata.v1.CreateQualityChangeRequestRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
+	272, // 290: metaxisdata.v1.QualityChangeRequest.created_at:type_name -> google.protobuf.Timestamp
+	272, // 291: metaxisdata.v1.QualityChangeRequest.decided_at:type_name -> google.protobuf.Timestamp
+	273, // 292: metaxisdata.v1.StageQualityPlanRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	201, // 293: metaxisdata.v1.StageQualityPlanRequest.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
+	273, // 294: metaxisdata.v1.CreateQualityChangeRequestRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	206, // 295: metaxisdata.v1.CreateQualityChangeRequestRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
 	36,  // 296: metaxisdata.v1.ListQualityChangeRequestsRequest.state:type_name -> metaxisdata.v1.QualityChangeRequestState
-	204, // 297: metaxisdata.v1.ListQualityChangeRequestsResponse.quality_change_requests:type_name -> metaxisdata.v1.QualityChangeRequest
-	46,  // 298: metaxisdata.v1.DecideQualityChangeRequestRequest.decision:type_name -> metaxisdata.v1.DecideQualityChangeRequestRequest.Decision
+	208, // 297: metaxisdata.v1.ListQualityChangeRequestsResponse.quality_change_requests:type_name -> metaxisdata.v1.QualityChangeRequest
+	49,  // 298: metaxisdata.v1.DecideQualityChangeRequestRequest.decision:type_name -> metaxisdata.v1.DecideQualityChangeRequestRequest.Decision
 	39,  // 299: metaxisdata.v1.DecideQualityChangeRequestRequest.rejection_reasons:type_name -> metaxisdata.v1.QualityChangeRejectionReason
-	48,  // 300: metaxisdata.v1.QualityInvestigation.target:type_name -> metaxisdata.v1.QualityTarget
-	41,  // 301: metaxisdata.v1.QualityInvestigation.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
-	40,  // 302: metaxisdata.v1.QualityInvestigation.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
-	42,  // 303: metaxisdata.v1.QualityInvestigation.verdict:type_name -> metaxisdata.v1.QualityInvestigationVerdict
-	212, // 304: metaxisdata.v1.QualityInvestigation.hypotheses:type_name -> metaxisdata.v1.QualityInvestigationHypothesis
-	211, // 305: metaxisdata.v1.QualityInvestigation.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
-	262, // 306: metaxisdata.v1.QualityInvestigation.create_time:type_name -> google.protobuf.Timestamp
-	263, // 307: metaxisdata.v1.CreateQualityInvestigationRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	41,  // 308: metaxisdata.v1.CreateQualityInvestigationRequest.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
-	40,  // 309: metaxisdata.v1.CreateQualityInvestigationRequest.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
-	42,  // 310: metaxisdata.v1.CreateQualityInvestigationRequest.verdict:type_name -> metaxisdata.v1.QualityInvestigationVerdict
-	212, // 311: metaxisdata.v1.CreateQualityInvestigationRequest.hypotheses:type_name -> metaxisdata.v1.QualityInvestigationHypothesis
-	211, // 312: metaxisdata.v1.CreateQualityInvestigationRequest.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
-	40,  // 313: metaxisdata.v1.ListQualityInvestigationsRequest.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
-	41,  // 314: metaxisdata.v1.ListQualityInvestigationsRequest.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
-	213, // 315: metaxisdata.v1.ListQualityInvestigationsResponse.quality_investigations:type_name -> metaxisdata.v1.QualityInvestigation
-	218, // 316: metaxisdata.v1.QualityActionPolicy.actions:type_name -> metaxisdata.v1.QualityAction
-	262, // 317: metaxisdata.v1.QualityAgent.create_time:type_name -> google.protobuf.Timestamp
-	221, // 318: metaxisdata.v1.CreateQualityAgentResponse.agent:type_name -> metaxisdata.v1.QualityAgent
-	221, // 319: metaxisdata.v1.ListQualityAgentsResponse.quality_agents:type_name -> metaxisdata.v1.QualityAgent
-	221, // 320: metaxisdata.v1.RotateQualityAgentTokenResponse.agent:type_name -> metaxisdata.v1.QualityAgent
-	48,  // 321: metaxisdata.v1.QualityCoverageGap.target:type_name -> metaxisdata.v1.QualityTarget
-	34,  // 322: metaxisdata.v1.QualityCoverageGap.property:type_name -> metaxisdata.v1.QualityCoverageProperty
-	33,  // 323: metaxisdata.v1.QualityCoverageGap.criticality:type_name -> metaxisdata.v1.QualityAssetCriticality
-	229, // 324: metaxisdata.v1.ListQualityCoverageGapsResponse.gaps:type_name -> metaxisdata.v1.QualityCoverageGap
-	262, // 325: metaxisdata.v1.QualityContractRevision.published_at:type_name -> google.protobuf.Timestamp
-	195, // 326: metaxisdata.v1.QualityContractRevision.change_summary:type_name -> metaxisdata.v1.QualityContractChangeSummary
-	194, // 327: metaxisdata.v1.QualityContractRevision.intent:type_name -> metaxisdata.v1.QualityContractIntent
-	43,  // 328: metaxisdata.v1.QualityContractRevision.change_kind:type_name -> metaxisdata.v1.QualityContractChangeKind
-	199, // 329: metaxisdata.v1.QualityContractRevision.plan:type_name -> metaxisdata.v1.QualityPlan
-	0,   // 330: metaxisdata.v1.QualityContractCheck.rule_type:type_name -> metaxisdata.v1.QualityRuleType
-	3,   // 331: metaxisdata.v1.QualityContractCheck.severity:type_name -> metaxisdata.v1.QualitySeverity
-	263, // 332: metaxisdata.v1.GetQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	263, // 333: metaxisdata.v1.UpdateQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	191, // 334: metaxisdata.v1.UpdateQualityContractRequest.settings:type_name -> metaxisdata.v1.QualityContractSettings
-	199, // 335: metaxisdata.v1.UpdateQualityContractRequest.draft:type_name -> metaxisdata.v1.QualityPlan
-	263, // 336: metaxisdata.v1.PublishQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	188, // 337: metaxisdata.v1.PublishQualityContractResponse.contract:type_name -> metaxisdata.v1.QualityContract
-	232, // 338: metaxisdata.v1.PublishQualityContractResponse.revision:type_name -> metaxisdata.v1.QualityContractRevision
-	263, // 339: metaxisdata.v1.ListQualityContractRevisionsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	232, // 340: metaxisdata.v1.ListQualityContractRevisionsResponse.revisions:type_name -> metaxisdata.v1.QualityContractRevision
-	263, // 341: metaxisdata.v1.GetQualityContractRevisionRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	232, // 342: metaxisdata.v1.GetQualityContractRevisionResponse.revision:type_name -> metaxisdata.v1.QualityContractRevision
-	233, // 343: metaxisdata.v1.GetQualityContractRevisionResponse.checks:type_name -> metaxisdata.v1.QualityContractCheck
-	6,   // 344: metaxisdata.v1.ExportQualityExecutionsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
-	4,   // 345: metaxisdata.v1.ExportQualityExecutionsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
-	5,   // 346: metaxisdata.v1.ExportQualityExecutionsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
-	262, // 347: metaxisdata.v1.ExportQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
-	262, // 348: metaxisdata.v1.ExportQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
-	9,   // 349: metaxisdata.v1.ExportQualityIssuesRequest.status:type_name -> metaxisdata.v1.QualityIssueStatus
-	3,   // 350: metaxisdata.v1.ExportQualityIssuesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
-	262, // 351: metaxisdata.v1.ExportQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
-	262, // 352: metaxisdata.v1.ExportQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
-	4,   // 353: metaxisdata.v1.ExportQualityTargetsRequest.worst_status:type_name -> metaxisdata.v1.QualityStatus
-	30,  // 354: metaxisdata.v1.ExportQualityTargetsRequest.order_by:type_name -> metaxisdata.v1.QualityTargetOrder
-	263, // 355: metaxisdata.v1.ExportQualityReportRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	0,   // 356: metaxisdata.v1.QualityRuleTemplate.rule_type:type_name -> metaxisdata.v1.QualityRuleType
-	50,  // 357: metaxisdata.v1.QualityRuleTemplate.config:type_name -> metaxisdata.v1.QualityRuleConfig
-	3,   // 358: metaxisdata.v1.QualityRuleTemplate.severity:type_name -> metaxisdata.v1.QualitySeverity
-	2,   // 359: metaxisdata.v1.QualityRuleTemplate.dimension:type_name -> metaxisdata.v1.QualityDimension
-	262, // 360: metaxisdata.v1.QualityRuleTemplate.create_time:type_name -> google.protobuf.Timestamp
-	262, // 361: metaxisdata.v1.QualityRuleTemplate.update_time:type_name -> google.protobuf.Timestamp
-	248, // 362: metaxisdata.v1.ListQualityRuleTemplatesResponse.quality_rule_templates:type_name -> metaxisdata.v1.QualityRuleTemplate
-	248, // 363: metaxisdata.v1.CreateQualityRuleTemplateRequest.quality_rule_template:type_name -> metaxisdata.v1.QualityRuleTemplate
-	248, // 364: metaxisdata.v1.UpdateQualityRuleTemplateRequest.quality_rule_template:type_name -> metaxisdata.v1.QualityRuleTemplate
-	265, // 365: metaxisdata.v1.UpdateQualityRuleTemplateRequest.update_mask:type_name -> google.protobuf.FieldMask
-	262, // 366: metaxisdata.v1.QualityCodeTable.create_time:type_name -> google.protobuf.Timestamp
-	262, // 367: metaxisdata.v1.QualityCodeTable.update_time:type_name -> google.protobuf.Timestamp
-	255, // 368: metaxisdata.v1.ListQualityCodeTablesResponse.quality_code_tables:type_name -> metaxisdata.v1.QualityCodeTable
-	255, // 369: metaxisdata.v1.CreateQualityCodeTableRequest.quality_code_table:type_name -> metaxisdata.v1.QualityCodeTable
-	255, // 370: metaxisdata.v1.UpdateQualityCodeTableRequest.quality_code_table:type_name -> metaxisdata.v1.QualityCodeTable
-	265, // 371: metaxisdata.v1.UpdateQualityCodeTableRequest.update_mask:type_name -> google.protobuf.FieldMask
-	100, // 372: metaxisdata.v1.DataQualityService.ListQualityRules:input_type -> metaxisdata.v1.ListQualityRulesRequest
-	102, // 373: metaxisdata.v1.DataQualityService.GetQualityRule:input_type -> metaxisdata.v1.GetQualityRuleRequest
-	103, // 374: metaxisdata.v1.DataQualityService.CreateQualityRule:input_type -> metaxisdata.v1.CreateQualityRuleRequest
-	104, // 375: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:input_type -> metaxisdata.v1.BatchCreateQualityRulesRequest
-	107, // 376: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:input_type -> metaxisdata.v1.BatchUpdateQualityRulesRequest
-	110, // 377: metaxisdata.v1.DataQualityService.UpdateQualityRule:input_type -> metaxisdata.v1.UpdateQualityRuleRequest
-	111, // 378: metaxisdata.v1.DataQualityService.DeleteQualityRule:input_type -> metaxisdata.v1.DeleteQualityRuleRequest
-	249, // 379: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:input_type -> metaxisdata.v1.ListQualityRuleTemplatesRequest
-	251, // 380: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:input_type -> metaxisdata.v1.GetQualityRuleTemplateRequest
-	252, // 381: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:input_type -> metaxisdata.v1.CreateQualityRuleTemplateRequest
-	253, // 382: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:input_type -> metaxisdata.v1.UpdateQualityRuleTemplateRequest
-	254, // 383: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:input_type -> metaxisdata.v1.DeleteQualityRuleTemplateRequest
-	256, // 384: metaxisdata.v1.DataQualityService.ListQualityCodeTables:input_type -> metaxisdata.v1.ListQualityCodeTablesRequest
-	258, // 385: metaxisdata.v1.DataQualityService.GetQualityCodeTable:input_type -> metaxisdata.v1.GetQualityCodeTableRequest
-	259, // 386: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:input_type -> metaxisdata.v1.CreateQualityCodeTableRequest
-	260, // 387: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:input_type -> metaxisdata.v1.UpdateQualityCodeTableRequest
-	261, // 388: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:input_type -> metaxisdata.v1.DeleteQualityCodeTableRequest
-	112, // 389: metaxisdata.v1.DataQualityService.PreviewQualityRule:input_type -> metaxisdata.v1.PreviewQualityRuleRequest
-	114, // 390: metaxisdata.v1.DataQualityService.RunQualityRules:input_type -> metaxisdata.v1.RunQualityRulesRequest
-	116, // 391: metaxisdata.v1.DataQualityService.ListQualityExecutions:input_type -> metaxisdata.v1.ListQualityExecutionsRequest
-	118, // 392: metaxisdata.v1.DataQualityService.GetQualityExecution:input_type -> metaxisdata.v1.GetQualityExecutionRequest
-	119, // 393: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:input_type -> metaxisdata.v1.GetQualityRuleTrendRequest
-	243, // 394: metaxisdata.v1.DataQualityService.ExportQualityExecutions:input_type -> metaxisdata.v1.ExportQualityExecutionsRequest
-	82,  // 395: metaxisdata.v1.DataQualityService.ListQualityRuns:input_type -> metaxisdata.v1.ListQualityRunsRequest
-	84,  // 396: metaxisdata.v1.DataQualityService.GetQualityRun:input_type -> metaxisdata.v1.GetQualityRunRequest
-	123, // 397: metaxisdata.v1.DataQualityService.ListQualityIssues:input_type -> metaxisdata.v1.ListQualityIssuesRequest
-	125, // 398: metaxisdata.v1.DataQualityService.GetQualityIssue:input_type -> metaxisdata.v1.GetQualityIssueRequest
-	244, // 399: metaxisdata.v1.DataQualityService.ExportQualityIssues:input_type -> metaxisdata.v1.ExportQualityIssuesRequest
-	126, // 400: metaxisdata.v1.DataQualityService.UpdateQualityIssue:input_type -> metaxisdata.v1.UpdateQualityIssueRequest
-	127, // 401: metaxisdata.v1.DataQualityService.ListQualitySuggestions:input_type -> metaxisdata.v1.ListQualitySuggestionsRequest
-	130, // 402: metaxisdata.v1.DataQualityService.GetQualitySuggestion:input_type -> metaxisdata.v1.GetQualitySuggestionRequest
-	129, // 403: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:input_type -> metaxisdata.v1.UpdateQualitySuggestionRequest
-	131, // 404: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:input_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
-	137, // 405: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:input_type -> metaxisdata.v1.CreateQualitySuggestionJobRequest
-	138, // 406: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:input_type -> metaxisdata.v1.GetQualitySuggestionJobRequest
-	139, // 407: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:input_type -> metaxisdata.v1.ListQualitySuggestionJobsRequest
-	141, // 408: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:input_type -> metaxisdata.v1.CancelQualitySuggestionJobRequest
-	142, // 409: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:input_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
-	144, // 410: metaxisdata.v1.DataQualityService.ListColumnProfiles:input_type -> metaxisdata.v1.ListColumnProfilesRequest
-	146, // 411: metaxisdata.v1.DataQualityService.ListColumnLabels:input_type -> metaxisdata.v1.ListColumnLabelsRequest
-	148, // 412: metaxisdata.v1.DataQualityService.UpdateColumnLabel:input_type -> metaxisdata.v1.UpdateColumnLabelRequest
-	150, // 413: metaxisdata.v1.DataQualityService.ProfileColumns:input_type -> metaxisdata.v1.ProfileColumnsRequest
-	152, // 414: metaxisdata.v1.DataQualityService.SuggestQualityRule:input_type -> metaxisdata.v1.SuggestQualityRuleRequest
-	154, // 415: metaxisdata.v1.DataQualityService.SuggestColumnLabels:input_type -> metaxisdata.v1.SuggestColumnLabelsRequest
-	156, // 416: metaxisdata.v1.DataQualityService.RecommendQualityChecks:input_type -> metaxisdata.v1.RecommendQualityChecksRequest
-	158, // 417: metaxisdata.v1.DataQualityService.ExplainQualityExecution:input_type -> metaxisdata.v1.ExplainQualityExecutionRequest
-	160, // 418: metaxisdata.v1.DataQualityService.GetQualityOverview:input_type -> metaxisdata.v1.GetQualityOverviewRequest
-	178, // 419: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:input_type -> metaxisdata.v1.GetQualityConsumptionCoverageRequest
-	169, // 420: metaxisdata.v1.DataQualityService.ListQualityTargets:input_type -> metaxisdata.v1.ListQualityTargetsRequest
-	245, // 421: metaxisdata.v1.DataQualityService.ExportQualityTargets:input_type -> metaxisdata.v1.ExportQualityTargetsRequest
-	182, // 422: metaxisdata.v1.DataQualityService.GetQualityTarget:input_type -> metaxisdata.v1.GetQualityTargetRequest
-	175, // 423: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:input_type -> metaxisdata.v1.GetQualityTargetImpactRequest
-	186, // 424: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:input_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
-	246, // 425: metaxisdata.v1.DataQualityService.ExportQualityReport:input_type -> metaxisdata.v1.ExportQualityReportRequest
-	180, // 426: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:input_type -> metaxisdata.v1.UpdateQualityTargetScheduleRequest
-	181, // 427: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:input_type -> metaxisdata.v1.GetQualityTargetScheduleRequest
-	234, // 428: metaxisdata.v1.DataQualityService.GetQualityContract:input_type -> metaxisdata.v1.GetQualityContractRequest
-	200, // 429: metaxisdata.v1.DataQualityService.ListQualityPlans:input_type -> metaxisdata.v1.ListQualityPlansRequest
-	230, // 430: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:input_type -> metaxisdata.v1.ListQualityCoverageGapsRequest
-	235, // 431: metaxisdata.v1.DataQualityService.UpdateQualityContract:input_type -> metaxisdata.v1.UpdateQualityContractRequest
-	236, // 432: metaxisdata.v1.DataQualityService.PublishQualityContract:input_type -> metaxisdata.v1.PublishQualityContractRequest
-	214, // 433: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:input_type -> metaxisdata.v1.CreateQualityInvestigationRequest
-	215, // 434: metaxisdata.v1.DataQualityService.GetQualityInvestigation:input_type -> metaxisdata.v1.GetQualityInvestigationRequest
-	216, // 435: metaxisdata.v1.DataQualityService.ListQualityInvestigations:input_type -> metaxisdata.v1.ListQualityInvestigationsRequest
-	220, // 436: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:input_type -> metaxisdata.v1.GetQualityActionPolicyRequest
-	205, // 437: metaxisdata.v1.DataQualityService.StageQualityPlan:input_type -> metaxisdata.v1.StageQualityPlanRequest
-	206, // 438: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:input_type -> metaxisdata.v1.CreateQualityChangeRequestRequest
-	207, // 439: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:input_type -> metaxisdata.v1.GetQualityChangeRequestRequest
-	208, // 440: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:input_type -> metaxisdata.v1.ListQualityChangeRequestsRequest
-	222, // 441: metaxisdata.v1.DataQualityService.CreateQualityAgent:input_type -> metaxisdata.v1.CreateQualityAgentRequest
-	224, // 442: metaxisdata.v1.DataQualityService.ListQualityAgents:input_type -> metaxisdata.v1.ListQualityAgentsRequest
-	226, // 443: metaxisdata.v1.DataQualityService.DisableQualityAgent:input_type -> metaxisdata.v1.DisableQualityAgentRequest
-	227, // 444: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:input_type -> metaxisdata.v1.RotateQualityAgentTokenRequest
-	210, // 445: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:input_type -> metaxisdata.v1.DecideQualityChangeRequestRequest
-	238, // 446: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:input_type -> metaxisdata.v1.ListQualityContractRevisionsRequest
-	240, // 447: metaxisdata.v1.DataQualityService.GetQualityContractRevision:input_type -> metaxisdata.v1.GetQualityContractRevisionRequest
-	161, // 448: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:input_type -> metaxisdata.v1.GetQualityLLMUsageRequest
-	101, // 449: metaxisdata.v1.DataQualityService.ListQualityRules:output_type -> metaxisdata.v1.ListQualityRulesResponse
-	47,  // 450: metaxisdata.v1.DataQualityService.GetQualityRule:output_type -> metaxisdata.v1.QualityRule
-	47,  // 451: metaxisdata.v1.DataQualityService.CreateQualityRule:output_type -> metaxisdata.v1.QualityRule
-	105, // 452: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:output_type -> metaxisdata.v1.BatchCreateQualityRulesResponse
-	108, // 453: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:output_type -> metaxisdata.v1.BatchUpdateQualityRulesResponse
-	47,  // 454: metaxisdata.v1.DataQualityService.UpdateQualityRule:output_type -> metaxisdata.v1.QualityRule
-	268, // 455: metaxisdata.v1.DataQualityService.DeleteQualityRule:output_type -> google.protobuf.Empty
-	250, // 456: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:output_type -> metaxisdata.v1.ListQualityRuleTemplatesResponse
-	248, // 457: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
-	248, // 458: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
-	248, // 459: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
-	268, // 460: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:output_type -> google.protobuf.Empty
-	257, // 461: metaxisdata.v1.DataQualityService.ListQualityCodeTables:output_type -> metaxisdata.v1.ListQualityCodeTablesResponse
-	255, // 462: metaxisdata.v1.DataQualityService.GetQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
-	255, // 463: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
-	255, // 464: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
-	268, // 465: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:output_type -> google.protobuf.Empty
-	113, // 466: metaxisdata.v1.DataQualityService.PreviewQualityRule:output_type -> metaxisdata.v1.PreviewQualityRuleResponse
-	115, // 467: metaxisdata.v1.DataQualityService.RunQualityRules:output_type -> metaxisdata.v1.RunQualityRulesResponse
-	117, // 468: metaxisdata.v1.DataQualityService.ListQualityExecutions:output_type -> metaxisdata.v1.ListQualityExecutionsResponse
-	79,  // 469: metaxisdata.v1.DataQualityService.GetQualityExecution:output_type -> metaxisdata.v1.QualityExecution
-	120, // 470: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:output_type -> metaxisdata.v1.QualityRuleTrend
-	242, // 471: metaxisdata.v1.DataQualityService.ExportQualityExecutions:output_type -> metaxisdata.v1.ExportQualityDataChunk
-	83,  // 472: metaxisdata.v1.DataQualityService.ListQualityRuns:output_type -> metaxisdata.v1.ListQualityRunsResponse
-	81,  // 473: metaxisdata.v1.DataQualityService.GetQualityRun:output_type -> metaxisdata.v1.QualityRun
-	124, // 474: metaxisdata.v1.DataQualityService.ListQualityIssues:output_type -> metaxisdata.v1.ListQualityIssuesResponse
-	85,  // 475: metaxisdata.v1.DataQualityService.GetQualityIssue:output_type -> metaxisdata.v1.QualityIssue
-	242, // 476: metaxisdata.v1.DataQualityService.ExportQualityIssues:output_type -> metaxisdata.v1.ExportQualityDataChunk
-	85,  // 477: metaxisdata.v1.DataQualityService.UpdateQualityIssue:output_type -> metaxisdata.v1.QualityIssue
-	128, // 478: metaxisdata.v1.DataQualityService.ListQualitySuggestions:output_type -> metaxisdata.v1.ListQualitySuggestionsResponse
-	92,  // 479: metaxisdata.v1.DataQualityService.GetQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
-	92,  // 480: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
-	132, // 481: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:output_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
-	136, // 482: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
-	136, // 483: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
-	140, // 484: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:output_type -> metaxisdata.v1.ListQualitySuggestionJobsResponse
-	136, // 485: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
-	143, // 486: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:output_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
-	145, // 487: metaxisdata.v1.DataQualityService.ListColumnProfiles:output_type -> metaxisdata.v1.ListColumnProfilesResponse
-	147, // 488: metaxisdata.v1.DataQualityService.ListColumnLabels:output_type -> metaxisdata.v1.ListColumnLabelsResponse
-	149, // 489: metaxisdata.v1.DataQualityService.UpdateColumnLabel:output_type -> metaxisdata.v1.UpdateColumnLabelResponse
-	151, // 490: metaxisdata.v1.DataQualityService.ProfileColumns:output_type -> metaxisdata.v1.ProfileColumnsResponse
-	153, // 491: metaxisdata.v1.DataQualityService.SuggestQualityRule:output_type -> metaxisdata.v1.SuggestQualityRuleResponse
-	155, // 492: metaxisdata.v1.DataQualityService.SuggestColumnLabels:output_type -> metaxisdata.v1.SuggestColumnLabelsResponse
-	157, // 493: metaxisdata.v1.DataQualityService.RecommendQualityChecks:output_type -> metaxisdata.v1.RecommendQualityChecksResponse
-	159, // 494: metaxisdata.v1.DataQualityService.ExplainQualityExecution:output_type -> metaxisdata.v1.ExplainQualityExecutionResponse
-	163, // 495: metaxisdata.v1.DataQualityService.GetQualityOverview:output_type -> metaxisdata.v1.QualityOverview
-	179, // 496: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:output_type -> metaxisdata.v1.GetQualityConsumptionCoverageResponse
-	170, // 497: metaxisdata.v1.DataQualityService.ListQualityTargets:output_type -> metaxisdata.v1.ListQualityTargetsResponse
-	242, // 498: metaxisdata.v1.DataQualityService.ExportQualityTargets:output_type -> metaxisdata.v1.ExportQualityDataChunk
-	183, // 499: metaxisdata.v1.DataQualityService.GetQualityTarget:output_type -> metaxisdata.v1.GetQualityTargetResponse
-	176, // 500: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:output_type -> metaxisdata.v1.GetQualityTargetImpactResponse
-	187, // 501: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:output_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
-	247, // 502: metaxisdata.v1.DataQualityService.ExportQualityReport:output_type -> metaxisdata.v1.ExportQualityReportResponse
-	171, // 503: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
-	171, // 504: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
-	188, // 505: metaxisdata.v1.DataQualityService.GetQualityContract:output_type -> metaxisdata.v1.QualityContract
-	201, // 506: metaxisdata.v1.DataQualityService.ListQualityPlans:output_type -> metaxisdata.v1.ListQualityPlansResponse
-	231, // 507: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:output_type -> metaxisdata.v1.ListQualityCoverageGapsResponse
-	188, // 508: metaxisdata.v1.DataQualityService.UpdateQualityContract:output_type -> metaxisdata.v1.QualityContract
-	237, // 509: metaxisdata.v1.DataQualityService.PublishQualityContract:output_type -> metaxisdata.v1.PublishQualityContractResponse
-	213, // 510: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
-	213, // 511: metaxisdata.v1.DataQualityService.GetQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
-	217, // 512: metaxisdata.v1.DataQualityService.ListQualityInvestigations:output_type -> metaxisdata.v1.ListQualityInvestigationsResponse
-	219, // 513: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:output_type -> metaxisdata.v1.QualityActionPolicy
-	188, // 514: metaxisdata.v1.DataQualityService.StageQualityPlan:output_type -> metaxisdata.v1.QualityContract
-	204, // 515: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
-	204, // 516: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
-	209, // 517: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:output_type -> metaxisdata.v1.ListQualityChangeRequestsResponse
-	223, // 518: metaxisdata.v1.DataQualityService.CreateQualityAgent:output_type -> metaxisdata.v1.CreateQualityAgentResponse
-	225, // 519: metaxisdata.v1.DataQualityService.ListQualityAgents:output_type -> metaxisdata.v1.ListQualityAgentsResponse
-	221, // 520: metaxisdata.v1.DataQualityService.DisableQualityAgent:output_type -> metaxisdata.v1.QualityAgent
-	228, // 521: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:output_type -> metaxisdata.v1.RotateQualityAgentTokenResponse
-	204, // 522: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
-	239, // 523: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:output_type -> metaxisdata.v1.ListQualityContractRevisionsResponse
-	241, // 524: metaxisdata.v1.DataQualityService.GetQualityContractRevision:output_type -> metaxisdata.v1.GetQualityContractRevisionResponse
-	162, // 525: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:output_type -> metaxisdata.v1.QualityLLMUsage
-	449, // [449:526] is the sub-list for method output_type
-	372, // [372:449] is the sub-list for method input_type
-	372, // [372:372] is the sub-list for extension type_name
-	372, // [372:372] is the sub-list for extension extendee
-	0,   // [0:372] is the sub-list for field type_name
+	40,  // 300: metaxisdata.v1.QualityMemory.kind:type_name -> metaxisdata.v1.QualityMemoryKind
+	42,  // 301: metaxisdata.v1.QualityMemory.source:type_name -> metaxisdata.v1.QualityMemorySource
+	41,  // 302: metaxisdata.v1.QualityMemory.status:type_name -> metaxisdata.v1.QualityMemoryStatus
+	221, // 303: metaxisdata.v1.QualityMemory.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
+	272, // 304: metaxisdata.v1.QualityMemory.expires_at:type_name -> google.protobuf.Timestamp
+	272, // 305: metaxisdata.v1.QualityMemory.confirmed_at:type_name -> google.protobuf.Timestamp
+	272, // 306: metaxisdata.v1.QualityMemory.create_time:type_name -> google.protobuf.Timestamp
+	40,  // 307: metaxisdata.v1.CreateQualityMemoryRequest.kind:type_name -> metaxisdata.v1.QualityMemoryKind
+	221, // 308: metaxisdata.v1.CreateQualityMemoryRequest.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
+	272, // 309: metaxisdata.v1.CreateQualityMemoryRequest.expires_at:type_name -> google.protobuf.Timestamp
+	40,  // 310: metaxisdata.v1.ListQualityMemoriesRequest.kind:type_name -> metaxisdata.v1.QualityMemoryKind
+	41,  // 311: metaxisdata.v1.ListQualityMemoriesRequest.status:type_name -> metaxisdata.v1.QualityMemoryStatus
+	215, // 312: metaxisdata.v1.ListQualityMemoriesResponse.quality_memories:type_name -> metaxisdata.v1.QualityMemory
+	50,  // 313: metaxisdata.v1.ConfirmQualityMemoryRequest.decision:type_name -> metaxisdata.v1.ConfirmQualityMemoryRequest.Decision
+	52,  // 314: metaxisdata.v1.QualityInvestigation.target:type_name -> metaxisdata.v1.QualityTarget
+	44,  // 315: metaxisdata.v1.QualityInvestigation.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
+	43,  // 316: metaxisdata.v1.QualityInvestigation.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
+	45,  // 317: metaxisdata.v1.QualityInvestigation.verdict:type_name -> metaxisdata.v1.QualityInvestigationVerdict
+	222, // 318: metaxisdata.v1.QualityInvestigation.hypotheses:type_name -> metaxisdata.v1.QualityInvestigationHypothesis
+	221, // 319: metaxisdata.v1.QualityInvestigation.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
+	272, // 320: metaxisdata.v1.QualityInvestigation.create_time:type_name -> google.protobuf.Timestamp
+	273, // 321: metaxisdata.v1.CreateQualityInvestigationRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	44,  // 322: metaxisdata.v1.CreateQualityInvestigationRequest.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
+	43,  // 323: metaxisdata.v1.CreateQualityInvestigationRequest.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
+	45,  // 324: metaxisdata.v1.CreateQualityInvestigationRequest.verdict:type_name -> metaxisdata.v1.QualityInvestigationVerdict
+	222, // 325: metaxisdata.v1.CreateQualityInvestigationRequest.hypotheses:type_name -> metaxisdata.v1.QualityInvestigationHypothesis
+	221, // 326: metaxisdata.v1.CreateQualityInvestigationRequest.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
+	43,  // 327: metaxisdata.v1.ListQualityInvestigationsRequest.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
+	44,  // 328: metaxisdata.v1.ListQualityInvestigationsRequest.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
+	223, // 329: metaxisdata.v1.ListQualityInvestigationsResponse.quality_investigations:type_name -> metaxisdata.v1.QualityInvestigation
+	228, // 330: metaxisdata.v1.QualityActionPolicy.actions:type_name -> metaxisdata.v1.QualityAction
+	272, // 331: metaxisdata.v1.QualityAgent.create_time:type_name -> google.protobuf.Timestamp
+	231, // 332: metaxisdata.v1.CreateQualityAgentResponse.agent:type_name -> metaxisdata.v1.QualityAgent
+	231, // 333: metaxisdata.v1.ListQualityAgentsResponse.quality_agents:type_name -> metaxisdata.v1.QualityAgent
+	231, // 334: metaxisdata.v1.RotateQualityAgentTokenResponse.agent:type_name -> metaxisdata.v1.QualityAgent
+	52,  // 335: metaxisdata.v1.QualityCoverageGap.target:type_name -> metaxisdata.v1.QualityTarget
+	34,  // 336: metaxisdata.v1.QualityCoverageGap.property:type_name -> metaxisdata.v1.QualityCoverageProperty
+	33,  // 337: metaxisdata.v1.QualityCoverageGap.criticality:type_name -> metaxisdata.v1.QualityAssetCriticality
+	239, // 338: metaxisdata.v1.ListQualityCoverageGapsResponse.gaps:type_name -> metaxisdata.v1.QualityCoverageGap
+	272, // 339: metaxisdata.v1.QualityContractRevision.published_at:type_name -> google.protobuf.Timestamp
+	199, // 340: metaxisdata.v1.QualityContractRevision.change_summary:type_name -> metaxisdata.v1.QualityContractChangeSummary
+	198, // 341: metaxisdata.v1.QualityContractRevision.intent:type_name -> metaxisdata.v1.QualityContractIntent
+	46,  // 342: metaxisdata.v1.QualityContractRevision.change_kind:type_name -> metaxisdata.v1.QualityContractChangeKind
+	203, // 343: metaxisdata.v1.QualityContractRevision.plan:type_name -> metaxisdata.v1.QualityPlan
+	0,   // 344: metaxisdata.v1.QualityContractCheck.rule_type:type_name -> metaxisdata.v1.QualityRuleType
+	3,   // 345: metaxisdata.v1.QualityContractCheck.severity:type_name -> metaxisdata.v1.QualitySeverity
+	273, // 346: metaxisdata.v1.GetQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	273, // 347: metaxisdata.v1.UpdateQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	195, // 348: metaxisdata.v1.UpdateQualityContractRequest.settings:type_name -> metaxisdata.v1.QualityContractSettings
+	203, // 349: metaxisdata.v1.UpdateQualityContractRequest.draft:type_name -> metaxisdata.v1.QualityPlan
+	273, // 350: metaxisdata.v1.PublishQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	192, // 351: metaxisdata.v1.PublishQualityContractResponse.contract:type_name -> metaxisdata.v1.QualityContract
+	242, // 352: metaxisdata.v1.PublishQualityContractResponse.revision:type_name -> metaxisdata.v1.QualityContractRevision
+	273, // 353: metaxisdata.v1.ListQualityContractRevisionsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	242, // 354: metaxisdata.v1.ListQualityContractRevisionsResponse.revisions:type_name -> metaxisdata.v1.QualityContractRevision
+	273, // 355: metaxisdata.v1.GetQualityContractRevisionRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	242, // 356: metaxisdata.v1.GetQualityContractRevisionResponse.revision:type_name -> metaxisdata.v1.QualityContractRevision
+	243, // 357: metaxisdata.v1.GetQualityContractRevisionResponse.checks:type_name -> metaxisdata.v1.QualityContractCheck
+	6,   // 358: metaxisdata.v1.ExportQualityExecutionsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
+	4,   // 359: metaxisdata.v1.ExportQualityExecutionsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
+	5,   // 360: metaxisdata.v1.ExportQualityExecutionsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
+	272, // 361: metaxisdata.v1.ExportQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
+	272, // 362: metaxisdata.v1.ExportQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
+	9,   // 363: metaxisdata.v1.ExportQualityIssuesRequest.status:type_name -> metaxisdata.v1.QualityIssueStatus
+	3,   // 364: metaxisdata.v1.ExportQualityIssuesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
+	272, // 365: metaxisdata.v1.ExportQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
+	272, // 366: metaxisdata.v1.ExportQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
+	4,   // 367: metaxisdata.v1.ExportQualityTargetsRequest.worst_status:type_name -> metaxisdata.v1.QualityStatus
+	30,  // 368: metaxisdata.v1.ExportQualityTargetsRequest.order_by:type_name -> metaxisdata.v1.QualityTargetOrder
+	273, // 369: metaxisdata.v1.ExportQualityReportRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	0,   // 370: metaxisdata.v1.QualityRuleTemplate.rule_type:type_name -> metaxisdata.v1.QualityRuleType
+	54,  // 371: metaxisdata.v1.QualityRuleTemplate.config:type_name -> metaxisdata.v1.QualityRuleConfig
+	3,   // 372: metaxisdata.v1.QualityRuleTemplate.severity:type_name -> metaxisdata.v1.QualitySeverity
+	2,   // 373: metaxisdata.v1.QualityRuleTemplate.dimension:type_name -> metaxisdata.v1.QualityDimension
+	272, // 374: metaxisdata.v1.QualityRuleTemplate.create_time:type_name -> google.protobuf.Timestamp
+	272, // 375: metaxisdata.v1.QualityRuleTemplate.update_time:type_name -> google.protobuf.Timestamp
+	258, // 376: metaxisdata.v1.ListQualityRuleTemplatesResponse.quality_rule_templates:type_name -> metaxisdata.v1.QualityRuleTemplate
+	258, // 377: metaxisdata.v1.CreateQualityRuleTemplateRequest.quality_rule_template:type_name -> metaxisdata.v1.QualityRuleTemplate
+	258, // 378: metaxisdata.v1.UpdateQualityRuleTemplateRequest.quality_rule_template:type_name -> metaxisdata.v1.QualityRuleTemplate
+	275, // 379: metaxisdata.v1.UpdateQualityRuleTemplateRequest.update_mask:type_name -> google.protobuf.FieldMask
+	272, // 380: metaxisdata.v1.QualityCodeTable.create_time:type_name -> google.protobuf.Timestamp
+	272, // 381: metaxisdata.v1.QualityCodeTable.update_time:type_name -> google.protobuf.Timestamp
+	265, // 382: metaxisdata.v1.ListQualityCodeTablesResponse.quality_code_tables:type_name -> metaxisdata.v1.QualityCodeTable
+	265, // 383: metaxisdata.v1.CreateQualityCodeTableRequest.quality_code_table:type_name -> metaxisdata.v1.QualityCodeTable
+	265, // 384: metaxisdata.v1.UpdateQualityCodeTableRequest.quality_code_table:type_name -> metaxisdata.v1.QualityCodeTable
+	275, // 385: metaxisdata.v1.UpdateQualityCodeTableRequest.update_mask:type_name -> google.protobuf.FieldMask
+	104, // 386: metaxisdata.v1.DataQualityService.ListQualityRules:input_type -> metaxisdata.v1.ListQualityRulesRequest
+	106, // 387: metaxisdata.v1.DataQualityService.GetQualityRule:input_type -> metaxisdata.v1.GetQualityRuleRequest
+	107, // 388: metaxisdata.v1.DataQualityService.CreateQualityRule:input_type -> metaxisdata.v1.CreateQualityRuleRequest
+	108, // 389: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:input_type -> metaxisdata.v1.BatchCreateQualityRulesRequest
+	111, // 390: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:input_type -> metaxisdata.v1.BatchUpdateQualityRulesRequest
+	114, // 391: metaxisdata.v1.DataQualityService.UpdateQualityRule:input_type -> metaxisdata.v1.UpdateQualityRuleRequest
+	115, // 392: metaxisdata.v1.DataQualityService.DeleteQualityRule:input_type -> metaxisdata.v1.DeleteQualityRuleRequest
+	259, // 393: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:input_type -> metaxisdata.v1.ListQualityRuleTemplatesRequest
+	261, // 394: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:input_type -> metaxisdata.v1.GetQualityRuleTemplateRequest
+	262, // 395: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:input_type -> metaxisdata.v1.CreateQualityRuleTemplateRequest
+	263, // 396: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:input_type -> metaxisdata.v1.UpdateQualityRuleTemplateRequest
+	264, // 397: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:input_type -> metaxisdata.v1.DeleteQualityRuleTemplateRequest
+	266, // 398: metaxisdata.v1.DataQualityService.ListQualityCodeTables:input_type -> metaxisdata.v1.ListQualityCodeTablesRequest
+	268, // 399: metaxisdata.v1.DataQualityService.GetQualityCodeTable:input_type -> metaxisdata.v1.GetQualityCodeTableRequest
+	269, // 400: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:input_type -> metaxisdata.v1.CreateQualityCodeTableRequest
+	270, // 401: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:input_type -> metaxisdata.v1.UpdateQualityCodeTableRequest
+	271, // 402: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:input_type -> metaxisdata.v1.DeleteQualityCodeTableRequest
+	116, // 403: metaxisdata.v1.DataQualityService.PreviewQualityRule:input_type -> metaxisdata.v1.PreviewQualityRuleRequest
+	118, // 404: metaxisdata.v1.DataQualityService.RunQualityRules:input_type -> metaxisdata.v1.RunQualityRulesRequest
+	120, // 405: metaxisdata.v1.DataQualityService.ListQualityExecutions:input_type -> metaxisdata.v1.ListQualityExecutionsRequest
+	122, // 406: metaxisdata.v1.DataQualityService.GetQualityExecution:input_type -> metaxisdata.v1.GetQualityExecutionRequest
+	123, // 407: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:input_type -> metaxisdata.v1.GetQualityRuleTrendRequest
+	253, // 408: metaxisdata.v1.DataQualityService.ExportQualityExecutions:input_type -> metaxisdata.v1.ExportQualityExecutionsRequest
+	86,  // 409: metaxisdata.v1.DataQualityService.ListQualityRuns:input_type -> metaxisdata.v1.ListQualityRunsRequest
+	88,  // 410: metaxisdata.v1.DataQualityService.GetQualityRun:input_type -> metaxisdata.v1.GetQualityRunRequest
+	127, // 411: metaxisdata.v1.DataQualityService.ListQualityIssues:input_type -> metaxisdata.v1.ListQualityIssuesRequest
+	129, // 412: metaxisdata.v1.DataQualityService.GetQualityIssue:input_type -> metaxisdata.v1.GetQualityIssueRequest
+	254, // 413: metaxisdata.v1.DataQualityService.ExportQualityIssues:input_type -> metaxisdata.v1.ExportQualityIssuesRequest
+	130, // 414: metaxisdata.v1.DataQualityService.UpdateQualityIssue:input_type -> metaxisdata.v1.UpdateQualityIssueRequest
+	131, // 415: metaxisdata.v1.DataQualityService.ListQualitySuggestions:input_type -> metaxisdata.v1.ListQualitySuggestionsRequest
+	134, // 416: metaxisdata.v1.DataQualityService.GetQualitySuggestion:input_type -> metaxisdata.v1.GetQualitySuggestionRequest
+	133, // 417: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:input_type -> metaxisdata.v1.UpdateQualitySuggestionRequest
+	135, // 418: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:input_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
+	141, // 419: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:input_type -> metaxisdata.v1.CreateQualitySuggestionJobRequest
+	142, // 420: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:input_type -> metaxisdata.v1.GetQualitySuggestionJobRequest
+	143, // 421: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:input_type -> metaxisdata.v1.ListQualitySuggestionJobsRequest
+	145, // 422: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:input_type -> metaxisdata.v1.CancelQualitySuggestionJobRequest
+	146, // 423: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:input_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
+	148, // 424: metaxisdata.v1.DataQualityService.ListColumnProfiles:input_type -> metaxisdata.v1.ListColumnProfilesRequest
+	150, // 425: metaxisdata.v1.DataQualityService.ListColumnLabels:input_type -> metaxisdata.v1.ListColumnLabelsRequest
+	152, // 426: metaxisdata.v1.DataQualityService.UpdateColumnLabel:input_type -> metaxisdata.v1.UpdateColumnLabelRequest
+	154, // 427: metaxisdata.v1.DataQualityService.ProfileColumns:input_type -> metaxisdata.v1.ProfileColumnsRequest
+	156, // 428: metaxisdata.v1.DataQualityService.SuggestQualityRule:input_type -> metaxisdata.v1.SuggestQualityRuleRequest
+	158, // 429: metaxisdata.v1.DataQualityService.SuggestColumnLabels:input_type -> metaxisdata.v1.SuggestColumnLabelsRequest
+	160, // 430: metaxisdata.v1.DataQualityService.RecommendQualityChecks:input_type -> metaxisdata.v1.RecommendQualityChecksRequest
+	162, // 431: metaxisdata.v1.DataQualityService.ExplainQualityExecution:input_type -> metaxisdata.v1.ExplainQualityExecutionRequest
+	164, // 432: metaxisdata.v1.DataQualityService.GetQualityOverview:input_type -> metaxisdata.v1.GetQualityOverviewRequest
+	182, // 433: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:input_type -> metaxisdata.v1.GetQualityConsumptionCoverageRequest
+	173, // 434: metaxisdata.v1.DataQualityService.ListQualityTargets:input_type -> metaxisdata.v1.ListQualityTargetsRequest
+	255, // 435: metaxisdata.v1.DataQualityService.ExportQualityTargets:input_type -> metaxisdata.v1.ExportQualityTargetsRequest
+	186, // 436: metaxisdata.v1.DataQualityService.GetQualityTarget:input_type -> metaxisdata.v1.GetQualityTargetRequest
+	179, // 437: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:input_type -> metaxisdata.v1.GetQualityTargetImpactRequest
+	190, // 438: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:input_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
+	256, // 439: metaxisdata.v1.DataQualityService.ExportQualityReport:input_type -> metaxisdata.v1.ExportQualityReportRequest
+	184, // 440: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:input_type -> metaxisdata.v1.UpdateQualityTargetScheduleRequest
+	185, // 441: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:input_type -> metaxisdata.v1.GetQualityTargetScheduleRequest
+	244, // 442: metaxisdata.v1.DataQualityService.GetQualityContract:input_type -> metaxisdata.v1.GetQualityContractRequest
+	204, // 443: metaxisdata.v1.DataQualityService.ListQualityPlans:input_type -> metaxisdata.v1.ListQualityPlansRequest
+	240, // 444: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:input_type -> metaxisdata.v1.ListQualityCoverageGapsRequest
+	245, // 445: metaxisdata.v1.DataQualityService.UpdateQualityContract:input_type -> metaxisdata.v1.UpdateQualityContractRequest
+	246, // 446: metaxisdata.v1.DataQualityService.PublishQualityContract:input_type -> metaxisdata.v1.PublishQualityContractRequest
+	224, // 447: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:input_type -> metaxisdata.v1.CreateQualityInvestigationRequest
+	225, // 448: metaxisdata.v1.DataQualityService.GetQualityInvestigation:input_type -> metaxisdata.v1.GetQualityInvestigationRequest
+	226, // 449: metaxisdata.v1.DataQualityService.ListQualityInvestigations:input_type -> metaxisdata.v1.ListQualityInvestigationsRequest
+	230, // 450: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:input_type -> metaxisdata.v1.GetQualityActionPolicyRequest
+	216, // 451: metaxisdata.v1.DataQualityService.CreateQualityMemory:input_type -> metaxisdata.v1.CreateQualityMemoryRequest
+	217, // 452: metaxisdata.v1.DataQualityService.ListQualityMemories:input_type -> metaxisdata.v1.ListQualityMemoriesRequest
+	219, // 453: metaxisdata.v1.DataQualityService.ConfirmQualityMemory:input_type -> metaxisdata.v1.ConfirmQualityMemoryRequest
+	220, // 454: metaxisdata.v1.DataQualityService.DeleteQualityMemory:input_type -> metaxisdata.v1.DeleteQualityMemoryRequest
+	209, // 455: metaxisdata.v1.DataQualityService.StageQualityPlan:input_type -> metaxisdata.v1.StageQualityPlanRequest
+	210, // 456: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:input_type -> metaxisdata.v1.CreateQualityChangeRequestRequest
+	211, // 457: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:input_type -> metaxisdata.v1.GetQualityChangeRequestRequest
+	212, // 458: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:input_type -> metaxisdata.v1.ListQualityChangeRequestsRequest
+	232, // 459: metaxisdata.v1.DataQualityService.CreateQualityAgent:input_type -> metaxisdata.v1.CreateQualityAgentRequest
+	234, // 460: metaxisdata.v1.DataQualityService.ListQualityAgents:input_type -> metaxisdata.v1.ListQualityAgentsRequest
+	236, // 461: metaxisdata.v1.DataQualityService.DisableQualityAgent:input_type -> metaxisdata.v1.DisableQualityAgentRequest
+	237, // 462: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:input_type -> metaxisdata.v1.RotateQualityAgentTokenRequest
+	214, // 463: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:input_type -> metaxisdata.v1.DecideQualityChangeRequestRequest
+	248, // 464: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:input_type -> metaxisdata.v1.ListQualityContractRevisionsRequest
+	250, // 465: metaxisdata.v1.DataQualityService.GetQualityContractRevision:input_type -> metaxisdata.v1.GetQualityContractRevisionRequest
+	165, // 466: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:input_type -> metaxisdata.v1.GetQualityLLMUsageRequest
+	105, // 467: metaxisdata.v1.DataQualityService.ListQualityRules:output_type -> metaxisdata.v1.ListQualityRulesResponse
+	51,  // 468: metaxisdata.v1.DataQualityService.GetQualityRule:output_type -> metaxisdata.v1.QualityRule
+	51,  // 469: metaxisdata.v1.DataQualityService.CreateQualityRule:output_type -> metaxisdata.v1.QualityRule
+	109, // 470: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:output_type -> metaxisdata.v1.BatchCreateQualityRulesResponse
+	112, // 471: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:output_type -> metaxisdata.v1.BatchUpdateQualityRulesResponse
+	51,  // 472: metaxisdata.v1.DataQualityService.UpdateQualityRule:output_type -> metaxisdata.v1.QualityRule
+	278, // 473: metaxisdata.v1.DataQualityService.DeleteQualityRule:output_type -> google.protobuf.Empty
+	260, // 474: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:output_type -> metaxisdata.v1.ListQualityRuleTemplatesResponse
+	258, // 475: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
+	258, // 476: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
+	258, // 477: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
+	278, // 478: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:output_type -> google.protobuf.Empty
+	267, // 479: metaxisdata.v1.DataQualityService.ListQualityCodeTables:output_type -> metaxisdata.v1.ListQualityCodeTablesResponse
+	265, // 480: metaxisdata.v1.DataQualityService.GetQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
+	265, // 481: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
+	265, // 482: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
+	278, // 483: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:output_type -> google.protobuf.Empty
+	117, // 484: metaxisdata.v1.DataQualityService.PreviewQualityRule:output_type -> metaxisdata.v1.PreviewQualityRuleResponse
+	119, // 485: metaxisdata.v1.DataQualityService.RunQualityRules:output_type -> metaxisdata.v1.RunQualityRulesResponse
+	121, // 486: metaxisdata.v1.DataQualityService.ListQualityExecutions:output_type -> metaxisdata.v1.ListQualityExecutionsResponse
+	83,  // 487: metaxisdata.v1.DataQualityService.GetQualityExecution:output_type -> metaxisdata.v1.QualityExecution
+	124, // 488: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:output_type -> metaxisdata.v1.QualityRuleTrend
+	252, // 489: metaxisdata.v1.DataQualityService.ExportQualityExecutions:output_type -> metaxisdata.v1.ExportQualityDataChunk
+	87,  // 490: metaxisdata.v1.DataQualityService.ListQualityRuns:output_type -> metaxisdata.v1.ListQualityRunsResponse
+	85,  // 491: metaxisdata.v1.DataQualityService.GetQualityRun:output_type -> metaxisdata.v1.QualityRun
+	128, // 492: metaxisdata.v1.DataQualityService.ListQualityIssues:output_type -> metaxisdata.v1.ListQualityIssuesResponse
+	89,  // 493: metaxisdata.v1.DataQualityService.GetQualityIssue:output_type -> metaxisdata.v1.QualityIssue
+	252, // 494: metaxisdata.v1.DataQualityService.ExportQualityIssues:output_type -> metaxisdata.v1.ExportQualityDataChunk
+	89,  // 495: metaxisdata.v1.DataQualityService.UpdateQualityIssue:output_type -> metaxisdata.v1.QualityIssue
+	132, // 496: metaxisdata.v1.DataQualityService.ListQualitySuggestions:output_type -> metaxisdata.v1.ListQualitySuggestionsResponse
+	96,  // 497: metaxisdata.v1.DataQualityService.GetQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
+	96,  // 498: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
+	136, // 499: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:output_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
+	140, // 500: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
+	140, // 501: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
+	144, // 502: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:output_type -> metaxisdata.v1.ListQualitySuggestionJobsResponse
+	140, // 503: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
+	147, // 504: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:output_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
+	149, // 505: metaxisdata.v1.DataQualityService.ListColumnProfiles:output_type -> metaxisdata.v1.ListColumnProfilesResponse
+	151, // 506: metaxisdata.v1.DataQualityService.ListColumnLabels:output_type -> metaxisdata.v1.ListColumnLabelsResponse
+	153, // 507: metaxisdata.v1.DataQualityService.UpdateColumnLabel:output_type -> metaxisdata.v1.UpdateColumnLabelResponse
+	155, // 508: metaxisdata.v1.DataQualityService.ProfileColumns:output_type -> metaxisdata.v1.ProfileColumnsResponse
+	157, // 509: metaxisdata.v1.DataQualityService.SuggestQualityRule:output_type -> metaxisdata.v1.SuggestQualityRuleResponse
+	159, // 510: metaxisdata.v1.DataQualityService.SuggestColumnLabels:output_type -> metaxisdata.v1.SuggestColumnLabelsResponse
+	161, // 511: metaxisdata.v1.DataQualityService.RecommendQualityChecks:output_type -> metaxisdata.v1.RecommendQualityChecksResponse
+	163, // 512: metaxisdata.v1.DataQualityService.ExplainQualityExecution:output_type -> metaxisdata.v1.ExplainQualityExecutionResponse
+	167, // 513: metaxisdata.v1.DataQualityService.GetQualityOverview:output_type -> metaxisdata.v1.QualityOverview
+	183, // 514: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:output_type -> metaxisdata.v1.GetQualityConsumptionCoverageResponse
+	174, // 515: metaxisdata.v1.DataQualityService.ListQualityTargets:output_type -> metaxisdata.v1.ListQualityTargetsResponse
+	252, // 516: metaxisdata.v1.DataQualityService.ExportQualityTargets:output_type -> metaxisdata.v1.ExportQualityDataChunk
+	187, // 517: metaxisdata.v1.DataQualityService.GetQualityTarget:output_type -> metaxisdata.v1.GetQualityTargetResponse
+	180, // 518: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:output_type -> metaxisdata.v1.GetQualityTargetImpactResponse
+	191, // 519: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:output_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
+	257, // 520: metaxisdata.v1.DataQualityService.ExportQualityReport:output_type -> metaxisdata.v1.ExportQualityReportResponse
+	175, // 521: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
+	175, // 522: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
+	192, // 523: metaxisdata.v1.DataQualityService.GetQualityContract:output_type -> metaxisdata.v1.QualityContract
+	205, // 524: metaxisdata.v1.DataQualityService.ListQualityPlans:output_type -> metaxisdata.v1.ListQualityPlansResponse
+	241, // 525: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:output_type -> metaxisdata.v1.ListQualityCoverageGapsResponse
+	192, // 526: metaxisdata.v1.DataQualityService.UpdateQualityContract:output_type -> metaxisdata.v1.QualityContract
+	247, // 527: metaxisdata.v1.DataQualityService.PublishQualityContract:output_type -> metaxisdata.v1.PublishQualityContractResponse
+	223, // 528: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
+	223, // 529: metaxisdata.v1.DataQualityService.GetQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
+	227, // 530: metaxisdata.v1.DataQualityService.ListQualityInvestigations:output_type -> metaxisdata.v1.ListQualityInvestigationsResponse
+	229, // 531: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:output_type -> metaxisdata.v1.QualityActionPolicy
+	215, // 532: metaxisdata.v1.DataQualityService.CreateQualityMemory:output_type -> metaxisdata.v1.QualityMemory
+	218, // 533: metaxisdata.v1.DataQualityService.ListQualityMemories:output_type -> metaxisdata.v1.ListQualityMemoriesResponse
+	215, // 534: metaxisdata.v1.DataQualityService.ConfirmQualityMemory:output_type -> metaxisdata.v1.QualityMemory
+	278, // 535: metaxisdata.v1.DataQualityService.DeleteQualityMemory:output_type -> google.protobuf.Empty
+	192, // 536: metaxisdata.v1.DataQualityService.StageQualityPlan:output_type -> metaxisdata.v1.QualityContract
+	208, // 537: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
+	208, // 538: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
+	213, // 539: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:output_type -> metaxisdata.v1.ListQualityChangeRequestsResponse
+	233, // 540: metaxisdata.v1.DataQualityService.CreateQualityAgent:output_type -> metaxisdata.v1.CreateQualityAgentResponse
+	235, // 541: metaxisdata.v1.DataQualityService.ListQualityAgents:output_type -> metaxisdata.v1.ListQualityAgentsResponse
+	231, // 542: metaxisdata.v1.DataQualityService.DisableQualityAgent:output_type -> metaxisdata.v1.QualityAgent
+	238, // 543: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:output_type -> metaxisdata.v1.RotateQualityAgentTokenResponse
+	208, // 544: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
+	249, // 545: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:output_type -> metaxisdata.v1.ListQualityContractRevisionsResponse
+	251, // 546: metaxisdata.v1.DataQualityService.GetQualityContractRevision:output_type -> metaxisdata.v1.GetQualityContractRevisionResponse
+	166, // 547: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:output_type -> metaxisdata.v1.QualityLLMUsage
+	467, // [467:548] is the sub-list for method output_type
+	386, // [386:467] is the sub-list for method input_type
+	386, // [386:386] is the sub-list for extension type_name
+	386, // [386:386] is the sub-list for extension extendee
+	0,   // [0:386] is the sub-list for field type_name
 }
 
 func init() { file_v1_data_quality_service_proto_init() }
@@ -23864,8 +24667,8 @@ func file_v1_data_quality_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_data_quality_service_proto_rawDesc), len(file_v1_data_quality_service_proto_rawDesc)),
-			NumEnums:      47,
-			NumMessages:   215,
+			NumEnums:      51,
+			NumMessages:   221,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

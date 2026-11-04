@@ -1291,6 +1291,41 @@ message QualityChangeRejectionReasons {
   repeated QualityChangeRejectionReason reasons = 1;
 }
 
+// QualityMemoryKind is what a memory records. Asset facts are observed and may be
+// written automatically; a decision or an event is a judgment and needs a person's
+// confirmation before it counts.
+enum QualityMemoryKind {
+  QUALITY_MEMORY_KIND_UNSPECIFIED = 0;
+  QUALITY_MEMORY_KIND_ASSET_FACT = 1;
+  QUALITY_MEMORY_KIND_DECISION = 2;
+  QUALITY_MEMORY_KIND_EVENT = 3;
+}
+
+// QualityMemoryStatus is where one memory stands. A superseded or expired memory is
+// kept for the correction path, never silently deleted.
+enum QualityMemoryStatus {
+  QUALITY_MEMORY_STATUS_UNSPECIFIED = 0;
+  QUALITY_MEMORY_STATUS_PROPOSED = 1;
+  QUALITY_MEMORY_STATUS_CONFIRMED = 2;
+  QUALITY_MEMORY_STATUS_REJECTED = 3;
+  QUALITY_MEMORY_STATUS_SUPERSEDED = 4;
+  QUALITY_MEMORY_STATUS_EXPIRED = 5;
+}
+
+// QualityMemorySource records who wrote the memory.
+enum QualityMemorySource {
+  QUALITY_MEMORY_SOURCE_UNSPECIFIED = 0;
+  QUALITY_MEMORY_SOURCE_AGENT = 1;
+  QUALITY_MEMORY_SOURCE_HUMAN = 2;
+  QUALITY_MEMORY_SOURCE_SYSTEM = 3;
+}
+
+// QualityMemoryEvidenceList is the JSONB payload of quality_memory.evidence; the
+// references are deterministic, never sample payloads.
+message QualityMemoryEvidenceList {
+  repeated QualityInvestigationEvidence evidence = 1;
+}
+
 // QualityInvestigationStatus is where one investigation stands. A concluded
 // investigation is the normal result; a failed one records why the analysis could
 // not finish.

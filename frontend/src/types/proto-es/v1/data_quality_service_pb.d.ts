@@ -7878,6 +7878,284 @@ export enum DecideQualityChangeRequestRequest_Decision {
 export declare const DecideQualityChangeRequestRequest_DecisionSchema: GenEnum<DecideQualityChangeRequestRequest_Decision>;
 
 /**
+ * QualityMemory is one durable piece of knowledge with its evidence and its
+ * correction path. It never replaces the engine's verdict; it explains the past.
+ *
+ * @generated from message metaxisdata.v1.QualityMemory
+ */
+export declare type QualityMemory = Message<"metaxisdata.v1.QualityMemory"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityMemoryKind kind = 2;
+   */
+  kind: QualityMemoryKind;
+
+  /**
+   * What the memory is about: a target GUID, a rule resource id, a column, an issue.
+   *
+   * @generated from field: string subject = 3;
+   */
+  subject: string;
+
+  /**
+   * @generated from field: string statement = 4;
+   */
+  statement: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityMemorySource source = 5;
+   */
+  source: QualityMemorySource;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityMemoryStatus status = 6;
+   */
+  status: QualityMemoryStatus;
+
+  /**
+   * Deterministic evidence references; a memory without evidence is not recorded.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigationEvidence evidence = 7;
+   */
+  evidence: QualityInvestigationEvidence[];
+
+  /**
+   * Reserved for domain-scoped memory; stored, not resolved.
+   *
+   * @generated from field: string domain_ref = 8;
+   */
+  domainRef: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp expires_at = 9;
+   */
+  expiresAt?: Timestamp;
+
+  /**
+   * Format: users/{user}. Set when a person confirmed or rejected it.
+   *
+   * @generated from field: string confirmed_by = 10;
+   */
+  confirmedBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp confirmed_at = 11;
+   */
+  confirmedAt?: Timestamp;
+
+  /**
+   * Resource name of the memory that replaced this one.
+   *
+   * @generated from field: string superseded_by = 12;
+   */
+  supersededBy: string;
+
+  /**
+   * @generated from field: string created_by = 13;
+   */
+  createdBy: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 14;
+   */
+  createTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityMemory.
+ * Use `create(QualityMemorySchema)` to create a new message.
+ */
+export declare const QualityMemorySchema: GenMessage<QualityMemory>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityMemoryRequest
+ */
+export declare type CreateQualityMemoryRequest = Message<"metaxisdata.v1.CreateQualityMemoryRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityMemoryKind kind = 2;
+   */
+  kind: QualityMemoryKind;
+
+  /**
+   * @generated from field: string subject = 3;
+   */
+  subject: string;
+
+  /**
+   * @generated from field: string statement = 4;
+   */
+  statement: string;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityInvestigationEvidence evidence = 5;
+   */
+  evidence: QualityInvestigationEvidence[];
+
+  /**
+   * @generated from field: string domain_ref = 6;
+   */
+  domainRef: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp expires_at = 7;
+   */
+  expiresAt?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityMemoryRequest.
+ * Use `create(CreateQualityMemoryRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityMemoryRequestSchema: GenMessage<CreateQualityMemoryRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityMemoriesRequest
+ */
+export declare type ListQualityMemoriesRequest = Message<"metaxisdata.v1.ListQualityMemoriesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityMemoryKind kind = 2;
+   */
+  kind: QualityMemoryKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityMemoryStatus status = 3;
+   */
+  status: QualityMemoryStatus;
+
+  /**
+   * An exact subject.
+   *
+   * @generated from field: string subject = 4;
+   */
+  subject: string;
+
+  /**
+   * The page size; 0 uses the default (50), and the maximum is 1000.
+   *
+   * @generated from field: int32 page_size = 5;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 6;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityMemoriesRequest.
+ * Use `create(ListQualityMemoriesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityMemoriesRequestSchema: GenMessage<ListQualityMemoriesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityMemoriesResponse
+ */
+export declare type ListQualityMemoriesResponse = Message<"metaxisdata.v1.ListQualityMemoriesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityMemory quality_memories = 1;
+   */
+  qualityMemories: QualityMemory[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityMemoriesResponse.
+ * Use `create(ListQualityMemoriesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityMemoriesResponseSchema: GenMessage<ListQualityMemoriesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ConfirmQualityMemoryRequest
+ */
+export declare type ConfirmQualityMemoryRequest = Message<"metaxisdata.v1.ConfirmQualityMemoryRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.ConfirmQualityMemoryRequest.Decision decision = 2;
+   */
+  decision: ConfirmQualityMemoryRequest_Decision;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ConfirmQualityMemoryRequest.
+ * Use `create(ConfirmQualityMemoryRequestSchema)` to create a new message.
+ */
+export declare const ConfirmQualityMemoryRequestSchema: GenMessage<ConfirmQualityMemoryRequest>;
+
+/**
+ * @generated from enum metaxisdata.v1.ConfirmQualityMemoryRequest.Decision
+ */
+export enum ConfirmQualityMemoryRequest_Decision {
+  /**
+   * @generated from enum value: DECISION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DECISION_CONFIRM = 1;
+   */
+  CONFIRM = 1,
+
+  /**
+   * @generated from enum value: DECISION_REJECT = 2;
+   */
+  REJECT = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.ConfirmQualityMemoryRequest.Decision.
+ */
+export declare const ConfirmQualityMemoryRequest_DecisionSchema: GenEnum<ConfirmQualityMemoryRequest_Decision>;
+
+/**
+ * @generated from message metaxisdata.v1.DeleteQualityMemoryRequest
+ */
+export declare type DeleteQualityMemoryRequest = Message<"metaxisdata.v1.DeleteQualityMemoryRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DeleteQualityMemoryRequest.
+ * Use `create(DeleteQualityMemoryRequestSchema)` to create a new message.
+ */
+export declare const DeleteQualityMemoryRequestSchema: GenMessage<DeleteQualityMemoryRequest>;
+
+/**
  * QualityInvestigationEvidence is one deterministic reference behind an
  * investigation. It is a reference, never a copy of samples.
  *
@@ -11684,6 +11962,112 @@ export enum QualityChangeRejectionReason {
 export declare const QualityChangeRejectionReasonSchema: GenEnum<QualityChangeRejectionReason>;
 
 /**
+ * QualityMemoryKind is what a memory records.
+ *
+ * @generated from enum metaxisdata.v1.QualityMemoryKind
+ */
+export enum QualityMemoryKind {
+  /**
+   * @generated from enum value: QUALITY_MEMORY_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_KIND_ASSET_FACT = 1;
+   */
+  ASSET_FACT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_KIND_DECISION = 2;
+   */
+  DECISION = 2,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_KIND_EVENT = 3;
+   */
+  EVENT = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityMemoryKind.
+ */
+export declare const QualityMemoryKindSchema: GenEnum<QualityMemoryKind>;
+
+/**
+ * QualityMemoryStatus is where one memory stands.
+ *
+ * @generated from enum metaxisdata.v1.QualityMemoryStatus
+ */
+export enum QualityMemoryStatus {
+  /**
+   * @generated from enum value: QUALITY_MEMORY_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_STATUS_PROPOSED = 1;
+   */
+  PROPOSED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_STATUS_CONFIRMED = 2;
+   */
+  CONFIRMED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_STATUS_REJECTED = 3;
+   */
+  REJECTED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_STATUS_SUPERSEDED = 4;
+   */
+  SUPERSEDED = 4,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_STATUS_EXPIRED = 5;
+   */
+  EXPIRED = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityMemoryStatus.
+ */
+export declare const QualityMemoryStatusSchema: GenEnum<QualityMemoryStatus>;
+
+/**
+ * QualityMemorySource records who wrote the memory.
+ *
+ * @generated from enum metaxisdata.v1.QualityMemorySource
+ */
+export enum QualityMemorySource {
+  /**
+   * @generated from enum value: QUALITY_MEMORY_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_SOURCE_AGENT = 1;
+   */
+  AGENT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_SOURCE_HUMAN = 2;
+   */
+  HUMAN = 2,
+
+  /**
+   * @generated from enum value: QUALITY_MEMORY_SOURCE_SYSTEM = 3;
+   */
+  SYSTEM = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityMemorySource.
+ */
+export declare const QualityMemorySourceSchema: GenEnum<QualityMemorySource>;
+
+/**
  * QualityInvestigationStatus is where one investigation stands.
  *
  * @generated from enum metaxisdata.v1.QualityInvestigationStatus
@@ -12638,6 +13022,51 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityActionPolicyRequestSchema;
     output: typeof QualityActionPolicySchema;
+  },
+  /**
+   * Record one memory: an asset fact, a decision with its structured reason, or an
+   * event. An agent may write asset facts directly; a decision or an event it writes
+   * stays PROPOSED until a person confirms it.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityMemory
+   */
+  createQualityMemory: {
+    methodKind: "unary";
+    input: typeof CreateQualityMemoryRequestSchema;
+    output: typeof QualityMemorySchema;
+  },
+  /**
+   * List memories. Expired confirmations read as EXPIRED; superseded ones stay
+   * visible for the correction path.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityMemories
+   */
+  listQualityMemories: {
+    methodKind: "unary";
+    input: typeof ListQualityMemoriesRequestSchema;
+    output: typeof ListQualityMemoriesResponseSchema;
+  },
+  /**
+   * Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+   * knowledge; nothing else confirms it.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ConfirmQualityMemory
+   */
+  confirmQualityMemory: {
+    methodKind: "unary";
+    input: typeof ConfirmQualityMemoryRequestSchema;
+    output: typeof QualityMemorySchema;
+  },
+  /**
+   * Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+   * audit row records who removed it.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.DeleteQualityMemory
+   */
+  deleteQualityMemory: {
+    methodKind: "unary";
+    input: typeof DeleteQualityMemoryRequestSchema;
+    output: typeof EmptySchema;
   },
   /**
    * Write the target's plan declaration without touching its settings. This is the

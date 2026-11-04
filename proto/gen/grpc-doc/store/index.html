@@ -412,6 +412,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityMemoryEvidenceList"><span class="badge">M</span>QualityMemoryEvidenceList</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityRuleConfig"><span class="badge">M</span>QualityRuleConfig</a>
                 </li>
               
@@ -618,6 +622,18 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityLabelStatus"><span class="badge">E</span>QualityLabelStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityMemoryKind"><span class="badge">E</span>QualityMemoryKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityMemorySource"><span class="badge">E</span>QualityMemorySource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityMemoryStatus"><span class="badge">E</span>QualityMemoryStatus</a>
                 </li>
               
                 <li>
@@ -3779,6 +3795,30 @@ failure (runtime debug mode was on and the write was attempted). </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualityMemoryEvidenceList">QualityMemoryEvidenceList</h3>
+        <p>QualityMemoryEvidenceList is the JSONB payload of quality_memory.evidence; the</p><p>references are deterministic, never sample payloads.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>evidence</td>
+                  <td><a href="#metaxisdata.store.QualityInvestigationEvidence">QualityInvestigationEvidence</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityRuleConfig">QualityRuleConfig</h3>
         <p>QualityRuleConfig is the typed parameters of one rule. Exactly one arm of the</p><p>oneof is set, and it must correspond to the rule's type; the filter, the empty</p><p>behavior and the count/percent metric are shared by every type.</p>
 
@@ -6404,6 +6444,123 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_LABEL_STATUS_REJECTED</td>
                 <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityMemoryKind">QualityMemoryKind</h3>
+        <p>QualityMemoryKind is what a memory records. Asset facts are observed and may be</p><p>written automatically; a decision or an event is a judgment and needs a person's</p><p>confirmation before it counts.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_ASSET_FACT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_DECISION</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_EVENT</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityMemorySource">QualityMemorySource</h3>
+        <p>QualityMemorySource records who wrote the memory.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_AGENT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_HUMAN</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_SYSTEM</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityMemoryStatus">QualityMemoryStatus</h3>
+        <p>QualityMemoryStatus is where one memory stands. A superseded or expired memory is</p><p>kept for the correction path, never silently deleted.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_PROPOSED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_CONFIRMED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_REJECTED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_SUPERSEDED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_EXPIRED</td>
+                <td>5</td>
                 <td><p></p></td>
               </tr>
             
