@@ -869,7 +869,8 @@ what a person published.
 | ----- | ---- | ----- | ----------- |
 | settings | [QualityContractSettings](#metaxisdata-store-QualityContractSettings) |  |  |
 | checks | [QualityContractCheck](#metaxisdata-store-QualityContractCheck) | repeated |  |
-| fingerprint | [string](#string) |  | SHA-256 over the settings and the ordered checks. Two publishes with the same fingerprint are the same contract, so the second is a no-op. |
+| fingerprint | [string](#string) |  | The content fingerprint. Zero (absent) means a snapshot written before the versioned schema: its value came from a build-dependent JSON encoder, so readers compare legacy content directly instead of re-hashing it. Version 2 rows use a deterministic binary encoding. |
+| snapshot_version | [int32](#int32) |  | The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2 is the versioned schema written by every new publish; its fingerprint is deterministic across builds. Readers must branch on this, never mix fingerprints across versions. |
 
 
 

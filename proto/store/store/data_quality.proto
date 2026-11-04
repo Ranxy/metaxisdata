@@ -1094,9 +1094,17 @@ message QualityContractSettings {
 message QualityContractSnapshot {
   QualityContractSettings settings = 1;
   repeated QualityContractCheck checks = 2;
-  // SHA-256 over the settings and the ordered checks. Two publishes with the same
-  // fingerprint are the same contract, so the second is a no-op.
+  // The content fingerprint. Zero (absent) means a snapshot written before the
+  // versioned schema: its value came from a build-dependent JSON encoder, so
+  // readers compare legacy content directly instead of re-hashing it. Version 2
+  // rows use a deterministic binary encoding.
   string fingerprint = 3;
+
+  // The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2
+  // is the versioned schema written by every new publish; its fingerprint is
+  // deterministic across builds. Readers must branch on this, never mix
+  // fingerprints across versions.
+  int32 snapshot_version = 4;
 }
 
 // QualityContractCheck is one rule as a published contract records it.

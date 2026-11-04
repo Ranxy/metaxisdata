@@ -2689,8 +2689,20 @@ without rewriting the rules. </p></td>
                   <td>fingerprint</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>SHA-256 over the settings and the ordered checks. Two publishes with the same
-fingerprint are the same contract, so the second is a no-op. </p></td>
+                  <td><p>The content fingerprint. Zero (absent) means a snapshot written before the
+versioned schema: its value came from a build-dependent JSON encoder, so
+readers compare legacy content directly instead of re-hashing it. Version 2
+rows use a deterministic binary encoding. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>snapshot_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2
+is the versioned schema written by every new publish; its fingerprint is
+deterministic across builds. Readers must branch on this, never mix
+fingerprints across versions. </p></td>
                 </tr>
               
             </tbody>

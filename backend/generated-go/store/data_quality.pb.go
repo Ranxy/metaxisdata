@@ -6178,11 +6178,18 @@ type QualityContractSnapshot struct {
 	state    protoimpl.MessageState   `protogen:"open.v1"`
 	Settings *QualityContractSettings `protobuf:"bytes,1,opt,name=settings,proto3" json:"settings,omitempty"`
 	Checks   []*QualityContractCheck  `protobuf:"bytes,2,rep,name=checks,proto3" json:"checks,omitempty"`
-	// SHA-256 over the settings and the ordered checks. Two publishes with the same
-	// fingerprint are the same contract, so the second is a no-op.
-	Fingerprint   string `protobuf:"bytes,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The content fingerprint. Zero (absent) means a snapshot written before the
+	// versioned schema: its value came from a build-dependent JSON encoder, so
+	// readers compare legacy content directly instead of re-hashing it. Version 2
+	// rows use a deterministic binary encoding.
+	Fingerprint string `protobuf:"bytes,3,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	// The snapshot schema version. Zero (absent) means a legacy snapshot. Version 2
+	// is the versioned schema written by every new publish; its fingerprint is
+	// deterministic across builds. Readers must branch on this, never mix
+	// fingerprints across versions.
+	SnapshotVersion int32 `protobuf:"varint,4,opt,name=snapshot_version,json=snapshotVersion,proto3" json:"snapshot_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *QualityContractSnapshot) Reset() {
@@ -6234,6 +6241,13 @@ func (x *QualityContractSnapshot) GetFingerprint() string {
 		return x.Fingerprint
 	}
 	return ""
+}
+
+func (x *QualityContractSnapshot) GetSnapshotVersion() int32 {
+	if x != nil {
+		return x.SnapshotVersion
+	}
+	return 0
 }
 
 // QualityContractCheck is one rule as a published contract records it.
@@ -6773,11 +6787,12 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\atargets\x18\x01 \x03(\v2-.metaxisdata.store.QualitySuggestionJobTargetR\atargets\"\xcb\x01\n" +
 	"\x17QualityContractSettings\x128\n" +
 	"\x06filter\x18\x01 \x01(\v2 .metaxisdata.store.QualityFilterR\x06filter\x12M\n" +
-	"\x10default_severity\x18\x03 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\x0fdefaultSeverityJ\x04\b\x02\x10\x03R!default_schedule_interval_seconds\"\xc4\x01\n" +
+	"\x10default_severity\x18\x03 \x01(\x0e2\".metaxisdata.store.QualitySeverityR\x0fdefaultSeverityJ\x04\b\x02\x10\x03R!default_schedule_interval_seconds\"\xef\x01\n" +
 	"\x17QualityContractSnapshot\x12F\n" +
 	"\bsettings\x18\x01 \x01(\v2*.metaxisdata.store.QualityContractSettingsR\bsettings\x12?\n" +
 	"\x06checks\x18\x02 \x03(\v2'.metaxisdata.store.QualityContractCheckR\x06checks\x12 \n" +
-	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\"\x94\x02\n" +
+	"\vfingerprint\x18\x03 \x01(\tR\vfingerprint\x12)\n" +
+	"\x10snapshot_version\x18\x04 \x01(\x05R\x0fsnapshotVersion\"\x94\x02\n" +
 	"\x14QualityContractCheck\x12(\n" +
 	"\x10rule_resource_id\x18\x01 \x01(\tR\x0eruleResourceId\x12#\n" +
 	"\rrule_revision\x18\x02 \x01(\x05R\fruleRevision\x12\x14\n" +
