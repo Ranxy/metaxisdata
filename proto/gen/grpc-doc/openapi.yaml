@@ -10611,6 +10611,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityContractCheck'
+                plan:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityPlan'
+                    description: |-
+                        The plan this version recorded; absent on a version published before plan
+                         payloads existed.
         GetQualitySuggestionJobTargetDebugResponse:
             type: object
             properties:
@@ -13388,6 +13394,22 @@ components:
                         The intent this version recorded. Absent when the version recorded none,
                          including every version published before intent existed; this conversion
                          cannot tell the two apart.
+                changeKind:
+                    enum:
+                        - QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED
+                        - QUALITY_CONTRACT_CHANGE_KIND_INTENT
+                        - QUALITY_CONTRACT_CHANGE_KIND_PLAN
+                        - QUALITY_CONTRACT_CHANGE_KIND_CHECKS
+                        - QUALITY_CONTRACT_CHANGE_KIND_BOTH
+                    type: string
+                    description: Which sections of this version changed against its predecessor.
+                    format: enum
+                plan:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityPlan'
+                    description: |-
+                        The plan this version recorded. Absent on a version published before plan
+                         payloads existed.
             description: QualityContractRevision is one published version's metadata.
         QualityContractSettings:
             type: object
@@ -14156,10 +14178,73 @@ components:
                 gapCount:
                     type: integer
                     format: int32
+                coverage:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityPlanCoverage'
+                    description: |-
+                        The declarations the plan is built from (template plus intent statements), as
+                         a published version records them.
+                cadence:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityPlanCadence'
+                    description: |-
+                        The cadence a published version recorded; absent when nothing is published
+                         yet.
             description: |-
                 QualityPlan is the read-only projection of a target's monitoring plan: its
                  state, derived criticality, the checks that implement it and the declared
                  coverage it currently satisfies.
+        QualityPlanCadence:
+            type: object
+            properties:
+                intervalSeconds:
+                    type: string
+                    description: Seconds between runs; 0 when the target runs on cron or has no schedule.
+                cron:
+                    type: string
+                timezone:
+                    type: string
+            description: |-
+                QualityPlanCadence is the target schedule a plan version recorded. It is a
+                 projection of the target's schedule; editing the schedule is still the only
+                 way to change it.
+        QualityPlanCoverage:
+            type: object
+            properties:
+                property:
+                    enum:
+                        - QUALITY_COVERAGE_PROPERTY_UNSPECIFIED
+                        - QUALITY_COVERAGE_PROPERTY_VOLUME
+                        - QUALITY_COVERAGE_PROPERTY_FRESHNESS
+                        - QUALITY_COVERAGE_PROPERTY_UNIQUENESS
+                        - QUALITY_COVERAGE_PROPERTY_SCHEMA_STABILITY
+                        - QUALITY_COVERAGE_PROPERTY_NULL_RATE
+                        - QUALITY_COVERAGE_PROPERTY_ACCEPTED_VALUES
+                        - QUALITY_COVERAGE_PROPERTY_FORMAT
+                        - QUALITY_COVERAGE_PROPERTY_RANGE
+                    type: string
+                    format: enum
+                column:
+                    type: string
+                    description: The scope column; empty means the whole table.
+                minChecks:
+                    type: integer
+                    description: How many checks the declaration needs; 0 reads as one.
+                    format: int32
+                source:
+                    enum:
+                        - QUALITY_PLAN_SOURCE_UNSPECIFIED
+                        - QUALITY_PLAN_SOURCE_TEMPLATE
+                        - QUALITY_PLAN_SOURCE_INTENT
+                        - QUALITY_PLAN_SOURCE_AGENT
+                    type: string
+                    format: enum
+                note:
+                    type: string
+            description: |-
+                QualityPlanCoverage is one required property at one scope, as a published plan
+                 records it.
         QualityRootCauseCandidate:
             type: object
             properties:

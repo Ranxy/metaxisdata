@@ -438,3 +438,92 @@ func TestValidateQualityContractIntentShapeRejectsUnknownSource(t *testing.T) {
 		Source: v1pb.QualityContractIntentSource(99),
 	}))
 }
+
+// The v3 fingerprint covers the plan payload: a cadence-only change must produce a
+// new version, while the same payload fingerprints identically.
+func TestQualityContractFingerprintV3CoversPlan(t *testing.T) {
+	t.Parallel()
+
+	settings := &storepb.QualityContractSettings{}
+	checks := []*storepb.QualityContractCheck{{RuleResourceId: "a"}}
+	plan := &storepb.QualityContractPlan{
+		Coverage: []*storepb.QualityContractPlanCoverage{{MinChecks: 1}},
+		Cadence:  &storepb.QualityContractPlanCadence{IntervalSeconds: 3600},
+	}
+	require.Equal(t, qualityContractFingerprintV3(settings, plan, checks), qualityContractFingerprintV3(settings, plan, checks))
+
+	otherCadence := &storepb.QualityContractPlan{Coverage: plan.GetCoverage(), Cadence: &storepb.QualityContractPlanCadence{IntervalSeconds: 7200}}
+	require.NotEqual(t, qualityContractFingerprintV3(settings, plan, checks), qualityContractFingerprintV3(settings, otherCadence, checks))
+	// A v3 fingerprint never equals the v2 fingerprint of the same settings and
+	// checks, so a no-op comparison cannot cross schemas.
+	require.NotEqual(t, qualityContractFingerprintV2(settings, checks), qualityContractFingerprintV3(settings, plan, checks))
+}
+
+// The snapshot a publish writes records the v3 schema and a v3 fingerprint.
+func TestQualityContractSnapshotV3(t *testing.T) {
+	t.Parallel()
+
+	snapshot := qualityContractSnapshotV3(
+		&storepb.QualityContractSettings{},
+		&storepb.QualityContractPlan{Coverage: []*storepb.QualityContractPlanCoverage{{MinChecks: 1}}},
+		nil,
+	)
+	require.Equal(t, int32(3), snapshot.GetSnapshotVersion())
+	require.True(t, strings.HasPrefix(snapshot.GetFingerprint(), contractSnapshotVersionPrefixV3))
+	require.NotNil(t, snapshot.GetPlan())
+}
+
+// The published plan payload is the same declaration the plan card renders, plus the
+// target's cadence projection.
+func TestQualityContractPlanSnapshot(t *testing.T) {
+	t.Parallel()
+
+	rules := []*store.QualityRuleMessage{{
+		TargetGUID: "inst-1;shop;public;orders",
+		TargetType: storepb.MetaType_TABLE,
+		RuleType:   storepb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		State:      storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+	}}
+	intent := &storepb.QualityContractIntent{
+		Criticality: storepb.QualityContractCriticality_QUALITY_CONTRACT_CRITICALITY_CRITICAL,
+		Statements: []*storepb.QualityContractIntentStatement{{
+			Property: storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_NULL_RATE,
+			Column:   "email",
+		}},
+	}
+	schedule := &store.QualityTargetScheduleMessage{TargetGUID: rules[0].TargetGUID, ScheduleInterval: 6 * time.Hour}
+
+	plan := qualityContractPlanSnapshot(intent, rules, schedule)
+	require.Len(t, plan.GetCoverage(), 5, "four critical template requirements plus the statement")
+	require.Equal(t, int64(6*60*60), plan.GetCadence().GetIntervalSeconds())
+	sourceByProperty := map[storepb.QualityCoverageProperty]storepb.QualityContractPlanSource{}
+	for _, declaration := range plan.GetCoverage() {
+		sourceByProperty[declaration.GetProperty()] = declaration.GetSource()
+	}
+	require.Equal(t, storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE,
+		sourceByProperty[storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME])
+	require.Equal(t, storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_INTENT,
+		sourceByProperty[storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_NULL_RATE])
+}
+
+// A revision exposes its change kind and the plan it recorded.
+func TestConvertQualityContractRevisionChangeKindAndPlan(t *testing.T) {
+	t.Parallel()
+
+	revision := &store.QualityContractRevisionMessage{
+		Version:    2,
+		ChangeKind: storepb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN,
+		Snapshot: &storepb.QualityContractSnapshot{
+			Plan: &storepb.QualityContractPlan{
+				Coverage: []*storepb.QualityContractPlanCoverage{{
+					Property:  storepb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME,
+					MinChecks: 1,
+					Source:    storepb.QualityContractPlanSource_QUALITY_CONTRACT_PLAN_SOURCE_TEMPLATE,
+				}},
+			},
+		},
+	}
+	converted := convertQualityContractRevisionToV1(revision)
+	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN, converted.GetChangeKind())
+	require.Len(t, converted.GetPlan().GetCoverage(), 1)
+}

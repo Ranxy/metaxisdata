@@ -1517,6 +1517,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityPlanCadence"><span class="badge">M</span>QualityPlanCadence</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityPlanCoverage"><span class="badge">M</span>QualityPlanCoverage</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityRootCauseCandidate"><span class="badge">M</span>QualityRootCauseCandidate</a>
                 </li>
               
@@ -1770,6 +1778,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityContractChangeKind"><span class="badge">E</span>QualityContractChangeKind</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityContractIntentSource"><span class="badge">E</span>QualityContractIntentSource</a>
                 </li>
               
@@ -1819,6 +1831,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityObservedKind"><span class="badge">E</span>QualityObservedKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityPlanSource"><span class="badge">E</span>QualityPlanSource</a>
                 </li>
               
                 <li>
@@ -14858,6 +14874,14 @@ not the overview&#39;s: there, every monitorable object counts. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>plan</td>
+                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
+                  <td></td>
+                  <td><p>The plan this version recorded; absent on a version published before plan
+payloads existed. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -17933,6 +17957,21 @@ including every version published before intent existed; this conversion
 cannot tell the two apart. </p></td>
                 </tr>
               
+                <tr>
+                  <td>change_kind</td>
+                  <td><a href="#metaxisdata.v1.QualityContractChangeKind">QualityContractChangeKind</a></td>
+                  <td></td>
+                  <td><p>Which sections of this version changed against its predecessor. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>plan</td>
+                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
+                  <td></td>
+                  <td><p>The plan this version recorded. Absent on a version published before plan
+payloads existed. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -19228,6 +19267,112 @@ is visible without being mistaken for bad data. </p></td>
                 <tr>
                   <td>gap_count</td>
                   <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>coverage</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanCoverage">QualityPlanCoverage</a></td>
+                  <td>repeated</td>
+                  <td><p>The declarations the plan is built from (template plus intent statements), as
+a published version records them. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cadence</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanCadence">QualityPlanCadence</a></td>
+                  <td></td>
+                  <td><p>The cadence a published version recorded; absent when nothing is published
+yet. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityPlanCadence">QualityPlanCadence</h3>
+        <p>QualityPlanCadence is the target schedule a plan version recorded. It is a</p><p>projection of the target's schedule; editing the schedule is still the only</p><p>way to change it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>interval_seconds</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Seconds between runs; 0 when the target runs on cron or has no schedule. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>cron</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>timezone</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityPlanCoverage">QualityPlanCoverage</h3>
+        <p>QualityPlanCoverage is one required property at one scope, as a published plan</p><p>records it.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>property</td>
+                  <td><a href="#metaxisdata.v1.QualityCoverageProperty">QualityCoverageProperty</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>column</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The scope column; empty means the whole table. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>min_checks</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many checks the declaration needs; 0 reads as one. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanSource">QualityPlanSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>note</td>
+                  <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -23057,6 +23202,47 @@ accepted range expressed as a pass band.</p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.QualityContractChangeKind">QualityContractChangeKind</h3>
+        <p>QualityContractChangeKind says which sections of a version changed against its</p><p>predecessor.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_INTENT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_PLAN</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_CHECKS</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_CONTRACT_CHANGE_KIND_BOTH</td>
+                <td>4</td>
+                <td><p>More than one section changed.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.QualityContractIntentSource">QualityContractIntentSource</h3>
         <p>QualityContractIntentSource records who wrote the intent.</p>
         <table class="enum-table">
@@ -23596,6 +23782,41 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_OBSERVED_KIND_NUMBER</td>
                 <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityPlanSource">QualityPlanSource</h3>
+        <p>QualityPlanSource records where one declaration came from.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_PLAN_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_PLAN_SOURCE_TEMPLATE</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_PLAN_SOURCE_INTENT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_PLAN_SOURCE_AGENT</td>
+                <td>3</td>
                 <td><p></p></td>
               </tr>
             
