@@ -369,8 +369,10 @@ func convertQualityContractPlanToV1(plan *storepb.QualityContractPlan) *v1pb.Qua
 }
 
 // qualityContractPlanCoverageDiff compares a published declaration list with the
-// working one. Identity is (property, column); a declaration whose minimum or source
-// moved is modified. The order is deterministic so a client can diff two reads.
+// working one. Identity is (property, column); a declaration whose minimum moved is
+// modified. Provenance (TEMPLATE vs INTENT) is not a change: re-declaring a template
+// property by hand does not alter what the plan promises. The order is deterministic
+// so a client can diff two reads.
 func qualityContractPlanCoverageDiff(published, working []*storepb.QualityContractPlanCoverage) []*v1pb.QualityPlanChange {
 	publishedByKey := make(map[string]*storepb.QualityContractPlanCoverage, len(published))
 	for _, declaration := range published {
@@ -386,7 +388,7 @@ func qualityContractPlanCoverageDiff(published, working []*storepb.QualityContra
 		switch {
 		case !ok:
 			changes = append(changes, &v1pb.QualityPlanChange{Kind: v1pb.QualityPlanChange_KIND_ADDED, Coverage: convertQualityPlanCoverageToV1(declaration)})
-		case previous.GetMinChecks() != declaration.GetMinChecks() || previous.GetSource() != declaration.GetSource():
+		case previous.GetMinChecks() != declaration.GetMinChecks():
 			changes = append(changes, &v1pb.QualityPlanChange{Kind: v1pb.QualityPlanChange_KIND_MODIFIED, Coverage: convertQualityPlanCoverageToV1(declaration)})
 		default:
 			// The declaration is unchanged.
