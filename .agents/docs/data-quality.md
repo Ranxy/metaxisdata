@@ -430,7 +430,7 @@ agent 是**独立主体**，不是“以某管理员身份运行”：管理员�
 - **写入纪律**：事实自动、判断确认——agent 写 `ASSET_FACT` 仅在证据 kind 属于确定性观测形态（EXECUTION/PROFILE/LINEAGE/SCHEMA_FINGERPRINT）时直接 `CONFIRMED`，其它证据形态记为 `PROPOSED`（服务端无法验证引用，不能替人判断）；agent 写 `DECISION`/`EVENT` 只能 `PROPOSED`，必须由人 `ConfirmQualityMemory` 确认或拒绝后才算知识；人写的记忆直接 `CONFIRMED` 并记 confirmed_by。每条记忆必须有 subject、statement 与 ≥1 条证据引用，文本有界、expires_at 必须在未来。subject 过滤为**精确匹配**。
 - **纠错路径**：同一 `(kind, subject)` 的新确认记忆会把旧确认记忆置 `SUPERSEDED` 并写 `superseded_by`，旧行保留证据不覆盖；**确认**（不只是创建）也在同一事务内执行该 supersede，并按 `(kind, subject)` 取事务级 advisory lock，保证同一 subject 只有一条 current；确认过的记忆过期后**读取时**显示 `EXPIRED`，列表按状态过滤时把过期确认归入 EXPIRED；`DeleteQualityMemory` 是管理员软删（settings.update，审计），删后离开所有读，行仍在。
 - **权限与策略**：创建 `plans.update` + 审计，走动作策略——ASSET_FACT 是 A0-5、DECISION/EVENT 是 A1-6，agent 需 autonomy + enabled；subject 是 target GUID 时会解析其计划关键度，A1-6 在 critical 资产上被放大器交给人；List 复用 `rules.list` 只读；Confirm 用 `rules.update`（人）；Delete 用 `settings.update`（管理员）。
-- 本切片为 backend/API；记忆的展示与“在建议/变更单决策时顺手记录理由”的 UI 入口在后续切片。
+- UI：目标页“调查与记忆”卡片展示调查（含证据/假设/失败原因）与该目标的记忆，待确认记忆可由有 `rules.update` 的人确认/拒绝；拒绝变更单时可勾选“把理由记入记忆”（默认开），决策成功后写入一条 `DECISION` 记忆：subject 为目标 GUID、证据为 `CHANGE_REQUEST` 引用、人写即 CONFIRMED 并触发 supersede；写入失败只警告，不影响已生效的决策。
 
 ### 3.10 覆盖率、质量分与最近通过率（P0-3）
 

@@ -365,7 +365,7 @@
       "rejectedNotice": "变更单已拒绝",
       "rejectedWith": "拒绝理由：{reasons}",
       "rememberReason": "把理由记入记忆",
-      "rememberReasonHint": "已确认的决策记忆会帮助后续的判断；它不会改变检查本身。",
+      "rememberReasonHint": "该决策会作为已确认的知识保留在目标下；它不会改变检查本身。",
       "removeDeclaration": "移除 {scope}",
       "resultApplied": "已生效",
       "resultFailed": "失败",

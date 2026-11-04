@@ -365,7 +365,7 @@
       "rejectedNotice": "Change request rejected",
       "rejectedWith": "Rejected: {reasons}",
       "rememberReason": "Record the reason in memory",
-      "rememberReasonHint": "A confirmed decision memory helps later proposals; it never changes the check itself.",
+      "rememberReasonHint": "The decision is kept with the target as confirmed knowledge; it never changes the check itself.",
       "removeDeclaration": "Remove {scope}",
       "resultApplied": "Applied",
       "resultFailed": "Failed",

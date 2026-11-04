@@ -17727,7 +17727,7 @@ func (x *DeleteQualityMemoryRequest) GetName() string {
 // investigation. It is a reference, never a copy of samples.
 type QualityInvestigationEvidence struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE.
+	// EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST.
 	Kind          string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	Reference     string `protobuf:"bytes,2,opt,name=reference,proto3" json:"reference,omitempty"`
 	Note          string `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"`

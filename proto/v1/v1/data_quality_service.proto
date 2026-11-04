@@ -4244,7 +4244,7 @@ enum QualityInvestigationVerdict {
 // QualityInvestigationEvidence is one deterministic reference behind an
 // investigation. It is a reference, never a copy of samples.
 message QualityInvestigationEvidence {
-  // EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE.
+  // EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST.
   string kind = 1;
   string reference = 2;
   string note = 3;

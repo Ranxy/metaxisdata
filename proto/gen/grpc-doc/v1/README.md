@@ -7035,7 +7035,7 @@ investigation. It is a reference, never a copy of samples.
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| kind | [string](#string) |  | EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE or PROFILE. |
+| kind | [string](#string) |  | EXECUTION, ISSUE, SCHEMA_FINGERPRINT, LINEAGE, PROFILE or CHANGE_REQUEST. |
 | reference | [string](#string) |  |  |
 | note | [string](#string) |  |  |
 
