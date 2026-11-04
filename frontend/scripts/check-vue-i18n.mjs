@@ -70,6 +70,10 @@ export const DYNAMIC_PREFIXES = [
   // property to its label key; the plan card, the declaration editor and the
   // publish diff render it.
   "dataQuality.workspace.planProperty",
+  // criticalityKey() in TargetIntentDialog.vue maps the intent criticality (and
+  // its unset state) to its label key.
+  "dataQuality.intent.criticalityOption",
+  "dataQuality.intent.criticalityUnset",
   // The editor's vocabulary helpers and its validation messages: the key is
   // chosen by a helper in src/utils/dataQuality.ts or returned by
   // validateRuleForm, so the checker cannot follow it either.

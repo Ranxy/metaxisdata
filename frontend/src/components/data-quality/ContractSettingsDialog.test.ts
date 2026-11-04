@@ -6,6 +6,8 @@ import RuleFilterEditor from "@/components/data-quality/RuleFilterEditor.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import {
+  QualityAssetCriticality,
+  QualityContractIntentSchema,
   QualityContractSchema,
   type QualityContractSettings,
   QualityContractSettingsSchema,
@@ -230,4 +232,29 @@ describe("ContractSettingsDialog", () => {
     expect(request.settings.defaultSeverity).toBe(QualitySeverity.UNSPECIFIED);
     wrapper.unmount();
   });
+});
+
+// The server replaces the complete settings message, so saving the filter must not
+// silently clear the intent this dialog does not edit.
+it("keeps the intent when it saves the filter and severity", async () => {
+  const wrapper = mountDialog(
+    create(QualityContractSettingsSchema, {
+      defaultSeverity: QualitySeverity.WARNING,
+      intent: create(QualityContractIntentSchema, {
+        criticality: QualityAssetCriticality.CRITICAL,
+      }),
+    })
+  );
+  await flushPromises();
+
+  dialogButton(label("dataQuality.contract.saveSettings"))?.click();
+  await flushPromises();
+
+  const [updated] = mocks.updateQualityContract.mock.calls[0] as [
+    { settings: QualityContractSettings },
+  ];
+  expect(updated.settings.intent?.criticality).toBe(
+    QualityAssetCriticality.CRITICAL
+  );
+  wrapper.unmount();
 });

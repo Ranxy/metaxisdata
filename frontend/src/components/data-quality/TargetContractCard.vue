@@ -88,6 +88,14 @@
           v-if="canUpdate"
           variant="ghost"
           size="sm"
+          @click="intentOpen = true"
+        >
+          {{ t("dataQuality.contract.intent") }}
+        </Button>
+        <Button
+          v-if="canUpdate"
+          variant="ghost"
+          size="sm"
           @click="settingsOpen = true"
         >
           {{ t("dataQuality.contract.settings") }}
@@ -112,6 +120,14 @@
       </div>
     </div>
 
+    <TargetIntentDialog
+      v-if="contract && !error"
+      v-model:open="intentOpen"
+      :target-guid="targetGuid"
+      :meta-type="metaType"
+      :contract="contract"
+      @updated="emit('updated', $event)"
+    />
     <ContractSettingsDialog
       v-if="contract && !error"
       v-model:open="settingsOpen"
@@ -144,6 +160,7 @@ import { useI18n } from "vue-i18n";
 import ContractHistoryDrawer from "@/components/data-quality/ContractHistoryDrawer.vue";
 import ContractPublishDialog from "@/components/data-quality/ContractPublishDialog.vue";
 import ContractSettingsDialog from "@/components/data-quality/ContractSettingsDialog.vue";
+import TargetIntentDialog from "@/components/data-quality/TargetIntentDialog.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUserDirectory } from "@/composables/useUserDirectory";
@@ -186,6 +203,7 @@ const { t, locale } = useI18n();
 const { emailOf, load: loadDirectory } = useUserDirectory();
 
 const settingsOpen = ref(false);
+const intentOpen = ref(false);
 const publishOpen = ref(false);
 const historyOpen = ref(false);
 

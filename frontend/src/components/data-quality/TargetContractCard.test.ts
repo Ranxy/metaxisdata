@@ -253,4 +253,26 @@ describe("TargetContractCard", () => {
     expect(wrapper.findComponent(ContractPublishDialog).exists()).toBe(false);
     wrapper.unmount();
   });
+  it("offers the intent editor to a writer and hides it from a reader", async () => {
+    const wrapper = await mountCard();
+    const intent = wrapper
+      .findAll("button")
+      .find(
+        (candidate) =>
+          candidate.text().trim() === label("dataQuality.contract.intent")
+      );
+    expect(intent).toBeTruthy();
+    wrapper.unmount();
+
+    const reader = await mountCard({ canUpdate: false });
+    expect(
+      reader
+        .findAll("button")
+        .some(
+          (candidate) =>
+            candidate.text().trim() === label("dataQuality.contract.intent")
+        )
+    ).toBe(false);
+    reader.unmount();
+  });
 });
