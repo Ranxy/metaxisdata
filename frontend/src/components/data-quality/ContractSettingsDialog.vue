@@ -257,6 +257,9 @@ async function save() {
     const settings = create(QualityContractSettingsSchema, {
       filter: buildFilter(clauses.value),
       defaultSeverity: severity.value,
+      // The server replaces the complete settings message, so the intent this
+      // dialog does not edit must travel with it or saving would clear it.
+      intent: props.settings?.intent,
     });
     const updated = await updateQualityContract({
       targetGuid: props.targetGuid,

@@ -115,6 +115,7 @@
                 <Input
                   :id="`dq-intent-promise-column-${promise.key}`"
                   v-model="promise.column"
+                  list="dq-intent-columns"
                   :placeholder="t('dataQuality.intent.promiseColumnPlaceholder')"
                 />
               </div>
@@ -125,6 +126,7 @@
                 <Input
                   :id="`dq-intent-promise-tolerance-${promise.key}`"
                   v-model="promise.tolerance"
+                  maxlength="500"
                   :placeholder="t('dataQuality.intent.promiseTolerancePlaceholder')"
                 />
               </div>
@@ -132,7 +134,7 @@
                 variant="ghost"
                 size="icon"
                 :title="t('dataQuality.intent.remove')"
-                :aria-label="t('dataQuality.intent.remove')"
+                :aria-label="t('dataQuality.intent.removeRow', { index: index + 1 })"
                 @click="removePromise(index)"
               >
                 <Trash2 class="h-4 w-4" />
@@ -170,13 +172,15 @@
             >
               <Input
                 v-model="dependent.value"
+                maxlength="500"
+                :aria-label="t('dataQuality.intent.dependentLabel', { index: index + 1 })"
                 :placeholder="t('dataQuality.intent.dependentPlaceholder')"
               />
               <Button
                 variant="ghost"
                 size="icon"
                 :title="t('dataQuality.intent.remove')"
-                :aria-label="t('dataQuality.intent.remove')"
+                :aria-label="t('dataQuality.intent.removeRow', { index: index + 1 })"
                 @click="removeDependent(index)"
               >
                 <Trash2 class="h-4 w-4" />
@@ -242,7 +246,9 @@
                   <Input
                     :id="`dq-intent-exemption-column-${exemption.key}`"
                     v-model="exemption.column"
+                    list="dq-intent-columns"
                     :placeholder="t('dataQuality.intent.promiseColumnPlaceholder')"
+                    @input="clearExemptionApprover(index)"
                   />
                 </div>
                 <div class="w-40 space-y-1">
@@ -253,13 +259,15 @@
                     :id="`dq-intent-exemption-expires-${exemption.key}`"
                     v-model="exemption.expiresAt"
                     type="date"
+                    min="1970-01-02"
+                    @input="clearExemptionApprover(index)"
                   />
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   :title="t('dataQuality.intent.remove')"
-                  :aria-label="t('dataQuality.intent.remove')"
+                  :aria-label="t('dataQuality.intent.removeRow', { index: index + 1 })"
                   @click="removeExemption(index)"
                 >
                   <Trash2 class="h-4 w-4" />
@@ -267,8 +275,10 @@
               </div>
               <Input
                 v-model="exemption.reason"
+                maxlength="500"
                 :placeholder="t('dataQuality.intent.exemptionReasonPlaceholder')"
                 :aria-label="t('dataQuality.intent.exemptionReason')"
+                @input="clearExemptionApprover(index)"
               />
               <p
                 v-if="exemption.approvedBy"
@@ -296,6 +306,13 @@
               <Plus class="mr-1 h-4 w-4" />
               {{ t("dataQuality.intent.addExemption") }}
             </Button>
+            <datalist id="dq-intent-columns">
+              <option
+                v-for="column in columns"
+                :key="column"
+                :value="column"
+              />
+            </datalist>
           </section>
         </div>
 
@@ -327,6 +344,7 @@ import { AlertTriangle, Plus, Trash2 } from "lucide-vue-next";
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { updateQualityContract } from "@/api/data-quality";
+import { listAllMetadata } from "@/api/database";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -403,6 +421,8 @@ interface ExemptionRow {
   column: string;
   reason: string;
   expiresAt: string;
+  /** The stored instant, kept while the date input still shows it. */
+  expiresAtOriginal?: Timestamp;
   approvedBy: string;
 }
 
@@ -412,6 +432,8 @@ const { emailOf, load: loadDirectory } = useUserDirectory();
 
 const criticality = ref(QualityAssetCriticality.UNSPECIFIED);
 const effectiveFrom = ref("");
+const effectiveFromOriginal = ref<Timestamp | undefined>(undefined);
+const columns = ref<string[]>([]);
 const promises = ref<PromiseRow[]>([]);
 const dependents = ref<DependentRow[]>([]);
 const exemptions = ref<ExemptionRow[]>([]);
@@ -441,11 +463,11 @@ const propertyOptions = [
 function criticalityKey(value: QualityAssetCriticality): string {
   switch (value) {
     case QualityAssetCriticality.CRITICAL:
-      return "dataQuality.workspace.planCriticalityCritical";
+      return "dataQuality.intent.criticalityOptionCritical";
     case QualityAssetCriticality.IMPORTANT:
-      return "dataQuality.workspace.planCriticalityImportant";
+      return "dataQuality.intent.criticalityOptionImportant";
     case QualityAssetCriticality.EXPERIMENTAL:
-      return "dataQuality.workspace.planCriticalityExperimental";
+      return "dataQuality.intent.criticalityOptionExperimental";
     default:
       return "dataQuality.intent.criticalityUnset";
   }
@@ -459,12 +481,31 @@ function dateInputValue(timestamp?: Timestamp): string {
   return new Date(Number(timestamp.seconds) * 1000).toISOString().slice(0, 10);
 }
 
-/** A stored instant from a date input value; undefined when unset. */
+/** A stored instant from a date input value; undefined when unset or unrepresentable. */
 function timestampFromInput(value: string): Timestamp | undefined {
   if (!value) {
     return undefined;
   }
-  return timestampFromDate(new Date(`${value}T00:00:00Z`));
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.getTime() <= 0) {
+    return undefined;
+  }
+  return timestampFromDate(date);
+}
+
+/**
+ * The instant to store for a date input: the original one while the input still
+ * shows it, so an imported time-of-day is not truncated by an unrelated edit and an
+ * unchanged waiver keeps its identity (and its recorded approver).
+ */
+function resolveTimestamp(
+  original: Timestamp | undefined,
+  value: string
+): Timestamp | undefined {
+  if (dateInputValue(original) === value) {
+    return original;
+  }
+  return timestampFromInput(value);
 }
 
 function reset() {
@@ -488,6 +529,7 @@ function reset() {
     column: exemption.column,
     reason: exemption.reason,
     expiresAt: dateInputValue(exemption.expiresAt),
+    expiresAtOriginal: exemption.expiresAt,
     approvedBy: exemption.approvedBy,
   }));
   error.value = "";
@@ -497,6 +539,9 @@ function reset() {
 
 function addPromise() {
   warning.value = "";
+  if (promises.value.length >= 32) {
+    return;
+  }
   promises.value.push({
     key: nextKey++,
     property: QualityCoverageProperty.VOLUME,
@@ -519,6 +564,9 @@ function setPromiseProperty(index: number, value: unknown) {
 }
 
 function addDependent() {
+  if (dependents.value.length >= 32) {
+    return;
+  }
   dependents.value.push({ key: nextKey++, value: "" });
 }
 
@@ -528,6 +576,9 @@ function removeDependent(index: number) {
 
 function addExemption() {
   warning.value = "";
+  if (exemptions.value.length >= 32) {
+    return;
+  }
   exemptions.value.push({
     key: nextKey++,
     property: QualityCoverageProperty.VOLUME,
@@ -547,6 +598,17 @@ function setExemptionProperty(index: number, value: unknown) {
   const row = exemptions.value[index];
   if (row) {
     row.property = Number(value) as QualityCoverageProperty;
+    // The server attributes an edited waiver to the current editor, so the
+    // previously recorded approver no longer describes this row.
+    row.approvedBy = "";
+  }
+}
+
+/** Editing a waiver's identity makes the stored approver stale; hide it. */
+function clearExemptionApprover(index: number) {
+  const row = exemptions.value[index];
+  if (row) {
+    row.approvedBy = "";
   }
 }
 
@@ -573,10 +635,33 @@ watch(
     reset();
     if (isOpen) {
       void loadDirectory();
+      void loadColumns();
     }
   },
   { immediate: true }
 );
+
+/** Column suggestions; a failure is not fatal because the fields are free text. */
+async function loadColumns() {
+  const guid = props.targetGuid;
+  try {
+    const items = await listAllMetadata({
+      parentGuid: guid,
+      metaType: MetaType.COLUMN,
+    });
+    if (!props.open || guid !== props.targetGuid) {
+      return;
+    }
+    columns.value = items.map(
+      (item) =>
+        (item.type.value as { name?: string } | undefined)?.name ?? item.guid
+    );
+  } catch {
+    if (props.open && guid === props.targetGuid) {
+      columns.value = [];
+    }
+  }
+}
 
 function close() {
   emit("update:open", false);
@@ -612,10 +697,16 @@ function buildSettings() {
           property: exemption.property,
           column: exemption.column.trim(),
           reason: exemption.reason.trim(),
-          expiresAt: timestampFromInput(exemption.expiresAt),
+          expiresAt: resolveTimestamp(
+            exemption.expiresAtOriginal,
+            exemption.expiresAt
+          ),
         })
       ),
-      effectiveFrom: timestampFromInput(effectiveFrom.value),
+      effectiveFrom: resolveTimestamp(
+        effectiveFromOriginal.value,
+        effectiveFrom.value
+      ),
       // Fields this dialog does not edit are preserved rather than cleared by the
       // wholesale settings replacement.
       source: intent?.source ?? QualityContractIntentSource.UNSPECIFIED,

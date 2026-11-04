@@ -220,4 +220,85 @@ describe("TargetIntentDialog", () => {
     expect(wrapper.emitted("update:open")).toBeFalsy();
     wrapper.unmount();
   });
+  it("keeps an imported instant the date input did not change", async () => {
+    const contract = contractFixture();
+    const imported = timestampFromDate(new Date("2027-01-01T09:30:00Z"));
+    const exemption = contract.settings?.intent?.exemptions[0];
+    expect(exemption).toBeTruthy();
+    if (exemption) {
+      exemption.expiresAt = imported;
+    }
+    const wrapper = mountDialog(contract);
+    await flushPromises();
+    const options = await save();
+
+    expect(options?.settings.intent?.exemptions[0]?.expiresAt?.seconds).toBe(
+      imported.seconds
+    );
+    wrapper.unmount();
+  });
+
+  it("clears every row into an intent that declares nothing", async () => {
+    const contract = contractFixture();
+    const wrapper = mountDialog(contract);
+    await flushPromises();
+
+    const removePrefix = label("dataQuality.intent.removeRow", {
+      index: 9,
+    }).replace("9", "");
+    const removes = [
+      ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+    ].filter((button) =>
+      (button.getAttribute("aria-label") ?? "").startsWith(removePrefix)
+    );
+    expect(removes).toHaveLength(3);
+    for (const remove of removes) {
+      remove.click();
+      await flushPromises();
+    }
+    const options = await save();
+
+    const intent = options?.settings.intent;
+    expect(intent?.statements).toHaveLength(0);
+    expect(intent?.dependents).toHaveLength(0);
+    expect(intent?.exemptions).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("drops a stale approver once a waiver is edited", async () => {
+    const wrapper = mountDialog();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQuality.intent.exemptionApprover", { name: "users/7" })
+    );
+
+    const reason = document.body.querySelector<HTMLInputElement>(
+      'input[placeholder="' +
+        label("dataQuality.intent.exemptionReasonPlaceholder") +
+        '"]'
+    );
+    reason?.dispatchEvent(new Event("input"));
+    await flushPromises();
+
+    expect(document.body.textContent).not.toContain(
+      label("dataQuality.intent.exemptionApprover", { name: "users/7" })
+    );
+    wrapper.unmount();
+  });
+
+  it("edits a target that has no intent yet", async () => {
+    const contract = contractFixture();
+    if (contract.settings) {
+      contract.settings.intent = undefined;
+    }
+    const wrapper = mountDialog(contract);
+    await flushPromises();
+    const options = await save();
+
+    expect(options?.settings.intent?.statements).toHaveLength(0);
+    expect(options?.settings.intent?.criticality).toBe(
+      QualityAssetCriticality.UNSPECIFIED
+    );
+    wrapper.unmount();
+  });
 });
