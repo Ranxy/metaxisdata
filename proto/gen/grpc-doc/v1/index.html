@@ -1437,6 +1437,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.QualityContractDiff"><span class="badge">M</span>QualityContractDiff</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.QualityContractIntent"><span class="badge">M</span>QualityContractIntent</a>
                 </li>
               
@@ -1518,6 +1522,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityPlanCadence"><span class="badge">M</span>QualityPlanCadence</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityPlanChange"><span class="badge">M</span>QualityPlanChange</a>
                 </li>
               
                 <li>
@@ -1831,6 +1839,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityObservedKind"><span class="badge">E</span>QualityObservedKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityPlanChange.Kind"><span class="badge">E</span>QualityPlanChange.Kind</a>
                 </li>
               
                 <li>
@@ -17618,8 +17630,30 @@ nothing has been published yet and the target has content). </p></td>
                   <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
                   <td></td>
                   <td><p>The target&#39;s monitoring plan as derived from the live rules and the
-contract. Read-only in this slice; staged editing arrives with the plan
-write path. </p></td>
+contract. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>staged_plan</td>
+                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
+                  <td></td>
+                  <td><p>The plan draft a person staged but has not published. Absent when no draft
+exists; an empty draft clears it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>staged_base_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The published version the draft is based on. Zero when nothing is staged. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>diff</td>
+                  <td><a href="#metaxisdata.v1.QualityContractDiff">QualityContractDiff</a></td>
+                  <td></td>
+                  <td><p>How the working state (the draft when one exists, otherwise the live
+projection) differs from the newest published version. </p></td>
                 </tr>
               
             </tbody>
@@ -17717,6 +17751,45 @@ write path. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The column the rule watches; empty for a table-level rule. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityContractDiff">QualityContractDiff</h3>
+        <p>QualityContractDiff compares the working state with the newest published version.</p><p>The check diff is QualityContract.change_summary; this message carries the two</p><p>sections the version's plan payload made comparable.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>intent_changed</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the live intent differs from the published version&#39;s. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>plan_changes</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanChange">QualityPlanChange</a></td>
+                  <td>repeated</td>
+                  <td><p>The declaration changes the draft would publish. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>plan_not_recorded</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>True when the newest published version predates the plan payload, so a plan
+diff cannot be shown. It is not the same as &#34;no plan changes&#34;. </p></td>
                 </tr>
               
             </tbody>
@@ -19310,6 +19383,37 @@ records the expression&#39;s nominal gap here and its expression in cron. </p></
                 <tr>
                   <td>timezone</td>
                   <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityPlanChange">QualityPlanChange</h3>
+        <p>QualityPlanChange is one declaration added, removed or modified by a draft.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanChange.Kind">QualityPlanChange.Kind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>coverage</td>
+                  <td><a href="#metaxisdata.v1.QualityPlanCoverage">QualityPlanCoverage</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -22744,6 +22848,23 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
                   <td><p>The complete settings; the update replaces them rather than patching fields. </p></td>
                 </tr>
               
+                <tr>
+                  <td>draft</td>
+                  <td><a href="#metaxisdata.v1.QualityPlan">QualityPlan</a></td>
+                  <td></td>
+                  <td><p>The complete plan draft, when the caller is editing the plan. Absent leaves
+the staged draft untouched; an empty draft clears it. A draft only changes the
+staged state: publishing is still PublishQualityContract. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>staged_base_version</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The published version the draft was written against. Required when draft is
+set; a stale value is refused with Aborted instead of rebasing silently. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -23764,6 +23885,41 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_OBSERVED_KIND_NUMBER</td>
                 <td>5</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityPlanChange.Kind">QualityPlanChange.Kind</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>KIND_ADDED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>KIND_REMOVED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>KIND_MODIFIED</td>
+                <td>3</td>
                 <td><p></p></td>
               </tr>
             

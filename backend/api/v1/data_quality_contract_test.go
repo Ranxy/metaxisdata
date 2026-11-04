@@ -562,3 +562,29 @@ func TestQualityContractViewV2HasUnpublishedChanges(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, view.GetHasUnpublishedChanges())
 }
+
+// A staged declaration is visible as a draft, cannot hide behind a pre-v3 version,
+// and says plainly when the published version has no plan payload to diff against.
+func TestQualityContractViewStagedPlan(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	settings := &storepb.QualityContractSettings{}
+	contract := &store.QualityContractMessage{
+		Settings:          settings,
+		Staged:            &storepb.QualityContractPlan{Coverage: []*storepb.QualityContractPlanCoverage{{MinChecks: 1}}},
+		StagedBaseVersion: 2,
+	}
+	revision := &store.QualityContractRevisionMessage{Snapshot: &storepb.QualityContractSnapshot{
+		Settings:        settings,
+		Fingerprint:     qualityContractFingerprintV2(settings, nil),
+		SnapshotVersion: 2,
+	}}
+	service := &DataQualityService{}
+	view, err := service.qualityContractViewWith(ctx, "inst;shop;public;orders", storepb.MetaType_TABLE, contract, nil, revision)
+	require.NoError(t, err)
+	require.NotNil(t, view.GetStagedPlan())
+	require.Equal(t, int32(2), view.GetStagedBaseVersion())
+	require.True(t, view.GetHasUnpublishedChanges(), "a declaration cannot be represented in a v2 version")
+	require.True(t, view.GetDiff().GetPlanNotRecorded())
+}

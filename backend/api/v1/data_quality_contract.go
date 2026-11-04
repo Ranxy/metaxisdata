@@ -91,11 +91,59 @@ func (s *DataQualityService) UpdateQualityContract(ctx context.Context, req *con
 	if _, err := s.store.UpsertQualityContractSettings(ctx, targetGUID, metaType, settings); err != nil {
 		return nil, err
 	}
+	if err := s.updateQualityContractDraft(ctx, targetGUID, metaType, existing, req.Msg.GetDraft(), req.Msg.GetStagedBaseVersion()); err != nil {
+		return nil, err
+	}
 	contract, err := s.qualityContractView(ctx, targetGUID, metaType)
 	if err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(contract), nil
+}
+
+// updateQualityContractDraft writes or clears the plan draft. A draft only changes
+// the staged state; publishing it is a separate, explicit step. The base version
+// must be the newest published one, and the store's compare-and-set refuses a
+// draft that changed since the caller read it instead of rebasing silently.
+func (s *DataQualityService) updateQualityContractDraft(ctx context.Context, targetGUID string, metaType storepb.MetaType, existing *store.QualityContractMessage, draft *v1pb.QualityPlan, baseVersion int32) error {
+	if draft == nil {
+		return nil
+	}
+	plan, err := convertQualityPlanDraftFromV1(draft)
+	if err != nil {
+		return err
+	}
+	if published := qualityContractPublishedVersion(existing); baseVersion != published {
+		return connect.NewError(connect.CodeAborted, errors.Errorf(
+			"the plan draft is based on version %d, but the newest published version is %d; reload and edit again",
+			baseVersion, published))
+	}
+	if err := dataquality.ValidatePlanCoverage(ctx, s.store, targetGUID, metaType, plan.GetCoverage()); err != nil {
+		return err
+	}
+	var expected *storepb.QualityContractPlan
+	var updatedBy *int32
+	if existing != nil {
+		expected = existing.Staged
+	}
+	if id := currentUserID(ctx); id > 0 {
+		principalID := int32(id)
+		updatedBy = &principalID
+	}
+	if _, err := s.store.SetQualityContractStaged(ctx, &store.SetQualityContractStagedInput{
+		TargetGUID:     targetGUID,
+		TargetType:     metaType,
+		Plan:           plan,
+		BaseVersion:    baseVersion,
+		UpdatedBy:      updatedBy,
+		ExpectedStaged: expected,
+	}); err != nil {
+		if common.ErrorCode(err) == common.Conflict {
+			return connect.NewError(connect.CodeAborted, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // PublishQualityContract records the live rules and settings as the next version.
@@ -132,7 +180,26 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 	if err != nil {
 		return nil, err
 	}
-	plan := qualityContractPlanSnapshot(settings.GetIntent(), rules, schedule)
+	var (
+		plan          *storepb.QualityContractPlan
+		consumeStaged bool
+	)
+	if staged := qualityContractStagedPlan(contract); staged != nil {
+		// Publishing consumes the draft: the version records exactly the declarations
+		// the person staged, with the target's current cadence.
+		if contract.StagedBaseVersion != qualityContractPublishedVersion(contract) {
+			return nil, connect.NewError(connect.CodeAborted, errors.Errorf(
+				"the plan draft is based on version %d, but the newest published version is %d; reload and edit again",
+				contract.StagedBaseVersion, qualityContractPublishedVersion(contract)))
+		}
+		if err := dataquality.ValidatePlanCoverage(ctx, s.store, targetGUID, metaType, staged.GetCoverage()); err != nil {
+			return nil, err
+		}
+		plan = &storepb.QualityContractPlan{Coverage: staged.GetCoverage(), Cadence: qualityContractPlanCadence(schedule)}
+		consumeStaged = true
+	} else {
+		plan = qualityContractPlanSnapshot(settings.GetIntent(), rules, schedule)
+	}
 	// The store decides under its row lock whether this snapshot is a no-op: a
 	// legacy row is compared by content, a v2 row by its own fingerprint schema, a
 	// v3 row by the plan-bearing fingerprint. Deciding here would race a publish.
@@ -151,12 +218,13 @@ func (s *DataQualityService) PublishQualityContract(ctx context.Context, req *co
 		publishedByPtr = &id
 	}
 	revision, storedContract, created, err := s.store.PublishQualityContractRevision(ctx, &store.PublishQualityContractInput{
-		TargetGUID:  targetGUID,
-		TargetType:  metaType,
-		Settings:    settings,
-		Snapshot:    snapshot,
-		Note:        note,
-		PublishedBy: publishedByPtr,
+		TargetGUID:    targetGUID,
+		TargetType:    metaType,
+		Settings:      settings,
+		Snapshot:      snapshot,
+		Note:          note,
+		PublishedBy:   publishedByPtr,
+		ConsumeStaged: consumeStaged,
 	})
 	if err != nil {
 		if common.ErrorCode(err) == common.Conflict {
@@ -302,6 +370,11 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 	// view so the workspace can show what the target promises and what it lacks
 	// without a second request.
 	view.Plan = qualityPlanView(targetGUID, metaType, rules, contract)
+	if staged := qualityContractStagedPlan(contract); staged != nil {
+		view.StagedPlan = convertQualityContractPlanToV1(staged)
+		view.StagedBaseVersion = contract.StagedBaseVersion
+	}
+	view.Diff = qualityContractDiff(settings, rules, contract, latest)
 	if latest != nil {
 		added, modified, removed := store.QualityContractCheckDiff(latest.Snapshot.GetChecks(), checks)
 		view.ChangeSummary = qualityContractChangeSummary(added, modified, removed)
@@ -311,22 +384,26 @@ func (s *DataQualityService) qualityContractViewWith(ctx context.Context, target
 		switch latest.Snapshot.GetSnapshotVersion() {
 		case 0:
 			// A legacy snapshot's fingerprint was produced by a build-dependent
-			// encoder; compare the content instead of re-hashing it.
-			view.HasUnpublishedChanges = !store.QualityContractSnapshotContentEqual(
-				latest.Snapshot,
-				&storepb.QualityContractSnapshot{Settings: settings, Checks: checks},
-			)
+			// encoder; compare the content instead of re-hashing it. A staged
+			// declaration cannot be represented in a legacy version, so it is
+			// unpublished regardless of the settings/check comparison.
+			view.HasUnpublishedChanges = qualityContractStagedPlan(contract) != nil ||
+				!store.QualityContractSnapshotContentEqual(
+					latest.Snapshot,
+					&storepb.QualityContractSnapshot{Settings: settings, Checks: checks},
+				)
 		case 2:
 			// A v2 version predates the plan payload; compare it the way it was
 			// written so an untouched contract does not look changed after upgrade.
-			view.HasUnpublishedChanges = latest.Snapshot.GetFingerprint() !=
-				qualityContractFingerprintV2(settings, checks)
+			// A staged declaration needs the v3 payload, so it is unpublished.
+			view.HasUnpublishedChanges = qualityContractStagedPlan(contract) != nil ||
+				latest.Snapshot.GetFingerprint() != qualityContractFingerprintV2(settings, checks)
 		default:
 			schedule, err := s.store.GetQualityTargetSchedule(ctx, targetGUID, metaType)
 			if err != nil {
 				return nil, err
 			}
-			plan := qualityContractPlanSnapshot(settings.GetIntent(), rules, schedule)
+			plan := qualityContractWorkingPlan(settings, rules, contract, schedule)
 			view.HasUnpublishedChanges = latest.Snapshot.GetFingerprint() !=
 				qualityContractFingerprintV3(settings, plan, checks)
 		}
@@ -897,4 +974,51 @@ func qualityContractMillisFromTimestamp(timestamp *timestamppb.Timestamp) int64 
 		return 0
 	}
 	return timestamp.AsTime().UnixMilli()
+}
+
+// qualityContractWorkingPlan is the plan the live state would publish: the staged
+// declaration when one exists, otherwise the projection derived from the intent and
+// the live rules. The cadence always comes from the target's current schedule.
+func qualityContractWorkingPlan(settings *storepb.QualityContractSettings, rules []*store.QualityRuleMessage, contract *store.QualityContractMessage, schedule *store.QualityTargetScheduleMessage) *storepb.QualityContractPlan {
+	if staged := qualityContractStagedPlan(contract); staged != nil {
+		return &storepb.QualityContractPlan{Coverage: staged.GetCoverage(), Cadence: qualityContractPlanCadence(schedule)}
+	}
+	return qualityContractPlanSnapshot(settings.GetIntent(), rules, schedule)
+}
+
+// qualityContractDiff compares the working state with the newest published version.
+// The check diff is already change_summary; this carries the two sections the plan
+// payload made comparable: whether the live intent moved, and the declaration
+// changes the working plan (the draft when one exists, otherwise the live
+// projection) would publish.
+func qualityContractDiff(settings *storepb.QualityContractSettings, rules []*store.QualityRuleMessage, contract *store.QualityContractMessage, latest *store.QualityContractRevisionMessage) *v1pb.QualityContractDiff {
+	diff := &v1pb.QualityContractDiff{}
+	var publishedIntent *storepb.QualityContractIntent
+	if latest != nil {
+		publishedIntent = latest.Snapshot.GetSettings().GetIntent()
+	}
+	diff.IntentChanged = qualityContractIntentChanged(settings.GetIntent(), publishedIntent)
+
+	workingCoverage := qualityContractWorkingPlan(settings, rules, contract, nil).GetCoverage()
+	if latest == nil || latest.Snapshot.GetPlan() == nil {
+		// The published version predates the plan payload (or none is published): a
+		// plan diff would list every declaration as added, so say it is not recorded
+		// instead of fabricating one.
+		diff.PlanNotRecorded = true
+		return diff
+	}
+	diff.PlanChanges = qualityContractPlanCoverageDiff(latest.Snapshot.GetPlan().GetCoverage(), workingCoverage)
+	return diff
+}
+
+// qualityContractIntentChanged reports whether the live intent differs from the
+// published one; an absent published intent is an empty declaration.
+func qualityContractIntentChanged(live, published *storepb.QualityContractIntent) bool {
+	if live == nil {
+		live = &storepb.QualityContractIntent{}
+	}
+	if published == nil {
+		published = &storepb.QualityContractIntent{}
+	}
+	return !proto.Equal(live, published)
 }

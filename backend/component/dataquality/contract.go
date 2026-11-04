@@ -123,3 +123,36 @@ func intentScopeColumns(intent *storepb.QualityContractIntent) []string {
 	}
 	return columns
 }
+
+// ValidatePlanCoverage checks the scope columns a plan draft declares: each named
+// column must exist on the resolved target. The registry read only happens when a
+// scope column is named, and an orphaned target stays editable for the same reason
+// an intent does (its rules and contract are still served).
+func ValidatePlanCoverage(ctx context.Context, s *store.Store, guid string, metaType storepb.MetaType, coverage []*storepb.QualityContractPlanCoverage) error {
+	var scopes []string
+	for _, declaration := range coverage {
+		if column := strings.TrimSpace(declaration.GetColumn()); column != "" {
+			scopes = append(scopes, column)
+		}
+	}
+	if len(scopes) == 0 {
+		return nil
+	}
+	resolution, err := ResolveTarget(ctx, s, guid, metaType)
+	if err != nil {
+		if errors.Is(err, ErrOrphaned) {
+			return nil
+		}
+		return err
+	}
+	known := make(map[string]struct{}, len(resolution.Target.Columns))
+	for _, column := range resolution.Target.Columns {
+		known[column.Name] = struct{}{}
+	}
+	for _, column := range scopes {
+		if _, ok := known[column]; !ok {
+			return invalidConfig("plan coverage column %q does not exist on the target", column)
+		}
+	}
+	return nil
+}

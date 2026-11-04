@@ -21,8 +21,15 @@ type QualityContractMessage struct {
 	TargetType       storepb.MetaType
 	Settings         *storepb.QualityContractSettings
 	PublishedVersion int32
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// Staged is the unpublished plan draft. It is nil when nothing is staged; an
+	// empty plan is not a draft.
+	Staged *storepb.QualityContractPlan
+	// StagedBaseVersion is the published version the draft was written against.
+	StagedBaseVersion int32
+	StagedUpdatedBy   *int32
+	StagedUpdatedAt   *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // QualityContractRevisionMessage is one published contract version. The snapshot
@@ -44,7 +51,7 @@ type QualityContractRevisionMessage struct {
 	PublishedAt time.Time
 }
 
-const qualityContractColumns = `id, target_guid, target_type, settings, published_version, created_at, updated_at`
+const qualityContractColumns = `id, target_guid, target_type, settings, published_version, staged, staged_base_version, staged_updated_by, staged_updated_at, created_at, updated_at`
 
 const qualityContractRevisionColumns = `id, contract_id, version, snapshot, check_count, added_count, modified_count, removed_count, note, published_by, published_at, change_kind`
 
@@ -131,6 +138,9 @@ type PublishQualityContractInput struct {
 	Snapshot    *storepb.QualityContractSnapshot
 	Note        string
 	PublishedBy *int32
+	// ConsumeStaged means the snapshot's plan came from the staged draft: the
+	// publish clears the draft and fails if the draft changed under the row lock.
+	ConsumeStaged bool
 }
 
 // PublishQualityContractRevision records the snapshot as the next version.
@@ -176,9 +186,13 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 		INSERT INTO quality_contract (target_guid, target_type, settings)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (target_guid, target_type) DO UPDATE SET target_guid = EXCLUDED.target_guid
-		RETURNING id, published_version, settings
+		RETURNING id, published_version, settings, staged, staged_base_version
 	`, input.TargetGUID, int16(input.TargetType), settingsPayload)
-	if err := locked.Scan(&contractID, &publishedVersion, &storedSettingsPayload); err != nil {
+	var (
+		stagedPayload     []byte
+		stagedBaseVersion int32
+	)
+	if err := locked.Scan(&contractID, &publishedVersion, &storedSettingsPayload, &stagedPayload, &stagedBaseVersion); err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to lock the quality contract")
 	}
 	// The snapshot was built from settings read before this transaction. If the
@@ -191,6 +205,23 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 	if !proto.Equal(storedSettings, settings) {
 		return nil, nil, false, common.Errorf(common.Conflict,
 			"the quality contract changed while publishing; reload and publish again")
+	}
+	if input.ConsumeStaged {
+		storedStaged := &storepb.QualityContractPlan{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(stagedPayload, storedStaged); err != nil {
+			return nil, nil, false, errors.Wrap(err, "failed to read the quality contract plan draft")
+		}
+		// The draft is the plan payload without its cadence projection; compare the
+		// declarations the caller is publishing with what is still staged.
+		if !proto.Equal(&storepb.QualityContractPlan{Coverage: storedStaged.GetCoverage()},
+			&storepb.QualityContractPlan{Coverage: input.Snapshot.GetPlan().GetCoverage()}) {
+			return nil, nil, false, common.Errorf(common.Conflict,
+				"the plan draft changed while publishing; reload and publish again")
+		}
+		if stagedBaseVersion != publishedVersion {
+			return nil, nil, false, common.Errorf(common.Conflict,
+				"the plan draft is based on an older version; reload and publish again")
+		}
 	}
 
 	// Re-read under the row lock: the upsert above already locked the row, but the
@@ -270,8 +301,14 @@ func (s *Store) PublishQualityContractRevision(ctx context.Context, input *Publi
 	if err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to insert the contract revision")
 	}
+	// Publishing consumes the draft in the same transaction as the version: the
+	// declarations it recorded are now the published plan, so the declaration's base
+	// advances with the version. Keeping the content (rather than clearing it) is
+	// what makes the next publish a no-op until someone edits the declaration again.
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE quality_contract SET published_version = $2, updated_at = NOW() WHERE id = $1
+		UPDATE quality_contract
+		SET published_version = $2, staged_base_version = $2, updated_at = NOW()
+		WHERE id = $1
 	`, contractID, nextVersion); err != nil {
 		return nil, nil, false, errors.Wrap(err, "failed to advance the contract version")
 	}
@@ -366,13 +403,17 @@ func (s *Store) ListQualityContractRevisions(ctx context.Context, contractID int
 // scanQualityContract reads one quality_contract row.
 func scanQualityContract(scanner interface{ Scan(dest ...any) error }) (*QualityContractMessage, error) {
 	var (
-		message      QualityContractMessage
-		targetType   int16
-		settingsJSON []byte
+		message       QualityContractMessage
+		targetType    int16
+		settingsJSON  []byte
+		stagedJSON    []byte
+		stagedBy      sql.NullInt32
+		stagedUpdated sql.NullTime
 	)
 	if err := scanner.Scan(
 		&message.ID, &message.TargetGUID, &targetType, &settingsJSON,
-		&message.PublishedVersion, &message.CreatedAt, &message.UpdatedAt,
+		&message.PublishedVersion, &stagedJSON, &message.StagedBaseVersion, &stagedBy, &stagedUpdated,
+		&message.CreatedAt, &message.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -384,6 +425,23 @@ func scanQualityContract(scanner interface{ Scan(dest ...any) error }) (*Quality
 		}
 	}
 	message.Settings = settings
+	if len(stagedJSON) > 0 {
+		staged := &storepb.QualityContractPlan{}
+		if err := common.ProtojsonUnmarshaler.Unmarshal(stagedJSON, staged); err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal the quality contract plan draft")
+		}
+		if len(staged.GetCoverage()) > 0 {
+			message.Staged = staged
+		}
+	}
+	if stagedBy.Valid {
+		id := stagedBy.Int32
+		message.StagedUpdatedBy = &id
+	}
+	if stagedUpdated.Valid {
+		updated := stagedUpdated.Time
+		message.StagedUpdatedAt = &updated
+	}
 	return &message, nil
 }
 
@@ -514,4 +572,57 @@ func qualityContractPlanEqual(left, right *storepb.QualityContractPlan) bool {
 		right = &storepb.QualityContractPlan{}
 	}
 	return proto.Equal(left, right)
+}
+
+// SetQualityContractStagedInput writes the plan draft. ExpectedStaged is the draft
+// the caller read; the update only applies while the row still carries it, so two
+// writers on the same base cannot silently overwrite each other.
+type SetQualityContractStagedInput struct {
+	TargetGUID     string
+	TargetType     storepb.MetaType
+	Plan           *storepb.QualityContractPlan
+	BaseVersion    int32
+	UpdatedBy      *int32
+	ExpectedStaged *storepb.QualityContractPlan
+}
+
+// SetQualityContractStaged replaces a contract's plan draft under a compare-and-set
+// on the previously read draft. A zero-row update means the draft changed or the
+// contract disappeared; the caller reloads instead of writing a stale draft.
+func (s *Store) SetQualityContractStaged(ctx context.Context, input *SetQualityContractStagedInput) (*QualityContractMessage, error) {
+	if input == nil || input.TargetGUID == "" {
+		return nil, common.Errorf(common.Invalid, "a target GUID is required")
+	}
+	plan := input.Plan
+	if plan == nil {
+		plan = &storepb.QualityContractPlan{}
+	}
+	planPayload, err := protojson.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	expected := input.ExpectedStaged
+	if expected == nil {
+		expected = &storepb.QualityContractPlan{}
+	}
+	expectedPayload, err := protojson.Marshal(expected)
+	if err != nil {
+		return nil, err
+	}
+	row := s.GetDB().QueryRowContext(ctx, `
+		UPDATE quality_contract
+		SET staged = $3, staged_base_version = $4, staged_updated_by = $5,
+			staged_updated_at = NOW(), updated_at = NOW()
+		WHERE target_guid = $1 AND target_type = $2 AND staged = $6::jsonb
+		RETURNING `+qualityContractColumns,
+		input.TargetGUID, int16(input.TargetType), planPayload, input.BaseVersion, input.UpdatedBy, expectedPayload)
+	message, err := scanQualityContract(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, common.Errorf(common.Conflict,
+				"the plan draft changed; reload and edit again")
+		}
+		return nil, errors.Wrap(err, "failed to save the quality contract plan draft")
+	}
+	return message, nil
 }

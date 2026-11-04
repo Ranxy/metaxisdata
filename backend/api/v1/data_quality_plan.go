@@ -1,8 +1,10 @@
 package v1
 
 import (
+	"cmp"
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -235,14 +237,88 @@ func qualityContractPlanSnapshot(intent *storepb.QualityContractIntent, rules []
 	payload := &storepb.QualityContractPlan{
 		Coverage: coverageFromRequirements(derived.Requirements),
 	}
-	if schedule != nil {
-		payload.Cadence = &storepb.QualityContractPlanCadence{
-			IntervalSeconds: int64(schedule.ScheduleInterval / time.Second),
-			Cron:            schedule.Cron,
-			Timezone:        schedule.TimeZone,
-		}
-	}
+	payload.Cadence = qualityContractPlanCadence(schedule)
 	return payload
+}
+
+// qualityContractPlanCadence projects the target's schedule for a plan version. The
+// schedule table stays the only timer: this is a recorded read, never a write.
+func qualityContractPlanCadence(schedule *store.QualityTargetScheduleMessage) *storepb.QualityContractPlanCadence {
+	if schedule == nil {
+		return nil
+	}
+	return &storepb.QualityContractPlanCadence{
+		IntervalSeconds: int64(schedule.ScheduleInterval / time.Second),
+		Cron:            schedule.Cron,
+		Timezone:        schedule.TimeZone,
+	}
+}
+
+// qualityContractStagedPlan returns the plan draft, or nil when nothing is staged.
+// An empty plan is not a draft.
+func qualityContractStagedPlan(contract *store.QualityContractMessage) *storepb.QualityContractPlan {
+	if contract == nil || len(contract.Staged.GetCoverage()) == 0 {
+		return nil
+	}
+	return contract.Staged
+}
+
+// maxQualityPlanCoverage and maxQualityPlanMinChecks bound a plan draft: the
+// declaration list lives inside the contract row, so it must not be unbounded.
+const (
+	maxQualityPlanCoverage  = 64
+	maxQualityPlanMinChecks = 10
+)
+
+// convertQualityPlanDraftFromV1 validates and renders a plan draft. A draft carries
+// declarations only: cadence belongs to the target schedule, which has its own RPC.
+func convertQualityPlanDraftFromV1(draft *v1pb.QualityPlan) (*storepb.QualityContractPlan, error) {
+	if draft == nil {
+		return nil, nil
+	}
+	if draft.GetCadence() != nil {
+		return nil, connectErrorInvalid("a plan draft carries no cadence; edit the target schedule instead")
+	}
+	if len(draft.GetCoverage()) > maxQualityPlanCoverage {
+		return nil, connectErrorInvalid("a plan draft carries at most %d declarations", maxQualityPlanCoverage)
+	}
+	plan := &storepb.QualityContractPlan{Coverage: make([]*storepb.QualityContractPlanCoverage, 0, len(draft.GetCoverage()))}
+	seen := make(map[string]struct{}, len(draft.GetCoverage()))
+	for _, declaration := range draft.GetCoverage() {
+		if err := validateQualityCoverageProperty(declaration.GetProperty()); err != nil {
+			return nil, err
+		}
+		minChecks := declaration.GetMinChecks()
+		if minChecks < 0 || minChecks > maxQualityPlanMinChecks {
+			return nil, connectErrorInvalid("a declaration needs between 1 and %d checks", maxQualityPlanMinChecks)
+		}
+		if minChecks == 0 {
+			minChecks = 1
+		}
+		column := strings.TrimSpace(declaration.GetColumn())
+		key := strconv.Itoa(int(declaration.GetProperty())) + "|" + column
+		if _, ok := seen[key]; ok {
+			return nil, connectErrorInvalid("a plan draft declares %q for %s twice", column, declaration.GetProperty())
+		}
+		seen[key] = struct{}{}
+		source := storepb.QualityCoverageSource(declaration.GetSource())
+		switch source {
+		case storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_UNSPECIFIED:
+			// A person declaring coverage is declaring intent.
+			source = storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT
+		case storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_TEMPLATE,
+			storepb.QualityCoverageSource_QUALITY_COVERAGE_SOURCE_INTENT:
+		default:
+			return nil, connectErrorInvalid("unknown coverage source %d", declaration.GetSource())
+		}
+		plan.Coverage = append(plan.Coverage, &storepb.QualityContractPlanCoverage{
+			Property:  storepb.QualityCoverageProperty(declaration.GetProperty()),
+			Column:    column,
+			MinChecks: minChecks,
+			Source:    source,
+		})
+	}
+	return plan, nil
 }
 
 // coverageFromRequirements renders the declared coverage the plan requires. The
@@ -264,12 +340,7 @@ func coverageFromRequirements(requirements []dataquality.PlanRequirement) []*sto
 func coverageToV1(coverage []*storepb.QualityContractPlanCoverage) []*v1pb.QualityPlanCoverage {
 	rendered := make([]*v1pb.QualityPlanCoverage, 0, len(coverage))
 	for _, declaration := range coverage {
-		rendered = append(rendered, &v1pb.QualityPlanCoverage{
-			Property:  v1pb.QualityCoverageProperty(declaration.GetProperty()),
-			Column:    declaration.GetColumn(),
-			MinChecks: declaration.GetMinChecks(),
-			Source:    v1pb.QualityCoverageSource(declaration.GetSource()),
-		})
+		rendered = append(rendered, convertQualityPlanCoverageToV1(declaration))
 	}
 	return rendered
 }
@@ -290,6 +361,69 @@ func convertQualityContractPlanToV1(plan *storepb.QualityContractPlan) *v1pb.Qua
 		}
 	}
 	return rendered
+}
+
+// qualityContractPlanCoverageDiff compares a published declaration list with the
+// working one. Identity is (property, column); a declaration whose minimum or source
+// moved is modified. The order is deterministic so a client can diff two reads.
+func qualityContractPlanCoverageDiff(published, working []*storepb.QualityContractPlanCoverage) []*v1pb.QualityPlanChange {
+	publishedByKey := make(map[string]*storepb.QualityContractPlanCoverage, len(published))
+	for _, declaration := range published {
+		publishedByKey[qualityPlanCoverageKey(declaration)] = declaration
+	}
+	workingByKey := make(map[string]*storepb.QualityContractPlanCoverage, len(working))
+	for _, declaration := range working {
+		workingByKey[qualityPlanCoverageKey(declaration)] = declaration
+	}
+	changes := make([]*v1pb.QualityPlanChange, 0, len(published)+len(working))
+	for key, declaration := range workingByKey {
+		previous, ok := publishedByKey[key]
+		switch {
+		case !ok:
+			changes = append(changes, &v1pb.QualityPlanChange{Kind: v1pb.QualityPlanChange_KIND_ADDED, Coverage: convertQualityPlanCoverageToV1(declaration)})
+		case previous.GetMinChecks() != declaration.GetMinChecks() || previous.GetSource() != declaration.GetSource():
+			changes = append(changes, &v1pb.QualityPlanChange{Kind: v1pb.QualityPlanChange_KIND_MODIFIED, Coverage: convertQualityPlanCoverageToV1(declaration)})
+		default:
+			// The declaration is unchanged.
+		}
+	}
+	for key, declaration := range publishedByKey {
+		if _, ok := workingByKey[key]; ok {
+			continue
+		}
+		changes = append(changes, &v1pb.QualityPlanChange{Kind: v1pb.QualityPlanChange_KIND_REMOVED, Coverage: convertQualityPlanCoverageToV1(declaration)})
+	}
+	slices.SortFunc(changes, func(left, right *v1pb.QualityPlanChange) int {
+		if cmp := cmp.Compare(left.GetKind(), right.GetKind()); cmp != 0 {
+			return cmp
+		}
+		return qualityPlanCoverageCompare(left.GetCoverage(), right.GetCoverage())
+	})
+	return changes
+}
+
+// qualityPlanCoverageKey is the identity of one declaration: a table-level promise
+// and a column promise are different declarations.
+func qualityPlanCoverageKey(declaration *storepb.QualityContractPlanCoverage) string {
+	return strconv.Itoa(int(declaration.GetProperty())) + "|" + declaration.GetColumn()
+}
+
+// qualityPlanCoverageCompare orders declarations by property then column.
+func qualityPlanCoverageCompare(left, right *v1pb.QualityPlanCoverage) int {
+	if cmp := cmp.Compare(left.GetProperty(), right.GetProperty()); cmp != 0 {
+		return cmp
+	}
+	return strings.Compare(left.GetColumn(), right.GetColumn())
+}
+
+// convertQualityPlanCoverageToV1 renders one stored declaration.
+func convertQualityPlanCoverageToV1(declaration *storepb.QualityContractPlanCoverage) *v1pb.QualityPlanCoverage {
+	return &v1pb.QualityPlanCoverage{
+		Property:  v1pb.QualityCoverageProperty(declaration.GetProperty()),
+		Column:    declaration.GetColumn(),
+		MinChecks: declaration.GetMinChecks(),
+		Source:    v1pb.QualityCoverageSource(declaration.GetSource()),
+	}
 }
 
 // qualityContractPlanSource maps a plan requirement's source onto the stored

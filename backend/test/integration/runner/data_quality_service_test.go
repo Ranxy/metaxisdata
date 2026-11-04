@@ -3038,6 +3038,52 @@ func TestDataQualityContractRealServerIntegration(t *testing.T) {
 	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_BOTH,
 		version1.Msg.GetRevision().GetChangeKind(), "the first version records everything it added")
 
+	// A plan declaration is staged, diffed, published, and then remains the active
+	// plan: the next publish is a no-op until someone edits it again.
+	drafted, err := fixture.dataQuality.UpdateQualityContract(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityContractRequest{
+			Parent:     "workspaces/-",
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Settings:   getContract().GetSettings(),
+			Draft: &v1pb.QualityPlan{Coverage: []*v1pb.QualityPlanCoverage{
+				{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_VOLUME, MinChecks: 1},
+				{Property: v1pb.QualityCoverageProperty_QUALITY_COVERAGE_PROPERTY_FRESHNESS, MinChecks: 1},
+			}},
+			StagedBaseVersion: 2,
+		}))
+	require.NoError(t, err, "stage a plan declaration")
+	require.NotNil(t, drafted.Msg.GetStagedPlan())
+	require.True(t, drafted.Msg.GetHasUnpublishedChanges())
+	require.Len(t, drafted.Msg.GetDiff().GetPlanChanges(), 2, "freshness is added and schema stability removed")
+	require.Equal(t, v1pb.QualityPlanChange_KIND_ADDED, drafted.Msg.GetDiff().GetPlanChanges()[0].GetKind())
+	require.Equal(t, v1pb.QualityPlanChange_KIND_REMOVED, drafted.Msg.GetDiff().GetPlanChanges()[1].GetKind())
+
+	// A draft written against an older published version is refused, not rebased.
+	_, err = fixture.dataQuality.UpdateQualityContract(fixture.ctx,
+		withToken(fixture.env.AdminToken(), &v1pb.UpdateQualityContractRequest{
+			Parent:            "workspaces/-",
+			TargetGuid:        fixture.usersGUID,
+			MetaType:          v1pb.MetaType_TABLE,
+			Settings:          getContract().GetSettings(),
+			Draft:             &v1pb.QualityPlan{},
+			StagedBaseVersion: 1,
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
+
+	third := publish("declared plan")
+	require.False(t, third.GetNoChanges())
+	require.Equal(t, int32(3), third.GetRevision().GetVersion())
+	require.Len(t, third.GetRevision().GetPlan().GetCoverage(), 2, "the version records the declared plan")
+	require.Equal(t, v1pb.QualityContractChangeKind_QUALITY_CONTRACT_CHANGE_KIND_PLAN, third.GetRevision().GetChangeKind())
+	require.NotNil(t, third.GetContract().GetStagedPlan(), "the declaration stays the active plan")
+	require.Equal(t, int32(3), third.GetContract().GetStagedBaseVersion())
+	require.False(t, third.GetContract().GetHasUnpublishedChanges())
+
+	unchangedPlan := publish("still the declared plan")
+	require.True(t, unchangedPlan.GetNoChanges(), "an unchanged declaration republishes as a no-op")
+
 	// The target filter reaches the runner's compiled statement: a row-count rule
 	// reads COUNT(*) over the filtered rows.
 	execution := fixture.runToCompletion(t, rule.GetName())
