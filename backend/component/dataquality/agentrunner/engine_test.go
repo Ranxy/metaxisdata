@@ -32,6 +32,13 @@ func (f *fakeStore) GetQualityExecution(context.Context, int64) (*store.QualityE
 	return f.execution, nil
 }
 
+func (f *fakeStore) ListQualityExecutions(context.Context, *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error) {
+	if f.execution == nil {
+		return nil, nil
+	}
+	return []*store.QualityExecutionMessage{f.execution}, nil
+}
+
 func (f *fakeStore) CreateQualityInvestigation(_ context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error) {
 	f.investigations = append(f.investigations, input)
 	return &store.QualityInvestigationMessage{ResourceID: input.ResourceID}, true, nil

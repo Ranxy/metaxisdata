@@ -36,6 +36,7 @@ const (
 type Store interface {
 	GetQualityContract(ctx context.Context, targetGUID string, targetType storepb.MetaType) (*store.QualityContractMessage, error)
 	ListQualityRules(ctx context.Context, find *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error)
+	ListQualityExecutions(ctx context.Context, find *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error)
 	GetQualityExecution(ctx context.Context, id int64) (*store.QualityExecutionMessage, error)
 	CreateQualityInvestigation(ctx context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error)
 	CreateQualityMemory(ctx context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error)
@@ -43,10 +44,13 @@ type Store interface {
 	AppendQualityAgentGoalStep(ctx context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error)
 }
 
-// Engine runs one deterministic turn of a goal.
+// Engine runs one turn of a goal: the model round when a model is configured, the
+// deterministic survey otherwise.
 type Engine struct {
-	store Store
-	now   func() time.Time
+	store        Store
+	now          func() time.Time
+	chat         Chat
+	resolveModel ResolveModel
 }
 
 // NewEngine creates the deterministic engine.
@@ -63,10 +67,21 @@ type Outcome struct {
 	NextWakeAt    *time.Time
 	Checkpoint    *storepb.QualityAgentGoalCheckpoint
 	Summary       string
+	// TokensUsed is what the model round spent; 0 for a deterministic turn.
+	TokensUsed int64
+	// Admitted says the round reached the model; only an admitted round counts
+	// against max_rounds.
+	Admitted bool
 }
 
 // Run executes one deterministic turn for one goal.
 func (e *Engine) Run(ctx context.Context, goal *store.QualityAgentGoalMessage) (Outcome, error) {
+	if e.resolveModel != nil && e.chat != nil {
+		config, ok, err := e.resolveModel(ctx)
+		if err == nil && ok {
+			return e.modelTurn(ctx, goal, config)
+		}
+	}
 	switch goal.Kind {
 	case storepb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET:
 		return e.maintain(ctx, goal)

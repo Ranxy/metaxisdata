@@ -8039,7 +8039,12 @@ type QualityAgentGoalCheckpoint struct {
 	// A compacted summary of the steps that no longer need their full payload.
 	Summary string `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
 	// Things already done, as short labels.
-	Done          []string `protobuf:"bytes,3,rep,name=done,proto3" json:"done,omitempty"`
+	Done []string `protobuf:"bytes,3,rep,name=done,proto3" json:"done,omitempty"`
+	// How many consecutive rounds the model reported the same blocker; the third one
+	// parks the goal.
+	BlockedRounds int32 `protobuf:"varint,4,opt,name=blocked_rounds,json=blockedRounds,proto3" json:"blocked_rounds,omitempty"`
+	// The stable code the model reported while blocked_rounds was counted.
+	BlockedCode   string `protobuf:"bytes,5,opt,name=blocked_code,json=blockedCode,proto3" json:"blocked_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8093,6 +8098,20 @@ func (x *QualityAgentGoalCheckpoint) GetDone() []string {
 		return x.Done
 	}
 	return nil
+}
+
+func (x *QualityAgentGoalCheckpoint) GetBlockedRounds() int32 {
+	if x != nil {
+		return x.BlockedRounds
+	}
+	return 0
+}
+
+func (x *QualityAgentGoalCheckpoint) GetBlockedCode() string {
+	if x != nil {
+		return x.BlockedCode
+	}
+	return ""
 }
 
 // QualityAgentGoal is one durable objective of the built-in quality agent runner.
@@ -9749,11 +9768,13 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\x1fQualityChangeRequestItemResults\x12K\n" +
 	"\aresults\x18\x01 \x03(\v21.metaxisdata.store.QualityChangeRequestItemResultR\aresults\"j\n" +
 	"\x1dQualityChangeRejectionReasons\x12I\n" +
-	"\areasons\x18\x01 \x03(\x0e2/.metaxisdata.store.QualityChangeRejectionReasonR\areasons\"`\n" +
+	"\areasons\x18\x01 \x03(\x0e2/.metaxisdata.store.QualityChangeRejectionReasonR\areasons\"\xaa\x01\n" +
 	"\x1aQualityAgentGoalCheckpoint\x12\x14\n" +
 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x18\n" +
 	"\asummary\x18\x02 \x01(\tR\asummary\x12\x12\n" +
-	"\x04done\x18\x03 \x03(\tR\x04done\"\xf4\b\n" +
+	"\x04done\x18\x03 \x03(\tR\x04done\x12%\n" +
+	"\x0eblocked_rounds\x18\x04 \x01(\x05R\rblockedRounds\x12!\n" +
+	"\fblocked_code\x18\x05 \x01(\tR\vblockedCode\"\xf4\b\n" +
 	"\x10QualityAgentGoal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1f\n" +
 	"\vresource_id\x18\x02 \x01(\tR\n" +
