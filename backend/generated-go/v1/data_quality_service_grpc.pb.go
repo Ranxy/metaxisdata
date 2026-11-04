@@ -85,6 +85,10 @@ const (
 	DataQualityService_GetQualityInvestigation_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityInvestigation"
 	DataQualityService_ListQualityInvestigations_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityInvestigations"
 	DataQualityService_GetQualityActionPolicy_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
+	DataQualityService_CreateQualityMemory_FullMethodName                = "/metaxisdata.v1.DataQualityService/CreateQualityMemory"
+	DataQualityService_ListQualityMemories_FullMethodName                = "/metaxisdata.v1.DataQualityService/ListQualityMemories"
+	DataQualityService_ConfirmQualityMemory_FullMethodName               = "/metaxisdata.v1.DataQualityService/ConfirmQualityMemory"
+	DataQualityService_DeleteQualityMemory_FullMethodName                = "/metaxisdata.v1.DataQualityService/DeleteQualityMemory"
 	DataQualityService_StageQualityPlan_FullMethodName                   = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
 	DataQualityService_CreateQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
 	DataQualityService_GetQualityChangeRequest_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
@@ -378,6 +382,19 @@ type DataQualityServiceClient interface {
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(ctx context.Context, in *GetQualityActionPolicyRequest, opts ...grpc.CallOption) (*QualityActionPolicy, error)
+	// Record one memory: an asset fact, a decision with its structured reason, or an
+	// event. An agent may write asset facts directly; a decision or an event it writes
+	// stays PROPOSED until a person confirms it.
+	CreateQualityMemory(ctx context.Context, in *CreateQualityMemoryRequest, opts ...grpc.CallOption) (*QualityMemory, error)
+	// List memories. Expired confirmations read as EXPIRED; superseded ones stay
+	// visible for the correction path.
+	ListQualityMemories(ctx context.Context, in *ListQualityMemoriesRequest, opts ...grpc.CallOption) (*ListQualityMemoriesResponse, error)
+	// Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+	// knowledge; nothing else confirms it.
+	ConfirmQualityMemory(ctx context.Context, in *ConfirmQualityMemoryRequest, opts ...grpc.CallOption) (*QualityMemory, error)
+	// Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+	// audit row records who removed it.
+	DeleteQualityMemory(ctx context.Context, in *DeleteQualityMemoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -1112,6 +1129,46 @@ func (c *dataQualityServiceClient) GetQualityActionPolicy(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) CreateQualityMemory(ctx context.Context, in *CreateQualityMemoryRequest, opts ...grpc.CallOption) (*QualityMemory, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityMemory)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityMemory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityMemories(ctx context.Context, in *ListQualityMemoriesRequest, opts ...grpc.CallOption) (*ListQualityMemoriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityMemoriesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityMemories_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ConfirmQualityMemory(ctx context.Context, in *ConfirmQualityMemoryRequest, opts ...grpc.CallOption) (*QualityMemory, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityMemory)
+	err := c.cc.Invoke(ctx, DataQualityService_ConfirmQualityMemory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) DeleteQualityMemory(ctx context.Context, in *DeleteQualityMemoryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, DataQualityService_DeleteQualityMemory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) StageQualityPlan(ctx context.Context, in *StageQualityPlanRequest, opts ...grpc.CallOption) (*QualityContract, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityContract)
@@ -1511,6 +1568,19 @@ type DataQualityServiceServer interface {
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(context.Context, *GetQualityActionPolicyRequest) (*QualityActionPolicy, error)
+	// Record one memory: an asset fact, a decision with its structured reason, or an
+	// event. An agent may write asset facts directly; a decision or an event it writes
+	// stays PROPOSED until a person confirms it.
+	CreateQualityMemory(context.Context, *CreateQualityMemoryRequest) (*QualityMemory, error)
+	// List memories. Expired confirmations read as EXPIRED; superseded ones stay
+	// visible for the correction path.
+	ListQualityMemories(context.Context, *ListQualityMemoriesRequest) (*ListQualityMemoriesResponse, error)
+	// Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+	// knowledge; nothing else confirms it.
+	ConfirmQualityMemory(context.Context, *ConfirmQualityMemoryRequest) (*QualityMemory, error)
+	// Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+	// audit row records who removed it.
+	DeleteQualityMemory(context.Context, *DeleteQualityMemoryRequest) (*emptypb.Empty, error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -1753,6 +1823,18 @@ func (UnimplementedDataQualityServiceServer) ListQualityInvestigations(context.C
 }
 func (UnimplementedDataQualityServiceServer) GetQualityActionPolicy(context.Context, *GetQualityActionPolicyRequest) (*QualityActionPolicy, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityActionPolicy not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualityMemory(context.Context, *CreateQualityMemoryRequest) (*QualityMemory, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualityMemory not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityMemories(context.Context, *ListQualityMemoriesRequest) (*ListQualityMemoriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityMemories not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ConfirmQualityMemory(context.Context, *ConfirmQualityMemoryRequest) (*QualityMemory, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConfirmQualityMemory not implemented")
+}
+func (UnimplementedDataQualityServiceServer) DeleteQualityMemory(context.Context, *DeleteQualityMemoryRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteQualityMemory not implemented")
 }
 func (UnimplementedDataQualityServiceServer) StageQualityPlan(context.Context, *StageQualityPlanRequest) (*QualityContract, error) {
 	return nil, status.Error(codes.Unimplemented, "method StageQualityPlan not implemented")
@@ -2953,6 +3035,78 @@ func _DataQualityService_GetQualityActionPolicy_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_CreateQualityMemory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualityMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualityMemory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualityMemory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualityMemory(ctx, req.(*CreateQualityMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityMemories_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityMemoriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityMemories(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityMemories_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityMemories(ctx, req.(*ListQualityMemoriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ConfirmQualityMemory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmQualityMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ConfirmQualityMemory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ConfirmQualityMemory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ConfirmQualityMemory(ctx, req.(*ConfirmQualityMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_DeleteQualityMemory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteQualityMemoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).DeleteQualityMemory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_DeleteQualityMemory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).DeleteQualityMemory(ctx, req.(*DeleteQualityMemoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_StageQualityPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StageQualityPlanRequest)
 	if err := dec(in); err != nil {
@@ -3419,6 +3573,22 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityActionPolicy",
 			Handler:    _DataQualityService_GetQualityActionPolicy_Handler,
+		},
+		{
+			MethodName: "CreateQualityMemory",
+			Handler:    _DataQualityService_CreateQualityMemory_Handler,
+		},
+		{
+			MethodName: "ListQualityMemories",
+			Handler:    _DataQualityService_ListQualityMemories_Handler,
+		},
+		{
+			MethodName: "ConfirmQualityMemory",
+			Handler:    _DataQualityService_ConfirmQualityMemory_Handler,
+		},
+		{
+			MethodName: "DeleteQualityMemory",
+			Handler:    _DataQualityService_DeleteQualityMemory_Handler,
 		},
 		{
 			MethodName: "StageQualityPlan",

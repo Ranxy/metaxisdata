@@ -4349,6 +4349,20 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 	require.True(t, actionRedLine(policy.Msg, "A3-1"))
 	require.Equal(t, "DENIED_RED_LINE", actionDecision(policy.Msg, "A3-1"))
 
+	// The kill switch also gates the agent's memory writes.
+	_, err = agentClient.CreateQualityMemory(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
+			Parent:    "workspaces/-",
+			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
+			Subject:   fixture.usersGUID,
+			Statement: "roughly 20k rows",
+			Evidence: []*v1pb.QualityInvestigationEvidence{{
+				Kind: "PROFILE", Reference: "profiles/users",
+			}},
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+
 	// The kill switch is the workspace's total gate: off (the default) refuses the
 	// agent's declaration write before anything changes.
 	_, err = stage(1)
@@ -4540,6 +4554,85 @@ func TestDataQualityAgentWritesRealServerIntegration(t *testing.T) {
 		withToken(adminToken, &v1pb.ListQualityInvestigationsRequest{Parent: "workspaces/-"}))
 	require.NoError(t, err)
 	require.Len(t, listedInvestigations.Msg.GetQualityInvestigations(), 1)
+
+	// An asset fact is knowledge an agent observes, so it is recorded confirmed; a
+	// decision is a judgment, so the agent's version stays proposed for a person.
+	assetFact, err := agentClient.CreateQualityMemory(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
+			Parent:    "workspaces/-",
+			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
+			Subject:   fixture.usersGUID,
+			Statement: "roughly 20k rows",
+			Evidence: []*v1pb.QualityInvestigationEvidence{{
+				Kind: "PROFILE", Reference: "profiles/users",
+			}},
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED, assetFact.Msg.GetStatus())
+	require.Equal(t, v1pb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT, assetFact.Msg.GetSource())
+
+	// A newer fact supersedes the previous one instead of overwriting it.
+	secondFact, err := agentClient.CreateQualityMemory(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
+			Parent:    "workspaces/-",
+			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
+			Subject:   fixture.usersGUID,
+			Statement: "roughly 21k rows",
+			Evidence: []*v1pb.QualityInvestigationEvidence{{
+				Kind: "PROFILE", Reference: "profiles/users",
+			}},
+		}))
+	require.NoError(t, err)
+	superseded, err := fixture.dataQuality.ListQualityMemories(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityMemoriesRequest{
+			Parent: "workspaces/-",
+			Status: v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_SUPERSEDED,
+		}))
+	require.NoError(t, err)
+	require.Len(t, superseded.Msg.GetQualityMemories(), 1)
+	require.Equal(t, assetFact.Msg.GetName(), superseded.Msg.GetQualityMemories()[0].GetName())
+	require.Equal(t, secondFact.Msg.GetName(), superseded.Msg.GetQualityMemories()[0].GetSupersededBy())
+
+	decisionMemory, err := agentClient.CreateQualityMemory(fixture.ctx,
+		withToken(agentToken, &v1pb.CreateQualityMemoryRequest{
+			Parent:    "workspaces/-",
+			Kind:      v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
+			Subject:   "inst;db;public;orders|rule|r1",
+			Statement: "rejected as noise: the upstream batch is deliberately sparse",
+			Evidence: []*v1pb.QualityInvestigationEvidence{{
+				Kind: "ISSUE", Reference: "qualityIssues/1",
+			}},
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED, decisionMemory.Msg.GetStatus())
+
+	// Only a person turns a proposed judgment into knowledge.
+	confirmed, err := fixture.dataQuality.ConfirmQualityMemory(fixture.ctx,
+		withToken(adminToken, &v1pb.ConfirmQualityMemoryRequest{
+			Name:     decisionMemory.Msg.GetName(),
+			Decision: v1pb.ConfirmQualityMemoryRequest_DECISION_CONFIRM,
+		}))
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED, confirmed.Msg.GetStatus())
+	require.NotEmpty(t, confirmed.Msg.GetConfirmedBy())
+
+	// Deletion is administrator cleanup; an agent cannot remove knowledge.
+	_, err = agentClient.DeleteQualityMemory(fixture.ctx,
+		withToken(agentToken, &v1pb.DeleteQualityMemoryRequest{Name: secondFact.Msg.GetName()}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	_, err = fixture.dataQuality.DeleteQualityMemory(fixture.ctx,
+		withToken(adminToken, &v1pb.DeleteQualityMemoryRequest{Name: secondFact.Msg.GetName()}))
+	require.NoError(t, err)
+	deleted, err := fixture.dataQuality.ListQualityMemories(fixture.ctx,
+		withToken(adminToken, &v1pb.ListQualityMemoriesRequest{
+			Parent: "workspaces/-",
+			Kind:   v1pb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT,
+			Status: v1pb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_CONFIRMED,
+		}))
+	require.NoError(t, err)
+	require.Empty(t, deleted.Msg.GetQualityMemories(),
+		"a deleted memory and the superseded one leave the confirmed reads")
 
 	// Disabling the agent ends its ability to write (and to read).
 	_, err = fixture.dataQuality.DisableQualityAgent(fixture.ctx,

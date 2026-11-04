@@ -6487,6 +6487,175 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityMemories:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List memories. Expired confirmations read as EXPIRED; superseded ones stay
+                 visible for the correction path.
+            operationId: DataQualityService_ListQualityMemories
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: kind
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_MEMORY_KIND_UNSPECIFIED
+                        - QUALITY_MEMORY_KIND_ASSET_FACT
+                        - QUALITY_MEMORY_KIND_DECISION
+                        - QUALITY_MEMORY_KIND_EVENT
+                    type: string
+                    format: enum
+                - name: status
+                  in: query
+                  schema:
+                    enum:
+                        - QUALITY_MEMORY_STATUS_UNSPECIFIED
+                        - QUALITY_MEMORY_STATUS_PROPOSED
+                        - QUALITY_MEMORY_STATUS_CONFIRMED
+                        - QUALITY_MEMORY_STATUS_REJECTED
+                        - QUALITY_MEMORY_STATUS_SUPERSEDED
+                        - QUALITY_MEMORY_STATUS_EXPIRED
+                    type: string
+                    format: enum
+                - name: subject
+                  in: query
+                  description: An exact subject, or a prefix of the subject.
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityMemoriesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Record one memory: an asset fact, a decision with its structured reason, or an
+                 event. An agent may write asset facts directly; a decision or an event it writes
+                 stays PROPOSED until a person confirms it.
+            operationId: DataQualityService_CreateQualityMemory
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateQualityMemoryRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityMemory'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityMemories/{qualityMemory}:
+        delete:
+            tags:
+                - DataQualityService
+            description: |-
+                Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+                 audit row records who removed it.
+            operationId: DataQualityService_DeleteQualityMemory
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityMemory
+                  in: path
+                  description: The qualityMemory id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityMemories/{qualityMemory}:confirm:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+                 knowledge; nothing else confirms it.
+            operationId: DataQualityService_ConfirmQualityMemory
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityMemory
+                  in: path
+                  description: The qualityMemory id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ConfirmQualityMemoryRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityMemory'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityOverview:
         get:
             tags:
@@ -9573,6 +9742,22 @@ components:
             description: |-
                 ColumnValue is one column of a sampled failed row. Values are truncated before
                  they are returned, so a wide text column cannot bloat the response.
+        ConfirmQualityMemoryRequest:
+            required:
+                - name
+                - decision
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityMemories/{quality_memory}'
+                decision:
+                    enum:
+                        - DECISION_UNSPECIFIED
+                        - DECISION_CONFIRM
+                        - DECISION_REJECT
+                    type: string
+                    format: enum
         ConnectedApp:
             type: object
             properties:
@@ -9921,6 +10106,38 @@ components:
                     description: |-
                         An idempotency key from the agent's run; a retry with the same key returns the
                          recorded investigation instead of writing a second one.
+        CreateQualityMemoryRequest:
+            required:
+                - parent
+                - kind
+                - subject
+                - statement
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                kind:
+                    enum:
+                        - QUALITY_MEMORY_KIND_UNSPECIFIED
+                        - QUALITY_MEMORY_KIND_ASSET_FACT
+                        - QUALITY_MEMORY_KIND_DECISION
+                        - QUALITY_MEMORY_KIND_EVENT
+                    type: string
+                    format: enum
+                subject:
+                    type: string
+                statement:
+                    type: string
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityInvestigationEvidence'
+                domainRef:
+                    type: string
+                expiresAt:
+                    type: string
+                    format: date-time
         CreateQualityRuleRequest:
             required:
                 - parent
@@ -12335,6 +12552,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityIssue'
+                nextPageToken:
+                    type: string
+        ListQualityMemoriesResponse:
+            type: object
+            properties:
+                qualityMemories:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityMemory'
                 nextPageToken:
                     type: string
         ListQualityPlansResponse:
@@ -15095,6 +15321,71 @@ components:
                 QualityLLMUsage is one process's view of the data quality LLM budget: today's
                  counters, the effective limits from the workspace settings, and the in-flight
                  analyses. A restart resets the counters.
+        QualityMemory:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityMemories/{quality_memory}'
+                kind:
+                    enum:
+                        - QUALITY_MEMORY_KIND_UNSPECIFIED
+                        - QUALITY_MEMORY_KIND_ASSET_FACT
+                        - QUALITY_MEMORY_KIND_DECISION
+                        - QUALITY_MEMORY_KIND_EVENT
+                    type: string
+                    format: enum
+                subject:
+                    type: string
+                    description: 'What the memory is about: a target GUID, a rule resource id, a column, an issue.'
+                statement:
+                    type: string
+                source:
+                    enum:
+                        - QUALITY_MEMORY_SOURCE_UNSPECIFIED
+                        - QUALITY_MEMORY_SOURCE_AGENT
+                        - QUALITY_MEMORY_SOURCE_HUMAN
+                        - QUALITY_MEMORY_SOURCE_SYSTEM
+                    type: string
+                    format: enum
+                status:
+                    enum:
+                        - QUALITY_MEMORY_STATUS_UNSPECIFIED
+                        - QUALITY_MEMORY_STATUS_PROPOSED
+                        - QUALITY_MEMORY_STATUS_CONFIRMED
+                        - QUALITY_MEMORY_STATUS_REJECTED
+                        - QUALITY_MEMORY_STATUS_SUPERSEDED
+                        - QUALITY_MEMORY_STATUS_EXPIRED
+                    type: string
+                    format: enum
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityInvestigationEvidence'
+                    description: Deterministic evidence references; a memory without evidence is not recorded.
+                domainRef:
+                    type: string
+                    description: Reserved for domain-scoped memory; stored, not resolved.
+                expiresAt:
+                    type: string
+                    format: date-time
+                confirmedBy:
+                    type: string
+                    description: 'Format: users/{user}. Set when a person confirmed or rejected it.'
+                confirmedAt:
+                    type: string
+                    format: date-time
+                supersededBy:
+                    type: string
+                    description: Resource name of the memory that replaced this one.
+                createdBy:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityMemory is one durable piece of knowledge with its evidence and its
+                 correction path. It never replaces the engine's verdict; it explains the past.
         QualityOverview:
             type: object
             properties:

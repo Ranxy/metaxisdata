@@ -1093,6 +1093,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ConfirmQualityMemoryRequest"><span class="badge">M</span>ConfirmQualityMemoryRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.CreateQualityAgentRequest"><span class="badge">M</span>CreateQualityAgentRequest</a>
                 </li>
               
@@ -1110,6 +1114,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.CreateQualityInvestigationRequest"><span class="badge">M</span>CreateQualityInvestigationRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateQualityMemoryRequest"><span class="badge">M</span>CreateQualityMemoryRequest</a>
                 </li>
               
                 <li>
@@ -1146,6 +1154,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.DeleteQualityCodeTableRequest"><span class="badge">M</span>DeleteQualityCodeTableRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.DeleteQualityMemoryRequest"><span class="badge">M</span>DeleteQualityMemoryRequest</a>
                 </li>
               
                 <li>
@@ -1389,6 +1401,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ListQualityMemoriesRequest"><span class="badge">M</span>ListQualityMemoriesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityMemoriesResponse"><span class="badge">M</span>ListQualityMemoriesResponse</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.ListQualityPlansRequest"><span class="badge">M</span>ListQualityPlansRequest</a>
                 </li>
               
@@ -1602,6 +1622,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityLLMUsage"><span class="badge">M</span>QualityLLMUsage</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityMemory"><span class="badge">M</span>QualityMemory</a>
                 </li>
               
                 <li>
@@ -1878,6 +1902,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ConfirmQualityMemoryRequest.Decision"><span class="badge">E</span>ConfirmQualityMemoryRequest.Decision</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.DecideQualityChangeRequestRequest.Decision"><span class="badge">E</span>DecideQualityChangeRequestRequest.Decision</a>
                 </li>
               
@@ -1979,6 +2007,18 @@
               
                 <li>
                   <a href="#metaxisdata.v1.QualityLabelStatus"><span class="badge">E</span>QualityLabelStatus</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityMemoryKind"><span class="badge">E</span>QualityMemoryKind</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityMemorySource"><span class="badge">E</span>QualityMemorySource</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.QualityMemoryStatus"><span class="badge">E</span>QualityMemoryStatus</a>
                 </li>
               
                 <li>
@@ -13798,6 +13838,37 @@ replaced. The raw value is never returned. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ConfirmQualityMemoryRequest">ConfirmQualityMemoryRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityMemories/{quality_memory} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>decision</td>
+                  <td><a href="#metaxisdata.v1.ConfirmQualityMemoryRequest.Decision">ConfirmQualityMemoryRequest.Decision</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.CreateQualityAgentRequest">CreateQualityAgentRequest</h3>
         <p></p>
 
@@ -14087,6 +14158,72 @@ is a valid value for a target that has never been published. </p></td>
                   <td></td>
                   <td><p>An idempotency key from the agent&#39;s run; a retry with the same key returns the
 recorded investigation instead of writing a second one. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateQualityMemoryRequest">CreateQualityMemoryRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityMemoryKind">QualityMemoryKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statement</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>evidence</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationEvidence">QualityInvestigationEvidence</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>domain_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -14509,6 +14646,30 @@ identity. The GUID and its meta type are the identity. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>Format: workspaces/{workspace}/qualityCodeTables/{quality_code_table} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.DeleteQualityMemoryRequest">DeleteQualityMemoryRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityMemories/{quality_memory} </p></td>
                 </tr>
               
             </tbody>
@@ -17061,6 +17222,96 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>quality_issues</td>
                   <td><a href="#metaxisdata.v1.QualityIssue">QualityIssue</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityMemoriesRequest">ListQualityMemoriesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityMemoryKind">QualityMemoryKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityMemoryStatus">QualityMemoryStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>An exact subject, or a prefix of the subject. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityMemoriesResponse">ListQualityMemoriesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_memories</td>
+                  <td><a href="#metaxisdata.v1.QualityMemory">QualityMemory</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -20439,6 +20690,121 @@ TIMEOUT, PARSE, UNKNOWN. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p>When the daily counters roll over (the next 00:00 UTC). </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.QualityMemory">QualityMemory</h3>
+        <p>QualityMemory is one durable piece of knowledge with its evidence and its</p><p>correction path. It never replaces the engine's verdict; it explains the past.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityMemories/{quality_memory} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#metaxisdata.v1.QualityMemoryKind">QualityMemoryKind</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>What the memory is about: a target GUID, a rule resource id, a column, an issue. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>statement</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.v1.QualityMemorySource">QualityMemorySource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>status</td>
+                  <td><a href="#metaxisdata.v1.QualityMemoryStatus">QualityMemoryStatus</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>evidence</td>
+                  <td><a href="#metaxisdata.v1.QualityInvestigationEvidence">QualityInvestigationEvidence</a></td>
+                  <td>repeated</td>
+                  <td><p>Deterministic evidence references; a memory without evidence is not recorded. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>domain_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Reserved for domain-scoped memory; stored, not resolved. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expires_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>confirmed_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Set when a person confirmed or rejected it. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>confirmed_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>superseded_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Resource name of the memory that replaced this one. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_by</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>create_time</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -24646,6 +25012,35 @@ resolved zone is what the target stores and what reads return. </p></td>
           </tbody>
         </table>
       
+        <h3 id="metaxisdata.v1.ConfirmQualityMemoryRequest.Decision">ConfirmQualityMemoryRequest.Decision</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>DECISION_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DECISION_CONFIRM</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>DECISION_REJECT</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.v1.DecideQualityChangeRequestRequest.Decision">DecideQualityChangeRequestRequest.Decision</h3>
         <p>APPROVE applies the request's items; REJECT records the refusal.</p>
         <table class="enum-table">
@@ -25727,6 +26122,123 @@ accepted range expressed as a pass band.</p></td>
               <tr>
                 <td>QUALITY_LABEL_STATUS_REJECTED</td>
                 <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityMemoryKind">QualityMemoryKind</h3>
+        <p>QualityMemoryKind is what a memory records.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_ASSET_FACT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_DECISION</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_KIND_EVENT</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityMemorySource">QualityMemorySource</h3>
+        <p>QualityMemorySource records who wrote the memory.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_AGENT</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_HUMAN</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_SOURCE_SYSTEM</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.v1.QualityMemoryStatus">QualityMemoryStatus</h3>
+        <p>QualityMemoryStatus is where one memory stands.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_PROPOSED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_CONFIRMED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_REJECTED</td>
+                <td>3</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_SUPERSEDED</td>
+                <td>4</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_MEMORY_STATUS_EXPIRED</td>
+                <td>5</td>
                 <td><p></p></td>
               </tr>
             
@@ -27363,6 +27875,39 @@ for an agent right now. Read-only: it exposes the policy, it does not change it.
               </tr>
             
               <tr>
+                <td>CreateQualityMemory</td>
+                <td><a href="#metaxisdata.v1.CreateQualityMemoryRequest">CreateQualityMemoryRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityMemory">QualityMemory</a></td>
+                <td><p>Record one memory: an asset fact, a decision with its structured reason, or an
+event. An agent may write asset facts directly; a decision or an event it writes
+stays PROPOSED until a person confirms it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityMemories</td>
+                <td><a href="#metaxisdata.v1.ListQualityMemoriesRequest">ListQualityMemoriesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityMemoriesResponse">ListQualityMemoriesResponse</a></td>
+                <td><p>List memories. Expired confirmations read as EXPIRED; superseded ones stay
+visible for the correction path.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ConfirmQualityMemory</td>
+                <td><a href="#metaxisdata.v1.ConfirmQualityMemoryRequest">ConfirmQualityMemoryRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityMemory">QualityMemory</a></td>
+                <td><p>Confirm or reject a PROPOSED memory. A person&#39;s judgment is what turns it into
+knowledge; nothing else confirms it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>DeleteQualityMemory</td>
+                <td><a href="#metaxisdata.v1.DeleteQualityMemoryRequest">DeleteQualityMemoryRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+audit row records who removed it.</p></td>
+              </tr>
+            
+              <tr>
                 <td>StageQualityPlan</td>
                 <td><a href="#metaxisdata.v1.StageQualityPlanRequest">StageQualityPlanRequest</a></td>
                 <td><a href="#metaxisdata.v1.QualityContract">QualityContract</a></td>
@@ -28084,6 +28629,46 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityActionPolicy</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityActionPolicy</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityMemory</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityMemories</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityMemories</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityMemories</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ConfirmQualityMemory</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityMemories/*}:confirm</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>DeleteQualityMemory</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/qualityMemories/*}</td>
                 <td></td>
               </tr>
               

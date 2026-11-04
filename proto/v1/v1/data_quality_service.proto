@@ -683,6 +683,44 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
   }
 
+  // Record one memory: an asset fact, a decision with its structured reason, or an
+  // event. An agent may write asset facts directly; a decision or an event it writes
+  // stays PROPOSED until a person confirms it.
+  rpc CreateQualityMemory(CreateQualityMemoryRequest) returns (QualityMemory) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityMemories"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.plans.update";
+  }
+
+  // List memories. Expired confirmations read as EXPIRED; superseded ones stay
+  // visible for the correction path.
+  rpc ListQualityMemories(ListQualityMemoriesRequest) returns (ListQualityMemoriesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityMemories"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+  // knowledge; nothing else confirms it.
+  rpc ConfirmQualityMemory(ConfirmQualityMemoryRequest) returns (QualityMemory) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityMemories/*}:confirm"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+  // audit row records who removed it.
+  rpc DeleteQualityMemory(DeleteQualityMemoryRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityMemories/*}"};
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+  }
+
   // Write the target's plan declaration without touching its settings. This is the
   // one write an agent principal may make; an agent call is refused while the
   // workspace kill switch or the agent itself is disabled.
@@ -4077,6 +4115,100 @@ message DecideQualityChangeRequestRequest {
   // Why the request was rejected; required for REJECT.
   repeated QualityChangeRejectionReason rejection_reasons = 3;
   string decision_note = 4;
+}
+
+// QualityMemoryKind is what a memory records.
+enum QualityMemoryKind {
+  QUALITY_MEMORY_KIND_UNSPECIFIED = 0;
+  QUALITY_MEMORY_KIND_ASSET_FACT = 1;
+  QUALITY_MEMORY_KIND_DECISION = 2;
+  QUALITY_MEMORY_KIND_EVENT = 3;
+}
+
+// QualityMemoryStatus is where one memory stands.
+enum QualityMemoryStatus {
+  QUALITY_MEMORY_STATUS_UNSPECIFIED = 0;
+  QUALITY_MEMORY_STATUS_PROPOSED = 1;
+  QUALITY_MEMORY_STATUS_CONFIRMED = 2;
+  QUALITY_MEMORY_STATUS_REJECTED = 3;
+  QUALITY_MEMORY_STATUS_SUPERSEDED = 4;
+  QUALITY_MEMORY_STATUS_EXPIRED = 5;
+}
+
+// QualityMemorySource records who wrote the memory.
+enum QualityMemorySource {
+  QUALITY_MEMORY_SOURCE_UNSPECIFIED = 0;
+  QUALITY_MEMORY_SOURCE_AGENT = 1;
+  QUALITY_MEMORY_SOURCE_HUMAN = 2;
+  QUALITY_MEMORY_SOURCE_SYSTEM = 3;
+}
+
+// QualityMemory is one durable piece of knowledge with its evidence and its
+// correction path. It never replaces the engine's verdict; it explains the past.
+message QualityMemory {
+  // Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+  string name = 1;
+  QualityMemoryKind kind = 2;
+  // What the memory is about: a target GUID, a rule resource id, a column, an issue.
+  string subject = 3;
+  string statement = 4;
+  QualityMemorySource source = 5;
+  QualityMemoryStatus status = 6;
+  // Deterministic evidence references; a memory without evidence is not recorded.
+  repeated QualityInvestigationEvidence evidence = 7;
+  // Reserved for domain-scoped memory; stored, not resolved.
+  string domain_ref = 8;
+  google.protobuf.Timestamp expires_at = 9;
+  // Format: users/{user}. Set when a person confirmed or rejected it.
+  string confirmed_by = 10;
+  google.protobuf.Timestamp confirmed_at = 11;
+  // Resource name of the memory that replaced this one.
+  string superseded_by = 12;
+  string created_by = 13;
+  google.protobuf.Timestamp create_time = 14;
+}
+
+message CreateQualityMemoryRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  QualityMemoryKind kind = 2 [(google.api.field_behavior) = REQUIRED];
+  string subject = 3 [(google.api.field_behavior) = REQUIRED];
+  string statement = 4 [(google.api.field_behavior) = REQUIRED];
+  repeated QualityInvestigationEvidence evidence = 5;
+  string domain_ref = 6;
+  google.protobuf.Timestamp expires_at = 7;
+}
+
+message ListQualityMemoriesRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  QualityMemoryKind kind = 2;
+  QualityMemoryStatus status = 3;
+  // An exact subject, or a prefix of the subject.
+  string subject = 4;
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message ListQualityMemoriesResponse {
+  repeated QualityMemory quality_memories = 1;
+  string next_page_token = 2;
+}
+
+message ConfirmQualityMemoryRequest {
+  // Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_CONFIRM = 1;
+    DECISION_REJECT = 2;
+  }
+  Decision decision = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message DeleteQualityMemoryRequest {
+  // Format: workspaces/{workspace}/qualityMemories/{quality_memory}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // QualityInvestigationStatus is where one investigation stands.

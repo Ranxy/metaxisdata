@@ -229,6 +229,18 @@ const (
 	// DataQualityServiceGetQualityActionPolicyProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityActionPolicy RPC.
 	DataQualityServiceGetQualityActionPolicyProcedure = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
+	// DataQualityServiceCreateQualityMemoryProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityMemory RPC.
+	DataQualityServiceCreateQualityMemoryProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityMemory"
+	// DataQualityServiceListQualityMemoriesProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityMemories RPC.
+	DataQualityServiceListQualityMemoriesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityMemories"
+	// DataQualityServiceConfirmQualityMemoryProcedure is the fully-qualified name of the
+	// DataQualityService's ConfirmQualityMemory RPC.
+	DataQualityServiceConfirmQualityMemoryProcedure = "/metaxisdata.v1.DataQualityService/ConfirmQualityMemory"
+	// DataQualityServiceDeleteQualityMemoryProcedure is the fully-qualified name of the
+	// DataQualityService's DeleteQualityMemory RPC.
+	DataQualityServiceDeleteQualityMemoryProcedure = "/metaxisdata.v1.DataQualityService/DeleteQualityMemory"
 	// DataQualityServiceStageQualityPlanProcedure is the fully-qualified name of the
 	// DataQualityService's StageQualityPlan RPC.
 	DataQualityServiceStageQualityPlanProcedure = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
@@ -533,6 +545,19 @@ type DataQualityServiceClient interface {
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error)
+	// Record one memory: an asset fact, a decision with its structured reason, or an
+	// event. An agent may write asset facts directly; a decision or an event it writes
+	// stays PROPOSED until a person confirms it.
+	CreateQualityMemory(context.Context, *connect.Request[v1.CreateQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error)
+	// List memories. Expired confirmations read as EXPIRED; superseded ones stay
+	// visible for the correction path.
+	ListQualityMemories(context.Context, *connect.Request[v1.ListQualityMemoriesRequest]) (*connect.Response[v1.ListQualityMemoriesResponse], error)
+	// Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+	// knowledge; nothing else confirms it.
+	ConfirmQualityMemory(context.Context, *connect.Request[v1.ConfirmQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error)
+	// Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+	// audit row records who removed it.
+	DeleteQualityMemory(context.Context, *connect.Request[v1.DeleteQualityMemoryRequest]) (*connect.Response[emptypb.Empty], error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -974,6 +999,30 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityActionPolicy")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualityMemory: connect.NewClient[v1.CreateQualityMemoryRequest, v1.QualityMemory](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityMemoryProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityMemories: connect.NewClient[v1.ListQualityMemoriesRequest, v1.ListQualityMemoriesResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityMemoriesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityMemories")),
+			connect.WithClientOptions(opts...),
+		),
+		confirmQualityMemory: connect.NewClient[v1.ConfirmQualityMemoryRequest, v1.QualityMemory](
+			httpClient,
+			baseURL+DataQualityServiceConfirmQualityMemoryProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ConfirmQualityMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteQualityMemory: connect.NewClient[v1.DeleteQualityMemoryRequest, emptypb.Empty](
+			httpClient,
+			baseURL+DataQualityServiceDeleteQualityMemoryProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityMemory")),
+			connect.WithClientOptions(opts...),
+		),
 		stageQualityPlan: connect.NewClient[v1.StageQualityPlanRequest, v1.QualityContract](
 			httpClient,
 			baseURL+DataQualityServiceStageQualityPlanProcedure,
@@ -1116,6 +1165,10 @@ type dataQualityServiceClient struct {
 	getQualityInvestigation            *connect.Client[v1.GetQualityInvestigationRequest, v1.QualityInvestigation]
 	listQualityInvestigations          *connect.Client[v1.ListQualityInvestigationsRequest, v1.ListQualityInvestigationsResponse]
 	getQualityActionPolicy             *connect.Client[v1.GetQualityActionPolicyRequest, v1.QualityActionPolicy]
+	createQualityMemory                *connect.Client[v1.CreateQualityMemoryRequest, v1.QualityMemory]
+	listQualityMemories                *connect.Client[v1.ListQualityMemoriesRequest, v1.ListQualityMemoriesResponse]
+	confirmQualityMemory               *connect.Client[v1.ConfirmQualityMemoryRequest, v1.QualityMemory]
+	deleteQualityMemory                *connect.Client[v1.DeleteQualityMemoryRequest, emptypb.Empty]
 	stageQualityPlan                   *connect.Client[v1.StageQualityPlanRequest, v1.QualityContract]
 	createQualityChangeRequest         *connect.Client[v1.CreateQualityChangeRequestRequest, v1.QualityChangeRequest]
 	getQualityChangeRequest            *connect.Client[v1.GetQualityChangeRequestRequest, v1.QualityChangeRequest]
@@ -1459,6 +1512,26 @@ func (c *dataQualityServiceClient) GetQualityActionPolicy(ctx context.Context, r
 	return c.getQualityActionPolicy.CallUnary(ctx, req)
 }
 
+// CreateQualityMemory calls metaxisdata.v1.DataQualityService.CreateQualityMemory.
+func (c *dataQualityServiceClient) CreateQualityMemory(ctx context.Context, req *connect.Request[v1.CreateQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error) {
+	return c.createQualityMemory.CallUnary(ctx, req)
+}
+
+// ListQualityMemories calls metaxisdata.v1.DataQualityService.ListQualityMemories.
+func (c *dataQualityServiceClient) ListQualityMemories(ctx context.Context, req *connect.Request[v1.ListQualityMemoriesRequest]) (*connect.Response[v1.ListQualityMemoriesResponse], error) {
+	return c.listQualityMemories.CallUnary(ctx, req)
+}
+
+// ConfirmQualityMemory calls metaxisdata.v1.DataQualityService.ConfirmQualityMemory.
+func (c *dataQualityServiceClient) ConfirmQualityMemory(ctx context.Context, req *connect.Request[v1.ConfirmQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error) {
+	return c.confirmQualityMemory.CallUnary(ctx, req)
+}
+
+// DeleteQualityMemory calls metaxisdata.v1.DataQualityService.DeleteQualityMemory.
+func (c *dataQualityServiceClient) DeleteQualityMemory(ctx context.Context, req *connect.Request[v1.DeleteQualityMemoryRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.deleteQualityMemory.CallUnary(ctx, req)
+}
+
 // StageQualityPlan calls metaxisdata.v1.DataQualityService.StageQualityPlan.
 func (c *dataQualityServiceClient) StageQualityPlan(ctx context.Context, req *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error) {
 	return c.stageQualityPlan.CallUnary(ctx, req)
@@ -1786,6 +1859,19 @@ type DataQualityServiceHandler interface {
 	// Read the WS2 action catalog and how the autonomy policy would decide each action
 	// for an agent right now. Read-only: it exposes the policy, it does not change it.
 	GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error)
+	// Record one memory: an asset fact, a decision with its structured reason, or an
+	// event. An agent may write asset facts directly; a decision or an event it writes
+	// stays PROPOSED until a person confirms it.
+	CreateQualityMemory(context.Context, *connect.Request[v1.CreateQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error)
+	// List memories. Expired confirmations read as EXPIRED; superseded ones stay
+	// visible for the correction path.
+	ListQualityMemories(context.Context, *connect.Request[v1.ListQualityMemoriesRequest]) (*connect.Response[v1.ListQualityMemoriesResponse], error)
+	// Confirm or reject a PROPOSED memory. A person's judgment is what turns it into
+	// knowledge; nothing else confirms it.
+	ConfirmQualityMemory(context.Context, *connect.Request[v1.ConfirmQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error)
+	// Delete a memory. Administrator cleanup; the row is kept out of reads, and the
+	// audit row records who removed it.
+	DeleteQualityMemory(context.Context, *connect.Request[v1.DeleteQualityMemoryRequest]) (*connect.Response[emptypb.Empty], error)
 	// Write the target's plan declaration without touching its settings. This is the
 	// one write an agent principal may make; an agent call is refused while the
 	// workspace kill switch or the agent itself is disabled.
@@ -2223,6 +2309,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityActionPolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualityMemoryHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityMemoryProcedure,
+		svc.CreateQualityMemory,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityMemoriesHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityMemoriesProcedure,
+		svc.ListQualityMemories,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityMemories")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceConfirmQualityMemoryHandler := connect.NewUnaryHandler(
+		DataQualityServiceConfirmQualityMemoryProcedure,
+		svc.ConfirmQualityMemory,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ConfirmQualityMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceDeleteQualityMemoryHandler := connect.NewUnaryHandler(
+		DataQualityServiceDeleteQualityMemoryProcedure,
+		svc.DeleteQualityMemory,
+		connect.WithSchema(dataQualityServiceMethods.ByName("DeleteQualityMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceStageQualityPlanHandler := connect.NewUnaryHandler(
 		DataQualityServiceStageQualityPlanProcedure,
 		svc.StageQualityPlan,
@@ -2427,6 +2537,14 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceListQualityInvestigationsHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityActionPolicyProcedure:
 			dataQualityServiceGetQualityActionPolicyHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityMemoryProcedure:
+			dataQualityServiceCreateQualityMemoryHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityMemoriesProcedure:
+			dataQualityServiceListQualityMemoriesHandler.ServeHTTP(w, r)
+		case DataQualityServiceConfirmQualityMemoryProcedure:
+			dataQualityServiceConfirmQualityMemoryHandler.ServeHTTP(w, r)
+		case DataQualityServiceDeleteQualityMemoryProcedure:
+			dataQualityServiceDeleteQualityMemoryHandler.ServeHTTP(w, r)
 		case DataQualityServiceStageQualityPlanProcedure:
 			dataQualityServiceStageQualityPlanHandler.ServeHTTP(w, r)
 		case DataQualityServiceCreateQualityChangeRequestProcedure:
@@ -2718,6 +2836,22 @@ func (UnimplementedDataQualityServiceHandler) ListQualityInvestigations(context.
 
 func (UnimplementedDataQualityServiceHandler) GetQualityActionPolicy(context.Context, *connect.Request[v1.GetQualityActionPolicyRequest]) (*connect.Response[v1.QualityActionPolicy], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityActionPolicy is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityMemory(context.Context, *connect.Request[v1.CreateQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityMemory is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityMemories(context.Context, *connect.Request[v1.ListQualityMemoriesRequest]) (*connect.Response[v1.ListQualityMemoriesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityMemories is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ConfirmQualityMemory(context.Context, *connect.Request[v1.ConfirmQualityMemoryRequest]) (*connect.Response[v1.QualityMemory], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ConfirmQualityMemory is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) DeleteQualityMemory(context.Context, *connect.Request[v1.DeleteQualityMemoryRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.DeleteQualityMemory is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) StageQualityPlan(context.Context, *connect.Request[v1.StageQualityPlanRequest]) (*connect.Response[v1.QualityContract], error) {

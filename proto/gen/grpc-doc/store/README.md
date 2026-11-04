@@ -62,6 +62,7 @@
     - [QualityInvestigationHypothesis](#metaxisdata-store-QualityInvestigationHypothesis)
     - [QualityInvestigationHypothesisList](#metaxisdata-store-QualityInvestigationHypothesisList)
     - [QualityLLMDiagnostic](#metaxisdata-store-QualityLLMDiagnostic)
+    - [QualityMemoryEvidenceList](#metaxisdata-store-QualityMemoryEvidenceList)
     - [QualityRuleConfig](#metaxisdata-store-QualityRuleConfig)
     - [QualityRuleDraftConfig](#metaxisdata-store-QualityRuleDraftConfig)
     - [QualityRuleSampling](#metaxisdata-store-QualityRuleSampling)
@@ -115,6 +116,9 @@
     - [QualityIssueStatus](#metaxisdata-store-QualityIssueStatus)
     - [QualityLabelSource](#metaxisdata-store-QualityLabelSource)
     - [QualityLabelStatus](#metaxisdata-store-QualityLabelStatus)
+    - [QualityMemoryKind](#metaxisdata-store-QualityMemoryKind)
+    - [QualityMemorySource](#metaxisdata-store-QualityMemorySource)
+    - [QualityMemoryStatus](#metaxisdata-store-QualityMemoryStatus)
     - [QualityObservedKind](#metaxisdata-store-QualityObservedKind)
     - [QualityResolutionReason](#metaxisdata-store-QualityResolutionReason)
     - [QualityRuleState](#metaxisdata-store-QualityRuleState)
@@ -1321,6 +1325,22 @@ contains prompt or response bodies.
 
 
 
+<a name="metaxisdata-store-QualityMemoryEvidenceList"></a>
+
+### QualityMemoryEvidenceList
+QualityMemoryEvidenceList is the JSONB payload of quality_memory.evidence; the
+references are deterministic, never sample payloads.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| evidence | [QualityInvestigationEvidence](#metaxisdata-store-QualityInvestigationEvidence) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityRuleConfig"></a>
 
 ### QualityRuleConfig
@@ -2291,6 +2311,53 @@ QualityLabelStatus is whether a label is in effect.
 | QUALITY_LABEL_STATUS_SUGGESTED | 1 |  |
 | QUALITY_LABEL_STATUS_ACCEPTED | 2 |  |
 | QUALITY_LABEL_STATUS_REJECTED | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityMemoryKind"></a>
+
+### QualityMemoryKind
+QualityMemoryKind is what a memory records. Asset facts are observed and may be
+written automatically; a decision or an event is a judgment and needs a person&#39;s
+confirmation before it counts.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_MEMORY_KIND_UNSPECIFIED | 0 |  |
+| QUALITY_MEMORY_KIND_ASSET_FACT | 1 |  |
+| QUALITY_MEMORY_KIND_DECISION | 2 |  |
+| QUALITY_MEMORY_KIND_EVENT | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityMemorySource"></a>
+
+### QualityMemorySource
+QualityMemorySource records who wrote the memory.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_MEMORY_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_MEMORY_SOURCE_AGENT | 1 |  |
+| QUALITY_MEMORY_SOURCE_HUMAN | 2 |  |
+| QUALITY_MEMORY_SOURCE_SYSTEM | 3 |  |
+
+
+
+<a name="metaxisdata-store-QualityMemoryStatus"></a>
+
+### QualityMemoryStatus
+QualityMemoryStatus is where one memory stands. A superseded or expired memory is
+kept for the correction path, never silently deleted.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_MEMORY_STATUS_UNSPECIFIED | 0 |  |
+| QUALITY_MEMORY_STATUS_PROPOSED | 1 |  |
+| QUALITY_MEMORY_STATUS_CONFIRMED | 2 |  |
+| QUALITY_MEMORY_STATUS_REJECTED | 3 |  |
+| QUALITY_MEMORY_STATUS_SUPERSEDED | 4 |  |
+| QUALITY_MEMORY_STATUS_EXPIRED | 5 |  |
 
 
 
