@@ -122,7 +122,7 @@ describe("QualityAgentsCard", () => {
     await flushPromises();
     wrapper.findComponent(Input).vm.$emit("update:modelValue", "proposer");
     await flushPromises();
-    dialogButtonByText(label("dataQualitySettings.agentsCreate"))?.click();
+    dialogButtonByText(label("common.create"))?.click();
     await flushPromises();
 
     expect(mocks.createQualityAgent).toHaveBeenCalledWith(
@@ -140,6 +140,14 @@ describe("QualityAgentsCard", () => {
     await flushPromises();
 
     buttonByText(label("dataQualitySettings.agentsRotate"))?.click();
+    await flushPromises();
+    expect(mocks.rotateQualityAgentToken).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(
+      label("dataQualitySettings.agentsRotateTitle")
+    );
+    dialogButtonByText(
+      label("dataQualitySettings.agentsRotateConfirm")
+    )?.click();
     await flushPromises();
 
     expect(mocks.rotateQualityAgentToken).toHaveBeenCalledWith(
@@ -159,14 +167,9 @@ describe("QualityAgentsCard", () => {
     expect(document.body.textContent).toContain(
       label("dataQualitySettings.agentsDisableTitle")
     );
-    const confirm = [
-      ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
-    ].find(
-      (button) =>
-        button.textContent?.trim() ===
-        label("dataQualitySettings.agentsDisable")
-    );
-    confirm?.click();
+    dialogButtonByText(
+      label("dataQualitySettings.agentsDisableConfirm")
+    )?.click();
     await flushPromises();
 
     expect(mocks.disableQualityAgent).toHaveBeenCalledWith(
@@ -189,5 +192,34 @@ describe("QualityAgentsCard", () => {
       "The server hit an internal error."
     );
     wrapper.unmount();
+  });
+});
+
+// A disabled agent has no rotate or disable action, and an empty workspace says so.
+describe("QualityAgentsCard states", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("shows no actions on a disabled agent and an empty-state message", async () => {
+    mocks.listQualityAgents.mockResolvedValue([agentFixture("retired", false)]);
+    const wrapper = mountCard();
+    await flushPromises();
+    expect(
+      buttonByText(label("dataQualitySettings.agentsRotate"))
+    ).toBeUndefined();
+    expect(
+      buttonByText(label("dataQualitySettings.agentsDisable"))
+    ).toBeUndefined();
+    wrapper.unmount();
+
+    mocks.listQualityAgents.mockResolvedValue([]);
+    const empty = mountCard();
+    await flushPromises();
+    expect(document.body.textContent).toContain(
+      label("dataQualitySettings.agentsEmpty")
+    );
+    empty.unmount();
   });
 });

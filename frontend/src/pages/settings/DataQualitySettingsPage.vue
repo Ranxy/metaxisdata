@@ -451,7 +451,10 @@
           </CardContent>
         </Card>
 
-        <QualityAgentsCard :can-update="canUpdate" />
+        <QualityAgentsCard
+          v-if="canUpdate"
+          :can-update="canUpdate"
+        />
 
         <Card>
           <CardHeader>

@@ -61,7 +61,8 @@
               <Button
                 variant="ghost"
                 size="sm"
-                @click="rotate(agent)"
+                :disabled="busy"
+                @click="askRotate(agent)"
               >
                 {{ t("dataQualitySettings.agentsRotate") }}
               </Button>
@@ -69,6 +70,7 @@
                 variant="ghost"
                 size="sm"
                 class="text-destructive"
+                :disabled="busy"
                 @click="disableTarget = agent"
               >
                 {{ t("dataQualitySettings.agentsDisable") }}
@@ -79,11 +81,12 @@
         <Button
           v-if="canUpdate"
           size="sm"
-          @click="createOpen = true"
+          @click="openCreate"
         >
           {{ t("dataQualitySettings.agentsCreate") }}
         </Button>
 
+      </template>
         <!-- The token is shown once: it cannot be retrieved again, only rotated. -->
         <Alert
           v-if="issuedToken"
@@ -104,7 +107,6 @@
             </div>
           </AlertDescription>
         </Alert>
-      </template>
     </CardContent>
 
     <Dialog
@@ -154,7 +156,35 @@
             :disabled="busy || displayName.trim() === ''"
             @click="create"
           >
-            {{ t("dataQualitySettings.agentsCreate") }}
+            {{ t("common.create") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      :open="rotateTarget !== undefined"
+      @update:open="(open) => { if (!open) rotateTarget = undefined; }"
+    >
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("dataQualitySettings.agentsRotateTitle") }}</DialogTitle>
+          <DialogDescription>
+            {{ t("dataQualitySettings.agentsRotateDescription", { name: rotateTarget?.displayName ?? "" }) }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="rotateTarget = undefined"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="busy"
+            @click="confirmRotate"
+          >
+            {{ t("dataQualitySettings.agentsRotateConfirm") }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -190,7 +220,7 @@
             :disabled="busy"
             @click="confirmDisable"
           >
-            {{ t("dataQualitySettings.agentsDisable") }}
+            {{ t("dataQualitySettings.agentsDisableConfirm") }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -252,6 +282,7 @@ const displayName = ref("");
 const description = ref("");
 const createError = ref("");
 const disableTarget = ref<QualityAgent | undefined>(undefined);
+const rotateTarget = ref<QualityAgent | undefined>(undefined);
 const disableError = ref("");
 const issuedToken = ref("");
 const issuedName = ref("");
@@ -311,17 +342,34 @@ async function create() {
   }
 }
 
-async function rotate(agent: QualityAgent) {
+function openCreate() {
+  createError.value = "";
+  displayName.value = "";
+  description.value = "";
+  createOpen.value = true;
+}
+
+function askRotate(agent: QualityAgent) {
+  rotateTarget.value = agent;
+}
+
+async function confirmRotate() {
+  const target = rotateTarget.value;
+  if (!target || busy.value) {
+    return;
+  }
   busy.value = true;
   try {
-    const response = await rotateQualityAgentToken(agent.name);
+    const response = await rotateQualityAgentToken(target.name);
+    rotateTarget.value = undefined;
     if (response.agent) {
       showToken(response.agent.displayName, response.token);
     }
     notify.success(t("dataQualitySettings.agentsRotated"));
     await load();
   } catch (e: unknown) {
-    error.value = formatError(e, "dataQualitySettings.agentsRotateFailed");
+    // The token panel must stay visible: a failed rotation is a toast, not a page error.
+    notify.error(formatError(e, "dataQualitySettings.agentsRotateFailed"));
   } finally {
     busy.value = false;
   }
