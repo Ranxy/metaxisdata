@@ -451,6 +451,134 @@
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>{{ t("dataQualitySettings.runnerSection") }}</CardTitle>
+            <CardDescription>
+              {{ t("dataQualitySettings.runnerSectionDescription") }}
+            </CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="dq-setting-agent-runner"
+                :checked="form.agentRunnerEnabled"
+                :disabled="!canUpdate"
+                @update:checked="form.agentRunnerEnabled = $event === true"
+              />
+              <div class="grid gap-1">
+                <Label for="dq-setting-agent-runner">
+                  {{ t("dataQualitySettings.runnerEnabled") }}
+                </Label>
+                <p class="text-sm text-muted-foreground">
+                  {{ t("dataQualitySettings.runnerEnabledHint") }}
+                </p>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <fieldset class="space-y-1">
+                <legend class="text-sm font-medium">
+                  {{ t("dataQualitySettings.runnerDatabases") }}
+                </legend>
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQualitySettings.runnerDatabasesHint") }}
+              </p>
+              <p
+                v-if="runnerDatabasesLoading"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("common.loading") }}
+              </p>
+              <Alert
+                v-else-if="runnerDatabasesError"
+                variant="destructive"
+              >
+                <AlertTriangle class="h-4 w-4" />
+                <AlertDescription class="flex flex-wrap items-center gap-2">
+                  {{ runnerDatabasesError }}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="loadRunnerDatabases"
+                  >
+                    {{ t("common.retry") }}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+              <p
+                v-else-if="runnerDatabases.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                {{ t("dataQualitySettings.runnerDatabasesEmpty") }}
+              </p>
+              <div
+                v-for="group in runnerDatabases"
+                :key="group.instance"
+                class="space-y-1"
+              >
+                <p class="text-sm font-medium">{{ group.title }}</p>
+                <div class="grid gap-1 sm:grid-cols-2">
+                  <label
+                    v-for="database in group.databases"
+                    :key="database.name"
+                    class="flex items-center gap-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      :data-testid="`dq-runner-db-${database.name}`"
+                      :checked="form.agentRunnerDatabases.includes(database.name)"
+                      :disabled="!canUpdate"
+                      @change="toggleRunnerDatabase(database.name)"
+                    />
+                    {{ database.name.split('/').pop() }}
+                  </label>
+                </div>
+              </div>
+              </fieldset>
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="space-y-1.5">
+                <Label for="dq-setting-runner-tokens">
+                  {{ t("dataQualitySettings.runnerTokensPerHour") }}
+                </Label>
+                <Input
+                  id="dq-setting-runner-tokens"
+                  v-model="form.agentRunnerTokensPerHour"
+                  inputmode="numeric"
+                  :disabled="!canUpdate"
+                />
+                <p class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.runnerTokensPerHourHint") }}
+                </p>
+              </div>
+              <div class="space-y-1.5">
+                <Label for="dq-setting-runner-goals">
+                  {{ t("dataQualitySettings.runnerGoalsPerHour") }}
+                </Label>
+                <Input
+                  id="dq-setting-runner-goals"
+                  v-model="form.agentRunnerGoalsPerHour"
+                  inputmode="numeric"
+                  :disabled="!canUpdate"
+                />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="dq-setting-runner-concurrency">
+                  {{ t("dataQualitySettings.runnerConcurrency") }}
+                </Label>
+                <Input
+                  id="dq-setting-runner-concurrency"
+                  v-model="form.agentRunnerMaxConcurrentGoals"
+                  inputmode="numeric"
+                  :disabled="!canUpdate"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <QualityAgentsCard
           v-if="canUpdate"
           :can-update="canUpdate"
@@ -747,6 +875,8 @@ import {
   listAllQualityCodeTables,
   updateQualityCodeTable,
 } from "@/api/data-quality";
+import { listDatabases } from "@/api/database";
+import { listAll } from "@/api/list";
 import { listProfiles } from "@/api/llm";
 import {
   getWorkspaceProfileSetting,
@@ -832,6 +962,79 @@ const { formatError } = useErrorMessage();
 const authStore = useAuthStore();
 
 const form = ref<DataQualitySettingsForm>(settingsToForm(undefined));
+interface RunnerDatabaseGroup {
+  instance: string;
+  title: string;
+  databases: Array<{ name: string }>;
+}
+const runnerDatabases = ref<RunnerDatabaseGroup[]>([]);
+const runnerDatabasesLoading = ref(true);
+const runnerDatabasesError = ref("");
+
+/** Load the whole estate in one paginated read and group it by instance. */
+async function loadRunnerDatabases() {
+  runnerDatabasesLoading.value = true;
+  runnerDatabasesError.value = "";
+  try {
+    const databases = await listAll(async (pageToken) => {
+      const response = await listDatabases({
+        parent: "workspaces/-",
+        pageSize: 1000,
+        pageToken,
+      });
+      return {
+        items: response.databases,
+        nextPageToken: response.nextPageToken,
+      };
+    });
+    const groups = new Map<string, RunnerDatabaseGroup>();
+    for (const database of databases) {
+      const segments = database.name.split("/");
+      const instance = segments.slice(0, 2).join("/");
+      let group = groups.get(instance);
+      if (!group) {
+        group = {
+          instance,
+          title: instance.split("/").pop() || instance,
+          databases: [],
+        };
+        groups.set(instance, group);
+      }
+      group.databases.push({ name: database.name });
+    }
+    // A saved name whose database is gone or no longer synced stays visible and
+    // removable; the server still enforces the scope.
+    const known = new Set(databases.map((database) => database.name));
+    const missing = form.value.agentRunnerDatabases.filter(
+      (name) => !known.has(name)
+    );
+    if (missing.length > 0) {
+      groups.set("out-of-sync", {
+        instance: "out-of-sync",
+        title: t("dataQualitySettings.runnerDatabasesOutOfSync"),
+        databases: missing.map((name) => ({ name })),
+      });
+    }
+    runnerDatabases.value = [...groups.values()].filter(
+      (group) => group.databases.length > 0
+    );
+  } catch {
+    runnerDatabasesError.value = t("dataQualitySettings.runnerDatabasesFailed");
+  } finally {
+    runnerDatabasesLoading.value = false;
+  }
+}
+
+/** Toggle one database in the runner allowlist. */
+function toggleRunnerDatabase(name: string) {
+  const selected = form.value.agentRunnerDatabases;
+  const index = selected.indexOf(name);
+  if (index >= 0) {
+    selected.splice(index, 1);
+  } else {
+    selected.push(name);
+  }
+}
 const profileOptions = ref<Array<{ name: string; title: string }>>([]);
 const issues = ref<ReturnType<typeof validateSettingsForm>>([]);
 const isLoading = ref(true);
@@ -1204,5 +1407,8 @@ async function handleSave() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  void loadRunnerDatabases();
+});
 </script>
