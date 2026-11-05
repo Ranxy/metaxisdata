@@ -212,7 +212,8 @@ func (s *Store) ClaimDueQualityAgentGoals(ctx context.Context, now time.Time, le
 		SET lease_until = $2, updated_at = NOW()
 		WHERE g.id IN (
 			SELECT id FROM quality_agent_goal
-			WHERE phase = $3 AND cleared_at IS NULL
+			WHERE cleared_at IS NULL
+				AND (phase = $3 OR (phase = $5 AND blocked_code = ANY($6)))
 				AND (next_wake_at IS NULL OR next_wake_at <= $1)
 				AND (lease_until IS NULL OR lease_until <= $1)
 			ORDER BY COALESCE(next_wake_at, created_at) ASC, id ASC
@@ -221,7 +222,9 @@ func (s *Store) ClaimDueQualityAgentGoals(ctx context.Context, now time.Time, le
 		)
 		RETURNING `+qualityAgentGoalColumns,
 		now, now.Add(lease),
-		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE), limit)
+		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE), limit,
+		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED),
+		pq.Array([]string{"token-budget", "autonomy-off", "llm-quota", "no-work"}))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to claim the quality agent goals")
 	}
@@ -274,10 +277,11 @@ func (s *Store) UpdateQualityAgentGoalProgress(ctx context.Context, resourceID s
 		UPDATE quality_agent_goal
 		SET rounds_started = $2, tokens_used = tokens_used + $3, checkpoint = $4,
 			revision = revision + 1, updated_at = NOW()
-		WHERE resource_id = $1 AND phase = $5 AND cleared_at IS NULL
+		WHERE resource_id = $1 AND phase IN ($5, $6) AND cleared_at IS NULL
 		RETURNING `+qualityAgentGoalColumns,
 		resourceID, roundsStarted, tokensUsed, payload,
-		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE)))
+		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE),
+		int16(storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, common.Errorf(common.Conflict, "the goal is no longer active")

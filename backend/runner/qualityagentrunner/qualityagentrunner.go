@@ -14,6 +14,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -24,7 +25,9 @@ const (
 	tickInterval = 3 * time.Second
 	// claimLease is how long one claim is protected from other claims before a crash
 	// can be assumed. A turn that legitimately runs longer renews it in M3.
-	claimLease = 2 * time.Minute
+	claimLease = 15 * time.Minute
+	// turnDeadline bounds one goal turn well inside the lease.
+	turnDeadline = 10 * time.Minute
 	// restartLimit is how many times a goal may be recovered after a crash before it
 	// is blocked for a person.
 	restartLimit int32 = 3
@@ -38,6 +41,7 @@ type GoalStore interface {
 	ReleaseQualityAgentGoalLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	UpdateQualityAgentGoalState(ctx context.Context, resourceID string, expectedRevision int32, phase storepb.QualityAgentGoalPhase, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentGoalMessage, bool, error)
 	UpdateQualityAgentGoalProgress(ctx context.Context, resourceID string, roundsStarted int32, tokensUsed int64, checkpoint *storepb.QualityAgentGoalCheckpoint) (*store.QualityAgentGoalMessage, error)
+	SumQualityAgentGoalTokensSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 }
 
@@ -59,11 +63,23 @@ type Runner struct {
 	swept bool
 }
 
-// NewRunner creates the quality agent goal runner.
-func NewRunner(stores *store.Store) *Runner {
+// NewRunner creates the quality agent goal runner. A nil suggester keeps the runner on
+// the deterministic engine; production passes the shared suggester so a configured
+// workspace gets the model round.
+func NewRunner(stores *store.Store, suggester *dataquality.Suggester) *Runner {
+	engine := agentrunner.NewEngine(stores)
+	if suggester != nil {
+		engine = agentrunner.NewModelEngine(stores, llm.RunAgentLoop,
+			func(ctx context.Context) (llm.ResolvedConfig, bool, error) {
+				config, _, resolveErr := suggester.ResolveConfig(ctx)
+				// Disabled or unconfigured analysis is not an error for the runner:
+				// the deterministic engine keeps working.
+				return config, resolveErr == nil, nil
+			})
+	}
 	return &Runner{
 		store:  stores,
-		engine: agentrunner.NewEngine(stores),
+		engine: engine,
 		loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
 			return dataquality.LoadSettings(ctx, stores)
 		},
@@ -146,11 +162,36 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 		slog.Error("failed to append a quality agent goal step",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
 	}
+	if !settings.AgentAutonomyEnabled {
+		next := r.now().Add(5 * time.Minute)
+		r.stopWithBlockerWithWake(ctx, goal, "autonomy-off", "agent autonomy is disabled in this workspace", &next)
+		return
+	}
 	if goal.MaxRounds > 0 && goal.RoundsStarted >= goal.MaxRounds {
 		r.stopWithBlocker(ctx, goal, "round-limit", "the goal reached its round limit")
 		return
 	}
-	outcome, err := r.engine.Run(ctx, goal)
+	limit := settings.AgentRunnerTokensPerHour
+	if limit <= 0 {
+		limit = dataquality.DefaultAgentRunnerTokensPerHour
+	}
+	spent, err := r.store.SumQualityAgentGoalTokensSince(ctx, goal.WorkspaceID, r.now().Add(-time.Hour))
+	if err != nil {
+		slog.Error("failed to read the runner token spend",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+		next := r.now().Add(5 * time.Minute)
+		r.stopWithBlockerWithWake(ctx, goal, "internal-error", "the token spend could not be read", &next)
+		return
+	}
+	if spent >= limit {
+		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
+		r.stopWithBlockerWithWake(ctx, goal, "token-budget",
+			"the workspace spent its hourly agent token budget", &nextWindow)
+		return
+	}
+	turnCtx, cancel := context.WithTimeout(ctx, turnDeadline)
+	defer cancel()
+	outcome, err := r.engine.Run(turnCtx, goal)
 	if err != nil {
 		slog.Error("quality agent goal turn failed",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
@@ -165,8 +206,12 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 		r.stopWithBlocker(ctx, goal, "internal-error", "the turn failed: "+err.Error())
 		return
 	}
+	rounds := goal.RoundsStarted
+	if outcome.Admitted {
+		rounds++
+	}
 	progress, err := r.store.UpdateQualityAgentGoalProgress(ctx, goal.ResourceID,
-		goal.RoundsStarted+1, 0, outcome.Checkpoint)
+		rounds, outcome.TokensUsed, outcome.Checkpoint)
 	if err != nil {
 		slog.Error("failed to record the goal progress",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
@@ -199,8 +244,13 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 // stopWithBlocker parks a goal whose turn failed before it could decide, so the runner
 // does not claim it again in a hot loop.
 func (r *Runner) stopWithBlocker(ctx context.Context, goal *store.QualityAgentGoalMessage, code, reason string) {
+	r.stopWithBlockerWithWake(ctx, goal, code, reason, nil)
+}
+
+// stopWithBlockerWithWake is stopWithBlocker with a scheduled wakeup (a budget window).
+func (r *Runner) stopWithBlockerWithWake(ctx context.Context, goal *store.QualityAgentGoalMessage, code, reason string, nextWakeAt *time.Time) {
 	if _, _, err := r.store.UpdateQualityAgentGoalState(ctx, goal.ResourceID, goal.Revision,
-		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED, code, reason, nil); err != nil {
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED, code, reason, nextWakeAt); err != nil {
 		slog.Error("failed to block the failed goal",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
 	}

@@ -265,7 +265,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	suggester := dataquality.NewSuggester(stores, s.llmRegistry, llmQuota, s.metrics)
 	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
 	// The goal runner hosts the built-in quality agent: M1 is the goal substrate.
-	s.goalRunner = qualityagentrunner.NewRunner(stores)
+	s.goalRunner = qualityagentrunner.NewRunner(stores, suggester)
 
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
