@@ -40,12 +40,13 @@ func (s *AuthService) storeWebSession(ctx context.Context, user *store.UserMessa
 	if err != nil {
 		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to generate a refresh token"))
 	}
-	if err := s.store.CreateWebRefreshToken(ctx, &store.WebRefreshToken{
+	err = s.store.CreateWebRefreshToken(ctx, &store.WebRefreshToken{
 		TokenHash: auth.HashToken(token),
 		UserID:    user.ID,
 		ExpiresAt: expiresAt,
 		IssuedAt:  issuedAt,
-	}); err != nil {
+	})
+	if err != nil {
 		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to store the refresh token"))
 	}
 	return token, nil

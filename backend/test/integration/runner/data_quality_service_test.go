@@ -4809,11 +4809,32 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, listed.Msg.GetQualityAgentGoals(), 1)
 
-	paused, err := fixture.dataQuality.PauseQualityAgentGoal(fixture.ctx,
-		withToken(token, &v1pb.PauseQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: goal.GetRevision()}))
-	require.NoError(t, err)
-	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED, paused.Msg.GetPhase())
-	require.Equal(t, goal.GetRevision()+1, paused.Msg.GetRevision())
+	// The runner may record a turn between creation and this call, so retry the CAS with
+	// the latest revision instead of assuming the creation revision is still current.
+	pauseGoal := func(name string) *v1pb.QualityAgentGoal {
+		t.Helper()
+		var latest *v1pb.QualityAgentGoal
+		for attempt := 0; attempt < 5; attempt++ {
+			current, err := fixture.dataQuality.GetQualityAgentGoal(fixture.ctx,
+				withToken(token, &v1pb.GetQualityAgentGoalRequest{Name: name}))
+			require.NoError(t, err)
+			latest = current.Msg
+			paused, err := fixture.dataQuality.PauseQualityAgentGoal(fixture.ctx,
+				withToken(token, &v1pb.PauseQualityAgentGoalRequest{Name: name, ExpectedRevision: latest.GetRevision()}))
+			if err == nil {
+				return paused.Msg
+			}
+			if connect.CodeOf(err) != connect.CodeAborted {
+				require.NoError(t, err)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		require.FailNow(t, "pause never won the revision race")
+		return nil
+	}
+	paused := pauseGoal(goal.GetName())
+	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED, paused.GetPhase())
+	require.Greater(t, paused.GetRevision(), goal.GetRevision())
 
 	// A stale revision is rejected, not silently applied.
 	_, err = fixture.dataQuality.ResumeQualityAgentGoal(fixture.ctx,
@@ -4822,7 +4843,7 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 	require.Equal(t, connect.CodeAborted, connect.CodeOf(err))
 
 	resumed, err := fixture.dataQuality.ResumeQualityAgentGoal(fixture.ctx,
-		withToken(token, &v1pb.ResumeQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: paused.Msg.GetRevision()}))
+		withToken(token, &v1pb.ResumeQualityAgentGoalRequest{Name: goal.GetName(), ExpectedRevision: paused.GetRevision()}))
 	require.NoError(t, err)
 	require.Equal(t, v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE, resumed.Msg.GetPhase())
 
@@ -4915,4 +4936,116 @@ func TestQualityAgentGoalRealServerIntegration(t *testing.T) {
 	_, err = createGoal(v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET)
 	require.Error(t, err)
 	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
+}
+
+// TestQualityAgentRunnerDeterministicTurnRealServerIntegration drives the runner's M2
+// turn end to end: an event goal turns a failed execution into an investigation and
+// completes, and a maintain goal with nothing to do rests as no-work.
+func TestQualityAgentRunnerDeterministicTurnRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, true)
+	token := fixture.env.AdminToken()
+	segments := common.SplitMetaGUID(fixture.usersGUID)
+	databaseRef := common.FormatDatabase(segments[0], segments[1])
+
+	current, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(token, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	original, ok := proto.Clone(current.Msg.GetDataQuality()).(*v1pb.DataQualitySetting)
+	require.True(t, ok)
+	enableRunner := func() {
+		dataQuality, cloned := proto.Clone(original).(*v1pb.DataQualitySetting)
+		require.True(t, cloned)
+		dataQuality.AgentRunnerEnabled = true
+		dataQuality.AgentRunnerDatabases = []string{databaseRef}
+		_, err := fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
+			withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+				Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: dataQuality},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+			}))
+		require.NoError(t, err)
+	}
+	enableRunner()
+	t.Cleanup(func() {
+		_, _ = fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
+			withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+				Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: original},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+			}))
+	})
+	_, err = fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(token, &v1pb.CreateQualityAgentRequest{Parent: "workspaces/-", DisplayName: "deterministic runner"}))
+	require.NoError(t, err)
+
+	// A failing execution is the event the agent investigates.
+	rule := fixture.createRule(t, v1pb.QualityRuleType_QUALITY_RULE_TYPE_ROW_COUNT,
+		v1pb.QualityDimension_QUALITY_DIMENSION_COMPLETENESS, v1pb.QualitySeverity_QUALITY_SEVERITY_WARNING,
+		fixture.usersGUID, qualityRowCountConfig(1_000_000))
+	execution := fixture.runToCompletion(t, rule.GetName())
+	require.Equal(t, v1pb.QualityStatus_QUALITY_STATUS_FAIL, execution.GetOutcome())
+
+	eventGoal, err := fixture.dataQuality.CreateQualityAgentGoal(fixture.ctx,
+		withToken(token, &v1pb.CreateQualityAgentGoalRequest{
+			Parent:     "workspaces/-",
+			Kind:       v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT,
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Trigger:    v1pb.QualityAgentGoalTrigger_QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED,
+			TriggerRef: execution.GetName(),
+		}))
+	require.NoError(t, err)
+	clearGoal := func(name string) {
+		t.Helper()
+		current, err := fixture.dataQuality.GetQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.GetQualityAgentGoalRequest{Name: name}))
+		if err != nil {
+			return
+		}
+		_, _ = fixture.dataQuality.ClearQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.ClearQualityAgentGoalRequest{Name: name, ExpectedRevision: current.Msg.GetRevision()}))
+	}
+	t.Cleanup(func() { clearGoal(eventGoal.Msg.GetName()) })
+
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.GetQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.GetQualityAgentGoalRequest{Name: eventGoal.Msg.GetName()}))
+		return err == nil &&
+			response.Msg.GetPhase() == v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE
+	}, 20*time.Second, 250*time.Millisecond, "the runner completes the event goal")
+
+	investigations, err := fixture.dataQuality.ListQualityInvestigations(fixture.ctx,
+		withToken(token, &v1pb.ListQualityInvestigationsRequest{
+			Parent: "workspaces/-", TargetGuid: fixture.usersGUID,
+		}))
+	require.NoError(t, err)
+	foundExecution := false
+	for _, investigation := range investigations.Msg.GetQualityInvestigations() {
+		if investigation.GetTrigger() == v1pb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION &&
+			investigation.GetTriggerReference() == execution.GetName() {
+			foundExecution = true
+			require.Equal(t, v1pb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE, investigation.GetVerdict())
+		}
+	}
+	require.True(t, foundExecution, "the runner records the event investigation")
+
+	// A maintain goal on a target without a plan has nothing to record and rests.
+	maintainGoal, err := fixture.dataQuality.CreateQualityAgentGoal(fixture.ctx,
+		withToken(token, &v1pb.CreateQualityAgentGoalRequest{
+			Parent:     "workspaces/-",
+			Kind:       v1pb.QualityAgentGoalKind_QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET,
+			TargetGuid: fixture.usersGUID,
+			MetaType:   v1pb.MetaType_TABLE,
+			Trigger:    v1pb.QualityAgentGoalTrigger_QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED,
+		}))
+	require.NoError(t, err)
+	t.Cleanup(func() { clearGoal(maintainGoal.Msg.GetName()) })
+	// A plan-less maintain goal has nothing to record: the turn leaves it active with a
+	// next wake, not blocked, so the daily survey can find a plan later.
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.GetQualityAgentGoal(fixture.ctx,
+			withToken(token, &v1pb.GetQualityAgentGoalRequest{Name: maintainGoal.Msg.GetName()}))
+		return err == nil &&
+			response.Msg.GetPhase() == v1pb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE &&
+			response.Msg.GetRoundsStarted() >= 1 &&
+			response.Msg.GetNextWakeTime() != nil
+	}, 20*time.Second, 250*time.Millisecond, "the runner surveys and schedules the empty maintain goal")
 }

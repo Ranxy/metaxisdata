@@ -1,10 +1,9 @@
 // Package qualityagentrunner is the host loop of the built-in quality agent runner.
 //
-// M1 is the goal substrate: it starts, resets leases left by a previous process, and
-// claims due goals up to the workspace's concurrency limit. Each claimed goal records
-// one journal step and is scheduled for its next look; the deterministic and model
-// driven turns arrive in the next slices. The goal's durable phase is the product
-// state; "running" is only the lease this loop holds.
+// It starts, resets leases left by a previous process, claims due goals up to the
+// workspace's concurrency limit, and gives each claimed goal one turn of the engine.
+// M2's turn is deterministic (the model turn arrives in M3). The goal's durable phase is
+// the product state; "running" is only the lease this loop holds.
 package qualityagentrunner
 
 import (
@@ -14,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -28,8 +28,6 @@ const (
 	// restartLimit is how many times a goal may be recovered after a crash before it
 	// is blocked for a person.
 	restartLimit int32 = 3
-	// placeholderWake is how long a claimed goal waits in M1, where no turn runs yet.
-	placeholderWake = time.Hour
 )
 
 // GoalStore is the slice of *store.Store the runner needs.
@@ -39,12 +37,20 @@ type GoalStore interface {
 	AppendQualityAgentGoalStep(ctx context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error)
 	ReleaseQualityAgentGoalLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	UpdateQualityAgentGoalState(ctx context.Context, resourceID string, expectedRevision int32, phase storepb.QualityAgentGoalPhase, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentGoalMessage, bool, error)
+	UpdateQualityAgentGoalProgress(ctx context.Context, resourceID string, roundsStarted int32, tokensUsed int64, checkpoint *storepb.QualityAgentGoalCheckpoint) (*store.QualityAgentGoalMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
+}
+
+// GoalEngine runs one turn of a goal. Production passes the deterministic engine; M3
+// swaps in the model-driven one.
+type GoalEngine interface {
+	Run(ctx context.Context, goal *store.QualityAgentGoalMessage) (agentrunner.Outcome, error)
 }
 
 // Runner is the goal-host loop.
 type Runner struct {
 	store        GoalStore
+	engine       GoalEngine
 	loadSettings func(ctx context.Context) (dataquality.Settings, error)
 	// now is time.Now.UTC in production; a test fixes it.
 	now func() time.Time
@@ -56,7 +62,8 @@ type Runner struct {
 // NewRunner creates the quality agent goal runner.
 func NewRunner(stores *store.Store) *Runner {
 	return &Runner{
-		store: stores,
+		store:  stores,
+		engine: agentrunner.NewEngine(stores),
 		loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
 			return dataquality.LoadSettings(ctx, stores)
 		},
@@ -118,9 +125,9 @@ func (r *Runner) runOnce(ctx context.Context) {
 	}
 }
 
-// hostGoal is M1's placeholder turn: it checks the run-time scope (database allowlist
-// and agent enabled), journals the reservation, and schedules the next look. The
-// deterministic survey lands in M2 and the model loop in M3.
+// hostGoal gives one claimed goal one turn: it checks the run-time scope (database
+// allowlist and agent enabled), journals the reservation, runs the engine, records the
+// progress and applies the decision.
 func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, goal *store.QualityAgentGoalMessage) {
 	if reason := r.scopeBlocker(ctx, settings, goal); reason != "" {
 		r.blockGoal(ctx, goal, reason)
@@ -132,18 +139,72 @@ func (r *Runner) hostGoal(ctx context.Context, settings dataquality.Settings, go
 		Kind:        storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED,
 		Payload: &storepb.QualityAgentGoalStepPayload{
 			Tool:    "runner",
-			Summary: "goal turn reserved (M1 has no turn yet)",
+			Summary: "goal turn reserved",
 		},
 	}
 	if _, err := r.store.AppendQualityAgentGoalStep(ctx, step); err != nil {
 		slog.Error("failed to append a quality agent goal step",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
 	}
-	next := r.now().Add(placeholderWake)
-	if _, err := r.store.ReleaseQualityAgentGoalLease(ctx, goal.ResourceID, &next); err != nil {
+	if goal.MaxRounds > 0 && goal.RoundsStarted >= goal.MaxRounds {
+		r.stopWithBlocker(ctx, goal, "round-limit", "the goal reached its round limit")
+		return
+	}
+	outcome, err := r.engine.Run(ctx, goal)
+	if err != nil {
+		slog.Error("quality agent goal turn failed",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+		if _, journalErr := r.store.AppendQualityAgentGoalStep(ctx, &store.QualityAgentGoalStepMessage{
+			GoalID: goal.ID, WorkspaceID: goal.WorkspaceID,
+			Kind:    storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_STOP,
+			Payload: &storepb.QualityAgentGoalStepPayload{Tool: "runner", Summary: "the turn failed", Error: err.Error()},
+		}); journalErr != nil {
+			slog.Error("failed to journal the failed goal turn",
+				slog.String("goal", goal.ResourceID), log.WithError(journalErr))
+		}
+		r.stopWithBlocker(ctx, goal, "internal-error", "the turn failed: "+err.Error())
+		return
+	}
+	progress, err := r.store.UpdateQualityAgentGoalProgress(ctx, goal.ResourceID,
+		goal.RoundsStarted+1, 0, outcome.Checkpoint)
+	if err != nil {
+		slog.Error("failed to record the goal progress",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+		r.stopWithBlocker(ctx, goal, "internal-error", "the turn progress could not be recorded")
+		return
+	}
+	if _, err := r.store.AppendQualityAgentGoalStep(ctx, &store.QualityAgentGoalStepMessage{
+		GoalID: goal.ID, WorkspaceID: goal.WorkspaceID,
+		Kind:    storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE,
+		Payload: &storepb.QualityAgentGoalStepPayload{Tool: "runner", Summary: outcome.Summary},
+	}); err != nil {
+		slog.Error("failed to journal the goal decision",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+	}
+	if outcome.Phase != storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE {
+		if _, _, err := r.store.UpdateQualityAgentGoalState(ctx, progress.ResourceID, progress.Revision,
+			outcome.Phase, outcome.BlockedCode, outcome.BlockedReason, outcome.NextWakeAt); err != nil {
+			slog.Error("failed to apply the goal decision",
+				slog.String("goal", goal.ResourceID), log.WithError(err))
+		}
+		_, _ = r.store.ReleaseQualityAgentGoalLease(ctx, goal.ResourceID, nil)
+		return
+	}
+	if _, err := r.store.ReleaseQualityAgentGoalLease(ctx, goal.ResourceID, outcome.NextWakeAt); err != nil {
 		slog.Error("failed to release a quality agent goal lease",
 			slog.String("goal", goal.ResourceID), log.WithError(err))
 	}
+}
+
+// stopWithBlocker parks a goal whose turn failed before it could decide, so the runner
+// does not claim it again in a hot loop.
+func (r *Runner) stopWithBlocker(ctx context.Context, goal *store.QualityAgentGoalMessage, code, reason string) {
+	if _, _, err := r.store.UpdateQualityAgentGoalState(ctx, goal.ResourceID, goal.Revision,
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED, code, reason, nil); err != nil {
+		slog.Error("failed to block the failed goal",
+			slog.String("goal", goal.ResourceID), log.WithError(err))
+	}
+	_, _ = r.store.ReleaseQualityAgentGoalLease(ctx, goal.ResourceID, nil)
 }
 
 // scopeBlocker reports why a goal may not run any more, or "" when it is in scope.
