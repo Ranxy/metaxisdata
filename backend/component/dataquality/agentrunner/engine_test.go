@@ -20,6 +20,7 @@ type fakeStore struct {
 	memories         []*store.CreateQualityMemoryInput
 	existingMemories []*store.QualityMemoryMessage
 	steps            []*store.QualityAgentGoalStepMessage
+	memoryErr        error
 }
 
 func (f *fakeStore) GetQualityContract(context.Context, string, storepb.MetaType) (*store.QualityContractMessage, error) {
@@ -49,6 +50,9 @@ func (f *fakeStore) CreateQualityInvestigation(_ context.Context, input *store.C
 }
 
 func (f *fakeStore) CreateQualityMemory(_ context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error) {
+	if f.memoryErr != nil {
+		return nil, f.memoryErr
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.memories = append(f.memories, input)
