@@ -381,3 +381,47 @@ func convertQualityAgentGoalToV1(workspaceID string, message *store.QualityAgent
 		UpdateTime:    timestamppb.New(message.UpdatedAt),
 	}
 }
+
+// GetQualityAgentMetrics reads the runner's evaluation: goal phases, token spend, the
+// acceptance of its proposed change requests and its investigation verdicts.
+func (s *DataQualityService) GetQualityAgentMetrics(ctx context.Context, req *connect.Request[v1pb.GetQualityAgentMetricsRequest]) (*connect.Response[v1pb.QualityAgentMetrics], error) {
+	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := s.store.GetQualityAgentMetrics(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	response := &v1pb.QualityAgentMetrics{
+		TokensTotal:                      metrics.TokensTotal,
+		TokensLastHour:                   metrics.TokensLastHour,
+		AgentChangeRequestsTotal:         metrics.AgentChangeRequestsTotal,
+		AgentChangeRequestsApplied:       metrics.AgentChangeRequestsApplied,
+		AgentChangeRequestsRejected:      metrics.AgentChangeRequestsRejected,
+		AgentChangeRequestsPending:       metrics.AgentChangeRequestsPending,
+		InvestigationsTotal:              metrics.InvestigationsTotal,
+		InvestigationsInconclusive:       metrics.InvestigationsInconclusive,
+		InvestigationsRootCause:          metrics.InvestigationsRootCause,
+		InvestigationsContributingFactor: metrics.InvestigationsContributing,
+	}
+	for _, phase := range []storepb.QualityAgentGoalPhase{
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE,
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_PAUSED,
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_BLOCKED,
+		storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE,
+	} {
+		response.Goals = append(response.Goals, &v1pb.QualityAgentGoalPhaseCount{
+			Phase: v1pb.QualityAgentGoalPhase(phase),
+			Count: metrics.PhaseCounts[phase],
+		})
+	}
+	for _, target := range metrics.TopTargets {
+		response.TopTargets = append(response.TopTargets, &v1pb.QualityAgentTargetCost{
+			Target:     &v1pb.QualityTarget{MetaGuid: target.TargetGUID, MetaType: v1pb.MetaType(target.TargetType)},
+			TokensUsed: target.TokensUsed,
+			GoalCount:  target.GoalCount,
+		})
+	}
+	return connect.NewResponse(response), nil
+}

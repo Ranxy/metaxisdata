@@ -265,6 +265,9 @@ const (
 	// DataQualityServiceRotateQualityAgentTokenProcedure is the fully-qualified name of the
 	// DataQualityService's RotateQualityAgentToken RPC.
 	DataQualityServiceRotateQualityAgentTokenProcedure = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
+	// DataQualityServiceGetQualityAgentMetricsProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentMetrics RPC.
+	DataQualityServiceGetQualityAgentMetricsProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
 	// DataQualityServiceCreateQualityAgentGoalProcedure is the fully-qualified name of the
 	// DataQualityService's CreateQualityAgentGoal RPC.
 	DataQualityServiceCreateQualityAgentGoalProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityAgentGoal"
@@ -604,6 +607,9 @@ type DataQualityServiceClient interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error)
+	// Read the runner's evaluation: goal phases, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error)
 	// Create one durable objective for the built-in quality agent runner: keep a
 	// target trustworthy, investigate one event, or a person's request. The target's
 	// database must be in the workspace's runner allowlist, and the runner must be
@@ -1110,6 +1116,12 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("RotateQualityAgentToken")),
 			connect.WithClientOptions(opts...),
 		),
+		getQualityAgentMetrics: connect.NewClient[v1.GetQualityAgentMetricsRequest, v1.QualityAgentMetrics](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentMetricsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentMetrics")),
+			connect.WithClientOptions(opts...),
+		),
 		createQualityAgentGoal: connect.NewClient[v1.CreateQualityAgentGoalRequest, v1.QualityAgentGoal](
 			httpClient,
 			baseURL+DataQualityServiceCreateQualityAgentGoalProcedure,
@@ -1258,6 +1270,7 @@ type dataQualityServiceClient struct {
 	listQualityAgents                  *connect.Client[v1.ListQualityAgentsRequest, v1.ListQualityAgentsResponse]
 	disableQualityAgent                *connect.Client[v1.DisableQualityAgentRequest, v1.QualityAgent]
 	rotateQualityAgentToken            *connect.Client[v1.RotateQualityAgentTokenRequest, v1.RotateQualityAgentTokenResponse]
+	getQualityAgentMetrics             *connect.Client[v1.GetQualityAgentMetricsRequest, v1.QualityAgentMetrics]
 	createQualityAgentGoal             *connect.Client[v1.CreateQualityAgentGoalRequest, v1.QualityAgentGoal]
 	listQualityAgentGoals              *connect.Client[v1.ListQualityAgentGoalsRequest, v1.ListQualityAgentGoalsResponse]
 	getQualityAgentGoal                *connect.Client[v1.GetQualityAgentGoalRequest, v1.QualityAgentGoal]
@@ -1660,6 +1673,11 @@ func (c *dataQualityServiceClient) RotateQualityAgentToken(ctx context.Context, 
 	return c.rotateQualityAgentToken.CallUnary(ctx, req)
 }
 
+// GetQualityAgentMetrics calls metaxisdata.v1.DataQualityService.GetQualityAgentMetrics.
+func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, req *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error) {
+	return c.getQualityAgentMetrics.CallUnary(ctx, req)
+}
+
 // CreateQualityAgentGoal calls metaxisdata.v1.DataQualityService.CreateQualityAgentGoal.
 func (c *dataQualityServiceClient) CreateQualityAgentGoal(ctx context.Context, req *connect.Request[v1.CreateQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
 	return c.createQualityAgentGoal.CallUnary(ctx, req)
@@ -2020,6 +2038,9 @@ type DataQualityServiceHandler interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error)
+	// Read the runner's evaluation: goal phases, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error)
 	// Create one durable objective for the built-in quality agent runner: keep a
 	// target trustworthy, investigate one event, or a person's request. The target's
 	// database must be in the workspace's runner allowlist, and the runner must be
@@ -2522,6 +2543,12 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("RotateQualityAgentToken")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceGetQualityAgentMetricsHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentMetricsProcedure,
+		svc.GetQualityAgentMetrics,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentMetrics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataQualityServiceCreateQualityAgentGoalHandler := connect.NewUnaryHandler(
 		DataQualityServiceCreateQualityAgentGoalProcedure,
 		svc.CreateQualityAgentGoal,
@@ -2744,6 +2771,8 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceDisableQualityAgentHandler.ServeHTTP(w, r)
 		case DataQualityServiceRotateQualityAgentTokenProcedure:
 			dataQualityServiceRotateQualityAgentTokenHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentMetricsProcedure:
+			dataQualityServiceGetQualityAgentMetricsHandler.ServeHTTP(w, r)
 		case DataQualityServiceCreateQualityAgentGoalProcedure:
 			dataQualityServiceCreateQualityAgentGoalHandler.ServeHTTP(w, r)
 		case DataQualityServiceListQualityAgentGoalsProcedure:
@@ -3081,6 +3110,10 @@ func (UnimplementedDataQualityServiceHandler) DisableQualityAgent(context.Contex
 
 func (UnimplementedDataQualityServiceHandler) RotateQualityAgentToken(context.Context, *connect.Request[v1.RotateQualityAgentTokenRequest]) (*connect.Response[v1.RotateQualityAgentTokenResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.RotateQualityAgentToken is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentMetrics is not implemented"))
 }
 
 func (UnimplementedDataQualityServiceHandler) CreateQualityAgentGoal(context.Context, *connect.Request[v1.CreateQualityAgentGoalRequest]) (*connect.Response[v1.QualityAgentGoal], error) {
