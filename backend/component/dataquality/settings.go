@@ -68,6 +68,21 @@ const (
 	// the workspace does not name one.
 	DefaultTimeZone = "UTC"
 
+	// DefaultAgentRunnerTokensPerHour is the workspace's hourly token ceiling for
+	// runner goals when the setting does not say. A goal has no individual cap.
+	DefaultAgentRunnerTokensPerHour int64 = 100_000_000
+	// DefaultAgentRunnerGoalsPerHour is how many runner goals a workspace may
+	// create per hour.
+	DefaultAgentRunnerGoalsPerHour = 20
+	// DefaultAgentRunnerMaxConcurrentGoals is how many goals may run at once.
+	DefaultAgentRunnerMaxConcurrentGoals = 2
+	// MaxAgentRunnerConcurrentGoals is the hard concurrency ceiling.
+	MaxAgentRunnerConcurrentGoals = 16
+	// MaxAgentRunnerTokensPerHour is the hard ceiling of the hourly token budget.
+	MaxAgentRunnerTokensPerHour int64 = 1_000_000_000_000
+	// MaxAgentRunnerGoalsPerHour is the hard ceiling of the hourly goal budget.
+	MaxAgentRunnerGoalsPerHour = 1000
+
 	// DefaultCheckTimeout is how long one check's query may run when its config
 	// does not say.
 	DefaultCheckTimeout = 60 * time.Second
@@ -110,24 +125,41 @@ type Settings struct {
 	// AgentAutonomyEnabled is the workspace kill switch for agent writes. Off by
 	// default: an agent principal can still read, and no agent write applies.
 	AgentAutonomyEnabled bool
+
+	// AgentRunnerEnabled is the workspace switch for the built-in quality agent
+	// runner. Off by default.
+	AgentRunnerEnabled bool
+	// AgentRunnerDatabases is the set of database resource names the runner may see
+	// and work on. Empty means none.
+	AgentRunnerDatabases []string
+	// AgentRunnerTokensPerHour is the workspace's hourly token ceiling for runner
+	// goals. Never zero after resolution.
+	AgentRunnerTokensPerHour int64
+	// AgentRunnerGoalsPerHour is how many goals the workspace may create per hour.
+	AgentRunnerGoalsPerHour int
+	// AgentRunnerMaxConcurrentGoals is how many goals may run at once.
+	AgentRunnerMaxConcurrentGoals int
 }
 
 // DefaultSettings returns the settings of a workspace that never saved any.
 func DefaultSettings() Settings {
 	return Settings{
-		EnableLLMAnalysis:        false,
-		LLMProviderProfile:       "",
-		StoreFailureSamples:      true,
-		FailureSampleLimit:       DefaultFailureSampleLimit,
-		DefaultScheduleInterval:  DefaultScheduleInterval,
-		DailyExecutionLimit:      DefaultDailyExecutionLimit,
-		DailyColumnAnalysisLimit: DefaultDailyColumnAnalysisLimit,
-		DailyLLMAnalysisLimit:    DefaultDailyLLMAnalysisLimit,
-		LLMConcurrencyLimit:      DefaultLLMConcurrencyLimit,
-		MaxColumnsPerAnalysis:    DefaultMaxColumnsPerAnalysis,
-		SendSampleValuesToLLM:    false,
-		Digest:                   defaultDigestSchedule(),
-		TimeZone:                 DefaultTimeZone,
+		EnableLLMAnalysis:             false,
+		LLMProviderProfile:            "",
+		StoreFailureSamples:           true,
+		FailureSampleLimit:            DefaultFailureSampleLimit,
+		DefaultScheduleInterval:       DefaultScheduleInterval,
+		DailyExecutionLimit:           DefaultDailyExecutionLimit,
+		DailyColumnAnalysisLimit:      DefaultDailyColumnAnalysisLimit,
+		DailyLLMAnalysisLimit:         DefaultDailyLLMAnalysisLimit,
+		LLMConcurrencyLimit:           DefaultLLMConcurrencyLimit,
+		MaxColumnsPerAnalysis:         DefaultMaxColumnsPerAnalysis,
+		SendSampleValuesToLLM:         false,
+		Digest:                        defaultDigestSchedule(),
+		TimeZone:                      DefaultTimeZone,
+		AgentRunnerTokensPerHour:      DefaultAgentRunnerTokensPerHour,
+		AgentRunnerGoalsPerHour:       DefaultAgentRunnerGoalsPerHour,
+		AgentRunnerMaxConcurrentGoals: DefaultAgentRunnerMaxConcurrentGoals,
 	}
 }
 
@@ -161,6 +193,11 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.Digest = DigestScheduleFromStore(dataQuality.GetWeeklyDigest())
 	settings.TimeZone = timeZoneFromStore(dataQuality.GetTimeZone())
 	settings.AgentAutonomyEnabled = dataQuality.GetAgentAutonomyEnabled()
+	settings.AgentRunnerEnabled = dataQuality.GetAgentRunnerEnabled()
+	settings.AgentRunnerDatabases = normalizeDatabaseRefs(dataQuality.GetAgentRunnerDatabases())
+	settings.AgentRunnerTokensPerHour = positiveInt64OrDefault(dataQuality.GetAgentRunnerTokensPerHour(), DefaultAgentRunnerTokensPerHour)
+	settings.AgentRunnerGoalsPerHour = boundedLimit(int(dataQuality.GetAgentRunnerGoalsPerHour()), DefaultAgentRunnerGoalsPerHour, MaxAgentRunnerGoalsPerHour)
+	settings.AgentRunnerMaxConcurrentGoals = boundedLimit(int(dataQuality.GetAgentRunnerMaxConcurrentGoals()), DefaultAgentRunnerMaxConcurrentGoals, MaxAgentRunnerConcurrentGoals)
 	return settings
 }
 
@@ -404,4 +441,41 @@ func DigestDayOfWeek(day time.Weekday) storepb.DayOfWeek {
 	default:
 		return storepb.DayOfWeek_DAY_OF_WEEK_UNSPECIFIED
 	}
+}
+
+// normalizeDatabaseRefs trims and de-duplicates the runner's database allowlist.
+func normalizeDatabaseRefs(refs []string) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(refs))
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		out = append(out, ref)
+	}
+	return out
+}
+
+// positiveInt64OrDefault resolves a proto3 integer setting: zero and negative values
+// fall back to the default.
+func positiveInt64OrDefault(value, fallback int64) int64 {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// AgentRunnerDatabaseEnabled reports whether one database is in the runner's scope.
+func (s Settings) AgentRunnerDatabaseEnabled(databaseRef string) bool {
+	for _, ref := range s.AgentRunnerDatabases {
+		if ref == databaseRef {
+			return true
+		}
+	}
+	return false
 }

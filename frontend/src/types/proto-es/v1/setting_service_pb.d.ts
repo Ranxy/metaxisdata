@@ -233,6 +233,46 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
    * @generated from field: bool agent_autonomy_enabled = 14;
    */
   agentAutonomyEnabled: boolean;
+
+  /**
+   * Whether the built-in quality agent runner may run goals. Off by default:
+   * turning it off stops new goal rounds; recorded proposals stay for review.
+   *
+   * @generated from field: bool agent_runner_enabled = 15;
+   */
+  agentRunnerEnabled: boolean;
+
+  /**
+   * The databases the runner may see and work on, as database resource names
+   * (instances/{instance}/databases/{database}). Empty means no database is in
+   * scope and the runner creates no goal.
+   *
+   * @generated from field: repeated string agent_runner_databases = 16;
+   */
+  agentRunnerDatabases: string[];
+
+  /**
+   * The workspace's hourly token ceiling for runner goals; 0 means the server
+   * default (100000000). A goal has no individual token cap.
+   *
+   * @generated from field: int64 agent_runner_tokens_per_hour = 17;
+   */
+  agentRunnerTokensPerHour: bigint;
+
+  /**
+   * How many goals the workspace may create per hour; 0 means the server
+   * default (20).
+   *
+   * @generated from field: int32 agent_runner_goals_per_hour = 18;
+   */
+  agentRunnerGoalsPerHour: number;
+
+  /**
+   * How many goals may run at once; 0 means the server default (2).
+   *
+   * @generated from field: int32 agent_runner_max_concurrent_goals = 19;
+   */
+  agentRunnerMaxConcurrentGoals: number;
 };
 
 /**

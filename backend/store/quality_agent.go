@@ -141,6 +141,12 @@ func (s *Store) GetQualityAgentByResourceID(ctx context.Context, resourceID stri
 	return agent, nil
 }
 
+// GetQualityAgentByID reads one agent row, nil when it does not exist.
+func (s *Store) GetQualityAgentByID(ctx context.Context, id int64) (*QualityAgentMessage, error) {
+	return scanQualityAgent(s.GetDB().QueryRowContext(ctx,
+		`SELECT `+qualityAgentColumns+` FROM quality_agent WHERE id = $1`, id))
+}
+
 // GetQualityAgentByPrincipalID reads the agent an authenticated principal is, or nil
 // when the principal is not an agent.
 func (s *Store) GetQualityAgentByPrincipalID(ctx context.Context, principalID int) (*QualityAgentMessage, error) {

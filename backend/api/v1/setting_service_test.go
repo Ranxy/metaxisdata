@@ -850,3 +850,36 @@ func TestConvertToV1QuietHoursSetting(t *testing.T) {
 	require.Equal(t, "22:00", converted.GetWindows()[0].GetStart())
 	require.Equal(t, start, converted.GetMaintenanceWindows()[0].GetStart().AsTime())
 }
+
+// The runner's numeric settings are validated at the boundary like every other
+// number, and the allowlist entries are normalized to database resource names.
+func TestApplyWorkspaceProfileUpdateValidatesRunnerSettings(t *testing.T) {
+	t.Parallel()
+
+	apply := func(dataQuality *v1pb.DataQualitySetting) error {
+		return applyWorkspaceProfileUpdate(&storepb.WorkspaceProfileSetting{},
+			&v1pb.WorkspaceProfileSetting{DataQuality: dataQuality}, []string{"data_quality"})
+	}
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
+		AgentRunnerTokensPerHour: -1,
+	})))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
+		AgentRunnerGoalsPerHour: 100_000,
+	})))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
+		AgentRunnerMaxConcurrentGoals: 100,
+	})))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
+		AgentRunnerDatabases: []string{"not-a-database"},
+	})))
+
+	setting := &storepb.WorkspaceProfileSetting{}
+	require.NoError(t, applyWorkspaceProfileUpdate(setting,
+		&v1pb.WorkspaceProfileSetting{DataQuality: &v1pb.DataQualitySetting{
+			AgentRunnerEnabled:   true,
+			AgentRunnerDatabases: []string{" instances/i1/databases/d1 ", "instances/i1/databases/d1", "instances/i2/databases/d2"},
+		}}, []string{"data_quality"}))
+	require.Equal(t, []string{"instances/i1/databases/d1", "instances/i2/databases/d2"},
+		setting.GetDataQuality().GetAgentRunnerDatabases())
+	require.True(t, setting.GetDataQuality().GetAgentRunnerEnabled())
+}

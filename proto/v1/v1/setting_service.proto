@@ -222,6 +222,26 @@ message DataQualitySetting {
   // proposed change requests. Off by default: turning it off is the kill
   // switch that returns the workspace to human-only edits.
   bool agent_autonomy_enabled = 14;
+
+  // Whether the built-in quality agent runner may run goals. Off by default:
+  // turning it off stops new goal rounds; recorded proposals stay for review.
+  bool agent_runner_enabled = 15;
+
+  // The databases the runner may see and work on, as database resource names
+  // (instances/{instance}/databases/{database}). Empty means no database is in
+  // scope and the runner creates no goal.
+  repeated string agent_runner_databases = 16;
+
+  // The workspace's hourly token ceiling for runner goals; 0 means the server
+  // default (100000000). A goal has no individual token cap.
+  int64 agent_runner_tokens_per_hour = 17;
+
+  // How many goals the workspace may create per hour; 0 means the server
+  // default (20).
+  int32 agent_runner_goals_per_hour = 18;
+
+  // How many goals may run at once; 0 means the server default (2).
+  int32 agent_runner_max_concurrent_goals = 19;
 }
 
 // QualityDigestSetting is the schedule of the weekly data quality digest.
