@@ -2,6 +2,7 @@ package agentrunner
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,7 @@ import (
 )
 
 type fakeStore struct {
+	mu               sync.Mutex
 	contract         *store.QualityContractMessage
 	rules            []*store.QualityRuleMessage
 	execution        *store.QualityExecutionMessage
@@ -32,12 +34,23 @@ func (f *fakeStore) GetQualityExecution(context.Context, int64) (*store.QualityE
 	return f.execution, nil
 }
 
+func (f *fakeStore) ListQualityExecutions(context.Context, *store.FindQualityExecutionMessage) ([]*store.QualityExecutionMessage, error) {
+	if f.execution == nil {
+		return nil, nil
+	}
+	return []*store.QualityExecutionMessage{f.execution}, nil
+}
+
 func (f *fakeStore) CreateQualityInvestigation(_ context.Context, input *store.CreateQualityInvestigationInput) (*store.QualityInvestigationMessage, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.investigations = append(f.investigations, input)
 	return &store.QualityInvestigationMessage{ResourceID: input.ResourceID}, true, nil
 }
 
 func (f *fakeStore) CreateQualityMemory(_ context.Context, input *store.CreateQualityMemoryInput) (*store.QualityMemoryMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.memories = append(f.memories, input)
 	return &store.QualityMemoryMessage{ResourceID: input.ResourceID, Statement: input.Statement,
 		Subject: input.Subject, Status: input.Status}, nil
@@ -48,6 +61,8 @@ func (f *fakeStore) ListQualityMemories(context.Context, *store.FindQualityMemor
 }
 
 func (f *fakeStore) AppendQualityAgentGoalStep(_ context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.steps = append(f.steps, step)
 	return step, nil
 }

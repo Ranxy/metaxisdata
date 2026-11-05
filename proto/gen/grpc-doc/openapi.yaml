@@ -14633,6 +14633,15 @@ components:
                     items:
                         type: string
                     description: Things already done, as short labels.
+                blockedRounds:
+                    type: integer
+                    description: |-
+                        How many consecutive rounds the model reported the same blocker; the third one
+                         parks the goal.
+                    format: int32
+                blockedCode:
+                    type: string
+                    description: The stable code the model reported while blocked_rounds was counted.
             description: |-
                 QualityAgentGoalCheckpoint is the JSONB payload of quality_agent_goal.checkpoint:
                  the engine's private progress, never shown as the user-facing result.

@@ -896,6 +896,8 @@ the engine&#39;s private progress, never shown as the user-facing result.
 | phase | [string](#string) |  | The engine phase, for example &#34;survey&#34;, &#34;reason&#34; or &#34;act&#34;. |
 | summary | [string](#string) |  | A compacted summary of the steps that no longer need their full payload. |
 | done | [string](#string) | repeated | Things already done, as short labels. |
+| blocked_rounds | [int32](#int32) |  | How many consecutive rounds the model reported the same blocker; the third one parks the goal. |
+| blocked_code | [string](#string) |  | The stable code the model reported while blocked_rounds was counted. |
 
 
 

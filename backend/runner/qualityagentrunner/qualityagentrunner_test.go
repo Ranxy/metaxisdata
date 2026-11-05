@@ -22,6 +22,7 @@ type fakeGoalStore struct {
 	released    map[string]time.Time
 	releaseMiss bool
 	blocked     map[string]string
+	spentTokens int64
 }
 
 func (f *fakeGoalStore) ResetStaleQualityAgentGoalLeases(_ context.Context, _ time.Time, _ int32) (int64, error) {
@@ -37,6 +38,10 @@ func (f *fakeGoalStore) ClaimDueQualityAgentGoals(_ context.Context, _ time.Time
 func (f *fakeGoalStore) AppendQualityAgentGoalStep(_ context.Context, step *store.QualityAgentGoalStepMessage) (*store.QualityAgentGoalStepMessage, error) {
 	f.steps = append(f.steps, step)
 	return step, nil
+}
+
+func (f *fakeGoalStore) SumQualityAgentGoalTokensSince(context.Context, string, time.Time) (int64, error) {
+	return f.spentTokens, nil
 }
 
 func (*fakeGoalStore) UpdateQualityAgentGoalProgress(_ context.Context, resourceID string, roundsStarted int32, _ int64, _ *storepb.QualityAgentGoalCheckpoint) (*store.QualityAgentGoalMessage, error) {
@@ -80,6 +85,9 @@ func (f *fakeEngine) Run(_ context.Context, _ *store.QualityAgentGoalMessage) (a
 }
 
 func newTestRunner(store GoalStore, settings dataquality.Settings, now time.Time) *Runner {
+	// The autonomy kill switch is a separate gate; the runner tests enable it so they
+	// exercise the goal logic they are about.
+	settings.AgentAutonomyEnabled = true
 	return &Runner{
 		store: store,
 		engine: &fakeEngine{outcome: agentrunner.Outcome{
@@ -202,4 +210,30 @@ func TestRunnerStopsAtRoundLimit(t *testing.T) {
 
 	require.Equal(t, 0, engine.calls)
 	require.Equal(t, "round-limit: the goal reached its round limit", store.blocked["g1"])
+}
+
+// The hourly token budget is checked before a turn: an exhausted workspace parks the goal
+// with a wakeup at the next hour window.
+func TestRunnerStopsOnTokenBudget(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 1, 1, 0, 30, 0, 0, time.UTC)
+	store := &fakeGoalStore{
+		claimed: []*store.QualityAgentGoalMessage{{
+			ID: 1, ResourceID: "g1", DatabaseRef: "instances/i1/databases/d1", AgentID: 1,
+			MaxRounds: 8,
+		}},
+		spentTokens: 100_000_000,
+	}
+	engine := &fakeEngine{}
+	runner := newTestRunner(store, dataquality.Settings{
+		AgentRunnerEnabled:       true,
+		AgentRunnerDatabases:     []string{"instances/i1/databases/d1"},
+		AgentRunnerTokensPerHour: 100_000_000,
+	}, now)
+	runner.engine = engine
+	runner.runOnce(context.Background())
+
+	require.Equal(t, 0, engine.calls)
+	require.Contains(t, store.blocked["g1"], "token-budget")
 }
