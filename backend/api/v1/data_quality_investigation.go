@@ -62,8 +62,9 @@ func (s *DataQualityService) CreateQualityInvestigation(ctx context.Context, req
 		return nil, err
 	}
 	if agent != nil {
-		if _, err := s.authorizeAgentAction(ctx, dataquality.ActionWriteInvestigation, 0,
-			qualityChangeRequestCriticality(contract, rules)); err != nil {
+		_, err := s.authorizeAgentAction(ctx, dataquality.ActionWriteInvestigation, 0,
+			qualityChangeRequestCriticality(contract, rules))
+		if err != nil {
 			return nil, err
 		}
 	}

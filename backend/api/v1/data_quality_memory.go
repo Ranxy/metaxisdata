@@ -69,8 +69,9 @@ func (s *DataQualityService) CreateQualityMemory(ctx context.Context, req *conne
 	// The criticality amplifier must see the real asset: a critical subject's judged
 	// memory (A1-6) is handed to a person, still before the write.
 	if agent != nil && kind != storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_ASSET_FACT {
-		if _, err := s.authorizeAgentAction(ctx, action, 0,
-			memorySubjectCriticality(ctx, s.store, input.Subject)); err != nil {
+		_, err := s.authorizeAgentAction(ctx, action, 0,
+			memorySubjectCriticality(ctx, s.store, input.Subject))
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -92,6 +93,9 @@ func (s *DataQualityService) CreateQualityMemory(ctx context.Context, req *conne
 // verified it, so a person decides.
 var observedEvidenceKinds = map[string]bool{
 	"EXECUTION": true, "PROFILE": true, "LINEAGE": true, "SCHEMA_FINGERPRINT": true,
+	// The plan is a deterministic read of the contract and live rules, so a coverage
+	// observation backed by it is a fact the runner may record as confirmed.
+	"PLAN": true,
 }
 
 func observedEvidence(evidence []*v1pb.QualityInvestigationEvidence) bool {
