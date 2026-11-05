@@ -2,6 +2,7 @@ package agentrunner
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,12 +35,11 @@ func (s *scriptedChat) run(_ context.Context, cfg llm.AgentConfig) <-chan llm.Ag
 			toolCall.Function.Arguments = call.args
 			events <- llm.AgentEvent{Type: llm.AgentEventToolStart, ToolCall: &toolCall}
 			results, err := cfg.Executor(toolCall)
-			if err != nil {
-				events <- llm.AgentEvent{Type: llm.AgentEventError, Error: err}
-				return
-			}
 			content := ""
-			if len(results) > 0 {
+			if err != nil {
+				// The real loop hands the error back as tool result text and continues.
+				content = err.Error()
+			} else if len(results) > 0 {
 				content = results[0].Content
 			}
 			events <- llm.AgentEvent{Type: llm.AgentEventToolEnd, ToolCall: &toolCall, ToolResult: content}
@@ -84,6 +84,13 @@ func TestModelTurnRecordsAndCompletes(t *testing.T) {
 	require.Equal(t, storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE, outcome.Phase)
 	require.Len(t, fake.investigations, 1)
 	require.Equal(t, "the upstream batch was short", fake.investigations[0].Summary)
+	require.Len(t, fake.memories, 1, "the conclusion is recorded as a proposed decision")
+	require.Equal(t, storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION, fake.memories[0].Kind)
+	require.Equal(t, storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED, fake.memories[0].Status)
+	require.Equal(t, "the drop is explained", fake.memories[0].Statement)
+	require.Equal(t, "GOAL", fake.memories[0].Evidence.Evidence[0].Kind)
+	require.Equal(t, storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT, fake.memories[0].Source)
+	require.Equal(t, int32(42), *fake.memories[0].CreatedBy)
 	require.Equal(t, int32(42), *fake.investigations[0].CreatedBy)
 
 	kinds := map[storepb.QualityAgentGoalStepKind]int{}
@@ -92,8 +99,9 @@ func TestModelTurnRecordsAndCompletes(t *testing.T) {
 	}
 	require.Equal(t, 1, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED])
 	require.Equal(t, 3, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_TOOL_CALL])
-	require.Equal(t, 1, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT])
-	require.Equal(t, 1, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT])
+	require.Equal(t, 2, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT],
+		"the investigation and the proposed decision are both journaled")
+	require.Equal(t, 2, kinds[storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT])
 }
 
 // The same blocker must persist for three consecutive rounds before the goal parks.
@@ -135,4 +143,42 @@ func TestModelTurnNotAdmitted(t *testing.T) {
 	outcome, err := engine.Run(context.Background(), modelGoal())
 	require.NoError(t, err)
 	require.False(t, outcome.Admitted)
+}
+
+// A failed decision write must not leave the goal complete: the real loop continues on
+// a tool error, so the flags stay false and the turn is retried.
+func TestModelTurnDecisionFailureDoesNotComplete(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{memoryErr: errors.New("store down")}
+	chat := &scriptedChat{calls: []scriptedCall{
+		{name: "complete_goal", args: `{"summary":"the drop is explained"}`},
+	}}
+	engine := modelEngine(fake, chat.run)
+	outcome, err := engine.Run(context.Background(), modelGoal())
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_ACTIVE, outcome.Phase)
+	require.Empty(t, fake.memories)
+}
+
+// A conclusion already recorded for this goal is not recorded twice, whatever the model
+// rephrases; a rejected one may be proposed again.
+func TestModelDecisionDedupe(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeStore{existingMemories: []*store.QualityMemoryMessage{{
+		Subject: "inst;db;;orders",
+		Status:  storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED,
+		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
+			{Kind: "GOAL", Reference: "g1"},
+		}},
+	}}}
+	chat := &scriptedChat{calls: []scriptedCall{
+		{name: "complete_goal", args: `{"summary":"rephrased conclusion"}`},
+	}}
+	engine := modelEngine(fake, chat.run)
+	outcome, err := engine.Run(context.Background(), modelGoal())
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityAgentGoalPhase_QUALITY_AGENT_GOAL_PHASE_COMPLETE, outcome.Phase)
+	require.Empty(t, fake.memories)
 }
