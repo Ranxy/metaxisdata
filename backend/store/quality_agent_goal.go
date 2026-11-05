@@ -495,3 +495,132 @@ func scanQualityAgentGoalStep(scanner interface{ Scan(dest ...any) error }) (*Qu
 	}
 	return &message, nil
 }
+
+// QualityAgentTargetCost is one target's share of the runner's token spend.
+type QualityAgentTargetCost struct {
+	TargetGUID string
+	TargetType storepb.MetaType
+	TokensUsed int64
+	GoalCount  int32
+}
+
+// QualityAgentMetrics is the runner's evaluation, derived from existing rows.
+type QualityAgentMetrics struct {
+	PhaseCounts                 map[storepb.QualityAgentGoalPhase]int32
+	TokensTotal                 int64
+	TokensLastHour              int64
+	AgentChangeRequestsTotal    int32
+	AgentChangeRequestsApplied  int32
+	AgentChangeRequestsRejected int32
+	AgentChangeRequestsPending  int32
+	AgentChangeRequestsApproved int32
+	AgentChangeRequestsExpired  int32
+	InvestigationsTotal         int32
+	InvestigationsInconclusive  int32
+	InvestigationsRootCause     int32
+	InvestigationsContributing  int32
+	InvestigationsUnrelated     int32
+	TopTargets                  []QualityAgentTargetCost
+}
+
+// GetQualityAgentMetrics aggregates the runner's goals, its token spend (from the step
+// journal, so cleared goals still count), the acceptance of the change requests it
+// proposed and its investigation verdicts. Change-request and investigation rows carry
+// no workspace column, so those counts are global by design in this single-workspace
+// deployment.
+func (s *Store) GetQualityAgentMetrics(ctx context.Context, workspaceID string) (*QualityAgentMetrics, error) {
+	metrics := &QualityAgentMetrics{PhaseCounts: map[storepb.QualityAgentGoalPhase]int32{}}
+	phaseQuery := `SELECT phase, COUNT(*) FROM quality_agent_goal
+		WHERE workspace_id = $1 AND cleared_at IS NULL GROUP BY phase`
+	rows, err := s.GetDB().QueryContext(ctx, phaseQuery, workspaceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the goal phases")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			phase int16
+			count int32
+		)
+		if err := rows.Scan(&phase, &count); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a goal phase")
+		}
+		metrics.PhaseCounts[storepb.QualityAgentGoalPhase(phase)] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the goal phases")
+	}
+
+	tokenQuery := `SELECT COALESCE(SUM(tokens), 0),
+			COALESCE(SUM(tokens) FILTER (WHERE created_at > NOW() - INTERVAL '1 hour'), 0)
+		FROM quality_agent_goal_step WHERE workspace_id = $1`
+	if err := s.GetDB().QueryRowContext(ctx, tokenQuery, workspaceID).
+		Scan(&metrics.TokensTotal, &metrics.TokensLastHour); err != nil {
+		return nil, errors.Wrap(err, "failed to read the goal token spend")
+	}
+
+	changeRequestQuery := `SELECT COUNT(*),
+			COUNT(*) FILTER (WHERE state = $2),
+			COUNT(*) FILTER (WHERE state = $3),
+			COUNT(*) FILTER (WHERE state = $4),
+			COUNT(*) FILTER (WHERE state = $5),
+			COUNT(*) FILTER (WHERE state = $6)
+		FROM quality_change_request WHERE source = $1`
+	if err := s.GetDB().QueryRowContext(ctx, changeRequestQuery,
+		int16(storepb.QualityChangeRequestSource_QUALITY_CHANGE_REQUEST_SOURCE_AGENT),
+		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPLIED),
+		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_REJECTED),
+		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_PROPOSED),
+		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_APPROVED),
+		int16(storepb.QualityChangeRequestState_QUALITY_CHANGE_REQUEST_STATE_EXPIRED),
+	).Scan(&metrics.AgentChangeRequestsTotal, &metrics.AgentChangeRequestsApplied,
+		&metrics.AgentChangeRequestsRejected, &metrics.AgentChangeRequestsPending,
+		&metrics.AgentChangeRequestsApproved, &metrics.AgentChangeRequestsExpired); err != nil {
+		return nil, errors.Wrap(err, "failed to read the agent change requests")
+	}
+
+	investigationQuery := `SELECT COUNT(*),
+			COUNT(*) FILTER (WHERE verdict = $1),
+			COUNT(*) FILTER (WHERE verdict = $2),
+			COUNT(*) FILTER (WHERE verdict = $3),
+			COUNT(*) FILTER (WHERE verdict = $4)
+		FROM quality_investigation`
+	if err := s.GetDB().QueryRowContext(ctx, investigationQuery,
+		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_INCONCLUSIVE),
+		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_ROOT_CAUSE),
+		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_CONTRIBUTING_FACTOR),
+		int16(storepb.QualityInvestigationVerdict_QUALITY_INVESTIGATION_VERDICT_UNRELATED),
+	).Scan(&metrics.InvestigationsTotal, &metrics.InvestigationsInconclusive,
+		&metrics.InvestigationsRootCause, &metrics.InvestigationsContributing,
+		&metrics.InvestigationsUnrelated); err != nil {
+		return nil, errors.Wrap(err, "failed to read the investigation verdicts")
+	}
+
+	targetQuery := `SELECT g.target_guid, g.target_type, COALESCE(SUM(s.tokens), 0),
+			COUNT(DISTINCT g.id)
+		FROM quality_agent_goal_step s
+		JOIN quality_agent_goal g ON g.id = s.goal_id
+		WHERE g.workspace_id = $1
+		GROUP BY g.target_guid, g.target_type
+		ORDER BY SUM(s.tokens) DESC, COUNT(DISTINCT g.id) DESC, g.target_guid ASC LIMIT 5`
+	targetRows, err := s.GetDB().QueryContext(ctx, targetQuery, workspaceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the target costs")
+	}
+	defer targetRows.Close()
+	for targetRows.Next() {
+		var (
+			cost       QualityAgentTargetCost
+			targetType int16
+		)
+		if err := targetRows.Scan(&cost.TargetGUID, &targetType, &cost.TokensUsed, &cost.GoalCount); err != nil {
+			return nil, errors.Wrap(err, "failed to scan a target cost")
+		}
+		cost.TargetType = storepb.MetaType(targetType)
+		metrics.TopTargets = append(metrics.TopTargets, cost)
+	}
+	if err := targetRows.Err(); err != nil {
+		return nil, errors.Wrap(err, "failed to iterate the target costs")
+	}
+	return metrics, nil
+}

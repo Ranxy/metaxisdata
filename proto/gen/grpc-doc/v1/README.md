@@ -275,6 +275,7 @@
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
     - [GetQualityAgentGoalRequest](#metaxisdata-v1-GetQualityAgentGoalRequest)
+    - [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest)
     - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
@@ -352,6 +353,9 @@
     - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
     - [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal)
+    - [QualityAgentGoalPhaseCount](#metaxisdata-v1-QualityAgentGoalPhaseCount)
+    - [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics)
+    - [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost)
     - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
     - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
     - [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult)
@@ -5260,6 +5264,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityAgentMetricsRequest"></a>
+
+### GetQualityAgentMetricsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
 
 ### GetQualityChangeRequestRequest
@@ -6654,6 +6673,69 @@ QualityAgentGoal is one durable objective of the built-in quality agent runner.
 | next_wake_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentGoalPhaseCount"></a>
+
+### QualityAgentGoalPhaseCount
+QualityAgentGoalPhaseCount is how many goals stand in one phase.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| phase | [QualityAgentGoalPhase](#metaxisdata-v1-QualityAgentGoalPhase) |  |  |
+| count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentMetrics"></a>
+
+### QualityAgentMetrics
+QualityAgentMetrics is the runner&#39;s evaluation: what it did, what it spent and how
+the proposals it made were decided. All of it is derived from existing rows.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| goals | [QualityAgentGoalPhaseCount](#metaxisdata-v1-QualityAgentGoalPhaseCount) | repeated |  |
+| tokens_total | [int64](#int64) |  |  |
+| tokens_last_hour | [int64](#int64) |  |  |
+| agent_change_requests_total | [int32](#int32) |  | Change requests proposed by an agent, by lifecycle state. Acceptance is applied / (applied &#43; rejected); pending and expired are not decisions. |
+| agent_change_requests_applied | [int32](#int32) |  |  |
+| agent_change_requests_rejected | [int32](#int32) |  |  |
+| agent_change_requests_pending | [int32](#int32) |  |  |
+| agent_change_requests_approved | [int32](#int32) |  |  |
+| agent_change_requests_expired | [int32](#int32) |  |  |
+| investigations_total | [int32](#int32) |  | Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows carry no verdict, so the buckets do not have to sum to the total. |
+| investigations_inconclusive | [int32](#int32) |  |  |
+| investigations_root_cause | [int32](#int32) |  |  |
+| investigations_contributing_factor | [int32](#int32) |  |  |
+| investigations_unrelated | [int32](#int32) |  |  |
+| top_targets | [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentTargetCost"></a>
+
+### QualityAgentTargetCost
+QualityAgentTargetCost is one target&#39;s share of the runner&#39;s token spend.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| tokens_used | [int64](#int64) |  |  |
+| goal_count | [int32](#int32) |  |  |
 
 
 
@@ -9768,6 +9850,7 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityAgents | [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest) | [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse) | List the workspace&#39;s agent principals, without tokens. |
 | DisableQualityAgent | [DisableQualityAgentRequest](#metaxisdata-v1-DisableQualityAgentRequest) | [QualityAgent](#metaxisdata-v1-QualityAgent) | Disable an agent principal. Its tokens stop authenticating immediately; the agent row stays for the audit trail. |
 | RotateQualityAgentToken | [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest) | [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse) | Rotate an agent&#39;s bearer token: mint a new one and invalidate every token minted before this call. The token is returned once. |
+| GetQualityAgentMetrics | [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest) | [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics) | Read the runner&#39;s evaluation: goal phases, token spend, the acceptance of the change requests it proposed, and investigation verdicts. Read-only. |
 | CreateQualityAgentGoal | [CreateQualityAgentGoalRequest](#metaxisdata-v1-CreateQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Create one durable objective for the built-in quality agent runner: keep a target trustworthy, investigate one event, or a person&#39;s request. The target&#39;s database must be in the workspace&#39;s runner allowlist, and the runner must be enabled. |
 | ListQualityAgentGoals | [ListQualityAgentGoalsRequest](#metaxisdata-v1-ListQualityAgentGoalsRequest) | [ListQualityAgentGoalsResponse](#metaxisdata-v1-ListQualityAgentGoalsResponse) | List the workspace&#39;s goals, newest first. |
 | GetQualityAgentGoal | [GetQualityAgentGoalRequest](#metaxisdata-v1-GetQualityAgentGoalRequest) | [QualityAgentGoal](#metaxisdata-v1-QualityAgentGoal) | Read one goal. |

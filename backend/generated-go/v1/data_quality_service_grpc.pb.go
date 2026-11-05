@@ -97,6 +97,7 @@ const (
 	DataQualityService_ListQualityAgents_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityAgents"
 	DataQualityService_DisableQualityAgent_FullMethodName                = "/metaxisdata.v1.DataQualityService/DisableQualityAgent"
 	DataQualityService_RotateQualityAgentToken_FullMethodName            = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
+	DataQualityService_GetQualityAgentMetrics_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
 	DataQualityService_CreateQualityAgentGoal_FullMethodName             = "/metaxisdata.v1.DataQualityService/CreateQualityAgentGoal"
 	DataQualityService_ListQualityAgentGoals_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityAgentGoals"
 	DataQualityService_GetQualityAgentGoal_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityAgentGoal"
@@ -427,6 +428,9 @@ type DataQualityServiceClient interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(ctx context.Context, in *RotateQualityAgentTokenRequest, opts ...grpc.CallOption) (*RotateQualityAgentTokenResponse, error)
+	// Read the runner's evaluation: goal phases, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error)
 	// Create one durable objective for the built-in quality agent runner: keep a
 	// target trustworthy, investigate one event, or a person's request. The target's
 	// database must be in the workspace's runner allowlist, and the runner must be
@@ -1274,6 +1278,16 @@ func (c *dataQualityServiceClient) RotateQualityAgentToken(ctx context.Context, 
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentMetrics)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) CreateQualityAgentGoal(ctx context.Context, in *CreateQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityAgentGoal)
@@ -1701,6 +1715,9 @@ type DataQualityServiceServer interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(context.Context, *RotateQualityAgentTokenRequest) (*RotateQualityAgentTokenResponse, error)
+	// Read the runner's evaluation: goal phases, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error)
 	// Create one durable objective for the built-in quality agent runner: keep a
 	// target trustworthy, investigate one event, or a person's request. The target's
 	// database must be in the workspace's runner allowlist, and the runner must be
@@ -1972,6 +1989,9 @@ func (UnimplementedDataQualityServiceServer) DisableQualityAgent(context.Context
 }
 func (UnimplementedDataQualityServiceServer) RotateQualityAgentToken(context.Context, *RotateQualityAgentTokenRequest) (*RotateQualityAgentTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RotateQualityAgentToken not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentMetrics not implemented")
 }
 func (UnimplementedDataQualityServiceServer) CreateQualityAgentGoal(context.Context, *CreateQualityAgentGoalRequest) (*QualityAgentGoal, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateQualityAgentGoal not implemented")
@@ -3385,6 +3405,24 @@ func _DataQualityService_RotateQualityAgentToken_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityAgentMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentMetrics(ctx, req.(*GetQualityAgentMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_CreateQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateQualityAgentGoalRequest)
 	if err := dec(in); err != nil {
@@ -3881,6 +3919,10 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RotateQualityAgentToken",
 			Handler:    _DataQualityService_RotateQualityAgentToken_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentMetrics",
+			Handler:    _DataQualityService_GetQualityAgentMetrics_Handler,
 		},
 		{
 			MethodName: "CreateQualityAgentGoal",
