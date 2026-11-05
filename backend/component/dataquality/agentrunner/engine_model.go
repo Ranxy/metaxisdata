@@ -28,6 +28,8 @@ const (
 	blockedThreshold = 3
 	// toolResultLimit bounds one tool result fed back to the model.
 	toolResultLimit = 8 << 10
+	// maxDecisionStatement matches the API's statement bound.
+	maxDecisionStatement = 4000
 )
 
 // Chat runs the LLM tool loop. Production passes llm.RunAgentLoop; a test drives the
@@ -337,11 +339,19 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 		if *blocked {
 			return "", errors.New("complete_goal cannot follow block_goal in the same round")
 		}
-		*completed = true
-		*completeWhy = input.Summary
-		if *completeWhy == "" {
-			*completeWhy = "the objective is achieved"
+		statement := strings.TrimSpace(input.Summary)
+		if statement == "" {
+			statement = "the objective is achieved"
 		}
+		statement = truncateRunes(statement, maxDecisionStatement)
+		// Record the conclusion before flipping the terminal flags: the real loop turns
+		// an executor error into a tool result and keeps going, so a failed write must
+		// not complete the goal with no decision.
+		if err := e.recordModelDecision(ctx, goal, statement); err != nil {
+			return "", err
+		}
+		*completed = true
+		*completeWhy = statement
 		return marshalJSON(map[string]any{"completed": true})
 	case "block_goal":
 		var input struct {
@@ -364,6 +374,73 @@ func (e *Engine) dispatchTool(ctx context.Context, goal *store.QualityAgentGoalM
 	default:
 		return "", fmt.Errorf("unknown tool %q", name)
 	}
+}
+
+// recordModelDecision writes the model's conclusion as a proposed decision memory. It
+// never confirms itself: a person is what turns it into knowledge.
+func (e *Engine) recordModelDecision(ctx context.Context, goal *store.QualityAgentGoalMessage, statement string) error {
+	// A critical asset's judgement needs a person (A1-6 amplifier); the runner must not
+	// bypass the policy the API would apply.
+	criticality := e.planCriticality(ctx, goal)
+	decision := dataquality.DecideAction(dataquality.PolicyInput{
+		Action:          dataquality.ActionRecordDecisionWhy,
+		Actor:           dataquality.ActorAgent,
+		Criticality:     criticality,
+		AutonomyEnabled: true,
+		AgentEnabled:    true,
+	})
+	if !decision.Allowed || decision.RequiresApproval {
+		return errors.New("a decision about a critical asset needs a person; report the conclusion with block_goal")
+	}
+	limit := 1000
+	kind := storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION
+	existing, err := e.store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{
+		Subject: &goal.TargetGUID,
+		Kind:    &kind,
+		Limit:   &limit,
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to read the target's memories")
+	}
+	for _, memory := range existing {
+		if memory.Status == storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_REJECTED {
+			continue
+		}
+		if memory.ExpiresAt != nil && !memory.ExpiresAt.After(e.now()) {
+			continue
+		}
+		if memory.Statement == statement || goalEvidence(memory, goal.ResourceID) {
+			return nil
+		}
+	}
+	sum := sha256.Sum256([]byte("decision|" + statement))
+	key := "model-decision:" + goal.TargetGUID + ":" + hex.EncodeToString(sum[:8])
+	intentErr := e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT,
+		&storepb.QualityAgentGoalStepPayload{Tool: "record_decision", Summary: truncateRunes(statement, 200)}, key+":intent")
+	if intentErr != nil {
+		return intentErr
+	}
+	resourceID, err := common.RandomString(12)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate the memory id")
+	}
+	message, err := e.store.CreateQualityMemory(ctx, &store.CreateQualityMemoryInput{
+		ResourceID: resourceID,
+		Kind:       storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION,
+		Subject:    goal.TargetGUID,
+		Statement:  statement,
+		Source:     storepb.QualityMemorySource_QUALITY_MEMORY_SOURCE_AGENT,
+		Status:     storepb.QualityMemoryStatus_QUALITY_MEMORY_STATUS_PROPOSED,
+		Evidence: &storepb.QualityMemoryEvidenceList{Evidence: []*storepb.QualityInvestigationEvidence{
+			{Kind: "GOAL", Reference: goal.ResourceID},
+		}},
+		CreatedBy: ptrInt32(goal.AgentPrincipalID),
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to record the decision memory")
+	}
+	return e.journal(ctx, goal, storepb.QualityAgentGoalStepKind_QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT,
+		&storepb.QualityAgentGoalStepPayload{Tool: "record_decision", Summary: "decision memory recorded", Resource: message.ResourceID}, key+":result")
 }
 
 // recordModelAssetFact writes one model-observed fact with its own content-hashed
@@ -524,4 +601,32 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit]) + "…"
+}
+
+// planCriticality derives the target's plan criticality for the policy gate.
+func (e *Engine) planCriticality(ctx context.Context, goal *store.QualityAgentGoalMessage) dataquality.AssetCriticality {
+	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &goal.TargetGUID})
+	if err != nil {
+		return 0
+	}
+	contract, err := e.store.GetQualityContract(ctx, goal.TargetGUID, storepb.MetaType(goal.TargetType))
+	if err != nil {
+		return 0
+	}
+	var settings *storepb.QualityContractSettings
+	if contract != nil {
+		settings = contract.Settings
+	}
+	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(settings.GetIntent(), e.now()), ruleShapes(rules))
+	return plan.Criticality
+}
+
+// goalEvidence reports whether a memory already records this goal.
+func goalEvidence(memory *store.QualityMemoryMessage, resourceID string) bool {
+	for _, reference := range memory.Evidence.GetEvidence() {
+		if reference.GetKind() == "GOAL" && reference.GetReference() == resourceID {
+			return true
+		}
+	}
+	return false
 }
