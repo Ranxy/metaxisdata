@@ -39,6 +39,11 @@ function baseForm(
     sendSampleValuesToLlm: false,
     checkTimeZone: "",
     agentAutonomyEnabled: false,
+    agentRunnerEnabled: false,
+    agentRunnerDatabases: [],
+    agentRunnerTokensPerHour: "",
+    agentRunnerGoalsPerHour: "",
+    agentRunnerMaxConcurrentGoals: "",
     weeklyDigest: {
       enabled: false,
       dayOfWeek: DayOfWeek.MONDAY,
@@ -89,6 +94,11 @@ describe("settingsToForm", () => {
       checkTimeZone: "Asia/Shanghai",
       // Agent writes are off unless the stored setting opts in.
       agentAutonomyEnabled: false,
+      agentRunnerEnabled: false,
+      agentRunnerDatabases: [],
+      agentRunnerTokensPerHour: "",
+      agentRunnerGoalsPerHour: "",
+      agentRunnerMaxConcurrentGoals: "",
       // No digest stored yet: show the schedule the server resolves instead.
       weeklyDigest: {
         enabled: false,
@@ -130,6 +140,41 @@ describe("settingsToForm", () => {
     );
 
     expect(form.weeklyDigest.dayOfWeek).toBe(DayOfWeek.MONDAY);
+  });
+});
+
+describe("agent runner settings", () => {
+  it("keeps the runner fields through a round trip, including a large token budget", () => {
+    const setting = create(DataQualitySettingSchema, {
+      agentRunnerEnabled: true,
+      agentRunnerDatabases: [
+        "instances/i1/databases/d1",
+        "instances/i2/databases/d2",
+      ],
+      agentRunnerTokensPerHour: 100_000_000n,
+      agentRunnerGoalsPerHour: 20,
+      agentRunnerMaxConcurrentGoals: 2,
+    });
+    const form = settingsToForm(setting);
+    expect(form.agentRunnerEnabled).toBe(true);
+    expect(form.agentRunnerDatabases).toEqual([
+      "instances/i1/databases/d1",
+      "instances/i2/databases/d2",
+    ]);
+    expect(form.agentRunnerTokensPerHour).toBe("100000000");
+    expect(formToSetting(form).agentRunnerTokensPerHour).toBe(100_000_000n);
+    expect(formToSetting(form).agentRunnerDatabases).toEqual(
+      form.agentRunnerDatabases
+    );
+  });
+
+  it("writes an unset runner budget as zero so the server default applies", () => {
+    const form = baseForm({
+      agentRunnerEnabled: true,
+      agentRunnerDatabases: ["instances/i1/databases/d1"],
+    });
+    expect(formToSetting(form).agentRunnerTokensPerHour).toBe(0n);
+    expect(formToSetting(form).agentRunnerGoalsPerHour).toBe(0);
   });
 });
 

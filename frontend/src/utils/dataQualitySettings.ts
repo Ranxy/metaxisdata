@@ -94,6 +94,16 @@ export interface DataQualitySettingsForm {
   checkTimeZone: string;
   /** The workspace kill switch for agent writes; off unless an administrator opts in. */
   agentAutonomyEnabled: boolean;
+  /** The built-in runner switch; off unless an administrator opts in. */
+  agentRunnerEnabled: boolean;
+  /** Database resource names the runner may work on; empty means none. */
+  agentRunnerDatabases: string[];
+  /** Blank/0 means the server default (100000000). */
+  agentRunnerTokensPerHour: string;
+  /** Blank/0 means the server default (20). */
+  agentRunnerGoalsPerHour: string;
+  /** Blank/0 means the server default (2). */
+  agentRunnerMaxConcurrentGoals: string;
   weeklyDigest: WeeklyDigestForm;
 }
 
@@ -120,6 +130,15 @@ export function settingsToForm(
     // unconfigured workspace is not made to look explicitly configured.
     checkTimeZone: setting?.timeZone ?? "",
     agentAutonomyEnabled: setting?.agentAutonomyEnabled ?? false,
+    agentRunnerEnabled: setting?.agentRunnerEnabled ?? false,
+    agentRunnerDatabases: [...(setting?.agentRunnerDatabases ?? [])],
+    agentRunnerTokensPerHour: setting?.agentRunnerTokensPerHour
+      ? setting.agentRunnerTokensPerHour.toString()
+      : "",
+    agentRunnerGoalsPerHour: numberToInput(setting?.agentRunnerGoalsPerHour),
+    agentRunnerMaxConcurrentGoals: numberToInput(
+      setting?.agentRunnerMaxConcurrentGoals
+    ),
     weeklyDigest: {
       enabled: digest?.enabled ?? DEFAULT_DIGEST.enabled,
       // An unset weekday is not a weekday; show the default the server resolves.
@@ -153,6 +172,13 @@ export function formToSetting(
     sendSampleValuesToLlm: form.sendSampleValuesToLlm,
     timeZone: form.checkTimeZone.trim(),
     agentAutonomyEnabled: form.agentAutonomyEnabled,
+    agentRunnerEnabled: form.agentRunnerEnabled,
+    agentRunnerDatabases: form.agentRunnerDatabases,
+    agentRunnerTokensPerHour:
+      inputToBigInt(form.agentRunnerTokensPerHour) ?? 0n,
+    agentRunnerGoalsPerHour: inputToInt(form.agentRunnerGoalsPerHour) ?? 0,
+    agentRunnerMaxConcurrentGoals:
+      inputToInt(form.agentRunnerMaxConcurrentGoals) ?? 0,
     // The whole `data_quality` field is written on save, so the digest has to be
     // part of the message even when this page did not touch it; otherwise the
     // write would clear a schedule configured elsewhere.
@@ -320,6 +346,15 @@ function checkNonNegative(value: string): RangeCheck {
 /** A stored number as an input value; 0 means "server default" and is blank. */
 function numberToInput(value: number | undefined): string {
   return value !== undefined && value > 0 ? String(value) : "";
+}
+
+/** An input value as a non-negative int64, or undefined when blank or malformed. */
+function inputToBigInt(value: string): bigint | undefined {
+  const text = value.trim();
+  if (!/^[0-9]+$/.test(text)) {
+    return undefined;
+  }
+  return BigInt(text);
 }
 
 /** An input value as a non-negative integer, or undefined when blank. */

@@ -10156,6 +10156,353 @@ export declare type DeleteQualityCodeTableRequest = Message<"metaxisdata.v1.Dele
 export declare const DeleteQualityCodeTableRequestSchema: GenMessage<DeleteQualityCodeTableRequest>;
 
 /**
+ * QualityAgentGoal is one durable objective of the built-in quality agent runner.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentGoal
+ */
+export declare type QualityAgentGoal = Message<"metaxisdata.v1.QualityAgentGoal"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalKind kind = 2;
+   */
+  kind: QualityAgentGoalKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalTrigger trigger = 3;
+   */
+  trigger: QualityAgentGoalTrigger;
+
+  /**
+   * @generated from field: string trigger_ref = 4;
+   */
+  triggerRef: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 5;
+   */
+  target?: QualityTarget;
+
+  /**
+   * The database allowlist entry the goal is scoped to.
+   *
+   * @generated from field: string database = 6;
+   */
+  database: string;
+
+  /**
+   * Format: users/{user}. The agent principal that runs the goal.
+   *
+   * @generated from field: string agent = 7;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: string objective = 8;
+   */
+  objective: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalPhase phase = 9;
+   */
+  phase: QualityAgentGoalPhase;
+
+  /**
+   * Stable blocked code and its explanation; empty unless blocked.
+   *
+   * @generated from field: string blocked_code = 10;
+   */
+  blockedCode: string;
+
+  /**
+   * @generated from field: string blocked_reason = 11;
+   */
+  blockedReason: string;
+
+  /**
+   * Incremented by every mutation; mutations carry the revision they saw.
+   *
+   * @generated from field: int32 revision = 12;
+   */
+  revision: number;
+
+  /**
+   * @generated from field: int32 rounds_started = 13;
+   */
+  roundsStarted: number;
+
+  /**
+   * @generated from field: int32 max_rounds = 14;
+   */
+  maxRounds: number;
+
+  /**
+   * Tokens this goal consumed; observability only, the hourly budget is the limit.
+   *
+   * @generated from field: int64 tokens_used = 15;
+   */
+  tokensUsed: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp next_wake_time = 16;
+   */
+  nextWakeTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 17;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 18;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentGoal.
+ * Use `create(QualityAgentGoalSchema)` to create a new message.
+ */
+export declare const QualityAgentGoalSchema: GenMessage<QualityAgentGoal>;
+
+/**
+ * @generated from message metaxisdata.v1.CreateQualityAgentGoalRequest
+ */
+export declare type CreateQualityAgentGoalRequest = Message<"metaxisdata.v1.CreateQualityAgentGoalRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalKind kind = 2;
+   */
+  kind: QualityAgentGoalKind;
+
+  /**
+   * @generated from field: string target_guid = 3;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 4;
+   */
+  metaType: MetaType;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalTrigger trigger = 5;
+   */
+  trigger: QualityAgentGoalTrigger;
+
+  /**
+   * The triggering object's resource name or value.
+   *
+   * @generated from field: string trigger_ref = 6;
+   */
+  triggerRef: string;
+
+  /**
+   * @generated from field: string objective = 7;
+   */
+  objective: string;
+
+  /**
+   * Format: users/{user}. Empty uses the first enabled quality agent.
+   *
+   * @generated from field: string agent = 8;
+   */
+  agent: string;
+
+  /**
+   * Zero uses the server default (256).
+   *
+   * @generated from field: int32 max_rounds = 9;
+   */
+  maxRounds: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityAgentGoalRequest.
+ * Use `create(CreateQualityAgentGoalRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityAgentGoalRequestSchema: GenMessage<CreateQualityAgentGoalRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentGoalsRequest
+ */
+export declare type ListQualityAgentGoalsRequest = Message<"metaxisdata.v1.ListQualityAgentGoalsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: string database = 3;
+   */
+  database: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentGoalPhase phase = 4;
+   */
+  phase: QualityAgentGoalPhase;
+
+  /**
+   * @generated from field: int32 page_size = 5;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 6;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentGoalsRequest.
+ * Use `create(ListQualityAgentGoalsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentGoalsRequestSchema: GenMessage<ListQualityAgentGoalsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentGoalsResponse
+ */
+export declare type ListQualityAgentGoalsResponse = Message<"metaxisdata.v1.ListQualityAgentGoalsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentGoal quality_agent_goals = 1;
+   */
+  qualityAgentGoals: QualityAgentGoal[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentGoalsResponse.
+ * Use `create(ListQualityAgentGoalsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentGoalsResponseSchema: GenMessage<ListQualityAgentGoalsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentGoalRequest
+ */
+export declare type GetQualityAgentGoalRequest = Message<"metaxisdata.v1.GetQualityAgentGoalRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentGoalRequest.
+ * Use `create(GetQualityAgentGoalRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentGoalRequestSchema: GenMessage<GetQualityAgentGoalRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.PauseQualityAgentGoalRequest
+ */
+export declare type PauseQualityAgentGoalRequest = Message<"metaxisdata.v1.PauseQualityAgentGoalRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The revision the caller saw; a stale value is rejected.
+   *
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.PauseQualityAgentGoalRequest.
+ * Use `create(PauseQualityAgentGoalRequestSchema)` to create a new message.
+ */
+export declare const PauseQualityAgentGoalRequestSchema: GenMessage<PauseQualityAgentGoalRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ResumeQualityAgentGoalRequest
+ */
+export declare type ResumeQualityAgentGoalRequest = Message<"metaxisdata.v1.ResumeQualityAgentGoalRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ResumeQualityAgentGoalRequest.
+ * Use `create(ResumeQualityAgentGoalRequestSchema)` to create a new message.
+ */
+export declare const ResumeQualityAgentGoalRequestSchema: GenMessage<ResumeQualityAgentGoalRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.CompleteQualityAgentGoalRequest
+ */
+export declare type CompleteQualityAgentGoalRequest = Message<"metaxisdata.v1.CompleteQualityAgentGoalRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CompleteQualityAgentGoalRequest.
+ * Use `create(CompleteQualityAgentGoalRequestSchema)` to create a new message.
+ */
+export declare const CompleteQualityAgentGoalRequestSchema: GenMessage<CompleteQualityAgentGoalRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ClearQualityAgentGoalRequest
+ */
+export declare type ClearQualityAgentGoalRequest = Message<"metaxisdata.v1.ClearQualityAgentGoalRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ClearQualityAgentGoalRequest.
+ * Use `create(ClearQualityAgentGoalRequestSchema)` to create a new message.
+ */
+export declare const ClearQualityAgentGoalRequestSchema: GenMessage<ClearQualityAgentGoalRequest>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -12225,6 +12572,125 @@ export enum QualityContractChangeKind {
 export declare const QualityContractChangeKindSchema: GenEnum<QualityContractChangeKind>;
 
 /**
+ * QualityAgentGoalKind is the kind of objective one goal pursues.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentGoalKind
+ */
+export enum QualityAgentGoalKind {
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Keep one target trustworthy: inspect coverage gaps and recent failures.
+   *
+   * @generated from enum value: QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET = 1;
+   */
+  MAINTAIN_TARGET = 1,
+
+  /**
+   * Investigate one event (a failed execution, a schema change, a drift).
+   *
+   * @generated from enum value: QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT = 2;
+   */
+  INVESTIGATE_EVENT = 2,
+
+  /**
+   * A person asked the agent to look at something.
+   *
+   * @generated from enum value: QUALITY_AGENT_GOAL_KIND_CUSTOM = 3;
+   */
+  CUSTOM = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentGoalKind.
+ */
+export declare const QualityAgentGoalKindSchema: GenEnum<QualityAgentGoalKind>;
+
+/**
+ * QualityAgentGoalPhase is the durable lifecycle of a goal.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentGoalPhase
+ */
+export enum QualityAgentGoalPhase {
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_PHASE_ACTIVE = 1;
+   */
+  ACTIVE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_PHASE_PAUSED = 2;
+   */
+  PAUSED = 2,
+
+  /**
+   * Blocked means "waiting for a person, a window or a dependency", not failed.
+   *
+   * @generated from enum value: QUALITY_AGENT_GOAL_PHASE_BLOCKED = 3;
+   */
+  BLOCKED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_PHASE_COMPLETE = 4;
+   */
+  COMPLETE = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentGoalPhase.
+ */
+export declare const QualityAgentGoalPhaseSchema: GenEnum<QualityAgentGoalPhase>;
+
+/**
+ * QualityAgentGoalTrigger is what created the goal.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentGoalTrigger
+ */
+export enum QualityAgentGoalTrigger {
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED = 1;
+   */
+  SCHEDULED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED = 2;
+   */
+  EXECUTION_FAILED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED = 3;
+   */
+  SCHEMA_CHANGED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP = 4;
+   */
+  COVERAGE_GAP = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_GOAL_TRIGGER_MANUAL = 5;
+   */
+  MANUAL = 5,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentGoalTrigger.
+ */
+export declare const QualityAgentGoalTriggerSchema: GenEnum<QualityAgentGoalTrigger>;
+
+/**
  * DataQualityService manages the checks that watch the data itself: rules and
  * their executions.
  *
@@ -13156,6 +13622,80 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof RotateQualityAgentTokenRequestSchema;
     output: typeof RotateQualityAgentTokenResponseSchema;
+  },
+  /**
+   * Create one durable objective for the built-in quality agent runner: keep a
+   * target trustworthy, investigate one event, or a person's request. The target's
+   * database must be in the workspace's runner allowlist, and the runner must be
+   * enabled.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityAgentGoal
+   */
+  createQualityAgentGoal: {
+    methodKind: "unary";
+    input: typeof CreateQualityAgentGoalRequestSchema;
+    output: typeof QualityAgentGoalSchema;
+  },
+  /**
+   * List the workspace's goals, newest first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentGoals
+   */
+  listQualityAgentGoals: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentGoalsRequestSchema;
+    output: typeof ListQualityAgentGoalsResponseSchema;
+  },
+  /**
+   * Read one goal.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentGoal
+   */
+  getQualityAgentGoal: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentGoalRequestSchema;
+    output: typeof QualityAgentGoalSchema;
+  },
+  /**
+   * Pause a goal: the runner stops starting new rounds, the state and journal stay.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.PauseQualityAgentGoal
+   */
+  pauseQualityAgentGoal: {
+    methodKind: "unary";
+    input: typeof PauseQualityAgentGoalRequestSchema;
+    output: typeof QualityAgentGoalSchema;
+  },
+  /**
+   * Resume a paused or blocked goal. A stale revision is rejected.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ResumeQualityAgentGoal
+   */
+  resumeQualityAgentGoal: {
+    methodKind: "unary";
+    input: typeof ResumeQualityAgentGoalRequestSchema;
+    output: typeof QualityAgentGoalSchema;
+  },
+  /**
+   * Mark a goal complete. A person can always do so; the runner's own completion is
+   * recorded the same way.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CompleteQualityAgentGoal
+   */
+  completeQualityAgentGoal: {
+    methodKind: "unary";
+    input: typeof CompleteQualityAgentGoalRequestSchema;
+    output: typeof QualityAgentGoalSchema;
+  },
+  /**
+   * Clear a goal (a tombstone). The journal stays for the audit trail.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ClearQualityAgentGoal
+   */
+  clearQualityAgentGoal: {
+    methodKind: "unary";
+    input: typeof ClearQualityAgentGoalRequestSchema;
+    output: typeof EmptySchema;
   },
   /**
    * Approve or reject a change request. Approving applies each item through its
