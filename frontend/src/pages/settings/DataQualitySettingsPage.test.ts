@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   updateQualityCodeTable: vi.fn(),
   deleteQualityCodeTable: vi.fn(),
   listQualityAgents: vi.fn(),
+  listAllInstances: vi.fn(),
+  listDatabases: vi.fn(),
 }));
 
 vi.mock("@/api/setting", () => ({
@@ -41,6 +43,14 @@ vi.mock("@/api/setting", () => ({
 
 vi.mock("@/api/llm", () => ({
   listProfiles: mocks.listProfiles,
+}));
+
+vi.mock("@/api/instance", () => ({
+  listAllInstances: mocks.listAllInstances,
+}));
+
+vi.mock("@/api/database", () => ({
+  listDatabases: mocks.listDatabases,
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -139,6 +149,8 @@ describe("DataQualitySettingsPage", () => {
     localStorage.clear();
     vi.clearAllMocks();
     mocks.listQualityAgents.mockResolvedValue([]);
+    mocks.listAllInstances.mockResolvedValue([]);
+    mocks.listDatabases.mockResolvedValue({ databases: [] });
     mocks.getWorkspaceProfileSetting.mockResolvedValue(
       create(WorkspaceProfileSettingSchema, {
         allowedLlmProviderProfiles: ["llmProfiles/p1"],
@@ -233,6 +245,8 @@ describe("DataQualitySettingsPage", () => {
 
   it("mounts the agent management card for an administrator", async () => {
     mocks.listQualityAgents.mockResolvedValue([]);
+    mocks.listAllInstances.mockResolvedValue([]);
+    mocks.listDatabases.mockResolvedValue({ databases: [] });
     const wrapper = await mountPage();
     await flushPromises();
 
@@ -242,6 +256,50 @@ describe("DataQualitySettingsPage", () => {
     );
     await wrapper.find("#dq-setting-agent-autonomy").trigger("click");
     await flushPromises();
+  });
+
+  it("configures the agent runner and its database scope", async () => {
+    mocks.listAllInstances.mockResolvedValue([
+      { name: "instances/i1", title: "Orders" },
+    ]);
+    mocks.listDatabases.mockResolvedValue({
+      databases: [{ name: "instances/i1/databases/warehouse" }],
+    });
+    // The saved allowlist must render as checked, and unchecking it must remove the
+    // scope on save rather than being silently re-saved.
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          agentRunnerEnabled: true,
+          agentRunnerDatabases: ["instances/i1/databases/warehouse"],
+        }),
+      })
+    );
+    const wrapper = await mountPage();
+    await flushPromises();
+
+    const database = wrapper.find(
+      '[data-testid="dq-runner-db-instances/i1/databases/warehouse"]'
+    );
+    expect((database.element as HTMLInputElement).checked).toBe(true);
+    await database.setValue(false);
+    await wrapper.find("#dq-setting-runner-tokens").setValue("250000000");
+    await wrapper.find("#dq-setting-runner-goals").setValue("40");
+    await wrapper.find("#dq-setting-runner-concurrency").setValue("3");
+    await flushPromises();
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateDataQualitySetting).toHaveBeenCalledTimes(1);
+    const setting = mocks.updateDataQualitySetting.mock.calls[0]?.[0];
+    expect(setting).toMatchObject({
+      agentRunnerEnabled: true,
+      agentRunnerDatabases: [],
+      agentRunnerGoalsPerHour: 40,
+      agentRunnerMaxConcurrentGoals: 3,
+    });
+    expect(setting.agentRunnerTokensPerHour).toBe(250_000_000n);
   });
 
   it("saves the whole section with the expected setting", async () => {
