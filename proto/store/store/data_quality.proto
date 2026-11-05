@@ -1346,6 +1346,11 @@ message QualityAgentGoalCheckpoint {
   string summary = 2;
   // Things already done, as short labels.
   repeated string done = 3;
+  // How many consecutive rounds the model reported the same blocker; the third one
+  // parks the goal.
+  int32 blocked_rounds = 4;
+  // The stable code the model reported while blocked_rounds was counted.
+  string blocked_code = 5;
 }
 
 // QualityAgentGoal is one durable objective of the built-in quality agent runner.
