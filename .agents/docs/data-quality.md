@@ -449,7 +449,7 @@ agent 是**独立主体**，不是“以某管理员身份运行”：管理员�
   - 每个写入都是 effect sandwich：先写 `EFFECT_INTENT`（含幂等键 `…:intent`）再执行、再写 `EFFECT_RESULT`（`…:result`，两个 key 不同以免互相顶替）；Investigation 用指纹幂等，记忆按 `(subject, statement)` 查重。写入以 goal 绑定的 agent principal 作为 `created_by`；M2 直接调用 store（不经过 HTTP），所以没有 API 审计行——审计归属随 M3 的统一 effect executor 接入。
   - 本轮不调用模型；`CUSTOM` goal 在 M3 之前保持 `BLOCKED(needs-human)`。`max_rounds` 由 runner 在每轮前检查（到顶 → `BLOCKED(round-limit)`）；小时 token 预算在 M2 无实际消耗，M3 接入模型后执行。
 - **API**：`Create/List/Get/Pause/Resume/Complete/ClearQualityAgentGoal`，创建/暂停/恢复/完成/清除审计，权限 `rules.update`（列表/详情 `rules.list`），goal 创建受小时 goal 预算限制。
-- 设置页（M4a）已有“自治运行（runner）”卡片：开关、按实例分组的数据库允许列表、每小时 token 预算 / goals per hour / 并发数，并做与服务器一致的数值校验；目标页的 goal 条在 M4b。
+- 设置页（M4a）已有“自治运行（runner）”卡片：开关、按实例分组的数据库允许列表、每小时 token 预算 / goals per hour / 并发数，并做与服务器一致的数值校验；目标页的“Runner 目标”卡片（M4b）展示每个 goal 的 phase、round n/max、blocked code/reason、下次巡检时间，并支持暂停/恢复/标记完成/清除（走 `rules.update`，陈旧 revision 由服务端拒绝并刷新）。
 
 ### 3.10 覆盖率、质量分与最近通过率（P0-3）
 

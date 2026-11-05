@@ -10,9 +10,11 @@ import {
   type BatchUpdateQualitySuggestionResult,
   BatchUpdateQualitySuggestionsRequestSchema,
   CancelQualitySuggestionJobRequestSchema,
+  ClearQualityAgentGoalRequestSchema,
   ColumnLabelAction,
   type ColumnProfile,
   type ColumnSemanticLabel,
+  CompleteQualityAgentGoalRequestSchema,
   type ConfirmQualityMemoryRequest_Decision,
   ConfirmQualityMemoryRequestSchema,
   CreateQualityAgentRequestSchema,
@@ -60,6 +62,7 @@ import {
   GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityAgentGoalsRequestSchema,
   ListQualityAgentsRequestSchema,
   ListQualityChangeRequestsRequestSchema,
   ListQualityCodeTablesRequestSchema,
@@ -74,11 +77,13 @@ import {
   ListQualitySuggestionJobsRequestSchema,
   ListQualitySuggestionsRequestSchema,
   ListQualityTargetsRequestSchema,
+  PauseQualityAgentGoalRequestSchema,
   PreviewQualityRuleRequestSchema,
   ProfileColumnsRequestSchema,
   PublishQualityContractRequestSchema,
   type PublishQualityContractResponse,
   type QualityAgent,
+  type QualityAgentGoal,
   QualityChangeRejectionReason,
   type QualityChangeRequest,
   QualityChangeRequestState,
@@ -122,6 +127,7 @@ import {
   type QualityTargetSummary,
   RecommendQualityChecksRequestSchema,
   type RecommendQualityChecksResponse,
+  ResumeQualityAgentGoalRequestSchema,
   RotateQualityAgentTokenRequestSchema,
   type RotateQualityAgentTokenResponse,
   RunQualityRulesRequestSchema,
@@ -1796,4 +1802,76 @@ export async function createQualityMemory(options: {
   return await dataQualityClient.createQualityMemory(request, {
     signal: options.signal,
   });
+}
+
+// ---- agent goals ----
+
+/** The target's runner goals, newest first. */
+export async function listQualityAgentGoals(
+  targetGuid: string,
+  signal?: AbortSignal
+): Promise<QualityAgentGoal[]> {
+  return await listAll(async (pageToken) => {
+    const request = create(ListQualityAgentGoalsRequestSchema, {
+      parent: WORKSPACE_PARENT,
+      targetGuid,
+      pageSize: listAllPageSize,
+      pageToken,
+    });
+    const response = await dataQualityClient.listQualityAgentGoals(request, {
+      signal,
+    });
+    return {
+      items: response.qualityAgentGoals,
+      nextPageToken: response.nextPageToken,
+    };
+  });
+}
+
+/** Pause a goal; the state and journal stay. */
+export async function pauseQualityAgentGoal(
+  name: string,
+  expectedRevision: number
+): Promise<QualityAgentGoal> {
+  const request = create(PauseQualityAgentGoalRequestSchema, {
+    name,
+    expectedRevision,
+  });
+  return await dataQualityClient.pauseQualityAgentGoal(request);
+}
+
+/** Resume a paused or blocked goal. */
+export async function resumeQualityAgentGoal(
+  name: string,
+  expectedRevision: number
+): Promise<QualityAgentGoal> {
+  const request = create(ResumeQualityAgentGoalRequestSchema, {
+    name,
+    expectedRevision,
+  });
+  return await dataQualityClient.resumeQualityAgentGoal(request);
+}
+
+/** Mark a goal complete. */
+export async function completeQualityAgentGoal(
+  name: string,
+  expectedRevision: number
+): Promise<QualityAgentGoal> {
+  const request = create(CompleteQualityAgentGoalRequestSchema, {
+    name,
+    expectedRevision,
+  });
+  return await dataQualityClient.completeQualityAgentGoal(request);
+}
+
+/** Clear a goal (a tombstone; the journal stays). */
+export async function clearQualityAgentGoal(
+  name: string,
+  expectedRevision: number
+): Promise<void> {
+  const request = create(ClearQualityAgentGoalRequestSchema, {
+    name,
+    expectedRevision,
+  });
+  await dataQualityClient.clearQualityAgentGoal(request);
 }
