@@ -281,3 +281,91 @@ func TestRunAgentLoopEnforcesConversationBudget(t *testing.T) {
 	}
 	require.ErrorContains(t, lastErr, "LLM conversation exceeded 64 bytes")
 }
+
+// A session wake continues the stored conversation: the caller's History must be
+// the exact request prefix, and the finished assistant message is reported as one
+// event so a recorder can persist it without replaying deltas.
+func TestRunAgentLoopContinuesTheHistory(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- string(body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n")
+	}))
+	t.Cleanup(server.Close)
+
+	history := []AgentMessage{
+		{Role: "system", Content: "session system prompt"},
+		{Role: "user", Content: "earlier wake"},
+		{Role: "assistant", Content: "previous answer"},
+		{Role: "toolResult", ToolCallID: "call_1", ToolName: "lookup", Content: "previous tool result"},
+		{Role: "user", Content: "new event"},
+	}
+	events := collectAgentEvents(t, RunAgentLoop(context.Background(), AgentConfig{
+		Provider:    ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+		History:     history,
+		MaxTurns:    1,
+		Executor:    func(ToolCall) ([]ToolResult, error) { return nil, nil },
+		Tools:       nil,
+		MaxTokens:   128,
+		Metrics:     nil,
+		DebugLogger: nil,
+	}))
+
+	var assistant *AgentMessage
+	var loopErr error
+	for _, evt := range events {
+		switch evt.Type {
+		case AgentEventAssistant:
+			assistant = evt.Assistant
+		case AgentEventError:
+			loopErr = evt.Error
+		default:
+		}
+	}
+	require.NoError(t, loopErr)
+	require.NotNil(t, assistant)
+	require.Equal(t, "done", assistant.Content)
+
+	request := <-received
+	require.Contains(t, request, "session system prompt")
+	require.Contains(t, request, "earlier wake")
+	require.Contains(t, request, "previous answer")
+	require.Contains(t, request, "previous tool result")
+	require.Contains(t, request, "new event")
+}
+
+// The one-shot callers keep working: without History the two prompt fields seed the
+// conversation exactly as before.
+func TestRunAgentLoopSeedsFromThePromptFieldsWithoutHistory(t *testing.T) {
+	t.Parallel()
+
+	received := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- string(body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n")
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n")
+	}))
+	t.Cleanup(server.Close)
+
+	events := collectAgentEvents(t, RunAgentLoop(context.Background(), AgentConfig{
+		Provider:     ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+		SystemPrompt: "single-shot system",
+		UserPrompt:   "single-shot user",
+		MaxTurns:     1,
+	}))
+	for _, evt := range events {
+		require.NotEqual(t, AgentEventError, evt.Type)
+	}
+	request := <-received
+	require.Contains(t, request, "single-shot system")
+	require.Contains(t, request, "single-shot user")
+}
