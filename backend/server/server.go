@@ -35,7 +35,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/notificationdispatcher"
-	"github.com/Ranxy/metaxisdata/backend/runner/qualityagentrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitydigestrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitysuggestionrunner"
@@ -143,7 +142,6 @@ type Server struct {
 	qualityRunner   *qualityrunner.Runner
 	// suggestionRunner executes the durable AI drafting jobs the API queues.
 	suggestionRunner *qualitysuggestionrunner.Runner
-	goalRunner       *qualityagentrunner.Runner
 	// dispatcher posts queued outbound notification deliveries.
 	dispatcher *notificationdispatcher.Runner
 	// digestRunner sends the weekly data quality digest on its schedule.
@@ -264,8 +262,6 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	llmQuota := dataquality.NewLLMQuota(s.metrics)
 	suggester := dataquality.NewSuggester(stores, s.llmRegistry, llmQuota, s.metrics)
 	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
-	// The goal runner hosts the built-in quality agent: M1 is the goal substrate.
-	s.goalRunner = qualityagentrunner.NewRunner(stores, suggester)
 
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
@@ -289,7 +285,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.goalRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}
