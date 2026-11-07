@@ -232,7 +232,7 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 // retryableSessionBlockedCodes are blocked codes the runner may wake again on its
 // own; anything else needs a person.
 func retryableSessionBlockedCodes() []string {
-	return []string{"token-budget", "autonomy-off", "llm-quota", "no-work", "internal-error"}
+	return []string{"token-budget", "wake-budget", "autonomy-off", "llm-quota", "no-work", "internal-error"}
 }
 
 // claimDueQualityAgentSessionsQuery is the one wake-claim predicate: an enabled (or

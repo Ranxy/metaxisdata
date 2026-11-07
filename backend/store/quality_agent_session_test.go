@@ -40,7 +40,7 @@ func TestRetryableSessionBlockedCodes(t *testing.T) {
 	t.Parallel()
 
 	codes := retryableSessionBlockedCodes()
-	require.ElementsMatch(t, []string{"token-budget", "autonomy-off", "llm-quota", "no-work", "internal-error"}, codes)
+	require.ElementsMatch(t, []string{"token-budget", "wake-budget", "autonomy-off", "llm-quota", "no-work", "internal-error"}, codes)
 	require.NotContains(t, codes, "needs-human")
 	require.NotContains(t, codes, "restart-limit")
 	require.NotContains(t, codes, "round-limit")
