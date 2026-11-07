@@ -1033,6 +1033,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ArchiveQualityAgentSessionRequest"><span class="badge">M</span>ArchiveQualityAgentSessionRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.BatchCreateQualityRuleResult"><span class="badge">M</span>BatchCreateQualityRuleResult</a>
                 </li>
               
@@ -1102,6 +1106,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.CreateQualityAgentResponse"><span class="badge">M</span>CreateQualityAgentResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.CreateQualityAgentSessionRequest"><span class="badge">M</span>CreateQualityAgentSessionRequest</a>
                 </li>
               
                 <li>
@@ -1218,6 +1226,14 @@
               
                 <li>
                   <a href="#metaxisdata.v1.GetQualityAgentMetricsRequest"><span class="badge">M</span>GetQualityAgentMetricsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityAgentRunnerStatusRequest"><span class="badge">M</span>GetQualityAgentRunnerStatusRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.GetQualityAgentSessionRequest"><span class="badge">M</span>GetQualityAgentSessionRequest</a>
                 </li>
               
                 <li>
@@ -1338,6 +1354,22 @@
               
                 <li>
                   <a href="#metaxisdata.v1.ListColumnProfilesResponse"><span class="badge">M</span>ListColumnProfilesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentSessionMessagesRequest"><span class="badge">M</span>ListQualityAgentSessionMessagesRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentSessionMessagesResponse"><span class="badge">M</span>ListQualityAgentSessionMessagesResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentSessionsRequest"><span class="badge">M</span>ListQualityAgentSessionsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.ListQualityAgentSessionsResponse"><span class="badge">M</span>ListQualityAgentSessionsResponse</a>
                 </li>
               
                 <li>
@@ -1470,6 +1502,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.NullPercentConfig"><span class="badge">M</span>NullPercentConfig</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.PauseQualityAgentSessionRequest"><span class="badge">M</span>PauseQualityAgentSessionRequest</a>
                 </li>
               
                 <li>
@@ -1805,6 +1841,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.v1.ResumeQualityAgentSessionRequest"><span class="badge">M</span>ResumeQualityAgentSessionRequest</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.v1.RotateQualityAgentTokenRequest"><span class="badge">M</span>RotateQualityAgentTokenRequest</a>
                 </li>
               
@@ -1926,6 +1966,10 @@
               
                 <li>
                   <a href="#metaxisdata.v1.UpdateQualityTargetScheduleRequest"><span class="badge">M</span>UpdateQualityTargetScheduleRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.v1.WakeQualityAgentSessionRequest"><span class="badge">M</span>WakeQualityAgentSessionRequest</a>
                 </li>
               
               
@@ -13203,6 +13247,37 @@ inside the fail range. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ArchiveQualityAgentSessionRequest">ArchiveQualityAgentSessionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.BatchCreateQualityRuleResult">BatchCreateQualityRuleResult</h3>
         <p></p>
 
@@ -13974,6 +14049,58 @@ replaced. The raw value is never returned. </p></td>
                   <td></td>
                   <td><p>The bearer token, returned exactly once. It authenticates as the agent
 principal and cannot be retrieved again; rotate it if lost. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.CreateQualityAgentSessionRequest">CreateQualityAgentSessionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>meta_type</td>
+                  <td><a href="#metaxisdata.v1.MetaType">MetaType</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>objective</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Empty means &#34;keep this target trustworthy&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: users/{user}. Empty uses the first enabled quality agent. </p></td>
                 </tr>
               
             </tbody>
@@ -15405,6 +15532,54 @@ combined with worst_status. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.GetQualityAgentRunnerStatusRequest">GetQualityAgentRunnerStatusRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.GetQualityAgentSessionRequest">GetQualityAgentSessionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.GetQualityChangeRequestRequest">GetQualityChangeRequestRequest</h3>
         <p></p>
 
@@ -16519,6 +16694,172 @@ to retrieve the subsequent page. </p></td>
                 <tr>
                   <td>column_profiles</td>
                   <td><a href="#metaxisdata.v1.ColumnProfile">ColumnProfile</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentSessionMessagesRequest">ListQualityAgentSessionMessagesRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>after_seq</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Return messages with seq greater than this; the polling watermark. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentSessionMessagesResponse">ListQualityAgentSessionMessagesResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_agent_session_messages</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentSessionMessage">QualityAgentSessionMessage</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentSessionsRequest">ListQualityAgentSessionsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>parent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentSessionState">QualityAgentSessionState</a></td>
+                  <td></td>
+                  <td><p>UNSPECIFIED lists every non-archived session. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_size</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>page_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.ListQualityAgentSessionsResponse">ListQualityAgentSessionsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>quality_agent_sessions</td>
+                  <td><a href="#metaxisdata.v1.QualityAgentSession">QualityAgentSession</a></td>
                   <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
@@ -18270,6 +18611,37 @@ checks are all paused is still returned, with enabled_rule_count = 0. </p></td>
                   <td>repeated</td>
                   <td><p>Values that also count as missing, besides SQL NULL. Encoded as strings and
 converted with the column&#39;s type; at most 20. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.PauseQualityAgentSessionRequest">PauseQualityAgentSessionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The revision the caller saw; a stale value is rejected. </p></td>
                 </tr>
               
             </tbody>
@@ -24209,6 +24581,37 @@ for. </p></td>
 
         
       
+        <h3 id="metaxisdata.v1.ResumeQualityAgentSessionRequest">ResumeQualityAgentSessionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>expected_revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.v1.RotateQualityAgentTokenRequest">RotateQualityAgentTokenRequest</h3>
         <p></p>
 
@@ -25666,6 +26069,37 @@ there is no upper bound. </p></td>
                   <td><p>The IANA time zone the cron expression is evaluated in, for example
 &#34;Asia/Shanghai&#34;. Empty resolves to the workspace&#39;s check time zone, and the
 resolved zone is what the target stores and what reads return. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.v1.WakeQualityAgentSessionRequest">WakeQualityAgentSessionRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>content</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The person&#39;s question or instruction; it becomes a user message in the session. </p></td>
                 </tr>
               
             </tbody>
@@ -28846,6 +29280,79 @@ settings, with server defaults resolved). The counters are process state: a
 restart resets them and they roll over at 00:00 UTC.</p></td>
               </tr>
             
+              <tr>
+                <td>CreateQualityAgentSession</td>
+                <td><a href="#metaxisdata.v1.CreateQualityAgentSessionRequest">CreateQualityAgentSessionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentSession">QualityAgentSession</a></td>
+                <td><p>Create one target&#39;s long-lived agent session. The target&#39;s database must be in
+the runner&#39;s allowlist, the runner must be enabled and an enabled agent must exist.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityAgentSessions</td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentSessionsRequest">ListQualityAgentSessionsRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentSessionsResponse">ListQualityAgentSessionsResponse</a></td>
+                <td><p>List the workspace&#39;s sessions by newest activity first.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityAgentSession</td>
+                <td><a href="#metaxisdata.v1.GetQualityAgentSessionRequest">GetQualityAgentSessionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentSession">QualityAgentSession</a></td>
+                <td><p>Read one session.</p></td>
+              </tr>
+            
+              <tr>
+                <td>PauseQualityAgentSession</td>
+                <td><a href="#metaxisdata.v1.PauseQualityAgentSessionRequest">PauseQualityAgentSessionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentSession">QualityAgentSession</a></td>
+                <td><p>Pause a session: no new wake starts, the conversation stays.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ResumeQualityAgentSession</td>
+                <td><a href="#metaxisdata.v1.ResumeQualityAgentSessionRequest">ResumeQualityAgentSessionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentSession">QualityAgentSession</a></td>
+                <td><p>Resume a paused or blocked session; it wakes immediately.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ArchiveQualityAgentSession</td>
+                <td><a href="#metaxisdata.v1.ArchiveQualityAgentSessionRequest">ArchiveQualityAgentSessionRequest</a></td>
+                <td><a href="#google.protobuf.Empty">.google.protobuf.Empty</a></td>
+                <td><p>Archive a session (a tombstone). The conversation stays readable.</p></td>
+              </tr>
+            
+              <tr>
+                <td>WakeQualityAgentSession</td>
+                <td><a href="#metaxisdata.v1.WakeQualityAgentSessionRequest">WakeQualityAgentSessionRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentSession">QualityAgentSession</a></td>
+                <td><p>Append a person&#39;s message to the session and wake it immediately.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListQualityAgentSessionMessages</td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentSessionMessagesRequest">ListQualityAgentSessionMessagesRequest</a></td>
+                <td><a href="#metaxisdata.v1.ListQualityAgentSessionMessagesResponse">ListQualityAgentSessionMessagesResponse</a></td>
+                <td><p>Read one session&#39;s transcript. after_seq polls for new messages.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityAgentRunnerStatus</td>
+                <td><a href="#metaxisdata.v1.GetQualityAgentRunnerStatusRequest">GetQualityAgentRunnerStatusRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentRunnerStatus">QualityAgentRunnerStatus</a></td>
+                <td><p>Read the runner&#39;s live state: what is running, what is due and how much of the
+budgets is spent. runner_last_tick_time is process-local and resets on restart.</p></td>
+              </tr>
+            
+              <tr>
+                <td>GetQualityAgentMetrics</td>
+                <td><a href="#metaxisdata.v1.GetQualityAgentMetricsRequest">GetQualityAgentMetricsRequest</a></td>
+                <td><a href="#metaxisdata.v1.QualityAgentMetrics">QualityAgentMetrics</a></td>
+                <td><p>Read the runner&#39;s evaluation: session states, token spend, the acceptance of the
+change requests it proposed, and investigation verdicts. Read-only.</p></td>
+              </tr>
+            
           </tbody>
         </table>
 
@@ -29630,6 +30137,106 @@ restart resets them and they roll over at 00:00 UTC.</p></td>
                 <td>GetQualityLLMUsage</td>
                 <td>GET</td>
                 <td>/v1/{parent=workspaces/*}/qualityLLMUsage</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>CreateQualityAgentSession</td>
+                <td>POST</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentSessions</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityAgentSessions</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentSessions</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityAgentSession</td>
+                <td>GET</td>
+                <td>/v1/{name=workspaces/*/qualityAgentSessions/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>PauseQualityAgentSession</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgentSessions/*}:pause</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ResumeQualityAgentSession</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgentSessions/*}:resume</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ArchiveQualityAgentSession</td>
+                <td>DELETE</td>
+                <td>/v1/{name=workspaces/*/qualityAgentSessions/*}</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>WakeQualityAgentSession</td>
+                <td>POST</td>
+                <td>/v1/{name=workspaces/*/qualityAgentSessions/*}:wake</td>
+                <td>*</td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>ListQualityAgentSessionMessages</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*/qualityAgentSessions/*}/messages</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityAgentRunnerStatus</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentRunnerStatus</td>
+                <td></td>
+              </tr>
+              
+            
+              
+              
+              <tr>
+                <td>GetQualityAgentMetrics</td>
+                <td>GET</td>
+                <td>/v1/{parent=workspaces/*}/qualityAgentMetrics</td>
                 <td></td>
               </tr>
               

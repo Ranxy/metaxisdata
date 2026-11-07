@@ -225,6 +225,7 @@
     - [AcknowledgeQualityTargetSchemaRequest](#metaxisdata-v1-AcknowledgeQualityTargetSchemaRequest)
     - [AcknowledgeQualityTargetSchemaResponse](#metaxisdata-v1-AcknowledgeQualityTargetSchemaResponse)
     - [AggregateConfig](#metaxisdata-v1-AggregateConfig)
+    - [ArchiveQualityAgentSessionRequest](#metaxisdata-v1-ArchiveQualityAgentSessionRequest)
     - [BatchCreateQualityRuleResult](#metaxisdata-v1-BatchCreateQualityRuleResult)
     - [BatchCreateQualityRulesRequest](#metaxisdata-v1-BatchCreateQualityRulesRequest)
     - [BatchCreateQualityRulesResponse](#metaxisdata-v1-BatchCreateQualityRulesResponse)
@@ -243,6 +244,7 @@
     - [ConfirmQualityMemoryRequest](#metaxisdata-v1-ConfirmQualityMemoryRequest)
     - [CreateQualityAgentRequest](#metaxisdata-v1-CreateQualityAgentRequest)
     - [CreateQualityAgentResponse](#metaxisdata-v1-CreateQualityAgentResponse)
+    - [CreateQualityAgentSessionRequest](#metaxisdata-v1-CreateQualityAgentSessionRequest)
     - [CreateQualityChangeRequestRequest](#metaxisdata-v1-CreateQualityChangeRequestRequest)
     - [CreateQualityCodeTableRequest](#metaxisdata-v1-CreateQualityCodeTableRequest)
     - [CreateQualityInvestigationRequest](#metaxisdata-v1-CreateQualityInvestigationRequest)
@@ -272,6 +274,8 @@
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
     - [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest)
+    - [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest)
+    - [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest)
     - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
@@ -302,6 +306,10 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest)
+    - [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse)
+    - [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest)
+    - [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse)
     - [ListQualityAgentsRequest](#metaxisdata-v1-ListQualityAgentsRequest)
     - [ListQualityAgentsResponse](#metaxisdata-v1-ListQualityAgentsResponse)
     - [ListQualityChangeRequestsRequest](#metaxisdata-v1-ListQualityChangeRequestsRequest)
@@ -335,6 +343,7 @@
     - [ListQualityTargetsRequest](#metaxisdata-v1-ListQualityTargetsRequest)
     - [ListQualityTargetsResponse](#metaxisdata-v1-ListQualityTargetsResponse)
     - [NullPercentConfig](#metaxisdata-v1-NullPercentConfig)
+    - [PauseQualityAgentSessionRequest](#metaxisdata-v1-PauseQualityAgentSessionRequest)
     - [PreviewQualityRuleRequest](#metaxisdata-v1-PreviewQualityRuleRequest)
     - [PreviewQualityRuleResponse](#metaxisdata-v1-PreviewQualityRuleResponse)
     - [ProfileColumnsRequest](#metaxisdata-v1-ProfileColumnsRequest)
@@ -418,6 +427,7 @@
     - [RecommendQualityChecksResponse](#metaxisdata-v1-RecommendQualityChecksResponse)
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
+    - [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest)
     - [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest)
     - [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
@@ -449,6 +459,7 @@
     - [UpdateQualityRuleTemplateRequest](#metaxisdata-v1-UpdateQualityRuleTemplateRequest)
     - [UpdateQualitySuggestionRequest](#metaxisdata-v1-UpdateQualitySuggestionRequest)
     - [UpdateQualityTargetScheduleRequest](#metaxisdata-v1-UpdateQualityTargetScheduleRequest)
+    - [WakeQualityAgentSessionRequest](#metaxisdata-v1-WakeQualityAgentSessionRequest)
   
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
@@ -4332,6 +4343,22 @@ AggregateConfig bounds the value one aggregate over one column produces.
 
 
 
+<a name="metaxisdata-v1-ArchiveQualityAgentSessionRequest"></a>
+
+### ArchiveQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-BatchCreateQualityRuleResult"></a>
 
 ### BatchCreateQualityRuleResult
@@ -4648,6 +4675,25 @@ they are returned, so a wide text column cannot bloat the response.
 | ----- | ---- | ----- | ----------- |
 | agent | [QualityAgent](#metaxisdata-v1-QualityAgent) |  |  |
 | token | [string](#string) |  | The bearer token, returned exactly once. It authenticates as the agent principal and cannot be retrieved again; rotate it if lost. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-CreateQualityAgentSessionRequest"></a>
+
+### CreateQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| target_guid | [string](#string) |  |  |
+| meta_type | [MetaType](#metaxisdata-v1-MetaType) |  |  |
+| objective | [string](#string) |  | Empty means &#34;keep this target trustworthy&#34;. |
+| agent | [string](#string) |  | Format: users/{user}. Empty uses the first enabled quality agent. |
 
 
 
@@ -5204,6 +5250,36 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityAgentRunnerStatusRequest"></a>
+
+### GetQualityAgentRunnerStatusRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-GetQualityAgentSessionRequest"></a>
+
+### GetQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
 
 ### GetQualityChangeRequestRequest
@@ -5703,6 +5779,76 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | column_profiles | [ColumnProfile](#metaxisdata-v1-ColumnProfile) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentSessionMessagesRequest"></a>
+
+### ListQualityAgentSessionMessagesRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+| after_seq | [int64](#int64) |  | Return messages with seq greater than this; the polling watermark. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentSessionMessagesResponse"></a>
+
+### ListQualityAgentSessionMessagesResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_session_messages | [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentSessionsRequest"></a>
+
+### ListQualityAgentSessionsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| state | [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState) |  | UNSPECIFIED lists every non-archived session. |
+| database | [string](#string) |  |  |
+| target_guid | [string](#string) |  |  |
+| page_size | [int32](#int32) |  |  |
+| page_token | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentSessionsResponse"></a>
+
+### ListQualityAgentSessionsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_sessions | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | repeated |  |
 | next_page_token | [string](#string) |  |  |
 
 
@@ -6332,6 +6478,22 @@ optional and must not exceed the fail threshold.
 | max_null_pct | [double](#double) | optional |  |
 | warn_null_pct | [double](#double) | optional |  |
 | null_values | [string](#string) | repeated | Values that also count as missing, besides SQL NULL. Encoded as strings and converted with the column&#39;s type; at most 20. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-PauseQualityAgentSessionRequest"></a>
+
+### PauseQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected. |
 
 
 
@@ -8210,6 +8372,22 @@ engine&#39;s own regex operator.
 
 
 
+<a name="metaxisdata-v1-ResumeQualityAgentSessionRequest"></a>
+
+### ResumeQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| expected_revision | [int32](#int32) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-RotateQualityAgentTokenRequest"></a>
 
 ### RotateQualityAgentTokenRequest
@@ -8778,6 +8956,22 @@ measured per threshold_metric; the default fail threshold is zero.
 | schedule_interval | [google.protobuf.Duration](#google-protobuf-Duration) |  | How often the target&#39;s enabled checks run. Exactly one of schedule_interval and cron is set: a fixed interval between 15 minutes and 7 days, or a cron expression. |
 | cron | [string](#string) |  | A standard five-field cron expression (&#34;minute hour day-of-month month day-of-week&#34;) evaluated in timezone, for example &#34;0 2 * * *&#34; for every day at 02:00. The gap between two of its occurrences must be at least 15 minutes; there is no upper bound. |
 | timezone | [string](#string) |  | The IANA time zone the cron expression is evaluated in, for example &#34;Asia/Shanghai&#34;. Empty resolves to the workspace&#39;s check time zone, and the resolved zone is what the target stores and what reads return. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-WakeQualityAgentSessionRequest"></a>
+
+### WakeQualityAgentSessionRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  |  |
+| content | [string](#string) |  | The person&#39;s question or instruction; it becomes a user message in the session. |
 
 
 
@@ -9794,6 +9988,16 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityContractRevisions | [ListQualityContractRevisionsRequest](#metaxisdata-v1-ListQualityContractRevisionsRequest) | [ListQualityContractRevisionsResponse](#metaxisdata-v1-ListQualityContractRevisionsResponse) | List the target&#39;s published contract versions, newest first. |
 | GetQualityContractRevision | [GetQualityContractRevisionRequest](#metaxisdata-v1-GetQualityContractRevisionRequest) | [GetQualityContractRevisionResponse](#metaxisdata-v1-GetQualityContractRevisionResponse) | Read one published contract version with its ordered checks, so a client can show a diff without downloading every version. |
 | GetQualityLLMUsage | [GetQualityLLMUsageRequest](#metaxisdata-v1-GetQualityLLMUsageRequest) | [QualityLLMUsage](#metaxisdata-v1-QualityLLMUsage) | Read today&#39;s data quality LLM usage and the effective limits (the workspace settings, with server defaults resolved). The counters are process state: a restart resets them and they roll over at 00:00 UTC. |
+| CreateQualityAgentSession | [CreateQualityAgentSessionRequest](#metaxisdata-v1-CreateQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Create one target&#39;s long-lived agent session. The target&#39;s database must be in the runner&#39;s allowlist, the runner must be enabled and an enabled agent must exist. |
+| ListQualityAgentSessions | [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest) | [ListQualityAgentSessionsResponse](#metaxisdata-v1-ListQualityAgentSessionsResponse) | List the workspace&#39;s sessions by newest activity first. |
+| GetQualityAgentSession | [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Read one session. |
+| PauseQualityAgentSession | [PauseQualityAgentSessionRequest](#metaxisdata-v1-PauseQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Pause a session: no new wake starts, the conversation stays. |
+| ResumeQualityAgentSession | [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Resume a paused or blocked session; it wakes immediately. |
+| ArchiveQualityAgentSession | [ArchiveQualityAgentSessionRequest](#metaxisdata-v1-ArchiveQualityAgentSessionRequest) | [.google.protobuf.Empty](#google-protobuf-Empty) | Archive a session (a tombstone). The conversation stays readable. |
+| WakeQualityAgentSession | [WakeQualityAgentSessionRequest](#metaxisdata-v1-WakeQualityAgentSessionRequest) | [QualityAgentSession](#metaxisdata-v1-QualityAgentSession) | Append a person&#39;s message to the session and wake it immediately. |
+| ListQualityAgentSessionMessages | [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest) | [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse) | Read one session&#39;s transcript. after_seq polls for new messages. |
+| GetQualityAgentRunnerStatus | [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest) | [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus) | Read the runner&#39;s live state: what is running, what is due and how much of the budgets is spent. runner_last_tick_time is process-local and resets on restart. |
+| GetQualityAgentMetrics | [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest) | [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics) | Read the runner&#39;s evaluation: session states, token spend, the acceptance of the change requests it proposed, and investigation verdicts. Read-only. |
 
  
 

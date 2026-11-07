@@ -10662,6 +10662,294 @@ export declare type GetQualityAgentMetricsRequest = Message<"metaxisdata.v1.GetQ
 export declare const GetQualityAgentMetricsRequestSchema: GenMessage<GetQualityAgentMetricsRequest>;
 
 /**
+ * @generated from message metaxisdata.v1.CreateQualityAgentSessionRequest
+ */
+export declare type CreateQualityAgentSessionRequest = Message<"metaxisdata.v1.CreateQualityAgentSessionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: string target_guid = 2;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.MetaType meta_type = 3;
+   */
+  metaType: MetaType;
+
+  /**
+   * Empty means "keep this target trustworthy".
+   *
+   * @generated from field: string objective = 4;
+   */
+  objective: string;
+
+  /**
+   * Format: users/{user}. Empty uses the first enabled quality agent.
+   *
+   * @generated from field: string agent = 5;
+   */
+  agent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.CreateQualityAgentSessionRequest.
+ * Use `create(CreateQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const CreateQualityAgentSessionRequestSchema: GenMessage<CreateQualityAgentSessionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentSessionsRequest
+ */
+export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.ListQualityAgentSessionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * UNSPECIFIED lists every non-archived session.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionState state = 2;
+   */
+  state: QualityAgentSessionState;
+
+  /**
+   * @generated from field: string database = 3;
+   */
+  database: string;
+
+  /**
+   * @generated from field: string target_guid = 4;
+   */
+  targetGuid: string;
+
+  /**
+   * @generated from field: int32 page_size = 5;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 6;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentSessionsRequest.
+ * Use `create(ListQualityAgentSessionsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentSessionsRequestSchema: GenMessage<ListQualityAgentSessionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentSessionsResponse
+ */
+export declare type ListQualityAgentSessionsResponse = Message<"metaxisdata.v1.ListQualityAgentSessionsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentSession quality_agent_sessions = 1;
+   */
+  qualityAgentSessions: QualityAgentSession[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentSessionsResponse.
+ * Use `create(ListQualityAgentSessionsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentSessionsResponseSchema: GenMessage<ListQualityAgentSessionsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentSessionRequest
+ */
+export declare type GetQualityAgentSessionRequest = Message<"metaxisdata.v1.GetQualityAgentSessionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentSessionRequest.
+ * Use `create(GetQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentSessionRequestSchema: GenMessage<GetQualityAgentSessionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.PauseQualityAgentSessionRequest
+ */
+export declare type PauseQualityAgentSessionRequest = Message<"metaxisdata.v1.PauseQualityAgentSessionRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The revision the caller saw; a stale value is rejected.
+   *
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.PauseQualityAgentSessionRequest.
+ * Use `create(PauseQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const PauseQualityAgentSessionRequestSchema: GenMessage<PauseQualityAgentSessionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ResumeQualityAgentSessionRequest
+ */
+export declare type ResumeQualityAgentSessionRequest = Message<"metaxisdata.v1.ResumeQualityAgentSessionRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ResumeQualityAgentSessionRequest.
+ * Use `create(ResumeQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const ResumeQualityAgentSessionRequestSchema: GenMessage<ResumeQualityAgentSessionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ArchiveQualityAgentSessionRequest
+ */
+export declare type ArchiveQualityAgentSessionRequest = Message<"metaxisdata.v1.ArchiveQualityAgentSessionRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ArchiveQualityAgentSessionRequest.
+ * Use `create(ArchiveQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const ArchiveQualityAgentSessionRequestSchema: GenMessage<ArchiveQualityAgentSessionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.WakeQualityAgentSessionRequest
+ */
+export declare type WakeQualityAgentSessionRequest = Message<"metaxisdata.v1.WakeQualityAgentSessionRequest"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The person's question or instruction; it becomes a user message in the session.
+   *
+   * @generated from field: string content = 2;
+   */
+  content: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.WakeQualityAgentSessionRequest.
+ * Use `create(WakeQualityAgentSessionRequestSchema)` to create a new message.
+ */
+export declare const WakeQualityAgentSessionRequestSchema: GenMessage<WakeQualityAgentSessionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentSessionMessagesRequest
+ */
+export declare type ListQualityAgentSessionMessagesRequest = Message<"metaxisdata.v1.ListQualityAgentSessionMessagesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * Return messages with seq greater than this; the polling watermark.
+   *
+   * @generated from field: int64 after_seq = 4;
+   */
+  afterSeq: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentSessionMessagesRequest.
+ * Use `create(ListQualityAgentSessionMessagesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentSessionMessagesRequestSchema: GenMessage<ListQualityAgentSessionMessagesRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentSessionMessagesResponse
+ */
+export declare type ListQualityAgentSessionMessagesResponse = Message<"metaxisdata.v1.ListQualityAgentSessionMessagesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentSessionMessage quality_agent_session_messages = 1;
+   */
+  qualityAgentSessionMessages: QualityAgentSessionMessage[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentSessionMessagesResponse.
+ * Use `create(ListQualityAgentSessionMessagesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentSessionMessagesResponseSchema: GenMessage<ListQualityAgentSessionMessagesResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentRunnerStatusRequest
+ */
+export declare type GetQualityAgentRunnerStatusRequest = Message<"metaxisdata.v1.GetQualityAgentRunnerStatusRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentRunnerStatusRequest.
+ * Use `create(GetQualityAgentRunnerStatusRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentRunnerStatusRequestSchema: GenMessage<GetQualityAgentRunnerStatusRequest>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -13842,6 +14130,109 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityLLMUsageRequestSchema;
     output: typeof QualityLLMUsageSchema;
+  },
+  /**
+   * Create one target's long-lived agent session. The target's database must be in
+   * the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityAgentSession
+   */
+  createQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof CreateQualityAgentSessionRequestSchema;
+    output: typeof QualityAgentSessionSchema;
+  },
+  /**
+   * List the workspace's sessions by newest activity first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentSessions
+   */
+  listQualityAgentSessions: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentSessionsRequestSchema;
+    output: typeof ListQualityAgentSessionsResponseSchema;
+  },
+  /**
+   * Read one session.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentSession
+   */
+  getQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentSessionRequestSchema;
+    output: typeof QualityAgentSessionSchema;
+  },
+  /**
+   * Pause a session: no new wake starts, the conversation stays.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.PauseQualityAgentSession
+   */
+  pauseQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof PauseQualityAgentSessionRequestSchema;
+    output: typeof QualityAgentSessionSchema;
+  },
+  /**
+   * Resume a paused or blocked session; it wakes immediately.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ResumeQualityAgentSession
+   */
+  resumeQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof ResumeQualityAgentSessionRequestSchema;
+    output: typeof QualityAgentSessionSchema;
+  },
+  /**
+   * Archive a session (a tombstone). The conversation stays readable.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ArchiveQualityAgentSession
+   */
+  archiveQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof ArchiveQualityAgentSessionRequestSchema;
+    output: typeof EmptySchema;
+  },
+  /**
+   * Append a person's message to the session and wake it immediately.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.WakeQualityAgentSession
+   */
+  wakeQualityAgentSession: {
+    methodKind: "unary";
+    input: typeof WakeQualityAgentSessionRequestSchema;
+    output: typeof QualityAgentSessionSchema;
+  },
+  /**
+   * Read one session's transcript. after_seq polls for new messages.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentSessionMessages
+   */
+  listQualityAgentSessionMessages: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentSessionMessagesRequestSchema;
+    output: typeof ListQualityAgentSessionMessagesResponseSchema;
+  },
+  /**
+   * Read the runner's live state: what is running, what is due and how much of the
+   * budgets is spent. runner_last_tick_time is process-local and resets on restart.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentRunnerStatus
+   */
+  getQualityAgentRunnerStatus: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentRunnerStatusRequestSchema;
+    output: typeof QualityAgentRunnerStatusSchema;
+  },
+  /**
+   * Read the runner's evaluation: session states, token spend, the acceptance of the
+   * change requests it proposed, and investigation verdicts. Read-only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentMetrics
+   */
+  getQualityAgentMetrics: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentMetricsRequestSchema;
+    output: typeof QualityAgentMetricsSchema;
   },
 }>;
 

@@ -779,3 +779,63 @@ func scanQualityAgentTranscript(scanner interface{ Scan(dest ...any) error }) (*
 	message.ToolCalls = toolCallList
 	return &message, nil
 }
+
+// AdvanceQualityAgentSessionWake makes an enabled session due now without touching its
+// lease (a wake already running keeps it) or its state. An event or a person's message
+// uses it to request an immediate wake.
+func (s *Store) AdvanceQualityAgentSessionWake(ctx context.Context, resourceID string, now time.Time) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET next_wake_at = LEAST(COALESCE(next_wake_at, $2), $2), updated_at = NOW()
+		WHERE resource_id = $1 AND archived_at IS NULL AND state = $3`,
+		resourceID, now,
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to advance the session wake")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to count the advanced session")
+	}
+	return affected > 0, nil
+}
+
+// CountQualityAgentSessionsByLease counts the sessions currently running (a live lease).
+func (s *Store) CountQualityAgentSessionsByLease(ctx context.Context, workspaceID string, now time.Time) (int32, error) {
+	var count int32
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM quality_agent_session
+		WHERE workspace_id = $1 AND archived_at IS NULL AND lease_until > $2`,
+		workspaceID, now).Scan(&count); err != nil {
+		return 0, errors.Wrap(err, "failed to count the running sessions")
+	}
+	return count, nil
+}
+
+// CountQualityAgentSessionsByState counts the non-archived sessions in one state.
+func (s *Store) CountQualityAgentSessionsByState(ctx context.Context, workspaceID string, state storepb.QualityAgentSessionState) (int32, error) {
+	var count int32
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM quality_agent_session
+		WHERE workspace_id = $1 AND archived_at IS NULL AND state = $2`,
+		workspaceID, int16(state)).Scan(&count); err != nil {
+		return 0, errors.Wrap(err, "failed to count the session states")
+	}
+	return count, nil
+}
+
+// LastQualityAgentSessionActivity is the workspace's newest transcript entry, the
+// runner status's "last activity" heartbeat.
+func (s *Store) LastQualityAgentSessionActivity(ctx context.Context, workspaceID string) (*time.Time, error) {
+	var last sql.NullTime
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT MAX(created_at) FROM quality_agent_message WHERE workspace_id = $1`,
+		workspaceID).Scan(&last); err != nil {
+		return nil, errors.Wrap(err, "failed to read the last session activity")
+	}
+	if !last.Valid {
+		return nil, nil
+	}
+	value := last.Time.UTC()
+	return &value, nil
+}
