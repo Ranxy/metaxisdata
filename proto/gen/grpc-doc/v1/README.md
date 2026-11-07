@@ -5796,8 +5796,8 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | ----- | ---- | ----- | ----------- |
 | parent | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
 | page_size | [int32](#int32) |  |  |
-| page_token | [string](#string) |  |  |
-| after_seq | [int64](#int64) |  | Return messages with seq greater than this; the polling watermark. |
+| page_token | [string](#string) |  | A page token from a previous response; walks towards older messages. Mutually exclusive with after_seq. |
+| after_seq | [int64](#int64) |  | Return messages with seq greater than this, ascending; the polling watermark. The two modes are mutually exclusive: combining this with page_token is InvalidArgument. |
 
 
 
@@ -6781,7 +6781,9 @@ schedule. &#34;Running&#34; is derived from lease_expire_time, never from state.
 <a name="metaxisdata-v1-QualityAgentSessionMessage"></a>
 
 ### QualityAgentSessionMessage
-QualityAgentSessionMessage is one append-only transcript entry of a session.
+QualityAgentSessionMessage is one append-only transcript entry of a session. (The
+internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
+after the session so a message always carries its parent in the name.)
 
 
 | Field | Type | Label | Description |
@@ -6800,6 +6802,7 @@ QualityAgentSessionMessage is one append-only transcript entry of a session.
 | truncated | [bool](#bool) |  |  |
 | error | [string](#string) |  |  |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| reference | [string](#string) |  | The object an event or wake is about (for example a quality execution resource name); empty for model and runner messages. |
 
 
 
@@ -8972,6 +8975,7 @@ measured per threshold_metric; the default fail threshold is zero.
 | ----- | ---- | ----- | ----------- |
 | name | [string](#string) |  |  |
 | content | [string](#string) |  | The person&#39;s question or instruction; it becomes a user message in the session. |
+| request_id | [string](#string) |  | A client-generated idempotency id for this message. Repeating the same id returns the session without appending a second message; empty means the server generates a random one (a repeat is then a new message, which is what a person asking the same question twice means). |
 
 
 

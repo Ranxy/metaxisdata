@@ -109,23 +109,29 @@ type Outcome struct {
 	Summary      string
 }
 
-// Wake runs one wake of a session. It appends the wake's user message, continues the
-// stored conversation (model wake) or surveys the target (deterministic wake), and
-// records the outcome on the transcript.
+// Wake runs one wake of a session. It repairs a tool call a crash left unanswered,
+// appends the wake's user message, continues the stored conversation (model wake) or
+// surveys the target (deterministic wake), and records the outcome on the transcript.
 func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMessage, options Options) (Outcome, error) {
 	if session == nil || session.ID == 0 {
 		return Outcome{}, common.Errorf(common.Invalid, "a session is required")
 	}
-	wake := session.WakeCount + 1
 	system, err := e.ensureSystemMessage(ctx, session)
 	if err != nil {
+		return Outcome{}, err
+	}
+	// A crash can leave an assistant tool call without its result. Close it now, before
+	// the new turn, so the stored transcript is legal for every reader and for the
+	// compaction cut.
+	if err := e.repairInterruptedToolCalls(ctx, session); err != nil {
 		return Outcome{}, err
 	}
 	pending, err := e.pendingMessages(ctx, session)
 	if err != nil {
 		return Outcome{}, err
 	}
-	wakeMessage, err := e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
+	wake := session.WakeCount + 1
+	_, err = e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
 		Wake:           wake,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE,
@@ -135,18 +141,10 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 	if err != nil {
 		return Outcome{}, err
 	}
-	processed := wakeMessage.Seq
-	for _, message := range pending {
-		if message.Seq > processed {
-			processed = message.Seq
-		}
-	}
-
 	outcome, err := e.runWake(ctx, session, wake, system, pending, options)
 	if err != nil {
 		return Outcome{}, err
 	}
-	outcome.ProcessedSeq = processed
 	if outcome.EngineState == nil {
 		outcome.EngineState = cloneEngineState(session.EngineState)
 	}
@@ -159,7 +157,7 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 	if e.resolveModel != nil && e.chat != nil {
 		config, ok, err := e.resolveModel(ctx)
 		if err == nil && ok {
-			return e.modelWake(ctx, session, wake, system, config, options)
+			return e.modelWake(ctx, session, wake, system, pending, config, options)
 		}
 	}
 	return e.deterministicWake(ctx, session, wake, pending)
@@ -171,31 +169,47 @@ func (e *Engine) modelWake(
 	session *store.QualityAgentSessionMessage,
 	wake int32,
 	system *store.QualityAgentTranscriptMessage,
+	pending []*store.QualityAgentTranscriptMessage,
 	config llm.ResolvedConfig,
 	options Options,
 ) (Outcome, error) {
-	messages, err := e.loadTranscript(ctx, session)
-	if err != nil {
-		return Outcome{}, err
-	}
-	var compactionTokens int64
-	compactTokens, compacted, compactErr := e.maybeCompact(ctx, session, wake, config, messages, options.CompactionTriggerTokens, false)
-	if compactErr != nil {
-		slog.Warn("failed to compact the session context",
-			slog.String("session", session.ResourceID), slog.Any("error", compactErr))
-	} else {
-		compactionTokens = compactTokens
-		if compacted {
-			reloaded, reloadErr := e.loadTranscript(ctx, session)
-			if reloadErr != nil {
-				return Outcome{}, reloadErr
-			}
-			messages = reloaded
+	// Every pending event/question is in the rebuilt context, so the wake consumes all
+	// of them. Rows the wake itself writes (assistant/tool/engine) are not inputs and
+	// must never move this watermark.
+	consumed := session.ProcessedSeq
+	for _, message := range pending {
+		if message.Seq > consumed {
+			consumed = message.Seq
 		}
 	}
-	// Old tool results keep their head and tail only: the middle of an oversized result
-	// from days ago is not worth resending on every turn.
-	conversation := pruneToolResults(BuildConversation(session, system, messages), keepRecentToolResults)
+	var compactionTokens int64
+	var (
+		messages []*store.QualityAgentTranscriptMessage
+		err      error
+	)
+	buildContext := func() ([]llm.AgentMessage, error) {
+		messages, err = e.loadTranscript(ctx, session)
+		if err != nil {
+			return nil, err
+		}
+		compactTokens, compacted, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages, options.CompactionTriggerTokens, false)
+		if compactErr != nil {
+			slog.Warn("failed to compact the session context",
+				slog.String("session", session.ResourceID), slog.Any("error", compactErr))
+		} else {
+			compactionTokens += compactTokens
+			if compacted {
+				messages, err = e.loadTranscript(ctx, session)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		// Old tool results keep their head and tail only: the middle of an oversized
+		// result from days ago is not worth resending on every turn.
+		return pruneToolResults(BuildConversation(session, system, messages), keepRecentToolResults), nil
+	}
+
 	state := cloneEngineState(session.EngineState)
 	var (
 		turn           int32
@@ -211,97 +225,111 @@ func (e *Engine) modelWake(
 	)
 	totalTokens = compactionTokens
 	executor := e.toolExecutor(ctx, session, truncatedTools, &blocked, &blockedCode, &blockedWhy, &nextWake, &scheduleReason)
-	chatConfig := llm.AgentConfig{
-		Provider:             config,
-		Feature:              "dq_agent",
-		History:              conversation,
-		Tools:                modelToolDefs(),
-		Executor:             executor,
-		MaxTurns:             modelMaxTurns,
-		MaxConversationBytes: llm.DefaultMaxConversationBytes,
-		IncludeUsage:         true,
-		Metrics:              e.metrics,
-	}
-	for event := range e.chat(ctx, chatConfig) {
-		switch event.Type {
-		case llm.AgentEventTurnStart:
-			turn = int32(event.Turn)
-			e.recordEngineKeyed(ctx, session, wake, turn,
-				fmt.Sprintf("model turn %d started", turn),
-				fmt.Sprintf("wake:%d:turn:%d:start", wake, turn))
-		case llm.AgentEventUsage:
-			if event.Usage != nil {
-				turnUsage[int32(event.Turn)] = event.Usage
-				totalTokens += event.Usage.TotalTokens
-				if event.Usage.TotalTokens == 0 {
-					totalTokens += event.Usage.PromptTokens + event.Usage.CompletionTokens
-				}
-				if event.Usage.PromptTokens > int64(maxPrompt) {
-					maxPrompt = int32(event.Usage.PromptTokens)
-				}
-			}
-		case llm.AgentEventAssistant:
-			if event.Assistant == nil {
-				continue
-			}
-			usage := turnUsage[int32(event.Turn)]
-			e.recordMessage(ctx, session, &store.QualityAgentTranscriptMessage{
-				Wake:             wake,
-				Turn:             int32(event.Turn),
-				Role:             storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-				Origin:           storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
-				Content:          event.Assistant.Content,
-				ToolCalls:        toolCallsToStore(event.Assistant.ToolCalls),
-				Tokens:           usageTokens(usage),
-				PromptTokens:     usagePromptTokens(usage),
-				CompletionTokens: usageCompletionTokens(usage),
-				IdempotencyKey:   fmt.Sprintf("wake:%d:turn:%d:assistant", wake, event.Turn),
-			})
-		case llm.AgentEventToolEnd:
-			if event.ToolCall == nil {
-				continue
-			}
-			e.recordMessage(ctx, session, &store.QualityAgentTranscriptMessage{
-				Wake:           wake,
-				Turn:           int32(event.Turn),
-				Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
-				Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
-				Content:        event.ToolResult,
-				ToolCallID:     event.ToolCall.ID,
-				ToolName:       event.ToolCall.GetName(),
-				Error:          event.ToolError,
-				Truncated:      truncatedTools[event.ToolCall.ID],
-				IdempotencyKey: fmt.Sprintf("wake:%d:tool:%s", wake, event.ToolCall.ID),
-			})
-		case llm.AgentEventError:
-			// A provider failure is retryable: keep what the wake learned and let the
-			// runner wake it again instead of parking the session forever.
-			summary := "the model call failed; retrying later"
-			if event.Error != nil {
-				summary = "the model call failed: " + truncateRunes(event.Error.Error(), 200)
-			}
-			if llm.IsContextOverflow(event.Error) {
-				// The provider rejected the request as too large. Compact as much as
-				// possible now and let the retry start from the smaller context.
-				if messages, loadErr := e.loadTranscript(ctx, session); loadErr == nil {
-					if _, _, compactErr := e.maybeCompact(ctx, session, wake, config, messages, options.CompactionTriggerTokens, true); compactErr != nil {
-						slog.Warn("failed to compact after a context overflow",
-							slog.String("session", session.ResourceID), slog.Any("error", compactErr))
-					} else {
-						summary = "the provider rejected the context as too large; it was compacted, retrying"
+	runLoop := func(conversation []llm.AgentMessage) *llm.AgentEvent {
+		chatConfig := llm.AgentConfig{
+			Provider:             config,
+			Feature:              "dq_agent",
+			History:              conversation,
+			Tools:                modelToolDefs(),
+			Executor:             executor,
+			MaxTurns:             modelMaxTurns,
+			MaxConversationBytes: llm.DefaultMaxConversationBytes,
+			IncludeUsage:         true,
+			Metrics:              e.metrics,
+		}
+		for event := range e.chat(ctx, chatConfig) {
+			switch event.Type {
+			case llm.AgentEventTurnStart:
+				turn = int32(event.Turn)
+				e.recordEngineKeyed(ctx, session, wake, turn,
+					fmt.Sprintf("model turn %d started", turn),
+					fmt.Sprintf("wake:%d:turn:%d:start", wake, turn))
+			case llm.AgentEventUsage:
+				if event.Usage != nil {
+					turnUsage[int32(event.Turn)] = event.Usage
+					totalTokens += event.Usage.TotalTokens
+					if event.Usage.TotalTokens == 0 {
+						totalTokens += event.Usage.PromptTokens + event.Usage.CompletionTokens
+					}
+					if event.Usage.PromptTokens > int64(maxPrompt) {
+						maxPrompt = int32(event.Usage.PromptTokens)
 					}
 				}
+			case llm.AgentEventAssistant:
+				if event.Assistant == nil {
+					continue
+				}
+				usage := turnUsage[int32(event.Turn)]
+				e.recordMessage(ctx, session, &store.QualityAgentTranscriptMessage{
+					Wake:             wake,
+					Turn:             int32(event.Turn),
+					Role:             storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+					Origin:           storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+					Content:          event.Assistant.Content,
+					ToolCalls:        toolCallsToStore(event.Assistant.ToolCalls),
+					Tokens:           usageTokens(usage),
+					PromptTokens:     usagePromptTokens(usage),
+					CompletionTokens: usageCompletionTokens(usage),
+					IdempotencyKey:   assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),
+				})
+			case llm.AgentEventToolEnd:
+				if event.ToolCall == nil {
+					continue
+				}
+				e.recordMessage(ctx, session, &store.QualityAgentTranscriptMessage{
+					Wake:           wake,
+					Turn:           int32(event.Turn),
+					Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
+					Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+					Content:        event.ToolResult,
+					ToolCallID:     event.ToolCall.ID,
+					ToolName:       event.ToolCall.GetName(),
+					Error:          event.ToolError,
+					Truncated:      truncatedTools[event.ToolCall.ID],
+					IdempotencyKey: fmt.Sprintf("wake:%d:tool:%s", wake, event.ToolCall.ID),
+				})
+			case llm.AgentEventError:
+				err := event.Error
+				return &llm.AgentEvent{Type: llm.AgentEventError, Error: err}
+			default:
 			}
-			e.recordEngine(ctx, session, wake, turn, summary)
-			return Outcome{
-				NextWakeAt:    ptrTime(e.now().Add(retryWake)),
-				TokensUsed:    totalTokens,
-				ContextTokens: maxPrompt,
-				EngineState:   state,
-				Summary:       summary,
-			}, nil
-		default:
 		}
+		return nil
+	}
+
+	conversation, err := buildContext()
+	if err != nil {
+		return Outcome{}, err
+	}
+	failure := runLoop(conversation)
+	if failure != nil && llm.IsContextOverflow(failure.Error) {
+		// The provider rejected the context as too large. Compact as much as possible,
+		// rebuild, and retry once inside this wake instead of wasting a whole retry cycle.
+		tokens, _, compactErr := e.maybeCompact(ctx, session, wake, system, config, messages,
+			options.CompactionTriggerTokens, true)
+		compactionTokens += tokens
+		totalTokens += tokens
+		if compactErr == nil {
+			if conversation, err = buildContext(); err != nil {
+				return Outcome{}, err
+			}
+			failure = runLoop(conversation)
+		}
+	}
+	if failure != nil {
+		summary := "the model call failed; retrying later"
+		if failure.Error != nil {
+			summary = "the model call failed: " + truncateRunes(failure.Error.Error(), 200)
+		}
+		e.recordEngine(ctx, session, wake, turn, summary)
+		return Outcome{
+			NextWakeAt:    ptrTime(e.now().Add(retryWake)),
+			TokensUsed:    totalTokens,
+			ContextTokens: maxPrompt,
+			ProcessedSeq:  consumed,
+			EngineState:   state,
+			Summary:       summary,
+		}, nil
 	}
 
 	summary := "wake finished"
@@ -315,10 +343,11 @@ func (e *Engine) modelWake(
 		if state.BlockedRounds >= blockedThreshold {
 			return Outcome{
 				Blocked:       true,
-				BlockedCode:   "model-reported",
+				BlockedCode:   blockedCode,
 				BlockedReason: blockedWhy,
 				TokensUsed:    totalTokens,
 				ContextTokens: maxPrompt,
+				ProcessedSeq:  consumed,
 				EngineState:   state,
 				Summary:       "blocked: " + blockedWhy,
 			}, nil
@@ -327,6 +356,7 @@ func (e *Engine) modelWake(
 			NextWakeAt:    ptrTime(e.now().Add(retryWake)),
 			TokensUsed:    totalTokens,
 			ContextTokens: maxPrompt,
+			ProcessedSeq:  consumed,
 			EngineState:   state,
 			Summary:       fmt.Sprintf("reported the blocker %q once; waiting for it to persist", blockedCode),
 		}, nil
@@ -340,36 +370,76 @@ func (e *Engine) modelWake(
 		NextWakeAt:    nextWake,
 		TokensUsed:    totalTokens,
 		ContextTokens: maxPrompt,
+		ProcessedSeq:  consumed,
 		EngineState:   state,
 		Summary:       summary,
 	}, nil
 }
 
-// deterministicWake runs the no-model survey or event investigation.
+// deterministicWake runs the no-model survey or event investigation. It consumes every
+// pending event it can process (bounded per wake); an ask parks the session because only
+// a model can answer it, and anything it leaves unprocessed keeps a seq above the
+// watermark so the runner wakes it again immediately.
 func (e *Engine) deterministicWake(
 	ctx context.Context,
 	session *store.QualityAgentSessionMessage,
 	wake int32,
 	pending []*store.QualityAgentTranscriptMessage,
 ) (Outcome, error) {
+	asks := false
+	events := make([]*store.QualityAgentTranscriptMessage, 0, len(pending))
 	for _, message := range pending {
 		switch message.Origin {
 		case storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK:
-			return Outcome{
-				Blocked:       true,
-				BlockedCode:   "needs-human",
-				BlockedReason: "a person's question needs the model; configure an LLM provider",
-				Summary:       "blocked: answering a person needs a model",
-			}, nil
+			asks = true
 		case storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT:
-			if message.Reference == "" {
-				continue
+			if message.Reference != "" {
+				events = append(events, message)
 			}
-			return e.investigateEvent(ctx, session, wake, message.Reference)
 		default:
 		}
 	}
-	return e.maintain(ctx, session, wake)
+	if asks {
+		return Outcome{
+			Blocked:       true,
+			BlockedCode:   "needs-human",
+			BlockedReason: "a person's question needs the model; configure an LLM provider",
+			ProcessedSeq:  session.ProcessedSeq,
+			EngineState:   cloneEngineState(session.EngineState),
+			Summary:       "blocked: answering a person needs a model",
+		}, nil
+	}
+	if len(events) > 0 {
+		consumed := session.ProcessedSeq
+		investigated := 0
+		for _, event := range events {
+			if investigated >= maxDeterministicEvents {
+				break
+			}
+			outcome, err := e.investigateEvent(ctx, session, wake, event.Reference)
+			if err != nil {
+				return Outcome{}, err
+			}
+			if outcome.Blocked {
+				outcome.ProcessedSeq = consumed
+				return outcome, nil
+			}
+			consumed = event.Seq
+			investigated++
+		}
+		return Outcome{
+			NextWakeAt:   ptrTime(e.now().Add(maintainWake)),
+			ProcessedSeq: consumed,
+			EngineState:  cloneEngineState(session.EngineState),
+			Summary:      fmt.Sprintf("investigated %d event(s)", investigated),
+		}, nil
+	}
+	outcome, err := e.maintain(ctx, session, wake)
+	if err != nil {
+		return Outcome{}, err
+	}
+	outcome.ProcessedSeq = session.ProcessedSeq
+	return outcome, nil
 }
 
 // maintain surveys the target's plan. A fully surveyed target sleeps until the next
@@ -497,11 +567,12 @@ func (e *Engine) investigateEvent(ctx context.Context, session *store.QualityAge
 			Summary:       "blocked: the execution does not match the session target",
 		}, nil
 	}
-	if execution.Status != storepb.QualityStatus_QUALITY_STATUS_FAIL {
+	if execution.Status != storepb.QualityStatus_QUALITY_STATUS_FAIL &&
+		execution.Status != storepb.QualityStatus_QUALITY_STATUS_ERROR {
 		return Outcome{
 			Blocked:       true,
 			BlockedCode:   "needs-human",
-			BlockedReason: "the triggering execution did not fail",
+			BlockedReason: "the triggering execution neither failed nor errored",
 			Summary:       "blocked: the execution is not a failure",
 		}, nil
 	}
@@ -537,14 +608,16 @@ func (e *Engine) investigateEvent(ctx context.Context, session *store.QualityAge
 // wake. The system message is never compacted away: the context builder always
 // prepends it.
 func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.QualityAgentSessionMessage) (*store.QualityAgentTranscriptMessage, error) {
+	systemRole := storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM
 	messages, err := e.store.ListQualityAgentTranscriptMessages(ctx, &store.FindQualityAgentTranscriptMessage{
 		SessionID: session.ID,
+		Role:      &systemRole,
 		Limit:     1,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the session's first message")
+		return nil, errors.Wrap(err, "failed to read the session's system message")
 	}
-	if len(messages) > 0 && messages[0].Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM {
+	if len(messages) > 0 {
 		return messages[0], nil
 	}
 	return e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
@@ -556,16 +629,67 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 	})
 }
 
-// pendingMessages reads the messages a previous wake did not consume.
-func (e *Engine) pendingMessages(ctx context.Context, session *store.QualityAgentSessionMessage) ([]*store.QualityAgentTranscriptMessage, error) {
+// repairInterruptedToolCalls closes the trailing assistant tool call a crash left
+// unanswered. Only the newest assistant is considered: an older one was followed by a
+// later turn and has already been repaired by the wake that followed it.
+func (e *Engine) repairInterruptedToolCalls(ctx context.Context, session *store.QualityAgentSessionMessage) error {
 	messages, err := e.store.ListQualityAgentTranscriptMessages(ctx, &store.FindQualityAgentTranscriptMessage{
-		SessionID:     session.ID,
-		AfterSeq:      session.ProcessedSeq,
-		ExcludeEngine: true,
-		Limit:         100,
+		SessionID:   session.ID,
+		Limit:       50,
+		NewestFirst: true,
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read the pending session messages")
+		return errors.Wrap(err, "failed to read the session tail")
+	}
+	answers := map[string]bool{}
+	for _, message := range messages {
+		switch message.Role {
+		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL:
+			answers[message.ToolCallID] = true
+		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT:
+			for _, call := range message.ToolCalls.GetToolCalls() {
+				if answers[call.GetId()] {
+					continue
+				}
+				answers[call.GetId()] = true
+				_, appendErr := e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
+					Wake:           session.WakeCount,
+					Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
+					Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
+					Content:        interruptedToolResult,
+					ToolCallID:     call.GetId(),
+					ToolName:       call.GetName(),
+					Error:          "interrupted",
+					IdempotencyKey: "interrupted:" + call.GetId(),
+				})
+				if appendErr != nil {
+					return appendErr
+				}
+			}
+			return nil
+		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE:
+			// Runner notes may follow a completed assistant turn; keep looking for the
+			// assistant they belong to.
+		default:
+			// A user/system message means the tail is complete, not a crash.
+			return nil
+		}
+	}
+	return nil
+}
+
+// pendingMessages reads the messages a previous wake did not consume.
+func (e *Engine) pendingMessages(ctx context.Context, session *store.QualityAgentSessionMessage) ([]*store.QualityAgentTranscriptMessage, error) {
+	// Only an event or a person's question is an input that needs consuming; assistant,
+	// tool and engine rows the wake itself writes must never keep the session hot.
+	messages, err := e.store.ListQualityAgentTranscriptMessages(ctx, &store.FindQualityAgentTranscriptMessage{
+		SessionID:  session.ID,
+		AfterSeq:   session.ProcessedSeq,
+		InputsOnly: true,
+		Limit:      100,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the pending session inputs")
 	}
 	return messages, nil
 }

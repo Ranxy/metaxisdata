@@ -369,3 +369,24 @@ func TestRunAgentLoopSeedsFromThePromptFieldsWithoutHistory(t *testing.T) {
 	require.Contains(t, request, "single-shot system")
 	require.Contains(t, request, "single-shot user")
 }
+
+// Tool-call arguments travel in the conversation on every turn, so an oversized
+// argument set must be held to the same conversation budget as a text message.
+func TestRunAgentLoopEnforcesConversationBudgetOnToolArguments(t *testing.T) {
+	t.Parallel()
+
+	var call ToolCall
+	call.ID = "call_1"
+	call.Type = "function"
+	call.Function.Name = "lookup"
+	call.Function.Arguments = strings.Repeat("a", 1024)
+	cfg := AgentConfig{
+		Provider:             ResolvedConfig{ModelName: "test-model"},
+		History:              []AgentMessage{{Role: "assistant", ToolCalls: []ToolCall{call}}},
+		MaxConversationBytes: 100,
+	}
+	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
+	require.Len(t, events, 1)
+	require.Equal(t, AgentEventError, events[0].Type)
+	require.Contains(t, events[0].Error.Error(), "exceeded")
+}

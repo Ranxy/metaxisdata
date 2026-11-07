@@ -32,3 +32,24 @@ func TestExecutionEventContentCitesTheExecution(t *testing.T) {
 	require.Contains(t, content, "NO_READ_ONLY_SOURCE")
 	require.Contains(t, content, "ERROR")
 }
+
+// A transient block still collects the event; a paused or needs-human session does not.
+func TestSessionAcceptsAgentEvents(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, sessionAcceptsAgentEvents(&store.QualityAgentSessionMessage{
+		State: storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED,
+	}))
+	require.True(t, sessionAcceptsAgentEvents(&store.QualityAgentSessionMessage{
+		State:       storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
+		BlockedCode: "token-budget",
+	}))
+	require.False(t, sessionAcceptsAgentEvents(&store.QualityAgentSessionMessage{
+		State:       storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
+		BlockedCode: "needs-human",
+	}))
+	require.False(t, sessionAcceptsAgentEvents(&store.QualityAgentSessionMessage{
+		State: storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED,
+	}))
+	require.False(t, sessionAcceptsAgentEvents(nil))
+}

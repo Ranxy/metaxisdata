@@ -1116,7 +1116,7 @@ Executions are kept 90 days, resolved issues 90 days, column profiles and the
 model result cache 7 days, decided or superseded suggestions 90 days, finished AI drafting jobs
 90 days, and captured raw LLM request/response debug entries 7 days; the
 maintenance runner prunes them. Checks, open issues and accepted labels are not
-pruned. Agent session transcripts (`quality_agent_session_message`) and their
+pruned. Agent session transcripts (`quality_agent_message`) and their
 compaction checkpoints are **not pruned** in this release: context compaction
 only changes what the model reads, not the stored conversation, so a workspace
 with many monitored targets accumulates rows. The weekly-digest period table

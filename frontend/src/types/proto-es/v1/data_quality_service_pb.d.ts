@@ -10317,7 +10317,9 @@ export declare type QualityAgentSession = Message<"metaxisdata.v1.QualityAgentSe
 export declare const QualityAgentSessionSchema: GenMessage<QualityAgentSession>;
 
 /**
- * QualityAgentSessionMessage is one append-only transcript entry of a session.
+ * QualityAgentSessionMessage is one append-only transcript entry of a session. (The
+ * internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
+ * after the session so a message always carries its parent in the name.)
  *
  * @generated from message metaxisdata.v1.QualityAgentSessionMessage
  */
@@ -10399,6 +10401,14 @@ export declare type QualityAgentSessionMessage = Message<"metaxisdata.v1.Quality
    * @generated from field: google.protobuf.Timestamp create_time = 14;
    */
   createTime?: Timestamp;
+
+  /**
+   * The object an event or wake is about (for example a quality execution resource
+   * name); empty for model and runner messages.
+   *
+   * @generated from field: string reference = 15;
+   */
+  reference: string;
 };
 
 /**
@@ -10594,12 +10604,12 @@ export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMe
   agentChangeRequestsPending: number;
 
   /**
-   * @generated from field: int32 agent_change_requests_approved = 13;
+   * @generated from field: int32 agent_change_requests_approved = 8;
    */
   agentChangeRequestsApproved: number;
 
   /**
-   * @generated from field: int32 agent_change_requests_expired = 14;
+   * @generated from field: int32 agent_change_requests_expired = 9;
    */
   agentChangeRequestsExpired: number;
 
@@ -10607,32 +10617,32 @@ export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMe
    * Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
    * rows carry no verdict, so the buckets do not have to sum to the total.
    *
-   * @generated from field: int32 investigations_total = 8;
+   * @generated from field: int32 investigations_total = 10;
    */
   investigationsTotal: number;
 
   /**
-   * @generated from field: int32 investigations_inconclusive = 9;
+   * @generated from field: int32 investigations_inconclusive = 11;
    */
   investigationsInconclusive: number;
 
   /**
-   * @generated from field: int32 investigations_root_cause = 10;
+   * @generated from field: int32 investigations_root_cause = 12;
    */
   investigationsRootCause: number;
 
   /**
-   * @generated from field: int32 investigations_contributing_factor = 11;
+   * @generated from field: int32 investigations_contributing_factor = 13;
    */
   investigationsContributingFactor: number;
 
   /**
-   * @generated from field: int32 investigations_unrelated = 15;
+   * @generated from field: int32 investigations_unrelated = 14;
    */
   investigationsUnrelated: number;
 
   /**
-   * @generated from field: repeated metaxisdata.v1.QualityAgentTargetCost top_targets = 12;
+   * @generated from field: repeated metaxisdata.v1.QualityAgentTargetCost top_targets = 15;
    */
   topTargets: QualityAgentTargetCost[];
 };
@@ -10867,6 +10877,16 @@ export declare type WakeQualityAgentSessionRequest = Message<"metaxisdata.v1.Wak
    * @generated from field: string content = 2;
    */
   content: string;
+
+  /**
+   * A client-generated idempotency id for this message. Repeating the same id returns
+   * the session without appending a second message; empty means the server generates a
+   * random one (a repeat is then a new message, which is what a person asking the same
+   * question twice means).
+   *
+   * @generated from field: string request_id = 3;
+   */
+  requestId: string;
 };
 
 /**
@@ -10892,12 +10912,16 @@ export declare type ListQualityAgentSessionMessagesRequest = Message<"metaxisdat
   pageSize: number;
 
   /**
+   * A page token from a previous response; walks towards older messages. Mutually
+   * exclusive with after_seq.
+   *
    * @generated from field: string page_token = 3;
    */
   pageToken: string;
 
   /**
-   * Return messages with seq greater than this; the polling watermark.
+   * Return messages with seq greater than this, ascending; the polling watermark. The
+   * two modes are mutually exclusive: combining this with page_token is InvalidArgument.
    *
    * @generated from field: int64 after_seq = 4;
    */

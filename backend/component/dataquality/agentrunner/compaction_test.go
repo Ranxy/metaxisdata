@@ -46,7 +46,7 @@ func TestMaybeCompactSummarizesTheOldRegion(t *testing.T) {
 	session := compactionSession()
 	messages := fillerMessages(12)
 
-	tokens, compacted, err := engine.maybeCompact(context.Background(), session, 3, llm.ResolvedConfig{ModelName: "test-model"}, messages, 2_000, false)
+	tokens, compacted, err := engine.maybeCompact(context.Background(), session, 3, nil, llm.ResolvedConfig{ModelName: "test-model"}, messages, 2_000, false)
 	require.NoError(t, err)
 	require.True(t, compacted)
 	require.Positive(t, tokens)
@@ -73,7 +73,7 @@ func TestMaybeCompactSkipsUnderTheTrigger(t *testing.T) {
 	session := compactionSession()
 	session.ContextTokens = 100
 
-	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(2), 10_000, false)
+	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil, llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(2), 10_000, false)
 	require.NoError(t, err)
 	require.False(t, compacted)
 	require.Empty(t, session.Summary)
@@ -113,4 +113,60 @@ func TestPruneToolResultsKeepsTheEnds(t *testing.T) {
 // prunedMarkerForTest keeps the marker expectation in one place.
 func prunedMarkerForTest() string {
 	return "[... tool result pruned ...]"
+}
+
+// A turn boundary flushes a dangling call, so a crash-damaged tail cannot push every
+// later cut back to zero.
+func TestBalancedCutFlushesAtATurnBoundary(t *testing.T) {
+	t.Parallel()
+
+	messages := []*store.QualityAgentTranscriptMessage{
+		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_crash"}}}},
+		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER},
+		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+			ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_live"}}}},
+		{Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL, ToolCallID: "call_live"},
+	}
+	// The cut after the user message (index 2) is balanced even though the first
+	// assistant call was never answered.
+	require.Equal(t, 2, balancedCut(messages, 2))
+	require.Equal(t, 4, balancedCut(messages, 4))
+}
+
+// A summary that does not shrink the span it replaces is rejected: the original
+// messages stay the model's context instead of being replaced by a larger checkpoint.
+func TestMaybeCompactRejectsANonShrinkingSummary(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: strings.Repeat("a very long summary that is bigger than the region. ", 5000)},
+	}), resolveToModel, nil)
+	session := compactionSession()
+	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil,
+		llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(6), 100, false)
+	require.NoError(t, err)
+	require.False(t, compacted)
+	require.Empty(t, session.Summary)
+	for _, message := range stores.messages {
+		require.NotEqual(t, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_COMPACTION, message.Role)
+	}
+}
+
+// A forced compaction after a provider overflow ignores the trigger and compacts anyway.
+func TestMaybeCompactForcedIgnoresTheTrigger(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "## Next Step\n- (none)"},
+	}), resolveToModel, nil)
+	session := compactionSession()
+	session.ContextTokens = 10
+	_, compacted, err := engine.maybeCompact(context.Background(), session, 1, nil,
+		llm.ResolvedConfig{ModelName: "test-model"}, fillerMessages(12), 1_000_000, true)
+	require.NoError(t, err)
+	require.True(t, compacted)
+	require.NotEmpty(t, session.Summary)
 }

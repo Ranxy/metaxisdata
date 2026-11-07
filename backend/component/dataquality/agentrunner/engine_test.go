@@ -2,7 +2,9 @@ package agentrunner
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +93,17 @@ func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *
 		if find.ExcludeEngine && message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE {
 			continue
 		}
+		if find.Role != nil && message.Role != *find.Role {
+			continue
+		}
+		if find.InputsOnly {
+			isUser := message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER
+			isEvent := message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT
+			isAsk := message.Origin == storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK
+			if !isUser || (!isEvent && !isAsk) {
+				continue
+			}
+		}
 		matches = append(matches, message)
 	}
 	slices.SortFunc(matches, func(a, b *store.QualityAgentTranscriptMessage) int {
@@ -103,6 +116,9 @@ func (f *fakeStore) ListQualityAgentTranscriptMessages(_ context.Context, find *
 			return 0
 		}
 	})
+	if find.NewestFirst {
+		slices.Reverse(matches)
+	}
 	if find.Offset > 0 && find.Offset < len(matches) {
 		matches = matches[find.Offset:]
 	}
@@ -219,7 +235,7 @@ func TestWakeRecordsTheConversation(t *testing.T) {
 	require.Nil(t, outcome.NextWakeAt)
 	require.Equal(t, int64(220), outcome.TokensUsed)
 	require.Equal(t, int32(100), outcome.ContextTokens)
-	require.Equal(t, int64(2), outcome.ProcessedSeq)
+	require.Zero(t, outcome.ProcessedSeq, "assistant/tool/engine rows are not inputs")
 	require.Contains(t, outcome.Summary, "wake finished")
 
 	require.Equal(t, []storepb.QualityAgentMessageRole{
@@ -276,7 +292,7 @@ func TestWakeParksTheSessionAfterRepeatedBlocker(t *testing.T) {
 	outcome, err := engine.Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.True(t, outcome.Blocked)
-	require.Equal(t, "model-reported", outcome.BlockedCode)
+	require.Equal(t, "needs-data", outcome.BlockedCode)
 	require.Contains(t, outcome.BlockedReason, "source table is empty")
 	require.Equal(t, int32(3), outcome.EngineState.GetBlockedRounds())
 }
@@ -322,7 +338,7 @@ func TestWakeInvestigatesAFailedExecutionWithoutAModel(t *testing.T) {
 	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
-	require.Contains(t, outcome.Summary, "investigated the event")
+	require.Contains(t, outcome.Summary, "investigated 1 event(s)")
 	require.Len(t, stores.investigations, 1)
 	require.Equal(t, storepb.QualityInvestigationTrigger_QUALITY_INVESTIGATION_TRIGGER_EXECUTION,
 		stores.investigations[0].Trigger)
@@ -368,7 +384,7 @@ func TestWakeReusesTheStoredWakeMessage(t *testing.T) {
 
 	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, outcome.ProcessedSeq, int64(1))
+	require.Zero(t, outcome.ProcessedSeq)
 	userMessages := 0
 	for _, message := range stores.messages {
 		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER {
@@ -377,4 +393,223 @@ func TestWakeReusesTheStoredWakeMessage(t *testing.T) {
 	}
 	require.Equal(t, 1, userMessages)
 	require.Greater(t, len(stores.messages), before)
+}
+
+// An event whose execution ended ERROR is investigated too: an error is as much
+// something the agent should look at as a FAIL.
+func TestWakeInvestigatesAnErroredExecutionWithoutAModel(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.executions[9] = &store.QualityExecutionMessage{
+		ID:         9,
+		TargetGUID: "target-1",
+		TargetType: storepb.MetaType(1),
+		Status:     storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		ErrorCode:  "NO_READ_ONLY_SOURCE",
+	}
+	message, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+		Content: "execution 9 errored", Reference: "qualityExecutions/9",
+		IdempotencyKey: "event:execution:9",
+	})
+	require.NoError(t, err)
+	session := testSession()
+	session.ProcessedSeq = message.Seq - 1
+
+	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.False(t, outcome.Blocked)
+	require.Contains(t, outcome.Summary, "investigated 1 event(s)")
+	require.Len(t, stores.investigations, 1)
+}
+
+// The watermark counts only external inputs: the assistant/tool/engine rows a wake
+// writes must not make the session look due again (the review's hot-loop blocker).
+func TestWakeWatermarkCountsOnlyExternalInputs(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	session := testSession()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{{content: "nothing to do"}}), resolveToModel, nil)
+	outcome, err := engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.Zero(t, outcome.ProcessedSeq)
+	require.Greater(t, len(stores.messages), 3, "assistant/engine rows were written")
+
+	// A pending event is consumed by the model wake (it is in the rebuilt context).
+	event, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+		Content: "execution 1 failed", Reference: "qualityExecutions/1", IdempotencyKey: "event:execution:1",
+	})
+	require.NoError(t, err)
+	outcome, err = engine.Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.Equal(t, event.Seq, outcome.ProcessedSeq)
+}
+
+// The no-model path investigates every pending event it can, not just the first.
+func TestDeterministicWakeInvestigatesEveryPendingEvent(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	for id := int64(1); id <= 2; id++ {
+		stores.executions[id] = &store.QualityExecutionMessage{
+			ID: id, TargetGUID: "target-1", TargetType: storepb.MetaType(1),
+			Status: storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		}
+		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+			SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+			Content: "event", Reference: fmt.Sprintf("qualityExecutions/%d", id),
+			IdempotencyKey: fmt.Sprintf("event:%d", id),
+		})
+		require.NoError(t, err)
+	}
+	last := stores.messages[len(stores.messages)-1]
+
+	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, stores.investigations, 2)
+	require.Equal(t, last.Seq, outcome.ProcessedSeq)
+}
+
+// More events than one deterministic wake handles stay above the watermark so the
+// runner picks them up on the next wake.
+func TestDeterministicWakeLeavesTheRestPending(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	for id := int64(1); id <= maxDeterministicEvents+1; id++ {
+		stores.executions[id] = &store.QualityExecutionMessage{
+			ID: id, TargetGUID: "target-1", TargetType: storepb.MetaType(1),
+			Status: storepb.QualityStatus_QUALITY_STATUS_FAIL,
+		}
+		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+			SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+			Content: "event", Reference: fmt.Sprintf("qualityExecutions/%d", id),
+			IdempotencyKey: fmt.Sprintf("event:%d", id),
+		})
+		require.NoError(t, err)
+	}
+
+	outcome, err := NewEngine(stores).Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, stores.investigations, maxDeterministicEvents)
+	require.Less(t, outcome.ProcessedSeq, stores.nextSeq, "the last event is still pending")
+}
+
+// A crash between the assistant message and its tool result is repaired before the next
+// model request, so the stored transcript stays legal.
+func TestWakeRepairsADanglingToolCall(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	engine := NewEngine(stores)
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	dangling, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Content:   "calling a tool",
+		ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{{Id: "call_crash", Name: "get_target_summary"}}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT, dangling.Role)
+
+	_, err = engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	found := false
+	for _, message := range stores.messages {
+		if message.ToolCallID == "call_crash" {
+			found = true
+			require.Contains(t, message.Content, "restarted")
+			require.Equal(t, "interrupted", message.Error)
+		}
+	}
+	require.True(t, found, "the dangling call got a synthetic result")
+}
+
+// Several distinct decisions can be recorded in one session; only an identical
+// statement is deduplicated.
+func TestRecordDecisionKeepsDistinctDecisions(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	turns := []scriptedTurn{
+		{content: "first", toolCalls: []llm.ToolCall{toolCall("call_1", "record_decision", `{"statement":"the drop is a real data issue"}`)}},
+		{content: "second", toolCalls: []llm.ToolCall{toolCall("call_2", "record_decision", `{"statement":"the check threshold is too strict"}`)}},
+		{content: "done"},
+	}
+	engine := NewModelEngine(stores, scriptedChat(turns), resolveToModel, nil)
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	decisions := 0
+	for _, input := range stores.memoryInputs {
+		if input.Kind == storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION {
+			decisions++
+		}
+	}
+	require.Equal(t, 2, decisions)
+}
+
+// A provider context-overflow rejection forces a compaction and retries the wake once
+// inside the same wake, instead of parking the session for a retry cycle.
+func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	session := testSession()
+	for index := 0; index < 12; index++ {
+		_, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+			SessionID: 1, WorkspaceID: "ws",
+			Role:    storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE,
+			Content: strings.Repeat("earlier conversation. ", 200),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := 0
+	chat := func(_ context.Context, _ llm.AgentConfig) <-chan llm.AgentEvent {
+		calls++
+		events := make(chan llm.AgentEvent, 8)
+		go func() {
+			defer close(events)
+			switch calls {
+			case 1:
+				events <- llm.AgentEvent{Type: llm.AgentEventError,
+					Error: &llm.ResponseError{Code: llm.FailureContextOverflow}}
+			case 2:
+				events <- llm.AgentEvent{Type: llm.AgentEventAssistant,
+					Assistant: &llm.AgentMessage{Role: "assistant", Content: "## Next Step\n- (none)"}}
+				events <- llm.AgentEvent{Type: llm.AgentEventAgentEnd}
+			default:
+				events <- llm.AgentEvent{Type: llm.AgentEventTurnStart, Turn: 1}
+				events <- llm.AgentEvent{Type: llm.AgentEventUsage, Turn: 1,
+					Usage: &llm.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110}}
+				events <- llm.AgentEvent{Type: llm.AgentEventAssistant,
+					Assistant: &llm.AgentMessage{Role: "assistant", Content: "recovered"}}
+				events <- llm.AgentEvent{Type: llm.AgentEventAgentEnd}
+			}
+		}()
+		return events
+	}
+	engine := NewModelEngine(stores, chat, resolveToModel, nil)
+	outcome, err := engine.Wake(context.Background(), session, Options{CompactionTriggerTokens: 1_000_000})
+	require.NoError(t, err)
+	require.False(t, outcome.Blocked)
+	require.Contains(t, outcome.Summary, "wake finished")
+	require.NotEmpty(t, session.Summary, "the overflow forced a compaction")
+	require.Equal(t, 3, calls, "overflow -> summary -> retried wake")
+	found := false
+	for _, message := range stores.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT && message.Content == "recovered" {
+			found = true
+		}
+	}
+	require.True(t, found)
 }

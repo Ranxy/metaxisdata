@@ -50,12 +50,13 @@ func TestConvertQualityAgentMessageRendersTheToolCalls(t *testing.T) {
 
 	created := time.Unix(10_000, 0).UTC()
 	message := convertQualityAgentMessageToV1("ws", "s1", &store.QualityAgentTranscriptMessage{
-		Seq:     7,
-		Wake:    2,
-		Turn:    1,
-		Role:    storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
-		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
-		Content: "looking",
+		Seq:       7,
+		Wake:      2,
+		Turn:      1,
+		Role:      storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT,
+		Origin:    storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL,
+		Content:   "looking",
+		Reference: "qualityExecutions/123",
 		ToolCalls: &storepb.QualityToolCallList{ToolCalls: []*storepb.QualityToolCall{
 			{Id: "call_1", Name: "get_target_summary", Arguments: "{}"},
 		}},
@@ -64,6 +65,7 @@ func TestConvertQualityAgentMessageRendersTheToolCalls(t *testing.T) {
 	require.Equal(t, "workspaces/ws/qualityAgentSessions/s1/messages/7", message.GetName())
 	require.Len(t, message.GetToolCalls(), 1)
 	require.Equal(t, "get_target_summary", message.GetToolCalls()[0].GetName())
+	require.Equal(t, "qualityExecutions/123", message.GetReference())
 	require.Equal(t, int64(7), message.GetSeq())
 }
 

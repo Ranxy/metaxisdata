@@ -22012,7 +22012,9 @@ func (x *QualityAgentSession) GetArchiveTime() *timestamppb.Timestamp {
 	return nil
 }
 
-// QualityAgentSessionMessage is one append-only transcript entry of a session.
+// QualityAgentSessionMessage is one append-only transcript entry of a session. (The
+// internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
+// after the session so a message always carries its parent in the name.)
 type QualityAgentSessionMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq}
@@ -22027,12 +22029,15 @@ type QualityAgentSessionMessage struct {
 	// Present on assistant messages: the tool calls the model made.
 	ToolCalls []*QualityToolCall `protobuf:"bytes,8,rep,name=tool_calls,json=toolCalls,proto3" json:"tool_calls,omitempty"`
 	// Present on tool messages: which call the result answers.
-	ToolCallId    string                 `protobuf:"bytes,9,opt,name=tool_call_id,json=toolCallId,proto3" json:"tool_call_id,omitempty"`
-	ToolName      string                 `protobuf:"bytes,10,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
-	Tokens        int32                  `protobuf:"varint,11,opt,name=tokens,proto3" json:"tokens,omitempty"`
-	Truncated     bool                   `protobuf:"varint,12,opt,name=truncated,proto3" json:"truncated,omitempty"`
-	Error         string                 `protobuf:"bytes,13,opt,name=error,proto3" json:"error,omitempty"`
-	CreateTime    *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	ToolCallId string                 `protobuf:"bytes,9,opt,name=tool_call_id,json=toolCallId,proto3" json:"tool_call_id,omitempty"`
+	ToolName   string                 `protobuf:"bytes,10,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	Tokens     int32                  `protobuf:"varint,11,opt,name=tokens,proto3" json:"tokens,omitempty"`
+	Truncated  bool                   `protobuf:"varint,12,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Error      string                 `protobuf:"bytes,13,opt,name=error,proto3" json:"error,omitempty"`
+	CreateTime *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
+	// The object an event or wake is about (for example a quality execution resource
+	// name); empty for model and runner messages.
+	Reference     string `protobuf:"bytes,15,opt,name=reference,proto3" json:"reference,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -22163,6 +22168,13 @@ func (x *QualityAgentSessionMessage) GetCreateTime() *timestamppb.Timestamp {
 		return x.CreateTime
 	}
 	return nil
+}
+
+func (x *QualityAgentSessionMessage) GetReference() string {
+	if x != nil {
+		return x.Reference
+	}
+	return ""
 }
 
 // QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
@@ -22451,16 +22463,16 @@ type QualityAgentMetrics struct {
 	AgentChangeRequestsApplied  int32 `protobuf:"varint,5,opt,name=agent_change_requests_applied,json=agentChangeRequestsApplied,proto3" json:"agent_change_requests_applied,omitempty"`
 	AgentChangeRequestsRejected int32 `protobuf:"varint,6,opt,name=agent_change_requests_rejected,json=agentChangeRequestsRejected,proto3" json:"agent_change_requests_rejected,omitempty"`
 	AgentChangeRequestsPending  int32 `protobuf:"varint,7,opt,name=agent_change_requests_pending,json=agentChangeRequestsPending,proto3" json:"agent_change_requests_pending,omitempty"`
-	AgentChangeRequestsApproved int32 `protobuf:"varint,13,opt,name=agent_change_requests_approved,json=agentChangeRequestsApproved,proto3" json:"agent_change_requests_approved,omitempty"`
-	AgentChangeRequestsExpired  int32 `protobuf:"varint,14,opt,name=agent_change_requests_expired,json=agentChangeRequestsExpired,proto3" json:"agent_change_requests_expired,omitempty"`
+	AgentChangeRequestsApproved int32 `protobuf:"varint,8,opt,name=agent_change_requests_approved,json=agentChangeRequestsApproved,proto3" json:"agent_change_requests_approved,omitempty"`
+	AgentChangeRequestsExpired  int32 `protobuf:"varint,9,opt,name=agent_change_requests_expired,json=agentChangeRequestsExpired,proto3" json:"agent_change_requests_expired,omitempty"`
 	// Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
 	// rows carry no verdict, so the buckets do not have to sum to the total.
-	InvestigationsTotal              int32                     `protobuf:"varint,8,opt,name=investigations_total,json=investigationsTotal,proto3" json:"investigations_total,omitempty"`
-	InvestigationsInconclusive       int32                     `protobuf:"varint,9,opt,name=investigations_inconclusive,json=investigationsInconclusive,proto3" json:"investigations_inconclusive,omitempty"`
-	InvestigationsRootCause          int32                     `protobuf:"varint,10,opt,name=investigations_root_cause,json=investigationsRootCause,proto3" json:"investigations_root_cause,omitempty"`
-	InvestigationsContributingFactor int32                     `protobuf:"varint,11,opt,name=investigations_contributing_factor,json=investigationsContributingFactor,proto3" json:"investigations_contributing_factor,omitempty"`
-	InvestigationsUnrelated          int32                     `protobuf:"varint,15,opt,name=investigations_unrelated,json=investigationsUnrelated,proto3" json:"investigations_unrelated,omitempty"`
-	TopTargets                       []*QualityAgentTargetCost `protobuf:"bytes,12,rep,name=top_targets,json=topTargets,proto3" json:"top_targets,omitempty"`
+	InvestigationsTotal              int32                     `protobuf:"varint,10,opt,name=investigations_total,json=investigationsTotal,proto3" json:"investigations_total,omitempty"`
+	InvestigationsInconclusive       int32                     `protobuf:"varint,11,opt,name=investigations_inconclusive,json=investigationsInconclusive,proto3" json:"investigations_inconclusive,omitempty"`
+	InvestigationsRootCause          int32                     `protobuf:"varint,12,opt,name=investigations_root_cause,json=investigationsRootCause,proto3" json:"investigations_root_cause,omitempty"`
+	InvestigationsContributingFactor int32                     `protobuf:"varint,13,opt,name=investigations_contributing_factor,json=investigationsContributingFactor,proto3" json:"investigations_contributing_factor,omitempty"`
+	InvestigationsUnrelated          int32                     `protobuf:"varint,14,opt,name=investigations_unrelated,json=investigationsUnrelated,proto3" json:"investigations_unrelated,omitempty"`
+	TopTargets                       []*QualityAgentTargetCost `protobuf:"bytes,15,rep,name=top_targets,json=topTargets,proto3" json:"top_targets,omitempty"`
 	unknownFields                    protoimpl.UnknownFields
 	sizeCache                        protoimpl.SizeCache
 }
@@ -23068,7 +23080,12 @@ type WakeQualityAgentSessionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The person's question or instruction; it becomes a user message in the session.
-	Content       string `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	Content string `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	// A client-generated idempotency id for this message. Repeating the same id returns
+	// the session without appending a second message; empty means the server generates a
+	// random one (a repeat is then a new message, which is what a person asking the same
+	// question twice means).
+	RequestId     string `protobuf:"bytes,3,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -23117,13 +23134,23 @@ func (x *WakeQualityAgentSessionRequest) GetContent() string {
 	return ""
 }
 
+func (x *WakeQualityAgentSessionRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
 type ListQualityAgentSessionMessagesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
-	Parent    string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
-	PageSize  int32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Parent   string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	PageSize int32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// A page token from a previous response; walks towards older messages. Mutually
+	// exclusive with after_seq.
 	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	// Return messages with seq greater than this; the polling watermark.
+	// Return messages with seq greater than this, ascending; the polling watermark. The
+	// two modes are mutually exclusive: combining this with page_token is InvalidArgument.
 	AfterSeq      int64 `protobuf:"varint,4,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -25087,7 +25114,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"createTime\x12;\n" +
 	"\vupdate_time\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"updateTime\x12=\n" +
-	"\farchive_time\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\varchiveTime\"\x8c\x04\n" +
+	"\farchive_time\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\varchiveTime\"\xaa\x04\n" +
 	"\x1aQualityAgentSessionMessage\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03seq\x18\x02 \x01(\x03R\x03seq\x12\x12\n" +
@@ -25106,7 +25133,8 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\ttruncated\x18\f \x01(\bR\ttruncated\x12\x14\n" +
 	"\x05error\x18\r \x01(\tR\x05error\x12;\n" +
 	"\vcreate_time\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"createTime\"\xf0\x05\n" +
+	"createTime\x12\x1c\n" +
+	"\treference\x18\x0f \x01(\tR\treference\"\xf0\x05\n" +
 	"\x18QualityAgentRunnerStatus\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12)\n" +
 	"\x10autonomy_enabled\x18\x02 \x01(\bR\x0fautonomyEnabled\x12%\n" +
@@ -25140,15 +25168,15 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x1dagent_change_requests_applied\x18\x05 \x01(\x05R\x1aagentChangeRequestsApplied\x12C\n" +
 	"\x1eagent_change_requests_rejected\x18\x06 \x01(\x05R\x1bagentChangeRequestsRejected\x12A\n" +
 	"\x1dagent_change_requests_pending\x18\a \x01(\x05R\x1aagentChangeRequestsPending\x12C\n" +
-	"\x1eagent_change_requests_approved\x18\r \x01(\x05R\x1bagentChangeRequestsApproved\x12A\n" +
-	"\x1dagent_change_requests_expired\x18\x0e \x01(\x05R\x1aagentChangeRequestsExpired\x121\n" +
-	"\x14investigations_total\x18\b \x01(\x05R\x13investigationsTotal\x12?\n" +
-	"\x1binvestigations_inconclusive\x18\t \x01(\x05R\x1ainvestigationsInconclusive\x12:\n" +
-	"\x19investigations_root_cause\x18\n" +
-	" \x01(\x05R\x17investigationsRootCause\x12L\n" +
-	"\"investigations_contributing_factor\x18\v \x01(\x05R investigationsContributingFactor\x129\n" +
-	"\x18investigations_unrelated\x18\x0f \x01(\x05R\x17investigationsUnrelated\x12G\n" +
-	"\vtop_targets\x18\f \x03(\v2&.metaxisdata.v1.QualityAgentTargetCostR\n" +
+	"\x1eagent_change_requests_approved\x18\b \x01(\x05R\x1bagentChangeRequestsApproved\x12A\n" +
+	"\x1dagent_change_requests_expired\x18\t \x01(\x05R\x1aagentChangeRequestsExpired\x121\n" +
+	"\x14investigations_total\x18\n" +
+	" \x01(\x05R\x13investigationsTotal\x12?\n" +
+	"\x1binvestigations_inconclusive\x18\v \x01(\x05R\x1ainvestigationsInconclusive\x12:\n" +
+	"\x19investigations_root_cause\x18\f \x01(\x05R\x17investigationsRootCause\x12L\n" +
+	"\"investigations_contributing_factor\x18\r \x01(\x05R investigationsContributingFactor\x129\n" +
+	"\x18investigations_unrelated\x18\x0e \x01(\x05R\x17investigationsUnrelated\x12G\n" +
+	"\vtop_targets\x18\x0f \x03(\v2&.metaxisdata.v1.QualityAgentTargetCostR\n" +
 	"topTargets\"<\n" +
 	"\x1dGetQualityAgentMetricsRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"\xd0\x01\n" +
@@ -25181,10 +25209,12 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"i\n" +
 	"!ArchiveQualityAgentSessionRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12+\n" +
-	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"S\n" +
+	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"r\n" +
 	"\x1eWakeQualityAgentSessionRequest\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12\x18\n" +
-	"\acontent\x18\x02 \x01(\tR\acontent\"\x9e\x01\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x03 \x01(\tR\trequestId\"\x9e\x01\n" +
 	"&ListQualityAgentSessionMessagesRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +

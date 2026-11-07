@@ -2,8 +2,6 @@ package v1
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -94,7 +92,19 @@ func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req 
 	})
 	if err != nil {
 		if common.ErrorCode(err) == common.Conflict {
-			return nil, connect.NewError(connect.CodeAlreadyExists, err)
+			// The partial unique index is "one active session per target"; a random
+			// resource-id collision would be a different (and far rarer) conflict, so
+			// confirm the target really has a session before claiming it.
+			existing, findErr := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, targetGUID)
+			if findErr != nil {
+				return nil, findErr
+			}
+			if existing != nil {
+				return nil, connect.NewError(connect.CodeAlreadyExists,
+					errors.Errorf("the target already has an active agent session"))
+			}
+			return nil, connect.NewError(connect.CodeInternal,
+				errors.New("a session id collision occurred; retry the request"))
 		}
 		return nil, err
 	}
@@ -212,6 +222,17 @@ func (s *DataQualityService) WakeQualityAgentSession(ctx context.Context, req *c
 	if session.ArchivedAt != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("an archived session cannot be woken"))
 	}
+	switch session.State {
+	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED:
+	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED:
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("the session is paused; resume it before sending a message"))
+	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED:
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.Errorf("the session is blocked (%s); resume it before sending a message", session.BlockedCode))
+	default:
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the session cannot be woken"))
+	}
 	content := strings.TrimSpace(req.Msg.GetContent())
 	if content == "" {
 		return nil, connectErrorInvalid("a wake needs a message for the agent")
@@ -220,7 +241,20 @@ func (s *DataQualityService) WakeQualityAgentSession(ctx context.Context, req *c
 		return nil, connectErrorInvalid("the message is too long (max %d bytes)", maxAgentSessionText)
 	}
 	now := time.Now().UTC()
-	sum := sha256.Sum256([]byte(content))
+	// A client request id makes a retried send idempotent. Without one the server mints a
+	// random key so asking the same question twice really appends twice.
+	requestID := strings.TrimSpace(req.Msg.GetRequestId())
+	if len(requestID) > 128 {
+		return nil, connectErrorInvalid("request_id is too long (max 128 bytes)")
+	}
+	key := "ask:" + requestID
+	if requestID == "" {
+		random, err := common.RandomString(12)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to generate the message id")
+		}
+		key = "ask:" + random
+	}
 	_, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
 		SessionID:      session.ID,
 		WorkspaceID:    workspaceID,
@@ -228,7 +262,7 @@ func (s *DataQualityService) WakeQualityAgentSession(ctx context.Context, req *c
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
 		Content:        content,
-		IdempotencyKey: fmt.Sprintf("ask:%x", sum[:8]),
+		IdempotencyKey: key,
 	})
 	if err != nil {
 		return nil, err
@@ -254,6 +288,13 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
+	afterSeq := req.Msg.GetAfterSeq()
+	if afterSeq < 0 {
+		return nil, connectErrorInvalid("after_seq cannot be negative")
+	}
+	if afterSeq > 0 && req.Msg.GetPageToken() != "" {
+		return nil, connectErrorInvalid("after_seq and page_token are mutually exclusive")
+	}
 	offset, err := parseLimitAndOffset(&pageSize{
 		token:        req.Msg.GetPageToken(),
 		limit:        int(req.Msg.GetPageSize()),
@@ -265,7 +306,7 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	}
 	limit := offset.limit + 1
 	find := &store.FindQualityAgentTranscriptMessage{SessionID: session.ID, Limit: limit}
-	if afterSeq := req.Msg.GetAfterSeq(); afterSeq > 0 {
+	if afterSeq > 0 {
 		find.AfterSeq = afterSeq
 	} else {
 		// The newest page: read backwards, then hand the client chronological order.
@@ -497,6 +538,7 @@ func convertQualityAgentMessageToV1(workspaceID, sessionResourceID string, messa
 		Content:    message.Content,
 		ToolCallId: message.ToolCallID,
 		ToolName:   message.ToolName,
+		Reference:  message.Reference,
 		Tokens:     message.Tokens,
 		Truncated:  message.Truncated,
 		Error:      message.Error,

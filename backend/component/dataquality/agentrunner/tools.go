@@ -332,7 +332,7 @@ func (e *Engine) recordDecision(ctx context.Context, session *store.QualityAgent
 		if memory.ExpiresAt != nil && !memory.ExpiresAt.After(e.now()) {
 			continue
 		}
-		if memory.Statement == statement || sessionEvidence(memory, session.ResourceID) {
+		if memory.Statement == statement {
 			return nil
 		}
 	}
@@ -374,16 +374,6 @@ func (e *Engine) planCriticality(ctx context.Context, session *store.QualityAgen
 	}
 	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(settings.GetIntent(), e.now()), ruleShapes(rules))
 	return plan.Criticality
-}
-
-// sessionEvidence reports whether a memory already records this session.
-func sessionEvidence(memory *store.QualityMemoryMessage, resourceID string) bool {
-	for _, reference := range memory.Evidence.GetEvidence() {
-		if reference.GetKind() == sessionEvidenceKind && reference.GetReference() == resourceID {
-			return true
-		}
-	}
-	return false
 }
 
 // emptyIfNil turns a nil slice into an empty one so JSON carries [] not null.

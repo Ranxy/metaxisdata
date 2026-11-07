@@ -11,6 +11,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -24,6 +25,9 @@ const (
 	retryWake = 10 * time.Minute
 	// maxGapInvestigations bounds the investigations one deterministic wake records.
 	maxGapInvestigations = 5
+	// maxDeterministicEvents bounds how many pending events one no-model wake handles;
+	// the rest stay above the watermark and are picked up by the next wake.
+	maxDeterministicEvents = 10
 )
 
 // ruleShapes is the plan derivation's view of the live rules: enabled rules only, with
@@ -175,6 +179,23 @@ func criticalityLabel(criticality dataquality.AssetCriticality) string {
 		return "EXPERIMENTAL"
 	}
 }
+
+// assistantIdempotencyKey identifies one assistant message of a wake. The content and
+// the tool calls are part of the key: a crash-retried turn that the model answered
+// differently must append a new row instead of colliding with the half-written one.
+func assistantIdempotencyKey(wake, turn int32, assistant *llm.AgentMessage) string {
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(assistant.Content))
+	for _, call := range assistant.ToolCalls {
+		_, _ = hash.Write([]byte("|" + call.ID + "|" + call.GetName() + "|" + call.Function.Arguments))
+	}
+	return fmt.Sprintf("wake:%d:turn:%d:assistant:%x", wake, turn, hash.Sum(nil)[:8])
+}
+
+// interruptedToolResult is the synthetic result a crash left behind. It is written once
+// per dangling call so the stored transcript is legal for the provider and for the
+// compaction cut.
+const interruptedToolResult = "the server restarted before this tool ran; its result is unknown"
 
 // contentHash identifies one engine note for its idempotency key.
 func contentHash(content string) []byte {

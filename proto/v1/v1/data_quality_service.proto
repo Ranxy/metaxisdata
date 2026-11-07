@@ -5066,7 +5066,9 @@ message QualityAgentSession {
   google.protobuf.Timestamp archive_time = 20;
 }
 
-// QualityAgentSessionMessage is one append-only transcript entry of a session.
+// QualityAgentSessionMessage is one append-only transcript entry of a session. (The
+// internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
+// after the session so a message always carries its parent in the name.)
 message QualityAgentSessionMessage {
   // Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq}
   string name = 1;
@@ -5086,6 +5088,9 @@ message QualityAgentSessionMessage {
   bool truncated = 12;
   string error = 13;
   google.protobuf.Timestamp create_time = 14;
+  // The object an event or wake is about (for example a quality execution resource
+  // name); empty for model and runner messages.
+  string reference = 15;
 }
 
 // QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
@@ -5134,16 +5139,16 @@ message QualityAgentMetrics {
   int32 agent_change_requests_applied = 5;
   int32 agent_change_requests_rejected = 6;
   int32 agent_change_requests_pending = 7;
-  int32 agent_change_requests_approved = 13;
-  int32 agent_change_requests_expired = 14;
+  int32 agent_change_requests_approved = 8;
+  int32 agent_change_requests_expired = 9;
   // Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
   // rows carry no verdict, so the buckets do not have to sum to the total.
-  int32 investigations_total = 8;
-  int32 investigations_inconclusive = 9;
-  int32 investigations_root_cause = 10;
-  int32 investigations_contributing_factor = 11;
-  int32 investigations_unrelated = 15;
-  repeated QualityAgentTargetCost top_targets = 12;
+  int32 investigations_total = 10;
+  int32 investigations_inconclusive = 11;
+  int32 investigations_root_cause = 12;
+  int32 investigations_contributing_factor = 13;
+  int32 investigations_unrelated = 14;
+  repeated QualityAgentTargetCost top_targets = 15;
 }
 
 message GetQualityAgentMetricsRequest {
@@ -5203,14 +5208,22 @@ message WakeQualityAgentSessionRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   // The person's question or instruction; it becomes a user message in the session.
   string content = 2;
+  // A client-generated idempotency id for this message. Repeating the same id returns
+  // the session without appending a second message; empty means the server generates a
+  // random one (a repeat is then a new message, which is what a person asking the same
+  // question twice means).
+  string request_id = 3;
 }
 
 message ListQualityAgentSessionMessagesRequest {
   // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
   int32 page_size = 2;
+  // A page token from a previous response; walks towards older messages. Mutually
+  // exclusive with after_seq.
   string page_token = 3;
-  // Return messages with seq greater than this; the polling watermark.
+  // Return messages with seq greater than this, ascending; the polling watermark. The
+  // two modes are mutually exclusive: combining this with page_token is InvalidArgument.
   int64 after_seq = 4;
 }
 

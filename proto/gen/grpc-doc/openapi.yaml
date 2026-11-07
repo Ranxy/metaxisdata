@@ -5363,11 +5363,16 @@ paths:
                     format: int32
                 - name: pageToken
                   in: query
+                  description: |-
+                    A page token from a previous response; walks towards older messages. Mutually
+                     exclusive with after_seq.
                   schema:
                     type: string
                 - name: afterSeq
                   in: query
-                  description: Return messages with seq greater than this; the polling watermark.
+                  description: |-
+                    Return messages with seq greater than this, ascending; the polling watermark. The
+                     two modes are mutually exclusive: combining this with page_token is InvalidArgument.
                   schema:
                     type: string
             responses:
@@ -14875,7 +14880,15 @@ components:
                 createTime:
                     type: string
                     format: date-time
-            description: QualityAgentSessionMessage is one append-only transcript entry of a session.
+                reference:
+                    type: string
+                    description: |-
+                        The object an event or wake is about (for example a quality execution resource
+                         name); empty for model and runner messages.
+            description: |-
+                QualityAgentSessionMessage is one append-only transcript entry of a session. (The
+                 internal store row type is QualityAgentTranscriptMessage; the v1 resource is named
+                 after the session so a message always carries its parent in the name.)
         QualityAgentSessionStateCount:
             type: object
             properties:
@@ -19557,6 +19570,13 @@ components:
                 content:
                     type: string
                     description: The person's question or instruction; it becomes a user message in the session.
+                requestId:
+                    type: string
+                    description: |-
+                        A client-generated idempotency id for this message. Repeating the same id returns
+                         the session without appending a second message; empty means the server generates a
+                         random one (a repeat is then a new message, which is what a person asking the same
+                         question twice means).
         WeComChannelConfig:
             type: object
             properties: {}

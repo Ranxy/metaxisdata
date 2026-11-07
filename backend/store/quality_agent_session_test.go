@@ -40,10 +40,15 @@ func TestRetryableSessionBlockedCodes(t *testing.T) {
 	t.Parallel()
 
 	codes := retryableSessionBlockedCodes()
-	require.ElementsMatch(t, []string{"token-budget", "wake-budget", "autonomy-off", "llm-quota", "no-work", "internal-error"}, codes)
+	require.ElementsMatch(t, []string{"token-budget", "wake-budget", "autonomy-off", "internal-error"}, codes)
 	require.NotContains(t, codes, "needs-human")
 	require.NotContains(t, codes, "restart-limit")
-	require.NotContains(t, codes, "round-limit")
+	require.NotContains(t, codes, "model-reported")
+	// Codes that no writer produces are not kept in the retry list.
+	require.NotContains(t, codes, "llm-quota")
+	require.NotContains(t, codes, "no-work")
+	require.True(t, QualityAgentSessionBlockedCodeRetryable("token-budget"))
+	require.False(t, QualityAgentSessionBlockedCodeRetryable("needs-human"))
 }
 
 func TestCreateQualityAgentSessionRejectsIncompleteInput(t *testing.T) {
