@@ -77,7 +77,7 @@ type fakeEngine struct {
 	called  int
 }
 
-func (f *fakeEngine) Wake(context.Context, *store.QualityAgentSessionMessage) (agentrunner.Outcome, error) {
+func (f *fakeEngine) Wake(context.Context, *store.QualityAgentSessionMessage, agentrunner.Options) (agentrunner.Outcome, error) {
 	f.called++
 	return f.outcome, f.err
 }
