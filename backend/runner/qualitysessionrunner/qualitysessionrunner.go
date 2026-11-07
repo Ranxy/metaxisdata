@@ -35,6 +35,11 @@ const (
 )
 
 // SessionStore is the slice of *store.Store the runner needs.
+// Waker runs one wake of one session.
+type Waker interface {
+	Wake(ctx context.Context, session *store.QualityAgentSessionMessage, options agentrunner.Options) (agentrunner.Outcome, error)
+}
+
 type SessionStore interface {
 	ResetStaleQualityAgentSessionLeases(ctx context.Context, now time.Time, restartLimit int32) (int64, error)
 	ClaimDueQualityAgentSessions(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]*store.QualityAgentSessionMessage, error)
@@ -45,11 +50,6 @@ type SessionStore interface {
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
 	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
-}
-
-// Waker runs one wake of one session.
-type Waker interface {
-	Wake(ctx context.Context, session *store.QualityAgentSessionMessage) (agentrunner.Outcome, error)
 }
 
 // Runner hosts the agent's sessions.
@@ -204,7 +204,9 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 
 	wakeCtx, cancel := context.WithTimeout(ctx, wakeDeadline)
 	defer cancel()
-	outcome, err := r.engine.Wake(wakeCtx, session)
+	outcome, err := r.engine.Wake(wakeCtx, session, agentrunner.Options{
+		CompactionTriggerTokens: settings.AgentRunnerCompactionTriggerTokens,
+	})
 	if err != nil {
 		slog.Error("quality agent session wake failed",
 			slog.String("session", session.ResourceID), log.WithError(err))

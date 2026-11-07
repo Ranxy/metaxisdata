@@ -839,3 +839,18 @@ func (s *Store) LastQualityAgentSessionActivity(ctx context.Context, workspaceID
 	value := last.Time.UTC()
 	return &value, nil
 }
+
+// CountQualityAgentSessionEventsSince counts the events appended to one session since
+// one instant, the per-session event cap that keeps a storm of failing checks from
+// flooding one conversation.
+func (s *Store) CountQualityAgentSessionEventsSince(ctx context.Context, sessionID int64, since time.Time) (int64, error) {
+	var count int64
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM quality_agent_message
+		WHERE session_id = $1 AND created_at > $2 AND origin = $3`,
+		sessionID, since,
+		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT)).Scan(&count); err != nil {
+		return 0, errors.Wrap(err, "failed to count the session events")
+	}
+	return count, nil
+}

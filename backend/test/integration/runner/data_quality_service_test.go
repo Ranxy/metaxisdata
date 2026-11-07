@@ -14,6 +14,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -4716,4 +4717,192 @@ func actionRedLine(policy *v1pb.QualityActionPolicy, id string) bool {
 		}
 	}
 	return false
+}
+
+// TestQualityAgentSessionRealServerIntegration covers the session substrate: scope and
+// switch checks, the one-active-session-per-target rule, the deterministic wake writing a
+// readable transcript, pause/resume with revision CAS, the runner status and archive.
+func TestQualityAgentSessionRealServerIntegration(t *testing.T) {
+	fixture := setupQualityMySQLFixture(t, false)
+	token := fixture.env.AdminToken()
+	segments := common.SplitMetaGUID(fixture.usersGUID)
+	require.GreaterOrEqual(t, len(segments), 2)
+	databaseRef := common.FormatDatabase(segments[0], segments[1])
+
+	current, err := fixture.settings.GetWorkspaceProfileSetting(fixture.ctx,
+		withToken(token, &v1pb.GetWorkspaceProfileSettingRequest{}))
+	require.NoError(t, err)
+	original, ok := proto.Clone(current.Msg.GetDataQuality()).(*v1pb.DataQualitySetting)
+	require.True(t, ok)
+	applySettings := func(dataQuality *v1pb.DataQualitySetting) {
+		t.Helper()
+		_, err := fixture.settings.UpdateWorkspaceProfileSetting(fixture.ctx,
+			withToken(token, &v1pb.UpdateWorkspaceProfileSettingRequest{
+				Setting:    &v1pb.WorkspaceProfileSetting{DataQuality: dataQuality},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"data_quality"}},
+			}))
+		require.NoError(t, err)
+	}
+	runnerSettings := func(enabled bool, databases []string) *v1pb.DataQualitySetting {
+		dataQuality, ok := proto.Clone(original).(*v1pb.DataQualitySetting)
+		require.True(t, ok)
+		dataQuality.AgentRunnerEnabled = enabled
+		dataQuality.AgentAutonomyEnabled = true
+		dataQuality.AgentRunnerDatabases = databases
+		dataQuality.AgentRunnerTokensPerHour = 100_000_000
+		dataQuality.AgentRunnerWakesPerHour = 20
+		dataQuality.AgentRunnerMaxConcurrentSessions = 2
+		dataQuality.AgentRunnerCompactionTriggerTokens = 0
+		dataQuality.AgentRunnerIdleWakeSeconds = 0
+		dataQuality.AgentRunnerAutoInvestigateFailures = proto.Bool(true)
+		return dataQuality
+	}
+	applySettings(runnerSettings(true, []string{databaseRef}))
+	t.Cleanup(func() { applySettings(original) })
+
+	// A session runs as an enabled quality agent; create one for this scenario.
+	_, err = fixture.dataQuality.CreateQualityAgent(fixture.ctx,
+		withToken(token, &v1pb.CreateQualityAgentRequest{Parent: "workspaces/-", DisplayName: "session runner"}))
+	require.NoError(t, err)
+
+	createSession := func() (*v1pb.QualityAgentSession, error) {
+		t.Helper()
+		response, err := fixture.dataQuality.CreateQualityAgentSession(fixture.ctx,
+			withToken(token, &v1pb.CreateQualityAgentSessionRequest{
+				Parent:     "workspaces/-",
+				TargetGuid: fixture.usersGUID,
+				MetaType:   v1pb.MetaType_TABLE,
+				Objective:  "keep this table trustworthy",
+			}))
+		if err != nil {
+			return nil, err
+		}
+		return response.Msg, nil
+	}
+
+	session, err := createSession()
+	require.NoError(t, err)
+	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, session.GetState())
+	require.True(t, strings.HasPrefix(session.GetAgent(), "users/"),
+		"the session names the agent's principal: %q", session.GetAgent())
+	require.Equal(t, databaseRef, session.GetDatabase())
+	require.NotNil(t, session.GetNextWakeTime())
+	t.Cleanup(func() {
+		_, _ = fixture.dataQuality.ArchiveQualityAgentSession(fixture.ctx,
+			withToken(token, &v1pb.ArchiveQualityAgentSessionRequest{Name: session.GetName(), ExpectedRevision: session.GetRevision()}))
+	})
+
+	// A second active session for the same target conflicts.
+	_, err = createSession()
+	require.Error(t, err)
+	require.Equal(t, connect.CodeAlreadyExists, connect.CodeOf(err))
+
+	listed, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+		withToken(token, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-", TargetGuid: fixture.usersGUID}))
+	require.NoError(t, err)
+	require.Len(t, listed.Msg.GetQualityAgentSessions(), 1)
+
+	// The runner status reflects the settings and the session counts.
+	status, err := fixture.dataQuality.GetQualityAgentRunnerStatus(fixture.ctx,
+		withToken(token, &v1pb.GetQualityAgentRunnerStatusRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	require.True(t, status.Msg.GetEnabled())
+	require.Equal(t, int32(20), status.Msg.GetWakesPerHourLimit())
+
+	// The deterministic wake (LLM is off in the integration fixture) writes a readable
+	// transcript: system prompt, the scheduled wake message and at least one engine note.
+	var messages []*v1pb.QualityAgentSessionMessage
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.ListQualityAgentSessionMessages(fixture.ctx,
+			withToken(token, &v1pb.ListQualityAgentSessionMessagesRequest{
+				Parent:   session.GetName(),
+				PageSize: 50,
+			}))
+		if err != nil {
+			return false
+		}
+		messages = response.Msg.GetQualityAgentSessionMessages()
+		return len(messages) >= 3
+	}, 30*time.Second, 250*time.Millisecond, "the runner writes the session transcript")
+	require.Equal(t, v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM, messages[0].GetRole())
+	foundWake, foundEngine := false, false
+	for _, message := range messages {
+		switch message.GetRole() {
+		case v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER:
+			foundWake = foundWake || message.GetOrigin() == v1pb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_WAKE
+		case v1pb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE:
+			foundEngine = true
+		default:
+		}
+	}
+	require.True(t, foundWake, "the wake message is in the transcript")
+	require.True(t, foundEngine, "the runner note is in the transcript")
+
+	// Pause and resume with a revision CAS; the runner may have moved the revision, so
+	// read the latest value first like a person reloading the page.
+	latestSession := func() *v1pb.QualityAgentSession {
+		t.Helper()
+		response, err := fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+			withToken(token, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+		require.NoError(t, err)
+		return response.Msg
+	}
+	// The runner may record a wake between the read and the CAS, so retry a stale
+	// revision exactly like a person reloading the page.
+	pauseSession := func() *v1pb.QualityAgentSession {
+		t.Helper()
+		for attempt := 0; attempt < 5; attempt++ {
+			latest := latestSession()
+			response, err := fixture.dataQuality.PauseQualityAgentSession(fixture.ctx,
+				withToken(token, &v1pb.PauseQualityAgentSessionRequest{Name: session.GetName(), ExpectedRevision: latest.GetRevision()}))
+			if connect.CodeOf(err) == connect.CodeAborted {
+				continue
+			}
+			require.NoError(t, err)
+			return response.Msg
+		}
+		t.Fatal("could not pause the session: its revision kept changing")
+		return nil
+	}
+	paused := pauseSession()
+	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED, paused.GetState())
+	resumeSession := func() *v1pb.QualityAgentSession {
+		t.Helper()
+		for attempt := 0; attempt < 5; attempt++ {
+			latest := latestSession()
+			response, err := fixture.dataQuality.ResumeQualityAgentSession(fixture.ctx,
+				withToken(token, &v1pb.ResumeQualityAgentSessionRequest{Name: session.GetName(), ExpectedRevision: latest.GetRevision()}))
+			if connect.CodeOf(err) == connect.CodeAborted {
+				continue
+			}
+			require.NoError(t, err)
+			return response.Msg
+		}
+		t.Fatal("could not resume the session: its revision kept changing")
+		return nil
+	}
+	resumed := resumeSession()
+	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, resumed.GetState())
+
+	// Archive hides the session from the active list and makes it unwakeable.
+	archived := false
+	for attempt := 0; attempt < 5 && !archived; attempt++ {
+		latest := latestSession()
+		_, err := fixture.dataQuality.ArchiveQualityAgentSession(fixture.ctx,
+			withToken(token, &v1pb.ArchiveQualityAgentSessionRequest{Name: session.GetName(), ExpectedRevision: latest.GetRevision()}))
+		if connect.CodeOf(err) == connect.CodeAborted {
+			continue
+		}
+		require.NoError(t, err)
+		archived = true
+	}
+	require.True(t, archived)
+	active, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
+		withToken(token, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-", TargetGuid: fixture.usersGUID}))
+	require.NoError(t, err)
+	require.Empty(t, active.Msg.GetQualityAgentSessions())
+	_, err = fixture.dataQuality.WakeQualityAgentSession(fixture.ctx,
+		withToken(token, &v1pb.WakeQualityAgentSessionRequest{Name: session.GetName(), Content: "why?"}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
 }

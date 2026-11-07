@@ -120,6 +120,10 @@ func (f *fakeStore) MaxQualityAgentTranscriptSeq(context.Context, int64) (int64,
 	return f.nextSeq, nil
 }
 
+func (*fakeStore) UpdateQualityAgentSessionCompaction(context.Context, string, string, int64) (bool, error) {
+	return true, nil
+}
+
 func toolCall(id, name, arguments string) llm.ToolCall {
 	var call llm.ToolCall
 	call.ID = id
@@ -209,7 +213,7 @@ func TestWakeRecordsTheConversation(t *testing.T) {
 		{content: "nothing needs attention"},
 	}), resolveToModel, nil)
 
-	outcome, err := engine.Wake(context.Background(), testSession())
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
 	require.Nil(t, outcome.NextWakeAt)
@@ -250,7 +254,7 @@ func TestWakeSchedulesAnEarlierWake(t *testing.T) {
 	}), resolveToModel, nil)
 
 	before := time.Now()
-	outcome, err := engine.Wake(context.Background(), testSession())
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.NotNil(t, outcome.NextWakeAt)
 	require.WithinDuration(t, before.Add(5*time.Minute), *outcome.NextWakeAt, time.Minute)
@@ -269,7 +273,7 @@ func TestWakeParksTheSessionAfterRepeatedBlocker(t *testing.T) {
 		{content: "stopping"},
 	}), resolveToModel, nil)
 
-	outcome, err := engine.Wake(context.Background(), session)
+	outcome, err := engine.Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.True(t, outcome.Blocked)
 	require.Equal(t, "model-reported", outcome.BlockedCode)
@@ -284,7 +288,7 @@ func TestWakeFallsBackToTheDeterministicSurvey(t *testing.T) {
 	stores := newFakeStore()
 	engine := NewEngine(stores)
 
-	outcome, err := engine.Wake(context.Background(), testSession())
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
 	require.NotNil(t, outcome.NextWakeAt)
@@ -315,7 +319,7 @@ func TestWakeInvestigatesAFailedExecutionWithoutAModel(t *testing.T) {
 	session := testSession()
 	session.ProcessedSeq = message.Seq - 1
 
-	outcome, err := NewEngine(stores).Wake(context.Background(), session)
+	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.False(t, outcome.Blocked)
 	require.Contains(t, outcome.Summary, "investigated the event")
@@ -339,7 +343,7 @@ func TestWakeBlocksAQuestionWithoutAModel(t *testing.T) {
 	session := testSession()
 	session.ProcessedSeq = message.Seq - 1
 
-	outcome, err := NewEngine(stores).Wake(context.Background(), session)
+	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.True(t, outcome.Blocked)
 	require.Equal(t, "needs-human", outcome.BlockedCode)
@@ -362,7 +366,7 @@ func TestWakeReusesTheStoredWakeMessage(t *testing.T) {
 	require.NoError(t, err)
 	before := len(stores.messages)
 
-	outcome, err := NewEngine(stores).Wake(context.Background(), session)
+	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, outcome.ProcessedSeq, int64(1))
 	userMessages := 0

@@ -51,6 +51,7 @@ type Store interface {
 	AppendQualityAgentTranscriptMessage(ctx context.Context, input *store.QualityAgentTranscriptMessage) (*store.QualityAgentTranscriptMessage, error)
 	ListQualityAgentTranscriptMessages(ctx context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error)
 	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
+	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
 }
 
 // Chat runs the LLM tool loop. Production passes llm.RunAgentLoop; a test drives the
@@ -84,6 +85,13 @@ func NewModelEngine(store Store, chat Chat, resolve ResolveModel, m *metrics.Met
 	return engine
 }
 
+// Options carries the per-wake budgets the runner resolves from the workspace settings.
+type Options struct {
+	// CompactionTriggerTokens is the context size that triggers compaction; zero uses
+	// the server default.
+	CompactionTriggerTokens int
+}
+
 // Outcome is what the runner persists after one wake.
 type Outcome struct {
 	Blocked       bool
@@ -104,7 +112,7 @@ type Outcome struct {
 // Wake runs one wake of a session. It appends the wake's user message, continues the
 // stored conversation (model wake) or surveys the target (deterministic wake), and
 // records the outcome on the transcript.
-func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMessage) (Outcome, error) {
+func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMessage, options Options) (Outcome, error) {
 	if session == nil || session.ID == 0 {
 		return Outcome{}, common.Errorf(common.Invalid, "a session is required")
 	}
@@ -134,7 +142,7 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 		}
 	}
 
-	outcome, err := e.runWake(ctx, session, wake, system, pending)
+	outcome, err := e.runWake(ctx, session, wake, system, pending, options)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -147,11 +155,11 @@ func (e *Engine) Wake(ctx context.Context, session *store.QualityAgentSessionMes
 }
 
 // runWake selects the model wake or the deterministic survey.
-func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, system *store.QualityAgentTranscriptMessage, pending []*store.QualityAgentTranscriptMessage) (Outcome, error) {
+func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, system *store.QualityAgentTranscriptMessage, pending []*store.QualityAgentTranscriptMessage, options Options) (Outcome, error) {
 	if e.resolveModel != nil && e.chat != nil {
 		config, ok, err := e.resolveModel(ctx)
 		if err == nil && ok {
-			return e.modelWake(ctx, session, wake, system, config)
+			return e.modelWake(ctx, session, wake, system, config, options)
 		}
 	}
 	return e.deterministicWake(ctx, session, wake, pending)
@@ -164,11 +172,30 @@ func (e *Engine) modelWake(
 	wake int32,
 	system *store.QualityAgentTranscriptMessage,
 	config llm.ResolvedConfig,
+	options Options,
 ) (Outcome, error) {
-	messages, err := e.loadConversation(ctx, session, system)
+	messages, err := e.loadTranscript(ctx, session)
 	if err != nil {
 		return Outcome{}, err
 	}
+	var compactionTokens int64
+	compactTokens, compacted, compactErr := e.maybeCompact(ctx, session, wake, config, messages, options.CompactionTriggerTokens, false)
+	if compactErr != nil {
+		slog.Warn("failed to compact the session context",
+			slog.String("session", session.ResourceID), slog.Any("error", compactErr))
+	} else {
+		compactionTokens = compactTokens
+		if compacted {
+			reloaded, reloadErr := e.loadTranscript(ctx, session)
+			if reloadErr != nil {
+				return Outcome{}, reloadErr
+			}
+			messages = reloaded
+		}
+	}
+	// Old tool results keep their head and tail only: the middle of an oversized result
+	// from days ago is not worth resending on every turn.
+	conversation := pruneToolResults(BuildConversation(session, system, messages), keepRecentToolResults)
 	state := cloneEngineState(session.EngineState)
 	var (
 		turn           int32
@@ -182,11 +209,12 @@ func (e *Engine) modelWake(
 		truncatedTools = map[string]bool{}
 		turnUsage      = map[int32]*llm.Usage{}
 	)
+	totalTokens = compactionTokens
 	executor := e.toolExecutor(ctx, session, truncatedTools, &blocked, &blockedCode, &blockedWhy, &nextWake, &scheduleReason)
 	chatConfig := llm.AgentConfig{
 		Provider:             config,
 		Feature:              "dq_agent",
-		History:              messages,
+		History:              conversation,
 		Tools:                modelToolDefs(),
 		Executor:             executor,
 		MaxTurns:             modelMaxTurns,
@@ -251,6 +279,18 @@ func (e *Engine) modelWake(
 			summary := "the model call failed; retrying later"
 			if event.Error != nil {
 				summary = "the model call failed: " + truncateRunes(event.Error.Error(), 200)
+			}
+			if llm.IsContextOverflow(event.Error) {
+				// The provider rejected the request as too large. Compact as much as
+				// possible now and let the retry start from the smaller context.
+				if messages, loadErr := e.loadTranscript(ctx, session); loadErr == nil {
+					if _, _, compactErr := e.maybeCompact(ctx, session, wake, config, messages, options.CompactionTriggerTokens, true); compactErr != nil {
+						slog.Warn("failed to compact after a context overflow",
+							slog.String("session", session.ResourceID), slog.Any("error", compactErr))
+					} else {
+						summary = "the provider rejected the context as too large; it was compacted, retrying"
+					}
+				}
 			}
 			e.recordEngine(ctx, session, wake, turn, summary)
 			return Outcome{
@@ -530,8 +570,8 @@ func (e *Engine) pendingMessages(ctx context.Context, session *store.QualityAgen
 	return messages, nil
 }
 
-// loadConversation rebuilds the model input from the stored transcript.
-func (e *Engine) loadConversation(ctx context.Context, session *store.QualityAgentSessionMessage, system *store.QualityAgentTranscriptMessage) ([]llm.AgentMessage, error) {
+// loadTranscript reads the messages after the compaction checkpoint.
+func (e *Engine) loadTranscript(ctx context.Context, session *store.QualityAgentSessionMessage) ([]*store.QualityAgentTranscriptMessage, error) {
 	messages, err := e.store.ListQualityAgentTranscriptMessages(ctx, &store.FindQualityAgentTranscriptMessage{
 		SessionID:     session.ID,
 		AfterSeq:      session.SummaryThroughSeq,
@@ -541,7 +581,7 @@ func (e *Engine) loadConversation(ctx context.Context, session *store.QualityAge
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the session transcript")
 	}
-	return BuildConversation(session, system, messages), nil
+	return messages, nil
 }
 
 // appendMessage writes one transcript entry and returns it (the store returns the
