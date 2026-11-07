@@ -152,8 +152,8 @@ func messageScanValues(toolCalls []byte) []any {
 		int64(9), int64(7), "ws", int64(15), int32(2), int32(1),
 		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT),
 		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_MODEL),
-		"the answer", toolCalls, "call-1", "get_target_summary", int32(120), int32(100),
-		int32(20), "", false, "wake:2:turn:1", time.Unix(4000, 0).UTC(),
+		"the answer", toolCalls, "call-1", "get_target_summary", "", int32(120),
+		int32(100), int32(20), "", false, "wake:2:turn:1", time.Unix(4000, 0).UTC(),
 	}
 }
 

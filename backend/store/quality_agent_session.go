@@ -65,6 +65,7 @@ type QualityAgentTranscriptMessage struct {
 	ToolCalls        *storepb.QualityToolCallList
 	ToolCallID       string
 	ToolName         string
+	Reference        string
 	Tokens           int32
 	PromptTokens     int32
 	CompletionTokens int32
@@ -87,7 +88,7 @@ const qualityAgentSessionReadColumns = qualityAgentSessionColumns + `,
 	(SELECT MAX(m.created_at) FROM quality_agent_message m WHERE m.session_id = quality_agent_session.id) AS last_activity_at`
 
 const qualityAgentTranscriptColumns = `id, session_id, workspace_id, seq, wake, turn, role,
-	origin, content, tool_calls, tool_call_id, tool_name, tokens, prompt_tokens,
+	origin, content, tool_calls, tool_call_id, tool_name, reference, tokens, prompt_tokens,
 	completion_tokens, error, truncated, idempotency_key, created_at`
 
 // CreateQualityAgentSessionInput is one session creation. A duplicate active session
@@ -447,16 +448,16 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	message, err := scanQualityAgentTranscript(s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_message
 			(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
-			 tool_call_id, tool_name, tokens, prompt_tokens, completion_tokens, error,
-			 truncated, idempotency_key)
+			 tool_call_id, tool_name, reference, tokens, prompt_tokens, completion_tokens,
+			 error, truncated, idempotency_key)
 		VALUES ($1, $2,
 			(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
-			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			$3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		RETURNING `+qualityAgentTranscriptColumns,
 		input.SessionID, input.WorkspaceID, input.Wake, input.Turn, int16(input.Role),
 		int16(input.Origin), input.Content, toolCalls, input.ToolCallID, input.ToolName,
-		input.Tokens, input.PromptTokens, input.CompletionTokens, input.Error,
-		input.Truncated, input.IdempotencyKey))
+		input.Reference, input.Tokens, input.PromptTokens, input.CompletionTokens,
+		input.Error, input.Truncated, input.IdempotencyKey))
 	if err != nil {
 		if isUniqueViolation(err) && input.IdempotencyKey != "" {
 			existing, findErr := scanQualityAgentTranscript(s.GetDB().QueryRowContext(ctx,
@@ -761,8 +762,9 @@ func scanQualityAgentTranscript(scanner interface{ Scan(dest ...any) error }) (*
 	if err := scanner.Scan(
 		&message.ID, &message.SessionID, &message.WorkspaceID, &message.Seq, &message.Wake,
 		&message.Turn, &role, &origin, &message.Content, &toolCalls, &message.ToolCallID,
-		&message.ToolName, &message.Tokens, &message.PromptTokens, &message.CompletionTokens,
-		&message.Error, &message.Truncated, &message.IdempotencyKey, &message.CreatedAt,
+		&message.ToolName, &message.Reference, &message.Tokens, &message.PromptTokens,
+		&message.CompletionTokens, &message.Error, &message.Truncated,
+		&message.IdempotencyKey, &message.CreatedAt,
 	); err != nil {
 		return nil, err
 	}

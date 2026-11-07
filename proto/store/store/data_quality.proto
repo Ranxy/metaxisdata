@@ -1399,6 +1399,9 @@ message QualityAgentMessage {
   QualityToolCallList tool_calls = 10;
   string tool_call_id = 11;
   string tool_name = 12;
+  // The object an event or wake is about (for example a quality execution resource
+  // name); empty for model and runner messages.
+  string reference = 20;
   int32 tokens = 13;
   int32 prompt_tokens = 14;
   int32 completion_tokens = 15;
