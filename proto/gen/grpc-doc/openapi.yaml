@@ -10484,7 +10484,7 @@ components:
                          workspace to human-only edits, and the agent still reads.
                 agentRunnerEnabled:
                     type: boolean
-                    description: Whether the built-in quality agent runner may run goals. Off by default.
+                    description: Whether the built-in quality agent runner may run sessions. Off by default.
                 agentRunnerDatabases:
                     type: array
                     items:
@@ -10495,18 +10495,35 @@ components:
                 agentRunnerTokensPerHour:
                     type: string
                     description: |-
-                        The workspace's hourly token ceiling for runner goals. Zero means the server
-                         default (100000000).
-                agentRunnerGoalsPerHour:
+                        The workspace's hourly token ceiling for runner sessions. Zero means the
+                         server default (100000000).
+                agentRunnerWakesPerHour:
                     type: integer
                     description: |-
-                        How many goals the workspace may create per hour. Zero means the server
-                         default (20).
+                        How many session wakes the workspace may start per hour. Zero means the
+                         server default (20).
                     format: int32
-                agentRunnerMaxConcurrentGoals:
+                agentRunnerMaxConcurrentSessions:
                     type: integer
-                    description: How many goals may run at once. Zero means the server default (2).
+                    description: How many sessions may run at once. Zero means the server default (2).
                     format: int32
+                agentRunnerCompactionTriggerTokens:
+                    type: integer
+                    description: |-
+                        The context token threshold that triggers compaction of a session's older
+                         messages. Zero means the server default (262144).
+                    format: int32
+                agentRunnerIdleWakeSeconds:
+                    type: integer
+                    description: |-
+                        How long an idle session sleeps between wakes, in seconds. Zero means the
+                         server default (86400).
+                    format: int32
+                agentRunnerAutoInvestigateFailures:
+                    type: boolean
+                    description: |-
+                        Whether a failed check execution appends an event to its target's session and
+                         wakes it. On by default.
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.

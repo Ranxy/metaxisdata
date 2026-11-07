@@ -71,17 +71,32 @@ const (
 	// DefaultAgentRunnerTokensPerHour is the workspace's hourly token ceiling for
 	// runner goals when the setting does not say. A goal has no individual cap.
 	DefaultAgentRunnerTokensPerHour int64 = 100_000_000
-	// DefaultAgentRunnerGoalsPerHour is how many runner goals a workspace may
-	// create per hour.
-	DefaultAgentRunnerGoalsPerHour = 20
-	// DefaultAgentRunnerMaxConcurrentGoals is how many goals may run at once.
-	DefaultAgentRunnerMaxConcurrentGoals = 2
-	// MaxAgentRunnerConcurrentGoals is the hard concurrency ceiling.
-	MaxAgentRunnerConcurrentGoals = 16
+	// DefaultAgentRunnerWakesPerHour is how many session wakes a workspace may
+	// start per hour.
+	DefaultAgentRunnerWakesPerHour = 20
+	// DefaultAgentRunnerMaxConcurrentSessions is how many sessions may run at once.
+	DefaultAgentRunnerMaxConcurrentSessions = 2
+	// MaxAgentRunnerConcurrentSessions is the hard concurrency ceiling.
+	MaxAgentRunnerConcurrentSessions = 16
 	// MaxAgentRunnerTokensPerHour is the hard ceiling of the hourly token budget.
 	MaxAgentRunnerTokensPerHour int64 = 1_000_000_000_000
-	// MaxAgentRunnerGoalsPerHour is the hard ceiling of the hourly goal budget.
-	MaxAgentRunnerGoalsPerHour = 1000
+	// MaxAgentRunnerWakesPerHour is the hard ceiling of the hourly wake budget.
+	MaxAgentRunnerWakesPerHour = 1000
+	// DefaultAgentRunnerCompactionTriggerTokens is the context size that triggers
+	// compaction of a session's older messages.
+	DefaultAgentRunnerCompactionTriggerTokens = 262_144
+	// MinAgentRunnerCompactionTriggerTokens keeps a compaction threshold large
+	// enough for a session to make progress between compactions.
+	MinAgentRunnerCompactionTriggerTokens = 16_384
+	// MaxAgentRunnerCompactionTriggerTokens is the hard ceiling of the threshold.
+	MaxAgentRunnerCompactionTriggerTokens = 4_194_304
+	// DefaultAgentRunnerIdleWakeSeconds is how long a session sleeps between wakes
+	// when no event or person wakes it sooner.
+	DefaultAgentRunnerIdleWakeSeconds = 86_400
+	// MinAgentRunnerIdleWakeSeconds keeps a session from waking in a hot loop.
+	MinAgentRunnerIdleWakeSeconds = 60
+	// MaxAgentRunnerIdleWakeSeconds is the hard ceiling of the idle interval.
+	MaxAgentRunnerIdleWakeSeconds = 604_800
 
 	// DefaultCheckTimeout is how long one check's query may run when its config
 	// does not say.
@@ -135,31 +150,43 @@ type Settings struct {
 	// AgentRunnerTokensPerHour is the workspace's hourly token ceiling for runner
 	// goals. Never zero after resolution.
 	AgentRunnerTokensPerHour int64
-	// AgentRunnerGoalsPerHour is how many goals the workspace may create per hour.
-	AgentRunnerGoalsPerHour int
-	// AgentRunnerMaxConcurrentGoals is how many goals may run at once.
-	AgentRunnerMaxConcurrentGoals int
+	// AgentRunnerWakesPerHour is how many session wakes the workspace may start per
+	// hour.
+	AgentRunnerWakesPerHour int
+	// AgentRunnerMaxConcurrentSessions is how many sessions may run at once.
+	AgentRunnerMaxConcurrentSessions int
+	// AgentRunnerCompactionTriggerTokens is the context size that triggers
+	// compaction of the session's older messages.
+	AgentRunnerCompactionTriggerTokens int
+	// AgentRunnerIdleWakeSeconds is how long an idle session sleeps between wakes.
+	AgentRunnerIdleWakeSeconds int
+	// AgentRunnerAutoInvestigateFailures appends a failed execution as an event to
+	// the target's session and wakes it.
+	AgentRunnerAutoInvestigateFailures bool
 }
 
 // DefaultSettings returns the settings of a workspace that never saved any.
 func DefaultSettings() Settings {
 	return Settings{
-		EnableLLMAnalysis:             false,
-		LLMProviderProfile:            "",
-		StoreFailureSamples:           true,
-		FailureSampleLimit:            DefaultFailureSampleLimit,
-		DefaultScheduleInterval:       DefaultScheduleInterval,
-		DailyExecutionLimit:           DefaultDailyExecutionLimit,
-		DailyColumnAnalysisLimit:      DefaultDailyColumnAnalysisLimit,
-		DailyLLMAnalysisLimit:         DefaultDailyLLMAnalysisLimit,
-		LLMConcurrencyLimit:           DefaultLLMConcurrencyLimit,
-		MaxColumnsPerAnalysis:         DefaultMaxColumnsPerAnalysis,
-		SendSampleValuesToLLM:         false,
-		Digest:                        defaultDigestSchedule(),
-		TimeZone:                      DefaultTimeZone,
-		AgentRunnerTokensPerHour:      DefaultAgentRunnerTokensPerHour,
-		AgentRunnerGoalsPerHour:       DefaultAgentRunnerGoalsPerHour,
-		AgentRunnerMaxConcurrentGoals: DefaultAgentRunnerMaxConcurrentGoals,
+		EnableLLMAnalysis:                  false,
+		LLMProviderProfile:                 "",
+		StoreFailureSamples:                true,
+		FailureSampleLimit:                 DefaultFailureSampleLimit,
+		DefaultScheduleInterval:            DefaultScheduleInterval,
+		DailyExecutionLimit:                DefaultDailyExecutionLimit,
+		DailyColumnAnalysisLimit:           DefaultDailyColumnAnalysisLimit,
+		DailyLLMAnalysisLimit:              DefaultDailyLLMAnalysisLimit,
+		LLMConcurrencyLimit:                DefaultLLMConcurrencyLimit,
+		MaxColumnsPerAnalysis:              DefaultMaxColumnsPerAnalysis,
+		SendSampleValuesToLLM:              false,
+		Digest:                             defaultDigestSchedule(),
+		TimeZone:                           DefaultTimeZone,
+		AgentRunnerTokensPerHour:           DefaultAgentRunnerTokensPerHour,
+		AgentRunnerWakesPerHour:            DefaultAgentRunnerWakesPerHour,
+		AgentRunnerMaxConcurrentSessions:   DefaultAgentRunnerMaxConcurrentSessions,
+		AgentRunnerCompactionTriggerTokens: DefaultAgentRunnerCompactionTriggerTokens,
+		AgentRunnerIdleWakeSeconds:         DefaultAgentRunnerIdleWakeSeconds,
+		AgentRunnerAutoInvestigateFailures: true,
 	}
 }
 
@@ -196,8 +223,18 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	settings.AgentRunnerEnabled = dataQuality.GetAgentRunnerEnabled()
 	settings.AgentRunnerDatabases = normalizeDatabaseRefs(dataQuality.GetAgentRunnerDatabases())
 	settings.AgentRunnerTokensPerHour = positiveInt64OrDefault(dataQuality.GetAgentRunnerTokensPerHour(), DefaultAgentRunnerTokensPerHour)
-	settings.AgentRunnerGoalsPerHour = boundedLimit(int(dataQuality.GetAgentRunnerGoalsPerHour()), DefaultAgentRunnerGoalsPerHour, MaxAgentRunnerGoalsPerHour)
-	settings.AgentRunnerMaxConcurrentGoals = boundedLimit(int(dataQuality.GetAgentRunnerMaxConcurrentGoals()), DefaultAgentRunnerMaxConcurrentGoals, MaxAgentRunnerConcurrentGoals)
+	settings.AgentRunnerWakesPerHour = boundedLimit(int(dataQuality.GetAgentRunnerWakesPerHour()), DefaultAgentRunnerWakesPerHour, MaxAgentRunnerWakesPerHour)
+	settings.AgentRunnerMaxConcurrentSessions = boundedLimit(int(dataQuality.GetAgentRunnerMaxConcurrentSessions()), DefaultAgentRunnerMaxConcurrentSessions, MaxAgentRunnerConcurrentSessions)
+	settings.AgentRunnerCompactionTriggerTokens = boundedMinMax(int(dataQuality.GetAgentRunnerCompactionTriggerTokens()), DefaultAgentRunnerCompactionTriggerTokens, MinAgentRunnerCompactionTriggerTokens, MaxAgentRunnerCompactionTriggerTokens)
+	settings.AgentRunnerIdleWakeSeconds = boundedMinMax(int(dataQuality.GetAgentRunnerIdleWakeSeconds()), DefaultAgentRunnerIdleWakeSeconds, MinAgentRunnerIdleWakeSeconds, MaxAgentRunnerIdleWakeSeconds)
+	// The event switch defaults on: a session that is enabled should react to a
+	// failed check without someone flipping a second switch. A stored explicit false
+	// still turns it off.
+	if autoInvestigate := dataQuality.AgentRunnerAutoInvestigateFailures; autoInvestigate != nil {
+		settings.AgentRunnerAutoInvestigateFailures = *autoInvestigate
+	} else {
+		settings.AgentRunnerAutoInvestigateFailures = true
+	}
 	return settings
 }
 
@@ -273,6 +310,21 @@ func boundedLimit(value, fallback, maximum int) int {
 	switch {
 	case value <= 0:
 		return fallback
+	case value > maximum:
+		return maximum
+	default:
+		return value
+	}
+}
+
+// boundedMinMax resolves an integer setting with both a floor and a ceiling: zero
+// and negative values fall back to the default, and an out-of-range value is clamped.
+func boundedMinMax(value, fallback, minimum, maximum int) int {
+	switch {
+	case value <= 0:
+		return fallback
+	case value < minimum:
+		return minimum
 	case value > maximum:
 		return maximum
 	default:

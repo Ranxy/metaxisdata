@@ -864,10 +864,16 @@ func TestApplyWorkspaceProfileUpdateValidatesRunnerSettings(t *testing.T) {
 		AgentRunnerTokensPerHour: -1,
 	})))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
-		AgentRunnerGoalsPerHour: 100_000,
+		AgentRunnerWakesPerHour: 100_000,
 	})))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
-		AgentRunnerMaxConcurrentGoals: 100,
+		AgentRunnerMaxConcurrentSessions: 100,
+	})))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
+		AgentRunnerCompactionTriggerTokens: 10,
+	})))
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
+		AgentRunnerIdleWakeSeconds: 5,
 	})))
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(apply(&v1pb.DataQualitySetting{
 		AgentRunnerDatabases: []string{"not-a-database"},

@@ -271,6 +271,7 @@
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
+    - [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest)
     - [GetQualityChangeRequestRequest](#metaxisdata-v1-GetQualityChangeRequestRequest)
     - [GetQualityCodeTableRequest](#metaxisdata-v1-GetQualityCodeTableRequest)
     - [GetQualityConsumptionCoverageRequest](#metaxisdata-v1-GetQualityConsumptionCoverageRequest)
@@ -344,6 +345,12 @@
     - [QualityAction](#metaxisdata-v1-QualityAction)
     - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
+    - [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics)
+    - [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus)
+    - [QualityAgentSession](#metaxisdata-v1-QualityAgentSession)
+    - [QualityAgentSessionMessage](#metaxisdata-v1-QualityAgentSessionMessage)
+    - [QualityAgentSessionStateCount](#metaxisdata-v1-QualityAgentSessionStateCount)
+    - [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost)
     - [QualityChangeRequest](#metaxisdata-v1-QualityChangeRequest)
     - [QualityChangeRequestItem](#metaxisdata-v1-QualityChangeRequestItem)
     - [QualityChangeRequestItemResult](#metaxisdata-v1-QualityChangeRequestItemResult)
@@ -404,6 +411,7 @@
     - [QualityTargetSummary](#metaxisdata-v1-QualityTargetSummary)
     - [QualityThresholdSuggestion](#metaxisdata-v1-QualityThresholdSuggestion)
     - [QualityThresholds](#metaxisdata-v1-QualityThresholds)
+    - [QualityToolCall](#metaxisdata-v1-QualityToolCall)
     - [QualityTrendPoint](#metaxisdata-v1-QualityTrendPoint)
     - [RangeConfig](#metaxisdata-v1-RangeConfig)
     - [RecommendQualityChecksRequest](#metaxisdata-v1-RecommendQualityChecksRequest)
@@ -445,6 +453,9 @@
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
     - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
+    - [QualityAgentMessageOrigin](#metaxisdata-v1-QualityAgentMessageOrigin)
+    - [QualityAgentMessageRole](#metaxisdata-v1-QualityAgentMessageRole)
+    - [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
     - [QualityChangeRejectionReason](#metaxisdata-v1-QualityChangeRejectionReason)
@@ -5178,6 +5189,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityAgentMetricsRequest"></a>
+
+### GetQualityAgentMetricsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityChangeRequestRequest"></a>
 
 ### GetQualityChangeRequestRequest
@@ -6488,6 +6514,163 @@ agent ends every token it holds.
 | enabled | [bool](#bool) |  |  |
 | created_by | [string](#string) |  | Format: users/{user}. Empty when unknown. |
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentMetrics"></a>
+
+### QualityAgentMetrics
+QualityAgentMetrics is the runner&#39;s evaluation: what it did, what it spent and
+how the proposals it made were decided. All of it is derived from existing rows.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| sessions | [QualityAgentSessionStateCount](#metaxisdata-v1-QualityAgentSessionStateCount) | repeated |  |
+| tokens_total | [int64](#int64) |  |  |
+| tokens_last_hour | [int64](#int64) |  |  |
+| agent_change_requests_total | [int32](#int32) |  | Change requests proposed by an agent, by lifecycle state. Acceptance is applied / (applied &#43; rejected); pending and expired are not decisions. |
+| agent_change_requests_applied | [int32](#int32) |  |  |
+| agent_change_requests_rejected | [int32](#int32) |  |  |
+| agent_change_requests_pending | [int32](#int32) |  |  |
+| agent_change_requests_approved | [int32](#int32) |  |  |
+| agent_change_requests_expired | [int32](#int32) |  |  |
+| investigations_total | [int32](#int32) |  | Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows carry no verdict, so the buckets do not have to sum to the total. |
+| investigations_inconclusive | [int32](#int32) |  |  |
+| investigations_root_cause | [int32](#int32) |  |  |
+| investigations_contributing_factor | [int32](#int32) |  |  |
+| investigations_unrelated | [int32](#int32) |  |  |
+| top_targets | [QualityAgentTargetCost](#metaxisdata-v1-QualityAgentTargetCost) | repeated |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentRunnerStatus"></a>
+
+### QualityAgentRunnerStatus
+QualityAgentRunnerStatus is the runner&#39;s live state at one instant. The budgets
+and counters are durable; runner_last_tick_time is process-local and reset by a
+restart, so it is a liveness hint, not durable state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enabled | [bool](#bool) |  |  |
+| autonomy_enabled | [bool](#bool) |  |  |
+| llm_configured | [bool](#bool) |  |  |
+| running_sessions | [int32](#int32) |  |  |
+| idle_sessions | [int32](#int32) |  |  |
+| blocked_sessions | [int32](#int32) |  |  |
+| tokens_last_hour | [int64](#int64) |  |  |
+| tokens_per_hour_limit | [int64](#int64) |  |  |
+| wakes_last_hour | [int32](#int32) |  |  |
+| wakes_per_hour_limit | [int32](#int32) |  |  |
+| max_concurrent_sessions | [int32](#int32) |  |  |
+| compaction_trigger_tokens | [int32](#int32) |  |  |
+| idle_wake_seconds | [int32](#int32) |  |  |
+| last_activity_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| runner_last_tick_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentSession"></a>
+
+### QualityAgentSession
+QualityAgentSession is one target&#39;s long-lived agent conversation and wake
+schedule. &#34;Running&#34; is derived from lease_expire_time, never from state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session} |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| database | [string](#string) |  | The database allowlist entry this session is scoped to. |
+| agent | [string](#string) |  | Format: users/{user}. The agent principal that runs the session. |
+| objective | [string](#string) |  |  |
+| state | [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState) |  |  |
+| blocked_code | [string](#string) |  | Stable blocked code and its explanation; empty unless blocked. |
+| blocked_reason | [string](#string) |  |  |
+| revision | [int32](#int32) |  | Incremented by every mutation; human mutations carry the revision they saw. |
+| wake_count | [int32](#int32) |  |  |
+| tokens_used | [int64](#int64) |  | Lifetime token spend, so an archived session still counts. |
+| context_tokens | [int32](#int32) |  | The largest real prompt_tokens of the last wake. |
+| next_wake_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_activity_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The newest transcript entry, used as a heartbeat. |
+| lease_expire_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| restart_count | [int32](#int32) |  |  |
+| running | [bool](#bool) |  | True when the lease is live; a crash leaves it live for at most the lease duration, so a client must treat last_activity_time as the heartbeat. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| archive_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentSessionMessage"></a>
+
+### QualityAgentSessionMessage
+QualityAgentSessionMessage is one append-only transcript entry of a session.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq} |
+| seq | [int64](#int64) |  |  |
+| wake | [int32](#int32) |  | The wake and LLM turn the message belongs to. |
+| turn | [int32](#int32) |  |  |
+| role | [QualityAgentMessageRole](#metaxisdata-v1-QualityAgentMessageRole) |  |  |
+| origin | [QualityAgentMessageOrigin](#metaxisdata-v1-QualityAgentMessageOrigin) |  |  |
+| content | [string](#string) |  |  |
+| tool_calls | [QualityToolCall](#metaxisdata-v1-QualityToolCall) | repeated | Present on assistant messages: the tool calls the model made. |
+| tool_call_id | [string](#string) |  | Present on tool messages: which call the result answers. |
+| tool_name | [string](#string) |  |  |
+| tokens | [int32](#int32) |  |  |
+| truncated | [bool](#bool) |  |  |
+| error | [string](#string) |  |  |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentSessionStateCount"></a>
+
+### QualityAgentSessionStateCount
+QualityAgentSessionStateCount is how many sessions stand in one state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState) |  |  |
+| count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentTargetCost"></a>
+
+### QualityAgentTargetCost
+QualityAgentTargetCost is one target&#39;s share of the runner&#39;s token spend.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  |  |
+| tokens_used | [int64](#int64) |  |  |
+| session_count | [int32](#int32) |  |  |
 
 
 
@@ -7890,6 +8073,23 @@ the lower and upper bounds are.
 
 
 
+<a name="metaxisdata-v1-QualityToolCall"></a>
+
+### QualityToolCall
+QualityToolCall is one tool invocation in an assistant message.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| arguments | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityTrendPoint"></a>
 
 ### QualityTrendPoint
@@ -8622,6 +8822,55 @@ APPROVE applies the request&#39;s items; REJECT records the refusal.
 | DECISION_UNSPECIFIED | 0 |  |
 | DECISION_APPROVE | 1 |  |
 | DECISION_REJECT | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentMessageOrigin"></a>
+
+### QualityAgentMessageOrigin
+QualityAgentMessageOrigin says what produced a user or engine message.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_WAKE | 1 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_EVENT | 2 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_ASK | 3 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER | 4 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_MODEL | 5 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION | 6 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentMessageRole"></a>
+
+### QualityAgentMessageRole
+QualityAgentMessageRole is one entry in a session&#39;s conversation.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_SYSTEM | 1 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_USER | 2 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT | 3 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_TOOL | 4 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_ENGINE | 5 | Runner/UI bookkeeping; never sent back to the model. |
+| QUALITY_AGENT_MESSAGE_ROLE_COMPACTION | 6 | A compaction checkpoint that replaces the covered messages in model context. |
+
+
+
+<a name="metaxisdata-v1-QualityAgentSessionState"></a>
+
+### QualityAgentSessionState
+QualityAgentSessionState is the durable lifecycle of one target&#39;s agent session.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_STATE_ENABLED | 1 |  |
+| QUALITY_AGENT_SESSION_STATE_PAUSED | 2 |  |
+| QUALITY_AGENT_SESSION_STATE_BLOCKED | 3 |  |
+| QUALITY_AGENT_SESSION_STATE_ARCHIVED | 4 |  |
 
 
 
@@ -12908,11 +13157,14 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | weekly_digest | [QualityDigestSetting](#metaxisdata-v1-QualityDigestSetting) |  | The weekly data quality digest. The digest is one workspace-level summary delivered through the outbound channels that name NOTIFICATION_TYPE_DATA_QUALITY_DIGEST explicitly; it has no per-recipient inbox copy. A data_quality update that omits this nested message keeps the stored schedule (so a client that predates the digest cannot clear it); sending the message explicitly replaces it, including with enabled=false. |
 | time_zone | [string](#string) |  | The IANA time zone (for example &#34;Asia/Shanghai&#34;) the time variables of check filters and custom SQL are resolved in: ${today}, ${yesterday} and the ${now} family. Empty means UTC. It does not affect a check&#39;s schedule, which belongs to the target. |
 | agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: turning it off is the kill switch that returns the workspace to human-only edits. |
-| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run goals. Off by default: turning it off stops new goal rounds; recorded proposals stay for review. |
-| agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means no database is in scope and the runner creates no goal. |
-| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner goals; 0 means the server default (100000000). A goal has no individual token cap. |
-| agent_runner_goals_per_hour | [int32](#int32) |  | How many goals the workspace may create per hour; 0 means the server default (20). |
-| agent_runner_max_concurrent_goals | [int32](#int32) |  | How many goals may run at once; 0 means the server default (2). |
+| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default: turning it off stops new wakes; recorded proposals stay for review. |
+| agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means no database is in scope and the runner creates no session. |
+| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner sessions; 0 means the server default (100000000). A session has no individual token cap. |
+| agent_runner_wakes_per_hour | [int32](#int32) |  | How many session wakes the workspace may start per hour; 0 means the server default (20). |
+| agent_runner_max_concurrent_sessions | [int32](#int32) |  | How many sessions may run at once; 0 means the server default (2). |
+| agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages; 0 means the server default (262144). |
+| agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds; 0 means the server default (86400). |
+| agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
 
 
 

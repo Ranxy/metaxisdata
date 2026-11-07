@@ -4906,3 +4906,165 @@ message DeleteQualityCodeTableRequest {
     (google.api.resource_reference) = {type: "metaxisdata/QualityCodeTable"}
   ];
 }
+
+// ---- Quality agent sessions ----
+
+// QualityAgentSessionState is the durable lifecycle of one target's agent session.
+enum QualityAgentSessionState {
+  QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
+  QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+  QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
+  QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
+}
+
+// QualityAgentMessageRole is one entry in a session's conversation.
+enum QualityAgentMessageRole {
+  QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ROLE_SYSTEM = 1;
+  QUALITY_AGENT_MESSAGE_ROLE_USER = 2;
+  QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT = 3;
+  QUALITY_AGENT_MESSAGE_ROLE_TOOL = 4;
+  // Runner/UI bookkeeping; never sent back to the model.
+  QUALITY_AGENT_MESSAGE_ROLE_ENGINE = 5;
+  // A compaction checkpoint that replaces the covered messages in model context.
+  QUALITY_AGENT_MESSAGE_ROLE_COMPACTION = 6;
+}
+
+// QualityAgentMessageOrigin says what produced a user or engine message.
+enum QualityAgentMessageOrigin {
+  QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ORIGIN_WAKE = 1;
+  QUALITY_AGENT_MESSAGE_ORIGIN_EVENT = 2;
+  QUALITY_AGENT_MESSAGE_ORIGIN_ASK = 3;
+  QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER = 4;
+  QUALITY_AGENT_MESSAGE_ORIGIN_MODEL = 5;
+  QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION = 6;
+}
+
+// QualityToolCall is one tool invocation in an assistant message.
+message QualityToolCall {
+  string id = 1;
+  string name = 2;
+  string arguments = 3;
+}
+
+// QualityAgentSession is one target's long-lived agent conversation and wake
+// schedule. "Running" is derived from lease_expire_time, never from state.
+message QualityAgentSession {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+  string name = 1;
+  QualityTarget target = 2;
+  // The database allowlist entry this session is scoped to.
+  string database = 3;
+  // Format: users/{user}. The agent principal that runs the session.
+  string agent = 4;
+  string objective = 5;
+  QualityAgentSessionState state = 6;
+  // Stable blocked code and its explanation; empty unless blocked.
+  string blocked_code = 7;
+  string blocked_reason = 8;
+  // Incremented by every mutation; human mutations carry the revision they saw.
+  int32 revision = 9;
+  int32 wake_count = 10;
+  // Lifetime token spend, so an archived session still counts.
+  int64 tokens_used = 11;
+  // The largest real prompt_tokens of the last wake.
+  int32 context_tokens = 12;
+  google.protobuf.Timestamp next_wake_time = 13;
+  // The newest transcript entry, used as a heartbeat.
+  google.protobuf.Timestamp last_activity_time = 14;
+  google.protobuf.Timestamp lease_expire_time = 15;
+  int32 restart_count = 16;
+  // True when the lease is live; a crash leaves it live for at most the lease
+  // duration, so a client must treat last_activity_time as the heartbeat.
+  bool running = 17;
+  google.protobuf.Timestamp create_time = 18;
+  google.protobuf.Timestamp update_time = 19;
+  google.protobuf.Timestamp archive_time = 20;
+}
+
+// QualityAgentSessionMessage is one append-only transcript entry of a session.
+message QualityAgentSessionMessage {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq}
+  string name = 1;
+  int64 seq = 2;
+  // The wake and LLM turn the message belongs to.
+  int32 wake = 3;
+  int32 turn = 4;
+  QualityAgentMessageRole role = 5;
+  QualityAgentMessageOrigin origin = 6;
+  string content = 7;
+  // Present on assistant messages: the tool calls the model made.
+  repeated QualityToolCall tool_calls = 8;
+  // Present on tool messages: which call the result answers.
+  string tool_call_id = 9;
+  string tool_name = 10;
+  int32 tokens = 11;
+  bool truncated = 12;
+  string error = 13;
+  google.protobuf.Timestamp create_time = 14;
+}
+
+// QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
+// and counters are durable; runner_last_tick_time is process-local and reset by a
+// restart, so it is a liveness hint, not durable state.
+message QualityAgentRunnerStatus {
+  bool enabled = 1;
+  bool autonomy_enabled = 2;
+  bool llm_configured = 3;
+  int32 running_sessions = 4;
+  int32 idle_sessions = 5;
+  int32 blocked_sessions = 6;
+  int64 tokens_last_hour = 7;
+  int64 tokens_per_hour_limit = 8;
+  int32 wakes_last_hour = 9;
+  int32 wakes_per_hour_limit = 10;
+  int32 max_concurrent_sessions = 11;
+  int32 compaction_trigger_tokens = 12;
+  int32 idle_wake_seconds = 13;
+  google.protobuf.Timestamp last_activity_time = 14;
+  google.protobuf.Timestamp runner_last_tick_time = 15;
+}
+
+// QualityAgentSessionStateCount is how many sessions stand in one state.
+message QualityAgentSessionStateCount {
+  QualityAgentSessionState state = 1;
+  int32 count = 2;
+}
+
+// QualityAgentTargetCost is one target's share of the runner's token spend.
+message QualityAgentTargetCost {
+  QualityTarget target = 1;
+  int64 tokens_used = 2;
+  int32 session_count = 3;
+}
+
+// QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
+// how the proposals it made were decided. All of it is derived from existing rows.
+message QualityAgentMetrics {
+  repeated QualityAgentSessionStateCount sessions = 1;
+  int64 tokens_total = 2;
+  int64 tokens_last_hour = 3;
+  // Change requests proposed by an agent, by lifecycle state. Acceptance is
+  // applied / (applied + rejected); pending and expired are not decisions.
+  int32 agent_change_requests_total = 4;
+  int32 agent_change_requests_applied = 5;
+  int32 agent_change_requests_rejected = 6;
+  int32 agent_change_requests_pending = 7;
+  int32 agent_change_requests_approved = 13;
+  int32 agent_change_requests_expired = 14;
+  // Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
+  // rows carry no verdict, so the buckets do not have to sum to the total.
+  int32 investigations_total = 8;
+  int32 investigations_inconclusive = 9;
+  int32 investigations_root_cause = 10;
+  int32 investigations_contributing_factor = 11;
+  int32 investigations_unrelated = 15;
+  repeated QualityAgentTargetCost top_targets = 12;
+}
+
+message GetQualityAgentMetricsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}

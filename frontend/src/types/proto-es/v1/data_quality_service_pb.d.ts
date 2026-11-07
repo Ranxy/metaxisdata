@@ -10156,6 +10156,512 @@ export declare type DeleteQualityCodeTableRequest = Message<"metaxisdata.v1.Dele
 export declare const DeleteQualityCodeTableRequestSchema: GenMessage<DeleteQualityCodeTableRequest>;
 
 /**
+ * QualityToolCall is one tool invocation in an assistant message.
+ *
+ * @generated from message metaxisdata.v1.QualityToolCall
+ */
+export declare type QualityToolCall = Message<"metaxisdata.v1.QualityToolCall"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string arguments = 3;
+   */
+  arguments: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityToolCall.
+ * Use `create(QualityToolCallSchema)` to create a new message.
+ */
+export declare const QualityToolCallSchema: GenMessage<QualityToolCall>;
+
+/**
+ * QualityAgentSession is one target's long-lived agent conversation and wake
+ * schedule. "Running" is derived from lease_expire_time, never from state.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentSession
+ */
+export declare type QualityAgentSession = Message<"metaxisdata.v1.QualityAgentSession"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 2;
+   */
+  target?: QualityTarget;
+
+  /**
+   * The database allowlist entry this session is scoped to.
+   *
+   * @generated from field: string database = 3;
+   */
+  database: string;
+
+  /**
+   * Format: users/{user}. The agent principal that runs the session.
+   *
+   * @generated from field: string agent = 4;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: string objective = 5;
+   */
+  objective: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentSessionState state = 6;
+   */
+  state: QualityAgentSessionState;
+
+  /**
+   * Stable blocked code and its explanation; empty unless blocked.
+   *
+   * @generated from field: string blocked_code = 7;
+   */
+  blockedCode: string;
+
+  /**
+   * @generated from field: string blocked_reason = 8;
+   */
+  blockedReason: string;
+
+  /**
+   * Incremented by every mutation; human mutations carry the revision they saw.
+   *
+   * @generated from field: int32 revision = 9;
+   */
+  revision: number;
+
+  /**
+   * @generated from field: int32 wake_count = 10;
+   */
+  wakeCount: number;
+
+  /**
+   * Lifetime token spend, so an archived session still counts.
+   *
+   * @generated from field: int64 tokens_used = 11;
+   */
+  tokensUsed: bigint;
+
+  /**
+   * The largest real prompt_tokens of the last wake.
+   *
+   * @generated from field: int32 context_tokens = 12;
+   */
+  contextTokens: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp next_wake_time = 13;
+   */
+  nextWakeTime?: Timestamp;
+
+  /**
+   * The newest transcript entry, used as a heartbeat.
+   *
+   * @generated from field: google.protobuf.Timestamp last_activity_time = 14;
+   */
+  lastActivityTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp lease_expire_time = 15;
+   */
+  leaseExpireTime?: Timestamp;
+
+  /**
+   * @generated from field: int32 restart_count = 16;
+   */
+  restartCount: number;
+
+  /**
+   * True when the lease is live; a crash leaves it live for at most the lease
+   * duration, so a client must treat last_activity_time as the heartbeat.
+   *
+   * @generated from field: bool running = 17;
+   */
+  running: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 18;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 19;
+   */
+  updateTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp archive_time = 20;
+   */
+  archiveTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentSession.
+ * Use `create(QualityAgentSessionSchema)` to create a new message.
+ */
+export declare const QualityAgentSessionSchema: GenMessage<QualityAgentSession>;
+
+/**
+ * QualityAgentSessionMessage is one append-only transcript entry of a session.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentSessionMessage
+ */
+export declare type QualityAgentSessionMessage = Message<"metaxisdata.v1.QualityAgentSessionMessage"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: int64 seq = 2;
+   */
+  seq: bigint;
+
+  /**
+   * The wake and LLM turn the message belongs to.
+   *
+   * @generated from field: int32 wake = 3;
+   */
+  wake: number;
+
+  /**
+   * @generated from field: int32 turn = 4;
+   */
+  turn: number;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentMessageRole role = 5;
+   */
+  role: QualityAgentMessageRole;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentMessageOrigin origin = 6;
+   */
+  origin: QualityAgentMessageOrigin;
+
+  /**
+   * @generated from field: string content = 7;
+   */
+  content: string;
+
+  /**
+   * Present on assistant messages: the tool calls the model made.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityToolCall tool_calls = 8;
+   */
+  toolCalls: QualityToolCall[];
+
+  /**
+   * Present on tool messages: which call the result answers.
+   *
+   * @generated from field: string tool_call_id = 9;
+   */
+  toolCallId: string;
+
+  /**
+   * @generated from field: string tool_name = 10;
+   */
+  toolName: string;
+
+  /**
+   * @generated from field: int32 tokens = 11;
+   */
+  tokens: number;
+
+  /**
+   * @generated from field: bool truncated = 12;
+   */
+  truncated: boolean;
+
+  /**
+   * @generated from field: string error = 13;
+   */
+  error: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 14;
+   */
+  createTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentSessionMessage.
+ * Use `create(QualityAgentSessionMessageSchema)` to create a new message.
+ */
+export declare const QualityAgentSessionMessageSchema: GenMessage<QualityAgentSessionMessage>;
+
+/**
+ * QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
+ * and counters are durable; runner_last_tick_time is process-local and reset by a
+ * restart, so it is a liveness hint, not durable state.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentRunnerStatus
+ */
+export declare type QualityAgentRunnerStatus = Message<"metaxisdata.v1.QualityAgentRunnerStatus"> & {
+  /**
+   * @generated from field: bool enabled = 1;
+   */
+  enabled: boolean;
+
+  /**
+   * @generated from field: bool autonomy_enabled = 2;
+   */
+  autonomyEnabled: boolean;
+
+  /**
+   * @generated from field: bool llm_configured = 3;
+   */
+  llmConfigured: boolean;
+
+  /**
+   * @generated from field: int32 running_sessions = 4;
+   */
+  runningSessions: number;
+
+  /**
+   * @generated from field: int32 idle_sessions = 5;
+   */
+  idleSessions: number;
+
+  /**
+   * @generated from field: int32 blocked_sessions = 6;
+   */
+  blockedSessions: number;
+
+  /**
+   * @generated from field: int64 tokens_last_hour = 7;
+   */
+  tokensLastHour: bigint;
+
+  /**
+   * @generated from field: int64 tokens_per_hour_limit = 8;
+   */
+  tokensPerHourLimit: bigint;
+
+  /**
+   * @generated from field: int32 wakes_last_hour = 9;
+   */
+  wakesLastHour: number;
+
+  /**
+   * @generated from field: int32 wakes_per_hour_limit = 10;
+   */
+  wakesPerHourLimit: number;
+
+  /**
+   * @generated from field: int32 max_concurrent_sessions = 11;
+   */
+  maxConcurrentSessions: number;
+
+  /**
+   * @generated from field: int32 compaction_trigger_tokens = 12;
+   */
+  compactionTriggerTokens: number;
+
+  /**
+   * @generated from field: int32 idle_wake_seconds = 13;
+   */
+  idleWakeSeconds: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_activity_time = 14;
+   */
+  lastActivityTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp runner_last_tick_time = 15;
+   */
+  runnerLastTickTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentRunnerStatus.
+ * Use `create(QualityAgentRunnerStatusSchema)` to create a new message.
+ */
+export declare const QualityAgentRunnerStatusSchema: GenMessage<QualityAgentRunnerStatus>;
+
+/**
+ * QualityAgentSessionStateCount is how many sessions stand in one state.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentSessionStateCount
+ */
+export declare type QualityAgentSessionStateCount = Message<"metaxisdata.v1.QualityAgentSessionStateCount"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentSessionState state = 1;
+   */
+  state: QualityAgentSessionState;
+
+  /**
+   * @generated from field: int32 count = 2;
+   */
+  count: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentSessionStateCount.
+ * Use `create(QualityAgentSessionStateCountSchema)` to create a new message.
+ */
+export declare const QualityAgentSessionStateCountSchema: GenMessage<QualityAgentSessionStateCount>;
+
+/**
+ * QualityAgentTargetCost is one target's share of the runner's token spend.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentTargetCost
+ */
+export declare type QualityAgentTargetCost = Message<"metaxisdata.v1.QualityAgentTargetCost"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
+   */
+  target?: QualityTarget;
+
+  /**
+   * @generated from field: int64 tokens_used = 2;
+   */
+  tokensUsed: bigint;
+
+  /**
+   * @generated from field: int32 session_count = 3;
+   */
+  sessionCount: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentTargetCost.
+ * Use `create(QualityAgentTargetCostSchema)` to create a new message.
+ */
+export declare const QualityAgentTargetCostSchema: GenMessage<QualityAgentTargetCost>;
+
+/**
+ * QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
+ * how the proposals it made were decided. All of it is derived from existing rows.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentMetrics
+ */
+export declare type QualityAgentMetrics = Message<"metaxisdata.v1.QualityAgentMetrics"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentSessionStateCount sessions = 1;
+   */
+  sessions: QualityAgentSessionStateCount[];
+
+  /**
+   * @generated from field: int64 tokens_total = 2;
+   */
+  tokensTotal: bigint;
+
+  /**
+   * @generated from field: int64 tokens_last_hour = 3;
+   */
+  tokensLastHour: bigint;
+
+  /**
+   * Change requests proposed by an agent, by lifecycle state. Acceptance is
+   * applied / (applied + rejected); pending and expired are not decisions.
+   *
+   * @generated from field: int32 agent_change_requests_total = 4;
+   */
+  agentChangeRequestsTotal: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_applied = 5;
+   */
+  agentChangeRequestsApplied: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_rejected = 6;
+   */
+  agentChangeRequestsRejected: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_pending = 7;
+   */
+  agentChangeRequestsPending: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_approved = 13;
+   */
+  agentChangeRequestsApproved: number;
+
+  /**
+   * @generated from field: int32 agent_change_requests_expired = 14;
+   */
+  agentChangeRequestsExpired: number;
+
+  /**
+   * Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
+   * rows carry no verdict, so the buckets do not have to sum to the total.
+   *
+   * @generated from field: int32 investigations_total = 8;
+   */
+  investigationsTotal: number;
+
+  /**
+   * @generated from field: int32 investigations_inconclusive = 9;
+   */
+  investigationsInconclusive: number;
+
+  /**
+   * @generated from field: int32 investigations_root_cause = 10;
+   */
+  investigationsRootCause: number;
+
+  /**
+   * @generated from field: int32 investigations_contributing_factor = 11;
+   */
+  investigationsContributingFactor: number;
+
+  /**
+   * @generated from field: int32 investigations_unrelated = 15;
+   */
+  investigationsUnrelated: number;
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentTargetCost top_targets = 12;
+   */
+  topTargets: QualityAgentTargetCost[];
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentMetrics.
+ * Use `create(QualityAgentMetricsSchema)` to create a new message.
+ */
+export declare const QualityAgentMetricsSchema: GenMessage<QualityAgentMetrics>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentMetricsRequest
+ */
+export declare type GetQualityAgentMetricsRequest = Message<"metaxisdata.v1.GetQualityAgentMetricsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentMetricsRequest.
+ * Use `create(GetQualityAgentMetricsRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentMetricsRequestSchema: GenMessage<GetQualityAgentMetricsRequest>;
+
+/**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
  * rule: changing the type is a different rule and a new revision.
  *
@@ -12223,6 +12729,141 @@ export enum QualityContractChangeKind {
  * Describes the enum metaxisdata.v1.QualityContractChangeKind.
  */
 export declare const QualityContractChangeKindSchema: GenEnum<QualityContractChangeKind>;
+
+/**
+ * QualityAgentSessionState is the durable lifecycle of one target's agent session.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentSessionState
+ */
+export enum QualityAgentSessionState {
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
+   */
+  ENABLED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+   */
+  PAUSED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
+   */
+  BLOCKED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
+   */
+  ARCHIVED = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentSessionState.
+ */
+export declare const QualityAgentSessionStateSchema: GenEnum<QualityAgentSessionState>;
+
+/**
+ * QualityAgentMessageRole is one entry in a session's conversation.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentMessageRole
+ */
+export enum QualityAgentMessageRole {
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_SYSTEM = 1;
+   */
+  SYSTEM = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_USER = 2;
+   */
+  USER = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT = 3;
+   */
+  ASSISTANT = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_TOOL = 4;
+   */
+  TOOL = 4,
+
+  /**
+   * Runner/UI bookkeeping; never sent back to the model.
+   *
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_ENGINE = 5;
+   */
+  ENGINE = 5,
+
+  /**
+   * A compaction checkpoint that replaces the covered messages in model context.
+   *
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ROLE_COMPACTION = 6;
+   */
+  COMPACTION = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentMessageRole.
+ */
+export declare const QualityAgentMessageRoleSchema: GenEnum<QualityAgentMessageRole>;
+
+/**
+ * QualityAgentMessageOrigin says what produced a user or engine message.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentMessageOrigin
+ */
+export enum QualityAgentMessageOrigin {
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_WAKE = 1;
+   */
+  WAKE = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_EVENT = 2;
+   */
+  EVENT = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_ASK = 3;
+   */
+  ASK = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER = 4;
+   */
+  RUNNER = 4,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_MODEL = 5;
+   */
+  MODEL = 5,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION = 6;
+   */
+  COMPACTION = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentMessageOrigin.
+ */
+export declare const QualityAgentMessageOriginSchema: GenEnum<QualityAgentMessageOrigin>;
 
 /**
  * DataQualityService manages the checks that watch the data itself: rules and

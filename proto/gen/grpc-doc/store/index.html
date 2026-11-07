@@ -13710,7 +13710,7 @@ workspace to human-only edits, and the agent still reads. </p></td>
                   <td>agent_runner_enabled</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>Whether the built-in quality agent runner may run goals. Off by default. </p></td>
+                  <td><p>Whether the built-in quality agent runner may run sessions. Off by default. </p></td>
                 </tr>
               
                 <tr>
@@ -13725,23 +13725,47 @@ workspace to human-only edits, and the agent still reads. </p></td>
                   <td>agent_runner_tokens_per_hour</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p>The workspace&#39;s hourly token ceiling for runner goals. Zero means the server
-default (100000000). </p></td>
+                  <td><p>The workspace&#39;s hourly token ceiling for runner sessions. Zero means the
+server default (100000000). </p></td>
                 </tr>
               
                 <tr>
-                  <td>agent_runner_goals_per_hour</td>
+                  <td>agent_runner_wakes_per_hour</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>How many goals the workspace may create per hour. Zero means the server
-default (20). </p></td>
+                  <td><p>How many session wakes the workspace may start per hour. Zero means the
+server default (20). </p></td>
                 </tr>
               
                 <tr>
-                  <td>agent_runner_max_concurrent_goals</td>
+                  <td>agent_runner_max_concurrent_sessions</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>How many goals may run at once. Zero means the server default (2). </p></td>
+                  <td><p>How many sessions may run at once. Zero means the server default (2). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_compaction_trigger_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The context token threshold that triggers compaction of a session&#39;s older
+messages. Zero means the server default (262144). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_idle_wake_seconds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How long an idle session sleeps between wakes, in seconds. Zero means the
+server default (86400). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_auto_investigate_failures</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>optional</td>
+                  <td><p>Whether a failed check execution appends an event to its target&#39;s session and
+wakes it. On by default. </p></td>
                 </tr>
               
             </tbody>

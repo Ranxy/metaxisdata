@@ -4831,11 +4831,14 @@ metaxisdata.v1.DataQualitySetting.
 | weekly_digest | [QualityDigestSetting](#metaxisdata-store-QualityDigestSetting) |  |  |
 | time_zone | [string](#string) |  | IANA time zone the time variables of check filters and custom SQL are resolved in, for example &#34;Asia/Shanghai&#34;. Empty means UTC. |
 | agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: the kill switch returns the workspace to human-only edits, and the agent still reads. |
-| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run goals. Off by default. |
+| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default. |
 | agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means none. |
-| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner goals. Zero means the server default (100000000). |
-| agent_runner_goals_per_hour | [int32](#int32) |  | How many goals the workspace may create per hour. Zero means the server default (20). |
-| agent_runner_max_concurrent_goals | [int32](#int32) |  | How many goals may run at once. Zero means the server default (2). |
+| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner sessions. Zero means the server default (100000000). |
+| agent_runner_wakes_per_hour | [int32](#int32) |  | How many session wakes the workspace may start per hour. Zero means the server default (20). |
+| agent_runner_max_concurrent_sessions | [int32](#int32) |  | How many sessions may run at once. Zero means the server default (2). |
+| agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages. Zero means the server default (262144). |
+| agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds. Zero means the server default (86400). |
+| agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
 
 
 
