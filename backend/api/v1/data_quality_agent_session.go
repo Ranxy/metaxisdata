@@ -501,7 +501,7 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 	}
 	return &v1pb.QualityAgentSession{
 		Name:             common.FormatWorkspace(workspaceID) + "/" + qualityAgentSessionPrefix + message.ResourceID,
-		Target:           &v1pb.QualityTarget{MetaGuid: message.TargetGUID, MetaType: v1pb.MetaType(message.TargetType)},
+		Target:           convertQualityAgentSessionTargetToV1(message),
 		Database:         message.DatabaseRef,
 		Agent:            common.FormatUserUID(int(message.AgentPrincipalID)),
 		Objective:        message.Objective,
@@ -521,6 +521,36 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 		UpdateTime:       timestamppb.New(message.UpdatedAt),
 		ArchiveTime:      timestampOrNil(message.ArchivedAt),
 	}
+}
+
+// convertQualityAgentSessionTargetToV1 renders a session's target with its display
+// path. A session stores only the target's identity, while the other quality surfaces
+// read the path snapshot that hangs off a rule; without a path the session list and
+// the transcript page show the escaped GUID. A target GUID is exactly the identity
+// path (`instance;database;schema;object[,column]`, see common.BuildMetaGUID), so the
+// display path is reconstructed from it. An unparseable GUID keeps an empty path and
+// the UI falls back to the GUID.
+func convertQualityAgentSessionTargetToV1(message *store.QualityAgentSessionMessage) *v1pb.QualityTarget {
+	target := &v1pb.QualityTarget{
+		MetaGuid: message.TargetGUID,
+		MetaType: v1pb.MetaType(message.TargetType),
+	}
+	segments := common.SplitMetaGUID(message.TargetGUID)
+	if len(segments) < 2 {
+		return target
+	}
+	path := &v1pb.QualityTargetPath{Instance: segments[0], Database: segments[1]}
+	if len(segments) > 2 {
+		path.Schema = segments[2]
+	}
+	if len(segments) > 3 {
+		path.Object = segments[3]
+	}
+	if len(segments) > 4 {
+		path.Column = segments[4]
+	}
+	target.Path = path
+	return target
 }
 
 // convertQualityAgentMessageToV1 renders one transcript entry.

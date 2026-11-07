@@ -17,6 +17,7 @@ import { MetaType } from "@/types/proto-es/v1/database_service_pb";
 import {
   AGENT_RUNNER_STALE_AFTER_MS,
   AGENT_SESSION_STALE_AFTER_MS,
+  agentEventExecutionReference,
   agentMessageOriginKey,
   agentMessageRoleKey,
   agentSessionHeartbeat,
@@ -468,6 +469,64 @@ describe("formatTokens", () => {
 
   it("falls back to zero for a non-finite value", () => {
     expect(formatTokens(Number.NaN)).toBe("0");
+  });
+});
+
+describe("agentEventExecutionReference", () => {
+  const SESSION = "workspaces/ws/qualityAgentSessions/7";
+
+  it("resolves a short execution reference against the session's workspace", () => {
+    expect(
+      agentEventExecutionReference(" qualityExecutions/123 ", SESSION)
+    ).toEqual({
+      id: "123",
+      route: {
+        name: "DataQualityExecutionDetail",
+        params: {
+          executionId: ["workspaces", "ws", "qualityExecutions", "123"],
+        },
+      },
+    });
+  });
+
+  it("keeps a full execution resource name as it is", () => {
+    expect(
+      agentEventExecutionReference(
+        "workspaces/other/qualityExecutions/9",
+        SESSION
+      )
+    ).toEqual({
+      id: "9",
+      route: {
+        name: "DataQualityExecutionDetail",
+        params: {
+          executionId: ["workspaces", "other", "qualityExecutions", "9"],
+        },
+      },
+    });
+  });
+
+  it("falls back for an unexpected reference or a missing workspace", () => {
+    expect(agentEventExecutionReference("", SESSION)).toBeNull();
+    expect(agentEventExecutionReference("ruleTemplates/9", SESSION)).toBeNull();
+    expect(
+      agentEventExecutionReference("qualityExecutions/", SESSION)
+    ).toBeNull();
+    expect(
+      agentEventExecutionReference("qualityExecutions/1/2", SESSION)
+    ).toBeNull();
+    expect(
+      agentEventExecutionReference("qualityExecutions/1", "not-a-session")
+    ).toBeNull();
+    expect(
+      agentEventExecutionReference("workspaces/ws/qualityExecutions", SESSION)
+    ).toBeNull();
+    expect(
+      agentEventExecutionReference("workspaces//qualityExecutions/1", SESSION)
+    ).toBeNull();
+    expect(
+      agentEventExecutionReference("workspaces/ws/other/1", SESSION)
+    ).toBeNull();
   });
 });
 

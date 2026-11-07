@@ -381,6 +381,95 @@ export function formatTokens(
   }).format(count);
 }
 
+// ---- event references ----
+
+/** The execution prefix a runner event reference carries. */
+const EXECUTION_REFERENCE_PREFIX = "qualityExecutions/";
+
+/** Where an event's execution reference opens, shaped for a RouterLink `to`. */
+export interface AgentEventExecutionReference {
+  /** The bare execution id, for the link's label. */
+  id: string;
+  route: {
+    name: "DataQualityExecutionDetail";
+    params: { executionId: string[] };
+  };
+}
+
+/**
+ * The execution page an event's reference points at.
+ *
+ * The runner records an event's subject as a short reference
+ * (`qualityExecutions/123`), while the execution page needs the full resource
+ * name (`workspaces/{workspace}/qualityExecutions/123`) because its Get cannot
+ * resolve the `-` shorthand. The workspace therefore comes from the session's own
+ * resource name. A reference in an unexpected shape returns null, and the caller
+ * falls back to showing it as text instead of rendering a dead link.
+ */
+export function agentEventExecutionReference(
+  reference: string,
+  sessionName: string
+): AgentEventExecutionReference | null {
+  const trimmed = reference.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.startsWith("workspaces/")) {
+    const segments = trimmed.split("/");
+    if (
+      segments.length !== 4 ||
+      !segments[1] ||
+      segments[2] !== "qualityExecutions" ||
+      !segments[3]
+    ) {
+      return null;
+    }
+    return executionReference(segments, segments[3]);
+  }
+  if (trimmed.startsWith(EXECUTION_REFERENCE_PREFIX)) {
+    const id = trimmed.slice(EXECUTION_REFERENCE_PREFIX.length);
+    if (!id || id.includes("/")) {
+      return null;
+    }
+    const workspace = workspaceIDFromSessionName(sessionName);
+    if (!workspace) {
+      return null;
+    }
+    return executionReference(
+      ["workspaces", workspace, "qualityExecutions", id],
+      id
+    );
+  }
+  return null;
+}
+
+function executionReference(
+  segments: string[],
+  id: string
+): AgentEventExecutionReference {
+  return {
+    id,
+    route: {
+      name: "DataQualityExecutionDetail",
+      params: { executionId: segments },
+    },
+  };
+}
+
+/** The workspace id inside `workspaces/{workspace}/qualityAgentSessions/{id}`. */
+function workspaceIDFromSessionName(name: string): string {
+  const segments = name.split("/");
+  if (
+    segments.length >= 4 &&
+    segments[0] === "workspaces" &&
+    segments[1] &&
+    segments[2] === "qualityAgentSessions"
+  ) {
+    return segments[1];
+  }
+  return "";
+}
+
 // ---- target display ----
 
 /** A session's target name: the object's own name, or its GUID as a fallback. */

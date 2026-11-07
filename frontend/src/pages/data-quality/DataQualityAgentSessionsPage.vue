@@ -676,19 +676,25 @@ const runnerLastActivityLabel = computed(() =>
 
 // ---- counts ----
 
-const stateCounts = computed((): Map<QualityAgentSessionState, number> => {
-  const counts = new Map<QualityAgentSessionState, number>();
-  if (metrics.value) {
+/**
+ * Per-state session counts, from the runner metrics only.
+ *
+ * The directory is filtered (state and target search), so counting its rows
+ * would report the current filter's view as if it were the whole workspace.
+ * Without metrics the cards show "—" rather than a wrong number.
+ */
+const stateCounts = computed(
+  (): Map<QualityAgentSessionState, number> | undefined => {
+    if (!metrics.value) {
+      return undefined;
+    }
+    const counts = new Map<QualityAgentSessionState, number>();
     for (const count of metrics.value.sessions) {
       counts.set(count.state, count.count);
     }
     return counts;
   }
-  for (const session of sessions.value) {
-    counts.set(session.state, (counts.get(session.state) ?? 0) + 1);
-  }
-  return counts;
-});
+);
 
 interface AgentStatCard {
   state: QualityAgentSessionState;
@@ -711,8 +717,9 @@ const statCards: AgentStatCard[] = [
   { state: QualityAgentSessionState.ARCHIVED, icon: Archive, tone: "primary" },
 ];
 
-function stateCount(state: QualityAgentSessionState): number {
-  return stateCounts.value.get(state) ?? 0;
+function stateCount(state: QualityAgentSessionState): string | number {
+  const counts = stateCounts.value;
+  return counts ? (counts.get(state) ?? 0) : "—";
 }
 
 // ---- loading ----
@@ -749,7 +756,7 @@ async function loadMetrics(signal?: AbortSignal) {
   try {
     metrics.value = await getQualityAgentMetrics(signal);
   } catch {
-    // The state cards fall back to the rows the list already returned.
+    // The list still renders; the state cards show "—" instead of counts.
     metrics.value = undefined;
   }
 }

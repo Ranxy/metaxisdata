@@ -71,6 +71,26 @@
             >
               {{ t(agentMessageOriginKey(message.origin)) }}
             </Badge>
+            <!-- An event's reference is the execution it is about; the runner
+                 stores it short (`qualityExecutions/123`), so the link needs the
+                 session's workspace to become a Get-able resource name. -->
+            <RouterLink
+              v-if="message.reference && executionReference(message)"
+              :to="executionReference(message)!.route"
+              class="text-[11px] font-medium text-primary hover:underline"
+            >
+              {{
+                t("dataQuality.session.eventExecution", {
+                  id: executionReference(message)!.id,
+                })
+              }}
+            </RouterLink>
+            <span
+              v-else-if="message.reference"
+              class="break-all font-mono text-[11px] text-muted-foreground"
+            >
+              {{ message.reference }}
+            </span>
             <span
               v-if="message.createTime"
               class="text-[11px] text-muted-foreground"
@@ -171,6 +191,7 @@
 import { ChevronDown } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { RouterLink } from "vue-router";
 import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import AgentToolCard from "@/components/data-quality/AgentToolCard.vue";
 import { Badge } from "@/components/ui/badge";
@@ -185,7 +206,9 @@ import {
   type QualityAgentSessionMessage,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import {
+  type AgentEventExecutionReference,
   type AgentWakeGroup,
+  agentEventExecutionReference,
   agentMessageOriginKey,
   agentMessageRoleKey,
   orphanToolResults,
@@ -207,6 +230,8 @@ import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 
 const props = defineProps<{
   groups: AgentWakeGroup[];
+  /** The session's resource name; an event reference resolves against it. */
+  sessionName?: string;
 }>();
 
 const { t, locale } = useI18n();
@@ -229,6 +254,16 @@ const orphanSeqsByWake = computed(
       ])
     )
 );
+
+/** The execution page an event's short reference opens, when it is one. */
+function executionReference(
+  message: QualityAgentSessionMessage
+): AgentEventExecutionReference | null {
+  return agentEventExecutionReference(
+    message.reference,
+    props.sessionName ?? ""
+  );
+}
 
 function isOrphanResult(
   group: AgentWakeGroup,

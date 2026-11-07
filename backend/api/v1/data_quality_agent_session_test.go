@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -41,6 +42,56 @@ func TestConvertQualityAgentSessionDerivesRunningFromTheLease(t *testing.T) {
 		UpdatedAt:  now,
 	}, now)
 	require.False(t, message.GetRunning())
+}
+
+// A session renders the target's display path, not the escaped GUID: the session
+// table stores the target identity only, so the path is rebuilt from the GUID whose
+// segments are the target's instance, database, schema, object and column.
+func TestConvertQualityAgentSessionRebuildsTheTargetPath(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(10_000, 0).UTC()
+	table := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID: "s1",
+		TargetGUID: common.BuildMetaGUID("inst", "sales", "public", "orders"),
+		TargetType: storepb.MetaType_TABLE,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, now)
+	require.Equal(t, "inst", table.GetTarget().GetPath().GetInstance())
+	require.Equal(t, "sales", table.GetTarget().GetPath().GetDatabase())
+	require.Equal(t, "public", table.GetTarget().GetPath().GetSchema())
+	require.Equal(t, "orders", table.GetTarget().GetPath().GetObject())
+
+	// A name containing the GUID separator comes back whole.
+	escaped := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID: "s1",
+		TargetGUID: common.BuildMetaGUID("inst", "sales", "public", "we;ird"),
+		TargetType: storepb.MetaType_TABLE,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, now)
+	require.Equal(t, "we;ird", escaped.GetTarget().GetPath().GetObject())
+
+	column := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID: "s2",
+		TargetGUID: common.BuildMetaGUID("inst", "sales", "public", "orders", "email"),
+		TargetType: storepb.MetaType_COLUMN,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, now)
+	require.Equal(t, "email", column.GetTarget().GetPath().GetColumn())
+
+	// A database-level target has no object segment; the path stops at the database.
+	database := convertQualityAgentSessionToV1("ws", &store.QualityAgentSessionMessage{
+		ResourceID: "s3",
+		TargetGUID: common.BuildMetaGUID("inst", "sales"),
+		TargetType: storepb.MetaType_DATABASE,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, now)
+	require.Equal(t, "sales", database.GetTarget().GetPath().GetDatabase())
+	require.Empty(t, database.GetTarget().GetPath().GetObject())
 }
 
 // A transcript entry renders its tool calls and keeps the tool call identity the model
