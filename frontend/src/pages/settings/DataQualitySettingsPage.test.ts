@@ -284,7 +284,7 @@ describe("DataQualitySettingsPage", () => {
     expect((database.element as HTMLInputElement).checked).toBe(true);
     await database.setValue(false);
     await wrapper.find("#dq-setting-runner-tokens").setValue("250000000");
-    await wrapper.find("#dq-setting-runner-goals").setValue("40");
+    await wrapper.find("#dq-setting-runner-wakes").setValue("40");
     await wrapper.find("#dq-setting-runner-concurrency").setValue("3");
     await flushPromises();
 
@@ -296,8 +296,8 @@ describe("DataQualitySettingsPage", () => {
     expect(setting).toMatchObject({
       agentRunnerEnabled: true,
       agentRunnerDatabases: [],
-      agentRunnerGoalsPerHour: 40,
-      agentRunnerMaxConcurrentGoals: 3,
+      agentRunnerWakesPerHour: 40,
+      agentRunnerMaxConcurrentSessions: 3,
     });
     expect(setting.agentRunnerTokensPerHour).toBe(250_000_000n);
   });

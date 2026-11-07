@@ -15,8 +15,13 @@ import {
   isValidTimeZone,
   LLM_CONCURRENCY_LIMIT_MAX,
   llmDisabled,
+  MAX_AGENT_RUNNER_CONCURRENT_SESSIONS,
+  MAX_AGENT_RUNNER_TOKENS_PER_HOUR,
+  MAX_AGENT_RUNNER_WAKES_PER_HOUR,
   MAX_COLUMNS_PER_ANALYSIS_MAX,
   MAX_DAILY_COLUMN_ANALYSIS_LIMIT,
+  MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
+  MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
   SETTINGS_VALIDATION_PREFIX,
   settingsToForm,
   validateSettingsForm,
@@ -42,8 +47,11 @@ function baseForm(
     agentRunnerEnabled: false,
     agentRunnerDatabases: [],
     agentRunnerTokensPerHour: "",
-    agentRunnerGoalsPerHour: "",
-    agentRunnerMaxConcurrentGoals: "",
+    agentRunnerWakesPerHour: "",
+    agentRunnerMaxConcurrentSessions: "",
+    agentRunnerCompactionTriggerTokens: "",
+    agentRunnerIdleWakeSeconds: "",
+    agentRunnerAutoInvestigateFailures: true,
     weeklyDigest: {
       enabled: false,
       dayOfWeek: DayOfWeek.MONDAY,
@@ -97,8 +105,11 @@ describe("settingsToForm", () => {
       agentRunnerEnabled: false,
       agentRunnerDatabases: [],
       agentRunnerTokensPerHour: "",
-      agentRunnerGoalsPerHour: "",
-      agentRunnerMaxConcurrentGoals: "",
+      agentRunnerWakesPerHour: "",
+      agentRunnerMaxConcurrentSessions: "",
+      agentRunnerCompactionTriggerTokens: "",
+      agentRunnerIdleWakeSeconds: "",
+      agentRunnerAutoInvestigateFailures: true,
       // No digest stored yet: show the schedule the server resolves instead.
       weeklyDigest: {
         enabled: false,
@@ -152,8 +163,11 @@ describe("agent runner settings", () => {
         "instances/i2/databases/d2",
       ],
       agentRunnerTokensPerHour: 100_000_000n,
-      agentRunnerGoalsPerHour: 20,
-      agentRunnerMaxConcurrentGoals: 2,
+      agentRunnerWakesPerHour: 20,
+      agentRunnerMaxConcurrentSessions: 2,
+      agentRunnerCompactionTriggerTokens: 262_144,
+      agentRunnerIdleWakeSeconds: 86_400,
+      agentRunnerAutoInvestigateFailures: false,
     });
     const form = settingsToForm(setting);
     expect(form.agentRunnerEnabled).toBe(true);
@@ -166,6 +180,13 @@ describe("agent runner settings", () => {
     expect(formToSetting(form).agentRunnerDatabases).toEqual(
       form.agentRunnerDatabases
     );
+    expect(formToSetting(form).agentRunnerWakesPerHour).toBe(20);
+    expect(formToSetting(form).agentRunnerMaxConcurrentSessions).toBe(2);
+    expect(formToSetting(form).agentRunnerCompactionTriggerTokens).toBe(
+      262_144
+    );
+    expect(formToSetting(form).agentRunnerIdleWakeSeconds).toBe(86_400);
+    expect(formToSetting(form).agentRunnerAutoInvestigateFailures).toBe(false);
   });
 
   it("writes an unset runner budget as zero so the server default applies", () => {
@@ -174,7 +195,10 @@ describe("agent runner settings", () => {
       agentRunnerDatabases: ["instances/i1/databases/d1"],
     });
     expect(formToSetting(form).agentRunnerTokensPerHour).toBe(0n);
-    expect(formToSetting(form).agentRunnerGoalsPerHour).toBe(0);
+    expect(formToSetting(form).agentRunnerWakesPerHour).toBe(0);
+    expect(formToSetting(form).agentRunnerMaxConcurrentSessions).toBe(0);
+    expect(formToSetting(form).agentRunnerCompactionTriggerTokens).toBe(0);
+    expect(formToSetting(form).agentRunnerIdleWakeSeconds).toBe(0);
   });
 });
 
@@ -196,6 +220,9 @@ describe("formToSetting", () => {
       maxColumnsPerAnalysis: 50,
       sendSampleValuesToLlm: true,
       timeZone: "Europe/Berlin",
+      // An unset switch resolves to the on default, so the stored message has to
+      // carry it explicitly for the round trip to be equal.
+      agentRunnerAutoInvestigateFailures: true,
       weeklyDigest: create(QualityDigestSettingSchema, {
         enabled: true,
         dayOfWeek: DayOfWeek.FRIDAY,
@@ -335,6 +362,67 @@ describe("validateSettingsForm", () => {
         key
       ).toContain(`${SETTINGS_VALIDATION_PREFIX}${key}`);
     }
+  });
+
+  it("validates the session runner bounds", () => {
+    const cases: Array<[Partial<DataQualitySettingsForm>, string]> = [
+      [{ agentRunnerTokensPerHour: "many" }, "runnerTokensPerHourInvalid"],
+      [
+        {
+          agentRunnerTokensPerHour: String(
+            MAX_AGENT_RUNNER_TOKENS_PER_HOUR + 1
+          ),
+        },
+        "runnerTokensPerHourInvalid",
+      ],
+      [
+        {
+          agentRunnerWakesPerHour: String(MAX_AGENT_RUNNER_WAKES_PER_HOUR + 1),
+        },
+        "runnerWakesPerHourInvalid",
+      ],
+      [{ agentRunnerMaxConcurrentSessions: "-1" }, "runnerConcurrencyInvalid"],
+      [
+        {
+          agentRunnerCompactionTriggerTokens: String(
+            MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS - 1
+          ),
+        },
+        "runnerCompactionTriggerTokensInvalid",
+      ],
+      [
+        {
+          agentRunnerIdleWakeSeconds: String(
+            MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS - 1
+          ),
+        },
+        "runnerIdleWakeSecondsInvalid",
+      ],
+    ];
+    for (const [overrides, key] of cases) {
+      expect(
+        validateSettingsForm(baseForm(overrides)).map((issue) => issue.key),
+        key
+      ).toContain(`${SETTINGS_VALIDATION_PREFIX}${key}`);
+    }
+
+    expect(
+      validateSettingsForm(
+        baseForm({
+          agentRunnerTokensPerHour: String(MAX_AGENT_RUNNER_TOKENS_PER_HOUR),
+          agentRunnerWakesPerHour: "0",
+          agentRunnerMaxConcurrentSessions: String(
+            MAX_AGENT_RUNNER_CONCURRENT_SESSIONS
+          ),
+          agentRunnerCompactionTriggerTokens: String(
+            MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS
+          ),
+          agentRunnerIdleWakeSeconds: String(
+            MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS
+          ),
+        })
+      )
+    ).toEqual([]);
   });
 
   it("keeps the schedule inside 15 minutes - 7 days", () => {

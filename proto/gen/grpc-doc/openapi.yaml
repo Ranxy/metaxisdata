@@ -5128,304 +5128,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentGoals:
-        get:
-            tags:
-                - DataQualityService
-            description: List the workspace's goals, newest first.
-            operationId: DataQualityService_ListQualityAgentGoals
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: targetGuid
-                  in: query
-                  schema:
-                    type: string
-                - name: database
-                  in: query
-                  schema:
-                    type: string
-                - name: phase
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_PHASE_ACTIVE
-                        - QUALITY_AGENT_GOAL_PHASE_PAUSED
-                        - QUALITY_AGENT_GOAL_PHASE_BLOCKED
-                        - QUALITY_AGENT_GOAL_PHASE_COMPLETE
-                    type: string
-                    format: enum
-                - name: pageSize
-                  in: query
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualityAgentGoalsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Create one durable objective for the built-in quality agent runner: keep a
-                 target trustworthy, investigate one event, or a person's request. The target's
-                 database must be in the workspace's runner allowlist, and the runner must be
-                 enabled.
-            operationId: DataQualityService_CreateQualityAgentGoal
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateQualityAgentGoalRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentGoal'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentGoals/{qualityAgentGoal}:
-        get:
-            tags:
-                - DataQualityService
-            description: Read one goal.
-            operationId: DataQualityService_GetQualityAgentGoal
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentGoal
-                  in: path
-                  description: The qualityAgentGoal id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentGoal'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        delete:
-            tags:
-                - DataQualityService
-            description: Clear a goal (a tombstone). The journal stays for the audit trail.
-            operationId: DataQualityService_ClearQualityAgentGoal
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentGoal
-                  in: path
-                  description: The qualityAgentGoal id.
-                  required: true
-                  schema:
-                    type: string
-                - name: expectedRevision
-                  in: query
-                  schema:
-                    type: integer
-                    format: int32
-            responses:
-                "200":
-                    description: OK
-                    content: {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentGoals/{qualityAgentGoal}:complete:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Mark a goal complete. A person can always do so; the runner's own completion is
-                 recorded the same way.
-            operationId: DataQualityService_CompleteQualityAgentGoal
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentGoal
-                  in: path
-                  description: The qualityAgentGoal id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CompleteQualityAgentGoalRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentGoal'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentGoals/{qualityAgentGoal}:pause:
-        post:
-            tags:
-                - DataQualityService
-            description: 'Pause a goal: the runner stops starting new rounds, the state and journal stay.'
-            operationId: DataQualityService_PauseQualityAgentGoal
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentGoal
-                  in: path
-                  description: The qualityAgentGoal id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/PauseQualityAgentGoalRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentGoal'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentGoals/{qualityAgentGoal}:resume:
-        post:
-            tags:
-                - DataQualityService
-            description: Resume a paused or blocked goal. A stale revision is rejected.
-            operationId: DataQualityService_ResumeQualityAgentGoal
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentGoal
-                  in: path
-                  description: The qualityAgentGoal id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ResumeQualityAgentGoalRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentGoal'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentMetrics:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                Read the runner's evaluation: goal phases, token spend, the acceptance of the
-                 change requests it proposed, and investigation verdicts. Read-only.
-            operationId: DataQualityService_GetQualityAgentMetrics
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentMetrics'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents:
         get:
             tags:
@@ -10041,16 +9743,6 @@ components:
             description: |-
                 ColumnValue is one column of a sampled failed row. Values are truncated before
                  they are returned, so a wide text column cannot bloat the response.
-        CompleteQualityAgentGoalRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                expectedRevision:
-                    type: integer
-                    format: int32
         ConfirmQualityMemoryRequest:
             required:
                 - name
@@ -10248,69 +9940,6 @@ components:
                 interval:
                     type: integer
                     description: The minimum polling interval in seconds.
-                    format: int32
-        CreateQualityAgentGoalRequest:
-            required:
-                - parent
-                - kind
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                kind:
-                    enum:
-                        - QUALITY_AGENT_GOAL_KIND_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET
-                        - QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT
-                        - QUALITY_AGENT_GOAL_KIND_CUSTOM
-                    type: string
-                    format: enum
-                targetGuid:
-                    type: string
-                metaType:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - APPLICATION_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - OPENLINEAGE
-                    type: string
-                    format: enum
-                trigger:
-                    enum:
-                        - QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED
-                        - QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED
-                        - QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED
-                        - QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP
-                        - QUALITY_AGENT_GOAL_TRIGGER_MANUAL
-                    type: string
-                    format: enum
-                triggerRef:
-                    type: string
-                    description: The triggering object's resource name or value.
-                objective:
-                    type: string
-                agent:
-                    type: string
-                    description: 'Format: users/{user}. Empty uses the first enabled quality agent.'
-                maxRounds:
-                    type: integer
-                    description: Zero uses the server default (256).
                     format: int32
         CreateQualityAgentRequest:
             required:
@@ -10855,7 +10484,7 @@ components:
                          workspace to human-only edits, and the agent still reads.
                 agentRunnerEnabled:
                     type: boolean
-                    description: Whether the built-in quality agent runner may run goals. Off by default.
+                    description: Whether the built-in quality agent runner may run sessions. Off by default.
                 agentRunnerDatabases:
                     type: array
                     items:
@@ -10866,18 +10495,35 @@ components:
                 agentRunnerTokensPerHour:
                     type: string
                     description: |-
-                        The workspace's hourly token ceiling for runner goals. Zero means the server
-                         default (100000000).
-                agentRunnerGoalsPerHour:
+                        The workspace's hourly token ceiling for runner sessions. Zero means the
+                         server default (100000000).
+                agentRunnerWakesPerHour:
                     type: integer
                     description: |-
-                        How many goals the workspace may create per hour. Zero means the server
-                         default (20).
+                        How many session wakes the workspace may start per hour. Zero means the
+                         server default (20).
                     format: int32
-                agentRunnerMaxConcurrentGoals:
+                agentRunnerMaxConcurrentSessions:
                     type: integer
-                    description: How many goals may run at once. Zero means the server default (2).
+                    description: How many sessions may run at once. Zero means the server default (2).
                     format: int32
+                agentRunnerCompactionTriggerTokens:
+                    type: integer
+                    description: |-
+                        The context token threshold that triggers compaction of a session's older
+                         messages. Zero means the server default (262144).
+                    format: int32
+                agentRunnerIdleWakeSeconds:
+                    type: integer
+                    description: |-
+                        How long an idle session sleeps between wakes, in seconds. Zero means the
+                         server default (86400).
+                    format: int32
+                agentRunnerAutoInvestigateFailures:
+                    type: boolean
+                    description: |-
+                        Whether a failed check execution appends an event to its target's session and
+                         wakes it. On by default.
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -12876,15 +12522,6 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
-        ListQualityAgentGoalsResponse:
-            type: object
-            properties:
-                qualityAgentGoals:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentGoal'
-                nextPageToken:
-                    type: string
         ListQualityAgentsResponse:
             type: object
             properties:
@@ -14279,17 +13916,6 @@ components:
                     type: string
                 latestEventType:
                     type: string
-        PauseQualityAgentGoalRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                expectedRevision:
-                    type: integer
-                    description: The revision the caller saw; a stale value is rejected.
-                    format: int32
         PreviewQualityRuleRequest:
             required:
                 - parent
@@ -14550,213 +14176,6 @@ components:
                 QualityAgent is one agent principal: an independent identity an administrator
                  creates for autonomous quality work. Its token is issued once, and disabling the
                  agent ends every token it holds.
-        QualityAgentGoal:
-            type: object
-            properties:
-                id:
-                    type: string
-                resourceId:
-                    type: string
-                workspaceId:
-                    type: string
-                kind:
-                    enum:
-                        - QUALITY_AGENT_GOAL_KIND_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET
-                        - QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT
-                        - QUALITY_AGENT_GOAL_KIND_CUSTOM
-                    type: string
-                    format: enum
-                trigger:
-                    enum:
-                        - QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED
-                        - QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED
-                        - QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED
-                        - QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP
-                        - QUALITY_AGENT_GOAL_TRIGGER_MANUAL
-                    type: string
-                    format: enum
-                triggerRef:
-                    type: string
-                targetGuid:
-                    type: string
-                targetType:
-                    type: integer
-                    format: int32
-                databaseRef:
-                    type: string
-                    description: |-
-                        The database allowlist entry this goal is scoped to; the runner refuses a
-                         goal whose database is not enabled.
-                agentId:
-                    type: integer
-                    format: int32
-                objective:
-                    type: string
-                phase:
-                    enum:
-                        - QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_PHASE_ACTIVE
-                        - QUALITY_AGENT_GOAL_PHASE_PAUSED
-                        - QUALITY_AGENT_GOAL_PHASE_BLOCKED
-                        - QUALITY_AGENT_GOAL_PHASE_COMPLETE
-                    type: string
-                    format: enum
-                blockedCode:
-                    type: string
-                    description: Stable blocked code and its human-readable explanation; empty unless blocked.
-                blockedReason:
-                    type: string
-                revision:
-                    type: integer
-                    description: Incremented by every mutation; compare-and-set rejects stale writers.
-                    format: int32
-                checkpoint:
-                    $ref: '#/components/schemas/QualityAgentGoalCheckpoint'
-                roundsStarted:
-                    type: integer
-                    format: int32
-                maxRounds:
-                    type: integer
-                    format: int32
-                tokensUsed:
-                    type: string
-                    description: |-
-                        Tokens this goal consumed; observability only, the hourly workspace budget is
-                         the limit that applies.
-                nextWakeAt:
-                    type: string
-                    format: date-time
-                leaseUntil:
-                    type: string
-                    format: date-time
-                restartCount:
-                    type: integer
-                    format: int32
-                createdBy:
-                    type: integer
-                    format: int32
-                clearedAt:
-                    type: string
-                    format: date-time
-                createdAt:
-                    type: string
-                    format: date-time
-                updatedAt:
-                    type: string
-                    format: date-time
-            description: QualityAgentGoal is one durable objective of the built-in quality agent runner.
-        QualityAgentGoalCheckpoint:
-            type: object
-            properties:
-                phase:
-                    type: string
-                    description: The engine phase, for example "survey", "reason" or "act".
-                summary:
-                    type: string
-                    description: A compacted summary of the steps that no longer need their full payload.
-                done:
-                    type: array
-                    items:
-                        type: string
-                    description: Things already done, as short labels.
-                blockedRounds:
-                    type: integer
-                    description: |-
-                        How many consecutive rounds the model reported the same blocker; the third one
-                         parks the goal.
-                    format: int32
-                blockedCode:
-                    type: string
-                    description: The stable code the model reported while blocked_rounds was counted.
-            description: |-
-                QualityAgentGoalCheckpoint is the JSONB payload of quality_agent_goal.checkpoint:
-                 the engine's private progress, never shown as the user-facing result.
-        QualityAgentGoalPhaseCount:
-            type: object
-            properties:
-                phase:
-                    enum:
-                        - QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED
-                        - QUALITY_AGENT_GOAL_PHASE_ACTIVE
-                        - QUALITY_AGENT_GOAL_PHASE_PAUSED
-                        - QUALITY_AGENT_GOAL_PHASE_BLOCKED
-                        - QUALITY_AGENT_GOAL_PHASE_COMPLETE
-                    type: string
-                    format: enum
-                count:
-                    type: integer
-                    format: int32
-            description: QualityAgentGoalPhaseCount is how many goals stand in one phase.
-        QualityAgentMetrics:
-            type: object
-            properties:
-                goals:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentGoalPhaseCount'
-                tokensTotal:
-                    type: string
-                tokensLastHour:
-                    type: string
-                agentChangeRequestsTotal:
-                    type: integer
-                    description: |-
-                        Change requests proposed by an agent, by lifecycle state. Acceptance is
-                         applied / (applied + rejected); pending and expired are not decisions.
-                    format: int32
-                agentChangeRequestsApplied:
-                    type: integer
-                    format: int32
-                agentChangeRequestsRejected:
-                    type: integer
-                    format: int32
-                agentChangeRequestsPending:
-                    type: integer
-                    format: int32
-                agentChangeRequestsApproved:
-                    type: integer
-                    format: int32
-                agentChangeRequestsExpired:
-                    type: integer
-                    format: int32
-                investigationsTotal:
-                    type: integer
-                    description: |-
-                        Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
-                         carry no verdict, so the buckets do not have to sum to the total.
-                    format: int32
-                investigationsInconclusive:
-                    type: integer
-                    format: int32
-                investigationsRootCause:
-                    type: integer
-                    format: int32
-                investigationsContributingFactor:
-                    type: integer
-                    format: int32
-                investigationsUnrelated:
-                    type: integer
-                    format: int32
-                topTargets:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityAgentTargetCost'
-            description: |-
-                QualityAgentMetrics is the runner's evaluation: what it did, what it spent and how
-                 the proposals it made were decided. All of it is derived from existing rows.
-        QualityAgentTargetCost:
-            type: object
-            properties:
-                target:
-                    $ref: '#/components/schemas/QualityTarget'
-                tokensUsed:
-                    type: string
-                goalCount:
-                    type: integer
-                    format: int32
-            description: QualityAgentTargetCost is one target's share of the runner's token spend.
         QualityChangeRequest:
             type: object
             properties:
@@ -17625,16 +17044,6 @@ components:
                 RegexConfig counts rows whose column value does not match a regular
                  expression. The pattern is Go RE2 syntax and is also translated for the
                  engine's own regex operator.
-        ResumeQualityAgentGoalRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                expectedRevision:
-                    type: integer
-                    format: int32
         RetryNotificationDeliveryRequest:
             required:
                 - name

@@ -798,76 +798,6 @@ service DataQualityService {
     option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
   }
 
-  // Read the runner's evaluation: goal phases, token spend, the acceptance of the
-  // change requests it proposed, and investigation verdicts. Read-only.
-  rpc GetQualityAgentMetrics(GetQualityAgentMetricsRequest) returns (QualityAgentMetrics) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentMetrics"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Create one durable objective for the built-in quality agent runner: keep a
-  // target trustworthy, investigate one event, or a person's request. The target's
-  // database must be in the workspace's runner allowlist, and the runner must be
-  // enabled.
-  rpc CreateQualityAgentGoal(CreateQualityAgentGoalRequest) returns (QualityAgentGoal) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualityAgentGoals"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // List the workspace's goals, newest first.
-  rpc ListQualityAgentGoals(ListQualityAgentGoalsRequest) returns (ListQualityAgentGoalsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentGoals"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Read one goal.
-  rpc GetQualityAgentGoal(GetQualityAgentGoalRequest) returns (QualityAgentGoal) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentGoals/*}"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Pause a goal: the runner stops starting new rounds, the state and journal stay.
-  rpc PauseQualityAgentGoal(PauseQualityAgentGoalRequest) returns (QualityAgentGoal) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentGoals/*}:pause"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Resume a paused or blocked goal. A stale revision is rejected.
-  rpc ResumeQualityAgentGoal(ResumeQualityAgentGoalRequest) returns (QualityAgentGoal) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentGoals/*}:resume"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Mark a goal complete. A person can always do so; the runner's own completion is
-  // recorded the same way.
-  rpc CompleteQualityAgentGoal(CompleteQualityAgentGoalRequest) returns (QualityAgentGoal) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentGoals/*}:complete"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Clear a goal (a tombstone). The journal stays for the audit trail.
-  rpc ClearQualityAgentGoal(ClearQualityAgentGoalRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityAgentGoals/*}"};
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
   // Approve or reject a change request. Approving applies each item through its
   // existing path and returns a result per item; rejecting records the structured
   // reasons. A stale base version expires the request instead of rebasing it.
@@ -4977,125 +4907,129 @@ message DeleteQualityCodeTableRequest {
   ];
 }
 
-// QualityAgentGoalKind is the kind of objective one goal pursues.
-enum QualityAgentGoalKind {
-  QUALITY_AGENT_GOAL_KIND_UNSPECIFIED = 0;
-  // Keep one target trustworthy: inspect coverage gaps and recent failures.
-  QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET = 1;
-  // Investigate one event (a failed execution, a schema change, a drift).
-  QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT = 2;
-  // A person asked the agent to look at something.
-  QUALITY_AGENT_GOAL_KIND_CUSTOM = 3;
+// ---- Quality agent sessions ----
+
+// QualityAgentSessionState is the durable lifecycle of one target's agent session.
+enum QualityAgentSessionState {
+  QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
+  QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+  QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
+  QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
 }
 
-// QualityAgentGoalPhase is the durable lifecycle of a goal.
-enum QualityAgentGoalPhase {
-  QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED = 0;
-  QUALITY_AGENT_GOAL_PHASE_ACTIVE = 1;
-  QUALITY_AGENT_GOAL_PHASE_PAUSED = 2;
-  // Blocked means "waiting for a person, a window or a dependency", not failed.
-  QUALITY_AGENT_GOAL_PHASE_BLOCKED = 3;
-  QUALITY_AGENT_GOAL_PHASE_COMPLETE = 4;
+// QualityAgentMessageRole is one entry in a session's conversation.
+enum QualityAgentMessageRole {
+  QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ROLE_SYSTEM = 1;
+  QUALITY_AGENT_MESSAGE_ROLE_USER = 2;
+  QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT = 3;
+  QUALITY_AGENT_MESSAGE_ROLE_TOOL = 4;
+  // Runner/UI bookkeeping; never sent back to the model.
+  QUALITY_AGENT_MESSAGE_ROLE_ENGINE = 5;
+  // A compaction checkpoint that replaces the covered messages in model context.
+  QUALITY_AGENT_MESSAGE_ROLE_COMPACTION = 6;
 }
 
-// QualityAgentGoalTrigger is what created the goal.
-enum QualityAgentGoalTrigger {
-  QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED = 1;
-  QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED = 2;
-  QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED = 3;
-  QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP = 4;
-  QUALITY_AGENT_GOAL_TRIGGER_MANUAL = 5;
+// QualityAgentMessageOrigin says what produced a user or engine message.
+enum QualityAgentMessageOrigin {
+  QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ORIGIN_WAKE = 1;
+  QUALITY_AGENT_MESSAGE_ORIGIN_EVENT = 2;
+  QUALITY_AGENT_MESSAGE_ORIGIN_ASK = 3;
+  QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER = 4;
+  QUALITY_AGENT_MESSAGE_ORIGIN_MODEL = 5;
+  QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION = 6;
 }
 
-// QualityAgentGoal is one durable objective of the built-in quality agent runner.
-message QualityAgentGoal {
-  // Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal}
+// QualityToolCall is one tool invocation in an assistant message.
+message QualityToolCall {
+  string id = 1;
+  string name = 2;
+  string arguments = 3;
+}
+
+// QualityAgentSession is one target's long-lived agent conversation and wake
+// schedule. "Running" is derived from lease_expire_time, never from state.
+message QualityAgentSession {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
   string name = 1;
-  QualityAgentGoalKind kind = 2;
-  QualityAgentGoalTrigger trigger = 3;
-  string trigger_ref = 4;
-  QualityTarget target = 5;
-  // The database allowlist entry the goal is scoped to.
-  string database = 6;
-  // Format: users/{user}. The agent principal that runs the goal.
-  string agent = 7;
-  string objective = 8;
-  QualityAgentGoalPhase phase = 9;
-  // Stable blocked code and its explanation; empty unless blocked.
-  string blocked_code = 10;
-  string blocked_reason = 11;
-  // Incremented by every mutation; mutations carry the revision they saw.
-  int32 revision = 12;
-  int32 rounds_started = 13;
-  int32 max_rounds = 14;
-  // Tokens this goal consumed; observability only, the hourly budget is the limit.
-  int64 tokens_used = 15;
-  google.protobuf.Timestamp next_wake_time = 16;
-  google.protobuf.Timestamp create_time = 17;
-  google.protobuf.Timestamp update_time = 18;
-}
-
-message CreateQualityAgentGoalRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  QualityAgentGoalKind kind = 2 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 3;
-  MetaType meta_type = 4;
-  QualityAgentGoalTrigger trigger = 5;
-  // The triggering object's resource name or value.
-  string trigger_ref = 6;
-  string objective = 7;
-  // Format: users/{user}. Empty uses the first enabled quality agent.
-  string agent = 8;
-  // Zero uses the server default (256).
-  int32 max_rounds = 9;
-}
-
-message ListQualityAgentGoalsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-  string target_guid = 2;
+  QualityTarget target = 2;
+  // The database allowlist entry this session is scoped to.
   string database = 3;
-  QualityAgentGoalPhase phase = 4;
-  int32 page_size = 5;
-  string page_token = 6;
+  // Format: users/{user}. The agent principal that runs the session.
+  string agent = 4;
+  string objective = 5;
+  QualityAgentSessionState state = 6;
+  // Stable blocked code and its explanation; empty unless blocked.
+  string blocked_code = 7;
+  string blocked_reason = 8;
+  // Incremented by every mutation; human mutations carry the revision they saw.
+  int32 revision = 9;
+  int32 wake_count = 10;
+  // Lifetime token spend, so an archived session still counts.
+  int64 tokens_used = 11;
+  // The largest real prompt_tokens of the last wake.
+  int32 context_tokens = 12;
+  google.protobuf.Timestamp next_wake_time = 13;
+  // The newest transcript entry, used as a heartbeat.
+  google.protobuf.Timestamp last_activity_time = 14;
+  google.protobuf.Timestamp lease_expire_time = 15;
+  int32 restart_count = 16;
+  // True when the lease is live; a crash leaves it live for at most the lease
+  // duration, so a client must treat last_activity_time as the heartbeat.
+  bool running = 17;
+  google.protobuf.Timestamp create_time = 18;
+  google.protobuf.Timestamp update_time = 19;
+  google.protobuf.Timestamp archive_time = 20;
 }
 
-message ListQualityAgentGoalsResponse {
-  repeated QualityAgentGoal quality_agent_goals = 1;
-  string next_page_token = 2;
+// QualityAgentSessionMessage is one append-only transcript entry of a session.
+message QualityAgentSessionMessage {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq}
+  string name = 1;
+  int64 seq = 2;
+  // The wake and LLM turn the message belongs to.
+  int32 wake = 3;
+  int32 turn = 4;
+  QualityAgentMessageRole role = 5;
+  QualityAgentMessageOrigin origin = 6;
+  string content = 7;
+  // Present on assistant messages: the tool calls the model made.
+  repeated QualityToolCall tool_calls = 8;
+  // Present on tool messages: which call the result answers.
+  string tool_call_id = 9;
+  string tool_name = 10;
+  int32 tokens = 11;
+  bool truncated = 12;
+  string error = 13;
+  google.protobuf.Timestamp create_time = 14;
 }
 
-message GetQualityAgentGoalRequest {
-  // Format: workspaces/{workspace}/qualityAgentGoals/{quality_agent_goal}
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
+// QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
+// and counters are durable; runner_last_tick_time is process-local and reset by a
+// restart, so it is a liveness hint, not durable state.
+message QualityAgentRunnerStatus {
+  bool enabled = 1;
+  bool autonomy_enabled = 2;
+  bool llm_configured = 3;
+  int32 running_sessions = 4;
+  int32 idle_sessions = 5;
+  int32 blocked_sessions = 6;
+  int64 tokens_last_hour = 7;
+  int64 tokens_per_hour_limit = 8;
+  int32 wakes_last_hour = 9;
+  int32 wakes_per_hour_limit = 10;
+  int32 max_concurrent_sessions = 11;
+  int32 compaction_trigger_tokens = 12;
+  int32 idle_wake_seconds = 13;
+  google.protobuf.Timestamp last_activity_time = 14;
+  google.protobuf.Timestamp runner_last_tick_time = 15;
 }
 
-message PauseQualityAgentGoalRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  // The revision the caller saw; a stale value is rejected.
-  int32 expected_revision = 2;
-}
-
-message ResumeQualityAgentGoalRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 expected_revision = 2;
-}
-
-message CompleteQualityAgentGoalRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 expected_revision = 2;
-}
-
-message ClearQualityAgentGoalRequest {
-  string name = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 expected_revision = 2;
-}
-
-// QualityAgentGoalPhaseCount is how many goals stand in one phase.
-message QualityAgentGoalPhaseCount {
-  QualityAgentGoalPhase phase = 1;
+// QualityAgentSessionStateCount is how many sessions stand in one state.
+message QualityAgentSessionStateCount {
+  QualityAgentSessionState state = 1;
   int32 count = 2;
 }
 
@@ -5103,13 +5037,13 @@ message QualityAgentGoalPhaseCount {
 message QualityAgentTargetCost {
   QualityTarget target = 1;
   int64 tokens_used = 2;
-  int32 goal_count = 3;
+  int32 session_count = 3;
 }
 
-// QualityAgentMetrics is the runner's evaluation: what it did, what it spent and how
-// the proposals it made were decided. All of it is derived from existing rows.
+// QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
+// how the proposals it made were decided. All of it is derived from existing rows.
 message QualityAgentMetrics {
-  repeated QualityAgentGoalPhaseCount goals = 1;
+  repeated QualityAgentSessionStateCount sessions = 1;
   int64 tokens_total = 2;
   int64 tokens_last_hour = 3;
   // Change requests proposed by an agent, by lifecycle state. Acceptance is
@@ -5120,8 +5054,8 @@ message QualityAgentMetrics {
   int32 agent_change_requests_pending = 7;
   int32 agent_change_requests_approved = 13;
   int32 agent_change_requests_expired = 14;
-  // Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED rows
-  // carry no verdict, so the buckets do not have to sum to the total.
+  // Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
+  // rows carry no verdict, so the buckets do not have to sum to the total.
   int32 investigations_total = 8;
   int32 investigations_inconclusive = 9;
   int32 investigations_root_cause = 10;

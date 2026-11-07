@@ -398,23 +398,32 @@ type DataQualitySetting struct {
 	// proposed change requests. Off by default: turning it off is the kill
 	// switch that returns the workspace to human-only edits.
 	AgentAutonomyEnabled bool `protobuf:"varint,14,opt,name=agent_autonomy_enabled,json=agentAutonomyEnabled,proto3" json:"agent_autonomy_enabled,omitempty"`
-	// Whether the built-in quality agent runner may run goals. Off by default:
-	// turning it off stops new goal rounds; recorded proposals stay for review.
+	// Whether the built-in quality agent runner may run sessions. Off by default:
+	// turning it off stops new wakes; recorded proposals stay for review.
 	AgentRunnerEnabled bool `protobuf:"varint,15,opt,name=agent_runner_enabled,json=agentRunnerEnabled,proto3" json:"agent_runner_enabled,omitempty"`
 	// The databases the runner may see and work on, as database resource names
 	// (instances/{instance}/databases/{database}). Empty means no database is in
-	// scope and the runner creates no goal.
+	// scope and the runner creates no session.
 	AgentRunnerDatabases []string `protobuf:"bytes,16,rep,name=agent_runner_databases,json=agentRunnerDatabases,proto3" json:"agent_runner_databases,omitempty"`
-	// The workspace's hourly token ceiling for runner goals; 0 means the server
-	// default (100000000). A goal has no individual token cap.
+	// The workspace's hourly token ceiling for runner sessions; 0 means the server
+	// default (100000000). A session has no individual token cap.
 	AgentRunnerTokensPerHour int64 `protobuf:"varint,17,opt,name=agent_runner_tokens_per_hour,json=agentRunnerTokensPerHour,proto3" json:"agent_runner_tokens_per_hour,omitempty"`
-	// How many goals the workspace may create per hour; 0 means the server
+	// How many session wakes the workspace may start per hour; 0 means the server
 	// default (20).
-	AgentRunnerGoalsPerHour int32 `protobuf:"varint,18,opt,name=agent_runner_goals_per_hour,json=agentRunnerGoalsPerHour,proto3" json:"agent_runner_goals_per_hour,omitempty"`
-	// How many goals may run at once; 0 means the server default (2).
-	AgentRunnerMaxConcurrentGoals int32 `protobuf:"varint,19,opt,name=agent_runner_max_concurrent_goals,json=agentRunnerMaxConcurrentGoals,proto3" json:"agent_runner_max_concurrent_goals,omitempty"`
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	AgentRunnerWakesPerHour int32 `protobuf:"varint,20,opt,name=agent_runner_wakes_per_hour,json=agentRunnerWakesPerHour,proto3" json:"agent_runner_wakes_per_hour,omitempty"`
+	// How many sessions may run at once; 0 means the server default (2).
+	AgentRunnerMaxConcurrentSessions int32 `protobuf:"varint,21,opt,name=agent_runner_max_concurrent_sessions,json=agentRunnerMaxConcurrentSessions,proto3" json:"agent_runner_max_concurrent_sessions,omitempty"`
+	// The context token threshold that triggers compaction of a session's older
+	// messages; 0 means the server default (262144).
+	AgentRunnerCompactionTriggerTokens int32 `protobuf:"varint,22,opt,name=agent_runner_compaction_trigger_tokens,json=agentRunnerCompactionTriggerTokens,proto3" json:"agent_runner_compaction_trigger_tokens,omitempty"`
+	// How long an idle session sleeps between wakes, in seconds; 0 means the server
+	// default (86400).
+	AgentRunnerIdleWakeSeconds int32 `protobuf:"varint,23,opt,name=agent_runner_idle_wake_seconds,json=agentRunnerIdleWakeSeconds,proto3" json:"agent_runner_idle_wake_seconds,omitempty"`
+	// Whether a failed check execution appends an event to its target's session and
+	// wakes it. On by default.
+	AgentRunnerAutoInvestigateFailures *bool `protobuf:"varint,24,opt,name=agent_runner_auto_investigate_failures,json=agentRunnerAutoInvestigateFailures,proto3,oneof" json:"agent_runner_auto_investigate_failures,omitempty"`
+	unknownFields                      protoimpl.UnknownFields
+	sizeCache                          protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -566,18 +575,39 @@ func (x *DataQualitySetting) GetAgentRunnerTokensPerHour() int64 {
 	return 0
 }
 
-func (x *DataQualitySetting) GetAgentRunnerGoalsPerHour() int32 {
+func (x *DataQualitySetting) GetAgentRunnerWakesPerHour() int32 {
 	if x != nil {
-		return x.AgentRunnerGoalsPerHour
+		return x.AgentRunnerWakesPerHour
 	}
 	return 0
 }
 
-func (x *DataQualitySetting) GetAgentRunnerMaxConcurrentGoals() int32 {
+func (x *DataQualitySetting) GetAgentRunnerMaxConcurrentSessions() int32 {
 	if x != nil {
-		return x.AgentRunnerMaxConcurrentGoals
+		return x.AgentRunnerMaxConcurrentSessions
 	}
 	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerCompactionTriggerTokens() int32 {
+	if x != nil {
+		return x.AgentRunnerCompactionTriggerTokens
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerIdleWakeSeconds() int32 {
+	if x != nil {
+		return x.AgentRunnerIdleWakeSeconds
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerAutoInvestigateFailures() bool {
+	if x != nil && x.AgentRunnerAutoInvestigateFailures != nil {
+		return *x.AgentRunnerAutoInvestigateFailures
+	}
+	return false
 }
 
 // QualityDigestSetting is the schedule of the weekly data quality digest.
@@ -1552,7 +1582,7 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x17sso_email_identity_idps\x18\n" +
 	" \x03(\tR\x14ssoEmailIdentityIdps\x12E\n" +
 	"\fdata_quality\x18\v \x01(\v2\".metaxisdata.v1.DataQualitySettingR\vdataQualityJ\x04\b\t\x10\n" +
-	"R\x18allow_sso_email_identity\"\xd4\b\n" +
+	"R\x18allow_sso_email_identity\"\xc2\v\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1572,8 +1602,12 @@ const file_v1_setting_service_proto_rawDesc = "" +
 	"\x14agent_runner_enabled\x18\x0f \x01(\bR\x12agentRunnerEnabled\x124\n" +
 	"\x16agent_runner_databases\x18\x10 \x03(\tR\x14agentRunnerDatabases\x12>\n" +
 	"\x1cagent_runner_tokens_per_hour\x18\x11 \x01(\x03R\x18agentRunnerTokensPerHour\x12<\n" +
-	"\x1bagent_runner_goals_per_hour\x18\x12 \x01(\x05R\x17agentRunnerGoalsPerHour\x12H\n" +
-	"!agent_runner_max_concurrent_goals\x18\x13 \x01(\x05R\x1dagentRunnerMaxConcurrentGoals\"\x9b\x01\n" +
+	"\x1bagent_runner_wakes_per_hour\x18\x14 \x01(\x05R\x17agentRunnerWakesPerHour\x12N\n" +
+	"$agent_runner_max_concurrent_sessions\x18\x15 \x01(\x05R agentRunnerMaxConcurrentSessions\x12R\n" +
+	"&agent_runner_compaction_trigger_tokens\x18\x16 \x01(\x05R\"agentRunnerCompactionTriggerTokens\x12B\n" +
+	"\x1eagent_runner_idle_wake_seconds\x18\x17 \x01(\x05R\x1aagentRunnerIdleWakeSeconds\x12W\n" +
+	"&agent_runner_auto_investigate_failures\x18\x18 \x01(\bH\x00R\"agentRunnerAutoInvestigateFailures\x88\x01\x01B)\n" +
+	"'_agent_runner_auto_investigate_failuresJ\x04\b\x12\x10\x13J\x04\b\x13\x10\x14R\x1bagent_runner_goals_per_hourR!agent_runner_max_concurrent_goals\"\x9b\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x129\n" +
 	"\vday_of_week\x18\x02 \x01(\x0e2\x19.metaxisdata.v1.DayOfWeekR\tdayOfWeek\x12\x12\n" +
@@ -1753,6 +1787,7 @@ func file_v1_setting_service_proto_init() {
 		return
 	}
 	file_v1_annotation_proto_init()
+	file_v1_setting_service_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

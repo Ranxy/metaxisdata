@@ -312,19 +312,15 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentGoal"><span class="badge">M</span>QualityAgentGoal</a>
+                  <a href="#metaxisdata.store.QualityAgentMessage"><span class="badge">M</span>QualityAgentMessage</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalCheckpoint"><span class="badge">M</span>QualityAgentGoalCheckpoint</a>
+                  <a href="#metaxisdata.store.QualityAgentSession"><span class="badge">M</span>QualityAgentSession</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalStep"><span class="badge">M</span>QualityAgentGoalStep</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalStepPayload"><span class="badge">M</span>QualityAgentGoalStepPayload</a>
+                  <a href="#metaxisdata.store.QualityAgentSessionEngineState"><span class="badge">M</span>QualityAgentSessionEngineState</a>
                 </li>
               
                 <li>
@@ -472,6 +468,14 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityToolCall"><span class="badge">M</span>QualityToolCall</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityToolCallList"><span class="badge">M</span>QualityToolCallList</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.RangeConfig"><span class="badge">M</span>RangeConfig</a>
                 </li>
               
@@ -541,19 +545,15 @@
               
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalKind"><span class="badge">E</span>QualityAgentGoalKind</a>
+                  <a href="#metaxisdata.store.QualityAgentMessageOrigin"><span class="badge">E</span>QualityAgentMessageOrigin</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalPhase"><span class="badge">E</span>QualityAgentGoalPhase</a>
+                  <a href="#metaxisdata.store.QualityAgentMessageRole"><span class="badge">E</span>QualityAgentMessageRole</a>
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalStepKind"><span class="badge">E</span>QualityAgentGoalStepKind</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualityAgentGoalTrigger"><span class="badge">E</span>QualityAgentGoalTrigger</a>
+                  <a href="#metaxisdata.store.QualityAgentSessionState"><span class="badge">E</span>QualityAgentSessionState</a>
                 </li>
               
                 <li>
@@ -2713,8 +2713,158 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
 
         
       
-        <h3 id="metaxisdata.store.QualityAgentGoal">QualityAgentGoal</h3>
-        <p>QualityAgentGoal is one durable objective of the built-in quality agent runner.</p>
+        <h3 id="metaxisdata.store.QualityAgentMessage">QualityAgentMessage</h3>
+        <p>QualityAgentMessage is one append-only transcript entry of a session.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>session_id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>workspace_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>seq</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>Monotonic within one session; the read API pages and polls with after_seq. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>wake</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>turn</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>role</td>
+                  <td><a href="#metaxisdata.store.QualityAgentMessageRole">QualityAgentMessageRole</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>origin</td>
+                  <td><a href="#metaxisdata.store.QualityAgentMessageOrigin">QualityAgentMessageOrigin</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>content</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_calls</td>
+                  <td><a href="#metaxisdata.store.QualityToolCallList">QualityToolCallList</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_call_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tool_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>prompt_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>completion_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>truncated</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>idempotency_key</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The store returns the existing row for a retried key. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityAgentSession">QualityAgentSession</h3>
+        <p>QualityAgentSession is one target's durable agent conversation and wake schedule.</p><p>"Running" is expressed by lease_until, never by state.</p>
 
         
           <table class="field-table">
@@ -2745,27 +2895,6 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
                 </tr>
               
                 <tr>
-                  <td>kind</td>
-                  <td><a href="#metaxisdata.store.QualityAgentGoalKind">QualityAgentGoalKind</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>trigger</td>
-                  <td><a href="#metaxisdata.store.QualityAgentGoalTrigger">QualityAgentGoalTrigger</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>trigger_ref</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
                   <td>target_guid</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
@@ -2783,8 +2912,7 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
                   <td>database_ref</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>The database allowlist entry this goal is scoped to; the runner refuses a
-goal whose database is not enabled. </p></td>
+                  <td><p> </p></td>
                 </tr>
               
                 <tr>
@@ -2802,8 +2930,8 @@ goal whose database is not enabled. </p></td>
                 </tr>
               
                 <tr>
-                  <td>phase</td>
-                  <td><a href="#metaxisdata.store.QualityAgentGoalPhase">QualityAgentGoalPhase</a></td>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionState">QualityAgentSessionState</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -2812,7 +2940,7 @@ goal whose database is not enabled. </p></td>
                   <td>blocked_code</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>Stable blocked code and its human-readable explanation; empty unless blocked. </p></td>
+                  <td><p> </p></td>
                 </tr>
               
                 <tr>
@@ -2826,25 +2954,11 @@ goal whose database is not enabled. </p></td>
                   <td>revision</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>Incremented by every mutation; compare-and-set rejects stale writers. </p></td>
+                  <td><p>Incremented by every mutation; human mutations compare-and-set this value. </p></td>
                 </tr>
               
                 <tr>
-                  <td>checkpoint</td>
-                  <td><a href="#metaxisdata.store.QualityAgentGoalCheckpoint">QualityAgentGoalCheckpoint</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>rounds_started</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>max_rounds</td>
+                  <td>wake_count</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -2854,8 +2968,42 @@ goal whose database is not enabled. </p></td>
                   <td>tokens_used</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p>Tokens this goal consumed; observability only, the hourly workspace budget is
-the limit that applies. </p></td>
+                  <td><p>Lifetime token spend, so an archived session still counts in metrics. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>context_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The largest real prompt_tokens of the last wake; the compaction trigger. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Rolling checkpoint summary and the message seq it replaces in model context. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>summary_through_seq</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>processed_seq</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p>The largest message seq the last wake consumed; a newer seq is a pending event. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>engine_state</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionEngineState">QualityAgentSessionEngineState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
                 <tr>
@@ -2887,13 +3035,6 @@ the limit that applies. </p></td>
                 </tr>
               
                 <tr>
-                  <td>cleared_at</td>
-                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
                   <td>created_at</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
@@ -2907,128 +3048,8 @@ the limit that applies. </p></td>
                   <td><p> </p></td>
                 </tr>
               
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.QualityAgentGoalCheckpoint">QualityAgentGoalCheckpoint</h3>
-        <p>QualityAgentGoalCheckpoint is the JSONB payload of quality_agent_goal.checkpoint:</p><p>the engine's private progress, never shown as the user-facing result.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
                 <tr>
-                  <td>phase</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The engine phase, for example &#34;survey&#34;, &#34;reason&#34; or &#34;act&#34;. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>summary</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>A compacted summary of the steps that no longer need their full payload. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>done</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p>Things already done, as short labels. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>blocked_rounds</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>How many consecutive rounds the model reported the same blocker; the third one
-parks the goal. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>blocked_code</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The stable code the model reported while blocked_rounds was counted. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.QualityAgentGoalStep">QualityAgentGoalStep</h3>
-        <p>QualityAgentGoalStep is one append-only journal entry of a goal.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>id</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>goal_id</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>seq</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>kind</td>
-                  <td><a href="#metaxisdata.store.QualityAgentGoalStepKind">QualityAgentGoalStepKind</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>payload</td>
-                  <td><a href="#metaxisdata.store.QualityAgentGoalStepPayload">QualityAgentGoalStepPayload</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>tokens</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>The model tokens this step consumed, for the hourly workspace budget. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>idempotency_key</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>Idempotency key of an effect step; the store returns the existing step for a
-retried key, and the effect&#39;s own fingerprint keeps the side effect single. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>created_at</td>
+                  <td>archived_at</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
@@ -3041,8 +3062,8 @@ retried key, and the effect&#39;s own fingerprint keeps the side effect single. 
 
         
       
-        <h3 id="metaxisdata.store.QualityAgentGoalStepPayload">QualityAgentGoalStepPayload</h3>
-        <p>QualityAgentGoalStepPayload is the JSONB payload of quality_agent_goal_step.payload.</p>
+        <h3 id="metaxisdata.store.QualityAgentSessionEngineState">QualityAgentSessionEngineState</h3>
+        <p>QualityAgentSessionEngineState is the JSONB payload of</p><p>quality_agent_session.engine_state: deterministic-wake bookkeeping only.</p>
 
         
           <table class="field-table">
@@ -3052,43 +3073,29 @@ retried key, and the effect&#39;s own fingerprint keeps the side effect single. 
             <tbody>
               
                 <tr>
-                  <td>tool</td>
+                  <td>done</td>
                   <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p>The tool or engine phase the step is about. </p></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
                 </tr>
               
                 <tr>
-                  <td>summary</td>
-                  <td><a href="#string">string</a></td>
+                  <td>blocked_rounds</td>
+                  <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>A bounded human-readable summary; the full transcript is not stored. </p></td>
+                  <td><p> </p></td>
                 </tr>
               
                 <tr>
-                  <td>resource</td>
+                  <td>blocked_code</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
               
                 <tr>
-                  <td>error</td>
+                  <td>phase</td>
                   <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>prompt_tokens</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>completion_tokens</td>
-                  <td><a href="#int64">int64</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -4918,6 +4925,68 @@ populated, and is empty for a table-level rule. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualityToolCall">QualityToolCall</h3>
+        <p>QualityToolCall is one tool invocation in an assistant message. It mirrors the</p><p>provider's assistant tool-call shape so a stored message maps 1:1 to the model</p><p>conversation.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>arguments</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="metaxisdata.store.QualityToolCallList">QualityToolCallList</h3>
+        <p>QualityToolCallList is the JSONB payload of quality_agent_message.tool_calls.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>tool_calls</td>
+                  <td><a href="#metaxisdata.store.QualityToolCall">QualityToolCall</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.RangeConfig">RangeConfig</h3>
         <p>RangeConfig counts rows outside a bound pair. At least one bound is required;</p><p>the values are strings parsed with the column's type.</p>
 
@@ -5811,8 +5880,8 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
       
 
       
-        <h3 id="metaxisdata.store.QualityAgentGoalKind">QualityAgentGoalKind</h3>
-        <p>QualityAgentGoalKind is the kind of objective one goal pursues.</p>
+        <h3 id="metaxisdata.store.QualityAgentMessageOrigin">QualityAgentMessageOrigin</h3>
+        <p>QualityAgentMessageOrigin says what produced a user or engine message.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -5820,146 +5889,52 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
           <tbody>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_KIND_UNSPECIFIED</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED</td>
                 <td>0</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET</td>
-                <td>1</td>
-                <td><p>Keep one target trustworthy: inspect coverage gaps and recent failures.</p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT</td>
-                <td>2</td>
-                <td><p>Investigate one event (a failed execution, a schema change, a drift).</p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_KIND_CUSTOM</td>
-                <td>3</td>
-                <td><p>A person asked the agent to look at something.</p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.QualityAgentGoalPhase">QualityAgentGoalPhase</h3>
-        <p>QualityAgentGoalPhase is the durable lifecycle of a goal: the four phases the</p><p>agent goal design borrows from the harness's goal service.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_PHASE_ACTIVE</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_WAKE</td>
                 <td>1</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_PHASE_PAUSED</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_EVENT</td>
                 <td>2</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_PHASE_BLOCKED</td>
-                <td>3</td>
-                <td><p>Blocked is &#34;waiting for a person, a window or a dependency&#34;, not a failure.</p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_PHASE_COMPLETE</td>
-                <td>4</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.QualityAgentGoalStepKind">QualityAgentGoalStepKind</h3>
-        <p>QualityAgentGoalStepKind is one entry in the append-only goal journal.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_ASSISTANT</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_ASK</td>
                 <td>3</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_TOOL_CALL</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER</td>
                 <td>4</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_TOOL_RESULT</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_MODEL</td>
                 <td>5</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT</td>
+                <td>QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION</td>
                 <td>6</td>
                 <td><p></p></td>
               </tr>
             
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT</td>
-                <td>7</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE</td>
-                <td>8</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_AGENT_GOAL_STEP_KIND_STOP</td>
-                <td>9</td>
-                <td><p></p></td>
-              </tr>
-            
           </tbody>
         </table>
       
-        <h3 id="metaxisdata.store.QualityAgentGoalTrigger">QualityAgentGoalTrigger</h3>
-        <p>QualityAgentGoalTrigger is what created the goal.</p>
+        <h3 id="metaxisdata.store.QualityAgentMessageRole">QualityAgentMessageRole</h3>
+        <p>QualityAgentMessageRole is one entry in a session's conversation.</p>
         <table class="enum-table">
           <thead>
             <tr><td>Name</td><td>Number</td><td>Description</td></tr>
@@ -5967,38 +5942,85 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
           <tbody>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED</td>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED</td>
                 <td>0</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED</td>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_SYSTEM</td>
                 <td>1</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED</td>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_USER</td>
                 <td>2</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED</td>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT</td>
                 <td>3</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP</td>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_TOOL</td>
                 <td>4</td>
                 <td><p></p></td>
               </tr>
             
               <tr>
-                <td>QUALITY_AGENT_GOAL_TRIGGER_MANUAL</td>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_ENGINE</td>
                 <td>5</td>
+                <td><p>An engine note is runner/UI bookkeeping and is never sent back to the model.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_MESSAGE_ROLE_COMPACTION</td>
+                <td>6</td>
+                <td><p>A compaction checkpoint replaces the covered messages in model context.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentSessionState">QualityAgentSessionState</h3>
+        <p>QualityAgentSessionState is the durable lifecycle of one target's agent session.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_STATE_ENABLED</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_STATE_PAUSED</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_STATE_BLOCKED</td>
+                <td>3</td>
+                <td><p>Blocked means &#34;waiting for a person, a window or a dependency&#34;, not failed.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_STATE_ARCHIVED</td>
+                <td>4</td>
                 <td><p></p></td>
               </tr>
             
@@ -13688,7 +13710,7 @@ workspace to human-only edits, and the agent still reads. </p></td>
                   <td>agent_runner_enabled</td>
                   <td><a href="#bool">bool</a></td>
                   <td></td>
-                  <td><p>Whether the built-in quality agent runner may run goals. Off by default. </p></td>
+                  <td><p>Whether the built-in quality agent runner may run sessions. Off by default. </p></td>
                 </tr>
               
                 <tr>
@@ -13703,23 +13725,47 @@ workspace to human-only edits, and the agent still reads. </p></td>
                   <td>agent_runner_tokens_per_hour</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p>The workspace&#39;s hourly token ceiling for runner goals. Zero means the server
-default (100000000). </p></td>
+                  <td><p>The workspace&#39;s hourly token ceiling for runner sessions. Zero means the
+server default (100000000). </p></td>
                 </tr>
               
                 <tr>
-                  <td>agent_runner_goals_per_hour</td>
+                  <td>agent_runner_wakes_per_hour</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>How many goals the workspace may create per hour. Zero means the server
-default (20). </p></td>
+                  <td><p>How many session wakes the workspace may start per hour. Zero means the
+server default (20). </p></td>
                 </tr>
               
                 <tr>
-                  <td>agent_runner_max_concurrent_goals</td>
+                  <td>agent_runner_max_concurrent_sessions</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p>How many goals may run at once. Zero means the server default (2). </p></td>
+                  <td><p>How many sessions may run at once. Zero means the server default (2). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_compaction_trigger_tokens</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The context token threshold that triggers compaction of a session&#39;s older
+messages. Zero means the server default (262144). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_idle_wake_seconds</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How long an idle session sleeps between wakes, in seconds. Zero means the
+server default (86400). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_auto_investigate_failures</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td>optional</td>
+                  <td><p>Whether a failed check execution appends an event to its target&#39;s session and
+wakes it. On by default. </p></td>
                 </tr>
               
             </tbody>

@@ -27,8 +27,12 @@ import {
 
 export const FAILURE_SAMPLE_LIMIT_MAX = 100;
 export const MAX_AGENT_RUNNER_TOKENS_PER_HOUR = 1_000_000_000_000;
-export const MAX_AGENT_RUNNER_GOALS_PER_HOUR = 1000;
-export const MAX_AGENT_RUNNER_CONCURRENT_GOALS = 16;
+export const MAX_AGENT_RUNNER_WAKES_PER_HOUR = 1000;
+export const MAX_AGENT_RUNNER_CONCURRENT_SESSIONS = 16;
+export const MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS = 16_384;
+export const MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS = 4_194_304;
+export const MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS = 60;
+export const MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS = 604_800;
 export const MAX_COLUMNS_PER_ANALYSIS_MAX = 200;
 export const DAILY_LLM_ANALYSIS_LIMIT_MAX = 1_000_000;
 export const MAX_DAILY_COLUMN_ANALYSIS_LIMIT = 1_000_000;
@@ -104,9 +108,15 @@ export interface DataQualitySettingsForm {
   /** Blank/0 means the server default (100000000). */
   agentRunnerTokensPerHour: string;
   /** Blank/0 means the server default (20). */
-  agentRunnerGoalsPerHour: string;
+  agentRunnerWakesPerHour: string;
   /** Blank/0 means the server default (2). */
-  agentRunnerMaxConcurrentGoals: string;
+  agentRunnerMaxConcurrentSessions: string;
+  /** Blank/0 means the server default (262144). */
+  agentRunnerCompactionTriggerTokens: string;
+  /** Blank/0 means the server default (86400). */
+  agentRunnerIdleWakeSeconds: string;
+  /** On by default: a failed check wakes the target's session. */
+  agentRunnerAutoInvestigateFailures: boolean;
   weeklyDigest: WeeklyDigestForm;
 }
 
@@ -138,10 +148,18 @@ export function settingsToForm(
     agentRunnerTokensPerHour: setting?.agentRunnerTokensPerHour
       ? setting.agentRunnerTokensPerHour.toString()
       : "",
-    agentRunnerGoalsPerHour: numberToInput(setting?.agentRunnerGoalsPerHour),
-    agentRunnerMaxConcurrentGoals: numberToInput(
-      setting?.agentRunnerMaxConcurrentGoals
+    agentRunnerWakesPerHour: numberToInput(setting?.agentRunnerWakesPerHour),
+    agentRunnerMaxConcurrentSessions: numberToInput(
+      setting?.agentRunnerMaxConcurrentSessions
     ),
+    agentRunnerCompactionTriggerTokens: numberToInput(
+      setting?.agentRunnerCompactionTriggerTokens
+    ),
+    agentRunnerIdleWakeSeconds: numberToInput(
+      setting?.agentRunnerIdleWakeSeconds
+    ),
+    agentRunnerAutoInvestigateFailures:
+      setting?.agentRunnerAutoInvestigateFailures ?? true,
     weeklyDigest: {
       enabled: digest?.enabled ?? DEFAULT_DIGEST.enabled,
       // An unset weekday is not a weekday; show the default the server resolves.
@@ -179,9 +197,14 @@ export function formToSetting(
     agentRunnerDatabases: form.agentRunnerDatabases,
     agentRunnerTokensPerHour:
       inputToBigInt(form.agentRunnerTokensPerHour) ?? 0n,
-    agentRunnerGoalsPerHour: inputToInt(form.agentRunnerGoalsPerHour) ?? 0,
-    agentRunnerMaxConcurrentGoals:
-      inputToInt(form.agentRunnerMaxConcurrentGoals) ?? 0,
+    agentRunnerWakesPerHour: inputToInt(form.agentRunnerWakesPerHour) ?? 0,
+    agentRunnerMaxConcurrentSessions:
+      inputToInt(form.agentRunnerMaxConcurrentSessions) ?? 0,
+    agentRunnerCompactionTriggerTokens:
+      inputToInt(form.agentRunnerCompactionTriggerTokens) ?? 0,
+    agentRunnerIdleWakeSeconds:
+      inputToInt(form.agentRunnerIdleWakeSeconds) ?? 0,
+    agentRunnerAutoInvestigateFailures: form.agentRunnerAutoInvestigateFailures,
     // The whole `data_quality` field is written on save, so the digest has to be
     // part of the message even when this page did not touch it; otherwise the
     // write would clear a schedule configured elsewhere.
@@ -285,24 +308,46 @@ export function validateSettingsForm(
       max: MAX_AGENT_RUNNER_TOKENS_PER_HOUR.toString(),
     });
   }
-  const runnerGoals = checkRange(
-    form.agentRunnerGoalsPerHour,
+  const runnerWakes = checkRange(
+    form.agentRunnerWakesPerHour,
     0,
-    MAX_AGENT_RUNNER_GOALS_PER_HOUR
+    MAX_AGENT_RUNNER_WAKES_PER_HOUR
   );
-  if (runnerGoals === "invalid") {
-    issue("runnerGoalsPerHourInvalid", {
-      max: MAX_AGENT_RUNNER_GOALS_PER_HOUR,
+  if (runnerWakes === "invalid") {
+    issue("runnerWakesPerHourInvalid", {
+      max: MAX_AGENT_RUNNER_WAKES_PER_HOUR,
     });
   }
   const runnerConcurrency = checkRange(
-    form.agentRunnerMaxConcurrentGoals,
+    form.agentRunnerMaxConcurrentSessions,
     0,
-    MAX_AGENT_RUNNER_CONCURRENT_GOALS
+    MAX_AGENT_RUNNER_CONCURRENT_SESSIONS
   );
   if (runnerConcurrency === "invalid") {
     issue("runnerConcurrencyInvalid", {
-      max: MAX_AGENT_RUNNER_CONCURRENT_GOALS,
+      max: MAX_AGENT_RUNNER_CONCURRENT_SESSIONS,
+    });
+  }
+  const compaction = checkRangeOrZero(
+    form.agentRunnerCompactionTriggerTokens,
+    MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
+    MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS
+  );
+  if (compaction === "invalid") {
+    issue("runnerCompactionTriggerTokensInvalid", {
+      min: MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
+      max: MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
+    });
+  }
+  const idleWake = checkRangeOrZero(
+    form.agentRunnerIdleWakeSeconds,
+    MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
+    MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS
+  );
+  if (idleWake === "invalid") {
+    issue("runnerIdleWakeSecondsInvalid", {
+      min: MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
+      max: MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS,
     });
   }
   const maxColumns = checkRange(
@@ -373,6 +418,19 @@ function checkRange64(
     return "invalid";
   }
   return Number(parsed);
+}
+
+/** A number field where blank or 0 means the server default, else [min, max]. */
+function checkRangeOrZero(value: string, min: number, max: number): RangeCheck {
+  const text = value.trim();
+  if (text === "" || text === "0") {
+    return "empty";
+  }
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    return "invalid";
+  }
+  return "valid";
 }
 
 function checkRange(value: string, min: number, max: number): RangeCheck {

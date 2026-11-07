@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
@@ -82,10 +83,13 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 			Minute:   45,
 			Timezone: "Asia/Shanghai",
 		},
-		TimeZone:                      "Asia/Shanghai",
-		AgentRunnerTokensPerHour:      DefaultAgentRunnerTokensPerHour,
-		AgentRunnerGoalsPerHour:       DefaultAgentRunnerGoalsPerHour,
-		AgentRunnerMaxConcurrentGoals: DefaultAgentRunnerMaxConcurrentGoals,
+		TimeZone:                           "Asia/Shanghai",
+		AgentRunnerTokensPerHour:           DefaultAgentRunnerTokensPerHour,
+		AgentRunnerWakesPerHour:            DefaultAgentRunnerWakesPerHour,
+		AgentRunnerMaxConcurrentSessions:   DefaultAgentRunnerMaxConcurrentSessions,
+		AgentRunnerCompactionTriggerTokens: DefaultAgentRunnerCompactionTriggerTokens,
+		AgentRunnerIdleWakeSeconds:         DefaultAgentRunnerIdleWakeSeconds,
+		AgentRunnerAutoInvestigateFailures: true,
 	}, SettingsFromProfile(profile))
 }
 
@@ -358,25 +362,40 @@ func TestSettingsFromProfileResolvesRunnerLimits(t *testing.T) {
 	t.Parallel()
 
 	profile := &storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
-		AgentRunnerEnabled:            true,
-		AgentRunnerDatabases:          []string{" instances/i1/databases/d1 ", "instances/i1/databases/d1", "instances/i2/databases/d2"},
-		AgentRunnerTokensPerHour:      500_000_000,
-		AgentRunnerGoalsPerHour:       50,
-		AgentRunnerMaxConcurrentGoals: 4,
+		AgentRunnerEnabled:                 true,
+		AgentRunnerDatabases:               []string{" instances/i1/databases/d1 ", "instances/i1/databases/d1", "instances/i2/databases/d2"},
+		AgentRunnerTokensPerHour:           500_000_000,
+		AgentRunnerWakesPerHour:            50,
+		AgentRunnerMaxConcurrentSessions:   4,
+		AgentRunnerCompactionTriggerTokens: 131_072,
+		AgentRunnerIdleWakeSeconds:         3_600,
+		AgentRunnerAutoInvestigateFailures: proto.Bool(true),
 	}}
 	resolved := SettingsFromProfile(profile)
 	require.True(t, resolved.AgentRunnerEnabled)
 	require.Equal(t, []string{"instances/i1/databases/d1", "instances/i2/databases/d2"}, resolved.AgentRunnerDatabases)
 	require.Equal(t, int64(500_000_000), resolved.AgentRunnerTokensPerHour)
-	require.Equal(t, 50, resolved.AgentRunnerGoalsPerHour)
-	require.Equal(t, 4, resolved.AgentRunnerMaxConcurrentGoals)
+	require.Equal(t, 50, resolved.AgentRunnerWakesPerHour)
+	require.Equal(t, 4, resolved.AgentRunnerMaxConcurrentSessions)
+	require.Equal(t, 131_072, resolved.AgentRunnerCompactionTriggerTokens)
+	require.Equal(t, 3_600, resolved.AgentRunnerIdleWakeSeconds)
+	require.True(t, resolved.AgentRunnerAutoInvestigateFailures)
+
+	// A zero boolean means the store never wrote it, which is the on default.
+	require.True(t, SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
+		AgentRunnerEnabled: true,
+	}}).AgentRunnerAutoInvestigateFailures)
 
 	outOfRange := SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{
-		AgentRunnerTokensPerHour:      -5,
-		AgentRunnerGoalsPerHour:       100_000,
-		AgentRunnerMaxConcurrentGoals: 1000,
+		AgentRunnerTokensPerHour:           -5,
+		AgentRunnerWakesPerHour:            100_000,
+		AgentRunnerMaxConcurrentSessions:   1000,
+		AgentRunnerCompactionTriggerTokens: 10,
+		AgentRunnerIdleWakeSeconds:         5,
 	}})
 	require.Equal(t, DefaultAgentRunnerTokensPerHour, outOfRange.AgentRunnerTokensPerHour)
-	require.Equal(t, MaxAgentRunnerGoalsPerHour, outOfRange.AgentRunnerGoalsPerHour)
-	require.Equal(t, MaxAgentRunnerConcurrentGoals, outOfRange.AgentRunnerMaxConcurrentGoals)
+	require.Equal(t, MaxAgentRunnerWakesPerHour, outOfRange.AgentRunnerWakesPerHour)
+	require.Equal(t, MaxAgentRunnerConcurrentSessions, outOfRange.AgentRunnerMaxConcurrentSessions)
+	require.Equal(t, MinAgentRunnerCompactionTriggerTokens, outOfRange.AgentRunnerCompactionTriggerTokens)
+	require.Equal(t, MinAgentRunnerIdleWakeSeconds, outOfRange.AgentRunnerIdleWakeSeconds)
 }

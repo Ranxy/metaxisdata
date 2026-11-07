@@ -37,10 +37,9 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
-    - [QualityAgentGoal](#metaxisdata-store-QualityAgentGoal)
-    - [QualityAgentGoalCheckpoint](#metaxisdata-store-QualityAgentGoalCheckpoint)
-    - [QualityAgentGoalStep](#metaxisdata-store-QualityAgentGoalStep)
-    - [QualityAgentGoalStepPayload](#metaxisdata-store-QualityAgentGoalStepPayload)
+    - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
+    - [QualityAgentSession](#metaxisdata-store-QualityAgentSession)
+    - [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState)
     - [QualityChangeRejectionReasons](#metaxisdata-store-QualityChangeRejectionReasons)
     - [QualityChangeRequestItem](#metaxisdata-store-QualityChangeRequestItem)
     - [QualityChangeRequestItemResult](#metaxisdata-store-QualityChangeRequestItemResult)
@@ -77,6 +76,8 @@
     - [QualitySuggestionQueueSummary](#metaxisdata-store-QualitySuggestionQueueSummary)
     - [QualityTargetPath](#metaxisdata-store-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-store-QualityThresholds)
+    - [QualityToolCall](#metaxisdata-store-QualityToolCall)
+    - [QualityToolCallList](#metaxisdata-store-QualityToolCallList)
     - [RangeConfig](#metaxisdata-store-RangeConfig)
     - [ReferentialIntegrityConfig](#metaxisdata-store-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-store-RegexConfig)
@@ -95,10 +96,9 @@
     - [UniqueCombinationConfig](#metaxisdata-store-UniqueCombinationConfig)
     - [UniqueConfig](#metaxisdata-store-UniqueConfig)
   
-    - [QualityAgentGoalKind](#metaxisdata-store-QualityAgentGoalKind)
-    - [QualityAgentGoalPhase](#metaxisdata-store-QualityAgentGoalPhase)
-    - [QualityAgentGoalStepKind](#metaxisdata-store-QualityAgentGoalStepKind)
-    - [QualityAgentGoalTrigger](#metaxisdata-store-QualityAgentGoalTrigger)
+    - [QualityAgentMessageOrigin](#metaxisdata-store-QualityAgentMessageOrigin)
+    - [QualityAgentMessageRole](#metaxisdata-store-QualityAgentMessageRole)
+    - [QualityAgentSessionState](#metaxisdata-store-QualityAgentSessionState)
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
     - [QualityChangeRejectionReason](#metaxisdata-store-QualityChangeRejectionReason)
     - [QualityChangeRequestItemKind](#metaxisdata-store-QualityChangeRequestItemKind)
@@ -844,10 +844,44 @@ value the column holds.
 
 
 
-<a name="metaxisdata-store-QualityAgentGoal"></a>
+<a name="metaxisdata-store-QualityAgentMessage"></a>
 
-### QualityAgentGoal
-QualityAgentGoal is one durable objective of the built-in quality agent runner.
+### QualityAgentMessage
+QualityAgentMessage is one append-only transcript entry of a session.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| session_id | [int64](#int64) |  |  |
+| workspace_id | [string](#string) |  |  |
+| seq | [int64](#int64) |  | Monotonic within one session; the read API pages and polls with after_seq. |
+| wake | [int32](#int32) |  |  |
+| turn | [int32](#int32) |  |  |
+| role | [QualityAgentMessageRole](#metaxisdata-store-QualityAgentMessageRole) |  |  |
+| origin | [QualityAgentMessageOrigin](#metaxisdata-store-QualityAgentMessageOrigin) |  |  |
+| content | [string](#string) |  |  |
+| tool_calls | [QualityToolCallList](#metaxisdata-store-QualityToolCallList) |  |  |
+| tool_call_id | [string](#string) |  |  |
+| tool_name | [string](#string) |  |  |
+| tokens | [int32](#int32) |  |  |
+| prompt_tokens | [int32](#int32) |  |  |
+| completion_tokens | [int32](#int32) |  |  |
+| error | [string](#string) |  |  |
+| truncated | [bool](#bool) |  |  |
+| idempotency_key | [string](#string) |  | The store returns the existing row for a retried key. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentSession"></a>
+
+### QualityAgentSession
+QualityAgentSession is one target&#39;s durable agent conversation and wake schedule.
+&#34;Running&#34; is expressed by lease_until, never by state.
 
 
 | Field | Type | Label | Description |
@@ -855,91 +889,48 @@ QualityAgentGoal is one durable objective of the built-in quality agent runner.
 | id | [int64](#int64) |  |  |
 | resource_id | [string](#string) |  |  |
 | workspace_id | [string](#string) |  |  |
-| kind | [QualityAgentGoalKind](#metaxisdata-store-QualityAgentGoalKind) |  |  |
-| trigger | [QualityAgentGoalTrigger](#metaxisdata-store-QualityAgentGoalTrigger) |  |  |
-| trigger_ref | [string](#string) |  |  |
 | target_guid | [string](#string) |  |  |
 | target_type | [int32](#int32) |  |  |
-| database_ref | [string](#string) |  | The database allowlist entry this goal is scoped to; the runner refuses a goal whose database is not enabled. |
+| database_ref | [string](#string) |  |  |
 | agent_id | [int32](#int32) |  |  |
 | objective | [string](#string) |  |  |
-| phase | [QualityAgentGoalPhase](#metaxisdata-store-QualityAgentGoalPhase) |  |  |
-| blocked_code | [string](#string) |  | Stable blocked code and its human-readable explanation; empty unless blocked. |
+| state | [QualityAgentSessionState](#metaxisdata-store-QualityAgentSessionState) |  |  |
+| blocked_code | [string](#string) |  |  |
 | blocked_reason | [string](#string) |  |  |
-| revision | [int32](#int32) |  | Incremented by every mutation; compare-and-set rejects stale writers. |
-| checkpoint | [QualityAgentGoalCheckpoint](#metaxisdata-store-QualityAgentGoalCheckpoint) |  |  |
-| rounds_started | [int32](#int32) |  |  |
-| max_rounds | [int32](#int32) |  |  |
-| tokens_used | [int64](#int64) |  | Tokens this goal consumed; observability only, the hourly workspace budget is the limit that applies. |
+| revision | [int32](#int32) |  | Incremented by every mutation; human mutations compare-and-set this value. |
+| wake_count | [int32](#int32) |  |  |
+| tokens_used | [int64](#int64) |  | Lifetime token spend, so an archived session still counts in metrics. |
+| context_tokens | [int32](#int32) |  | The largest real prompt_tokens of the last wake; the compaction trigger. |
+| summary | [string](#string) |  | Rolling checkpoint summary and the message seq it replaces in model context. |
+| summary_through_seq | [int64](#int64) |  |  |
+| processed_seq | [int64](#int64) |  | The largest message seq the last wake consumed; a newer seq is a pending event. |
+| engine_state | [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState) |  |  |
 | next_wake_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | lease_until | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | restart_count | [int32](#int32) |  |  |
 | created_by | [int32](#int32) |  |  |
-| cleared_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| archived_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 
 
 
 
 
 
-<a name="metaxisdata-store-QualityAgentGoalCheckpoint"></a>
+<a name="metaxisdata-store-QualityAgentSessionEngineState"></a>
 
-### QualityAgentGoalCheckpoint
-QualityAgentGoalCheckpoint is the JSONB payload of quality_agent_goal.checkpoint:
-the engine&#39;s private progress, never shown as the user-facing result.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| phase | [string](#string) |  | The engine phase, for example &#34;survey&#34;, &#34;reason&#34; or &#34;act&#34;. |
-| summary | [string](#string) |  | A compacted summary of the steps that no longer need their full payload. |
-| done | [string](#string) | repeated | Things already done, as short labels. |
-| blocked_rounds | [int32](#int32) |  | How many consecutive rounds the model reported the same blocker; the third one parks the goal. |
-| blocked_code | [string](#string) |  | The stable code the model reported while blocked_rounds was counted. |
-
-
-
-
-
-
-<a name="metaxisdata-store-QualityAgentGoalStep"></a>
-
-### QualityAgentGoalStep
-QualityAgentGoalStep is one append-only journal entry of a goal.
+### QualityAgentSessionEngineState
+QualityAgentSessionEngineState is the JSONB payload of
+quality_agent_session.engine_state: deterministic-wake bookkeeping only.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| id | [int64](#int64) |  |  |
-| goal_id | [int64](#int64) |  |  |
-| seq | [int32](#int32) |  |  |
-| kind | [QualityAgentGoalStepKind](#metaxisdata-store-QualityAgentGoalStepKind) |  |  |
-| payload | [QualityAgentGoalStepPayload](#metaxisdata-store-QualityAgentGoalStepPayload) |  |  |
-| tokens | [int32](#int32) |  | The model tokens this step consumed, for the hourly workspace budget. |
-| idempotency_key | [string](#string) |  | Idempotency key of an effect step; the store returns the existing step for a retried key, and the effect&#39;s own fingerprint keeps the side effect single. |
-| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
-
-
-
-
-
-
-<a name="metaxisdata-store-QualityAgentGoalStepPayload"></a>
-
-### QualityAgentGoalStepPayload
-QualityAgentGoalStepPayload is the JSONB payload of quality_agent_goal_step.payload.
-
-
-| Field | Type | Label | Description |
-| ----- | ---- | ----- | ----------- |
-| tool | [string](#string) |  | The tool or engine phase the step is about. |
-| summary | [string](#string) |  | A bounded human-readable summary; the full transcript is not stored. |
-| resource | [string](#string) |  |  |
-| error | [string](#string) |  |  |
-| prompt_tokens | [int64](#int64) |  |  |
-| completion_tokens | [int64](#int64) |  |  |
+| done | [string](#string) | repeated |  |
+| blocked_rounds | [int32](#int32) |  |  |
+| blocked_code | [string](#string) |  |  |
+| phase | [string](#string) |  |  |
 
 
 
@@ -1678,6 +1669,40 @@ the lower and upper bounds are.
 
 
 
+<a name="metaxisdata-store-QualityToolCall"></a>
+
+### QualityToolCall
+QualityToolCall is one tool invocation in an assistant message. It mirrors the
+provider&#39;s assistant tool-call shape so a stored message maps 1:1 to the model
+conversation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| arguments | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityToolCallList"></a>
+
+### QualityToolCallList
+QualityToolCallList is the JSONB payload of quality_agent_message.tool_calls.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tool_calls | [QualityToolCall](#metaxisdata-store-QualityToolCall) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-RangeConfig"></a>
 
 ### RangeConfig
@@ -2018,69 +2043,52 @@ measured per threshold_metric; the default fail threshold is zero.
  
 
 
-<a name="metaxisdata-store-QualityAgentGoalKind"></a>
+<a name="metaxisdata-store-QualityAgentMessageOrigin"></a>
 
-### QualityAgentGoalKind
-QualityAgentGoalKind is the kind of objective one goal pursues.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_GOAL_KIND_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET | 1 | Keep one target trustworthy: inspect coverage gaps and recent failures. |
-| QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT | 2 | Investigate one event (a failed execution, a schema change, a drift). |
-| QUALITY_AGENT_GOAL_KIND_CUSTOM | 3 | A person asked the agent to look at something. |
-
-
-
-<a name="metaxisdata-store-QualityAgentGoalPhase"></a>
-
-### QualityAgentGoalPhase
-QualityAgentGoalPhase is the durable lifecycle of a goal: the four phases the
-agent goal design borrows from the harness&#39;s goal service.
+### QualityAgentMessageOrigin
+QualityAgentMessageOrigin says what produced a user or engine message.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
-| QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_GOAL_PHASE_ACTIVE | 1 |  |
-| QUALITY_AGENT_GOAL_PHASE_PAUSED | 2 |  |
-| QUALITY_AGENT_GOAL_PHASE_BLOCKED | 3 | Blocked is &#34;waiting for a person, a window or a dependency&#34;, not a failure. |
-| QUALITY_AGENT_GOAL_PHASE_COMPLETE | 4 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_WAKE | 1 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_EVENT | 2 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_ASK | 3 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER | 4 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_MODEL | 5 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION | 6 |  |
 
 
 
-<a name="metaxisdata-store-QualityAgentGoalStepKind"></a>
+<a name="metaxisdata-store-QualityAgentMessageRole"></a>
 
-### QualityAgentGoalStepKind
-QualityAgentGoalStepKind is one entry in the append-only goal journal.
-
-| Name | Number | Description |
-| ---- | ------ | ----------- |
-| QUALITY_AGENT_GOAL_STEP_KIND_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED | 1 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED | 2 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_ASSISTANT | 3 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_TOOL_CALL | 4 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_TOOL_RESULT | 5 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT | 6 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT | 7 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE | 8 |  |
-| QUALITY_AGENT_GOAL_STEP_KIND_STOP | 9 |  |
-
-
-
-<a name="metaxisdata-store-QualityAgentGoalTrigger"></a>
-
-### QualityAgentGoalTrigger
-QualityAgentGoalTrigger is what created the goal.
+### QualityAgentMessageRole
+QualityAgentMessageRole is one entry in a session&#39;s conversation.
 
 | Name | Number | Description |
 | ---- | ------ | ----------- |
-| QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED | 0 |  |
-| QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED | 1 |  |
-| QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED | 2 |  |
-| QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED | 3 |  |
-| QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP | 4 |  |
-| QUALITY_AGENT_GOAL_TRIGGER_MANUAL | 5 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_SYSTEM | 1 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_USER | 2 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT | 3 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_TOOL | 4 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_ENGINE | 5 | An engine note is runner/UI bookkeeping and is never sent back to the model. |
+| QUALITY_AGENT_MESSAGE_ROLE_COMPACTION | 6 | A compaction checkpoint replaces the covered messages in model context. |
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionState"></a>
+
+### QualityAgentSessionState
+QualityAgentSessionState is the durable lifecycle of one target&#39;s agent session.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_STATE_ENABLED | 1 |  |
+| QUALITY_AGENT_SESSION_STATE_PAUSED | 2 |  |
+| QUALITY_AGENT_SESSION_STATE_BLOCKED | 3 | Blocked means &#34;waiting for a person, a window or a dependency&#34;, not failed. |
+| QUALITY_AGENT_SESSION_STATE_ARCHIVED | 4 |  |
 
 
 
@@ -4823,11 +4831,14 @@ metaxisdata.v1.DataQualitySetting.
 | weekly_digest | [QualityDigestSetting](#metaxisdata-store-QualityDigestSetting) |  |  |
 | time_zone | [string](#string) |  | IANA time zone the time variables of check filters and custom SQL are resolved in, for example &#34;Asia/Shanghai&#34;. Empty means UTC. |
 | agent_autonomy_enabled | [bool](#bool) |  | Whether the workspace&#39;s agent principals may write plan declarations and proposed change requests. Off by default: the kill switch returns the workspace to human-only edits, and the agent still reads. |
-| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run goals. Off by default. |
+| agent_runner_enabled | [bool](#bool) |  | Whether the built-in quality agent runner may run sessions. Off by default. |
 | agent_runner_databases | [string](#string) | repeated | The databases the runner may see and work on, as database resource names (instances/{instance}/databases/{database}). Empty means none. |
-| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner goals. Zero means the server default (100000000). |
-| agent_runner_goals_per_hour | [int32](#int32) |  | How many goals the workspace may create per hour. Zero means the server default (20). |
-| agent_runner_max_concurrent_goals | [int32](#int32) |  | How many goals may run at once. Zero means the server default (2). |
+| agent_runner_tokens_per_hour | [int64](#int64) |  | The workspace&#39;s hourly token ceiling for runner sessions. Zero means the server default (100000000). |
+| agent_runner_wakes_per_hour | [int32](#int32) |  | How many session wakes the workspace may start per hour. Zero means the server default (20). |
+| agent_runner_max_concurrent_sessions | [int32](#int32) |  | How many sessions may run at once. Zero means the server default (2). |
+| agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages. Zero means the server default (262144). |
+| agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds. Zero means the server default (86400). |
+| agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
 
 
 

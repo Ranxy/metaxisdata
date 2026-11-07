@@ -1291,129 +1291,122 @@ message QualityChangeRejectionReasons {
   repeated QualityChangeRejectionReason reasons = 1;
 }
 
-// QualityAgentGoalKind is the kind of objective one goal pursues.
-enum QualityAgentGoalKind {
-  QUALITY_AGENT_GOAL_KIND_UNSPECIFIED = 0;
-  // Keep one target trustworthy: inspect coverage gaps and recent failures.
-  QUALITY_AGENT_GOAL_KIND_MAINTAIN_TARGET = 1;
-  // Investigate one event (a failed execution, a schema change, a drift).
-  QUALITY_AGENT_GOAL_KIND_INVESTIGATE_EVENT = 2;
-  // A person asked the agent to look at something.
-  QUALITY_AGENT_GOAL_KIND_CUSTOM = 3;
+// QualityAgentSessionState is the durable lifecycle of one target's agent session.
+enum QualityAgentSessionState {
+  QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
+  QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+  // Blocked means "waiting for a person, a window or a dependency", not failed.
+  QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
+  QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
 }
 
-// QualityAgentGoalPhase is the durable lifecycle of a goal: the four phases the
-// agent goal design borrows from the harness's goal service.
-enum QualityAgentGoalPhase {
-  QUALITY_AGENT_GOAL_PHASE_UNSPECIFIED = 0;
-  QUALITY_AGENT_GOAL_PHASE_ACTIVE = 1;
-  QUALITY_AGENT_GOAL_PHASE_PAUSED = 2;
-  // Blocked is "waiting for a person, a window or a dependency", not a failure.
-  QUALITY_AGENT_GOAL_PHASE_BLOCKED = 3;
-  QUALITY_AGENT_GOAL_PHASE_COMPLETE = 4;
+// QualityAgentMessageRole is one entry in a session's conversation.
+enum QualityAgentMessageRole {
+  QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ROLE_SYSTEM = 1;
+  QUALITY_AGENT_MESSAGE_ROLE_USER = 2;
+  QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT = 3;
+  QUALITY_AGENT_MESSAGE_ROLE_TOOL = 4;
+  // An engine note is runner/UI bookkeeping and is never sent back to the model.
+  QUALITY_AGENT_MESSAGE_ROLE_ENGINE = 5;
+  // A compaction checkpoint replaces the covered messages in model context.
+  QUALITY_AGENT_MESSAGE_ROLE_COMPACTION = 6;
 }
 
-// QualityAgentGoalTrigger is what created the goal.
-enum QualityAgentGoalTrigger {
-  QUALITY_AGENT_GOAL_TRIGGER_UNSPECIFIED = 0;
-  QUALITY_AGENT_GOAL_TRIGGER_SCHEDULED = 1;
-  QUALITY_AGENT_GOAL_TRIGGER_EXECUTION_FAILED = 2;
-  QUALITY_AGENT_GOAL_TRIGGER_SCHEMA_CHANGED = 3;
-  QUALITY_AGENT_GOAL_TRIGGER_COVERAGE_GAP = 4;
-  QUALITY_AGENT_GOAL_TRIGGER_MANUAL = 5;
+// QualityAgentMessageOrigin says what produced a user or engine message.
+enum QualityAgentMessageOrigin {
+  QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ORIGIN_WAKE = 1;
+  QUALITY_AGENT_MESSAGE_ORIGIN_EVENT = 2;
+  QUALITY_AGENT_MESSAGE_ORIGIN_ASK = 3;
+  QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER = 4;
+  QUALITY_AGENT_MESSAGE_ORIGIN_MODEL = 5;
+  QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION = 6;
 }
 
-// QualityAgentGoalStepKind is one entry in the append-only goal journal.
-enum QualityAgentGoalStepKind {
-  QUALITY_AGENT_GOAL_STEP_KIND_UNSPECIFIED = 0;
-  QUALITY_AGENT_GOAL_STEP_KIND_TURN_RESERVED = 1;
-  QUALITY_AGENT_GOAL_STEP_KIND_TURN_ADMITTED = 2;
-  QUALITY_AGENT_GOAL_STEP_KIND_ASSISTANT = 3;
-  QUALITY_AGENT_GOAL_STEP_KIND_TOOL_CALL = 4;
-  QUALITY_AGENT_GOAL_STEP_KIND_TOOL_RESULT = 5;
-  QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_INTENT = 6;
-  QUALITY_AGENT_GOAL_STEP_KIND_EFFECT_RESULT = 7;
-  QUALITY_AGENT_GOAL_STEP_KIND_GOAL_CHANGE = 8;
-  QUALITY_AGENT_GOAL_STEP_KIND_STOP = 9;
+// QualityAgentSessionEngineState is the JSONB payload of
+// quality_agent_session.engine_state: deterministic-wake bookkeeping only.
+message QualityAgentSessionEngineState {
+  repeated string done = 1;
+  int32 blocked_rounds = 2;
+  string blocked_code = 3;
+  string phase = 4;
 }
 
-// QualityAgentGoalCheckpoint is the JSONB payload of quality_agent_goal.checkpoint:
-// the engine's private progress, never shown as the user-facing result.
-message QualityAgentGoalCheckpoint {
-  // The engine phase, for example "survey", "reason" or "act".
-  string phase = 1;
-  // A compacted summary of the steps that no longer need their full payload.
-  string summary = 2;
-  // Things already done, as short labels.
-  repeated string done = 3;
-  // How many consecutive rounds the model reported the same blocker; the third one
-  // parks the goal.
-  int32 blocked_rounds = 4;
-  // The stable code the model reported while blocked_rounds was counted.
-  string blocked_code = 5;
-}
-
-// QualityAgentGoal is one durable objective of the built-in quality agent runner.
-message QualityAgentGoal {
+// QualityAgentSession is one target's durable agent conversation and wake schedule.
+// "Running" is expressed by lease_until, never by state.
+message QualityAgentSession {
   int64 id = 1;
   string resource_id = 2;
   string workspace_id = 3;
-  QualityAgentGoalKind kind = 4;
-  QualityAgentGoalTrigger trigger = 5;
-  string trigger_ref = 6;
-  string target_guid = 7;
-  int32 target_type = 8;
-  // The database allowlist entry this goal is scoped to; the runner refuses a
-  // goal whose database is not enabled.
-  string database_ref = 9;
-  int32 agent_id = 10;
-  string objective = 11;
-  QualityAgentGoalPhase phase = 12;
-  // Stable blocked code and its human-readable explanation; empty unless blocked.
-  string blocked_code = 13;
-  string blocked_reason = 14;
-  // Incremented by every mutation; compare-and-set rejects stale writers.
-  int32 revision = 15;
-  QualityAgentGoalCheckpoint checkpoint = 16;
-  int32 rounds_started = 17;
-  int32 max_rounds = 18;
-  // Tokens this goal consumed; observability only, the hourly workspace budget is
-  // the limit that applies.
-  int64 tokens_used = 19;
+  string target_guid = 4;
+  int32 target_type = 5;
+  string database_ref = 6;
+  int32 agent_id = 7;
+  string objective = 8;
+  QualityAgentSessionState state = 9;
+  string blocked_code = 10;
+  string blocked_reason = 11;
+  // Incremented by every mutation; human mutations compare-and-set this value.
+  int32 revision = 12;
+  int32 wake_count = 13;
+  // Lifetime token spend, so an archived session still counts in metrics.
+  int64 tokens_used = 14;
+  // The largest real prompt_tokens of the last wake; the compaction trigger.
+  int32 context_tokens = 15;
+  // Rolling checkpoint summary and the message seq it replaces in model context.
+  string summary = 16;
+  int64 summary_through_seq = 17;
+  // The largest message seq the last wake consumed; a newer seq is a pending event.
+  int64 processed_seq = 18;
+  QualityAgentSessionEngineState engine_state = 19;
   google.protobuf.Timestamp next_wake_at = 20;
   google.protobuf.Timestamp lease_until = 21;
   int32 restart_count = 22;
   int32 created_by = 23;
-  google.protobuf.Timestamp cleared_at = 24;
-  google.protobuf.Timestamp created_at = 25;
-  google.protobuf.Timestamp updated_at = 26;
+  google.protobuf.Timestamp created_at = 24;
+  google.protobuf.Timestamp updated_at = 25;
+  google.protobuf.Timestamp archived_at = 26;
 }
 
-// QualityAgentGoalStepPayload is the JSONB payload of quality_agent_goal_step.payload.
-message QualityAgentGoalStepPayload {
-  // The tool or engine phase the step is about.
-  string tool = 1;
-  // A bounded human-readable summary; the full transcript is not stored.
-  string summary = 2;
-  string resource = 3;
-  string error = 4;
-  int64 prompt_tokens = 5;
-  int64 completion_tokens = 6;
+// QualityToolCall is one tool invocation in an assistant message. It mirrors the
+// provider's assistant tool-call shape so a stored message maps 1:1 to the model
+// conversation.
+message QualityToolCall {
+  string id = 1;
+  string name = 2;
+  string arguments = 3;
 }
 
-// QualityAgentGoalStep is one append-only journal entry of a goal.
-message QualityAgentGoalStep {
+// QualityToolCallList is the JSONB payload of quality_agent_message.tool_calls.
+message QualityToolCallList {
+  repeated QualityToolCall tool_calls = 1;
+}
+
+// QualityAgentMessage is one append-only transcript entry of a session.
+message QualityAgentMessage {
   int64 id = 1;
-  int64 goal_id = 2;
-  int32 seq = 3;
-  QualityAgentGoalStepKind kind = 4;
-  QualityAgentGoalStepPayload payload = 5;
-  // The model tokens this step consumed, for the hourly workspace budget.
-  int32 tokens = 6;
-  // Idempotency key of an effect step; the store returns the existing step for a
-  // retried key, and the effect's own fingerprint keeps the side effect single.
-  string idempotency_key = 7;
-  google.protobuf.Timestamp created_at = 8;
+  int64 session_id = 2;
+  string workspace_id = 3;
+  // Monotonic within one session; the read API pages and polls with after_seq.
+  int64 seq = 4;
+  int32 wake = 5;
+  int32 turn = 6;
+  QualityAgentMessageRole role = 7;
+  QualityAgentMessageOrigin origin = 8;
+  string content = 9;
+  QualityToolCallList tool_calls = 10;
+  string tool_call_id = 11;
+  string tool_name = 12;
+  int32 tokens = 13;
+  int32 prompt_tokens = 14;
+  int32 completion_tokens = 15;
+  string error = 16;
+  bool truncated = 17;
+  // The store returns the existing row for a retried key.
+  string idempotency_key = 18;
+  google.protobuf.Timestamp created_at = 19;
 }
 
 // QualityMemoryKind is what a memory records. Asset facts are observed and may be

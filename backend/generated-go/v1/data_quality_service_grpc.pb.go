@@ -97,14 +97,6 @@ const (
 	DataQualityService_ListQualityAgents_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityAgents"
 	DataQualityService_DisableQualityAgent_FullMethodName                = "/metaxisdata.v1.DataQualityService/DisableQualityAgent"
 	DataQualityService_RotateQualityAgentToken_FullMethodName            = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
-	DataQualityService_GetQualityAgentMetrics_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
-	DataQualityService_CreateQualityAgentGoal_FullMethodName             = "/metaxisdata.v1.DataQualityService/CreateQualityAgentGoal"
-	DataQualityService_ListQualityAgentGoals_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityAgentGoals"
-	DataQualityService_GetQualityAgentGoal_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityAgentGoal"
-	DataQualityService_PauseQualityAgentGoal_FullMethodName              = "/metaxisdata.v1.DataQualityService/PauseQualityAgentGoal"
-	DataQualityService_ResumeQualityAgentGoal_FullMethodName             = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentGoal"
-	DataQualityService_CompleteQualityAgentGoal_FullMethodName           = "/metaxisdata.v1.DataQualityService/CompleteQualityAgentGoal"
-	DataQualityService_ClearQualityAgentGoal_FullMethodName              = "/metaxisdata.v1.DataQualityService/ClearQualityAgentGoal"
 	DataQualityService_DecideQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
 	DataQualityService_ListQualityContractRevisions_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
 	DataQualityService_GetQualityContractRevision_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
@@ -428,27 +420,6 @@ type DataQualityServiceClient interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(ctx context.Context, in *RotateQualityAgentTokenRequest, opts ...grpc.CallOption) (*RotateQualityAgentTokenResponse, error)
-	// Read the runner's evaluation: goal phases, token spend, the acceptance of the
-	// change requests it proposed, and investigation verdicts. Read-only.
-	GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error)
-	// Create one durable objective for the built-in quality agent runner: keep a
-	// target trustworthy, investigate one event, or a person's request. The target's
-	// database must be in the workspace's runner allowlist, and the runner must be
-	// enabled.
-	CreateQualityAgentGoal(ctx context.Context, in *CreateQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error)
-	// List the workspace's goals, newest first.
-	ListQualityAgentGoals(ctx context.Context, in *ListQualityAgentGoalsRequest, opts ...grpc.CallOption) (*ListQualityAgentGoalsResponse, error)
-	// Read one goal.
-	GetQualityAgentGoal(ctx context.Context, in *GetQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error)
-	// Pause a goal: the runner stops starting new rounds, the state and journal stay.
-	PauseQualityAgentGoal(ctx context.Context, in *PauseQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error)
-	// Resume a paused or blocked goal. A stale revision is rejected.
-	ResumeQualityAgentGoal(ctx context.Context, in *ResumeQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error)
-	// Mark a goal complete. A person can always do so; the runner's own completion is
-	// recorded the same way.
-	CompleteQualityAgentGoal(ctx context.Context, in *CompleteQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error)
-	// Clear a goal (a tombstone). The journal stays for the audit trail.
-	ClearQualityAgentGoal(ctx context.Context, in *ClearQualityAgentGoalRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -1278,86 +1249,6 @@ func (c *dataQualityServiceClient) RotateQualityAgentToken(ctx context.Context, 
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentMetrics)
-	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentMetrics_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) CreateQualityAgentGoal(ctx context.Context, in *CreateQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentGoal)
-	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityAgentGoal_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ListQualityAgentGoals(ctx context.Context, in *ListQualityAgentGoalsRequest, opts ...grpc.CallOption) (*ListQualityAgentGoalsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListQualityAgentGoalsResponse)
-	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentGoals_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) GetQualityAgentGoal(ctx context.Context, in *GetQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentGoal)
-	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentGoal_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) PauseQualityAgentGoal(ctx context.Context, in *PauseQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentGoal)
-	err := c.cc.Invoke(ctx, DataQualityService_PauseQualityAgentGoal_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ResumeQualityAgentGoal(ctx context.Context, in *ResumeQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentGoal)
-	err := c.cc.Invoke(ctx, DataQualityService_ResumeQualityAgentGoal_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) CompleteQualityAgentGoal(ctx context.Context, in *CompleteQualityAgentGoalRequest, opts ...grpc.CallOption) (*QualityAgentGoal, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentGoal)
-	err := c.cc.Invoke(ctx, DataQualityService_CompleteQualityAgentGoal_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ClearQualityAgentGoal(ctx context.Context, in *ClearQualityAgentGoalRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, DataQualityService_ClearQualityAgentGoal_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *dataQualityServiceClient) DecideQualityChangeRequest(ctx context.Context, in *DecideQualityChangeRequestRequest, opts ...grpc.CallOption) (*QualityChangeRequest, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityChangeRequest)
@@ -1715,27 +1606,6 @@ type DataQualityServiceServer interface {
 	// Rotate an agent's bearer token: mint a new one and invalidate every token
 	// minted before this call. The token is returned once.
 	RotateQualityAgentToken(context.Context, *RotateQualityAgentTokenRequest) (*RotateQualityAgentTokenResponse, error)
-	// Read the runner's evaluation: goal phases, token spend, the acceptance of the
-	// change requests it proposed, and investigation verdicts. Read-only.
-	GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error)
-	// Create one durable objective for the built-in quality agent runner: keep a
-	// target trustworthy, investigate one event, or a person's request. The target's
-	// database must be in the workspace's runner allowlist, and the runner must be
-	// enabled.
-	CreateQualityAgentGoal(context.Context, *CreateQualityAgentGoalRequest) (*QualityAgentGoal, error)
-	// List the workspace's goals, newest first.
-	ListQualityAgentGoals(context.Context, *ListQualityAgentGoalsRequest) (*ListQualityAgentGoalsResponse, error)
-	// Read one goal.
-	GetQualityAgentGoal(context.Context, *GetQualityAgentGoalRequest) (*QualityAgentGoal, error)
-	// Pause a goal: the runner stops starting new rounds, the state and journal stay.
-	PauseQualityAgentGoal(context.Context, *PauseQualityAgentGoalRequest) (*QualityAgentGoal, error)
-	// Resume a paused or blocked goal. A stale revision is rejected.
-	ResumeQualityAgentGoal(context.Context, *ResumeQualityAgentGoalRequest) (*QualityAgentGoal, error)
-	// Mark a goal complete. A person can always do so; the runner's own completion is
-	// recorded the same way.
-	CompleteQualityAgentGoal(context.Context, *CompleteQualityAgentGoalRequest) (*QualityAgentGoal, error)
-	// Clear a goal (a tombstone). The journal stays for the audit trail.
-	ClearQualityAgentGoal(context.Context, *ClearQualityAgentGoalRequest) (*emptypb.Empty, error)
 	// Approve or reject a change request. Approving applies each item through its
 	// existing path and returns a result per item; rejecting records the structured
 	// reasons. A stale base version expires the request instead of rebasing it.
@@ -1989,30 +1859,6 @@ func (UnimplementedDataQualityServiceServer) DisableQualityAgent(context.Context
 }
 func (UnimplementedDataQualityServiceServer) RotateQualityAgentToken(context.Context, *RotateQualityAgentTokenRequest) (*RotateQualityAgentTokenResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RotateQualityAgentToken not implemented")
-}
-func (UnimplementedDataQualityServiceServer) GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentMetrics not implemented")
-}
-func (UnimplementedDataQualityServiceServer) CreateQualityAgentGoal(context.Context, *CreateQualityAgentGoalRequest) (*QualityAgentGoal, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateQualityAgentGoal not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ListQualityAgentGoals(context.Context, *ListQualityAgentGoalsRequest) (*ListQualityAgentGoalsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentGoals not implemented")
-}
-func (UnimplementedDataQualityServiceServer) GetQualityAgentGoal(context.Context, *GetQualityAgentGoalRequest) (*QualityAgentGoal, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentGoal not implemented")
-}
-func (UnimplementedDataQualityServiceServer) PauseQualityAgentGoal(context.Context, *PauseQualityAgentGoalRequest) (*QualityAgentGoal, error) {
-	return nil, status.Error(codes.Unimplemented, "method PauseQualityAgentGoal not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ResumeQualityAgentGoal(context.Context, *ResumeQualityAgentGoalRequest) (*QualityAgentGoal, error) {
-	return nil, status.Error(codes.Unimplemented, "method ResumeQualityAgentGoal not implemented")
-}
-func (UnimplementedDataQualityServiceServer) CompleteQualityAgentGoal(context.Context, *CompleteQualityAgentGoalRequest) (*QualityAgentGoal, error) {
-	return nil, status.Error(codes.Unimplemented, "method CompleteQualityAgentGoal not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ClearQualityAgentGoal(context.Context, *ClearQualityAgentGoalRequest) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "method ClearQualityAgentGoal not implemented")
 }
 func (UnimplementedDataQualityServiceServer) DecideQualityChangeRequest(context.Context, *DecideQualityChangeRequestRequest) (*QualityChangeRequest, error) {
 	return nil, status.Error(codes.Unimplemented, "method DecideQualityChangeRequest not implemented")
@@ -3405,150 +3251,6 @@ func _DataQualityService_RotateQualityAgentToken_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_GetQualityAgentMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetQualityAgentMetricsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).GetQualityAgentMetrics(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_GetQualityAgentMetrics_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).GetQualityAgentMetrics(ctx, req.(*GetQualityAgentMetricsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_CreateQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateQualityAgentGoalRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).CreateQualityAgentGoal(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_CreateQualityAgentGoal_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).CreateQualityAgentGoal(ctx, req.(*CreateQualityAgentGoalRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ListQualityAgentGoals_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListQualityAgentGoalsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ListQualityAgentGoals(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ListQualityAgentGoals_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ListQualityAgentGoals(ctx, req.(*ListQualityAgentGoalsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_GetQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetQualityAgentGoalRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).GetQualityAgentGoal(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_GetQualityAgentGoal_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).GetQualityAgentGoal(ctx, req.(*GetQualityAgentGoalRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_PauseQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseQualityAgentGoalRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).PauseQualityAgentGoal(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_PauseQualityAgentGoal_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).PauseQualityAgentGoal(ctx, req.(*PauseQualityAgentGoalRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ResumeQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResumeQualityAgentGoalRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ResumeQualityAgentGoal(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ResumeQualityAgentGoal_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ResumeQualityAgentGoal(ctx, req.(*ResumeQualityAgentGoalRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_CompleteQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CompleteQualityAgentGoalRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).CompleteQualityAgentGoal(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_CompleteQualityAgentGoal_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).CompleteQualityAgentGoal(ctx, req.(*CompleteQualityAgentGoalRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ClearQualityAgentGoal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClearQualityAgentGoalRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ClearQualityAgentGoal(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ClearQualityAgentGoal_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ClearQualityAgentGoal(ctx, req.(*ClearQualityAgentGoalRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DataQualityService_DecideQualityChangeRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DecideQualityChangeRequestRequest)
 	if err := dec(in); err != nil {
@@ -3919,38 +3621,6 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RotateQualityAgentToken",
 			Handler:    _DataQualityService_RotateQualityAgentToken_Handler,
-		},
-		{
-			MethodName: "GetQualityAgentMetrics",
-			Handler:    _DataQualityService_GetQualityAgentMetrics_Handler,
-		},
-		{
-			MethodName: "CreateQualityAgentGoal",
-			Handler:    _DataQualityService_CreateQualityAgentGoal_Handler,
-		},
-		{
-			MethodName: "ListQualityAgentGoals",
-			Handler:    _DataQualityService_ListQualityAgentGoals_Handler,
-		},
-		{
-			MethodName: "GetQualityAgentGoal",
-			Handler:    _DataQualityService_GetQualityAgentGoal_Handler,
-		},
-		{
-			MethodName: "PauseQualityAgentGoal",
-			Handler:    _DataQualityService_PauseQualityAgentGoal_Handler,
-		},
-		{
-			MethodName: "ResumeQualityAgentGoal",
-			Handler:    _DataQualityService_ResumeQualityAgentGoal_Handler,
-		},
-		{
-			MethodName: "CompleteQualityAgentGoal",
-			Handler:    _DataQualityService_CompleteQualityAgentGoal_Handler,
-		},
-		{
-			MethodName: "ClearQualityAgentGoal",
-			Handler:    _DataQualityService_ClearQualityAgentGoal_Handler,
 		},
 		{
 			MethodName: "DecideQualityChangeRequest",

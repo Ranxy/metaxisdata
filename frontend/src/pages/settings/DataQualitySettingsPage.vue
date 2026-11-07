@@ -538,7 +538,7 @@
               </fieldset>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3 sm:grid-cols-2">
               <div class="space-y-1.5">
                 <Label for="dq-setting-runner-tokens">
                   {{ t("dataQualitySettings.runnerTokensPerHour") }}
@@ -554,12 +554,12 @@
                 </p>
               </div>
               <div class="space-y-1.5">
-                <Label for="dq-setting-runner-goals">
-                  {{ t("dataQualitySettings.runnerGoalsPerHour") }}
+                <Label for="dq-setting-runner-wakes">
+                  {{ t("dataQualitySettings.runnerWakesPerHour") }}
                 </Label>
                 <Input
-                  id="dq-setting-runner-goals"
-                  v-model="form.agentRunnerGoalsPerHour"
+                  id="dq-setting-runner-wakes"
+                  v-model="form.agentRunnerWakesPerHour"
                   inputmode="numeric"
                   :disabled="!canUpdate"
                 />
@@ -570,10 +570,55 @@
                 </Label>
                 <Input
                   id="dq-setting-runner-concurrency"
-                  v-model="form.agentRunnerMaxConcurrentGoals"
+                  v-model="form.agentRunnerMaxConcurrentSessions"
                   inputmode="numeric"
                   :disabled="!canUpdate"
                 />
+              </div>
+              <div class="space-y-1.5">
+                <Label for="dq-setting-runner-compaction">
+                  {{ t("dataQualitySettings.runnerCompactionTriggerTokens") }}
+                </Label>
+                <Input
+                  id="dq-setting-runner-compaction"
+                  v-model="form.agentRunnerCompactionTriggerTokens"
+                  inputmode="numeric"
+                  :disabled="!canUpdate"
+                />
+                <p class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.runnerCompactionTriggerTokensHint") }}
+                </p>
+              </div>
+              <div class="space-y-1.5">
+                <Label for="dq-setting-runner-idle-wake">
+                  {{ t("dataQualitySettings.runnerIdleWakeSeconds") }}
+                </Label>
+                <Input
+                  id="dq-setting-runner-idle-wake"
+                  v-model="form.agentRunnerIdleWakeSeconds"
+                  inputmode="numeric"
+                  :disabled="!canUpdate"
+                />
+                <p class="text-xs text-muted-foreground">
+                  {{ t("dataQualitySettings.runnerIdleWakeSecondsHint") }}
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="dq-setting-runner-auto-events"
+                :checked="form.agentRunnerAutoInvestigateFailures"
+                :disabled="!canUpdate"
+                @update:checked="form.agentRunnerAutoInvestigateFailures = $event === true"
+              />
+              <div class="grid gap-1">
+                <Label for="dq-setting-runner-auto-events">
+                  {{ t("dataQualitySettings.runnerAutoInvestigateFailures") }}
+                </Label>
+                <p class="text-sm text-muted-foreground">
+                  {{ t("dataQualitySettings.runnerAutoInvestigateFailuresHint") }}
+                </p>
               </div>
             </div>
           </CardContent>

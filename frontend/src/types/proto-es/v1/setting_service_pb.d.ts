@@ -235,8 +235,8 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
   agentAutonomyEnabled: boolean;
 
   /**
-   * Whether the built-in quality agent runner may run goals. Off by default:
-   * turning it off stops new goal rounds; recorded proposals stay for review.
+   * Whether the built-in quality agent runner may run sessions. Off by default:
+   * turning it off stops new wakes; recorded proposals stay for review.
    *
    * @generated from field: bool agent_runner_enabled = 15;
    */
@@ -245,34 +245,58 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
   /**
    * The databases the runner may see and work on, as database resource names
    * (instances/{instance}/databases/{database}). Empty means no database is in
-   * scope and the runner creates no goal.
+   * scope and the runner creates no session.
    *
    * @generated from field: repeated string agent_runner_databases = 16;
    */
   agentRunnerDatabases: string[];
 
   /**
-   * The workspace's hourly token ceiling for runner goals; 0 means the server
-   * default (100000000). A goal has no individual token cap.
+   * The workspace's hourly token ceiling for runner sessions; 0 means the server
+   * default (100000000). A session has no individual token cap.
    *
    * @generated from field: int64 agent_runner_tokens_per_hour = 17;
    */
   agentRunnerTokensPerHour: bigint;
 
   /**
-   * How many goals the workspace may create per hour; 0 means the server
+   * How many session wakes the workspace may start per hour; 0 means the server
    * default (20).
    *
-   * @generated from field: int32 agent_runner_goals_per_hour = 18;
+   * @generated from field: int32 agent_runner_wakes_per_hour = 20;
    */
-  agentRunnerGoalsPerHour: number;
+  agentRunnerWakesPerHour: number;
 
   /**
-   * How many goals may run at once; 0 means the server default (2).
+   * How many sessions may run at once; 0 means the server default (2).
    *
-   * @generated from field: int32 agent_runner_max_concurrent_goals = 19;
+   * @generated from field: int32 agent_runner_max_concurrent_sessions = 21;
    */
-  agentRunnerMaxConcurrentGoals: number;
+  agentRunnerMaxConcurrentSessions: number;
+
+  /**
+   * The context token threshold that triggers compaction of a session's older
+   * messages; 0 means the server default (262144).
+   *
+   * @generated from field: int32 agent_runner_compaction_trigger_tokens = 22;
+   */
+  agentRunnerCompactionTriggerTokens: number;
+
+  /**
+   * How long an idle session sleeps between wakes, in seconds; 0 means the server
+   * default (86400).
+   *
+   * @generated from field: int32 agent_runner_idle_wake_seconds = 23;
+   */
+  agentRunnerIdleWakeSeconds: number;
+
+  /**
+   * Whether a failed check execution appends an event to its target's session and
+   * wakes it. On by default.
+   *
+   * @generated from field: optional bool agent_runner_auto_investigate_failures = 24;
+   */
+  agentRunnerAutoInvestigateFailures?: boolean;
 };
 
 /**
