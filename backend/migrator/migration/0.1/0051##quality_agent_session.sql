@@ -70,7 +70,7 @@ ALTER SEQUENCE quality_agent_session_id_seq RESTART WITH 101;
 -- tool_calls JSON so the row maps 1:1 to a provider assistant message; tool rows
 -- carry the result the model actually saw. engine rows are runner/UI notes and are
 -- never sent back to the model.
-CREATE TABLE IF NOT EXISTS quality_agent_session_message (
+CREATE TABLE IF NOT EXISTS quality_agent_message (
     id BIGSERIAL PRIMARY KEY,
     session_id INT8 NOT NULL REFERENCES quality_agent_session(id) ON DELETE CASCADE,
     workspace_id TEXT COLLATE "C" NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS quality_agent_session_message (
     origin INT2 NOT NULL DEFAULT 0,
     content TEXT NOT NULL DEFAULT '',
     -- QualityToolCallList JSONB: the assistant message's tool calls.
-    tool_calls JSONB NOT NULL DEFAULT '[]',
+    tool_calls JSONB NOT NULL DEFAULT '{}',
     tool_call_id TEXT NOT NULL DEFAULT '',
     tool_name TEXT NOT NULL DEFAULT '',
     tokens INT4 NOT NULL DEFAULT 0,
@@ -98,14 +98,14 @@ CREATE TABLE IF NOT EXISTS quality_agent_session_message (
     idempotency_key TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_message_seq
-    ON quality_agent_session_message(session_id, seq);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_session_message_key
-    ON quality_agent_session_message(session_id, idempotency_key) WHERE idempotency_key <> '';
-CREATE INDEX IF NOT EXISTS idx_quality_agent_session_message_workspace
-    ON quality_agent_session_message(workspace_id, created_at DESC);
-COMMENT ON TABLE quality_agent_session_message IS 'Append-only transcript of one quality agent session';
-COMMENT ON COLUMN quality_agent_session_message.role IS 'Stored as QualityAgentMessageRole (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_agent_session_message.origin IS 'Stored as QualityAgentMessageOrigin (proto/store/store/data_quality.proto)';
-COMMENT ON COLUMN quality_agent_session_message.tool_calls IS 'Stored as QualityToolCallList (proto/store/store/data_quality.proto)';
-ALTER SEQUENCE quality_agent_session_message_id_seq RESTART WITH 101;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_message_seq
+    ON quality_agent_message(session_id, seq);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quality_agent_message_key
+    ON quality_agent_message(session_id, idempotency_key) WHERE idempotency_key <> '';
+CREATE INDEX IF NOT EXISTS idx_quality_agent_message_workspace
+    ON quality_agent_message(workspace_id, created_at DESC);
+COMMENT ON TABLE quality_agent_message IS 'Append-only transcript of one quality agent session';
+COMMENT ON COLUMN quality_agent_message.role IS 'Stored as QualityAgentMessageRole (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_agent_message.origin IS 'Stored as QualityAgentMessageOrigin (proto/store/store/data_quality.proto)';
+COMMENT ON COLUMN quality_agent_message.tool_calls IS 'Stored as QualityToolCallList (proto/store/store/data_quality.proto)';
+ALTER SEQUENCE quality_agent_message_id_seq RESTART WITH 101;
