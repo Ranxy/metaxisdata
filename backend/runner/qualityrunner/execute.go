@@ -171,6 +171,9 @@ func (r *Runner) executeBatchWith(ctx context.Context, st batchExecutionStore, b
 	// batch ran out of time, so their problem transitions and notifications are
 	// settled in both cases.
 	r.settleQualityExecutions(ctx, workspaceID, executions, storm, now)
+	// A failed check wakes its target's agent session: the agent should react while the
+	// failure is fresh, not on its next daily wake.
+	r.intakeAgentEvents(ctx, workspaceID, executions)
 
 	if aborted || incomplete {
 		if incomplete {
