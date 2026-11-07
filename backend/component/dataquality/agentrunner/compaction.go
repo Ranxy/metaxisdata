@@ -178,6 +178,7 @@ func (e *Engine) maybeCompact(
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_COMPACTION,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION,
 		Content:        summary,
+		Tokens:         clampInt32(tokens),
 		IdempotencyKey: fmt.Sprintf("compaction:%d", throughSeq),
 	})
 	if appendErr != nil {

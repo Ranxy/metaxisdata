@@ -378,3 +378,33 @@ func TestWakeReusesTheStoredWakeMessage(t *testing.T) {
 	require.Equal(t, 1, userMessages)
 	require.Greater(t, len(stores.messages), before)
 }
+
+// An event whose execution ended ERROR is investigated too: an error is as much
+// something the agent should look at as a FAIL.
+func TestWakeInvestigatesAnErroredExecutionWithoutAModel(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	stores.executions[9] = &store.QualityExecutionMessage{
+		ID:         9,
+		TargetGUID: "target-1",
+		TargetType: storepb.MetaType(1),
+		Status:     storepb.QualityStatus_QUALITY_STATUS_ERROR,
+		ErrorCode:  "NO_READ_ONLY_SOURCE",
+	}
+	message, err := stores.AppendQualityAgentTranscriptMessage(context.Background(), &store.QualityAgentTranscriptMessage{
+		SessionID: 1, WorkspaceID: "ws", Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:  storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+		Content: "execution 9 errored", Reference: "qualityExecutions/9",
+		IdempotencyKey: "event:execution:9",
+	})
+	require.NoError(t, err)
+	session := testSession()
+	session.ProcessedSeq = message.Seq - 1
+
+	outcome, err := NewEngine(stores).Wake(context.Background(), session, Options{})
+	require.NoError(t, err)
+	require.False(t, outcome.Blocked)
+	require.Contains(t, outcome.Summary, "investigated the event")
+	require.Len(t, stores.investigations, 1)
+}

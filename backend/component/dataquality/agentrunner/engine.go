@@ -497,11 +497,12 @@ func (e *Engine) investigateEvent(ctx context.Context, session *store.QualityAge
 			Summary:       "blocked: the execution does not match the session target",
 		}, nil
 	}
-	if execution.Status != storepb.QualityStatus_QUALITY_STATUS_FAIL {
+	if execution.Status != storepb.QualityStatus_QUALITY_STATUS_FAIL &&
+		execution.Status != storepb.QualityStatus_QUALITY_STATUS_ERROR {
 		return Outcome{
 			Blocked:       true,
 			BlockedCode:   "needs-human",
-			BlockedReason: "the triggering execution did not fail",
+			BlockedReason: "the triggering execution neither failed nor errored",
 			Summary:       "blocked: the execution is not a failure",
 		}, nil
 	}
