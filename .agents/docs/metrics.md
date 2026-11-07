@@ -506,6 +506,8 @@ ExplainSQL 的 `AgentConfig` **暂不打开** `IncludeUsage`（部分 OpenAI 兼
 | `metaxisdata_llm_call_duration_seconds` | histogram | `feature,provider` | 同上 | 提供商往返；无总超时（header 30s / idle 60s / 最多 6 轮），桶要覆盖到 300s | P0 |
 | `metaxisdata_llm_tokens_total` | counter | `feature,provider,kind=prompt\|completion` | 消费 `AgentEventUsage`/`AgentEventAgentEnd.Usage` | 提供商上报才有；**不是账单**。v1 只保证 DQ 路径（已开 `IncludeUsage`）；ExplainSQL 的 `IncludeUsage` 待验证网关后再开（已确认） | P0 |
 | `metaxisdata_llm_usage_missing_total` | counter | `feature` | 无 usage 事件时 | 提供商没报 usage → token 面板会低估；也是网关不支持 `stream_options` 的信号。ExplainSQL 的 token 在 v1 不保证，**这条是它的补偿信号**，因此列为 P0 | P0 |
+
+The quality agent session runner labels its model calls `feature="dq_agent"` (one wake's rounds) and `feature="dq_agent_compaction"` (a context-compaction summary). Their sessions are durable rows, so the same spend is also readable through `GetQualityAgentRunnerStatus` and `GetQualityAgentMetrics`; the Prometheus counters are process metrics that reset on restart and are not the UI's source of truth. The runner's liveness is `metaxisdata_runner_up{runner="qualitysession"}`.
 | `metaxisdata_llm_parse_failures_total` | counter | `feature` | DQ 三个严格 JSON 解析失败点（`data_quality_llm_analysis.go`、`data_quality_label_analysis.go`） | 模型答了但结构不合格，不缓存不落库 | P0 |
 | `metaxisdata_llm_cache_events_total` | counter | `feature=explain_sql\|dq_explain_result,event=hit\|miss\|write_error` | ExplainSQL 缓存命中/未命中/写失败（`explain_sql_service.go`）；DQ L2（`data_quality_llm_analysis.go`） | 缓存规避了多少模型调用 | P1 |
 | `metaxisdata_llm_quota_rejections_total` | counter | `kind=analysis\|column_analysis` | `LLMQuota.quotaExhaustedLocked`（`backend/component/dataquality/quota.go`） | **仅日配额拒绝**（ResourceExhausted）；共享并发信号量是排队等待，不是拒绝，因此没有对应计数 | P0 |
