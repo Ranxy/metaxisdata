@@ -1571,9 +1571,11 @@
       "uuid": "UUID"
     },
     "session": {
+      "askBlockedHint": "会话已阻塞，暂时不能发送消息。解除阻塞后请恢复会话。",
       "askEmpty": "请先写一个问题。",
       "askFailed": "发送问题失败。",
       "askHint": "问题会追加到这张表的对话中，并立即唤醒 Agent。",
+      "askPausedHint": "会话已暂停，恢复后才能发送消息。",
       "askPlaceholder": "想让 Agent 看看什么？",
       "askSend": "发送并唤醒",
       "askSending": "发送中…",
@@ -1581,6 +1583,7 @@
       "asked": "问题已发送，会话很快会被唤醒。",
       "contextTokens": "上下文大小",
       "conversationTitle": "对话",
+      "eventExecution": "执行 {id}",
       "historyCompactedHint": "模型上下文用下面的摘要替换这个检查点覆盖的消息。",
       "loadEarlier": "加载更早的消息",
       "loadEarlierFailed": "加载更早的消息失败。",

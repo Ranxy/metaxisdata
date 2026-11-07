@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import StatCard from "@/components/common/StatCard.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
@@ -212,6 +213,19 @@ describe("DataQualityAgentSessionsPage", () => {
     expect(wrapper.text()).toContain(
       i18n.global.t("dataQuality.agent.runnerStopped")
     );
+    wrapper.unmount();
+  });
+
+  it("shows no counts when the metrics read fails and keeps the list", async () => {
+    mocks.getQualityAgentMetrics.mockRejectedValue(new Error("metrics down"));
+    mocks.listQualityAgentSessions.mockResolvedValue([sessionFixture()]);
+    const { wrapper } = await mountPage();
+
+    const values = wrapper
+      .findAllComponents(StatCard)
+      .map((card) => card.props("value"));
+    expect(values).toEqual(["—", "—", "—", "—"]);
+    expect(wrapper.text()).toContain("orders");
     wrapper.unmount();
   });
 

@@ -152,13 +152,16 @@
                       {{ loadEarlierError }}
                     </p>
                   </div>
-                  <AgentConversation :groups="groups" />
+                  <AgentConversation
+                    :groups="groups"
+                    :session-name="sessionName"
+                  />
                 </div>
               </PageState>
             </CardContent>
           </Card>
 
-          <Card v-if="canUpdate">
+          <Card v-if="canAskAgent">
             <CardHeader class="border-b">
               <CardTitle class="text-base">
                 {{ t("dataQuality.session.askTitle") }}
@@ -211,6 +214,46 @@
                   }}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          <!-- A paused or blocked session is readable but not writable: the
+               server refuses a wake with FailedPrecondition, so the page says
+               what to do instead of showing a composer that cannot send. An
+               archived session hides the region entirely. -->
+          <Card v-else-if="session.state === QualityAgentSessionState.PAUSED">
+            <CardHeader class="border-b">
+              <CardTitle class="text-base">
+                {{ t("dataQuality.session.askTitle") }}
+              </CardTitle>
+            </CardHeader>
+            <CardContent class="pt-4">
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQuality.session.askPausedHint") }}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card v-else-if="session.state === QualityAgentSessionState.BLOCKED">
+            <CardHeader class="border-b">
+              <CardTitle class="text-base">
+                {{ t("dataQuality.session.askTitle") }}
+              </CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-2 pt-4">
+              <p class="text-sm text-muted-foreground">
+                {{ t("dataQuality.session.askBlockedHint") }}
+              </p>
+              <p class="text-xs">
+                <span class="font-medium">{{ t("dataQuality.agent.blockedCode") }}:</span>
+                <span class="font-mono">{{ session.blockedCode || "-" }}</span>
+              </p>
+              <p
+                v-if="session.blockedReason"
+                class="text-xs text-muted-foreground"
+              >
+                {{ session.blockedReason }}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -404,6 +447,23 @@ const loadEarlierError = ref("");
 const askContent = ref("");
 const asking = ref(false);
 const askError = ref("");
+/**
+ * The idempotency id of the send in flight. It survives a failure so a retry of
+ * the same message reuses it, and is replaced only after a send succeeds; a
+ * double-click or retry therefore cannot append the question twice.
+ */
+const askRequestId = ref("");
+
+/** A client id for one wake; `randomUUID` where the browser has it. */
+function newAgentRequestId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  return `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 let loadGeneration = 0;
 
@@ -506,6 +566,14 @@ const nextWakeLabel = computed(() =>
 );
 
 const canAsk = computed(() => askContent.value.trim() !== "");
+
+/** A wake only makes sense on an enabled session; archived is a tombstone. */
+const askEnabled = computed(
+  () => session.value?.state === QualityAgentSessionState.ENABLED
+);
+
+/** The composer is shown only to a writer whose session can actually take it. */
+const canAskAgent = computed(() => canUpdate.value && askEnabled.value);
 
 // ---- loading ----
 
@@ -663,19 +731,25 @@ async function onArchived() {
 }
 
 async function ask() {
-  if (asking.value || !canAsk.value) {
-    if (!asking.value && askContent.value.trim() === "") {
-      askError.value = t("dataQuality.session.askEmpty");
-    }
+  if (asking.value || !canAskAgent.value) {
+    return;
+  }
+  if (!canAsk.value) {
+    askError.value = t("dataQuality.session.askEmpty");
     return;
   }
   asking.value = true;
   askError.value = "";
+  if (!askRequestId.value) {
+    askRequestId.value = newAgentRequestId();
+  }
   try {
     const updated = await wakeQualityAgentSession(
       sessionName.value,
-      askContent.value.trim()
+      askContent.value.trim(),
+      { requestId: askRequestId.value }
     );
+    askRequestId.value = "";
     session.value = updated;
     askContent.value = "";
     notify.success(t("dataQuality.session.asked"));
@@ -683,6 +757,8 @@ async function ask() {
     // waiting for the next poll tick.
     await pollMessages(new AbortController().signal);
   } catch (e: unknown) {
+    // Keep `askRequestId`: a retry of the same message must reuse it, and the
+    // server's FailedPrecondition (paused/blocked) is reported, not toasted.
     askError.value = formatError(e, "dataQuality.session.askFailed");
   } finally {
     asking.value = false;
@@ -693,6 +769,7 @@ watch(sessionName, async () => {
   messages.value = [];
   nextPageToken.value = "";
   session.value = undefined;
+  askRequestId.value = "";
   await Promise.all([load(), loadMessages()]);
   syncPolling();
 });

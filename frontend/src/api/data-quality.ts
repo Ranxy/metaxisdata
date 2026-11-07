@@ -1835,17 +1835,27 @@ export async function archiveQualityAgentSession(
   await dataQualityClient.archiveQualityAgentSession(request, { signal });
 }
 
-/** Append a person's question to the conversation and wake the session. */
+/**
+ * Append a person's question to the conversation and wake the session.
+ *
+ * `requestId` is a client-generated idempotency id: repeating a wake with the
+ * same id returns the session without appending a second message, so a retried
+ * or double-clicked send cannot post the question twice. An empty id lets the
+ * server generate a random one, which makes a repeat a new message.
+ */
 export async function wakeQualityAgentSession(
   name: string,
   content: string,
-  signal?: AbortSignal
+  options: { requestId?: string; signal?: AbortSignal } = {}
 ): Promise<QualityAgentSession> {
   const request = create(WakeQualityAgentSessionRequestSchema, {
     name,
     content,
+    requestId: options.requestId ?? "",
   });
-  return await dataQualityClient.wakeQualityAgentSession(request, { signal });
+  return await dataQualityClient.wakeQualityAgentSession(request, {
+    signal: options.signal,
+  });
 }
 
 /**

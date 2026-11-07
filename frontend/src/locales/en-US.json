@@ -1571,9 +1571,11 @@
       "uuid": "UUID"
     },
     "session": {
+      "askBlockedHint": "This session is blocked, so it cannot take a message. Resume it once the blocker is cleared.",
       "askEmpty": "Write a question first.",
       "askFailed": "Sending the question failed.",
       "askHint": "The question is appended to this table's conversation and wakes the agent immediately.",
+      "askPausedHint": "This session is paused. Resume it to send a message.",
       "askPlaceholder": "What should the agent look at?",
       "askSend": "Send and wake",
       "askSending": "Sending…",
@@ -1581,6 +1583,7 @@
       "asked": "Question sent; the session will wake shortly.",
       "contextTokens": "Context size",
       "conversationTitle": "Conversation",
+      "eventExecution": "Execution {id}",
       "historyCompactedHint": "The model context replaces the messages this checkpoint covers with the summary below.",
       "loadEarlier": "Load earlier",
       "loadEarlierFailed": "Loading older messages failed.",

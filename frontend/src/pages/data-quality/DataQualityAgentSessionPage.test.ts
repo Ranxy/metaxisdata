@@ -1,5 +1,6 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   pauseQualityAgentSession: vi.fn(),
   resumeQualityAgentSession: vi.fn(),
   archiveQualityAgentSession: vi.fn(),
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", () => ({
@@ -38,6 +41,15 @@ vi.mock("@/api/data-quality", () => ({
   pauseQualityAgentSession: mocks.pauseQualityAgentSession,
   resumeQualityAgentSession: mocks.resumeQualityAgentSession,
   archiveQualityAgentSession: mocks.archiveQualityAgentSession,
+}));
+
+vi.mock("@/lib/notify", () => ({
+  notify: {
+    success: mocks.notifySuccess,
+    error: mocks.notifyError,
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 const SESSION = "workspaces/ws/qualityAgentSessions/7";
@@ -149,6 +161,11 @@ async function mountPage(permissions = ALL_PERMISSIONS) {
         component: Dummy,
       },
       {
+        path: "/data-quality/executions/:executionId+",
+        name: "DataQualityExecutionDetail",
+        component: Dummy,
+      },
+      {
         path: "/data-quality/targets/:targetGuid+",
         name: "DataQualityTarget",
         component: Dummy,
@@ -167,6 +184,23 @@ async function mountPage(permissions = ALL_PERMISSIONS) {
   });
   await flushPromises();
   return { wrapper, router };
+}
+
+function findButton(wrapper: ReturnType<typeof mount>, label: string) {
+  return wrapper.findAll("button").find((button) => button.text() === label);
+}
+
+async function sendQuestion(
+  wrapper: ReturnType<typeof mount>,
+  question: string
+) {
+  await wrapper.find("#quality-agent-ask").setValue(question);
+  const send = findButton(
+    wrapper,
+    i18n.global.t("dataQuality.session.askSend")
+  );
+  await send?.trigger("click");
+  await flushPromises();
 }
 
 describe("DataQualityAgentSessionPage", () => {
@@ -214,7 +248,44 @@ describe("DataQualityAgentSessionPage", () => {
     wrapper.unmount();
   });
 
-  it("appends the question after waking the session", async () => {
+  it("links an event's execution reference and falls back to text otherwise", async () => {
+    const event = messageFixture({
+      wake: 2,
+      seq: 5n,
+      role: QualityAgentMessageRole.USER,
+      origin: QualityAgentMessageOrigin.EVENT,
+      content: "check orders_row_count failed",
+      reference: "qualityExecutions/123",
+    });
+    const unknownReference = messageFixture({
+      wake: 2,
+      seq: 6n,
+      role: QualityAgentMessageRole.USER,
+      origin: QualityAgentMessageOrigin.EVENT,
+      content: "something else changed",
+      reference: "ruleTemplates/9",
+    });
+    mocks.listQualityAgentSessionMessages.mockResolvedValue({
+      messages: [SYSTEM, WAKE, event, unknownReference],
+      nextPageToken: "",
+    });
+    const { wrapper } = await mountPage();
+
+    const link = wrapper
+      .findAll("a")
+      .find(
+        (anchor) =>
+          anchor.text() ===
+          i18n.global.t("dataQuality.session.eventExecution", { id: "123" })
+      );
+    expect(link?.attributes("href")).toBe(
+      "/data-quality/executions/workspaces/ws/qualityExecutions/123"
+    );
+    expect(wrapper.text()).toContain("ruleTemplates/9");
+    wrapper.unmount();
+  });
+
+  it("sends the question with an idempotency id and keeps it across a retry", async () => {
     mocks.listQualityAgentSessionMessages.mockImplementation(
       async (_name: string, options: { afterSeq?: bigint }) => {
         if (options.afterSeq !== undefined && options.afterSeq > 0n) {
@@ -234,26 +305,30 @@ describe("DataQualityAgentSessionPage", () => {
         return { messages: [SYSTEM, WAKE], nextPageToken: "" };
       }
     );
-    mocks.wakeQualityAgentSession.mockResolvedValue(
-      sessionFixture({ wakeCount: 3 })
-    );
+    mocks.wakeQualityAgentSession
+      .mockRejectedValueOnce(
+        new ConnectError("the session is not enabled", Code.FailedPrecondition)
+      )
+      .mockResolvedValueOnce(sessionFixture({ wakeCount: 3 }));
     const { wrapper } = await mountPage();
 
-    const askBox = wrapper.find("#quality-agent-ask");
-    await askBox.setValue("why did the row count drop?");
-    const send = wrapper
-      .findAll("button")
-      .find(
-        (button) =>
-          button.text() === i18n.global.t("dataQuality.session.askSend")
-      );
-    await send?.trigger("click");
+    await sendQuestion(wrapper, "why did the row count drop?");
+    // A refused send reports the server's reason and never claims success.
+    expect(notifySuccessCount()).toBe(0);
+    expect(wrapper.text()).toContain("the session is not enabled");
+
+    await sendQuestion(wrapper, "why did the row count drop?");
     await flushPromises();
 
-    expect(mocks.wakeQualityAgentSession).toHaveBeenCalledWith(
+    const calls = mocks.wakeQualityAgentSession.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual([
       SESSION,
-      "why did the row count drop?"
-    );
+      "why did the row count drop?",
+      expect.objectContaining({ requestId: expect.any(String) }),
+    ]);
+    expect(calls[1][2]).toEqual(calls[0][2]);
+    expect((calls[0][2] as { requestId: string }).requestId).not.toBe("");
     expect(mocks.listQualityAgentSessionMessages).toHaveBeenCalledWith(
       SESSION,
       expect.objectContaining({ afterSeq: 2n })
@@ -273,12 +348,10 @@ describe("DataQualityAgentSessionPage", () => {
     );
     const { wrapper } = await mountPage();
 
-    const loadEarlier = wrapper
-      .findAll("button")
-      .find(
-        (button) =>
-          button.text() === i18n.global.t("dataQuality.session.loadEarlier")
-      );
+    const loadEarlier = findButton(
+      wrapper,
+      i18n.global.t("dataQuality.session.loadEarlier")
+    );
     expect(loadEarlier).toBeDefined();
     await loadEarlier?.trigger("click");
     await flushPromises();
@@ -293,6 +366,57 @@ describe("DataQualityAgentSessionPage", () => {
     wrapper.unmount();
   });
 
+  it("hides the composer on a paused session and explains why", async () => {
+    mocks.getQualityAgentSession.mockResolvedValue(
+      sessionFixture({ state: QualityAgentSessionState.PAUSED })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.find("#quality-agent-ask").exists()).toBe(false);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.session.askPausedHint")
+    );
+    wrapper.unmount();
+  });
+
+  it("shows a blocked session's code and reason instead of the composer", async () => {
+    mocks.getQualityAgentSession.mockResolvedValue(
+      sessionFixture({
+        state: QualityAgentSessionState.BLOCKED,
+        blockedCode: "needs-human",
+        blockedReason: "the target no longer resolves",
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.find("#quality-agent-ask").exists()).toBe(false);
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQuality.session.askBlockedHint")
+    );
+    expect(wrapper.text()).toContain("needs-human");
+    expect(wrapper.text()).toContain("the target no longer resolves");
+    wrapper.unmount();
+  });
+
+  it("hides the composer on an archived session", async () => {
+    mocks.getQualityAgentSession.mockResolvedValue(
+      sessionFixture({
+        state: QualityAgentSessionState.ARCHIVED,
+        running: false,
+      })
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.find("#quality-agent-ask").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.session.askPausedHint")
+    );
+    expect(wrapper.text()).not.toContain(
+      i18n.global.t("dataQuality.session.askBlockedHint")
+    );
+    wrapper.unmount();
+  });
+
   it("hides the ask box from a reader who cannot update", async () => {
     const { wrapper } = await mountPage(READ_ONLY);
 
@@ -303,3 +427,7 @@ describe("DataQualityAgentSessionPage", () => {
     wrapper.unmount();
   });
 });
+
+function notifySuccessCount(): number {
+  return mocks.notifySuccess.mock.calls.length;
+}
