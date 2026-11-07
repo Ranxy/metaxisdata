@@ -72,6 +72,16 @@ func (b *conversationBudget) add(size int) bool {
 	return true
 }
 
+// messageBudgetBytes sizes one message for the conversation cap: the text plus the
+// tool-call fields the conversation resends on every turn.
+func messageBudgetBytes(message AgentMessage) int {
+	size := len(message.Content) + len(message.ToolCallID) + len(message.ToolName)
+	for _, call := range message.ToolCalls {
+		size += len(call.ID) + len(call.GetName()) + len(call.Function.Arguments)
+	}
+	return size
+}
+
 // errResponseTooLarge is returned when a single response exceeds the cap.
 var errResponseTooLarge = errors.New("LLM response exceeded the size limit")
 
@@ -180,7 +190,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		// A session wake continues the stored conversation; the caller's History
 		// already carries its system message and the new wake message.
 		for _, message := range cfg.History {
-			if !budget.add(len(message.Content)) {
+			if !budget.add(messageBudgetBytes(message)) {
 				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError,
 					Error: errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)})
 				return
@@ -200,7 +210,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	// the whole conversation, so an oversized tool result would blow up both the
 	// request and the process's memory.
 	appendMessage := func(msg AgentMessage) error {
-		if !budget.add(len(msg.Content)) {
+		if !budget.add(messageBudgetBytes(msg)) {
 			return errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)
 		}
 		messages = append(messages, msg)

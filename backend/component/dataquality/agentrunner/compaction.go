@@ -22,6 +22,9 @@ const (
 	// compactionForcedRetainRatio is the smaller tail kept after a provider rejected
 	// the context as too large.
 	compactionForcedRetainRatio = 0.08
+	// compactionForcedRetainTokens caps the forced tail so an overflow always leaves a
+	// region big enough to summarize.
+	compactionForcedRetainTokens = 4_096
 	// compactionMinRegionMessages avoids a summary call for a trivial region.
 	compactionMinRegionMessages = 4
 	// compactionMaxOutputTokens bounds the summary text.
@@ -33,8 +36,9 @@ const (
 	// pruneMarker replaces the removed middle of a tool result.
 	pruneMarker = "\n\n[... tool result pruned ...]\n\n"
 	// keepRecentToolResults is how many recent messages keep their tool results intact
-	// in the model context.
-	keepRecentToolResults = 40
+	// in the model context. Older results keep only their head and tail; the window is
+	// small enough that a few oversized results cannot keep the context over budget.
+	keepRecentToolResults = 20
 	// compactionFeature labels the summarization call in metrics.
 	compactionFeature = "dq_agent_compaction"
 )
@@ -91,6 +95,7 @@ func (e *Engine) maybeCompact(
 	ctx context.Context,
 	session *store.QualityAgentSessionMessage,
 	wake int32,
+	system *store.QualityAgentTranscriptMessage,
 	config llm.ResolvedConfig,
 	messages []*store.QualityAgentTranscriptMessage,
 	trigger int,
@@ -102,16 +107,22 @@ func (e *Engine) maybeCompact(
 	if trigger <= 0 {
 		trigger = dataquality.DefaultAgentRunnerCompactionTriggerTokens
 	}
-	pressure := int(session.ContextTokens)
-	if estimated := EstimateTokens(BuildConversation(session, nil, messages)); estimated > pressure {
-		pressure = estimated
-	}
+	// Prune first: replacing the middle of old tool results is free and may already be
+	// enough. Only when the pruned context is still over the trigger is a summary call
+	// worth its tokens.
+	pruned := pruneToolResults(BuildConversation(session, nil, messages), keepRecentToolResults)
+	pressure := EstimateTokens(pruned)
 	if !forced && pressure <= trigger {
 		return 0, false, nil
 	}
 	retain := int(float64(trigger) * compactionRetainRatio)
 	if forced {
+		// An overflow is an emergency: keep only a small recent tail, not a share of the
+		// trigger (which may be far above the conversation that just overflowed).
 		retain = int(float64(trigger) * compactionForcedRetainRatio)
+		if retain > compactionForcedRetainTokens {
+			retain = compactionForcedRetainTokens
+		}
 	}
 	cut := balancedCut(messages, retainedCut(messages, retain))
 	start := 0
@@ -124,7 +135,11 @@ func (e *Engine) maybeCompact(
 	region := messages[start:cut]
 	throughSeq := region[len(region)-1].Seq
 
-	summaryMessages := []llm.AgentMessage{{Role: "system", Content: compactionSystemPrompt()}}
+	systemPrompt := compactionSystemPrompt()
+	if system != nil && system.Content != "" {
+		systemPrompt = system.Content
+	}
+	summaryMessages := []llm.AgentMessage{{Role: "system", Content: systemPrompt}}
 	if session.Summary != "" {
 		summaryMessages = append(summaryMessages, llm.AgentMessage{
 			Role:    "user",
@@ -215,6 +230,10 @@ func balancedCut(messages []*store.QualityAgentTranscriptMessage, cut int) int {
 	if cut <= 0 || cut > len(messages) {
 		return 0
 	}
+	// A cut is balanced when no assistant tool call crosses it. A user/system/compaction
+	// message is a turn boundary, so it flushes any pending call (the same semantics as
+	// the context repair); otherwise one crash-dangling call would make every later cut
+	// look unbalanced and disable compaction for the whole session.
 	pending := make([]int, len(messages)+1)
 	for index, message := range messages {
 		pending[index+1] = pending[index]
@@ -222,7 +241,13 @@ func balancedCut(messages []*store.QualityAgentTranscriptMessage, cut int) int {
 		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT:
 			pending[index+1] += len(message.ToolCalls.GetToolCalls())
 		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL:
-			pending[index+1]--
+			if pending[index+1] > 0 {
+				pending[index+1]--
+			}
+		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+			storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
+			storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_COMPACTION:
+			pending[index+1] = 0
 		default:
 		}
 	}

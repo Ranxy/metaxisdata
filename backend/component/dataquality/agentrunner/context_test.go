@@ -109,3 +109,19 @@ func TestEstimateTokensCountsATextConversation(t *testing.T) {
 	require.Positive(t, estimate)
 	require.Zero(t, EstimateTokens(nil))
 }
+
+// A tool result whose call is gone is dropped: forwarding it would make the provider
+// reject the whole conversation.
+func TestBuildConversationDropsOrphanToolResults(t *testing.T) {
+	t.Parallel()
+
+	conversation := BuildConversation(nil, nil, []*store.QualityAgentTranscriptMessage{
+		{
+			Seq: 1, Role: storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL,
+			ToolCallID: "call_orphan", ToolName: "lookup", Content: "orphan result",
+		},
+		transcriptMessage(2, storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
+	})
+	require.Len(t, conversation, 1)
+	require.Equal(t, "user", conversation[0].Role)
+}

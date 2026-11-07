@@ -109,13 +109,20 @@ func repairToolCalls(messages []llm.AgentMessage) []llm.AgentMessage {
 				pending = append(pending, call.ID)
 			}
 		case "toolResult":
+			// A result whose call is gone is an orphan from a corrupt or half-written
+			// transcript; forwarding it would make the provider reject the whole
+			// conversation, so it is dropped.
+			matched := false
 			for i, id := range pending {
 				if id == message.ToolCallID {
 					pending = append(pending[:i], pending[i+1:]...)
+					matched = true
 					break
 				}
 			}
-			repaired = append(repaired, message)
+			if matched {
+				repaired = append(repaired, message)
+			}
 		default:
 			flush()
 			repaired = append(repaired, message)
