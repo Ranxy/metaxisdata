@@ -16740,14 +16740,16 @@ to retrieve the subsequent page. </p></td>
                   <td>page_token</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>A page token from a previous response; walks towards older messages. Mutually
+exclusive with after_seq. </p></td>
                 </tr>
               
                 <tr>
                   <td>after_seq</td>
                   <td><a href="#int64">int64</a></td>
                   <td></td>
-                  <td><p>Return messages with seq greater than this; the polling watermark. </p></td>
+                  <td><p>Return messages with seq greater than this, ascending; the polling watermark. The
+two modes are mutually exclusive: combining this with page_token is InvalidArgument. </p></td>
                 </tr>
               
             </tbody>
@@ -19517,7 +19519,7 @@ duration, so a client must treat last_activity_time as the heartbeat. </p></td>
         
       
         <h3 id="metaxisdata.v1.QualityAgentSessionMessage">QualityAgentSessionMessage</h3>
-        <p>QualityAgentSessionMessage is one append-only transcript entry of a session.</p>
+        <p>QualityAgentSessionMessage is one append-only transcript entry of a session. (The</p><p>internal store row type is QualityAgentTranscriptMessage; the v1 resource is named</p><p>after the session so a message always carries its parent in the name.)</p>
 
         
           <table class="field-table">
@@ -19622,6 +19624,14 @@ duration, so a client must treat last_activity_time as the heartbeat. </p></td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>reference</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>The object an event or wake is about (for example a quality execution resource
+name); empty for model and runner messages. </p></td>
                 </tr>
               
             </tbody>
@@ -26100,6 +26110,16 @@ resolved zone is what the target stores and what reads return. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p>The person&#39;s question or instruction; it becomes a user message in the session. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>request_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>A client-generated idempotency id for this message. Repeating the same id returns
+the session without appending a second message; empty means the server generates a
+random one (a repeat is then a new message, which is what a person asking the same
+question twice means). </p></td>
                 </tr>
               
             </tbody>
