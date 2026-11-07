@@ -37,6 +37,9 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
+    - [QualityAgentSession](#metaxisdata-store-QualityAgentSession)
+    - [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState)
     - [QualityChangeRejectionReasons](#metaxisdata-store-QualityChangeRejectionReasons)
     - [QualityChangeRequestItem](#metaxisdata-store-QualityChangeRequestItem)
     - [QualityChangeRequestItemResult](#metaxisdata-store-QualityChangeRequestItemResult)
@@ -73,6 +76,8 @@
     - [QualitySuggestionQueueSummary](#metaxisdata-store-QualitySuggestionQueueSummary)
     - [QualityTargetPath](#metaxisdata-store-QualityTargetPath)
     - [QualityThresholds](#metaxisdata-store-QualityThresholds)
+    - [QualityToolCall](#metaxisdata-store-QualityToolCall)
+    - [QualityToolCallList](#metaxisdata-store-QualityToolCallList)
     - [RangeConfig](#metaxisdata-store-RangeConfig)
     - [ReferentialIntegrityConfig](#metaxisdata-store-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-store-RegexConfig)
@@ -91,6 +96,9 @@
     - [UniqueCombinationConfig](#metaxisdata-store-UniqueCombinationConfig)
     - [UniqueConfig](#metaxisdata-store-UniqueConfig)
   
+    - [QualityAgentMessageOrigin](#metaxisdata-store-QualityAgentMessageOrigin)
+    - [QualityAgentMessageRole](#metaxisdata-store-QualityAgentMessageRole)
+    - [QualityAgentSessionState](#metaxisdata-store-QualityAgentSessionState)
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
     - [QualityChangeRejectionReason](#metaxisdata-store-QualityChangeRejectionReason)
     - [QualityChangeRequestItemKind](#metaxisdata-store-QualityChangeRequestItemKind)
@@ -836,6 +844,99 @@ value the column holds.
 
 
 
+<a name="metaxisdata-store-QualityAgentMessage"></a>
+
+### QualityAgentMessage
+QualityAgentMessage is one append-only transcript entry of a session.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| session_id | [int64](#int64) |  |  |
+| workspace_id | [string](#string) |  |  |
+| seq | [int64](#int64) |  | Monotonic within one session; the read API pages and polls with after_seq. |
+| wake | [int32](#int32) |  |  |
+| turn | [int32](#int32) |  |  |
+| role | [QualityAgentMessageRole](#metaxisdata-store-QualityAgentMessageRole) |  |  |
+| origin | [QualityAgentMessageOrigin](#metaxisdata-store-QualityAgentMessageOrigin) |  |  |
+| content | [string](#string) |  |  |
+| tool_calls | [QualityToolCallList](#metaxisdata-store-QualityToolCallList) |  |  |
+| tool_call_id | [string](#string) |  |  |
+| tool_name | [string](#string) |  |  |
+| tokens | [int32](#int32) |  |  |
+| prompt_tokens | [int32](#int32) |  |  |
+| completion_tokens | [int32](#int32) |  |  |
+| error | [string](#string) |  |  |
+| truncated | [bool](#bool) |  |  |
+| idempotency_key | [string](#string) |  | The store returns the existing row for a retried key. |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentSession"></a>
+
+### QualityAgentSession
+QualityAgentSession is one target&#39;s durable agent conversation and wake schedule.
+&#34;Running&#34; is expressed by lease_until, never by state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| resource_id | [string](#string) |  |  |
+| workspace_id | [string](#string) |  |  |
+| target_guid | [string](#string) |  |  |
+| target_type | [int32](#int32) |  |  |
+| database_ref | [string](#string) |  |  |
+| agent_id | [int32](#int32) |  |  |
+| objective | [string](#string) |  |  |
+| state | [QualityAgentSessionState](#metaxisdata-store-QualityAgentSessionState) |  |  |
+| blocked_code | [string](#string) |  |  |
+| blocked_reason | [string](#string) |  |  |
+| revision | [int32](#int32) |  | Incremented by every mutation; human mutations compare-and-set this value. |
+| wake_count | [int32](#int32) |  |  |
+| tokens_used | [int64](#int64) |  | Lifetime token spend, so an archived session still counts in metrics. |
+| context_tokens | [int32](#int32) |  | The largest real prompt_tokens of the last wake; the compaction trigger. |
+| summary | [string](#string) |  | Rolling checkpoint summary and the message seq it replaces in model context. |
+| summary_through_seq | [int64](#int64) |  |  |
+| processed_seq | [int64](#int64) |  | The largest message seq the last wake consumed; a newer seq is a pending event. |
+| engine_state | [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState) |  |  |
+| next_wake_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| lease_until | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| restart_count | [int32](#int32) |  |  |
+| created_by | [int32](#int32) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| archived_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionEngineState"></a>
+
+### QualityAgentSessionEngineState
+QualityAgentSessionEngineState is the JSONB payload of
+quality_agent_session.engine_state: deterministic-wake bookkeeping only.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| done | [string](#string) | repeated |  |
+| blocked_rounds | [int32](#int32) |  |  |
+| blocked_code | [string](#string) |  |  |
+| phase | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityChangeRejectionReasons"></a>
 
 ### QualityChangeRejectionReasons
@@ -1568,6 +1669,40 @@ the lower and upper bounds are.
 
 
 
+<a name="metaxisdata-store-QualityToolCall"></a>
+
+### QualityToolCall
+QualityToolCall is one tool invocation in an assistant message. It mirrors the
+provider&#39;s assistant tool-call shape so a stored message maps 1:1 to the model
+conversation.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [string](#string) |  |  |
+| name | [string](#string) |  |  |
+| arguments | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-store-QualityToolCallList"></a>
+
+### QualityToolCallList
+QualityToolCallList is the JSONB payload of quality_agent_message.tool_calls.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tool_calls | [QualityToolCall](#metaxisdata-store-QualityToolCall) | repeated |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-RangeConfig"></a>
 
 ### RangeConfig
@@ -1906,6 +2041,55 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
  
+
+
+<a name="metaxisdata-store-QualityAgentMessageOrigin"></a>
+
+### QualityAgentMessageOrigin
+QualityAgentMessageOrigin says what produced a user or engine message.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_WAKE | 1 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_EVENT | 2 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_ASK | 3 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER | 4 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_MODEL | 5 |  |
+| QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION | 6 |  |
+
+
+
+<a name="metaxisdata-store-QualityAgentMessageRole"></a>
+
+### QualityAgentMessageRole
+QualityAgentMessageRole is one entry in a session&#39;s conversation.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_SYSTEM | 1 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_USER | 2 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT | 3 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_TOOL | 4 |  |
+| QUALITY_AGENT_MESSAGE_ROLE_ENGINE | 5 | An engine note is runner/UI bookkeeping and is never sent back to the model. |
+| QUALITY_AGENT_MESSAGE_ROLE_COMPACTION | 6 | A compaction checkpoint replaces the covered messages in model context. |
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionState"></a>
+
+### QualityAgentSessionState
+QualityAgentSessionState is the durable lifecycle of one target&#39;s agent session.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_STATE_ENABLED | 1 |  |
+| QUALITY_AGENT_SESSION_STATE_PAUSED | 2 |  |
+| QUALITY_AGENT_SESSION_STATE_BLOCKED | 3 | Blocked means &#34;waiting for a person, a window or a dependency&#34;, not failed. |
+| QUALITY_AGENT_SESSION_STATE_ARCHIVED | 4 |  |
+
 
 
 <a name="metaxisdata-store-QualityAggregateFunction"></a>

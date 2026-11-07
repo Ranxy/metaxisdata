@@ -1291,6 +1291,124 @@ message QualityChangeRejectionReasons {
   repeated QualityChangeRejectionReason reasons = 1;
 }
 
+// QualityAgentSessionState is the durable lifecycle of one target's agent session.
+enum QualityAgentSessionState {
+  QUALITY_AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_STATE_ENABLED = 1;
+  QUALITY_AGENT_SESSION_STATE_PAUSED = 2;
+  // Blocked means "waiting for a person, a window or a dependency", not failed.
+  QUALITY_AGENT_SESSION_STATE_BLOCKED = 3;
+  QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
+}
+
+// QualityAgentMessageRole is one entry in a session's conversation.
+enum QualityAgentMessageRole {
+  QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ROLE_SYSTEM = 1;
+  QUALITY_AGENT_MESSAGE_ROLE_USER = 2;
+  QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT = 3;
+  QUALITY_AGENT_MESSAGE_ROLE_TOOL = 4;
+  // An engine note is runner/UI bookkeeping and is never sent back to the model.
+  QUALITY_AGENT_MESSAGE_ROLE_ENGINE = 5;
+  // A compaction checkpoint replaces the covered messages in model context.
+  QUALITY_AGENT_MESSAGE_ROLE_COMPACTION = 6;
+}
+
+// QualityAgentMessageOrigin says what produced a user or engine message.
+enum QualityAgentMessageOrigin {
+  QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED = 0;
+  QUALITY_AGENT_MESSAGE_ORIGIN_WAKE = 1;
+  QUALITY_AGENT_MESSAGE_ORIGIN_EVENT = 2;
+  QUALITY_AGENT_MESSAGE_ORIGIN_ASK = 3;
+  QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER = 4;
+  QUALITY_AGENT_MESSAGE_ORIGIN_MODEL = 5;
+  QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION = 6;
+}
+
+// QualityAgentSessionEngineState is the JSONB payload of
+// quality_agent_session.engine_state: deterministic-wake bookkeeping only.
+message QualityAgentSessionEngineState {
+  repeated string done = 1;
+  int32 blocked_rounds = 2;
+  string blocked_code = 3;
+  string phase = 4;
+}
+
+// QualityAgentSession is one target's durable agent conversation and wake schedule.
+// "Running" is expressed by lease_until, never by state.
+message QualityAgentSession {
+  int64 id = 1;
+  string resource_id = 2;
+  string workspace_id = 3;
+  string target_guid = 4;
+  int32 target_type = 5;
+  string database_ref = 6;
+  int32 agent_id = 7;
+  string objective = 8;
+  QualityAgentSessionState state = 9;
+  string blocked_code = 10;
+  string blocked_reason = 11;
+  // Incremented by every mutation; human mutations compare-and-set this value.
+  int32 revision = 12;
+  int32 wake_count = 13;
+  // Lifetime token spend, so an archived session still counts in metrics.
+  int64 tokens_used = 14;
+  // The largest real prompt_tokens of the last wake; the compaction trigger.
+  int32 context_tokens = 15;
+  // Rolling checkpoint summary and the message seq it replaces in model context.
+  string summary = 16;
+  int64 summary_through_seq = 17;
+  // The largest message seq the last wake consumed; a newer seq is a pending event.
+  int64 processed_seq = 18;
+  QualityAgentSessionEngineState engine_state = 19;
+  google.protobuf.Timestamp next_wake_at = 20;
+  google.protobuf.Timestamp lease_until = 21;
+  int32 restart_count = 22;
+  int32 created_by = 23;
+  google.protobuf.Timestamp created_at = 24;
+  google.protobuf.Timestamp updated_at = 25;
+  google.protobuf.Timestamp archived_at = 26;
+}
+
+// QualityToolCall is one tool invocation in an assistant message. It mirrors the
+// provider's assistant tool-call shape so a stored message maps 1:1 to the model
+// conversation.
+message QualityToolCall {
+  string id = 1;
+  string name = 2;
+  string arguments = 3;
+}
+
+// QualityToolCallList is the JSONB payload of quality_agent_message.tool_calls.
+message QualityToolCallList {
+  repeated QualityToolCall tool_calls = 1;
+}
+
+// QualityAgentMessage is one append-only transcript entry of a session.
+message QualityAgentMessage {
+  int64 id = 1;
+  int64 session_id = 2;
+  string workspace_id = 3;
+  // Monotonic within one session; the read API pages and polls with after_seq.
+  int64 seq = 4;
+  int32 wake = 5;
+  int32 turn = 6;
+  QualityAgentMessageRole role = 7;
+  QualityAgentMessageOrigin origin = 8;
+  string content = 9;
+  QualityToolCallList tool_calls = 10;
+  string tool_call_id = 11;
+  string tool_name = 12;
+  int32 tokens = 13;
+  int32 prompt_tokens = 14;
+  int32 completion_tokens = 15;
+  string error = 16;
+  bool truncated = 17;
+  // The store returns the existing row for a retried key.
+  string idempotency_key = 18;
+  google.protobuf.Timestamp created_at = 19;
+}
+
 // QualityMemoryKind is what a memory records. Asset facts are observed and may be
 // written automatically; a decision or an event is a judgment and needs a person's
 // confirmation before it counts.
