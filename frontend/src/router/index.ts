@@ -281,6 +281,32 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        // One long-lived agent conversation per target. The list is the
+        // workspace's view of every session; a row opens the transcript.
+        path: "agent",
+        name: "DataQualityAgent",
+        component: () =>
+          import("@/pages/data-quality/DataQualityAgentSessionsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
+      {
+        // The session's resource name is carried whole, one path segment per
+        // name segment: a Get needs the real workspace, not the `-` shorthand.
+        path: "agent/:sessionId+",
+        name: "DataQualityAgentSession",
+        component: () =>
+          import("@/pages/data-quality/DataQualityAgentSessionPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
+      {
         // Every check across targets, for audit and search. It is a directory,
         // not an authoring surface: a check is created and edited inside the
         // target's contract workspace, where its column and siblings are visible.

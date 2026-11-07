@@ -1035,6 +1035,44 @@ Decided suggestions stay visible under *All statuses* with who decided them and
 their note. Nothing the model proposes is enabled or executed without a person
 creating the check, and the model never sees raw sample rows.
 
+## Agent sessions
+
+With the built-in agent runner enabled (Settings → Data Quality), each table,
+view, materialized view or external table can get one long-lived **agent
+session**: a continuous conversation the agent keeps for that target. A session
+is not a one-off run — every scheduled look, every failed check and every
+question you ask becomes a message in the same thread, and the agent continues
+from it.
+
+- **Starting one**: open the table's data quality workspace and use **Start agent
+  session** in the Agent session card, or create it from the agent session list.
+  The target's database must be in the runner's database scope and an enabled
+  quality agent must exist.
+- **What it does**: it wakes on a schedule (24 hours by default), on a failed or
+  errored check, and when you send it a message. It can read the target's plan,
+  recent executions and confirmed memories, record investigations and asset
+  facts, propose decisions (a person confirms them), block itself for a person,
+  or ask for an earlier wake. It cannot publish contracts, decide change requests,
+  edit checks or change settings.
+- **States**: *Enabled* (waiting or running), *Paused* (no new wakes), *Blocked*
+  (needs a person or a budget window; the reason is shown) and *Archived*
+  (tombstone; the conversation stays readable). "Running" is a lease, so the card
+  shows it live.
+- **Reading the conversation**: the session page groups messages by wake and
+  shows what the model received and produced, with a collapsible card for every
+  tool call and its result. A compaction card marks where older history was
+  summarized to free context. The page updates every couple of seconds while the
+  agent is running.
+- **Budget and cadence**: the runner card sets the hourly token budget, wakes per
+  hour, concurrent sessions, the compaction threshold (default 262,144 tokens),
+  the idle wake interval (default 86,400 seconds) and whether failed checks wake
+  the agent. A workspace that hits a budget shows a Blocked session with
+  `token-budget` or `wake-budget`; it recovers at the hour boundary.
+- **Events**: with *Wake the agent when a check fails* on (the default), a failed
+  or errored execution is appended to its target's session and wakes it
+  immediately. The same execution is never appended twice, and one session accepts
+  at most 20 events per hour.
+
 ## Settings
 
 Settings → Data Quality controls: the model-analysis switch and provider,
@@ -1065,6 +1103,12 @@ charged. If the provider or model caps output lower, the request is rejected and
 the failed target reports a provider-status diagnostic. The DQ limits and the
 usage card are the place to raise the daily/concurrency budget when the defaults
 are too low for your workload.
+Settings → Data Quality also holds the **agent runner** card: the runner switch,
+the database scope, the hourly token and wake budgets, concurrent sessions, the
+compaction threshold, the idle wake interval and the failed-check event switch.
+Its status line shows what is running and the runner's last tick; **Agent
+sessions** opens the session list.
+
 
 ## Retention
 
@@ -1072,8 +1116,11 @@ Executions are kept 90 days, resolved issues 90 days, column profiles and the
 model result cache 7 days, decided or superseded suggestions 90 days, finished AI drafting jobs
 90 days, and captured raw LLM request/response debug entries 7 days; the
 maintenance runner prunes them. Checks, open issues and accepted labels are not
-pruned. The weekly-digest period table gains at most one row per week and is not
-pruned.
+pruned. Agent session transcripts (`quality_agent_session_message`) and their
+compaction checkpoints are **not pruned** in this release: context compaction
+only changes what the model reads, not the stored conversation, so a workspace
+with many monitored targets accumulates rows. The weekly-digest period table
+gains at most one row per week and is not pruned.
 
 ## Troubleshooting
 
@@ -1131,6 +1178,13 @@ pruned.
 
 The API surface, resource names, data model and invariants are documented for
 maintainers in [.agents/docs/data-quality.md](../.agents/docs/data-quality.md).
+
+| An agent session never wakes | The runner switch is off, the target's database is not in the runner scope, agent autonomy is off, no enabled quality agent exists, or the session is paused/blocked. The session card shows the blocked code and reason. |
+| An agent session is blocked with `token-budget` or `wake-budget` | The workspace spent its hourly budget; it recovers at the next hour boundary. Raise the limit in the runner card if this is routine. |
+| An agent session is blocked with `needs-human` | Its database left the runner scope, its agent was disabled, or the model reported the same blocker for three wakes. Check the reason on the card, fix the cause, then resume. |
+| A question stays blocked with "needs the model" | No LLM provider is configured, so only the deterministic survey can run. Configure one under Settings → LLM providers and resume the session. |
+| The agent does not react to a failed check | *Wake the agent when a check fails* is off, the target has no enabled session, or the session already accepted 20 events this hour. |
+| The conversation does not show older messages | History older than the last compaction is summarized in the compaction card; load earlier pages from the session page. The transcript is kept, but model context is compacted. |
 
 ## See also
 

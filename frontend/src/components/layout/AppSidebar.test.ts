@@ -222,6 +222,7 @@ describe("AppSidebar", () => {
     expect(wrapper.text()).toContain("Data Quality");
     expect(wrapper.text()).toContain("Overview");
     expect(wrapper.text()).toContain("Quality Targets");
+    expect(wrapper.text()).toContain("Agent sessions");
     expect(wrapper.text()).toContain("Executions");
     expect(wrapper.text()).toContain("Issues");
   });

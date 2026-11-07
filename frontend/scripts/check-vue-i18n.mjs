@@ -54,6 +54,13 @@ export const DYNAMIC_PREFIXES = [
   // auditLogs.eventNames.* — the audit log page humanizes an RPC method name
   // through a computed key, which the checker cannot follow.
   "auditLogs.eventNames.",
+  // agentSessionStateKey/agentMessageRoleKey/agentMessageOriginKey in
+  // src/utils/agentSession.ts return the label key for a session state, a
+  // transcript role and a user/engine message origin; the checker cannot follow
+  // a key a helper returns.
+  "dataQuality.agent.state.",
+  "dataQuality.agent.role.",
+  "dataQuality.agent.origin.",
   // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
   // describeThreshold returns the comparison key; the checker cannot follow a
   // key a helper returns. The vocabulary test there asserts both catalogs.
