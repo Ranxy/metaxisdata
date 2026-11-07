@@ -4787,6 +4787,11 @@ func TestQualityAgentSessionRealServerIntegration(t *testing.T) {
 		"the session names the agent's principal: %q", session.GetAgent())
 	require.Equal(t, databaseRef, session.GetDatabase())
 	require.NotNil(t, session.GetNextWakeTime())
+	// The list and transcript pages read the target path; a session stores only the
+	// target's GUID, so the API rebuilds the display path from it.
+	require.Equal(t, segments[0], session.GetTarget().GetPath().GetInstance())
+	require.Equal(t, segments[1], session.GetTarget().GetPath().GetDatabase())
+	require.Equal(t, "users", session.GetTarget().GetPath().GetObject())
 	t.Cleanup(func() {
 		_, _ = fixture.dataQuality.ArchiveQualityAgentSession(fixture.ctx,
 			withToken(token, &v1pb.ArchiveQualityAgentSessionRequest{Name: session.GetName(), ExpectedRevision: session.GetRevision()}))
