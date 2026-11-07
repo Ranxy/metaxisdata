@@ -831,6 +831,88 @@ service DataQualityService {
     option (google.api.method_signature) = "parent";
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
   }
+
+  // ---- Quality agent sessions ----
+
+  // Create one target's long-lived agent session. The target's database must be in
+  // the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+  rpc CreateQualityAgentSession(CreateQualityAgentSessionRequest) returns (QualityAgentSession) {
+    option (google.api.http) = {
+      post: "/v1/{parent=workspaces/*}/qualityAgentSessions"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // List the workspace's sessions by newest activity first.
+  rpc ListQualityAgentSessions(ListQualityAgentSessionsRequest) returns (ListQualityAgentSessionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentSessions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Read one session.
+  rpc GetQualityAgentSession(GetQualityAgentSessionRequest) returns (QualityAgentSession) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentSessions/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Pause a session: no new wake starts, the conversation stays.
+  rpc PauseQualityAgentSession(PauseQualityAgentSessionRequest) returns (QualityAgentSession) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:pause"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Resume a paused or blocked session; it wakes immediately.
+  rpc ResumeQualityAgentSession(ResumeQualityAgentSessionRequest) returns (QualityAgentSession) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:resume"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Archive a session (a tombstone). The conversation stays readable.
+  rpc ArchiveQualityAgentSession(ArchiveQualityAgentSessionRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityAgentSessions/*}"};
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Append a person's message to the session and wake it immediately.
+  rpc WakeQualityAgentSession(WakeQualityAgentSessionRequest) returns (QualityAgentSession) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:wake"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+  }
+
+  // Read one session's transcript. after_seq polls for new messages.
+  rpc ListQualityAgentSessionMessages(ListQualityAgentSessionMessagesRequest) returns (ListQualityAgentSessionMessagesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgentSessions/*}/messages"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Read the runner's live state: what is running, what is due and how much of the
+  // budgets is spent. runner_last_tick_time is process-local and resets on restart.
+  rpc GetQualityAgentRunnerStatus(GetQualityAgentRunnerStatusRequest) returns (QualityAgentRunnerStatus) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentRunnerStatus"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
+
+  // Read the runner's evaluation: session states, token spend, the acceptance of the
+  // change requests it proposed, and investigation verdicts. Read-only.
+  rpc GetQualityAgentMetrics(GetQualityAgentMetricsRequest) returns (QualityAgentMetrics) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentMetrics"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+  }
 }
 
 // QualityRuleType is the observation a rule makes. The value is immutable for a
@@ -5065,6 +5147,79 @@ message QualityAgentMetrics {
 }
 
 message GetQualityAgentMetricsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateQualityAgentSessionRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_guid = 2 [(google.api.field_behavior) = REQUIRED];
+  MetaType meta_type = 3;
+  // Empty means "keep this target trustworthy".
+  string objective = 4;
+  // Format: users/{user}. Empty uses the first enabled quality agent.
+  string agent = 5;
+}
+
+message ListQualityAgentSessionsRequest {
+  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  // UNSPECIFIED lists every non-archived session.
+  QualityAgentSessionState state = 2;
+  string database = 3;
+  string target_guid = 4;
+  int32 page_size = 5;
+  string page_token = 6;
+}
+
+message ListQualityAgentSessionsResponse {
+  repeated QualityAgentSession quality_agent_sessions = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityAgentSessionRequest {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PauseQualityAgentSessionRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  // The revision the caller saw; a stale value is rejected.
+  int32 expected_revision = 2;
+}
+
+message ResumeQualityAgentSessionRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 expected_revision = 2;
+}
+
+message ArchiveQualityAgentSessionRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 expected_revision = 2;
+}
+
+message WakeQualityAgentSessionRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  // The person's question or instruction; it becomes a user message in the session.
+  string content = 2;
+}
+
+message ListQualityAgentSessionMessagesRequest {
+  // Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+  string parent = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 page_size = 2;
+  string page_token = 3;
+  // Return messages with seq greater than this; the polling watermark.
+  int64 after_seq = 4;
+}
+
+message ListQualityAgentSessionMessagesResponse {
+  repeated QualityAgentSessionMessage quality_agent_session_messages = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityAgentRunnerStatusRequest {
   // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
 }

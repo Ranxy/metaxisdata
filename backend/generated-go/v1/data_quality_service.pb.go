@@ -22645,6 +22645,645 @@ func (x *GetQualityAgentMetricsRequest) GetParent() string {
 	return ""
 }
 
+type CreateQualityAgentSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+	Parent     string   `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	TargetGuid string   `protobuf:"bytes,2,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	MetaType   MetaType `protobuf:"varint,3,opt,name=meta_type,json=metaType,proto3,enum=metaxisdata.v1.MetaType" json:"meta_type,omitempty"`
+	// Empty means "keep this target trustworthy".
+	Objective string `protobuf:"bytes,4,opt,name=objective,proto3" json:"objective,omitempty"`
+	// Format: users/{user}. Empty uses the first enabled quality agent.
+	Agent         string `protobuf:"bytes,5,opt,name=agent,proto3" json:"agent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateQualityAgentSessionRequest) Reset() {
+	*x = CreateQualityAgentSessionRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[229]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateQualityAgentSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateQualityAgentSessionRequest) ProtoMessage() {}
+
+func (x *CreateQualityAgentSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[229]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateQualityAgentSessionRequest.ProtoReflect.Descriptor instead.
+func (*CreateQualityAgentSessionRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{229}
+}
+
+func (x *CreateQualityAgentSessionRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateQualityAgentSessionRequest) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+func (x *CreateQualityAgentSessionRequest) GetMetaType() MetaType {
+	if x != nil {
+		return x.MetaType
+	}
+	return MetaType_UNSPECIFIED
+}
+
+func (x *CreateQualityAgentSessionRequest) GetObjective() string {
+	if x != nil {
+		return x.Objective
+	}
+	return ""
+}
+
+func (x *CreateQualityAgentSessionRequest) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+type ListQualityAgentSessionsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// UNSPECIFIED lists every non-archived session.
+	State         QualityAgentSessionState `protobuf:"varint,2,opt,name=state,proto3,enum=metaxisdata.v1.QualityAgentSessionState" json:"state,omitempty"`
+	Database      string                   `protobuf:"bytes,3,opt,name=database,proto3" json:"database,omitempty"`
+	TargetGuid    string                   `protobuf:"bytes,4,opt,name=target_guid,json=targetGuid,proto3" json:"target_guid,omitempty"`
+	PageSize      int32                    `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                   `protobuf:"bytes,6,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListQualityAgentSessionsRequest) Reset() {
+	*x = ListQualityAgentSessionsRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[230]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListQualityAgentSessionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListQualityAgentSessionsRequest) ProtoMessage() {}
+
+func (x *ListQualityAgentSessionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[230]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListQualityAgentSessionsRequest.ProtoReflect.Descriptor instead.
+func (*ListQualityAgentSessionsRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{230}
+}
+
+func (x *ListQualityAgentSessionsRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *ListQualityAgentSessionsRequest) GetState() QualityAgentSessionState {
+	if x != nil {
+		return x.State
+	}
+	return QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
+}
+
+func (x *ListQualityAgentSessionsRequest) GetDatabase() string {
+	if x != nil {
+		return x.Database
+	}
+	return ""
+}
+
+func (x *ListQualityAgentSessionsRequest) GetTargetGuid() string {
+	if x != nil {
+		return x.TargetGuid
+	}
+	return ""
+}
+
+func (x *ListQualityAgentSessionsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListQualityAgentSessionsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListQualityAgentSessionsResponse struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	QualityAgentSessions []*QualityAgentSession `protobuf:"bytes,1,rep,name=quality_agent_sessions,json=qualityAgentSessions,proto3" json:"quality_agent_sessions,omitempty"`
+	NextPageToken        string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ListQualityAgentSessionsResponse) Reset() {
+	*x = ListQualityAgentSessionsResponse{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[231]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListQualityAgentSessionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListQualityAgentSessionsResponse) ProtoMessage() {}
+
+func (x *ListQualityAgentSessionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[231]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListQualityAgentSessionsResponse.ProtoReflect.Descriptor instead.
+func (*ListQualityAgentSessionsResponse) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{231}
+}
+
+func (x *ListQualityAgentSessionsResponse) GetQualityAgentSessions() []*QualityAgentSession {
+	if x != nil {
+		return x.QualityAgentSessions
+	}
+	return nil
+}
+
+func (x *ListQualityAgentSessionsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type GetQualityAgentSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+	Name          string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetQualityAgentSessionRequest) Reset() {
+	*x = GetQualityAgentSessionRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[232]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetQualityAgentSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetQualityAgentSessionRequest) ProtoMessage() {}
+
+func (x *GetQualityAgentSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[232]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetQualityAgentSessionRequest.ProtoReflect.Descriptor instead.
+func (*GetQualityAgentSessionRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{232}
+}
+
+func (x *GetQualityAgentSessionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type PauseQualityAgentSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The revision the caller saw; a stale value is rejected.
+	ExpectedRevision int32 `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *PauseQualityAgentSessionRequest) Reset() {
+	*x = PauseQualityAgentSessionRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[233]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PauseQualityAgentSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PauseQualityAgentSessionRequest) ProtoMessage() {}
+
+func (x *PauseQualityAgentSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[233]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PauseQualityAgentSessionRequest.ProtoReflect.Descriptor instead.
+func (*PauseQualityAgentSessionRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{233}
+}
+
+func (x *PauseQualityAgentSessionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PauseQualityAgentSessionRequest) GetExpectedRevision() int32 {
+	if x != nil {
+		return x.ExpectedRevision
+	}
+	return 0
+}
+
+type ResumeQualityAgentSessionRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ExpectedRevision int32                  `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ResumeQualityAgentSessionRequest) Reset() {
+	*x = ResumeQualityAgentSessionRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[234]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResumeQualityAgentSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResumeQualityAgentSessionRequest) ProtoMessage() {}
+
+func (x *ResumeQualityAgentSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[234]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResumeQualityAgentSessionRequest.ProtoReflect.Descriptor instead.
+func (*ResumeQualityAgentSessionRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{234}
+}
+
+func (x *ResumeQualityAgentSessionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ResumeQualityAgentSessionRequest) GetExpectedRevision() int32 {
+	if x != nil {
+		return x.ExpectedRevision
+	}
+	return 0
+}
+
+type ArchiveQualityAgentSessionRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ExpectedRevision int32                  `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ArchiveQualityAgentSessionRequest) Reset() {
+	*x = ArchiveQualityAgentSessionRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[235]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArchiveQualityAgentSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArchiveQualityAgentSessionRequest) ProtoMessage() {}
+
+func (x *ArchiveQualityAgentSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[235]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArchiveQualityAgentSessionRequest.ProtoReflect.Descriptor instead.
+func (*ArchiveQualityAgentSessionRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{235}
+}
+
+func (x *ArchiveQualityAgentSessionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ArchiveQualityAgentSessionRequest) GetExpectedRevision() int32 {
+	if x != nil {
+		return x.ExpectedRevision
+	}
+	return 0
+}
+
+type WakeQualityAgentSessionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The person's question or instruction; it becomes a user message in the session.
+	Content       string `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WakeQualityAgentSessionRequest) Reset() {
+	*x = WakeQualityAgentSessionRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[236]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WakeQualityAgentSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WakeQualityAgentSessionRequest) ProtoMessage() {}
+
+func (x *WakeQualityAgentSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[236]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WakeQualityAgentSessionRequest.ProtoReflect.Descriptor instead.
+func (*WakeQualityAgentSessionRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{236}
+}
+
+func (x *WakeQualityAgentSessionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *WakeQualityAgentSessionRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+type ListQualityAgentSessionMessagesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}/qualityAgentSessions/{quality_agent_session}
+	Parent    string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	PageSize  int32  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Return messages with seq greater than this; the polling watermark.
+	AfterSeq      int64 `protobuf:"varint,4,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) Reset() {
+	*x = ListQualityAgentSessionMessagesRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[237]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListQualityAgentSessionMessagesRequest) ProtoMessage() {}
+
+func (x *ListQualityAgentSessionMessagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[237]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListQualityAgentSessionMessagesRequest.ProtoReflect.Descriptor instead.
+func (*ListQualityAgentSessionMessagesRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{237}
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+func (x *ListQualityAgentSessionMessagesRequest) GetAfterSeq() int64 {
+	if x != nil {
+		return x.AfterSeq
+	}
+	return 0
+}
+
+type ListQualityAgentSessionMessagesResponse struct {
+	state                       protoimpl.MessageState        `protogen:"open.v1"`
+	QualityAgentSessionMessages []*QualityAgentSessionMessage `protobuf:"bytes,1,rep,name=quality_agent_session_messages,json=qualityAgentSessionMessages,proto3" json:"quality_agent_session_messages,omitempty"`
+	NextPageToken               string                        `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *ListQualityAgentSessionMessagesResponse) Reset() {
+	*x = ListQualityAgentSessionMessagesResponse{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[238]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListQualityAgentSessionMessagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListQualityAgentSessionMessagesResponse) ProtoMessage() {}
+
+func (x *ListQualityAgentSessionMessagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[238]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListQualityAgentSessionMessagesResponse.ProtoReflect.Descriptor instead.
+func (*ListQualityAgentSessionMessagesResponse) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{238}
+}
+
+func (x *ListQualityAgentSessionMessagesResponse) GetQualityAgentSessionMessages() []*QualityAgentSessionMessage {
+	if x != nil {
+		return x.QualityAgentSessionMessages
+	}
+	return nil
+}
+
+func (x *ListQualityAgentSessionMessagesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type GetQualityAgentRunnerStatusRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+	Parent        string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetQualityAgentRunnerStatusRequest) Reset() {
+	*x = GetQualityAgentRunnerStatusRequest{}
+	mi := &file_v1_data_quality_service_proto_msgTypes[239]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetQualityAgentRunnerStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetQualityAgentRunnerStatusRequest) ProtoMessage() {}
+
+func (x *GetQualityAgentRunnerStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_data_quality_service_proto_msgTypes[239]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetQualityAgentRunnerStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetQualityAgentRunnerStatusRequest) Descriptor() ([]byte, []int) {
+	return file_v1_data_quality_service_proto_rawDescGZIP(), []int{239}
+}
+
+func (x *GetQualityAgentRunnerStatusRequest) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
 var File_v1_data_quality_service_proto protoreflect.FileDescriptor
 
 const file_v1_data_quality_service_proto_rawDesc = "" +
@@ -24512,6 +25151,50 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\vtop_targets\x18\f \x03(\v2&.metaxisdata.v1.QualityAgentTargetCostR\n" +
 	"topTargets\"<\n" +
 	"\x1dGetQualityAgentMetricsRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\"\xd0\x01\n" +
+	" CreateQualityAgentSessionRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12$\n" +
+	"\vtarget_guid\x18\x02 \x01(\tB\x03\xe0A\x02R\n" +
+	"targetGuid\x125\n" +
+	"\tmeta_type\x18\x03 \x01(\x0e2\x18.metaxisdata.v1.MetaTypeR\bmetaType\x12\x1c\n" +
+	"\tobjective\x18\x04 \x01(\tR\tobjective\x12\x14\n" +
+	"\x05agent\x18\x05 \x01(\tR\x05agent\"\xf7\x01\n" +
+	"\x1fListQualityAgentSessionsRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12>\n" +
+	"\x05state\x18\x02 \x01(\x0e2(.metaxisdata.v1.QualityAgentSessionStateR\x05state\x12\x1a\n" +
+	"\bdatabase\x18\x03 \x01(\tR\bdatabase\x12\x1f\n" +
+	"\vtarget_guid\x18\x04 \x01(\tR\n" +
+	"targetGuid\x12\x1b\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\"\xa5\x01\n" +
+	" ListQualityAgentSessionsResponse\x12Y\n" +
+	"\x16quality_agent_sessions\x18\x01 \x03(\v2#.metaxisdata.v1.QualityAgentSessionR\x14qualityAgentSessions\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"8\n" +
+	"\x1dGetQualityAgentSessionRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\"g\n" +
+	"\x1fPauseQualityAgentSessionRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12+\n" +
+	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"h\n" +
+	" ResumeQualityAgentSessionRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12+\n" +
+	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"i\n" +
+	"!ArchiveQualityAgentSessionRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12+\n" +
+	"\x11expected_revision\x18\x02 \x01(\x05R\x10expectedRevision\"S\n" +
+	"\x1eWakeQualityAgentSessionRequest\x12\x17\n" +
+	"\x04name\x18\x01 \x01(\tB\x03\xe0A\x02R\x04name\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\"\x9e\x01\n" +
+	"&ListQualityAgentSessionMessagesRequest\x12\x1b\n" +
+	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x1b\n" +
+	"\tafter_seq\x18\x04 \x01(\x03R\bafterSeq\"\xc2\x01\n" +
+	"'ListQualityAgentSessionMessagesResponse\x12o\n" +
+	"\x1equality_agent_session_messages\x18\x01 \x03(\v2*.metaxisdata.v1.QualityAgentSessionMessageR\x1bqualityAgentSessionMessages\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"A\n" +
+	"\"GetQualityAgentRunnerStatusRequest\x12\x1b\n" +
 	"\x06parent\x18\x01 \x01(\tB\x03\xe0A\x02R\x06parent*\xfe\x05\n" +
 	"\x0fQualityRuleType\x12!\n" +
 	"\x1dQUALITY_RULE_TYPE_UNSPECIFIED\x10\x00\x12\x1f\n" +
@@ -24855,7 +25538,7 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	" QUALITY_AGENT_MESSAGE_ORIGIN_ASK\x10\x03\x12'\n" +
 	"#QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER\x10\x04\x12&\n" +
 	"\"QUALITY_AGENT_MESSAGE_ORIGIN_MODEL\x10\x05\x12+\n" +
-	"'QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION\x10\x062\xb5\x87\x01\n" +
+	"'QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION\x10\x062Ԙ\x01\n" +
 	"\x12DataQualityService\x12\xc4\x01\n" +
 	"\x10ListQualityRules\x12'.metaxisdata.v1.ListQualityRulesRequest\x1a(.metaxisdata.v1.ListQualityRulesResponse\"]\xdaA\x06parent\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02(\x12&/v1/{parent=workspaces/*}/qualityRules\x12\xb0\x01\n" +
 	"\x0eGetQualityRule\x12%.metaxisdata.v1.GetQualityRuleRequest\x1a\x1b.metaxisdata.v1.QualityRule\"Z\xdaA\x04name\x8a\xea0!metaxisdata.dataQuality.rules.get\x82\xd3\xe4\x93\x02(\x12&/v1/{name=workspaces/*/qualityRules/*}\x12\xca\x01\n" +
@@ -24937,7 +25620,17 @@ const file_v1_data_quality_service_proto_rawDesc = "" +
 	"\x1aDecideQualityChangeRequest\x121.metaxisdata.v1.DecideQualityChangeRequestRequest\x1a$.metaxisdata.v1.QualityChangeRequest\"v\x8a\xea0-metaxisdata.dataQuality.changeRequests.decide\x98\xea0\x01\x82\xd3\xe4\x93\x02;:\x01*\"6/v1/{name=workspaces/*/qualityChangeRequests/*}:decide\x12\xeb\x01\n" +
 	"\x1cListQualityContractRevisions\x123.metaxisdata.v1.ListQualityContractRevisionsRequest\x1a4.metaxisdata.v1.ListQualityContractRevisionsResponse\"`\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x024\x122/v1/{parent=workspaces/*}/qualityContractRevisions\x12\xe9\x01\n" +
 	"\x1aGetQualityContractRevision\x121.metaxisdata.v1.GetQualityContractRevisionRequest\x1a2.metaxisdata.v1.GetQualityContractRevisionResponse\"d\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x028\x126/v1/{parent=workspaces/*}/qualityContractRevisions:get\x12\xbf\x01\n" +
-	"\x12GetQualityLLMUsage\x12).metaxisdata.v1.GetQualityLLMUsageRequest\x1a\x1f.metaxisdata.v1.QualityLLMUsage\"]\xdaA\x06parent\x8a\xea0\x1fmetaxisdata.dataQuality.suggest\x82\xd3\xe4\x93\x02+\x12)/v1/{parent=workspaces/*}/qualityLLMUsageB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
+	"\x12GetQualityLLMUsage\x12).metaxisdata.v1.GetQualityLLMUsageRequest\x1a\x1f.metaxisdata.v1.QualityLLMUsage\"]\xdaA\x06parent\x8a\xea0\x1fmetaxisdata.dataQuality.suggest\x82\xd3\xe4\x93\x02+\x12)/v1/{parent=workspaces/*}/qualityLLMUsage\x12\xd9\x01\n" +
+	"\x19CreateQualityAgentSession\x120.metaxisdata.v1.CreateQualityAgentSessionRequest\x1a#.metaxisdata.v1.QualityAgentSession\"e\x8a\xea0$metaxisdata.dataQuality.rules.update\x98\xea0\x01\x82\xd3\xe4\x93\x023:\x01*\"./v1/{parent=workspaces/*}/qualityAgentSessions\x12\xdb\x01\n" +
+	"\x18ListQualityAgentSessions\x12/.metaxisdata.v1.ListQualityAgentSessionsRequest\x1a0.metaxisdata.v1.ListQualityAgentSessionsResponse\"\\\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x020\x12./v1/{parent=workspaces/*}/qualityAgentSessions\x12\xca\x01\n" +
+	"\x16GetQualityAgentSession\x12-.metaxisdata.v1.GetQualityAgentSessionRequest\x1a#.metaxisdata.v1.QualityAgentSession\"\\\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x020\x12./v1/{name=workspaces/*/qualityAgentSessions/*}\x12\xdd\x01\n" +
+	"\x18PauseQualityAgentSession\x12/.metaxisdata.v1.PauseQualityAgentSessionRequest\x1a#.metaxisdata.v1.QualityAgentSession\"k\x8a\xea0$metaxisdata.dataQuality.rules.update\x98\xea0\x01\x82\xd3\xe4\x93\x029:\x01*\"4/v1/{name=workspaces/*/qualityAgentSessions/*}:pause\x12\xe0\x01\n" +
+	"\x19ResumeQualityAgentSession\x120.metaxisdata.v1.ResumeQualityAgentSessionRequest\x1a#.metaxisdata.v1.QualityAgentSession\"l\x8a\xea0$metaxisdata.dataQuality.rules.update\x98\xea0\x01\x82\xd3\xe4\x93\x02::\x01*\"5/v1/{name=workspaces/*/qualityAgentSessions/*}:resume\x12\xcb\x01\n" +
+	"\x1aArchiveQualityAgentSession\x121.metaxisdata.v1.ArchiveQualityAgentSessionRequest\x1a\x16.google.protobuf.Empty\"b\x8a\xea0$metaxisdata.dataQuality.rules.update\x98\xea0\x01\x82\xd3\xe4\x93\x020*./v1/{name=workspaces/*/qualityAgentSessions/*}\x12\xda\x01\n" +
+	"\x17WakeQualityAgentSession\x12..metaxisdata.v1.WakeQualityAgentSessionRequest\x1a#.metaxisdata.v1.QualityAgentSession\"j\x8a\xea0$metaxisdata.dataQuality.rules.update\x98\xea0\x01\x82\xd3\xe4\x93\x028:\x01*\"3/v1/{name=workspaces/*/qualityAgentSessions/*}:wake\x12\xfb\x01\n" +
+	"\x1fListQualityAgentSessionMessages\x126.metaxisdata.v1.ListQualityAgentSessionMessagesRequest\x1a7.metaxisdata.v1.ListQualityAgentSessionMessagesResponse\"g\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02;\x129/v1/{parent=workspaces/*/qualityAgentSessions/*}/messages\x12\xdd\x01\n" +
+	"\x1bGetQualityAgentRunnerStatus\x122.metaxisdata.v1.GetQualityAgentRunnerStatusRequest\x1a(.metaxisdata.v1.QualityAgentRunnerStatus\"`\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x024\x122/v1/{parent=workspaces/*}/qualityAgentRunnerStatus\x12\xc9\x01\n" +
+	"\x16GetQualityAgentMetrics\x12-.metaxisdata.v1.GetQualityAgentMetricsRequest\x1a#.metaxisdata.v1.QualityAgentMetrics\"[\x8a\xea0\"metaxisdata.dataQuality.rules.list\x82\xd3\xe4\x93\x02/\x12-/v1/{parent=workspaces/*}/qualityAgentMetricsB6Z4github.com/Ranxy/metaxisdata/backend/generated-go/v1b\x06proto3"
 
 var (
 	file_v1_data_quality_service_proto_rawDescOnce sync.Once
@@ -24952,7 +25645,7 @@ func file_v1_data_quality_service_proto_rawDescGZIP() []byte {
 }
 
 var file_v1_data_quality_service_proto_enumTypes = make([]protoimpl.EnumInfo, 54)
-var file_v1_data_quality_service_proto_msgTypes = make([]protoimpl.MessageInfo, 229)
+var file_v1_data_quality_service_proto_msgTypes = make([]protoimpl.MessageInfo, 240)
 var file_v1_data_quality_service_proto_goTypes = []any{
 	(QualityRuleType)(0),                               // 0: metaxisdata.v1.QualityRuleType
 	(QualityStandardCode)(0),                           // 1: metaxisdata.v1.QualityStandardCode
@@ -25237,13 +25930,24 @@ var file_v1_data_quality_service_proto_goTypes = []any{
 	(*QualityAgentTargetCost)(nil),                     // 280: metaxisdata.v1.QualityAgentTargetCost
 	(*QualityAgentMetrics)(nil),                        // 281: metaxisdata.v1.QualityAgentMetrics
 	(*GetQualityAgentMetricsRequest)(nil),              // 282: metaxisdata.v1.GetQualityAgentMetricsRequest
-	(*timestamppb.Timestamp)(nil),                      // 283: google.protobuf.Timestamp
-	(MetaType)(0),                                      // 284: metaxisdata.v1.MetaType
-	(*durationpb.Duration)(nil),                        // 285: google.protobuf.Duration
-	(*fieldmaskpb.FieldMask)(nil),                      // 286: google.protobuf.FieldMask
-	(*ExplainSQLProgress)(nil),                         // 287: metaxisdata.v1.ExplainSQLProgress
-	(*ExplainSQLMetadata)(nil),                         // 288: metaxisdata.v1.ExplainSQLMetadata
-	(*emptypb.Empty)(nil),                              // 289: google.protobuf.Empty
+	(*CreateQualityAgentSessionRequest)(nil),           // 283: metaxisdata.v1.CreateQualityAgentSessionRequest
+	(*ListQualityAgentSessionsRequest)(nil),            // 284: metaxisdata.v1.ListQualityAgentSessionsRequest
+	(*ListQualityAgentSessionsResponse)(nil),           // 285: metaxisdata.v1.ListQualityAgentSessionsResponse
+	(*GetQualityAgentSessionRequest)(nil),              // 286: metaxisdata.v1.GetQualityAgentSessionRequest
+	(*PauseQualityAgentSessionRequest)(nil),            // 287: metaxisdata.v1.PauseQualityAgentSessionRequest
+	(*ResumeQualityAgentSessionRequest)(nil),           // 288: metaxisdata.v1.ResumeQualityAgentSessionRequest
+	(*ArchiveQualityAgentSessionRequest)(nil),          // 289: metaxisdata.v1.ArchiveQualityAgentSessionRequest
+	(*WakeQualityAgentSessionRequest)(nil),             // 290: metaxisdata.v1.WakeQualityAgentSessionRequest
+	(*ListQualityAgentSessionMessagesRequest)(nil),     // 291: metaxisdata.v1.ListQualityAgentSessionMessagesRequest
+	(*ListQualityAgentSessionMessagesResponse)(nil),    // 292: metaxisdata.v1.ListQualityAgentSessionMessagesResponse
+	(*GetQualityAgentRunnerStatusRequest)(nil),         // 293: metaxisdata.v1.GetQualityAgentRunnerStatusRequest
+	(*timestamppb.Timestamp)(nil),                      // 294: google.protobuf.Timestamp
+	(MetaType)(0),                                      // 295: metaxisdata.v1.MetaType
+	(*durationpb.Duration)(nil),                        // 296: google.protobuf.Duration
+	(*fieldmaskpb.FieldMask)(nil),                      // 297: google.protobuf.FieldMask
+	(*ExplainSQLProgress)(nil),                         // 298: metaxisdata.v1.ExplainSQLProgress
+	(*ExplainSQLMetadata)(nil),                         // 299: metaxisdata.v1.ExplainSQLMetadata
+	(*emptypb.Empty)(nil),                              // 300: google.protobuf.Empty
 }
 var file_v1_data_quality_service_proto_depIdxs = []int32{
 	2,   // 0: metaxisdata.v1.QualityRule.dimension:type_name -> metaxisdata.v1.QualityDimension
@@ -25252,12 +25956,12 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	57,  // 3: metaxisdata.v1.QualityRule.config:type_name -> metaxisdata.v1.QualityRuleConfig
 	3,   // 4: metaxisdata.v1.QualityRule.severity:type_name -> metaxisdata.v1.QualitySeverity
 	7,   // 5: metaxisdata.v1.QualityRule.state:type_name -> metaxisdata.v1.QualityRuleState
-	283, // 6: metaxisdata.v1.QualityRule.create_time:type_name -> google.protobuf.Timestamp
-	283, // 7: metaxisdata.v1.QualityRule.update_time:type_name -> google.protobuf.Timestamp
+	294, // 6: metaxisdata.v1.QualityRule.create_time:type_name -> google.protobuf.Timestamp
+	294, // 7: metaxisdata.v1.QualityRule.update_time:type_name -> google.protobuf.Timestamp
 	87,  // 8: metaxisdata.v1.QualityRule.last_result:type_name -> metaxisdata.v1.QualityExecutionSummary
-	283, // 9: metaxisdata.v1.QualityRule.mute_until:type_name -> google.protobuf.Timestamp
+	294, // 9: metaxisdata.v1.QualityRule.mute_until:type_name -> google.protobuf.Timestamp
 	8,   // 10: metaxisdata.v1.QualityRule.frequency_tier:type_name -> metaxisdata.v1.QualityFrequencyTier
-	284, // 11: metaxisdata.v1.QualityTarget.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 11: metaxisdata.v1.QualityTarget.meta_type:type_name -> metaxisdata.v1.MetaType
 	56,  // 12: metaxisdata.v1.QualityTarget.path:type_name -> metaxisdata.v1.QualityTargetPath
 	59,  // 13: metaxisdata.v1.QualityRuleConfig.row_count:type_name -> metaxisdata.v1.RowCountConfig
 	60,  // 14: metaxisdata.v1.QualityRuleConfig.row_count_change:type_name -> metaxisdata.v1.RowCountChangeConfig
@@ -25288,7 +25992,7 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	1,   // 39: metaxisdata.v1.StandardCodeConfig.standard:type_name -> metaxisdata.v1.QualityStandardCode
 	76,  // 40: metaxisdata.v1.SchemaDriftConfig.expected_columns:type_name -> metaxisdata.v1.SchemaDriftColumn
 	24,  // 41: metaxisdata.v1.AggregateConfig.function:type_name -> metaxisdata.v1.QualityAggregateFunction
-	284, // 42: metaxisdata.v1.CrossTableReference.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 42: metaxisdata.v1.CrossTableReference.meta_type:type_name -> metaxisdata.v1.MetaType
 	56,  // 43: metaxisdata.v1.CrossTableReference.path:type_name -> metaxisdata.v1.QualityTargetPath
 	24,  // 44: metaxisdata.v1.CrossTableConfig.left_function:type_name -> metaxisdata.v1.QualityAggregateFunction
 	24,  // 45: metaxisdata.v1.CrossTableConfig.right_function:type_name -> metaxisdata.v1.QualityAggregateFunction
@@ -25305,38 +26009,38 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	18,  // 56: metaxisdata.v1.QualityExecution.observed_kind:type_name -> metaxisdata.v1.QualityObservedKind
 	84,  // 57: metaxisdata.v1.QualityExecution.thresholds:type_name -> metaxisdata.v1.QualityThresholds
 	103, // 58: metaxisdata.v1.QualityExecution.samples:type_name -> metaxisdata.v1.FailureSample
-	285, // 59: metaxisdata.v1.QualityExecution.duration:type_name -> google.protobuf.Duration
-	283, // 60: metaxisdata.v1.QualityExecution.start_time:type_name -> google.protobuf.Timestamp
-	283, // 61: metaxisdata.v1.QualityExecution.finish_time:type_name -> google.protobuf.Timestamp
-	283, // 62: metaxisdata.v1.QualityExecution.baseline_time:type_name -> google.protobuf.Timestamp
+	296, // 59: metaxisdata.v1.QualityExecution.duration:type_name -> google.protobuf.Duration
+	294, // 60: metaxisdata.v1.QualityExecution.start_time:type_name -> google.protobuf.Timestamp
+	294, // 61: metaxisdata.v1.QualityExecution.finish_time:type_name -> google.protobuf.Timestamp
+	294, // 62: metaxisdata.v1.QualityExecution.baseline_time:type_name -> google.protobuf.Timestamp
 	103, // 63: metaxisdata.v1.QualityExecution.passing_samples:type_name -> metaxisdata.v1.FailureSample
 	104, // 64: metaxisdata.v1.QualityExecution.segment_evidence:type_name -> metaxisdata.v1.SegmentObservation
 	4,   // 65: metaxisdata.v1.QualityExecutionSummary.status:type_name -> metaxisdata.v1.QualityStatus
 	18,  // 66: metaxisdata.v1.QualityExecutionSummary.observed_kind:type_name -> metaxisdata.v1.QualityObservedKind
-	283, // 67: metaxisdata.v1.QualityExecutionSummary.finish_time:type_name -> google.protobuf.Timestamp
+	294, // 67: metaxisdata.v1.QualityExecutionSummary.finish_time:type_name -> google.protobuf.Timestamp
 	5,   // 68: metaxisdata.v1.QualityRun.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
 	6,   // 69: metaxisdata.v1.QualityRun.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 70: metaxisdata.v1.QualityRun.outcome:type_name -> metaxisdata.v1.QualityStatus
 	85,  // 71: metaxisdata.v1.QualityRun.counts:type_name -> metaxisdata.v1.QualityStatusCounts
-	283, // 72: metaxisdata.v1.QualityRun.start_time:type_name -> google.protobuf.Timestamp
-	283, // 73: metaxisdata.v1.QualityRun.finish_time:type_name -> google.protobuf.Timestamp
+	294, // 72: metaxisdata.v1.QualityRun.start_time:type_name -> google.protobuf.Timestamp
+	294, // 73: metaxisdata.v1.QualityRun.finish_time:type_name -> google.protobuf.Timestamp
 	55,  // 74: metaxisdata.v1.QualityRun.target:type_name -> metaxisdata.v1.QualityTarget
-	284, // 75: metaxisdata.v1.ListQualityRunsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 75: metaxisdata.v1.ListQualityRunsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	5,   // 76: metaxisdata.v1.ListQualityRunsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
 	6,   // 77: metaxisdata.v1.ListQualityRunsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 78: metaxisdata.v1.ListQualityRunsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
-	283, // 79: metaxisdata.v1.ListQualityRunsRequest.start_time:type_name -> google.protobuf.Timestamp
-	283, // 80: metaxisdata.v1.ListQualityRunsRequest.end_time:type_name -> google.protobuf.Timestamp
+	294, // 79: metaxisdata.v1.ListQualityRunsRequest.start_time:type_name -> google.protobuf.Timestamp
+	294, // 80: metaxisdata.v1.ListQualityRunsRequest.end_time:type_name -> google.protobuf.Timestamp
 	88,  // 81: metaxisdata.v1.ListQualityRunsResponse.quality_runs:type_name -> metaxisdata.v1.QualityRun
 	55,  // 82: metaxisdata.v1.QualityIssue.target:type_name -> metaxisdata.v1.QualityTarget
 	9,   // 83: metaxisdata.v1.QualityIssue.status:type_name -> metaxisdata.v1.QualityIssueStatus
 	3,   // 84: metaxisdata.v1.QualityIssue.severity:type_name -> metaxisdata.v1.QualitySeverity
-	283, // 85: metaxisdata.v1.QualityIssue.first_seen_time:type_name -> google.protobuf.Timestamp
-	283, // 86: metaxisdata.v1.QualityIssue.last_seen_time:type_name -> google.protobuf.Timestamp
-	283, // 87: metaxisdata.v1.QualityIssue.resolved_time:type_name -> google.protobuf.Timestamp
+	294, // 85: metaxisdata.v1.QualityIssue.first_seen_time:type_name -> google.protobuf.Timestamp
+	294, // 86: metaxisdata.v1.QualityIssue.last_seen_time:type_name -> google.protobuf.Timestamp
+	294, // 87: metaxisdata.v1.QualityIssue.resolved_time:type_name -> google.protobuf.Timestamp
 	10,  // 88: metaxisdata.v1.QualityIssue.resolution_reason:type_name -> metaxisdata.v1.QualityResolutionReason
-	283, // 89: metaxisdata.v1.QualityIssue.acknowledged_time:type_name -> google.protobuf.Timestamp
-	283, // 90: metaxisdata.v1.QualityIssue.muted_until:type_name -> google.protobuf.Timestamp
+	294, // 89: metaxisdata.v1.QualityIssue.acknowledged_time:type_name -> google.protobuf.Timestamp
+	294, // 90: metaxisdata.v1.QualityIssue.muted_until:type_name -> google.protobuf.Timestamp
 	93,  // 91: metaxisdata.v1.ColumnProfileStats.top_values:type_name -> metaxisdata.v1.ProfileValue
 	57,  // 92: metaxisdata.v1.QualityRuleDraftConfig.config:type_name -> metaxisdata.v1.QualityRuleConfig
 	3,   // 93: metaxisdata.v1.QualityRuleDraftConfig.severity:type_name -> metaxisdata.v1.QualitySeverity
@@ -25350,24 +26054,24 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	55,  // 101: metaxisdata.v1.QualitySuggestion.target:type_name -> metaxisdata.v1.QualityTarget
 	98,  // 102: metaxisdata.v1.QualitySuggestion.payload:type_name -> metaxisdata.v1.QualitySuggestionPayload
 	13,  // 103: metaxisdata.v1.QualitySuggestion.status:type_name -> metaxisdata.v1.QualitySuggestionStatus
-	283, // 104: metaxisdata.v1.QualitySuggestion.create_time:type_name -> google.protobuf.Timestamp
-	283, // 105: metaxisdata.v1.QualitySuggestion.decide_time:type_name -> google.protobuf.Timestamp
-	283, // 106: metaxisdata.v1.QualitySuggestion.refresh_time:type_name -> google.protobuf.Timestamp
-	284, // 107: metaxisdata.v1.ColumnProfile.meta_type:type_name -> metaxisdata.v1.MetaType
+	294, // 104: metaxisdata.v1.QualitySuggestion.create_time:type_name -> google.protobuf.Timestamp
+	294, // 105: metaxisdata.v1.QualitySuggestion.decide_time:type_name -> google.protobuf.Timestamp
+	294, // 106: metaxisdata.v1.QualitySuggestion.refresh_time:type_name -> google.protobuf.Timestamp
+	295, // 107: metaxisdata.v1.ColumnProfile.meta_type:type_name -> metaxisdata.v1.MetaType
 	94,  // 108: metaxisdata.v1.ColumnProfile.profile:type_name -> metaxisdata.v1.ColumnProfileStats
-	283, // 109: metaxisdata.v1.ColumnProfile.profiled_at:type_name -> google.protobuf.Timestamp
-	284, // 110: metaxisdata.v1.ColumnSemanticLabel.meta_type:type_name -> metaxisdata.v1.MetaType
+	294, // 109: metaxisdata.v1.ColumnProfile.profiled_at:type_name -> google.protobuf.Timestamp
+	295, // 110: metaxisdata.v1.ColumnSemanticLabel.meta_type:type_name -> metaxisdata.v1.MetaType
 	11,  // 111: metaxisdata.v1.ColumnSemanticLabel.label:type_name -> metaxisdata.v1.QualitySemanticType
 	15,  // 112: metaxisdata.v1.ColumnSemanticLabel.source:type_name -> metaxisdata.v1.QualityLabelSource
 	16,  // 113: metaxisdata.v1.ColumnSemanticLabel.status:type_name -> metaxisdata.v1.QualityLabelStatus
 	95,  // 114: metaxisdata.v1.ColumnSemanticLabel.evidence:type_name -> metaxisdata.v1.SemanticLabelEvidence
-	283, // 115: metaxisdata.v1.ColumnSemanticLabel.accepted_time:type_name -> google.protobuf.Timestamp
-	283, // 116: metaxisdata.v1.ColumnSemanticLabel.update_time:type_name -> google.protobuf.Timestamp
+	294, // 115: metaxisdata.v1.ColumnSemanticLabel.accepted_time:type_name -> google.protobuf.Timestamp
+	294, // 116: metaxisdata.v1.ColumnSemanticLabel.update_time:type_name -> google.protobuf.Timestamp
 	106, // 117: metaxisdata.v1.FailureSample.columns:type_name -> metaxisdata.v1.ColumnValue
 	105, // 118: metaxisdata.v1.SegmentObservation.observed:type_name -> metaxisdata.v1.SegmentRecord
 	105, // 119: metaxisdata.v1.SegmentObservation.new_segments:type_name -> metaxisdata.v1.SegmentRecord
 	105, // 120: metaxisdata.v1.SegmentObservation.disappeared:type_name -> metaxisdata.v1.SegmentRecord
-	283, // 121: metaxisdata.v1.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
+	294, // 121: metaxisdata.v1.SegmentRecord.last_seen:type_name -> google.protobuf.Timestamp
 	2,   // 122: metaxisdata.v1.ListQualityRulesRequest.dimension:type_name -> metaxisdata.v1.QualityDimension
 	0,   // 123: metaxisdata.v1.ListQualityRulesRequest.rule_type:type_name -> metaxisdata.v1.QualityRuleType
 	3,   // 124: metaxisdata.v1.ListQualityRulesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
@@ -25381,32 +26085,32 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	116, // 132: metaxisdata.v1.BatchUpdateQualityRulesResponse.results:type_name -> metaxisdata.v1.BatchUpdateQualityRuleResult
 	54,  // 133: metaxisdata.v1.BatchUpdateQualityRuleResult.rule:type_name -> metaxisdata.v1.QualityRule
 	54,  // 134: metaxisdata.v1.UpdateQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
-	286, // 135: metaxisdata.v1.UpdateQualityRuleRequest.update_mask:type_name -> google.protobuf.FieldMask
+	297, // 135: metaxisdata.v1.UpdateQualityRuleRequest.update_mask:type_name -> google.protobuf.FieldMask
 	54,  // 136: metaxisdata.v1.PreviewQualityRuleRequest.rule:type_name -> metaxisdata.v1.QualityRule
 	86,  // 137: metaxisdata.v1.RunQualityRulesResponse.executions:type_name -> metaxisdata.v1.QualityExecution
 	6,   // 138: metaxisdata.v1.ListQualityExecutionsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 139: metaxisdata.v1.ListQualityExecutionsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
 	5,   // 140: metaxisdata.v1.ListQualityExecutionsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
-	283, // 141: metaxisdata.v1.ListQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
-	283, // 142: metaxisdata.v1.ListQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
+	294, // 141: metaxisdata.v1.ListQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
+	294, // 142: metaxisdata.v1.ListQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
 	86,  // 143: metaxisdata.v1.ListQualityExecutionsResponse.quality_executions:type_name -> metaxisdata.v1.QualityExecution
 	25,  // 144: metaxisdata.v1.QualityRuleTrend.unit:type_name -> metaxisdata.v1.QualityTrendUnit
 	128, // 145: metaxisdata.v1.QualityRuleTrend.points:type_name -> metaxisdata.v1.QualityRuleTrendPoint
 	84,  // 146: metaxisdata.v1.QualityRuleTrend.thresholds:type_name -> metaxisdata.v1.QualityThresholds
 	27,  // 147: metaxisdata.v1.QualityRuleTrend.band_notice:type_name -> metaxisdata.v1.QualityTrendNotice
 	129, // 148: metaxisdata.v1.QualityRuleTrend.suggestion:type_name -> metaxisdata.v1.QualityThresholdSuggestion
-	283, // 149: metaxisdata.v1.QualityRuleTrendPoint.start_time:type_name -> google.protobuf.Timestamp
+	294, // 149: metaxisdata.v1.QualityRuleTrendPoint.start_time:type_name -> google.protobuf.Timestamp
 	4,   // 150: metaxisdata.v1.QualityRuleTrendPoint.status:type_name -> metaxisdata.v1.QualityStatus
 	84,  // 151: metaxisdata.v1.QualityThresholdSuggestion.thresholds:type_name -> metaxisdata.v1.QualityThresholds
 	26,  // 152: metaxisdata.v1.QualityThresholdSuggestion.method:type_name -> metaxisdata.v1.QualityThresholdSuggestionMethod
 	27,  // 153: metaxisdata.v1.QualityThresholdSuggestion.notice:type_name -> metaxisdata.v1.QualityTrendNotice
 	9,   // 154: metaxisdata.v1.ListQualityIssuesRequest.status:type_name -> metaxisdata.v1.QualityIssueStatus
 	3,   // 155: metaxisdata.v1.ListQualityIssuesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
-	283, // 156: metaxisdata.v1.ListQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
-	283, // 157: metaxisdata.v1.ListQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
+	294, // 156: metaxisdata.v1.ListQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
+	294, // 157: metaxisdata.v1.ListQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
 	92,  // 158: metaxisdata.v1.ListQualityIssuesResponse.quality_issues:type_name -> metaxisdata.v1.QualityIssue
 	92,  // 159: metaxisdata.v1.UpdateQualityIssueRequest.issue:type_name -> metaxisdata.v1.QualityIssue
-	286, // 160: metaxisdata.v1.UpdateQualityIssueRequest.update_mask:type_name -> google.protobuf.FieldMask
+	297, // 160: metaxisdata.v1.UpdateQualityIssueRequest.update_mask:type_name -> google.protobuf.FieldMask
 	13,  // 161: metaxisdata.v1.ListQualitySuggestionsRequest.status:type_name -> metaxisdata.v1.QualitySuggestionStatus
 	12,  // 162: metaxisdata.v1.ListQualitySuggestionsRequest.kind:type_name -> metaxisdata.v1.QualitySuggestionKind
 	14,  // 163: metaxisdata.v1.ListQualitySuggestionsRequest.source:type_name -> metaxisdata.v1.QualitySuggestionSource
@@ -25417,40 +26121,40 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	99,  // 168: metaxisdata.v1.BatchUpdateQualitySuggestionResult.suggestion:type_name -> metaxisdata.v1.QualitySuggestion
 	55,  // 169: metaxisdata.v1.QualitySuggestionJobTarget.target:type_name -> metaxisdata.v1.QualityTarget
 	29,  // 170: metaxisdata.v1.QualitySuggestionJobTarget.state:type_name -> metaxisdata.v1.QualitySuggestionJobTargetState
-	283, // 171: metaxisdata.v1.QualitySuggestionJobTarget.start_time:type_name -> google.protobuf.Timestamp
-	283, // 172: metaxisdata.v1.QualitySuggestionJobTarget.finish_time:type_name -> google.protobuf.Timestamp
+	294, // 171: metaxisdata.v1.QualitySuggestionJobTarget.start_time:type_name -> google.protobuf.Timestamp
+	294, // 172: metaxisdata.v1.QualitySuggestionJobTarget.finish_time:type_name -> google.protobuf.Timestamp
 	142, // 173: metaxisdata.v1.QualitySuggestionJobTarget.diagnostic:type_name -> metaxisdata.v1.QualityLLMDiagnostic
 	100, // 174: metaxisdata.v1.QualitySuggestionJobTarget.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
 	28,  // 175: metaxisdata.v1.QualitySuggestionJob.status:type_name -> metaxisdata.v1.QualitySuggestionJobStatus
 	141, // 176: metaxisdata.v1.QualitySuggestionJob.targets:type_name -> metaxisdata.v1.QualitySuggestionJobTarget
-	283, // 177: metaxisdata.v1.QualitySuggestionJob.create_time:type_name -> google.protobuf.Timestamp
-	283, // 178: metaxisdata.v1.QualitySuggestionJob.start_time:type_name -> google.protobuf.Timestamp
-	283, // 179: metaxisdata.v1.QualitySuggestionJob.finish_time:type_name -> google.protobuf.Timestamp
+	294, // 177: metaxisdata.v1.QualitySuggestionJob.create_time:type_name -> google.protobuf.Timestamp
+	294, // 178: metaxisdata.v1.QualitySuggestionJob.start_time:type_name -> google.protobuf.Timestamp
+	294, // 179: metaxisdata.v1.QualitySuggestionJob.finish_time:type_name -> google.protobuf.Timestamp
 	55,  // 180: metaxisdata.v1.CreateQualitySuggestionJobRequest.targets:type_name -> metaxisdata.v1.QualityTarget
 	28,  // 181: metaxisdata.v1.ListQualitySuggestionJobsRequest.status:type_name -> metaxisdata.v1.QualitySuggestionJobStatus
 	143, // 182: metaxisdata.v1.ListQualitySuggestionJobsResponse.quality_suggestion_jobs:type_name -> metaxisdata.v1.QualitySuggestionJob
-	284, // 183: metaxisdata.v1.ListColumnProfilesRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 183: metaxisdata.v1.ListColumnProfilesRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	101, // 184: metaxisdata.v1.ListColumnProfilesResponse.column_profiles:type_name -> metaxisdata.v1.ColumnProfile
-	284, // 185: metaxisdata.v1.ListColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 185: metaxisdata.v1.ListColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	102, // 186: metaxisdata.v1.ListColumnLabelsResponse.column_labels:type_name -> metaxisdata.v1.ColumnSemanticLabel
-	284, // 187: metaxisdata.v1.UpdateColumnLabelRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 187: metaxisdata.v1.UpdateColumnLabelRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	11,  // 188: metaxisdata.v1.UpdateColumnLabelRequest.label:type_name -> metaxisdata.v1.QualitySemanticType
 	17,  // 189: metaxisdata.v1.UpdateColumnLabelRequest.action:type_name -> metaxisdata.v1.ColumnLabelAction
 	102, // 190: metaxisdata.v1.UpdateColumnLabelResponse.column_label:type_name -> metaxisdata.v1.ColumnSemanticLabel
-	284, // 191: metaxisdata.v1.ProfileColumnsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 191: metaxisdata.v1.ProfileColumnsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	101, // 192: metaxisdata.v1.ProfileColumnsResponse.column_profiles:type_name -> metaxisdata.v1.ColumnProfile
-	284, // 193: metaxisdata.v1.SuggestQualityRuleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 193: metaxisdata.v1.SuggestQualityRuleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	99,  // 194: metaxisdata.v1.SuggestQualityRuleResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
 	100, // 195: metaxisdata.v1.SuggestQualityRuleResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
-	284, // 196: metaxisdata.v1.SuggestColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 196: metaxisdata.v1.SuggestColumnLabelsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	99,  // 197: metaxisdata.v1.SuggestColumnLabelsResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
 	100, // 198: metaxisdata.v1.SuggestColumnLabelsResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
-	284, // 199: metaxisdata.v1.RecommendQualityChecksRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 199: metaxisdata.v1.RecommendQualityChecksRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	99,  // 200: metaxisdata.v1.RecommendQualityChecksResponse.quality_suggestions:type_name -> metaxisdata.v1.QualitySuggestion
 	100, // 201: metaxisdata.v1.RecommendQualityChecksResponse.summary:type_name -> metaxisdata.v1.QualitySuggestionQueueSummary
-	287, // 202: metaxisdata.v1.ExplainQualityExecutionResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
-	288, // 203: metaxisdata.v1.ExplainQualityExecutionResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
-	283, // 204: metaxisdata.v1.QualityLLMUsage.resets_at:type_name -> google.protobuf.Timestamp
+	298, // 202: metaxisdata.v1.ExplainQualityExecutionResponse.progress:type_name -> metaxisdata.v1.ExplainSQLProgress
+	299, // 203: metaxisdata.v1.ExplainQualityExecutionResponse.metadata:type_name -> metaxisdata.v1.ExplainSQLMetadata
+	294, // 204: metaxisdata.v1.QualityLLMUsage.resets_at:type_name -> google.protobuf.Timestamp
 	171, // 205: metaxisdata.v1.QualityOverview.coverage_by_instance:type_name -> metaxisdata.v1.QualityCoverageBreakdown
 	171, // 206: metaxisdata.v1.QualityOverview.coverage_by_environment:type_name -> metaxisdata.v1.QualityCoverageBreakdown
 	172, // 207: metaxisdata.v1.QualityOverview.score_by_dimension:type_name -> metaxisdata.v1.QualityDimensionScore
@@ -25458,45 +26162,45 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	85,  // 209: metaxisdata.v1.QualityOverview.last_day_counts:type_name -> metaxisdata.v1.QualityStatusCounts
 	174, // 210: metaxisdata.v1.QualityOverview.trend:type_name -> metaxisdata.v1.QualityTrendPoint
 	2,   // 211: metaxisdata.v1.QualityDimensionScore.dimension:type_name -> metaxisdata.v1.QualityDimension
-	284, // 212: metaxisdata.v1.QualityTargetKey.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 212: metaxisdata.v1.QualityTargetKey.meta_type:type_name -> metaxisdata.v1.MetaType
 	4,   // 213: metaxisdata.v1.ListQualityTargetsRequest.worst_status:type_name -> metaxisdata.v1.QualityStatus
 	30,  // 214: metaxisdata.v1.ListQualityTargetsRequest.order_by:type_name -> metaxisdata.v1.QualityTargetOrder
 	175, // 215: metaxisdata.v1.ListQualityTargetsRequest.targets:type_name -> metaxisdata.v1.QualityTargetKey
 	179, // 216: metaxisdata.v1.ListQualityTargetsResponse.quality_targets:type_name -> metaxisdata.v1.QualityTargetSummary
-	285, // 217: metaxisdata.v1.QualityTargetSchedule.schedule_interval:type_name -> google.protobuf.Duration
-	283, // 218: metaxisdata.v1.QualityTargetSchedule.next_run_time:type_name -> google.protobuf.Timestamp
+	296, // 217: metaxisdata.v1.QualityTargetSchedule.schedule_interval:type_name -> google.protobuf.Duration
+	294, // 218: metaxisdata.v1.QualityTargetSchedule.next_run_time:type_name -> google.protobuf.Timestamp
 	55,  // 219: metaxisdata.v1.QualityTargetSummary.target:type_name -> metaxisdata.v1.QualityTarget
 	4,   // 220: metaxisdata.v1.QualityTargetSummary.worst_status:type_name -> metaxisdata.v1.QualityStatus
-	283, // 221: metaxisdata.v1.QualityTargetSummary.last_run_time:type_name -> google.protobuf.Timestamp
+	294, // 221: metaxisdata.v1.QualityTargetSummary.last_run_time:type_name -> google.protobuf.Timestamp
 	88,  // 222: metaxisdata.v1.QualityTargetSummary.latest_run:type_name -> metaxisdata.v1.QualityRun
 	178, // 223: metaxisdata.v1.QualityTargetSummary.schedule:type_name -> metaxisdata.v1.QualityTargetSchedule
 	55,  // 224: metaxisdata.v1.QualityImpactAsset.target:type_name -> metaxisdata.v1.QualityTarget
 	179, // 225: metaxisdata.v1.QualityImpactAsset.summary:type_name -> metaxisdata.v1.QualityTargetSummary
 	55,  // 226: metaxisdata.v1.QualityRootCauseCandidate.target:type_name -> metaxisdata.v1.QualityTarget
-	283, // 227: metaxisdata.v1.QualityRootCauseCandidate.latest_failure_time:type_name -> google.protobuf.Timestamp
-	283, // 228: metaxisdata.v1.QualityRootCauseCandidate.structure_changed_time:type_name -> google.protobuf.Timestamp
+	294, // 227: metaxisdata.v1.QualityRootCauseCandidate.latest_failure_time:type_name -> google.protobuf.Timestamp
+	294, // 228: metaxisdata.v1.QualityRootCauseCandidate.structure_changed_time:type_name -> google.protobuf.Timestamp
 	175, // 229: metaxisdata.v1.GetQualityTargetImpactRequest.target:type_name -> metaxisdata.v1.QualityTargetKey
-	283, // 230: metaxisdata.v1.GetQualityTargetImpactRequest.as_of:type_name -> google.protobuf.Timestamp
+	294, // 230: metaxisdata.v1.GetQualityTargetImpactRequest.as_of:type_name -> google.protobuf.Timestamp
 	180, // 231: metaxisdata.v1.GetQualityTargetImpactResponse.downstream_assets:type_name -> metaxisdata.v1.QualityImpactAsset
 	181, // 232: metaxisdata.v1.GetQualityTargetImpactResponse.root_causes:type_name -> metaxisdata.v1.QualityRootCauseCandidate
-	283, // 233: metaxisdata.v1.GetQualityTargetImpactResponse.window_start:type_name -> google.protobuf.Timestamp
-	283, // 234: metaxisdata.v1.GetQualityTargetImpactResponse.window_end:type_name -> google.protobuf.Timestamp
+	294, // 233: metaxisdata.v1.GetQualityTargetImpactResponse.window_start:type_name -> google.protobuf.Timestamp
+	294, // 234: metaxisdata.v1.GetQualityTargetImpactResponse.window_end:type_name -> google.protobuf.Timestamp
 	55,  // 235: metaxisdata.v1.QualityConsumptionGap.target:type_name -> metaxisdata.v1.QualityTarget
 	184, // 236: metaxisdata.v1.GetQualityConsumptionCoverageResponse.gaps:type_name -> metaxisdata.v1.QualityConsumptionGap
-	284, // 237: metaxisdata.v1.UpdateQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	285, // 238: metaxisdata.v1.UpdateQualityTargetScheduleRequest.schedule_interval:type_name -> google.protobuf.Duration
-	284, // 239: metaxisdata.v1.GetQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	284, // 240: metaxisdata.v1.GetQualityTargetRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 237: metaxisdata.v1.UpdateQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	296, // 238: metaxisdata.v1.UpdateQualityTargetScheduleRequest.schedule_interval:type_name -> google.protobuf.Duration
+	295, // 239: metaxisdata.v1.GetQualityTargetScheduleRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 240: metaxisdata.v1.GetQualityTargetRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	179, // 241: metaxisdata.v1.GetQualityTargetResponse.summary:type_name -> metaxisdata.v1.QualityTargetSummary
 	54,  // 242: metaxisdata.v1.GetQualityTargetResponse.quality_rules:type_name -> metaxisdata.v1.QualityRule
 	92,  // 243: metaxisdata.v1.GetQualityTargetResponse.open_issues:type_name -> metaxisdata.v1.QualityIssue
 	192, // 244: metaxisdata.v1.GetQualityTargetResponse.rule_history:type_name -> metaxisdata.v1.QualityRuleHistory
 	191, // 245: metaxisdata.v1.GetQualityTargetResponse.target_columns:type_name -> metaxisdata.v1.QualityTargetColumn
 	87,  // 246: metaxisdata.v1.QualityRuleHistory.executions:type_name -> metaxisdata.v1.QualityExecutionSummary
-	284, // 247: metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 247: metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	55,  // 248: metaxisdata.v1.QualityContract.target:type_name -> metaxisdata.v1.QualityTarget
 	198, // 249: metaxisdata.v1.QualityContract.settings:type_name -> metaxisdata.v1.QualityContractSettings
-	283, // 250: metaxisdata.v1.QualityContract.published_at:type_name -> google.protobuf.Timestamp
+	294, // 250: metaxisdata.v1.QualityContract.published_at:type_name -> google.protobuf.Timestamp
 	202, // 251: metaxisdata.v1.QualityContract.change_summary:type_name -> metaxisdata.v1.QualityContractChangeSummary
 	206, // 252: metaxisdata.v1.QualityContract.plan:type_name -> metaxisdata.v1.QualityPlan
 	206, // 253: metaxisdata.v1.QualityContract.staged_plan:type_name -> metaxisdata.v1.QualityPlan
@@ -25509,11 +26213,11 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	201, // 260: metaxisdata.v1.QualityContractSettings.intent:type_name -> metaxisdata.v1.QualityContractIntent
 	34,  // 261: metaxisdata.v1.QualityContractIntentStatement.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	34,  // 262: metaxisdata.v1.QualityContractIntentExemption.property:type_name -> metaxisdata.v1.QualityCoverageProperty
-	283, // 263: metaxisdata.v1.QualityContractIntentExemption.expires_at:type_name -> google.protobuf.Timestamp
+	294, // 263: metaxisdata.v1.QualityContractIntentExemption.expires_at:type_name -> google.protobuf.Timestamp
 	33,  // 264: metaxisdata.v1.QualityContractIntent.criticality:type_name -> metaxisdata.v1.QualityAssetCriticality
 	199, // 265: metaxisdata.v1.QualityContractIntent.statements:type_name -> metaxisdata.v1.QualityContractIntentStatement
 	200, // 266: metaxisdata.v1.QualityContractIntent.exemptions:type_name -> metaxisdata.v1.QualityContractIntentExemption
-	283, // 267: metaxisdata.v1.QualityContractIntent.effective_from:type_name -> google.protobuf.Timestamp
+	294, // 267: metaxisdata.v1.QualityContractIntent.effective_from:type_name -> google.protobuf.Timestamp
 	31,  // 268: metaxisdata.v1.QualityContractIntent.source:type_name -> metaxisdata.v1.QualityContractIntentSource
 	34,  // 269: metaxisdata.v1.QualityCoverageRequirement.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	35,  // 270: metaxisdata.v1.QualityCoverageRequirement.source:type_name -> metaxisdata.v1.QualityCoverageSource
@@ -25536,11 +26240,11 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	209, // 287: metaxisdata.v1.QualityChangeRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
 	210, // 288: metaxisdata.v1.QualityChangeRequest.item_results:type_name -> metaxisdata.v1.QualityChangeRequestItemResult
 	39,  // 289: metaxisdata.v1.QualityChangeRequest.rejection_reasons:type_name -> metaxisdata.v1.QualityChangeRejectionReason
-	283, // 290: metaxisdata.v1.QualityChangeRequest.created_at:type_name -> google.protobuf.Timestamp
-	283, // 291: metaxisdata.v1.QualityChangeRequest.decided_at:type_name -> google.protobuf.Timestamp
-	284, // 292: metaxisdata.v1.StageQualityPlanRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	294, // 290: metaxisdata.v1.QualityChangeRequest.created_at:type_name -> google.protobuf.Timestamp
+	294, // 291: metaxisdata.v1.QualityChangeRequest.decided_at:type_name -> google.protobuf.Timestamp
+	295, // 292: metaxisdata.v1.StageQualityPlanRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	204, // 293: metaxisdata.v1.StageQualityPlanRequest.coverage:type_name -> metaxisdata.v1.QualityPlanCoverage
-	284, // 294: metaxisdata.v1.CreateQualityChangeRequestRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 294: metaxisdata.v1.CreateQualityChangeRequestRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	209, // 295: metaxisdata.v1.CreateQualityChangeRequestRequest.items:type_name -> metaxisdata.v1.QualityChangeRequestItem
 	36,  // 296: metaxisdata.v1.ListQualityChangeRequestsRequest.state:type_name -> metaxisdata.v1.QualityChangeRequestState
 	211, // 297: metaxisdata.v1.ListQualityChangeRequestsResponse.quality_change_requests:type_name -> metaxisdata.v1.QualityChangeRequest
@@ -25550,12 +26254,12 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	42,  // 301: metaxisdata.v1.QualityMemory.source:type_name -> metaxisdata.v1.QualityMemorySource
 	41,  // 302: metaxisdata.v1.QualityMemory.status:type_name -> metaxisdata.v1.QualityMemoryStatus
 	224, // 303: metaxisdata.v1.QualityMemory.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
-	283, // 304: metaxisdata.v1.QualityMemory.expires_at:type_name -> google.protobuf.Timestamp
-	283, // 305: metaxisdata.v1.QualityMemory.confirmed_at:type_name -> google.protobuf.Timestamp
-	283, // 306: metaxisdata.v1.QualityMemory.create_time:type_name -> google.protobuf.Timestamp
+	294, // 304: metaxisdata.v1.QualityMemory.expires_at:type_name -> google.protobuf.Timestamp
+	294, // 305: metaxisdata.v1.QualityMemory.confirmed_at:type_name -> google.protobuf.Timestamp
+	294, // 306: metaxisdata.v1.QualityMemory.create_time:type_name -> google.protobuf.Timestamp
 	40,  // 307: metaxisdata.v1.CreateQualityMemoryRequest.kind:type_name -> metaxisdata.v1.QualityMemoryKind
 	224, // 308: metaxisdata.v1.CreateQualityMemoryRequest.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
-	283, // 309: metaxisdata.v1.CreateQualityMemoryRequest.expires_at:type_name -> google.protobuf.Timestamp
+	294, // 309: metaxisdata.v1.CreateQualityMemoryRequest.expires_at:type_name -> google.protobuf.Timestamp
 	40,  // 310: metaxisdata.v1.ListQualityMemoriesRequest.kind:type_name -> metaxisdata.v1.QualityMemoryKind
 	41,  // 311: metaxisdata.v1.ListQualityMemoriesRequest.status:type_name -> metaxisdata.v1.QualityMemoryStatus
 	218, // 312: metaxisdata.v1.ListQualityMemoriesResponse.quality_memories:type_name -> metaxisdata.v1.QualityMemory
@@ -25566,8 +26270,8 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	45,  // 317: metaxisdata.v1.QualityInvestigation.verdict:type_name -> metaxisdata.v1.QualityInvestigationVerdict
 	225, // 318: metaxisdata.v1.QualityInvestigation.hypotheses:type_name -> metaxisdata.v1.QualityInvestigationHypothesis
 	224, // 319: metaxisdata.v1.QualityInvestigation.evidence:type_name -> metaxisdata.v1.QualityInvestigationEvidence
-	283, // 320: metaxisdata.v1.QualityInvestigation.create_time:type_name -> google.protobuf.Timestamp
-	284, // 321: metaxisdata.v1.CreateQualityInvestigationRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	294, // 320: metaxisdata.v1.QualityInvestigation.create_time:type_name -> google.protobuf.Timestamp
+	295, // 321: metaxisdata.v1.CreateQualityInvestigationRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	44,  // 322: metaxisdata.v1.CreateQualityInvestigationRequest.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
 	43,  // 323: metaxisdata.v1.CreateQualityInvestigationRequest.status:type_name -> metaxisdata.v1.QualityInvestigationStatus
 	45,  // 324: metaxisdata.v1.CreateQualityInvestigationRequest.verdict:type_name -> metaxisdata.v1.QualityInvestigationVerdict
@@ -25577,7 +26281,7 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	44,  // 328: metaxisdata.v1.ListQualityInvestigationsRequest.trigger:type_name -> metaxisdata.v1.QualityInvestigationTrigger
 	226, // 329: metaxisdata.v1.ListQualityInvestigationsResponse.quality_investigations:type_name -> metaxisdata.v1.QualityInvestigation
 	231, // 330: metaxisdata.v1.QualityActionPolicy.actions:type_name -> metaxisdata.v1.QualityAction
-	283, // 331: metaxisdata.v1.QualityAgent.create_time:type_name -> google.protobuf.Timestamp
+	294, // 331: metaxisdata.v1.QualityAgent.create_time:type_name -> google.protobuf.Timestamp
 	234, // 332: metaxisdata.v1.CreateQualityAgentResponse.agent:type_name -> metaxisdata.v1.QualityAgent
 	234, // 333: metaxisdata.v1.ListQualityAgentsResponse.quality_agents:type_name -> metaxisdata.v1.QualityAgent
 	234, // 334: metaxisdata.v1.RotateQualityAgentTokenResponse.agent:type_name -> metaxisdata.v1.QualityAgent
@@ -25585,238 +26289,262 @@ var file_v1_data_quality_service_proto_depIdxs = []int32{
 	34,  // 336: metaxisdata.v1.QualityCoverageGap.property:type_name -> metaxisdata.v1.QualityCoverageProperty
 	33,  // 337: metaxisdata.v1.QualityCoverageGap.criticality:type_name -> metaxisdata.v1.QualityAssetCriticality
 	242, // 338: metaxisdata.v1.ListQualityCoverageGapsResponse.gaps:type_name -> metaxisdata.v1.QualityCoverageGap
-	283, // 339: metaxisdata.v1.QualityContractRevision.published_at:type_name -> google.protobuf.Timestamp
+	294, // 339: metaxisdata.v1.QualityContractRevision.published_at:type_name -> google.protobuf.Timestamp
 	202, // 340: metaxisdata.v1.QualityContractRevision.change_summary:type_name -> metaxisdata.v1.QualityContractChangeSummary
 	201, // 341: metaxisdata.v1.QualityContractRevision.intent:type_name -> metaxisdata.v1.QualityContractIntent
 	46,  // 342: metaxisdata.v1.QualityContractRevision.change_kind:type_name -> metaxisdata.v1.QualityContractChangeKind
 	206, // 343: metaxisdata.v1.QualityContractRevision.plan:type_name -> metaxisdata.v1.QualityPlan
 	0,   // 344: metaxisdata.v1.QualityContractCheck.rule_type:type_name -> metaxisdata.v1.QualityRuleType
 	3,   // 345: metaxisdata.v1.QualityContractCheck.severity:type_name -> metaxisdata.v1.QualitySeverity
-	284, // 346: metaxisdata.v1.GetQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
-	284, // 347: metaxisdata.v1.UpdateQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 346: metaxisdata.v1.GetQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 347: metaxisdata.v1.UpdateQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	198, // 348: metaxisdata.v1.UpdateQualityContractRequest.settings:type_name -> metaxisdata.v1.QualityContractSettings
 	206, // 349: metaxisdata.v1.UpdateQualityContractRequest.draft:type_name -> metaxisdata.v1.QualityPlan
-	284, // 350: metaxisdata.v1.PublishQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 350: metaxisdata.v1.PublishQualityContractRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	195, // 351: metaxisdata.v1.PublishQualityContractResponse.contract:type_name -> metaxisdata.v1.QualityContract
 	245, // 352: metaxisdata.v1.PublishQualityContractResponse.revision:type_name -> metaxisdata.v1.QualityContractRevision
-	284, // 353: metaxisdata.v1.ListQualityContractRevisionsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 353: metaxisdata.v1.ListQualityContractRevisionsRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	245, // 354: metaxisdata.v1.ListQualityContractRevisionsResponse.revisions:type_name -> metaxisdata.v1.QualityContractRevision
-	284, // 355: metaxisdata.v1.GetQualityContractRevisionRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 355: metaxisdata.v1.GetQualityContractRevisionRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	245, // 356: metaxisdata.v1.GetQualityContractRevisionResponse.revision:type_name -> metaxisdata.v1.QualityContractRevision
 	246, // 357: metaxisdata.v1.GetQualityContractRevisionResponse.checks:type_name -> metaxisdata.v1.QualityContractCheck
 	6,   // 358: metaxisdata.v1.ExportQualityExecutionsRequest.state:type_name -> metaxisdata.v1.QualityExecutionState
 	4,   // 359: metaxisdata.v1.ExportQualityExecutionsRequest.outcome:type_name -> metaxisdata.v1.QualityStatus
 	5,   // 360: metaxisdata.v1.ExportQualityExecutionsRequest.trigger:type_name -> metaxisdata.v1.QualityExecutionTrigger
-	283, // 361: metaxisdata.v1.ExportQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
-	283, // 362: metaxisdata.v1.ExportQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
+	294, // 361: metaxisdata.v1.ExportQualityExecutionsRequest.start_time:type_name -> google.protobuf.Timestamp
+	294, // 362: metaxisdata.v1.ExportQualityExecutionsRequest.end_time:type_name -> google.protobuf.Timestamp
 	9,   // 363: metaxisdata.v1.ExportQualityIssuesRequest.status:type_name -> metaxisdata.v1.QualityIssueStatus
 	3,   // 364: metaxisdata.v1.ExportQualityIssuesRequest.severity:type_name -> metaxisdata.v1.QualitySeverity
-	283, // 365: metaxisdata.v1.ExportQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
-	283, // 366: metaxisdata.v1.ExportQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
+	294, // 365: metaxisdata.v1.ExportQualityIssuesRequest.start_time:type_name -> google.protobuf.Timestamp
+	294, // 366: metaxisdata.v1.ExportQualityIssuesRequest.end_time:type_name -> google.protobuf.Timestamp
 	4,   // 367: metaxisdata.v1.ExportQualityTargetsRequest.worst_status:type_name -> metaxisdata.v1.QualityStatus
 	30,  // 368: metaxisdata.v1.ExportQualityTargetsRequest.order_by:type_name -> metaxisdata.v1.QualityTargetOrder
-	284, // 369: metaxisdata.v1.ExportQualityReportRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	295, // 369: metaxisdata.v1.ExportQualityReportRequest.meta_type:type_name -> metaxisdata.v1.MetaType
 	0,   // 370: metaxisdata.v1.QualityRuleTemplate.rule_type:type_name -> metaxisdata.v1.QualityRuleType
 	57,  // 371: metaxisdata.v1.QualityRuleTemplate.config:type_name -> metaxisdata.v1.QualityRuleConfig
 	3,   // 372: metaxisdata.v1.QualityRuleTemplate.severity:type_name -> metaxisdata.v1.QualitySeverity
 	2,   // 373: metaxisdata.v1.QualityRuleTemplate.dimension:type_name -> metaxisdata.v1.QualityDimension
-	283, // 374: metaxisdata.v1.QualityRuleTemplate.create_time:type_name -> google.protobuf.Timestamp
-	283, // 375: metaxisdata.v1.QualityRuleTemplate.update_time:type_name -> google.protobuf.Timestamp
+	294, // 374: metaxisdata.v1.QualityRuleTemplate.create_time:type_name -> google.protobuf.Timestamp
+	294, // 375: metaxisdata.v1.QualityRuleTemplate.update_time:type_name -> google.protobuf.Timestamp
 	261, // 376: metaxisdata.v1.ListQualityRuleTemplatesResponse.quality_rule_templates:type_name -> metaxisdata.v1.QualityRuleTemplate
 	261, // 377: metaxisdata.v1.CreateQualityRuleTemplateRequest.quality_rule_template:type_name -> metaxisdata.v1.QualityRuleTemplate
 	261, // 378: metaxisdata.v1.UpdateQualityRuleTemplateRequest.quality_rule_template:type_name -> metaxisdata.v1.QualityRuleTemplate
-	286, // 379: metaxisdata.v1.UpdateQualityRuleTemplateRequest.update_mask:type_name -> google.protobuf.FieldMask
-	283, // 380: metaxisdata.v1.QualityCodeTable.create_time:type_name -> google.protobuf.Timestamp
-	283, // 381: metaxisdata.v1.QualityCodeTable.update_time:type_name -> google.protobuf.Timestamp
+	297, // 379: metaxisdata.v1.UpdateQualityRuleTemplateRequest.update_mask:type_name -> google.protobuf.FieldMask
+	294, // 380: metaxisdata.v1.QualityCodeTable.create_time:type_name -> google.protobuf.Timestamp
+	294, // 381: metaxisdata.v1.QualityCodeTable.update_time:type_name -> google.protobuf.Timestamp
 	268, // 382: metaxisdata.v1.ListQualityCodeTablesResponse.quality_code_tables:type_name -> metaxisdata.v1.QualityCodeTable
 	268, // 383: metaxisdata.v1.CreateQualityCodeTableRequest.quality_code_table:type_name -> metaxisdata.v1.QualityCodeTable
 	268, // 384: metaxisdata.v1.UpdateQualityCodeTableRequest.quality_code_table:type_name -> metaxisdata.v1.QualityCodeTable
-	286, // 385: metaxisdata.v1.UpdateQualityCodeTableRequest.update_mask:type_name -> google.protobuf.FieldMask
+	297, // 385: metaxisdata.v1.UpdateQualityCodeTableRequest.update_mask:type_name -> google.protobuf.FieldMask
 	55,  // 386: metaxisdata.v1.QualityAgentSession.target:type_name -> metaxisdata.v1.QualityTarget
 	47,  // 387: metaxisdata.v1.QualityAgentSession.state:type_name -> metaxisdata.v1.QualityAgentSessionState
-	283, // 388: metaxisdata.v1.QualityAgentSession.next_wake_time:type_name -> google.protobuf.Timestamp
-	283, // 389: metaxisdata.v1.QualityAgentSession.last_activity_time:type_name -> google.protobuf.Timestamp
-	283, // 390: metaxisdata.v1.QualityAgentSession.lease_expire_time:type_name -> google.protobuf.Timestamp
-	283, // 391: metaxisdata.v1.QualityAgentSession.create_time:type_name -> google.protobuf.Timestamp
-	283, // 392: metaxisdata.v1.QualityAgentSession.update_time:type_name -> google.protobuf.Timestamp
-	283, // 393: metaxisdata.v1.QualityAgentSession.archive_time:type_name -> google.protobuf.Timestamp
+	294, // 388: metaxisdata.v1.QualityAgentSession.next_wake_time:type_name -> google.protobuf.Timestamp
+	294, // 389: metaxisdata.v1.QualityAgentSession.last_activity_time:type_name -> google.protobuf.Timestamp
+	294, // 390: metaxisdata.v1.QualityAgentSession.lease_expire_time:type_name -> google.protobuf.Timestamp
+	294, // 391: metaxisdata.v1.QualityAgentSession.create_time:type_name -> google.protobuf.Timestamp
+	294, // 392: metaxisdata.v1.QualityAgentSession.update_time:type_name -> google.protobuf.Timestamp
+	294, // 393: metaxisdata.v1.QualityAgentSession.archive_time:type_name -> google.protobuf.Timestamp
 	48,  // 394: metaxisdata.v1.QualityAgentSessionMessage.role:type_name -> metaxisdata.v1.QualityAgentMessageRole
 	49,  // 395: metaxisdata.v1.QualityAgentSessionMessage.origin:type_name -> metaxisdata.v1.QualityAgentMessageOrigin
 	275, // 396: metaxisdata.v1.QualityAgentSessionMessage.tool_calls:type_name -> metaxisdata.v1.QualityToolCall
-	283, // 397: metaxisdata.v1.QualityAgentSessionMessage.create_time:type_name -> google.protobuf.Timestamp
-	283, // 398: metaxisdata.v1.QualityAgentRunnerStatus.last_activity_time:type_name -> google.protobuf.Timestamp
-	283, // 399: metaxisdata.v1.QualityAgentRunnerStatus.runner_last_tick_time:type_name -> google.protobuf.Timestamp
+	294, // 397: metaxisdata.v1.QualityAgentSessionMessage.create_time:type_name -> google.protobuf.Timestamp
+	294, // 398: metaxisdata.v1.QualityAgentRunnerStatus.last_activity_time:type_name -> google.protobuf.Timestamp
+	294, // 399: metaxisdata.v1.QualityAgentRunnerStatus.runner_last_tick_time:type_name -> google.protobuf.Timestamp
 	47,  // 400: metaxisdata.v1.QualityAgentSessionStateCount.state:type_name -> metaxisdata.v1.QualityAgentSessionState
 	55,  // 401: metaxisdata.v1.QualityAgentTargetCost.target:type_name -> metaxisdata.v1.QualityTarget
 	279, // 402: metaxisdata.v1.QualityAgentMetrics.sessions:type_name -> metaxisdata.v1.QualityAgentSessionStateCount
 	280, // 403: metaxisdata.v1.QualityAgentMetrics.top_targets:type_name -> metaxisdata.v1.QualityAgentTargetCost
-	107, // 404: metaxisdata.v1.DataQualityService.ListQualityRules:input_type -> metaxisdata.v1.ListQualityRulesRequest
-	109, // 405: metaxisdata.v1.DataQualityService.GetQualityRule:input_type -> metaxisdata.v1.GetQualityRuleRequest
-	110, // 406: metaxisdata.v1.DataQualityService.CreateQualityRule:input_type -> metaxisdata.v1.CreateQualityRuleRequest
-	111, // 407: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:input_type -> metaxisdata.v1.BatchCreateQualityRulesRequest
-	114, // 408: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:input_type -> metaxisdata.v1.BatchUpdateQualityRulesRequest
-	117, // 409: metaxisdata.v1.DataQualityService.UpdateQualityRule:input_type -> metaxisdata.v1.UpdateQualityRuleRequest
-	118, // 410: metaxisdata.v1.DataQualityService.DeleteQualityRule:input_type -> metaxisdata.v1.DeleteQualityRuleRequest
-	262, // 411: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:input_type -> metaxisdata.v1.ListQualityRuleTemplatesRequest
-	264, // 412: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:input_type -> metaxisdata.v1.GetQualityRuleTemplateRequest
-	265, // 413: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:input_type -> metaxisdata.v1.CreateQualityRuleTemplateRequest
-	266, // 414: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:input_type -> metaxisdata.v1.UpdateQualityRuleTemplateRequest
-	267, // 415: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:input_type -> metaxisdata.v1.DeleteQualityRuleTemplateRequest
-	269, // 416: metaxisdata.v1.DataQualityService.ListQualityCodeTables:input_type -> metaxisdata.v1.ListQualityCodeTablesRequest
-	271, // 417: metaxisdata.v1.DataQualityService.GetQualityCodeTable:input_type -> metaxisdata.v1.GetQualityCodeTableRequest
-	272, // 418: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:input_type -> metaxisdata.v1.CreateQualityCodeTableRequest
-	273, // 419: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:input_type -> metaxisdata.v1.UpdateQualityCodeTableRequest
-	274, // 420: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:input_type -> metaxisdata.v1.DeleteQualityCodeTableRequest
-	119, // 421: metaxisdata.v1.DataQualityService.PreviewQualityRule:input_type -> metaxisdata.v1.PreviewQualityRuleRequest
-	121, // 422: metaxisdata.v1.DataQualityService.RunQualityRules:input_type -> metaxisdata.v1.RunQualityRulesRequest
-	123, // 423: metaxisdata.v1.DataQualityService.ListQualityExecutions:input_type -> metaxisdata.v1.ListQualityExecutionsRequest
-	125, // 424: metaxisdata.v1.DataQualityService.GetQualityExecution:input_type -> metaxisdata.v1.GetQualityExecutionRequest
-	126, // 425: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:input_type -> metaxisdata.v1.GetQualityRuleTrendRequest
-	256, // 426: metaxisdata.v1.DataQualityService.ExportQualityExecutions:input_type -> metaxisdata.v1.ExportQualityExecutionsRequest
-	89,  // 427: metaxisdata.v1.DataQualityService.ListQualityRuns:input_type -> metaxisdata.v1.ListQualityRunsRequest
-	91,  // 428: metaxisdata.v1.DataQualityService.GetQualityRun:input_type -> metaxisdata.v1.GetQualityRunRequest
-	130, // 429: metaxisdata.v1.DataQualityService.ListQualityIssues:input_type -> metaxisdata.v1.ListQualityIssuesRequest
-	132, // 430: metaxisdata.v1.DataQualityService.GetQualityIssue:input_type -> metaxisdata.v1.GetQualityIssueRequest
-	257, // 431: metaxisdata.v1.DataQualityService.ExportQualityIssues:input_type -> metaxisdata.v1.ExportQualityIssuesRequest
-	133, // 432: metaxisdata.v1.DataQualityService.UpdateQualityIssue:input_type -> metaxisdata.v1.UpdateQualityIssueRequest
-	134, // 433: metaxisdata.v1.DataQualityService.ListQualitySuggestions:input_type -> metaxisdata.v1.ListQualitySuggestionsRequest
-	137, // 434: metaxisdata.v1.DataQualityService.GetQualitySuggestion:input_type -> metaxisdata.v1.GetQualitySuggestionRequest
-	136, // 435: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:input_type -> metaxisdata.v1.UpdateQualitySuggestionRequest
-	138, // 436: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:input_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
-	144, // 437: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:input_type -> metaxisdata.v1.CreateQualitySuggestionJobRequest
-	145, // 438: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:input_type -> metaxisdata.v1.GetQualitySuggestionJobRequest
-	146, // 439: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:input_type -> metaxisdata.v1.ListQualitySuggestionJobsRequest
-	148, // 440: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:input_type -> metaxisdata.v1.CancelQualitySuggestionJobRequest
-	149, // 441: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:input_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
-	151, // 442: metaxisdata.v1.DataQualityService.ListColumnProfiles:input_type -> metaxisdata.v1.ListColumnProfilesRequest
-	153, // 443: metaxisdata.v1.DataQualityService.ListColumnLabels:input_type -> metaxisdata.v1.ListColumnLabelsRequest
-	155, // 444: metaxisdata.v1.DataQualityService.UpdateColumnLabel:input_type -> metaxisdata.v1.UpdateColumnLabelRequest
-	157, // 445: metaxisdata.v1.DataQualityService.ProfileColumns:input_type -> metaxisdata.v1.ProfileColumnsRequest
-	159, // 446: metaxisdata.v1.DataQualityService.SuggestQualityRule:input_type -> metaxisdata.v1.SuggestQualityRuleRequest
-	161, // 447: metaxisdata.v1.DataQualityService.SuggestColumnLabels:input_type -> metaxisdata.v1.SuggestColumnLabelsRequest
-	163, // 448: metaxisdata.v1.DataQualityService.RecommendQualityChecks:input_type -> metaxisdata.v1.RecommendQualityChecksRequest
-	165, // 449: metaxisdata.v1.DataQualityService.ExplainQualityExecution:input_type -> metaxisdata.v1.ExplainQualityExecutionRequest
-	167, // 450: metaxisdata.v1.DataQualityService.GetQualityOverview:input_type -> metaxisdata.v1.GetQualityOverviewRequest
-	185, // 451: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:input_type -> metaxisdata.v1.GetQualityConsumptionCoverageRequest
-	176, // 452: metaxisdata.v1.DataQualityService.ListQualityTargets:input_type -> metaxisdata.v1.ListQualityTargetsRequest
-	258, // 453: metaxisdata.v1.DataQualityService.ExportQualityTargets:input_type -> metaxisdata.v1.ExportQualityTargetsRequest
-	189, // 454: metaxisdata.v1.DataQualityService.GetQualityTarget:input_type -> metaxisdata.v1.GetQualityTargetRequest
-	182, // 455: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:input_type -> metaxisdata.v1.GetQualityTargetImpactRequest
-	193, // 456: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:input_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
-	259, // 457: metaxisdata.v1.DataQualityService.ExportQualityReport:input_type -> metaxisdata.v1.ExportQualityReportRequest
-	187, // 458: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:input_type -> metaxisdata.v1.UpdateQualityTargetScheduleRequest
-	188, // 459: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:input_type -> metaxisdata.v1.GetQualityTargetScheduleRequest
-	247, // 460: metaxisdata.v1.DataQualityService.GetQualityContract:input_type -> metaxisdata.v1.GetQualityContractRequest
-	207, // 461: metaxisdata.v1.DataQualityService.ListQualityPlans:input_type -> metaxisdata.v1.ListQualityPlansRequest
-	243, // 462: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:input_type -> metaxisdata.v1.ListQualityCoverageGapsRequest
-	248, // 463: metaxisdata.v1.DataQualityService.UpdateQualityContract:input_type -> metaxisdata.v1.UpdateQualityContractRequest
-	249, // 464: metaxisdata.v1.DataQualityService.PublishQualityContract:input_type -> metaxisdata.v1.PublishQualityContractRequest
-	227, // 465: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:input_type -> metaxisdata.v1.CreateQualityInvestigationRequest
-	228, // 466: metaxisdata.v1.DataQualityService.GetQualityInvestigation:input_type -> metaxisdata.v1.GetQualityInvestigationRequest
-	229, // 467: metaxisdata.v1.DataQualityService.ListQualityInvestigations:input_type -> metaxisdata.v1.ListQualityInvestigationsRequest
-	233, // 468: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:input_type -> metaxisdata.v1.GetQualityActionPolicyRequest
-	219, // 469: metaxisdata.v1.DataQualityService.CreateQualityMemory:input_type -> metaxisdata.v1.CreateQualityMemoryRequest
-	220, // 470: metaxisdata.v1.DataQualityService.ListQualityMemories:input_type -> metaxisdata.v1.ListQualityMemoriesRequest
-	222, // 471: metaxisdata.v1.DataQualityService.ConfirmQualityMemory:input_type -> metaxisdata.v1.ConfirmQualityMemoryRequest
-	223, // 472: metaxisdata.v1.DataQualityService.DeleteQualityMemory:input_type -> metaxisdata.v1.DeleteQualityMemoryRequest
-	212, // 473: metaxisdata.v1.DataQualityService.StageQualityPlan:input_type -> metaxisdata.v1.StageQualityPlanRequest
-	213, // 474: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:input_type -> metaxisdata.v1.CreateQualityChangeRequestRequest
-	214, // 475: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:input_type -> metaxisdata.v1.GetQualityChangeRequestRequest
-	215, // 476: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:input_type -> metaxisdata.v1.ListQualityChangeRequestsRequest
-	235, // 477: metaxisdata.v1.DataQualityService.CreateQualityAgent:input_type -> metaxisdata.v1.CreateQualityAgentRequest
-	237, // 478: metaxisdata.v1.DataQualityService.ListQualityAgents:input_type -> metaxisdata.v1.ListQualityAgentsRequest
-	239, // 479: metaxisdata.v1.DataQualityService.DisableQualityAgent:input_type -> metaxisdata.v1.DisableQualityAgentRequest
-	240, // 480: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:input_type -> metaxisdata.v1.RotateQualityAgentTokenRequest
-	217, // 481: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:input_type -> metaxisdata.v1.DecideQualityChangeRequestRequest
-	251, // 482: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:input_type -> metaxisdata.v1.ListQualityContractRevisionsRequest
-	253, // 483: metaxisdata.v1.DataQualityService.GetQualityContractRevision:input_type -> metaxisdata.v1.GetQualityContractRevisionRequest
-	168, // 484: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:input_type -> metaxisdata.v1.GetQualityLLMUsageRequest
-	108, // 485: metaxisdata.v1.DataQualityService.ListQualityRules:output_type -> metaxisdata.v1.ListQualityRulesResponse
-	54,  // 486: metaxisdata.v1.DataQualityService.GetQualityRule:output_type -> metaxisdata.v1.QualityRule
-	54,  // 487: metaxisdata.v1.DataQualityService.CreateQualityRule:output_type -> metaxisdata.v1.QualityRule
-	112, // 488: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:output_type -> metaxisdata.v1.BatchCreateQualityRulesResponse
-	115, // 489: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:output_type -> metaxisdata.v1.BatchUpdateQualityRulesResponse
-	54,  // 490: metaxisdata.v1.DataQualityService.UpdateQualityRule:output_type -> metaxisdata.v1.QualityRule
-	289, // 491: metaxisdata.v1.DataQualityService.DeleteQualityRule:output_type -> google.protobuf.Empty
-	263, // 492: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:output_type -> metaxisdata.v1.ListQualityRuleTemplatesResponse
-	261, // 493: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
-	261, // 494: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
-	261, // 495: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
-	289, // 496: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:output_type -> google.protobuf.Empty
-	270, // 497: metaxisdata.v1.DataQualityService.ListQualityCodeTables:output_type -> metaxisdata.v1.ListQualityCodeTablesResponse
-	268, // 498: metaxisdata.v1.DataQualityService.GetQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
-	268, // 499: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
-	268, // 500: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
-	289, // 501: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:output_type -> google.protobuf.Empty
-	120, // 502: metaxisdata.v1.DataQualityService.PreviewQualityRule:output_type -> metaxisdata.v1.PreviewQualityRuleResponse
-	122, // 503: metaxisdata.v1.DataQualityService.RunQualityRules:output_type -> metaxisdata.v1.RunQualityRulesResponse
-	124, // 504: metaxisdata.v1.DataQualityService.ListQualityExecutions:output_type -> metaxisdata.v1.ListQualityExecutionsResponse
-	86,  // 505: metaxisdata.v1.DataQualityService.GetQualityExecution:output_type -> metaxisdata.v1.QualityExecution
-	127, // 506: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:output_type -> metaxisdata.v1.QualityRuleTrend
-	255, // 507: metaxisdata.v1.DataQualityService.ExportQualityExecutions:output_type -> metaxisdata.v1.ExportQualityDataChunk
-	90,  // 508: metaxisdata.v1.DataQualityService.ListQualityRuns:output_type -> metaxisdata.v1.ListQualityRunsResponse
-	88,  // 509: metaxisdata.v1.DataQualityService.GetQualityRun:output_type -> metaxisdata.v1.QualityRun
-	131, // 510: metaxisdata.v1.DataQualityService.ListQualityIssues:output_type -> metaxisdata.v1.ListQualityIssuesResponse
-	92,  // 511: metaxisdata.v1.DataQualityService.GetQualityIssue:output_type -> metaxisdata.v1.QualityIssue
-	255, // 512: metaxisdata.v1.DataQualityService.ExportQualityIssues:output_type -> metaxisdata.v1.ExportQualityDataChunk
-	92,  // 513: metaxisdata.v1.DataQualityService.UpdateQualityIssue:output_type -> metaxisdata.v1.QualityIssue
-	135, // 514: metaxisdata.v1.DataQualityService.ListQualitySuggestions:output_type -> metaxisdata.v1.ListQualitySuggestionsResponse
-	99,  // 515: metaxisdata.v1.DataQualityService.GetQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
-	99,  // 516: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
-	139, // 517: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:output_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
-	143, // 518: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
-	143, // 519: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
-	147, // 520: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:output_type -> metaxisdata.v1.ListQualitySuggestionJobsResponse
-	143, // 521: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
-	150, // 522: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:output_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
-	152, // 523: metaxisdata.v1.DataQualityService.ListColumnProfiles:output_type -> metaxisdata.v1.ListColumnProfilesResponse
-	154, // 524: metaxisdata.v1.DataQualityService.ListColumnLabels:output_type -> metaxisdata.v1.ListColumnLabelsResponse
-	156, // 525: metaxisdata.v1.DataQualityService.UpdateColumnLabel:output_type -> metaxisdata.v1.UpdateColumnLabelResponse
-	158, // 526: metaxisdata.v1.DataQualityService.ProfileColumns:output_type -> metaxisdata.v1.ProfileColumnsResponse
-	160, // 527: metaxisdata.v1.DataQualityService.SuggestQualityRule:output_type -> metaxisdata.v1.SuggestQualityRuleResponse
-	162, // 528: metaxisdata.v1.DataQualityService.SuggestColumnLabels:output_type -> metaxisdata.v1.SuggestColumnLabelsResponse
-	164, // 529: metaxisdata.v1.DataQualityService.RecommendQualityChecks:output_type -> metaxisdata.v1.RecommendQualityChecksResponse
-	166, // 530: metaxisdata.v1.DataQualityService.ExplainQualityExecution:output_type -> metaxisdata.v1.ExplainQualityExecutionResponse
-	170, // 531: metaxisdata.v1.DataQualityService.GetQualityOverview:output_type -> metaxisdata.v1.QualityOverview
-	186, // 532: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:output_type -> metaxisdata.v1.GetQualityConsumptionCoverageResponse
-	177, // 533: metaxisdata.v1.DataQualityService.ListQualityTargets:output_type -> metaxisdata.v1.ListQualityTargetsResponse
-	255, // 534: metaxisdata.v1.DataQualityService.ExportQualityTargets:output_type -> metaxisdata.v1.ExportQualityDataChunk
-	190, // 535: metaxisdata.v1.DataQualityService.GetQualityTarget:output_type -> metaxisdata.v1.GetQualityTargetResponse
-	183, // 536: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:output_type -> metaxisdata.v1.GetQualityTargetImpactResponse
-	194, // 537: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:output_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
-	260, // 538: metaxisdata.v1.DataQualityService.ExportQualityReport:output_type -> metaxisdata.v1.ExportQualityReportResponse
-	178, // 539: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
-	178, // 540: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
-	195, // 541: metaxisdata.v1.DataQualityService.GetQualityContract:output_type -> metaxisdata.v1.QualityContract
-	208, // 542: metaxisdata.v1.DataQualityService.ListQualityPlans:output_type -> metaxisdata.v1.ListQualityPlansResponse
-	244, // 543: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:output_type -> metaxisdata.v1.ListQualityCoverageGapsResponse
-	195, // 544: metaxisdata.v1.DataQualityService.UpdateQualityContract:output_type -> metaxisdata.v1.QualityContract
-	250, // 545: metaxisdata.v1.DataQualityService.PublishQualityContract:output_type -> metaxisdata.v1.PublishQualityContractResponse
-	226, // 546: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
-	226, // 547: metaxisdata.v1.DataQualityService.GetQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
-	230, // 548: metaxisdata.v1.DataQualityService.ListQualityInvestigations:output_type -> metaxisdata.v1.ListQualityInvestigationsResponse
-	232, // 549: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:output_type -> metaxisdata.v1.QualityActionPolicy
-	218, // 550: metaxisdata.v1.DataQualityService.CreateQualityMemory:output_type -> metaxisdata.v1.QualityMemory
-	221, // 551: metaxisdata.v1.DataQualityService.ListQualityMemories:output_type -> metaxisdata.v1.ListQualityMemoriesResponse
-	218, // 552: metaxisdata.v1.DataQualityService.ConfirmQualityMemory:output_type -> metaxisdata.v1.QualityMemory
-	289, // 553: metaxisdata.v1.DataQualityService.DeleteQualityMemory:output_type -> google.protobuf.Empty
-	195, // 554: metaxisdata.v1.DataQualityService.StageQualityPlan:output_type -> metaxisdata.v1.QualityContract
-	211, // 555: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
-	211, // 556: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
-	216, // 557: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:output_type -> metaxisdata.v1.ListQualityChangeRequestsResponse
-	236, // 558: metaxisdata.v1.DataQualityService.CreateQualityAgent:output_type -> metaxisdata.v1.CreateQualityAgentResponse
-	238, // 559: metaxisdata.v1.DataQualityService.ListQualityAgents:output_type -> metaxisdata.v1.ListQualityAgentsResponse
-	234, // 560: metaxisdata.v1.DataQualityService.DisableQualityAgent:output_type -> metaxisdata.v1.QualityAgent
-	241, // 561: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:output_type -> metaxisdata.v1.RotateQualityAgentTokenResponse
-	211, // 562: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
-	252, // 563: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:output_type -> metaxisdata.v1.ListQualityContractRevisionsResponse
-	254, // 564: metaxisdata.v1.DataQualityService.GetQualityContractRevision:output_type -> metaxisdata.v1.GetQualityContractRevisionResponse
-	169, // 565: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:output_type -> metaxisdata.v1.QualityLLMUsage
-	485, // [485:566] is the sub-list for method output_type
-	404, // [404:485] is the sub-list for method input_type
-	404, // [404:404] is the sub-list for extension type_name
-	404, // [404:404] is the sub-list for extension extendee
-	0,   // [0:404] is the sub-list for field type_name
+	295, // 404: metaxisdata.v1.CreateQualityAgentSessionRequest.meta_type:type_name -> metaxisdata.v1.MetaType
+	47,  // 405: metaxisdata.v1.ListQualityAgentSessionsRequest.state:type_name -> metaxisdata.v1.QualityAgentSessionState
+	276, // 406: metaxisdata.v1.ListQualityAgentSessionsResponse.quality_agent_sessions:type_name -> metaxisdata.v1.QualityAgentSession
+	277, // 407: metaxisdata.v1.ListQualityAgentSessionMessagesResponse.quality_agent_session_messages:type_name -> metaxisdata.v1.QualityAgentSessionMessage
+	107, // 408: metaxisdata.v1.DataQualityService.ListQualityRules:input_type -> metaxisdata.v1.ListQualityRulesRequest
+	109, // 409: metaxisdata.v1.DataQualityService.GetQualityRule:input_type -> metaxisdata.v1.GetQualityRuleRequest
+	110, // 410: metaxisdata.v1.DataQualityService.CreateQualityRule:input_type -> metaxisdata.v1.CreateQualityRuleRequest
+	111, // 411: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:input_type -> metaxisdata.v1.BatchCreateQualityRulesRequest
+	114, // 412: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:input_type -> metaxisdata.v1.BatchUpdateQualityRulesRequest
+	117, // 413: metaxisdata.v1.DataQualityService.UpdateQualityRule:input_type -> metaxisdata.v1.UpdateQualityRuleRequest
+	118, // 414: metaxisdata.v1.DataQualityService.DeleteQualityRule:input_type -> metaxisdata.v1.DeleteQualityRuleRequest
+	262, // 415: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:input_type -> metaxisdata.v1.ListQualityRuleTemplatesRequest
+	264, // 416: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:input_type -> metaxisdata.v1.GetQualityRuleTemplateRequest
+	265, // 417: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:input_type -> metaxisdata.v1.CreateQualityRuleTemplateRequest
+	266, // 418: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:input_type -> metaxisdata.v1.UpdateQualityRuleTemplateRequest
+	267, // 419: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:input_type -> metaxisdata.v1.DeleteQualityRuleTemplateRequest
+	269, // 420: metaxisdata.v1.DataQualityService.ListQualityCodeTables:input_type -> metaxisdata.v1.ListQualityCodeTablesRequest
+	271, // 421: metaxisdata.v1.DataQualityService.GetQualityCodeTable:input_type -> metaxisdata.v1.GetQualityCodeTableRequest
+	272, // 422: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:input_type -> metaxisdata.v1.CreateQualityCodeTableRequest
+	273, // 423: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:input_type -> metaxisdata.v1.UpdateQualityCodeTableRequest
+	274, // 424: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:input_type -> metaxisdata.v1.DeleteQualityCodeTableRequest
+	119, // 425: metaxisdata.v1.DataQualityService.PreviewQualityRule:input_type -> metaxisdata.v1.PreviewQualityRuleRequest
+	121, // 426: metaxisdata.v1.DataQualityService.RunQualityRules:input_type -> metaxisdata.v1.RunQualityRulesRequest
+	123, // 427: metaxisdata.v1.DataQualityService.ListQualityExecutions:input_type -> metaxisdata.v1.ListQualityExecutionsRequest
+	125, // 428: metaxisdata.v1.DataQualityService.GetQualityExecution:input_type -> metaxisdata.v1.GetQualityExecutionRequest
+	126, // 429: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:input_type -> metaxisdata.v1.GetQualityRuleTrendRequest
+	256, // 430: metaxisdata.v1.DataQualityService.ExportQualityExecutions:input_type -> metaxisdata.v1.ExportQualityExecutionsRequest
+	89,  // 431: metaxisdata.v1.DataQualityService.ListQualityRuns:input_type -> metaxisdata.v1.ListQualityRunsRequest
+	91,  // 432: metaxisdata.v1.DataQualityService.GetQualityRun:input_type -> metaxisdata.v1.GetQualityRunRequest
+	130, // 433: metaxisdata.v1.DataQualityService.ListQualityIssues:input_type -> metaxisdata.v1.ListQualityIssuesRequest
+	132, // 434: metaxisdata.v1.DataQualityService.GetQualityIssue:input_type -> metaxisdata.v1.GetQualityIssueRequest
+	257, // 435: metaxisdata.v1.DataQualityService.ExportQualityIssues:input_type -> metaxisdata.v1.ExportQualityIssuesRequest
+	133, // 436: metaxisdata.v1.DataQualityService.UpdateQualityIssue:input_type -> metaxisdata.v1.UpdateQualityIssueRequest
+	134, // 437: metaxisdata.v1.DataQualityService.ListQualitySuggestions:input_type -> metaxisdata.v1.ListQualitySuggestionsRequest
+	137, // 438: metaxisdata.v1.DataQualityService.GetQualitySuggestion:input_type -> metaxisdata.v1.GetQualitySuggestionRequest
+	136, // 439: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:input_type -> metaxisdata.v1.UpdateQualitySuggestionRequest
+	138, // 440: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:input_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsRequest
+	144, // 441: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:input_type -> metaxisdata.v1.CreateQualitySuggestionJobRequest
+	145, // 442: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:input_type -> metaxisdata.v1.GetQualitySuggestionJobRequest
+	146, // 443: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:input_type -> metaxisdata.v1.ListQualitySuggestionJobsRequest
+	148, // 444: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:input_type -> metaxisdata.v1.CancelQualitySuggestionJobRequest
+	149, // 445: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:input_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
+	151, // 446: metaxisdata.v1.DataQualityService.ListColumnProfiles:input_type -> metaxisdata.v1.ListColumnProfilesRequest
+	153, // 447: metaxisdata.v1.DataQualityService.ListColumnLabels:input_type -> metaxisdata.v1.ListColumnLabelsRequest
+	155, // 448: metaxisdata.v1.DataQualityService.UpdateColumnLabel:input_type -> metaxisdata.v1.UpdateColumnLabelRequest
+	157, // 449: metaxisdata.v1.DataQualityService.ProfileColumns:input_type -> metaxisdata.v1.ProfileColumnsRequest
+	159, // 450: metaxisdata.v1.DataQualityService.SuggestQualityRule:input_type -> metaxisdata.v1.SuggestQualityRuleRequest
+	161, // 451: metaxisdata.v1.DataQualityService.SuggestColumnLabels:input_type -> metaxisdata.v1.SuggestColumnLabelsRequest
+	163, // 452: metaxisdata.v1.DataQualityService.RecommendQualityChecks:input_type -> metaxisdata.v1.RecommendQualityChecksRequest
+	165, // 453: metaxisdata.v1.DataQualityService.ExplainQualityExecution:input_type -> metaxisdata.v1.ExplainQualityExecutionRequest
+	167, // 454: metaxisdata.v1.DataQualityService.GetQualityOverview:input_type -> metaxisdata.v1.GetQualityOverviewRequest
+	185, // 455: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:input_type -> metaxisdata.v1.GetQualityConsumptionCoverageRequest
+	176, // 456: metaxisdata.v1.DataQualityService.ListQualityTargets:input_type -> metaxisdata.v1.ListQualityTargetsRequest
+	258, // 457: metaxisdata.v1.DataQualityService.ExportQualityTargets:input_type -> metaxisdata.v1.ExportQualityTargetsRequest
+	189, // 458: metaxisdata.v1.DataQualityService.GetQualityTarget:input_type -> metaxisdata.v1.GetQualityTargetRequest
+	182, // 459: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:input_type -> metaxisdata.v1.GetQualityTargetImpactRequest
+	193, // 460: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:input_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaRequest
+	259, // 461: metaxisdata.v1.DataQualityService.ExportQualityReport:input_type -> metaxisdata.v1.ExportQualityReportRequest
+	187, // 462: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:input_type -> metaxisdata.v1.UpdateQualityTargetScheduleRequest
+	188, // 463: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:input_type -> metaxisdata.v1.GetQualityTargetScheduleRequest
+	247, // 464: metaxisdata.v1.DataQualityService.GetQualityContract:input_type -> metaxisdata.v1.GetQualityContractRequest
+	207, // 465: metaxisdata.v1.DataQualityService.ListQualityPlans:input_type -> metaxisdata.v1.ListQualityPlansRequest
+	243, // 466: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:input_type -> metaxisdata.v1.ListQualityCoverageGapsRequest
+	248, // 467: metaxisdata.v1.DataQualityService.UpdateQualityContract:input_type -> metaxisdata.v1.UpdateQualityContractRequest
+	249, // 468: metaxisdata.v1.DataQualityService.PublishQualityContract:input_type -> metaxisdata.v1.PublishQualityContractRequest
+	227, // 469: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:input_type -> metaxisdata.v1.CreateQualityInvestigationRequest
+	228, // 470: metaxisdata.v1.DataQualityService.GetQualityInvestigation:input_type -> metaxisdata.v1.GetQualityInvestigationRequest
+	229, // 471: metaxisdata.v1.DataQualityService.ListQualityInvestigations:input_type -> metaxisdata.v1.ListQualityInvestigationsRequest
+	233, // 472: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:input_type -> metaxisdata.v1.GetQualityActionPolicyRequest
+	219, // 473: metaxisdata.v1.DataQualityService.CreateQualityMemory:input_type -> metaxisdata.v1.CreateQualityMemoryRequest
+	220, // 474: metaxisdata.v1.DataQualityService.ListQualityMemories:input_type -> metaxisdata.v1.ListQualityMemoriesRequest
+	222, // 475: metaxisdata.v1.DataQualityService.ConfirmQualityMemory:input_type -> metaxisdata.v1.ConfirmQualityMemoryRequest
+	223, // 476: metaxisdata.v1.DataQualityService.DeleteQualityMemory:input_type -> metaxisdata.v1.DeleteQualityMemoryRequest
+	212, // 477: metaxisdata.v1.DataQualityService.StageQualityPlan:input_type -> metaxisdata.v1.StageQualityPlanRequest
+	213, // 478: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:input_type -> metaxisdata.v1.CreateQualityChangeRequestRequest
+	214, // 479: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:input_type -> metaxisdata.v1.GetQualityChangeRequestRequest
+	215, // 480: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:input_type -> metaxisdata.v1.ListQualityChangeRequestsRequest
+	235, // 481: metaxisdata.v1.DataQualityService.CreateQualityAgent:input_type -> metaxisdata.v1.CreateQualityAgentRequest
+	237, // 482: metaxisdata.v1.DataQualityService.ListQualityAgents:input_type -> metaxisdata.v1.ListQualityAgentsRequest
+	239, // 483: metaxisdata.v1.DataQualityService.DisableQualityAgent:input_type -> metaxisdata.v1.DisableQualityAgentRequest
+	240, // 484: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:input_type -> metaxisdata.v1.RotateQualityAgentTokenRequest
+	217, // 485: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:input_type -> metaxisdata.v1.DecideQualityChangeRequestRequest
+	251, // 486: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:input_type -> metaxisdata.v1.ListQualityContractRevisionsRequest
+	253, // 487: metaxisdata.v1.DataQualityService.GetQualityContractRevision:input_type -> metaxisdata.v1.GetQualityContractRevisionRequest
+	168, // 488: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:input_type -> metaxisdata.v1.GetQualityLLMUsageRequest
+	283, // 489: metaxisdata.v1.DataQualityService.CreateQualityAgentSession:input_type -> metaxisdata.v1.CreateQualityAgentSessionRequest
+	284, // 490: metaxisdata.v1.DataQualityService.ListQualityAgentSessions:input_type -> metaxisdata.v1.ListQualityAgentSessionsRequest
+	286, // 491: metaxisdata.v1.DataQualityService.GetQualityAgentSession:input_type -> metaxisdata.v1.GetQualityAgentSessionRequest
+	287, // 492: metaxisdata.v1.DataQualityService.PauseQualityAgentSession:input_type -> metaxisdata.v1.PauseQualityAgentSessionRequest
+	288, // 493: metaxisdata.v1.DataQualityService.ResumeQualityAgentSession:input_type -> metaxisdata.v1.ResumeQualityAgentSessionRequest
+	289, // 494: metaxisdata.v1.DataQualityService.ArchiveQualityAgentSession:input_type -> metaxisdata.v1.ArchiveQualityAgentSessionRequest
+	290, // 495: metaxisdata.v1.DataQualityService.WakeQualityAgentSession:input_type -> metaxisdata.v1.WakeQualityAgentSessionRequest
+	291, // 496: metaxisdata.v1.DataQualityService.ListQualityAgentSessionMessages:input_type -> metaxisdata.v1.ListQualityAgentSessionMessagesRequest
+	293, // 497: metaxisdata.v1.DataQualityService.GetQualityAgentRunnerStatus:input_type -> metaxisdata.v1.GetQualityAgentRunnerStatusRequest
+	282, // 498: metaxisdata.v1.DataQualityService.GetQualityAgentMetrics:input_type -> metaxisdata.v1.GetQualityAgentMetricsRequest
+	108, // 499: metaxisdata.v1.DataQualityService.ListQualityRules:output_type -> metaxisdata.v1.ListQualityRulesResponse
+	54,  // 500: metaxisdata.v1.DataQualityService.GetQualityRule:output_type -> metaxisdata.v1.QualityRule
+	54,  // 501: metaxisdata.v1.DataQualityService.CreateQualityRule:output_type -> metaxisdata.v1.QualityRule
+	112, // 502: metaxisdata.v1.DataQualityService.BatchCreateQualityRules:output_type -> metaxisdata.v1.BatchCreateQualityRulesResponse
+	115, // 503: metaxisdata.v1.DataQualityService.BatchUpdateQualityRules:output_type -> metaxisdata.v1.BatchUpdateQualityRulesResponse
+	54,  // 504: metaxisdata.v1.DataQualityService.UpdateQualityRule:output_type -> metaxisdata.v1.QualityRule
+	300, // 505: metaxisdata.v1.DataQualityService.DeleteQualityRule:output_type -> google.protobuf.Empty
+	263, // 506: metaxisdata.v1.DataQualityService.ListQualityRuleTemplates:output_type -> metaxisdata.v1.ListQualityRuleTemplatesResponse
+	261, // 507: metaxisdata.v1.DataQualityService.GetQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
+	261, // 508: metaxisdata.v1.DataQualityService.CreateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
+	261, // 509: metaxisdata.v1.DataQualityService.UpdateQualityRuleTemplate:output_type -> metaxisdata.v1.QualityRuleTemplate
+	300, // 510: metaxisdata.v1.DataQualityService.DeleteQualityRuleTemplate:output_type -> google.protobuf.Empty
+	270, // 511: metaxisdata.v1.DataQualityService.ListQualityCodeTables:output_type -> metaxisdata.v1.ListQualityCodeTablesResponse
+	268, // 512: metaxisdata.v1.DataQualityService.GetQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
+	268, // 513: metaxisdata.v1.DataQualityService.CreateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
+	268, // 514: metaxisdata.v1.DataQualityService.UpdateQualityCodeTable:output_type -> metaxisdata.v1.QualityCodeTable
+	300, // 515: metaxisdata.v1.DataQualityService.DeleteQualityCodeTable:output_type -> google.protobuf.Empty
+	120, // 516: metaxisdata.v1.DataQualityService.PreviewQualityRule:output_type -> metaxisdata.v1.PreviewQualityRuleResponse
+	122, // 517: metaxisdata.v1.DataQualityService.RunQualityRules:output_type -> metaxisdata.v1.RunQualityRulesResponse
+	124, // 518: metaxisdata.v1.DataQualityService.ListQualityExecutions:output_type -> metaxisdata.v1.ListQualityExecutionsResponse
+	86,  // 519: metaxisdata.v1.DataQualityService.GetQualityExecution:output_type -> metaxisdata.v1.QualityExecution
+	127, // 520: metaxisdata.v1.DataQualityService.GetQualityRuleTrend:output_type -> metaxisdata.v1.QualityRuleTrend
+	255, // 521: metaxisdata.v1.DataQualityService.ExportQualityExecutions:output_type -> metaxisdata.v1.ExportQualityDataChunk
+	90,  // 522: metaxisdata.v1.DataQualityService.ListQualityRuns:output_type -> metaxisdata.v1.ListQualityRunsResponse
+	88,  // 523: metaxisdata.v1.DataQualityService.GetQualityRun:output_type -> metaxisdata.v1.QualityRun
+	131, // 524: metaxisdata.v1.DataQualityService.ListQualityIssues:output_type -> metaxisdata.v1.ListQualityIssuesResponse
+	92,  // 525: metaxisdata.v1.DataQualityService.GetQualityIssue:output_type -> metaxisdata.v1.QualityIssue
+	255, // 526: metaxisdata.v1.DataQualityService.ExportQualityIssues:output_type -> metaxisdata.v1.ExportQualityDataChunk
+	92,  // 527: metaxisdata.v1.DataQualityService.UpdateQualityIssue:output_type -> metaxisdata.v1.QualityIssue
+	135, // 528: metaxisdata.v1.DataQualityService.ListQualitySuggestions:output_type -> metaxisdata.v1.ListQualitySuggestionsResponse
+	99,  // 529: metaxisdata.v1.DataQualityService.GetQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
+	99,  // 530: metaxisdata.v1.DataQualityService.UpdateQualitySuggestion:output_type -> metaxisdata.v1.QualitySuggestion
+	139, // 531: metaxisdata.v1.DataQualityService.BatchUpdateQualitySuggestions:output_type -> metaxisdata.v1.BatchUpdateQualitySuggestionsResponse
+	143, // 532: metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
+	143, // 533: metaxisdata.v1.DataQualityService.GetQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
+	147, // 534: metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs:output_type -> metaxisdata.v1.ListQualitySuggestionJobsResponse
+	143, // 535: metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob:output_type -> metaxisdata.v1.QualitySuggestionJob
+	150, // 536: metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug:output_type -> metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
+	152, // 537: metaxisdata.v1.DataQualityService.ListColumnProfiles:output_type -> metaxisdata.v1.ListColumnProfilesResponse
+	154, // 538: metaxisdata.v1.DataQualityService.ListColumnLabels:output_type -> metaxisdata.v1.ListColumnLabelsResponse
+	156, // 539: metaxisdata.v1.DataQualityService.UpdateColumnLabel:output_type -> metaxisdata.v1.UpdateColumnLabelResponse
+	158, // 540: metaxisdata.v1.DataQualityService.ProfileColumns:output_type -> metaxisdata.v1.ProfileColumnsResponse
+	160, // 541: metaxisdata.v1.DataQualityService.SuggestQualityRule:output_type -> metaxisdata.v1.SuggestQualityRuleResponse
+	162, // 542: metaxisdata.v1.DataQualityService.SuggestColumnLabels:output_type -> metaxisdata.v1.SuggestColumnLabelsResponse
+	164, // 543: metaxisdata.v1.DataQualityService.RecommendQualityChecks:output_type -> metaxisdata.v1.RecommendQualityChecksResponse
+	166, // 544: metaxisdata.v1.DataQualityService.ExplainQualityExecution:output_type -> metaxisdata.v1.ExplainQualityExecutionResponse
+	170, // 545: metaxisdata.v1.DataQualityService.GetQualityOverview:output_type -> metaxisdata.v1.QualityOverview
+	186, // 546: metaxisdata.v1.DataQualityService.GetQualityConsumptionCoverage:output_type -> metaxisdata.v1.GetQualityConsumptionCoverageResponse
+	177, // 547: metaxisdata.v1.DataQualityService.ListQualityTargets:output_type -> metaxisdata.v1.ListQualityTargetsResponse
+	255, // 548: metaxisdata.v1.DataQualityService.ExportQualityTargets:output_type -> metaxisdata.v1.ExportQualityDataChunk
+	190, // 549: metaxisdata.v1.DataQualityService.GetQualityTarget:output_type -> metaxisdata.v1.GetQualityTargetResponse
+	183, // 550: metaxisdata.v1.DataQualityService.GetQualityTargetImpact:output_type -> metaxisdata.v1.GetQualityTargetImpactResponse
+	194, // 551: metaxisdata.v1.DataQualityService.AcknowledgeQualityTargetSchema:output_type -> metaxisdata.v1.AcknowledgeQualityTargetSchemaResponse
+	260, // 552: metaxisdata.v1.DataQualityService.ExportQualityReport:output_type -> metaxisdata.v1.ExportQualityReportResponse
+	178, // 553: metaxisdata.v1.DataQualityService.UpdateQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
+	178, // 554: metaxisdata.v1.DataQualityService.GetQualityTargetSchedule:output_type -> metaxisdata.v1.QualityTargetSchedule
+	195, // 555: metaxisdata.v1.DataQualityService.GetQualityContract:output_type -> metaxisdata.v1.QualityContract
+	208, // 556: metaxisdata.v1.DataQualityService.ListQualityPlans:output_type -> metaxisdata.v1.ListQualityPlansResponse
+	244, // 557: metaxisdata.v1.DataQualityService.ListQualityCoverageGaps:output_type -> metaxisdata.v1.ListQualityCoverageGapsResponse
+	195, // 558: metaxisdata.v1.DataQualityService.UpdateQualityContract:output_type -> metaxisdata.v1.QualityContract
+	250, // 559: metaxisdata.v1.DataQualityService.PublishQualityContract:output_type -> metaxisdata.v1.PublishQualityContractResponse
+	226, // 560: metaxisdata.v1.DataQualityService.CreateQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
+	226, // 561: metaxisdata.v1.DataQualityService.GetQualityInvestigation:output_type -> metaxisdata.v1.QualityInvestigation
+	230, // 562: metaxisdata.v1.DataQualityService.ListQualityInvestigations:output_type -> metaxisdata.v1.ListQualityInvestigationsResponse
+	232, // 563: metaxisdata.v1.DataQualityService.GetQualityActionPolicy:output_type -> metaxisdata.v1.QualityActionPolicy
+	218, // 564: metaxisdata.v1.DataQualityService.CreateQualityMemory:output_type -> metaxisdata.v1.QualityMemory
+	221, // 565: metaxisdata.v1.DataQualityService.ListQualityMemories:output_type -> metaxisdata.v1.ListQualityMemoriesResponse
+	218, // 566: metaxisdata.v1.DataQualityService.ConfirmQualityMemory:output_type -> metaxisdata.v1.QualityMemory
+	300, // 567: metaxisdata.v1.DataQualityService.DeleteQualityMemory:output_type -> google.protobuf.Empty
+	195, // 568: metaxisdata.v1.DataQualityService.StageQualityPlan:output_type -> metaxisdata.v1.QualityContract
+	211, // 569: metaxisdata.v1.DataQualityService.CreateQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
+	211, // 570: metaxisdata.v1.DataQualityService.GetQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
+	216, // 571: metaxisdata.v1.DataQualityService.ListQualityChangeRequests:output_type -> metaxisdata.v1.ListQualityChangeRequestsResponse
+	236, // 572: metaxisdata.v1.DataQualityService.CreateQualityAgent:output_type -> metaxisdata.v1.CreateQualityAgentResponse
+	238, // 573: metaxisdata.v1.DataQualityService.ListQualityAgents:output_type -> metaxisdata.v1.ListQualityAgentsResponse
+	234, // 574: metaxisdata.v1.DataQualityService.DisableQualityAgent:output_type -> metaxisdata.v1.QualityAgent
+	241, // 575: metaxisdata.v1.DataQualityService.RotateQualityAgentToken:output_type -> metaxisdata.v1.RotateQualityAgentTokenResponse
+	211, // 576: metaxisdata.v1.DataQualityService.DecideQualityChangeRequest:output_type -> metaxisdata.v1.QualityChangeRequest
+	252, // 577: metaxisdata.v1.DataQualityService.ListQualityContractRevisions:output_type -> metaxisdata.v1.ListQualityContractRevisionsResponse
+	254, // 578: metaxisdata.v1.DataQualityService.GetQualityContractRevision:output_type -> metaxisdata.v1.GetQualityContractRevisionResponse
+	169, // 579: metaxisdata.v1.DataQualityService.GetQualityLLMUsage:output_type -> metaxisdata.v1.QualityLLMUsage
+	276, // 580: metaxisdata.v1.DataQualityService.CreateQualityAgentSession:output_type -> metaxisdata.v1.QualityAgentSession
+	285, // 581: metaxisdata.v1.DataQualityService.ListQualityAgentSessions:output_type -> metaxisdata.v1.ListQualityAgentSessionsResponse
+	276, // 582: metaxisdata.v1.DataQualityService.GetQualityAgentSession:output_type -> metaxisdata.v1.QualityAgentSession
+	276, // 583: metaxisdata.v1.DataQualityService.PauseQualityAgentSession:output_type -> metaxisdata.v1.QualityAgentSession
+	276, // 584: metaxisdata.v1.DataQualityService.ResumeQualityAgentSession:output_type -> metaxisdata.v1.QualityAgentSession
+	300, // 585: metaxisdata.v1.DataQualityService.ArchiveQualityAgentSession:output_type -> google.protobuf.Empty
+	276, // 586: metaxisdata.v1.DataQualityService.WakeQualityAgentSession:output_type -> metaxisdata.v1.QualityAgentSession
+	292, // 587: metaxisdata.v1.DataQualityService.ListQualityAgentSessionMessages:output_type -> metaxisdata.v1.ListQualityAgentSessionMessagesResponse
+	278, // 588: metaxisdata.v1.DataQualityService.GetQualityAgentRunnerStatus:output_type -> metaxisdata.v1.QualityAgentRunnerStatus
+	281, // 589: metaxisdata.v1.DataQualityService.GetQualityAgentMetrics:output_type -> metaxisdata.v1.QualityAgentMetrics
+	499, // [499:590] is the sub-list for method output_type
+	408, // [408:499] is the sub-list for method input_type
+	408, // [408:408] is the sub-list for extension type_name
+	408, // [408:408] is the sub-list for extension extendee
+	0,   // [0:408] is the sub-list for field type_name
 }
 
 func init() { file_v1_data_quality_service_proto_init() }
@@ -25897,7 +26625,7 @@ func file_v1_data_quality_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_data_quality_service_proto_rawDesc), len(file_v1_data_quality_service_proto_rawDesc)),
 			NumEnums:      54,
-			NumMessages:   229,
+			NumMessages:   240,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

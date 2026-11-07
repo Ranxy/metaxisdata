@@ -101,6 +101,16 @@ const (
 	DataQualityService_ListQualityContractRevisions_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
 	DataQualityService_GetQualityContractRevision_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
 	DataQualityService_GetQualityLLMUsage_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
+	DataQualityService_CreateQualityAgentSession_FullMethodName          = "/metaxisdata.v1.DataQualityService/CreateQualityAgentSession"
+	DataQualityService_ListQualityAgentSessions_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessions"
+	DataQualityService_GetQualityAgentSession_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentSession"
+	DataQualityService_PauseQualityAgentSession_FullMethodName           = "/metaxisdata.v1.DataQualityService/PauseQualityAgentSession"
+	DataQualityService_ResumeQualityAgentSession_FullMethodName          = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentSession"
+	DataQualityService_ArchiveQualityAgentSession_FullMethodName         = "/metaxisdata.v1.DataQualityService/ArchiveQualityAgentSession"
+	DataQualityService_WakeQualityAgentSession_FullMethodName            = "/metaxisdata.v1.DataQualityService/WakeQualityAgentSession"
+	DataQualityService_ListQualityAgentSessionMessages_FullMethodName    = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessionMessages"
+	DataQualityService_GetQualityAgentRunnerStatus_FullMethodName        = "/metaxisdata.v1.DataQualityService/GetQualityAgentRunnerStatus"
+	DataQualityService_GetQualityAgentMetrics_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -433,6 +443,29 @@ type DataQualityServiceClient interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error)
+	// Create one target's long-lived agent session. The target's database must be in
+	// the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+	CreateQualityAgentSession(ctx context.Context, in *CreateQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
+	// List the workspace's sessions by newest activity first.
+	ListQualityAgentSessions(ctx context.Context, in *ListQualityAgentSessionsRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionsResponse, error)
+	// Read one session.
+	GetQualityAgentSession(ctx context.Context, in *GetQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
+	// Pause a session: no new wake starts, the conversation stays.
+	PauseQualityAgentSession(ctx context.Context, in *PauseQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
+	// Resume a paused or blocked session; it wakes immediately.
+	ResumeQualityAgentSession(ctx context.Context, in *ResumeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
+	// Archive a session (a tombstone). The conversation stays readable.
+	ArchiveQualityAgentSession(ctx context.Context, in *ArchiveQualityAgentSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Append a person's message to the session and wake it immediately.
+	WakeQualityAgentSession(ctx context.Context, in *WakeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
+	// Read one session's transcript. after_seq polls for new messages.
+	ListQualityAgentSessionMessages(ctx context.Context, in *ListQualityAgentSessionMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionMessagesResponse, error)
+	// Read the runner's live state: what is running, what is due and how much of the
+	// budgets is spent. runner_last_tick_time is process-local and resets on restart.
+	GetQualityAgentRunnerStatus(ctx context.Context, in *GetQualityAgentRunnerStatusRequest, opts ...grpc.CallOption) (*QualityAgentRunnerStatus, error)
+	// Read the runner's evaluation: session states, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error)
 }
 
 type dataQualityServiceClient struct {
@@ -1289,6 +1322,106 @@ func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) CreateQualityAgentSession(ctx context.Context, in *CreateQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSession)
+	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgentSessions(ctx context.Context, in *ListQualityAgentSessionsRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentSessionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentSessions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentSession(ctx context.Context, in *GetQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSession)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) PauseQualityAgentSession(ctx context.Context, in *PauseQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSession)
+	err := c.cc.Invoke(ctx, DataQualityService_PauseQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ResumeQualityAgentSession(ctx context.Context, in *ResumeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSession)
+	err := c.cc.Invoke(ctx, DataQualityService_ResumeQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ArchiveQualityAgentSession(ctx context.Context, in *ArchiveQualityAgentSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, DataQualityService_ArchiveQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) WakeQualityAgentSession(ctx context.Context, in *WakeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSession)
+	err := c.cc.Invoke(ctx, DataQualityService_WakeQualityAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgentSessionMessages(ctx context.Context, in *ListQualityAgentSessionMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentSessionMessagesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentSessionMessages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentRunnerStatus(ctx context.Context, in *GetQualityAgentRunnerStatusRequest, opts ...grpc.CallOption) (*QualityAgentRunnerStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentRunnerStatus)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentRunnerStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentMetrics)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataQualityServiceServer is the server API for DataQualityService service.
 // All implementations must embed UnimplementedDataQualityServiceServer
 // for forward compatibility.
@@ -1619,6 +1752,29 @@ type DataQualityServiceServer interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error)
+	// Create one target's long-lived agent session. The target's database must be in
+	// the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+	CreateQualityAgentSession(context.Context, *CreateQualityAgentSessionRequest) (*QualityAgentSession, error)
+	// List the workspace's sessions by newest activity first.
+	ListQualityAgentSessions(context.Context, *ListQualityAgentSessionsRequest) (*ListQualityAgentSessionsResponse, error)
+	// Read one session.
+	GetQualityAgentSession(context.Context, *GetQualityAgentSessionRequest) (*QualityAgentSession, error)
+	// Pause a session: no new wake starts, the conversation stays.
+	PauseQualityAgentSession(context.Context, *PauseQualityAgentSessionRequest) (*QualityAgentSession, error)
+	// Resume a paused or blocked session; it wakes immediately.
+	ResumeQualityAgentSession(context.Context, *ResumeQualityAgentSessionRequest) (*QualityAgentSession, error)
+	// Archive a session (a tombstone). The conversation stays readable.
+	ArchiveQualityAgentSession(context.Context, *ArchiveQualityAgentSessionRequest) (*emptypb.Empty, error)
+	// Append a person's message to the session and wake it immediately.
+	WakeQualityAgentSession(context.Context, *WakeQualityAgentSessionRequest) (*QualityAgentSession, error)
+	// Read one session's transcript. after_seq polls for new messages.
+	ListQualityAgentSessionMessages(context.Context, *ListQualityAgentSessionMessagesRequest) (*ListQualityAgentSessionMessagesResponse, error)
+	// Read the runner's live state: what is running, what is due and how much of the
+	// budgets is spent. runner_last_tick_time is process-local and resets on restart.
+	GetQualityAgentRunnerStatus(context.Context, *GetQualityAgentRunnerStatusRequest) (*QualityAgentRunnerStatus, error)
+	// Read the runner's evaluation: session states, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error)
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
 
@@ -1871,6 +2027,36 @@ func (UnimplementedDataQualityServiceServer) GetQualityContractRevision(context.
 }
 func (UnimplementedDataQualityServiceServer) GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityLLMUsage not implemented")
+}
+func (UnimplementedDataQualityServiceServer) CreateQualityAgentSession(context.Context, *CreateQualityAgentSessionRequest) (*QualityAgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQualityAgentSession not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentSessions(context.Context, *ListQualityAgentSessionsRequest) (*ListQualityAgentSessionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentSessions not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentSession(context.Context, *GetQualityAgentSessionRequest) (*QualityAgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentSession not implemented")
+}
+func (UnimplementedDataQualityServiceServer) PauseQualityAgentSession(context.Context, *PauseQualityAgentSessionRequest) (*QualityAgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method PauseQualityAgentSession not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ResumeQualityAgentSession(context.Context, *ResumeQualityAgentSessionRequest) (*QualityAgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResumeQualityAgentSession not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ArchiveQualityAgentSession(context.Context, *ArchiveQualityAgentSessionRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ArchiveQualityAgentSession not implemented")
+}
+func (UnimplementedDataQualityServiceServer) WakeQualityAgentSession(context.Context, *WakeQualityAgentSessionRequest) (*QualityAgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method WakeQualityAgentSession not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentSessionMessages(context.Context, *ListQualityAgentSessionMessagesRequest) (*ListQualityAgentSessionMessagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentSessionMessages not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentRunnerStatus(context.Context, *GetQualityAgentRunnerStatusRequest) (*QualityAgentRunnerStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentRunnerStatus not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentMetrics not implemented")
 }
 func (UnimplementedDataQualityServiceServer) mustEmbedUnimplementedDataQualityServiceServer() {}
 func (UnimplementedDataQualityServiceServer) testEmbeddedByValue()                            {}
@@ -3323,6 +3509,186 @@ func _DataQualityService_GetQualityLLMUsage_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_CreateQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).CreateQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_CreateQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).CreateQualityAgentSession(ctx, req.(*CreateQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgentSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentSessionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentSessions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentSessions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentSessions(ctx, req.(*ListQualityAgentSessionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentSession(ctx, req.(*GetQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_PauseQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).PauseQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_PauseQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).PauseQualityAgentSession(ctx, req.(*PauseQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ResumeQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResumeQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ResumeQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ResumeQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ResumeQualityAgentSession(ctx, req.(*ResumeQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ArchiveQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ArchiveQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ArchiveQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ArchiveQualityAgentSession(ctx, req.(*ArchiveQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_WakeQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WakeQualityAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).WakeQualityAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_WakeQualityAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).WakeQualityAgentSession(ctx, req.(*WakeQualityAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgentSessionMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentSessionMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentSessionMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentSessionMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentSessionMessages(ctx, req.(*ListQualityAgentSessionMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentRunnerStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentRunnerStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentRunnerStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentRunnerStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentRunnerStatus(ctx, req.(*GetQualityAgentRunnerStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentMetrics(ctx, req.(*GetQualityAgentMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataQualityService_ServiceDesc is the grpc.ServiceDesc for DataQualityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -3637,6 +4003,46 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityLLMUsage",
 			Handler:    _DataQualityService_GetQualityLLMUsage_Handler,
+		},
+		{
+			MethodName: "CreateQualityAgentSession",
+			Handler:    _DataQualityService_CreateQualityAgentSession_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentSessions",
+			Handler:    _DataQualityService_ListQualityAgentSessions_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentSession",
+			Handler:    _DataQualityService_GetQualityAgentSession_Handler,
+		},
+		{
+			MethodName: "PauseQualityAgentSession",
+			Handler:    _DataQualityService_PauseQualityAgentSession_Handler,
+		},
+		{
+			MethodName: "ResumeQualityAgentSession",
+			Handler:    _DataQualityService_ResumeQualityAgentSession_Handler,
+		},
+		{
+			MethodName: "ArchiveQualityAgentSession",
+			Handler:    _DataQualityService_ArchiveQualityAgentSession_Handler,
+		},
+		{
+			MethodName: "WakeQualityAgentSession",
+			Handler:    _DataQualityService_WakeQualityAgentSession_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentSessionMessages",
+			Handler:    _DataQualityService_ListQualityAgentSessionMessages_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentRunnerStatus",
+			Handler:    _DataQualityService_GetQualityAgentRunnerStatus_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentMetrics",
+			Handler:    _DataQualityService_GetQualityAgentMetrics_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

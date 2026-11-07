@@ -277,6 +277,36 @@ const (
 	// DataQualityServiceGetQualityLLMUsageProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityLLMUsage RPC.
 	DataQualityServiceGetQualityLLMUsageProcedure = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
+	// DataQualityServiceCreateQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's CreateQualityAgentSession RPC.
+	DataQualityServiceCreateQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/CreateQualityAgentSession"
+	// DataQualityServiceListQualityAgentSessionsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentSessions RPC.
+	DataQualityServiceListQualityAgentSessionsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessions"
+	// DataQualityServiceGetQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentSession RPC.
+	DataQualityServiceGetQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentSession"
+	// DataQualityServicePauseQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's PauseQualityAgentSession RPC.
+	DataQualityServicePauseQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/PauseQualityAgentSession"
+	// DataQualityServiceResumeQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's ResumeQualityAgentSession RPC.
+	DataQualityServiceResumeQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentSession"
+	// DataQualityServiceArchiveQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's ArchiveQualityAgentSession RPC.
+	DataQualityServiceArchiveQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/ArchiveQualityAgentSession"
+	// DataQualityServiceWakeQualityAgentSessionProcedure is the fully-qualified name of the
+	// DataQualityService's WakeQualityAgentSession RPC.
+	DataQualityServiceWakeQualityAgentSessionProcedure = "/metaxisdata.v1.DataQualityService/WakeQualityAgentSession"
+	// DataQualityServiceListQualityAgentSessionMessagesProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentSessionMessages RPC.
+	DataQualityServiceListQualityAgentSessionMessagesProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessionMessages"
+	// DataQualityServiceGetQualityAgentRunnerStatusProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentRunnerStatus RPC.
+	DataQualityServiceGetQualityAgentRunnerStatusProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentRunnerStatus"
+	// DataQualityServiceGetQualityAgentMetricsProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentMetrics RPC.
+	DataQualityServiceGetQualityAgentMetricsProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
 )
 
 // DataQualityServiceClient is a client for the metaxisdata.v1.DataQualityService service.
@@ -596,6 +626,29 @@ type DataQualityServiceClient interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error)
+	// Create one target's long-lived agent session. The target's database must be in
+	// the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+	CreateQualityAgentSession(context.Context, *connect.Request[v1.CreateQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// List the workspace's sessions by newest activity first.
+	ListQualityAgentSessions(context.Context, *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error)
+	// Read one session.
+	GetQualityAgentSession(context.Context, *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Pause a session: no new wake starts, the conversation stays.
+	PauseQualityAgentSession(context.Context, *connect.Request[v1.PauseQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Resume a paused or blocked session; it wakes immediately.
+	ResumeQualityAgentSession(context.Context, *connect.Request[v1.ResumeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Archive a session (a tombstone). The conversation stays readable.
+	ArchiveQualityAgentSession(context.Context, *connect.Request[v1.ArchiveQualityAgentSessionRequest]) (*connect.Response[emptypb.Empty], error)
+	// Append a person's message to the session and wake it immediately.
+	WakeQualityAgentSession(context.Context, *connect.Request[v1.WakeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Read one session's transcript. after_seq polls for new messages.
+	ListQualityAgentSessionMessages(context.Context, *connect.Request[v1.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1.ListQualityAgentSessionMessagesResponse], error)
+	// Read the runner's live state: what is running, what is due and how much of the
+	// budgets is spent. runner_last_tick_time is process-local and resets on restart.
+	GetQualityAgentRunnerStatus(context.Context, *connect.Request[v1.GetQualityAgentRunnerStatusRequest]) (*connect.Response[v1.QualityAgentRunnerStatus], error)
+	// Read the runner's evaluation: session states, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error)
 }
 
 // NewDataQualityServiceClient constructs a client for the metaxisdata.v1.DataQualityService
@@ -1095,6 +1148,66 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityLLMUsage")),
 			connect.WithClientOptions(opts...),
 		),
+		createQualityAgentSession: connect.NewClient[v1.CreateQualityAgentSessionRequest, v1.QualityAgentSession](
+			httpClient,
+			baseURL+DataQualityServiceCreateQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityAgentSessions: connect.NewClient[v1.ListQualityAgentSessionsRequest, v1.ListQualityAgentSessionsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentSessionsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentSessions")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentSession: connect.NewClient[v1.GetQualityAgentSessionRequest, v1.QualityAgentSession](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
+		pauseQualityAgentSession: connect.NewClient[v1.PauseQualityAgentSessionRequest, v1.QualityAgentSession](
+			httpClient,
+			baseURL+DataQualityServicePauseQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("PauseQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
+		resumeQualityAgentSession: connect.NewClient[v1.ResumeQualityAgentSessionRequest, v1.QualityAgentSession](
+			httpClient,
+			baseURL+DataQualityServiceResumeQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ResumeQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
+		archiveQualityAgentSession: connect.NewClient[v1.ArchiveQualityAgentSessionRequest, emptypb.Empty](
+			httpClient,
+			baseURL+DataQualityServiceArchiveQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ArchiveQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
+		wakeQualityAgentSession: connect.NewClient[v1.WakeQualityAgentSessionRequest, v1.QualityAgentSession](
+			httpClient,
+			baseURL+DataQualityServiceWakeQualityAgentSessionProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("WakeQualityAgentSession")),
+			connect.WithClientOptions(opts...),
+		),
+		listQualityAgentSessionMessages: connect.NewClient[v1.ListQualityAgentSessionMessagesRequest, v1.ListQualityAgentSessionMessagesResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentSessionMessagesProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentSessionMessages")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentRunnerStatus: connect.NewClient[v1.GetQualityAgentRunnerStatusRequest, v1.QualityAgentRunnerStatus](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentRunnerStatusProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentRunnerStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentMetrics: connect.NewClient[v1.GetQualityAgentMetricsRequest, v1.QualityAgentMetrics](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentMetricsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentMetrics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1181,6 +1294,16 @@ type dataQualityServiceClient struct {
 	listQualityContractRevisions       *connect.Client[v1.ListQualityContractRevisionsRequest, v1.ListQualityContractRevisionsResponse]
 	getQualityContractRevision         *connect.Client[v1.GetQualityContractRevisionRequest, v1.GetQualityContractRevisionResponse]
 	getQualityLLMUsage                 *connect.Client[v1.GetQualityLLMUsageRequest, v1.QualityLLMUsage]
+	createQualityAgentSession          *connect.Client[v1.CreateQualityAgentSessionRequest, v1.QualityAgentSession]
+	listQualityAgentSessions           *connect.Client[v1.ListQualityAgentSessionsRequest, v1.ListQualityAgentSessionsResponse]
+	getQualityAgentSession             *connect.Client[v1.GetQualityAgentSessionRequest, v1.QualityAgentSession]
+	pauseQualityAgentSession           *connect.Client[v1.PauseQualityAgentSessionRequest, v1.QualityAgentSession]
+	resumeQualityAgentSession          *connect.Client[v1.ResumeQualityAgentSessionRequest, v1.QualityAgentSession]
+	archiveQualityAgentSession         *connect.Client[v1.ArchiveQualityAgentSessionRequest, emptypb.Empty]
+	wakeQualityAgentSession            *connect.Client[v1.WakeQualityAgentSessionRequest, v1.QualityAgentSession]
+	listQualityAgentSessionMessages    *connect.Client[v1.ListQualityAgentSessionMessagesRequest, v1.ListQualityAgentSessionMessagesResponse]
+	getQualityAgentRunnerStatus        *connect.Client[v1.GetQualityAgentRunnerStatusRequest, v1.QualityAgentRunnerStatus]
+	getQualityAgentMetrics             *connect.Client[v1.GetQualityAgentMetricsRequest, v1.QualityAgentMetrics]
 }
 
 // ListQualityRules calls metaxisdata.v1.DataQualityService.ListQualityRules.
@@ -1593,6 +1716,57 @@ func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, req *
 	return c.getQualityLLMUsage.CallUnary(ctx, req)
 }
 
+// CreateQualityAgentSession calls metaxisdata.v1.DataQualityService.CreateQualityAgentSession.
+func (c *dataQualityServiceClient) CreateQualityAgentSession(ctx context.Context, req *connect.Request[v1.CreateQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return c.createQualityAgentSession.CallUnary(ctx, req)
+}
+
+// ListQualityAgentSessions calls metaxisdata.v1.DataQualityService.ListQualityAgentSessions.
+func (c *dataQualityServiceClient) ListQualityAgentSessions(ctx context.Context, req *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error) {
+	return c.listQualityAgentSessions.CallUnary(ctx, req)
+}
+
+// GetQualityAgentSession calls metaxisdata.v1.DataQualityService.GetQualityAgentSession.
+func (c *dataQualityServiceClient) GetQualityAgentSession(ctx context.Context, req *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return c.getQualityAgentSession.CallUnary(ctx, req)
+}
+
+// PauseQualityAgentSession calls metaxisdata.v1.DataQualityService.PauseQualityAgentSession.
+func (c *dataQualityServiceClient) PauseQualityAgentSession(ctx context.Context, req *connect.Request[v1.PauseQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return c.pauseQualityAgentSession.CallUnary(ctx, req)
+}
+
+// ResumeQualityAgentSession calls metaxisdata.v1.DataQualityService.ResumeQualityAgentSession.
+func (c *dataQualityServiceClient) ResumeQualityAgentSession(ctx context.Context, req *connect.Request[v1.ResumeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return c.resumeQualityAgentSession.CallUnary(ctx, req)
+}
+
+// ArchiveQualityAgentSession calls metaxisdata.v1.DataQualityService.ArchiveQualityAgentSession.
+func (c *dataQualityServiceClient) ArchiveQualityAgentSession(ctx context.Context, req *connect.Request[v1.ArchiveQualityAgentSessionRequest]) (*connect.Response[emptypb.Empty], error) {
+	return c.archiveQualityAgentSession.CallUnary(ctx, req)
+}
+
+// WakeQualityAgentSession calls metaxisdata.v1.DataQualityService.WakeQualityAgentSession.
+func (c *dataQualityServiceClient) WakeQualityAgentSession(ctx context.Context, req *connect.Request[v1.WakeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return c.wakeQualityAgentSession.CallUnary(ctx, req)
+}
+
+// ListQualityAgentSessionMessages calls
+// metaxisdata.v1.DataQualityService.ListQualityAgentSessionMessages.
+func (c *dataQualityServiceClient) ListQualityAgentSessionMessages(ctx context.Context, req *connect.Request[v1.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1.ListQualityAgentSessionMessagesResponse], error) {
+	return c.listQualityAgentSessionMessages.CallUnary(ctx, req)
+}
+
+// GetQualityAgentRunnerStatus calls metaxisdata.v1.DataQualityService.GetQualityAgentRunnerStatus.
+func (c *dataQualityServiceClient) GetQualityAgentRunnerStatus(ctx context.Context, req *connect.Request[v1.GetQualityAgentRunnerStatusRequest]) (*connect.Response[v1.QualityAgentRunnerStatus], error) {
+	return c.getQualityAgentRunnerStatus.CallUnary(ctx, req)
+}
+
+// GetQualityAgentMetrics calls metaxisdata.v1.DataQualityService.GetQualityAgentMetrics.
+func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, req *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error) {
+	return c.getQualityAgentMetrics.CallUnary(ctx, req)
+}
+
 // DataQualityServiceHandler is an implementation of the metaxisdata.v1.DataQualityService service.
 type DataQualityServiceHandler interface {
 	// List rules, newest first.
@@ -1910,6 +2084,29 @@ type DataQualityServiceHandler interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error)
+	// Create one target's long-lived agent session. The target's database must be in
+	// the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+	CreateQualityAgentSession(context.Context, *connect.Request[v1.CreateQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// List the workspace's sessions by newest activity first.
+	ListQualityAgentSessions(context.Context, *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error)
+	// Read one session.
+	GetQualityAgentSession(context.Context, *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Pause a session: no new wake starts, the conversation stays.
+	PauseQualityAgentSession(context.Context, *connect.Request[v1.PauseQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Resume a paused or blocked session; it wakes immediately.
+	ResumeQualityAgentSession(context.Context, *connect.Request[v1.ResumeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Archive a session (a tombstone). The conversation stays readable.
+	ArchiveQualityAgentSession(context.Context, *connect.Request[v1.ArchiveQualityAgentSessionRequest]) (*connect.Response[emptypb.Empty], error)
+	// Append a person's message to the session and wake it immediately.
+	WakeQualityAgentSession(context.Context, *connect.Request[v1.WakeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error)
+	// Read one session's transcript. after_seq polls for new messages.
+	ListQualityAgentSessionMessages(context.Context, *connect.Request[v1.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1.ListQualityAgentSessionMessagesResponse], error)
+	// Read the runner's live state: what is running, what is due and how much of the
+	// budgets is spent. runner_last_tick_time is process-local and resets on restart.
+	GetQualityAgentRunnerStatus(context.Context, *connect.Request[v1.GetQualityAgentRunnerStatusRequest]) (*connect.Response[v1.QualityAgentRunnerStatus], error)
+	// Read the runner's evaluation: session states, token spend, the acceptance of the
+	// change requests it proposed, and investigation verdicts. Read-only.
+	GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error)
 }
 
 // NewDataQualityServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -2405,6 +2602,66 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityLLMUsage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceCreateQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServiceCreateQualityAgentSessionProcedure,
+		svc.CreateQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("CreateQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityAgentSessionsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentSessionsProcedure,
+		svc.ListQualityAgentSessions,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentSessions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentSessionProcedure,
+		svc.GetQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServicePauseQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServicePauseQualityAgentSessionProcedure,
+		svc.PauseQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("PauseQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceResumeQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServiceResumeQualityAgentSessionProcedure,
+		svc.ResumeQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ResumeQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceArchiveQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServiceArchiveQualityAgentSessionProcedure,
+		svc.ArchiveQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ArchiveQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceWakeQualityAgentSessionHandler := connect.NewUnaryHandler(
+		DataQualityServiceWakeQualityAgentSessionProcedure,
+		svc.WakeQualityAgentSession,
+		connect.WithSchema(dataQualityServiceMethods.ByName("WakeQualityAgentSession")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceListQualityAgentSessionMessagesHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentSessionMessagesProcedure,
+		svc.ListQualityAgentSessionMessages,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentSessionMessages")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentRunnerStatusHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentRunnerStatusProcedure,
+		svc.GetQualityAgentRunnerStatus,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentRunnerStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentMetricsHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentMetricsProcedure,
+		svc.GetQualityAgentMetrics,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentMetrics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DataQualityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataQualityServiceListQualityRulesProcedure:
@@ -2569,6 +2826,26 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityContractRevisionHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityLLMUsageProcedure:
 			dataQualityServiceGetQualityLLMUsageHandler.ServeHTTP(w, r)
+		case DataQualityServiceCreateQualityAgentSessionProcedure:
+			dataQualityServiceCreateQualityAgentSessionHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentSessionsProcedure:
+			dataQualityServiceListQualityAgentSessionsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentSessionProcedure:
+			dataQualityServiceGetQualityAgentSessionHandler.ServeHTTP(w, r)
+		case DataQualityServicePauseQualityAgentSessionProcedure:
+			dataQualityServicePauseQualityAgentSessionHandler.ServeHTTP(w, r)
+		case DataQualityServiceResumeQualityAgentSessionProcedure:
+			dataQualityServiceResumeQualityAgentSessionHandler.ServeHTTP(w, r)
+		case DataQualityServiceArchiveQualityAgentSessionProcedure:
+			dataQualityServiceArchiveQualityAgentSessionHandler.ServeHTTP(w, r)
+		case DataQualityServiceWakeQualityAgentSessionProcedure:
+			dataQualityServiceWakeQualityAgentSessionHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentSessionMessagesProcedure:
+			dataQualityServiceListQualityAgentSessionMessagesHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentRunnerStatusProcedure:
+			dataQualityServiceGetQualityAgentRunnerStatusHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentMetricsProcedure:
+			dataQualityServiceGetQualityAgentMetricsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2900,4 +3177,44 @@ func (UnimplementedDataQualityServiceHandler) GetQualityContractRevision(context
 
 func (UnimplementedDataQualityServiceHandler) GetQualityLLMUsage(context.Context, *connect.Request[v1.GetQualityLLMUsageRequest]) (*connect.Response[v1.QualityLLMUsage], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityLLMUsage is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) CreateQualityAgentSession(context.Context, *connect.Request[v1.CreateQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.CreateQualityAgentSession is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentSessions(context.Context, *connect.Request[v1.ListQualityAgentSessionsRequest]) (*connect.Response[v1.ListQualityAgentSessionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentSessions is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentSession(context.Context, *connect.Request[v1.GetQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentSession is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) PauseQualityAgentSession(context.Context, *connect.Request[v1.PauseQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.PauseQualityAgentSession is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ResumeQualityAgentSession(context.Context, *connect.Request[v1.ResumeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ResumeQualityAgentSession is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ArchiveQualityAgentSession(context.Context, *connect.Request[v1.ArchiveQualityAgentSessionRequest]) (*connect.Response[emptypb.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ArchiveQualityAgentSession is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) WakeQualityAgentSession(context.Context, *connect.Request[v1.WakeQualityAgentSessionRequest]) (*connect.Response[v1.QualityAgentSession], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.WakeQualityAgentSession is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentSessionMessages(context.Context, *connect.Request[v1.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1.ListQualityAgentSessionMessagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentSessionMessages is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentRunnerStatus(context.Context, *connect.Request[v1.GetQualityAgentRunnerStatusRequest]) (*connect.Response[v1.QualityAgentRunnerStatus], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentRunnerStatus is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentMetrics is not implemented"))
 }

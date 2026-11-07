@@ -84,6 +84,7 @@ func configureGrpcRouters(
 	llmQuota *dataquality.LLMQuota,
 	lineageAnalyzer *lineage.Analyzer,
 	notifier *notification.Service,
+	agentRunner apiv1.AgentRunnerStatusProvider,
 	m *metrics.Metrics,
 ) error {
 	// Note: the gateway response modifier takes the token duration on server startup. If the value is changed,
@@ -117,7 +118,7 @@ func configureGrpcRouters(
 	applicationService := apiv1.NewApplicationService(stores)
 	// Manual executions are planned by the API and queued to the quality runner;
 	// when it is absent they are still planned PENDING rather than dropped.
-	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m, secret, profile)
+	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m, secret, profile, agentRunner)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
 	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m)
 	settingService := apiv1.NewSettingService(stores, profile)

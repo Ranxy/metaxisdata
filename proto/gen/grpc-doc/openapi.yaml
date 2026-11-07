@@ -5128,6 +5128,375 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentMetrics:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read the runner's evaluation: session states, token spend, the acceptance of the
+                 change requests it proposed, and investigation verdicts. Read-only.
+            operationId: DataQualityService_GetQualityAgentMetrics
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentMetrics'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentRunnerStatus:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read the runner's live state: what is running, what is due and how much of the
+                 budgets is spent. runner_last_tick_time is process-local and resets on restart.
+            operationId: DataQualityService_GetQualityAgentRunnerStatus
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentRunnerStatus'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentSessions:
+        get:
+            tags:
+                - DataQualityService
+            description: List the workspace's sessions by newest activity first.
+            operationId: DataQualityService_ListQualityAgentSessions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: state
+                  in: query
+                  description: UNSPECIFIED lists every non-archived session.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_STATE_ENABLED
+                        - QUALITY_AGENT_SESSION_STATE_PAUSED
+                        - QUALITY_AGENT_SESSION_STATE_BLOCKED
+                        - QUALITY_AGENT_SESSION_STATE_ARCHIVED
+                    type: string
+                    format: enum
+                - name: database
+                  in: query
+                  schema:
+                    type: string
+                - name: targetGuid
+                  in: query
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentSessionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Create one target's long-lived agent session. The target's database must be in
+                 the runner's allowlist, the runner must be enabled and an enabled agent must exist.
+            operationId: DataQualityService_CreateQualityAgentSession
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateQualityAgentSessionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentSession'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one session.
+            operationId: DataQualityService_GetQualityAgentSession
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentSession
+                  in: path
+                  description: The qualityAgentSession id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentSession'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - DataQualityService
+            description: Archive a session (a tombstone). The conversation stays readable.
+            operationId: DataQualityService_ArchiveQualityAgentSession
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentSession
+                  in: path
+                  description: The qualityAgentSession id.
+                  required: true
+                  schema:
+                    type: string
+                - name: expectedRevision
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}/messages:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one session's transcript. after_seq polls for new messages.
+            operationId: DataQualityService_ListQualityAgentSessionMessages
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentSession
+                  in: path
+                  description: The qualityAgentSession id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: afterSeq
+                  in: query
+                  description: Return messages with seq greater than this; the polling watermark.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentSessionMessagesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:pause:
+        post:
+            tags:
+                - DataQualityService
+            description: 'Pause a session: no new wake starts, the conversation stays.'
+            operationId: DataQualityService_PauseQualityAgentSession
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentSession
+                  in: path
+                  description: The qualityAgentSession id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PauseQualityAgentSessionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentSession'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:resume:
+        post:
+            tags:
+                - DataQualityService
+            description: Resume a paused or blocked session; it wakes immediately.
+            operationId: DataQualityService_ResumeQualityAgentSession
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentSession
+                  in: path
+                  description: The qualityAgentSession id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ResumeQualityAgentSessionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentSession'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:wake:
+        post:
+            tags:
+                - DataQualityService
+            description: Append a person's message to the session and wake it immediately.
+            operationId: DataQualityService_WakeQualityAgentSession
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentSession
+                  in: path
+                  description: The qualityAgentSession id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/WakeQualityAgentSessionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentSession'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents:
         get:
             tags:
@@ -9964,6 +10333,45 @@ components:
                     description: |-
                         The bearer token, returned exactly once. It authenticates as the agent
                          principal and cannot be retrieved again; rotate it if lost.
+        CreateQualityAgentSessionRequest:
+            required:
+                - parent
+                - targetGuid
+            type: object
+            properties:
+                parent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
+                targetGuid:
+                    type: string
+                metaType:
+                    enum:
+                        - UNSPECIFIED
+                        - INSTANCE
+                        - DATABASE
+                        - SCHEMA
+                        - TABLE
+                        - EXTERNAL_TABLE
+                        - EXTERNAL_DATASET
+                        - MANUAL_SQL
+                        - APPLICATION_SQL
+                        - VIEW
+                        - MATERIALIZED_VIEW
+                        - COLUMN
+                        - INDEX
+                        - FOREIGN_KEY
+                        - PROCEDURE
+                        - FUNCTION
+                        - SEQUENCE
+                        - OPENLINEAGE
+                    type: string
+                    format: enum
+                objective:
+                    type: string
+                    description: Empty means "keep this target trustworthy".
+                agent:
+                    type: string
+                    description: 'Format: users/{user}. Empty uses the first enabled quality agent.'
         CreateQualityChangeRequestRequest:
             required:
                 - parent
@@ -12522,6 +12930,24 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityAgentSessionMessagesResponse:
+            type: object
+            properties:
+                qualityAgentSessionMessages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentSessionMessage'
+                nextPageToken:
+                    type: string
+        ListQualityAgentSessionsResponse:
+            type: object
+            properties:
+                qualityAgentSessions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentSession'
+                nextPageToken:
+                    type: string
         ListQualityAgentsResponse:
             type: object
             properties:
@@ -13916,6 +14342,17 @@ components:
                     type: string
                 latestEventType:
                     type: string
+        PauseQualityAgentSessionRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                expectedRevision:
+                    type: integer
+                    description: The revision the caller saw; a stale value is rejected.
+                    format: int32
         PreviewQualityRuleRequest:
             required:
                 - parent
@@ -14176,6 +14613,296 @@ components:
                 QualityAgent is one agent principal: an independent identity an administrator
                  creates for autonomous quality work. Its token is issued once, and disabling the
                  agent ends every token it holds.
+        QualityAgentMetrics:
+            type: object
+            properties:
+                sessions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentSessionStateCount'
+                tokensTotal:
+                    type: string
+                tokensLastHour:
+                    type: string
+                agentChangeRequestsTotal:
+                    type: integer
+                    description: |-
+                        Change requests proposed by an agent, by lifecycle state. Acceptance is
+                         applied / (applied + rejected); pending and expired are not decisions.
+                    format: int32
+                agentChangeRequestsApplied:
+                    type: integer
+                    format: int32
+                agentChangeRequestsRejected:
+                    type: integer
+                    format: int32
+                agentChangeRequestsPending:
+                    type: integer
+                    format: int32
+                agentChangeRequestsApproved:
+                    type: integer
+                    format: int32
+                agentChangeRequestsExpired:
+                    type: integer
+                    format: int32
+                investigationsTotal:
+                    type: integer
+                    description: |-
+                        Investigations recorded, and the verdicts they reached. FAILED/INTERRUPTED
+                         rows carry no verdict, so the buckets do not have to sum to the total.
+                    format: int32
+                investigationsInconclusive:
+                    type: integer
+                    format: int32
+                investigationsRootCause:
+                    type: integer
+                    format: int32
+                investigationsContributingFactor:
+                    type: integer
+                    format: int32
+                investigationsUnrelated:
+                    type: integer
+                    format: int32
+                topTargets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentTargetCost'
+            description: |-
+                QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
+                 how the proposals it made were decided. All of it is derived from existing rows.
+        QualityAgentRunnerStatus:
+            type: object
+            properties:
+                enabled:
+                    type: boolean
+                autonomyEnabled:
+                    type: boolean
+                llmConfigured:
+                    type: boolean
+                runningSessions:
+                    type: integer
+                    format: int32
+                idleSessions:
+                    type: integer
+                    format: int32
+                blockedSessions:
+                    type: integer
+                    format: int32
+                tokensLastHour:
+                    type: string
+                tokensPerHourLimit:
+                    type: string
+                wakesLastHour:
+                    type: integer
+                    format: int32
+                wakesPerHourLimit:
+                    type: integer
+                    format: int32
+                maxConcurrentSessions:
+                    type: integer
+                    format: int32
+                compactionTriggerTokens:
+                    type: integer
+                    format: int32
+                idleWakeSeconds:
+                    type: integer
+                    format: int32
+                lastActivityTime:
+                    type: string
+                    format: date-time
+                runnerLastTickTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
+                 and counters are durable; runner_last_tick_time is process-local and reset by a
+                 restart, so it is a liveness hint, not durable state.
+        QualityAgentSession:
+            type: object
+            properties:
+                id:
+                    type: string
+                resourceId:
+                    type: string
+                workspaceId:
+                    type: string
+                targetGuid:
+                    type: string
+                targetType:
+                    type: integer
+                    format: int32
+                databaseRef:
+                    type: string
+                agentId:
+                    type: integer
+                    format: int32
+                objective:
+                    type: string
+                state:
+                    enum:
+                        - QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_STATE_ENABLED
+                        - QUALITY_AGENT_SESSION_STATE_PAUSED
+                        - QUALITY_AGENT_SESSION_STATE_BLOCKED
+                        - QUALITY_AGENT_SESSION_STATE_ARCHIVED
+                    type: string
+                    format: enum
+                blockedCode:
+                    type: string
+                blockedReason:
+                    type: string
+                revision:
+                    type: integer
+                    description: Incremented by every mutation; human mutations compare-and-set this value.
+                    format: int32
+                wakeCount:
+                    type: integer
+                    format: int32
+                tokensUsed:
+                    type: string
+                    description: Lifetime token spend, so an archived session still counts in metrics.
+                contextTokens:
+                    type: integer
+                    description: The largest real prompt_tokens of the last wake; the compaction trigger.
+                    format: int32
+                summary:
+                    type: string
+                    description: Rolling checkpoint summary and the message seq it replaces in model context.
+                summaryThroughSeq:
+                    type: string
+                processedSeq:
+                    type: string
+                    description: The largest message seq the last wake consumed; a newer seq is a pending event.
+                engineState:
+                    $ref: '#/components/schemas/QualityAgentSessionEngineState'
+                nextWakeAt:
+                    type: string
+                    format: date-time
+                leaseUntil:
+                    type: string
+                    format: date-time
+                restartCount:
+                    type: integer
+                    format: int32
+                createdBy:
+                    type: integer
+                    format: int32
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+                archivedAt:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentSession is one target's durable agent conversation and wake schedule.
+                 "Running" is expressed by lease_until, never by state.
+        QualityAgentSessionEngineState:
+            type: object
+            properties:
+                done:
+                    type: array
+                    items:
+                        type: string
+                blockedRounds:
+                    type: integer
+                    format: int32
+                blockedCode:
+                    type: string
+                phase:
+                    type: string
+            description: |-
+                QualityAgentSessionEngineState is the JSONB payload of
+                 quality_agent_session.engine_state: deterministic-wake bookkeeping only.
+        QualityAgentSessionMessage:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentSessions/{session}/messages/{seq}'
+                seq:
+                    type: string
+                wake:
+                    type: integer
+                    description: The wake and LLM turn the message belongs to.
+                    format: int32
+                turn:
+                    type: integer
+                    format: int32
+                role:
+                    enum:
+                        - QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED
+                        - QUALITY_AGENT_MESSAGE_ROLE_SYSTEM
+                        - QUALITY_AGENT_MESSAGE_ROLE_USER
+                        - QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT
+                        - QUALITY_AGENT_MESSAGE_ROLE_TOOL
+                        - QUALITY_AGENT_MESSAGE_ROLE_ENGINE
+                        - QUALITY_AGENT_MESSAGE_ROLE_COMPACTION
+                    type: string
+                    format: enum
+                origin:
+                    enum:
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_UNSPECIFIED
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_WAKE
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_EVENT
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_ASK
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_MODEL
+                        - QUALITY_AGENT_MESSAGE_ORIGIN_COMPACTION
+                    type: string
+                    format: enum
+                content:
+                    type: string
+                toolCalls:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityToolCall'
+                    description: 'Present on assistant messages: the tool calls the model made.'
+                toolCallId:
+                    type: string
+                    description: 'Present on tool messages: which call the result answers.'
+                toolName:
+                    type: string
+                tokens:
+                    type: integer
+                    format: int32
+                truncated:
+                    type: boolean
+                error:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+            description: QualityAgentSessionMessage is one append-only transcript entry of a session.
+        QualityAgentSessionStateCount:
+            type: object
+            properties:
+                state:
+                    enum:
+                        - QUALITY_AGENT_SESSION_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_STATE_ENABLED
+                        - QUALITY_AGENT_SESSION_STATE_PAUSED
+                        - QUALITY_AGENT_SESSION_STATE_BLOCKED
+                        - QUALITY_AGENT_SESSION_STATE_ARCHIVED
+                    type: string
+                    format: enum
+                count:
+                    type: integer
+                    format: int32
+            description: QualityAgentSessionStateCount is how many sessions stand in one state.
+        QualityAgentTargetCost:
+            type: object
+            properties:
+                target:
+                    $ref: '#/components/schemas/QualityTarget'
+                tokensUsed:
+                    type: string
+                sessionCount:
+                    type: integer
+                    format: int32
+            description: QualityAgentTargetCost is one target's share of the runner's token spend.
         QualityChangeRequest:
             type: object
             properties:
@@ -16829,6 +17556,19 @@ components:
                  result can be explained after the rule's thresholds changed. For
                  GREATER_THAN / LESS_THAN only value fields are set; for the range comparisons
                  the lower and upper bounds are.
+        QualityToolCall:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                arguments:
+                    type: string
+            description: |-
+                QualityToolCall is one tool invocation in an assistant message. It mirrors the
+                 provider's assistant tool-call shape so a stored message maps 1:1 to the model
+                 conversation.
         QualityTrendPoint:
             type: object
             properties:
@@ -17044,6 +17784,16 @@ components:
                 RegexConfig counts rows whose column value does not match a regular
                  expression. The pattern is Go RE2 syntax and is also translated for the
                  engine's own regex operator.
+        ResumeQualityAgentSessionRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                expectedRevision:
+                    type: integer
+                    format: int32
         RetryNotificationDeliveryRequest:
             required:
                 - name
@@ -18797,6 +19547,16 @@ components:
                         $ref: '#/components/schemas/RuleMetadata'
                     description: The rules is the list of rules in a view (PostgreSQL specific).
             description: ViewMetadata is the metadata for views.
+        WakeQualityAgentSessionRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                content:
+                    type: string
+                    description: The person's question or instruction; it becomes a user message in the session.
         WeComChannelConfig:
             type: object
             properties: {}
