@@ -15,17 +15,17 @@ import (
 
 // fakeStore is the in-memory slice of the store the runner tests need.
 type fakeStore struct {
-	agent         *store.QualityAgentMessage
-	claimed       []*store.QualityAgentSessionMessage
-	tokensSpent   int64
-	wakesSpent    int64
-	maxSeq        int64
-	progress      []*store.QualityAgentSessionWakeResult
-	states        []storepb.QualityAgentSessionState
-	blockedCodes  []string
-	nextWakes     []*time.Time
-	releasedWakes []*time.Time
-	claimedLimit  int
+	agent           *store.QualityAgentMessage
+	claimed         []*store.QualityAgentSessionMessage
+	tokensSpent     int64
+	wakesSpent      int64
+	pendingInputSeq int64
+	progress        []*store.QualityAgentSessionWakeResult
+	states          []storepb.QualityAgentSessionState
+	blockedCodes    []string
+	nextWakes       []*time.Time
+	releasedWakes   []*time.Time
+	claimedLimit    int
 }
 
 func (*fakeStore) ResetStaleQualityAgentSessionLeases(context.Context, time.Time, int32) (int64, error) {
@@ -66,8 +66,8 @@ func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, 
 	return f.wakesSpent, nil
 }
 
-func (f *fakeStore) MaxQualityAgentTranscriptSeq(context.Context, int64) (int64, error) {
-	return f.maxSeq, nil
+func (f *fakeStore) MaxQualityAgentInputSeqAfter(context.Context, int64, int64) (int64, error) {
+	return f.pendingInputSeq, nil
 }
 
 // fakeEngine reports one fixed outcome.
@@ -159,7 +159,7 @@ func TestHostBlocksOnTheTokenBudget(t *testing.T) {
 func TestHostSchedulesTheIdleWake(t *testing.T) {
 	t.Parallel()
 
-	stores := &fakeStore{maxSeq: 4}
+	stores := &fakeStore{}
 	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, TokensUsed: 120, ContextTokens: 500, EngineState: &storepb.QualityAgentSessionEngineState{}}}
 	runner := testRunner(stores, engine)
 
@@ -179,7 +179,7 @@ func TestHostSchedulesTheIdleWake(t *testing.T) {
 func TestHostWakesAgainWhenAnEventArrived(t *testing.T) {
 	t.Parallel()
 
-	stores := &fakeStore{maxSeq: 9}
+	stores := &fakeStore{pendingInputSeq: 9}
 	engine := &fakeEngine{outcome: agentrunner.Outcome{ProcessedSeq: 4, EngineState: &storepb.QualityAgentSessionEngineState{}}}
 	runner := testRunner(stores, engine)
 
@@ -193,7 +193,7 @@ func TestHostWakesAgainWhenAnEventArrived(t *testing.T) {
 func TestHostParksABlockedSession(t *testing.T) {
 	t.Parallel()
 
-	stores := &fakeStore{maxSeq: 3}
+	stores := &fakeStore{}
 	engine := &fakeEngine{outcome: agentrunner.Outcome{
 		Blocked:       true,
 		BlockedCode:   "model-reported",

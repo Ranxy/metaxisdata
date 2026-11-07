@@ -49,7 +49,7 @@ type SessionStore interface {
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
-	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
+	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
 }
 
 // Runner hosts the agent's sessions.
@@ -246,7 +246,9 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 	}
 	// An event or question that arrived while the wake ran makes the session due again
 	// immediately, so it is never lost behind the idle cadence.
-	if maxSeq, err := r.store.MaxQualityAgentTranscriptSeq(ctx, session.ID); err == nil && maxSeq > outcome.ProcessedSeq {
+	// Only an event or question that arrived after the consumed watermark makes another
+	// wake immediately due; rows the wake itself wrote must not keep the session hot.
+	if pendingSeq, err := r.store.MaxQualityAgentInputSeqAfter(ctx, session.ID, outcome.ProcessedSeq); err == nil && pendingSeq > 0 {
 		next = ptrTime(r.now())
 	}
 	if _, err := r.store.ReleaseQualityAgentSessionLease(ctx, session.ResourceID, next); err != nil {

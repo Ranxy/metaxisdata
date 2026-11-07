@@ -38,7 +38,7 @@ func (r *Runner) intakeAgentEvents(ctx context.Context, workspaceID string, exec
 				slog.Int64("execution", execution.result.ID), log.WithError(err))
 			continue
 		}
-		if session == nil || session.State != storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED {
+		if session == nil || !sessionAcceptsAgentEvents(session) {
 			continue
 		}
 		if session.DatabaseRef == "" || !settings.AgentRunnerDatabaseEnabled(session.DatabaseRef) {
@@ -97,4 +97,22 @@ func executionEventContent(execution *ruleExecution) string {
 	}
 	return fmt.Sprintf("[event] Execution %s (check %q) finished FAIL with %d failed rows. Investigate whether this is a real data problem or a broken check.",
 		reference, title, execution.result.FailedRows)
+}
+
+// sessionAcceptsAgentEvents reports whether a failure should be appended to this session.
+// An enabled session always accepts one; a session parked on a transient block (a budget
+// window, autonomy off, an internal error) still records the event so the agent sees the
+// failure once it resumes. A paused, archived or needs-human session does not.
+func sessionAcceptsAgentEvents(session *store.QualityAgentSessionMessage) bool {
+	if session == nil {
+		return false
+	}
+	switch session.State {
+	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED:
+		return true
+	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED:
+		return store.QualityAgentSessionBlockedCodeRetryable(session.BlockedCode)
+	default:
+		return false
+	}
 }

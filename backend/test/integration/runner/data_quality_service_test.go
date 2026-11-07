@@ -4838,6 +4838,26 @@ func TestQualityAgentSessionRealServerIntegration(t *testing.T) {
 	require.True(t, foundWake, "the wake message is in the transcript")
 	require.True(t, foundEngine, "the runner note is in the transcript")
 
+	// A session with nothing pending must sleep on the idle cadence. Regression: the
+	// wake watermark used to be compared with the whole transcript, so the rows the wake
+	// wrote made every session wake again immediately (review blocker B1).
+	var firstWake int32
+	require.Eventually(t, func() bool {
+		response, err := fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+			withToken(token, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+		if err != nil {
+			return false
+		}
+		firstWake = response.Msg.GetWakeCount()
+		return firstWake >= 1
+	}, 20*time.Second, 250*time.Millisecond, "the first wake is recorded")
+	time.Sleep(4500 * time.Millisecond)
+	settled, err := fixture.dataQuality.GetQualityAgentSession(fixture.ctx,
+		withToken(token, &v1pb.GetQualityAgentSessionRequest{Name: session.GetName()}))
+	require.NoError(t, err)
+	require.Equal(t, firstWake, settled.Msg.GetWakeCount(),
+		"an idle session must not re-wake on the transcript rows its own wake wrote")
+
 	// Pause and resume with a revision CAS; the runner may have moved the revision, so
 	// read the latest value first like a person reloading the page.
 	latestSession := func() *v1pb.QualityAgentSession {
@@ -4866,6 +4886,11 @@ func TestQualityAgentSessionRealServerIntegration(t *testing.T) {
 	}
 	paused := pauseSession()
 	require.Equal(t, v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED, paused.GetState())
+	// A paused session accepts no new person message until it is resumed.
+	_, err = fixture.dataQuality.WakeQualityAgentSession(fixture.ctx,
+		withToken(token, &v1pb.WakeQualityAgentSessionRequest{Name: session.GetName(), Content: "status?"}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeFailedPrecondition, connect.CodeOf(err))
 	resumeSession := func() *v1pb.QualityAgentSession {
 		t.Helper()
 		for attempt := 0; attempt < 5; attempt++ {
@@ -4897,6 +4922,17 @@ func TestQualityAgentSessionRealServerIntegration(t *testing.T) {
 		archived = true
 	}
 	require.True(t, archived)
+	// The metrics count the archived session in its own bucket (review M7).
+	metrics, err := fixture.dataQuality.GetQualityAgentMetrics(fixture.ctx,
+		withToken(token, &v1pb.GetQualityAgentMetricsRequest{Parent: "workspaces/-"}))
+	require.NoError(t, err)
+	archivedCount := int32(0)
+	for _, count := range metrics.Msg.GetSessions() {
+		if count.GetState() == v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ARCHIVED {
+			archivedCount = count.GetCount()
+		}
+	}
+	require.GreaterOrEqual(t, archivedCount, int32(1))
 	active, err := fixture.dataQuality.ListQualityAgentSessions(fixture.ctx,
 		withToken(token, &v1pb.ListQualityAgentSessionsRequest{Parent: "workspaces/-", TargetGuid: fixture.usersGUID}))
 	require.NoError(t, err)

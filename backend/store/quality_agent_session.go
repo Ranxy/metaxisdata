@@ -209,8 +209,7 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 	}
 	rows, err := s.GetDB().QueryContext(ctx, `SELECT `+qualityAgentSessionReadColumns+`
 		FROM quality_agent_session WHERE `+where+`
-		ORDER BY COALESCE((SELECT MAX(m.created_at) FROM quality_agent_message m WHERE m.session_id = quality_agent_session.id), updated_at) DESC,
-			id DESC LIMIT `+arg(limit)+` OFFSET `+arg(offset), args...)
+		ORDER BY updated_at DESC, id DESC LIMIT `+arg(limit)+` OFFSET `+arg(offset), args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list the quality agent sessions")
 	}
@@ -232,7 +231,19 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 // retryableSessionBlockedCodes are blocked codes the runner may wake again on its
 // own; anything else needs a person.
 func retryableSessionBlockedCodes() []string {
-	return []string{"token-budget", "wake-budget", "autonomy-off", "llm-quota", "no-work", "internal-error"}
+	return []string{"token-budget", "wake-budget", "autonomy-off", "internal-error"}
+}
+
+// QualityAgentSessionBlockedCodeRetryable reports whether a block is transient (a
+// budget window, autonomy off, a transient internal error). The check runner uses it to
+// keep appending failure events while the session is parked on such a block.
+func QualityAgentSessionBlockedCodeRetryable(code string) bool {
+	for _, candidate := range retryableSessionBlockedCodes() {
+		if candidate == code {
+			return true
+		}
+	}
+	return false
 }
 
 // claimDueQualityAgentSessionsQuery is the one wake-claim predicate: an enabled (or
@@ -293,10 +304,12 @@ func (s *Store) UpdateQualityAgentSessionState(ctx context.Context, resourceID s
 	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx, `
 		UPDATE quality_agent_session
 		SET state = $2, blocked_code = $3, blocked_reason = $4, next_wake_at = $5,
+			restart_count = CASE WHEN $2::int2 = $7::int2 THEN 0 ELSE restart_count END,
 			lease_until = NULL, revision = revision + 1, updated_at = NOW()
 		WHERE resource_id = $1 AND revision = $6 AND archived_at IS NULL
 		RETURNING `+qualityAgentSessionColumns,
-		resourceID, int16(state), blockedCode, blockedReason, nextWakeAt, expectedRevision))
+		resourceID, int16(state), blockedCode, blockedReason, nextWakeAt, expectedRevision,
+		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, false, nil
@@ -354,7 +367,7 @@ func (s *Store) UpdateQualityAgentSessionProgress(ctx context.Context, resourceI
 		SET wake_count = wake_count + $2, tokens_used = tokens_used + $3,
 			context_tokens = GREATEST(context_tokens, $4),
 			processed_seq = GREATEST(processed_seq, $5), engine_state = $6,
-			revision = revision + 1, updated_at = NOW()
+			restart_count = 0, revision = revision + 1, updated_at = NOW()
 		WHERE resource_id = $1 AND archived_at IS NULL
 		RETURNING `+qualityAgentSessionColumns,
 		resourceID, result.WakeCountIncrement, result.TokensUsed, result.ContextTokens,
@@ -432,8 +445,10 @@ func (s *Store) ResetStaleQualityAgentSessionLeases(ctx context.Context, now tim
 	return affected, nil
 }
 
-// AppendQualityAgentTranscriptMessage appends one transcript entry, allocating the next sequence
-// number. A retried idempotency key returns the existing row instead of a duplicate.
+// AppendQualityAgentTranscriptMessage appends one transcript entry. Appends to one
+// session are serialized with the session row lock, so the runner and an API/event
+// writer can race without allocating the same seq or losing a row to a unique
+// violation. A retried idempotency key returns the existing row.
 func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *QualityAgentTranscriptMessage) (*QualityAgentTranscriptMessage, error) {
 	if input == nil || input.SessionID == 0 {
 		return nil, common.Errorf(common.Invalid, "a session id is required")
@@ -445,7 +460,34 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 	if err != nil {
 		return nil, err
 	}
-	message, err := scanQualityAgentTranscript(s.GetDB().QueryRowContext(ctx, `
+	tx, err := s.GetDB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to begin the session message transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Serialize every writer of this session: the seq allocation below is MAX+1, and an
+	// external writer (the API's wake or an event from the check runner) does not hold
+	// the runner's lease.
+	var sessionID int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`,
+		input.SessionID).Scan(&sessionID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, common.Errorf(common.NotFound, "the session no longer exists")
+		}
+		return nil, errors.Wrap(err, "failed to lock the session")
+	}
+	if input.IdempotencyKey != "" {
+		existing, findErr := scanQualityAgentTranscript(tx.QueryRowContext(ctx,
+			`SELECT `+qualityAgentTranscriptColumns+` FROM quality_agent_message
+			 WHERE session_id = $1 AND idempotency_key = $2`, input.SessionID, input.IdempotencyKey))
+		if findErr == nil {
+			return existing, nil
+		}
+		if !errors.Is(findErr, sql.ErrNoRows) {
+			return nil, errors.Wrap(findErr, "failed to read the existing session message")
+		}
+	}
+	message, err := scanQualityAgentTranscript(tx.QueryRowContext(ctx, `
 		INSERT INTO quality_agent_message
 			(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
 			 tool_call_id, tool_name, reference, tokens, prompt_tokens, completion_tokens,
@@ -459,18 +501,30 @@ func (s *Store) AppendQualityAgentTranscriptMessage(ctx context.Context, input *
 		input.Reference, input.Tokens, input.PromptTokens, input.CompletionTokens,
 		input.Error, input.Truncated, input.IdempotencyKey))
 	if err != nil {
-		if isUniqueViolation(err) && input.IdempotencyKey != "" {
-			existing, findErr := scanQualityAgentTranscript(s.GetDB().QueryRowContext(ctx,
-				`SELECT `+qualityAgentTranscriptColumns+` FROM quality_agent_message
-				 WHERE session_id = $1 AND idempotency_key = $2`, input.SessionID, input.IdempotencyKey))
-			if findErr != nil {
-				return nil, errors.Wrap(findErr, "failed to read the existing session message")
-			}
-			return existing, nil
-		}
 		return nil, errors.Wrap(err, "failed to append the session message")
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, errors.Wrap(err, "failed to commit the session message")
+	}
 	return message, nil
+}
+
+// MaxQualityAgentInputSeqAfter is the highest seq of an external input (event or
+// person's question) after the given watermark. The runner compares it with the wake's
+// consumed watermark to decide whether another wake is immediately due; transcript rows
+// the engine writes (assistant, tool, engine) must never count.
+func (s *Store) MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error) {
+	var seq int64
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(seq), 0) FROM quality_agent_message
+		WHERE session_id = $1 AND seq > $2 AND role = $3 AND origin IN ($4, $5)`,
+		sessionID, afterSeq,
+		int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER),
+		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT),
+		int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK)).Scan(&seq); err != nil {
+		return 0, errors.Wrap(err, "failed to read the pending session inputs")
+	}
+	return seq, nil
 }
 
 // FindQualityAgentTranscriptMessage filters a transcript read.
@@ -481,8 +535,13 @@ type FindQualityAgentTranscriptMessage struct {
 	// ExcludeEngine drops engine notes, which are UI/runner bookkeeping and never part
 	// of the model context.
 	ExcludeEngine bool
-	Limit         int
-	Offset        int
+	// Role, when set, keeps only messages of that role.
+	Role *storepb.QualityAgentMessageRole
+	// InputsOnly keeps only external inputs (a user message whose origin is an event or
+	// a person's question). It is how the wake watermark and the pending list are read.
+	InputsOnly bool
+	Limit      int
+	Offset     int
 	// NewestFirst returns the most recent page first; the caller reverses it when it
 	// needs chronological order.
 	NewestFirst bool
@@ -498,6 +557,17 @@ func (s *Store) ListQualityAgentTranscriptMessages(ctx context.Context, find *Fi
 	if find.ExcludeEngine {
 		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE))
 		where += ` AND role <> $` + strconv.Itoa(len(args))
+	}
+	if find.Role != nil {
+		args = append(args, int16(*find.Role))
+		where += ` AND role = $` + strconv.Itoa(len(args))
+	}
+	if find.InputsOnly {
+		args = append(args, int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER))
+		args = append(args, int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT))
+		args = append(args, int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK))
+		where += ` AND role = $` + strconv.Itoa(len(args)-2) + ` AND origin IN ($` +
+			strconv.Itoa(len(args)-1) + `, $` + strconv.Itoa(len(args)) + `)`
 	}
 	limit := find.Limit
 	if limit <= 0 {
@@ -608,8 +678,11 @@ type QualityAgentSessionTargetCost struct {
 // counts are global by design in this single-workspace deployment.
 func (s *Store) GetQualityAgentSessionMetrics(ctx context.Context, workspaceID string) (*QualityAgentSessionMetrics, error) {
 	metrics := &QualityAgentSessionMetrics{StateCounts: map[storepb.QualityAgentSessionState]int32{}}
+	// Archived sessions keep state=ARCHIVED, so grouping every row of the workspace
+	// counts them without a second query; filtering archived_at here would always
+	// report zero for that bucket.
 	stateQuery := `SELECT state, COUNT(*) FROM quality_agent_session
-		WHERE workspace_id = $1 AND archived_at IS NULL GROUP BY state`
+		WHERE workspace_id = $1 GROUP BY state`
 	rows, err := s.GetDB().QueryContext(ctx, stateQuery, workspaceID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read the session states")
