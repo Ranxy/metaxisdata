@@ -285,7 +285,11 @@ func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context
 	}
 	response := &v1pb.ListQualityAgentSessionMessagesResponse{}
 	if find.AfterSeq == 0 && more {
-		response.NextPageToken = strconv.Itoa(offset.offset + offset.limit)
+		nextPageToken, tokenErr := offset.getNextPageToken()
+		if tokenErr != nil {
+			return nil, connect.NewError(connect.CodeInternal, errors.Wrap(tokenErr, "failed to marshal next page token"))
+		}
+		response.NextPageToken = nextPageToken
 	}
 	for _, message := range messages {
 		response.QualityAgentSessionMessages = append(response.QualityAgentSessionMessages,
