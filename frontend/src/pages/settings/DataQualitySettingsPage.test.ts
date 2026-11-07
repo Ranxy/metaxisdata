@@ -4,6 +4,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryHistory, createRouter } from "vue-router";
 import FormField from "@/components/ui/form-field/FormField.vue";
 import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceProfileSetting: vi.fn(),
   updateDataQualitySetting: vi.fn(),
   listProfiles: vi.fn(),
+  getQualityAgentRunnerStatus: vi.fn(),
   getQualityLLMUsage: vi.fn(),
   listAllQualityCodeTables: vi.fn(),
   getQualityCodeTable: vi.fn(),
@@ -54,6 +56,7 @@ vi.mock("@/api/database", () => ({
 }));
 
 vi.mock("@/api/data-quality", () => ({
+  getQualityAgentRunnerStatus: mocks.getQualityAgentRunnerStatus,
   getQualityLLMUsage: mocks.getQualityLLMUsage,
   listAllQualityCodeTables: mocks.listAllQualityCodeTables,
   getQualityCodeTable: mocks.getQualityCodeTable,
@@ -113,8 +116,23 @@ async function mountPage(permissions = PERMISSIONS) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().user = create(UserSchema, { permissions });
+  // The runner card links to the agent sessions page, so the page needs a
+  // router even though every test stays on the settings route.
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: "/data-quality/agent",
+        name: "DataQualityAgent",
+        component: { template: "<div />" },
+      },
+      { path: "/:pathMatch(.*)*", component: { template: "<div />" } },
+    ],
+  });
+  await router.push("/settings/data-quality");
+  await router.isReady();
   const wrapper = mount(DataQualitySettingsPage, {
-    global: { plugins: [i18n, pinia] },
+    global: { plugins: [i18n, pinia, router] },
   });
   await flushPromises();
   return wrapper;

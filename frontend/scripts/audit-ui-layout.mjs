@@ -95,6 +95,9 @@ const ROUTES = [
     name: "data quality targets",
     tableTopMaxY: 260,
   },
+  // The agent-session list adds a runner status strip and four state cards
+  // above its filter row, so its chrome budget is the largest in the section.
+  { path: "/data-quality/agent", name: "data quality agent", tableTopMaxY: 460 },
   // The target workspace route needs a real target GUID, like the rule detail,
   // so it is not registered here; its layout invariants are exercised by its
   // page test instead.

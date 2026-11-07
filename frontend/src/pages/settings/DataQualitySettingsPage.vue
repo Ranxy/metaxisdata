@@ -621,6 +621,61 @@
                 </p>
               </div>
             </div>
+
+            <!-- A read-only view of the process carrying out the settings above.
+                 The counters and budgets are live, so this line never needs a
+                 save; a caller without the quality read permission only gets the
+                 link to the sessions page. -->
+            <div class="flex flex-wrap items-center gap-2 border-t pt-3 text-sm">
+              <span class="font-medium">
+                {{ t("dataQualitySettings.runnerStatus") }}
+              </span>
+              <template v-if="runnerStatus">
+                <Badge :variant="runnerStatus.enabled ? 'success' : 'neutral'">
+                  {{
+                    runnerStatus.enabled
+                      ? t("dataQualitySettings.runnerStatusEnabled")
+                      : t("dataQualitySettings.runnerStatusDisabled")
+                  }}
+                </Badge>
+                <Badge variant="secondary">
+                  {{ t("dataQualitySettings.runnerStatusRunning", { count: runnerStatus.runningSessions }) }}
+                </Badge>
+                <Badge variant="neutral">
+                  {{ t("dataQualitySettings.runnerStatusIdle", { count: runnerStatus.idleSessions }) }}
+                </Badge>
+                <Badge
+                  v-if="runnerStatus.blockedSessions > 0"
+                  variant="warning"
+                >
+                  {{ t("dataQualitySettings.runnerStatusBlocked", { count: runnerStatus.blockedSessions }) }}
+                </Badge>
+                <span class="text-xs text-muted-foreground tabular-nums">
+                  {{
+                    t("dataQualitySettings.runnerStatusTokens", {
+                      used: formatTokens(runnerStatus.tokensLastHour, locale),
+                      limit: formatTokens(runnerStatus.tokensPerHourLimit, locale),
+                    })
+                  }}
+                </span>
+              </template>
+              <span
+                v-else-if="runnerStatusError"
+                class="text-xs text-muted-foreground"
+              >
+                {{ runnerStatusError }}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                class="ml-auto"
+                as-child
+              >
+                <RouterLink :to="{ name: 'DataQualityAgent' }">
+                  {{ t("dataQualitySettings.runnerOpenSessions") }}
+                </RouterLink>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -912,9 +967,11 @@ import {
 } from "lucide-vue-next";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { RouterLink } from "vue-router";
 import {
   createQualityCodeTable,
   deleteQualityCodeTable,
+  getQualityAgentRunnerStatus,
   getQualityCodeTable,
   getQualityLLMUsage,
   listAllQualityCodeTables,
@@ -933,6 +990,7 @@ import PageState from "@/components/common/PageState.vue";
 import QualityAgentsCard from "@/components/data-quality/QualityAgentsCard.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -972,11 +1030,13 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  type QualityAgentRunnerStatus,
   type QualityCodeTable,
   QualityCodeTableSchema,
   type QualityLLMUsage,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { DayOfWeek } from "@/types/proto-es/v1/setting_service_pb";
+import { formatTokens } from "@/utils/agentSession";
 import { formatRowCount } from "@/utils/dataQuality";
 import type { ScheduleUnit } from "@/utils/dataQualityForm";
 import {
@@ -1091,6 +1151,14 @@ const usage = ref<QualityLLMUsage>();
 const usageLoading = ref(false);
 const usageError = ref("");
 
+/** The runner's live counters; read-only, so they are never part of the form. */
+const runnerStatus = ref<QualityAgentRunnerStatus>();
+const runnerStatusError = ref("");
+/** The status RPC is part of the quality read surface, not the settings one. */
+const canListAgentSessions = computed(() =>
+  authStore.hasPermission("metaxisdata.dataQuality.rules.list")
+);
+
 /** The code-table card: the list, its dialogs, and their own failures. */
 const codeTables = ref<QualityCodeTable[]>([]);
 const codeTablesLoading = ref(false);
@@ -1191,6 +1259,7 @@ async function load() {
     await loadProfiles(profile.allowedLlmProviderProfiles ?? []);
     void loadUsage();
     void loadCodeTables();
+    void loadRunnerStatus();
   } catch (e: unknown) {
     error.value = formatError(e, "dataQualitySettings.fetchError");
   } finally {
@@ -1254,6 +1323,25 @@ function ratio(used: number, limit: number): string {
     used: formatRowCount(used, locale.value),
     limit: formatRowCount(limit, locale.value),
   });
+}
+
+/**
+ * Read the runner's live status for the read-only line in the runner card. A
+ * failure stays inside that line: the settings above still loaded.
+ */
+async function loadRunnerStatus() {
+  if (!canListAgentSessions.value) {
+    runnerStatus.value = undefined;
+    runnerStatusError.value = "";
+    return;
+  }
+  try {
+    runnerStatus.value = await getQualityAgentRunnerStatus();
+    runnerStatusError.value = "";
+  } catch {
+    runnerStatus.value = undefined;
+    runnerStatusError.value = t("dataQualitySettings.runnerStatusFailed");
+  }
 }
 
 /**

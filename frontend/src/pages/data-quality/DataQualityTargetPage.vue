@@ -448,6 +448,14 @@
               :target-guid="targetGuid"
             />
 
+            <!-- One long-lived agent conversation per table; the full transcript
+                 lives on the agent sessions page this card links to. -->
+            <AgentSessionCard
+              :target-guid="targetGuid"
+              :meta-type="effectiveMetaType"
+              :can-update="canUpdate"
+            />
+
             <QualityKnowledgeCard
               :target-guid="targetGuid"
               :can-confirm="canUpdate"
@@ -767,6 +775,7 @@ import {
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
+import AgentSessionCard from "@/components/data-quality/AgentSessionCard.vue";
 import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
 import QualityKnowledgeCard from "@/components/data-quality/QualityKnowledgeCard.vue";
 import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";

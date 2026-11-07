@@ -93,6 +93,7 @@ const mocks = vi.hoisted(() => ({
   exportQualityReport: vi.fn(),
   acknowledgeQualityTargetSchema: vi.fn(),
   getWorkspaceProfileSetting: vi.fn(),
+  listQualityAgentSessions: vi.fn(),
 }));
 
 vi.mock("@/api/data-quality", async (importOriginal) => ({
@@ -118,6 +119,7 @@ vi.mock("@/api/data-quality", async (importOriginal) => ({
   profileColumns: mocks.profileColumns,
   exportQualityReport: mocks.exportQualityReport,
   acknowledgeQualityTargetSchema: mocks.acknowledgeQualityTargetSchema,
+  listQualityAgentSessions: mocks.listQualityAgentSessions,
 }));
 
 // jsdom has no object-URL download path; the download itself is covered by the
@@ -659,6 +661,7 @@ describe("DataQualityTargetPage", () => {
     );
     mocks.getQualityContract.mockResolvedValue(contractFixture());
     mocks.getQualityRule.mockResolvedValue(rulesFixture()[0]);
+    mocks.listQualityAgentSessions.mockResolvedValue([]);
     mocks.listQualityExecutions.mockResolvedValue({
       items: [],
       nextPageToken: "",

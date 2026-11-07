@@ -186,6 +186,7 @@
 import { useMediaQuery } from "@vueuse/core";
 import {
   Activity,
+  Bot,
   ChevronRight,
   CircleAlert,
   Database,
@@ -393,6 +394,13 @@ function buildMenuItems(): MenuItem[] {
           label: t("menu.dataQualityTargets"),
           path: "/data-quality/targets",
           icon: Target,
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+        {
+          key: "dataQualityAgent",
+          label: t("menu.dataQualityAgent"),
+          path: "/data-quality/agent",
+          icon: Bot,
           permission: "metaxisdata.dataQuality.rules.list",
         },
         {
