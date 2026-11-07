@@ -1603,6 +1603,9 @@ CREATE TABLE IF NOT EXISTS quality_agent_message (
     tool_calls JSONB NOT NULL DEFAULT '{}',
     tool_call_id TEXT NOT NULL DEFAULT '',
     tool_name TEXT NOT NULL DEFAULT '',
+    -- The object an event or wake is about (for example a quality execution
+    -- resource name); empty for model and runner messages.
+    reference TEXT NOT NULL DEFAULT '',
     tokens INT4 NOT NULL DEFAULT 0,
     prompt_tokens INT4 NOT NULL DEFAULT 0,
     completion_tokens INT4 NOT NULL DEFAULT 0,

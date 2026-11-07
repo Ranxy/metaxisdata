@@ -18,6 +18,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
@@ -37,6 +38,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/notificationdispatcher"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitydigestrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
+	"github.com/Ranxy/metaxisdata/backend/runner/qualitysessionrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitysuggestionrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -142,6 +144,8 @@ type Server struct {
 	qualityRunner   *qualityrunner.Runner
 	// suggestionRunner executes the durable AI drafting jobs the API queues.
 	suggestionRunner *qualitysuggestionrunner.Runner
+	// sessionRunner hosts the built-in quality agent's long-lived sessions.
+	sessionRunner *qualitysessionrunner.Runner
 	// dispatcher posts queued outbound notification deliveries.
 	dispatcher *notificationdispatcher.Runner
 	// digestRunner sends the weekly data quality digest on its schedule.
@@ -262,6 +266,16 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	llmQuota := dataquality.NewLLMQuota(s.metrics)
 	suggester := dataquality.NewSuggester(stores, s.llmRegistry, llmQuota, s.metrics)
 	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
+	// The session runner hosts the built-in quality agent: one long-lived conversation
+	// per target, continued wake by wake.
+	sessionEngine := agentrunner.NewModelEngine(stores, llmcomp.RunAgentLoop,
+		func(ctx context.Context) (llmcomp.ResolvedConfig, bool, error) {
+			config, _, resolveErr := suggester.ResolveConfig(ctx)
+			// Disabled or unconfigured analysis is not an error for the runner: the
+			// deterministic survey keeps working.
+			return config, resolveErr == nil, nil
+		}, s.metrics)
+	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
@@ -285,7 +299,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.sessionRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}

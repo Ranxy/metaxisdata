@@ -16,6 +16,11 @@ type AgentEvent struct {
 	// ToolResult is the result of a completed tool call (tool_end).
 	ToolResult string
 
+	// Assistant is the completed assistant message of one turn
+	// (AgentEventAssistant). It is what a session recorder persists; the Content
+	// deltas are only the streaming view of the same text.
+	Assistant *AgentMessage
+
 	// ToolError is set when a tool execution fails.
 	ToolError string
 
@@ -39,6 +44,9 @@ const (
 	AgentEventContent   AgentEventType = "content"
 	AgentEventToolStart AgentEventType = "tool_start"
 	AgentEventToolEnd   AgentEventType = "tool_end"
+	// AgentEventAssistant reports one completed assistant message (text plus any
+	// tool calls), so a recorder does not have to reconstruct it from deltas.
+	AgentEventAssistant AgentEventType = "assistant"
 	// AgentEventUsage reports the token usage one turn's provider response
 	// carried. It is not a verdict and not a bill; a provider that omits usage
 	// emits no such event.
@@ -60,6 +68,12 @@ type AgentConfig struct {
 	// Metrics records the invocation's call, duration and token outcome. A nil
 	// value disables instrumentation.
 	Metrics *metrics.Metrics
+
+	// History is the conversation to continue, in order. When non-empty it
+	// replaces SystemPrompt/UserPrompt; a long-lived agent session rebuilds it from
+	// the stored transcript so each wake continues the same conversation. A
+	// single-shot caller keeps using the two prompt fields.
+	History []AgentMessage
 
 	// SystemPrompt is prepended to the conversation.
 	SystemPrompt string

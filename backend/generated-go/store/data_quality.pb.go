@@ -8405,20 +8405,23 @@ type QualityAgentMessage struct {
 	SessionId   int64                  `protobuf:"varint,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	WorkspaceId string                 `protobuf:"bytes,3,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	// Monotonic within one session; the read API pages and polls with after_seq.
-	Seq              int64                     `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
-	Wake             int32                     `protobuf:"varint,5,opt,name=wake,proto3" json:"wake,omitempty"`
-	Turn             int32                     `protobuf:"varint,6,opt,name=turn,proto3" json:"turn,omitempty"`
-	Role             QualityAgentMessageRole   `protobuf:"varint,7,opt,name=role,proto3,enum=metaxisdata.store.QualityAgentMessageRole" json:"role,omitempty"`
-	Origin           QualityAgentMessageOrigin `protobuf:"varint,8,opt,name=origin,proto3,enum=metaxisdata.store.QualityAgentMessageOrigin" json:"origin,omitempty"`
-	Content          string                    `protobuf:"bytes,9,opt,name=content,proto3" json:"content,omitempty"`
-	ToolCalls        *QualityToolCallList      `protobuf:"bytes,10,opt,name=tool_calls,json=toolCalls,proto3" json:"tool_calls,omitempty"`
-	ToolCallId       string                    `protobuf:"bytes,11,opt,name=tool_call_id,json=toolCallId,proto3" json:"tool_call_id,omitempty"`
-	ToolName         string                    `protobuf:"bytes,12,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
-	Tokens           int32                     `protobuf:"varint,13,opt,name=tokens,proto3" json:"tokens,omitempty"`
-	PromptTokens     int32                     `protobuf:"varint,14,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
-	CompletionTokens int32                     `protobuf:"varint,15,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
-	Error            string                    `protobuf:"bytes,16,opt,name=error,proto3" json:"error,omitempty"`
-	Truncated        bool                      `protobuf:"varint,17,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Seq        int64                     `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
+	Wake       int32                     `protobuf:"varint,5,opt,name=wake,proto3" json:"wake,omitempty"`
+	Turn       int32                     `protobuf:"varint,6,opt,name=turn,proto3" json:"turn,omitempty"`
+	Role       QualityAgentMessageRole   `protobuf:"varint,7,opt,name=role,proto3,enum=metaxisdata.store.QualityAgentMessageRole" json:"role,omitempty"`
+	Origin     QualityAgentMessageOrigin `protobuf:"varint,8,opt,name=origin,proto3,enum=metaxisdata.store.QualityAgentMessageOrigin" json:"origin,omitempty"`
+	Content    string                    `protobuf:"bytes,9,opt,name=content,proto3" json:"content,omitempty"`
+	ToolCalls  *QualityToolCallList      `protobuf:"bytes,10,opt,name=tool_calls,json=toolCalls,proto3" json:"tool_calls,omitempty"`
+	ToolCallId string                    `protobuf:"bytes,11,opt,name=tool_call_id,json=toolCallId,proto3" json:"tool_call_id,omitempty"`
+	ToolName   string                    `protobuf:"bytes,12,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	// The object an event or wake is about (for example a quality execution resource
+	// name); empty for model and runner messages.
+	Reference        string `protobuf:"bytes,20,opt,name=reference,proto3" json:"reference,omitempty"`
+	Tokens           int32  `protobuf:"varint,13,opt,name=tokens,proto3" json:"tokens,omitempty"`
+	PromptTokens     int32  `protobuf:"varint,14,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens int32  `protobuf:"varint,15,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	Error            string `protobuf:"bytes,16,opt,name=error,proto3" json:"error,omitempty"`
+	Truncated        bool   `protobuf:"varint,17,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	// The store returns the existing row for a retried key.
 	IdempotencyKey string                 `protobuf:"bytes,18,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -8536,6 +8539,13 @@ func (x *QualityAgentMessage) GetToolCallId() string {
 func (x *QualityAgentMessage) GetToolName() string {
 	if x != nil {
 		return x.ToolName
+	}
+	return ""
+}
+
+func (x *QualityAgentMessage) GetReference() string {
+	if x != nil {
+		return x.Reference
 	}
 	return ""
 }
@@ -9852,7 +9862,7 @@ const file_store_data_quality_proto_rawDesc = "" +
 	"\targuments\x18\x03 \x01(\tR\targuments\"X\n" +
 	"\x13QualityToolCallList\x12A\n" +
 	"\n" +
-	"tool_calls\x18\x01 \x03(\v2\".metaxisdata.store.QualityToolCallR\ttoolCalls\"\xc9\x05\n" +
+	"tool_calls\x18\x01 \x03(\v2\".metaxisdata.store.QualityToolCallR\ttoolCalls\"\xe7\x05\n" +
 	"\x13QualityAgentMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
@@ -9869,7 +9879,8 @@ const file_store_data_quality_proto_rawDesc = "" +
 	" \x01(\v2&.metaxisdata.store.QualityToolCallListR\ttoolCalls\x12 \n" +
 	"\ftool_call_id\x18\v \x01(\tR\n" +
 	"toolCallId\x12\x1b\n" +
-	"\ttool_name\x18\f \x01(\tR\btoolName\x12\x16\n" +
+	"\ttool_name\x18\f \x01(\tR\btoolName\x12\x1c\n" +
+	"\treference\x18\x14 \x01(\tR\treference\x12\x16\n" +
 	"\x06tokens\x18\r \x01(\x05R\x06tokens\x12#\n" +
 	"\rprompt_tokens\x18\x0e \x01(\x05R\fpromptTokens\x12+\n" +
 	"\x11completion_tokens\x18\x0f \x01(\x05R\x10completionTokens\x12\x14\n" +

@@ -864,6 +864,7 @@ QualityAgentMessage is one append-only transcript entry of a session.
 | tool_calls | [QualityToolCallList](#metaxisdata-store-QualityToolCallList) |  |  |
 | tool_call_id | [string](#string) |  |  |
 | tool_name | [string](#string) |  |  |
+| reference | [string](#string) |  | The object an event or wake is about (for example a quality execution resource name); empty for model and runner messages. |
 | tokens | [int32](#int32) |  |  |
 | prompt_tokens | [int32](#int32) |  |  |
 | completion_tokens | [int32](#int32) |  |  |

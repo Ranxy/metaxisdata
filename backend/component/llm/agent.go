@@ -172,14 +172,28 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		maxConversationBytes = DefaultMaxConversationBytes
 	}
 	budget := &conversationBudget{limit: maxConversationBytes}
-	budget.add(len(cfg.SystemPrompt))
-	budget.add(len(cfg.UserPrompt))
 
 	// usage accumulates over the turns the provider reported; a provider that
 	// reports nothing leaves usageReported false rather than claiming zero tokens.
-	messages := []AgentMessage{
-		{Role: "system", Content: cfg.SystemPrompt},
-		{Role: "user", Content: cfg.UserPrompt},
+	messages := make([]AgentMessage, 0, len(cfg.History)+2)
+	if len(cfg.History) > 0 {
+		// A session wake continues the stored conversation; the caller's History
+		// already carries its system message and the new wake message.
+		for _, message := range cfg.History {
+			if !budget.add(len(message.Content)) {
+				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError,
+					Error: errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)})
+				return
+			}
+			messages = append(messages, message)
+		}
+	} else {
+		budget.add(len(cfg.SystemPrompt))
+		budget.add(len(cfg.UserPrompt))
+		messages = append(messages,
+			AgentMessage{Role: "system", Content: cfg.SystemPrompt},
+			AgentMessage{Role: "user", Content: cfg.UserPrompt},
+		)
 	}
 
 	// appendMessage keeps the conversation inside its budget: every turn resends
@@ -236,6 +250,14 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		}
 		if err := appendMessage(assistantMsg); err != nil {
 			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+			return
+		}
+		// Report the completed message before the tool calls run: a session recorder
+		// persists it verbatim (the tool calls included) and the UI can show the
+		// assistant text while the tools execute.
+		completed := assistantMsg
+		if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventAssistant, Assistant: &completed, Turn: turn}) {
+			outcome = metrics.LLMOutcomeCanceled
 			return
 		}
 
@@ -443,8 +465,12 @@ func streamRaw(ctx context.Context, cfg AgentConfig, messages []Message) <-chan 
 			// The body is the provider's, and may echo request details; keep it
 			// in the server log and return only the status to the caller.
 			slog.Error("LLM provider returned a non-OK status", "status", resp.StatusCode, "body", string(errBody))
+			code := FailureProviderStatus
+			if isContextOverflowBody(errBody) {
+				code = FailureContextOverflow
+			}
 			sendRaw(ctx, ch, rawStreamChunk{Error: &ResponseError{
-				Code:         FailureProviderStatus,
+				Code:         code,
 				StatusCode:   resp.StatusCode,
 				OutputTokens: maxTokens,
 				Err:          fmt.Errorf("LLM provider returned status %d", resp.StatusCode),
