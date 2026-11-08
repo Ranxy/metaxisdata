@@ -50,6 +50,8 @@ type SessionStore interface {
 	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
 	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
+	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
+	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 }
 
 // Runner hosts the agent's sessions.
@@ -227,6 +229,12 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 			slog.String("session", session.ResourceID), log.WithError(err))
 		return
 	}
+	if outcome.TriageComplete {
+		// The triage analysis is done: park the queue row until its review. The session
+		// stays as the target's conversation and wakes again only when something new
+		// happens (a failure event, a person, or the review).
+		r.parkEnrollmentAfterTriage(ctx, session, settings)
+	}
 	if outcome.Blocked {
 		_, parked, parkErr := r.store.UpdateQualityAgentSessionState(ctx, progress.ResourceID, progress.Revision,
 			storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED,
@@ -243,6 +251,14 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 	next := r.idleWake(settings)
 	if outcome.NextWakeAt != nil {
 		next = outcome.NextWakeAt
+	}
+	if outcome.TriageComplete {
+		// A triaged target sleeps until its review, not on the idle cadence: otherwise
+		// every DORMANT target would wake and re-triage once a day.
+		review := r.triageReviewAt(settings)
+		if next == nil || review.Before(*next) {
+			next = &review
+		}
 	}
 	// An event or question that arrived while the wake ran makes the session due again
 	// immediately, so it is never lost behind the idle cadence.
@@ -288,6 +304,38 @@ func (r *Runner) block(ctx context.Context, session *store.QualityAgentSessionMe
 		slog.Warn("the quality agent session changed before it could be parked",
 			slog.String("session", session.ResourceID))
 	}
+}
+
+// parkEnrollmentAfterTriage marks the target's queue row dormant until its review. A
+// failure to update the queue row must not fail the wake: the transcript is already
+// recorded and the next review tick retries the queue side.
+func (r *Runner) parkEnrollmentAfterTriage(ctx context.Context, session *store.QualityAgentSessionMessage, settings dataquality.Settings) {
+	enrollment, err := r.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.TargetGUID)
+	if err != nil {
+		slog.Warn("failed to read the enrollment of a triaged session",
+			slog.String("session", session.ResourceID), log.WithError(err))
+		return
+	}
+	if enrollment == nil {
+		return
+	}
+	nextReview := r.triageReviewAt(settings)
+	if _, applied, err := r.store.UpdateQualityAgentEnrollmentAfterTriage(ctx, enrollment.ResourceID, nextReview); err != nil {
+		slog.Warn("failed to park a triaged enrollment",
+			slog.String("enrollment", enrollment.ResourceID), log.WithError(err))
+	} else if !applied {
+		slog.Debug("the enrollment changed before it could be parked",
+			slog.String("enrollment", enrollment.ResourceID))
+	}
+}
+
+// triageReviewAt is when a triaged target is looked at again.
+func (r *Runner) triageReviewAt(settings dataquality.Settings) time.Time {
+	days := settings.AgentRunnerDormantReviewDays
+	if days <= 0 {
+		days = dataquality.DefaultAgentRunnerDormantReviewDays
+	}
+	return r.now().Add(time.Duration(days) * 24 * time.Hour)
 }
 
 // idleWake is the cadence a session sleeps on when nothing asks for an earlier wake.
