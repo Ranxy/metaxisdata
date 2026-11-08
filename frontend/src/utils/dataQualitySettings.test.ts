@@ -16,11 +16,16 @@ import {
   LLM_CONCURRENCY_LIMIT_MAX,
   llmDisabled,
   MAX_AGENT_RUNNER_CONCURRENT_SESSIONS,
+  MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
+  MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
+  MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS,
+  MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR,
   MAX_AGENT_RUNNER_TOKENS_PER_HOUR,
   MAX_AGENT_RUNNER_WAKES_PER_HOUR,
   MAX_COLUMNS_PER_ANALYSIS_MAX,
   MAX_DAILY_COLUMN_ANALYSIS_LIMIT,
   MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS,
+  MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
   MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
   SETTINGS_VALIDATION_PREFIX,
   settingsToForm,
@@ -52,6 +57,11 @@ function baseForm(
     agentRunnerCompactionTriggerTokens: "",
     agentRunnerIdleWakeSeconds: "",
     agentRunnerAutoInvestigateFailures: true,
+    agentRunnerAutoEnroll: false,
+    agentRunnerMaxNewSessionsPerHour: "",
+    agentRunnerMaxActiveSessions: "",
+    agentRunnerDormantReviewDays: "",
+    agentRunnerEventBudgetPercent: "",
     weeklyDigest: {
       enabled: false,
       dayOfWeek: DayOfWeek.MONDAY,
@@ -110,6 +120,11 @@ describe("settingsToForm", () => {
       agentRunnerCompactionTriggerTokens: "",
       agentRunnerIdleWakeSeconds: "",
       agentRunnerAutoInvestigateFailures: true,
+      agentRunnerAutoEnroll: false,
+      agentRunnerMaxNewSessionsPerHour: "",
+      agentRunnerMaxActiveSessions: "",
+      agentRunnerDormantReviewDays: "",
+      agentRunnerEventBudgetPercent: "",
       // No digest stored yet: show the schedule the server resolves instead.
       weeklyDigest: {
         enabled: false,
@@ -168,6 +183,11 @@ describe("agent runner settings", () => {
       agentRunnerCompactionTriggerTokens: 262_144,
       agentRunnerIdleWakeSeconds: 86_400,
       agentRunnerAutoInvestigateFailures: false,
+      agentRunnerAutoEnroll: true,
+      agentRunnerMaxNewSessionsPerHour: 5,
+      agentRunnerMaxActiveSessions: 50,
+      agentRunnerDormantReviewDays: 14,
+      agentRunnerEventBudgetPercent: 60,
     });
     const form = settingsToForm(setting);
     expect(form.agentRunnerEnabled).toBe(true);
@@ -187,6 +207,27 @@ describe("agent runner settings", () => {
     );
     expect(formToSetting(form).agentRunnerIdleWakeSeconds).toBe(86_400);
     expect(formToSetting(form).agentRunnerAutoInvestigateFailures).toBe(false);
+    // The enrollment fields round-trip both ways; a stored 0 is "server
+    // default" and renders as a blank input.
+    expect(form.agentRunnerAutoEnroll).toBe(true);
+    expect(form.agentRunnerMaxNewSessionsPerHour).toBe("5");
+    expect(form.agentRunnerMaxActiveSessions).toBe("50");
+    expect(form.agentRunnerDormantReviewDays).toBe("14");
+    expect(form.agentRunnerEventBudgetPercent).toBe("60");
+    expect(formToSetting(form).agentRunnerAutoEnroll).toBe(true);
+    expect(formToSetting(form).agentRunnerMaxNewSessionsPerHour).toBe(5);
+    expect(formToSetting(form).agentRunnerMaxActiveSessions).toBe(50);
+    expect(formToSetting(form).agentRunnerDormantReviewDays).toBe(14);
+    expect(formToSetting(form).agentRunnerEventBudgetPercent).toBe(60);
+  });
+
+  it("writes an unset enrollment limit as zero so the server default applies", () => {
+    const form = baseForm({ agentRunnerAutoEnroll: true });
+    expect(formToSetting(form).agentRunnerAutoEnroll).toBe(true);
+    expect(formToSetting(form).agentRunnerMaxNewSessionsPerHour).toBe(0);
+    expect(formToSetting(form).agentRunnerMaxActiveSessions).toBe(0);
+    expect(formToSetting(form).agentRunnerDormantReviewDays).toBe(0);
+    expect(formToSetting(form).agentRunnerEventBudgetPercent).toBe(0);
   });
 
   it("writes an unset runner budget as zero so the server default applies", () => {
@@ -398,6 +439,54 @@ describe("validateSettingsForm", () => {
         },
         "runnerIdleWakeSecondsInvalid",
       ],
+      [
+        { agentRunnerMaxNewSessionsPerHour: "0.5" },
+        "runnerMaxNewSessionsPerHourInvalid",
+      ],
+      [
+        {
+          agentRunnerMaxNewSessionsPerHour: String(
+            MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR + 1
+          ),
+        },
+        "runnerMaxNewSessionsPerHourInvalid",
+      ],
+      [
+        {
+          agentRunnerMaxActiveSessions: String(
+            MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS + 1
+          ),
+        },
+        "runnerMaxActiveSessionsInvalid",
+      ],
+      [
+        { agentRunnerDormantReviewDays: "-1" },
+        "runnerDormantReviewDaysInvalid",
+      ],
+      [
+        {
+          agentRunnerDormantReviewDays: String(
+            MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS + 1
+          ),
+        },
+        "runnerDormantReviewDaysInvalid",
+      ],
+      [
+        {
+          agentRunnerEventBudgetPercent: String(
+            MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT - 1
+          ),
+        },
+        "runnerEventBudgetPercentInvalid",
+      ],
+      [
+        {
+          agentRunnerEventBudgetPercent: String(
+            MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT + 1
+          ),
+        },
+        "runnerEventBudgetPercentInvalid",
+      ],
     ];
     for (const [overrides, key] of cases) {
       expect(
@@ -420,6 +509,30 @@ describe("validateSettingsForm", () => {
           agentRunnerIdleWakeSeconds: String(
             MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS
           ),
+          agentRunnerMaxNewSessionsPerHour: String(
+            MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR
+          ),
+          agentRunnerMaxActiveSessions: String(
+            MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS
+          ),
+          agentRunnerDormantReviewDays: String(
+            MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS
+          ),
+          agentRunnerEventBudgetPercent: String(
+            MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT
+          ),
+        })
+      )
+    ).toEqual([]);
+
+    // Blank and 0 both mean "the server default" for every new limit.
+    expect(
+      validateSettingsForm(
+        baseForm({
+          agentRunnerMaxNewSessionsPerHour: "0",
+          agentRunnerMaxActiveSessions: "0",
+          agentRunnerDormantReviewDays: "0",
+          agentRunnerEventBudgetPercent: "0",
         })
       )
     ).toEqual([]);

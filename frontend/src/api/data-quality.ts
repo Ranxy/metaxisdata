@@ -37,6 +37,7 @@ import {
   ExportQualityReportRequestSchema,
   type ExportQualityReportResponse,
   ExportQualityTargetsRequestSchema,
+  GetQualityAgentEnrollmentSummaryRequestSchema,
   GetQualityAgentMetricsRequestSchema,
   GetQualityAgentRunnerStatusRequestSchema,
   GetQualityAgentSessionRequestSchema,
@@ -65,6 +66,7 @@ import {
   GetQualityTargetScheduleRequestSchema,
   ListColumnLabelsRequestSchema,
   ListColumnProfilesRequestSchema,
+  ListQualityAgentEnrollmentsRequestSchema,
   ListQualityAgentSessionMessagesRequestSchema,
   ListQualityAgentSessionsRequestSchema,
   ListQualityAgentsRequestSchema,
@@ -87,10 +89,15 @@ import {
   PublishQualityContractRequestSchema,
   type PublishQualityContractResponse,
   type QualityAgent,
+  type QualityAgentEnrollment,
+  QualityAgentEnrollmentState,
+  type QualityAgentEnrollmentSummary,
   type QualityAgentMetrics,
   type QualityAgentRunnerStatus,
   type QualityAgentSession,
   type QualityAgentSessionMessage,
+  QualityAgentSessionMode,
+  QualityAgentSessionSource,
   QualityAgentSessionState,
   QualityChangeRejectionReason,
   type QualityChangeRequest,
@@ -136,6 +143,7 @@ import {
   RecommendQualityChecksRequestSchema,
   type RecommendQualityChecksResponse,
   ResumeQualityAgentSessionRequestSchema,
+  RetryQualityAgentEnrollmentRequestSchema,
   RotateQualityAgentTokenRequestSchema,
   type RotateQualityAgentTokenResponse,
   RunQualityRulesRequestSchema,
@@ -144,6 +152,7 @@ import {
   SuggestQualityRuleRequestSchema,
   type SuggestQualityRuleResponse,
   UpdateColumnLabelRequestSchema,
+  UpdateQualityAgentEnrollmentRequestSchema,
   UpdateQualityCodeTableRequestSchema,
   UpdateQualityContractRequestSchema,
   UpdateQualityIssueRequestSchema,
@@ -1732,18 +1741,50 @@ export async function disableQualityAgent(
 
 // ---- quality agent sessions ----
 
+/** The filters both session reads share; a page and a full walk accept the same. */
+export interface QualityAgentSessionListOptions {
+  state?: QualityAgentSessionState;
+  database?: string;
+  targetGuid?: string;
+  /** UNSPECIFIED keeps both manual and automatic sessions. */
+  source?: QualityAgentSessionSource;
+  /** UNSPECIFIED keeps both monitor and triage sessions. */
+  mode?: QualityAgentSessionMode;
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
+}
+
+/** One page of agent sessions, newest activity first. */
+export async function listQualityAgentSessionsPage(
+  options: QualityAgentSessionListOptions = {}
+): Promise<ListPage<QualityAgentSession>> {
+  const request = create(ListQualityAgentSessionsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    state: options.state ?? QualityAgentSessionState.UNSPECIFIED,
+    database: options.database ?? "",
+    targetGuid: options.targetGuid ?? "",
+    source: options.source ?? QualityAgentSessionSource.UNSPECIFIED,
+    mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+  });
+  const response = await dataQualityClient.listQualityAgentSessions(request, {
+    signal: options.signal,
+  });
+  return {
+    items: response.qualityAgentSessions,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
 /**
  * The workspace's agent sessions, one live session per target, newest activity
  * first. `state` defaults to every non-archived session; archived sessions are a
  * tombstone and must be asked for explicitly.
  */
 export async function listQualityAgentSessions(
-  options: {
-    state?: QualityAgentSessionState;
-    database?: string;
-    targetGuid?: string;
-    signal?: AbortSignal;
-  } = {}
+  options: QualityAgentSessionListOptions = {}
 ): Promise<QualityAgentSession[]> {
   return await listAll(async (pageToken) => {
     const request = create(ListQualityAgentSessionsRequestSchema, {
@@ -1751,6 +1792,8 @@ export async function listQualityAgentSessions(
       state: options.state ?? QualityAgentSessionState.UNSPECIFIED,
       database: options.database ?? "",
       targetGuid: options.targetGuid ?? "",
+      source: options.source ?? QualityAgentSessionSource.UNSPECIFIED,
+      mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
       pageSize: listAllPageSize,
       pageToken,
     });
@@ -1909,6 +1952,108 @@ export async function getQualityAgentMetrics(
     parent: WORKSPACE_PARENT,
   });
   return await dataQualityClient.getQualityAgentMetrics(request, { signal });
+}
+
+// ---- quality agent enrollments ----
+
+/** The resource-name segment an enrollment's id occupies. */
+const ENROLLMENT_SEGMENT = "qualityAgentEnrollments";
+
+/** Format: workspaces/{workspace}/qualityAgentEnrollments/{id}. */
+export function qualityAgentEnrollmentName(id: string): string {
+  return `${WORKSPACE_PARENT}/${ENROLLMENT_SEGMENT}/${id}`;
+}
+
+/** The id part of an enrollment's resource name; the name itself if it has none. */
+export function qualityAgentEnrollmentID(name: string): string {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+/** The filters and paging of the queue. */
+export interface QualityAgentEnrollmentListOptions {
+  /** An exact database resource name; empty keeps every database. */
+  database?: string;
+  /** UNSPECIFIED keeps every state. */
+  state?: QualityAgentEnrollmentState;
+  /** UNSPECIFIED keeps both modes. */
+  mode?: QualityAgentSessionMode;
+  /** A case-insensitive substring over the target path and GUID. */
+  search?: string;
+  pageSize?: number;
+  pageToken?: string;
+  signal?: AbortSignal;
+}
+
+/** One page of the runner's enrollment queue. */
+export async function listQualityAgentEnrollments(
+  options: QualityAgentEnrollmentListOptions = {}
+): Promise<ListPage<QualityAgentEnrollment>> {
+  const request = create(ListQualityAgentEnrollmentsRequestSchema, {
+    parent: WORKSPACE_PARENT,
+    pageSize: options.pageSize ?? 50,
+    pageToken: options.pageToken ?? "",
+    database: options.database ?? "",
+    state: options.state ?? QualityAgentEnrollmentState.UNSPECIFIED,
+    mode: options.mode ?? QualityAgentSessionMode.UNSPECIFIED,
+    search: options.search ?? "",
+  });
+  const response = await dataQualityClient.listQualityAgentEnrollments(
+    request,
+    {
+      signal: options.signal,
+    }
+  );
+  return {
+    items: response.qualityAgentEnrollments,
+    nextPageToken: response.nextPageToken,
+  };
+}
+
+/**
+ * The queue at a glance: its state counts, a per-database breakdown, and when
+ * discovery last scanned a database (process-local, so a restart clears it).
+ */
+export async function getQualityAgentEnrollmentSummary(
+  signal?: AbortSignal
+): Promise<QualityAgentEnrollmentSummary> {
+  const request = create(GetQualityAgentEnrollmentSummaryRequestSchema, {
+    parent: WORKSPACE_PARENT,
+  });
+  return await dataQualityClient.getQualityAgentEnrollmentSummary(request, {
+    signal,
+  });
+}
+
+/**
+ * Apply a person's queue change with a revision compare-and-set. Only `state`
+ * (PENDING to re-include, EXCLUDED to opt out) and `mode` may be masked.
+ */
+export async function updateQualityAgentEnrollment(options: {
+  enrollment: QualityAgentEnrollment;
+  updateMask: string[];
+  expectedRevision: number;
+}): Promise<QualityAgentEnrollment> {
+  const request = create(UpdateQualityAgentEnrollmentRequestSchema, {
+    enrollment: options.enrollment,
+    updateMask: create(FieldMaskSchema, { paths: options.updateMask }),
+    expectedRevision: options.expectedRevision,
+  });
+  return await dataQualityClient.updateQualityAgentEnrollment(request);
+}
+
+/** Requeue one enrollment now with a priority bump. */
+export async function retryQualityAgentEnrollment(
+  name: string,
+  expectedRevision: number,
+  signal?: AbortSignal
+): Promise<QualityAgentEnrollment> {
+  const request = create(RetryQualityAgentEnrollmentRequestSchema, {
+    name,
+    expectedRevision,
+  });
+  return await dataQualityClient.retryQualityAgentEnrollment(request, {
+    signal,
+  });
 }
 
 // ---- investigations and memories ----

@@ -538,6 +538,66 @@
               </fieldset>
             </div>
 
+            <!-- Automatic enrollment turns the selected database scope into a
+                 discovered queue. It never publishes anything: every agent write
+                 remains a proposal a person approves. -->
+            <div class="space-y-3 border-t pt-3">
+              <div class="flex items-start gap-3">
+                <Checkbox
+                  id="dq-setting-runner-auto-enroll"
+                  :checked="form.agentRunnerAutoEnroll"
+                  :disabled="!canUpdate"
+                  @update:checked="onAutoEnrollToggle"
+                />
+                <div class="grid gap-1">
+                  <Label for="dq-setting-runner-auto-enroll">
+                    {{ t("dataQualitySettings.runnerAutoEnroll") }}
+                  </Label>
+                  <p class="text-sm text-muted-foreground">
+                    {{ t("dataQualitySettings.runnerAutoEnrollHint") }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div
+                  v-for="field in autoEnrollFields"
+                  :key="field.id"
+                  class="space-y-1.5"
+                >
+                  <Label :for="field.id">
+                    {{ t(field.labelKey) }}
+                  </Label>
+                  <Input
+                    :id="field.id"
+                    v-model="form[field.model]"
+                    inputmode="numeric"
+                    :disabled="!canUpdate"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    {{ t(field.descriptionKey) }}
+                  </p>
+                </div>
+              </div>
+
+              <Alert
+                v-if="showAutoEnrollWarnings"
+                variant="warning"
+              >
+                <AlertTriangle class="h-4 w-4" />
+                <AlertDescription>
+                  <ul class="list-disc space-y-1 pl-5">
+                    <li v-if="!form.agentRunnerEnabled">
+                      {{ t("dataQualitySettings.runnerAutoEnrollRunnerOffWarning") }}
+                    </li>
+                    <li v-if="!form.agentAutonomyEnabled">
+                      {{ t("dataQualitySettings.runnerAutoEnrollAutonomyOffWarning") }}
+                    </li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            </div>
+
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="space-y-1.5">
                 <Label for="dq-setting-runner-tokens">
@@ -942,6 +1002,69 @@
       </DialogContent>
     </Dialog>
 
+    <!-- Enabling automatic enrollment is an opt-in to queueing a whole scope, so
+         it names the scope, the targets discovered so far and a rough wake load
+         before the switch is set. -->
+    <Dialog v-model:open="autoEnrollConfirmOpen">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {{ t("dataQualitySettings.runnerAutoEnrollConfirmTitle") }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ t("dataQualitySettings.runnerAutoEnrollConfirmDescription") }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-1.5 text-sm">
+          <p>
+            {{
+              t("dataQualitySettings.runnerAutoEnrollConfirmDatabases", {
+                count: form.agentRunnerDatabases.length,
+              })
+            }}
+          </p>
+          <p v-if="discoveredEnrollmentCount > 0">
+            {{
+              t("dataQualitySettings.runnerAutoEnrollConfirmTables", {
+                count: discoveredEnrollmentCount,
+              })
+            }}
+          </p>
+          <p
+            v-else
+            class="text-muted-foreground"
+          >
+            {{ t("dataQualitySettings.runnerAutoEnrollConfirmEmpty") }}
+          </p>
+          <p>
+            {{
+              t("dataQualitySettings.runnerAutoEnrollConfirmWakes", {
+                count: estimatedDailyWakes,
+              })
+            }}
+          </p>
+          <p class="text-xs text-muted-foreground">
+            {{
+              t("dataQualitySettings.runnerAutoEnrollConfirmHint", {
+                days: dormantReviewDays,
+              })
+            }}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            @click="autoEnrollConfirmOpen = false"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button @click="confirmAutoEnroll">
+            {{ t("dataQualitySettings.runnerAutoEnrollEnable") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <!-- A referenced table is refused server-side; the card shows that message
          instead of pretending the delete succeeded. -->
     <ConfirmDeleteDialog
@@ -971,6 +1094,7 @@ import { RouterLink } from "vue-router";
 import {
   createQualityCodeTable,
   deleteQualityCodeTable,
+  getQualityAgentEnrollmentSummary,
   getQualityAgentRunnerStatus,
   getQualityCodeTable,
   getQualityLLMUsage,
@@ -1030,12 +1154,20 @@ import { useErrorMessage } from "@/composables/useErrorHandler";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityAgentEnrollmentState,
+  type QualityAgentEnrollmentSummary,
   type QualityAgentRunnerStatus,
   type QualityCodeTable,
   QualityCodeTableSchema,
   type QualityLLMUsage,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { DayOfWeek } from "@/types/proto-es/v1/setting_service_pb";
+import {
+  enrollmentStateCount,
+  enrollmentStateCounts,
+  enrollmentWorkloadCount,
+  enrollmentWorkloadEstimate,
+} from "@/utils/agentEnrollment";
 import { formatTokens } from "@/utils/agentSession";
 import { formatRowCount } from "@/utils/dataQuality";
 import type { ScheduleUnit } from "@/utils/dataQualityForm";
@@ -1159,6 +1291,97 @@ const canListAgentSessions = computed(() =>
   authStore.hasPermission("metaxisdata.dataQuality.rules.list")
 );
 
+/**
+ * The enrollment summary feeds the confirmation's estimate: how many targets the
+ * runner has discovered so far and how many are active. It is best-effort — a
+ * reader without the quality read permission or a failed read leaves the dialog
+ * saying that the first scan has not run yet.
+ */
+const enrollmentSummary = ref<QualityAgentEnrollmentSummary>();
+const autoEnrollConfirmOpen = ref(false);
+
+/** The numeric inputs automatic enrollment adds to the runner card. */
+const autoEnrollFields = [
+  {
+    id: "dq-setting-runner-max-new-sessions",
+    model: "agentRunnerMaxNewSessionsPerHour",
+    labelKey: "dataQualitySettings.runnerMaxNewSessionsPerHour",
+    descriptionKey: "dataQualitySettings.runnerMaxNewSessionsPerHourHint",
+  },
+  {
+    id: "dq-setting-runner-max-active-sessions",
+    model: "agentRunnerMaxActiveSessions",
+    labelKey: "dataQualitySettings.runnerMaxActiveSessions",
+    descriptionKey: "dataQualitySettings.runnerMaxActiveSessionsHint",
+  },
+  {
+    id: "dq-setting-runner-dormant-review-days",
+    model: "agentRunnerDormantReviewDays",
+    labelKey: "dataQualitySettings.runnerDormantReviewDays",
+    descriptionKey: "dataQualitySettings.runnerDormantReviewDaysHint",
+  },
+  {
+    id: "dq-setting-runner-event-budget-percent",
+    model: "agentRunnerEventBudgetPercent",
+    labelKey: "dataQualitySettings.runnerEventBudgetPercent",
+    descriptionKey: "dataQualitySettings.runnerEventBudgetPercentHint",
+  },
+] as const;
+
+const dormantReviewDays = computed(() => {
+  const value = Number(form.value.agentRunnerDormantReviewDays);
+  return Number.isInteger(value) && value > 0 ? value : 30;
+});
+
+const discoveredEnrollmentCount = computed(() =>
+  enrollmentWorkloadCount(enrollmentStateCounts(enrollmentSummary.value))
+);
+
+const estimatedDailyWakes = computed(() => {
+  const counts = enrollmentStateCounts(enrollmentSummary.value);
+  return enrollmentWorkloadEstimate({
+    tables: discoveredEnrollmentCount.value,
+    reviewDays: dormantReviewDays.value,
+    activeSessions: enrollmentStateCount(
+      counts,
+      QualityAgentEnrollmentState.ACTIVE
+    ),
+  });
+});
+
+/** Auto-enrollment is a setting, but autonomy and the runner still gate it. */
+const showAutoEnrollWarnings = computed(
+  () =>
+    form.value.agentRunnerAutoEnroll &&
+    (!form.value.agentRunnerEnabled || !form.value.agentAutonomyEnabled)
+);
+
+function onAutoEnrollToggle(value: unknown) {
+  if (value === true) {
+    void loadEnrollmentSummary();
+    autoEnrollConfirmOpen.value = true;
+    return;
+  }
+  form.value.agentRunnerAutoEnroll = false;
+}
+
+function confirmAutoEnroll() {
+  form.value.agentRunnerAutoEnroll = true;
+  autoEnrollConfirmOpen.value = false;
+}
+
+async function loadEnrollmentSummary() {
+  if (!canListAgentSessions.value) {
+    enrollmentSummary.value = undefined;
+    return;
+  }
+  try {
+    enrollmentSummary.value = await getQualityAgentEnrollmentSummary();
+  } catch {
+    enrollmentSummary.value = undefined;
+  }
+}
+
 /** The code-table card: the list, its dialogs, and their own failures. */
 const codeTables = ref<QualityCodeTable[]>([]);
 const codeTablesLoading = ref(false);
@@ -1260,6 +1483,7 @@ async function load() {
     void loadUsage();
     void loadCodeTables();
     void loadRunnerStatus();
+    void loadEnrollmentSummary();
   } catch (e: unknown) {
     error.value = formatError(e, "dataQualitySettings.fetchError");
   } finally {

@@ -10,6 +10,9 @@ import { Select } from "@/components/ui/select";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
+  QualityAgentEnrollmentState,
+  QualityAgentEnrollmentStateCountSchema,
+  QualityAgentEnrollmentSummarySchema,
   QualityCodeTableSchema,
   QualityLLMUsageSchema,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -27,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   updateDataQualitySetting: vi.fn(),
   listProfiles: vi.fn(),
   getQualityAgentRunnerStatus: vi.fn(),
+  getQualityAgentEnrollmentSummary: vi.fn(),
   getQualityLLMUsage: vi.fn(),
   listAllQualityCodeTables: vi.fn(),
   getQualityCodeTable: vi.fn(),
@@ -57,6 +61,7 @@ vi.mock("@/api/database", () => ({
 
 vi.mock("@/api/data-quality", () => ({
   getQualityAgentRunnerStatus: mocks.getQualityAgentRunnerStatus,
+  getQualityAgentEnrollmentSummary: mocks.getQualityAgentEnrollmentSummary,
   getQualityLLMUsage: mocks.getQualityLLMUsage,
   listAllQualityCodeTables: mocks.listAllQualityCodeTables,
   getQualityCodeTable: mocks.getQualityCodeTable,
@@ -84,6 +89,22 @@ function codeTableSummary() {
     title: "Municipal codes",
     description: "Divisions of the municipality.",
     valueCount: 12,
+  });
+}
+
+/** The queue summary the auto-enrollment confirmation reads for its estimate. */
+function enrollmentSummaryFixture(pending = 0, active = 0) {
+  return create(QualityAgentEnrollmentSummarySchema, {
+    states: [
+      create(QualityAgentEnrollmentStateCountSchema, {
+        state: QualityAgentEnrollmentState.PENDING,
+        count: pending,
+      }),
+      create(QualityAgentEnrollmentStateCountSchema, {
+        state: QualityAgentEnrollmentState.ACTIVE,
+        count: active,
+      }),
+    ],
   });
 }
 
@@ -216,6 +237,9 @@ describe("DataQualitySettingsPage", () => {
         concurrencyLimit: 12,
         resetsAt: { seconds: 1_700_035_200n, nanos: 0 },
       })
+    );
+    mocks.getQualityAgentEnrollmentSummary.mockResolvedValue(
+      enrollmentSummaryFixture()
     );
   });
 
@@ -836,5 +860,137 @@ describe("DataQualitySettingsPage", () => {
           ?.element as HTMLInputElement
       ).disabled
     ).toBe(true);
+  });
+
+  it("confirms automatic enrollment before switching it on", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          agentRunnerEnabled: true,
+          agentAutonomyEnabled: true,
+          agentRunnerDatabases: ["instances/i1/databases/warehouse"],
+          agentRunnerDormantReviewDays: 10,
+        }),
+      })
+    );
+    mocks.getQualityAgentEnrollmentSummary.mockResolvedValue(
+      enrollmentSummaryFixture(8, 2)
+    );
+    const wrapper = await mountPage([
+      ...PERMISSIONS,
+      "metaxisdata.dataQuality.rules.list",
+    ]);
+    await flushPromises();
+
+    await wrapper.find("#dq-setting-runner-auto-enroll").trigger("click");
+    await flushPromises();
+
+    expect(document.body.textContent).toContain(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollConfirmTitle")
+    );
+    expect(document.body.textContent).toContain(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollConfirmDatabases", {
+        count: 1,
+      })
+    );
+    // Pending + active = 10 discovered targets, 10 review days, 2 active: 3 wakes.
+    expect(document.body.textContent).toContain(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollConfirmTables", {
+        count: 10,
+      })
+    );
+    expect(document.body.textContent).toContain(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollConfirmWakes", {
+        count: 3,
+      })
+    );
+
+    dialogButton(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollEnable")
+    )?.click();
+    await flushPromises();
+
+    expect(
+      wrapper.find("#dq-setting-runner-auto-enroll").attributes("data-state")
+    ).toBe("checked");
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(mocks.updateDataQualitySetting).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDataQualitySetting.mock.calls[0]?.[0]).toMatchObject({
+      agentRunnerAutoEnroll: true,
+    });
+    wrapper.unmount();
+  });
+
+  it("warns when automatic enrollment is on but the runner or autonomy is off", async () => {
+    mocks.getWorkspaceProfileSetting.mockResolvedValue(
+      create(WorkspaceProfileSettingSchema, {
+        dataQuality: create(DataQualitySettingSchema, {
+          agentRunnerAutoEnroll: true,
+          agentRunnerEnabled: false,
+          agentAutonomyEnabled: false,
+          agentRunnerDatabases: ["instances/i1/databases/warehouse"],
+        }),
+      })
+    );
+    const wrapper = await mountPage();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollRunnerOffWarning")
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t("dataQualitySettings.runnerAutoEnrollAutonomyOffWarning")
+    );
+    wrapper.unmount();
+  });
+
+  it("validates the automatic enrollment limits before saving", async () => {
+    const wrapper = await mountPage();
+    await wrapper.find("#dq-setting-runner-max-new-sessions").setValue("2000");
+    await wrapper.find("#dq-setting-runner-event-budget-percent").setValue("5");
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      i18n.global.t(
+        "dataQualitySettings.validation.runnerMaxNewSessionsPerHourInvalid",
+        { max: 1000 }
+      )
+    );
+    expect(wrapper.text()).toContain(
+      i18n.global.t(
+        "dataQualitySettings.validation.runnerEventBudgetPercentInvalid",
+        { min: 10, max: 90 }
+      )
+    );
+    expect(mocks.updateDataQualitySetting).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("saves the automatic enrollment limits", async () => {
+    const wrapper = await mountPage();
+    await wrapper.find("#dq-setting-runner-max-new-sessions").setValue("12");
+    await wrapper
+      .find("#dq-setting-runner-max-active-sessions")
+      .setValue("200");
+    await wrapper.find("#dq-setting-runner-dormant-review-days").setValue("21");
+    await wrapper
+      .find("#dq-setting-runner-event-budget-percent")
+      .setValue("70");
+    await flushPromises();
+
+    await saveButton(wrapper)?.trigger("click");
+    await flushPromises();
+
+    const setting = mocks.updateDataQualitySetting.mock.calls[0]?.[0];
+    expect(setting).toMatchObject({
+      agentRunnerMaxNewSessionsPerHour: 12,
+      agentRunnerMaxActiveSessions: 200,
+      agentRunnerDormantReviewDays: 21,
+      agentRunnerEventBudgetPercent: 70,
+    });
+    wrapper.unmount();
   });
 });
