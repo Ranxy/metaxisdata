@@ -1048,6 +1048,19 @@ from it.
   session** in the Agent session card, or create it from the agent session list.
   The target's database must be in the runner's database scope and an enabled
   quality agent must exist.
+- **Automatic enrollment**: when *Automatic enrollment* is on, every table, view
+  and materialized view in the selected databases is discovered into a queue
+  instead of being started by hand. The runner admits a bounded number per hour
+  (10 by default), by priority: targets that already have checks or a recent
+  failure first, then targets other assets depend on, then the rest. A target
+  without any check gets one **triage**: the agent reads its schema, stored
+  profiles and consumers, drafts checks into the AI suggestions queue and records
+  what it concluded. The target then sleeps for its review interval (30 days by
+  default) and wakes again only when checks appear, a check fails or someone
+  asks. Every draft is a proposal a person approves; automatic enrollment never
+  enables a check or changes a rule itself. The queue page shows each target's
+  state, why it is waiting and its session, and lets you exclude a target or
+  retry it.
 - **What it does**: it wakes on a schedule (24 hours by default), on a failed or
   errored check, and when you send it a message. It can read the target's plan,
   recent executions and confirmed memories, record investigations and asset
@@ -1106,8 +1119,13 @@ are too low for your workload.
 Settings → Data Quality also holds the **agent runner** card: the runner switch,
 the database scope, the hourly token and wake budgets, concurrent sessions, the
 compaction threshold, the idle wake interval and the failed-check event switch.
-Its status line shows what is running and the runner's last tick; **Agent
-sessions** opens the session list.
+It also holds **Automatic enrollment** and its quotas: how many new automatic
+sessions may start per hour, how many targets may be active at once, how many
+days a triaged target sleeps before its next review, and what share of the wake
+budget is reserved for failed checks and people. Turning automatic enrollment on
+asks for confirmation because every table in the selected databases joins the
+queue. Its status line shows what is running and the runner's last tick; **Agent
+sessions** opens the session list and the **Enrollment** tab opens the queue.
 
 
 ## Retention
@@ -1180,8 +1198,11 @@ The API surface, resource names, data model and invariants are documented for
 maintainers in [.agents/docs/data-quality.md](../.agents/docs/data-quality.md).
 
 | An agent session never wakes | The runner switch is off, the target's database is not in the runner scope, agent autonomy is off, no enabled quality agent exists, or the session is paused/blocked. The session card shows the blocked code and reason. |
+| A target sits pending in the enrollment queue | Automatic enrollment is off, the hourly admission or active-set limit is reached, no model is configured for a triage, no enabled quality agent exists, or autonomy is off. The queue row's blocked reason says which. Targets are admitted by priority, so a low-priority target can wait while higher-priority ones are processed. |
+| A triaged target never wakes again | That is the design: after triage it sleeps for the review interval (30 days by default). It wakes immediately again when checks are created on it, a check fails, or you use **Retry**. |
 | An agent session is blocked with `token-budget` or `wake-budget` | The workspace spent its hourly budget; it recovers at the next hour boundary. Raise the limit in the runner card if this is routine. |
-| An agent session is blocked with `needs-human` | Its database left the runner scope, its agent was disabled, or the model reported the same blocker for three wakes. Check the reason on the card, fix the cause, then resume. |
+| An agent session is blocked with `out-of-scope` or `agent-disabled` | Its database left the runner scope or its agent was disabled. Both recover on their own once the cause is cleared; otherwise check the reason on the card and fix it. |
+| An agent session is blocked with `needs-human` | The model reported the same blocker for three wakes, a triage session has no model configured, or an event reference no longer resolves. Check the reason on the card, fix the cause, then resume. |
 | A question stays blocked with "needs the model" | No LLM provider is configured, so only the deterministic survey can run. Configure one under Settings → LLM providers and resume the session. |
 | The agent does not react to a failed check | *Wake the agent when a check fails* is off, the target has no enabled session, or the session already accepted 20 events this hour. |
 | The conversation does not show older messages | History older than the last compaction is summarized in the compaction card; load earlier pages from the session page. The transcript is kept, but model context is compacted. |

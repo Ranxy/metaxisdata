@@ -223,4 +223,5 @@ pnpm --dir frontend i18n:glossary --write-doc     # 重写生成表格
 | plan | 计划 | Data Quality | The declared coverage a target promises plus the enabled checks that implement it; a target with checks but no contract has no plan. | dataQuality. | — |
 | coverage declaration | 覆盖声明 | Data Quality | One property and scope a plan promises to monitor, whether from the criticality template or from an explicit intent statement. | dataQuality. | zh-CN: `覆盖要求` |
 | coverage gap | 覆盖缺口 | Data Quality | A declared requirement that no enabled check satisfies and that no valid exemption waives. It is not the same number as the coverage rate. | dataQuality. | — |
+| automatic enrollment | 自动纳管 | Data Quality | The queue that turns the agent runner's database scope into per-target sessions: it discovers every monitorable object in scope, triages the ones without coverage, and monitors the ones with checks. | dataQuality.agent., dataQualitySettings.runnerAutoEnroll | — |
 <!-- END GENERATED GLOSSARY -->

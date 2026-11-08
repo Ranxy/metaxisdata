@@ -1917,6 +1917,19 @@
       "scope": [
         "dataQuality."
       ]
+    },
+    {
+      "id": "auto-enrollment",
+      "category": "Data Quality",
+      "definition": "The queue that turns the agent runner's database scope into per-target sessions: it discovers every monitorable object in scope, triages the ones without coverage, and monitors the ones with checks.",
+      "translations": {
+        "en-US": "automatic enrollment",
+        "zh-CN": "自动纳管"
+      },
+      "scope": [
+        "dataQuality.agent.",
+        "dataQualitySettings.runnerAutoEnroll"
+      ]
     }
   ]
 }
