@@ -171,6 +171,23 @@ message DataQualitySetting {
   // Whether a failed check execution appends an event to its target's session and
   // wakes it. On by default.
   optional bool agent_runner_auto_investigate_failures = 24;
+
+  // Whether the runner enrolls every monitorable object in its database scope into
+  // its queue. Off by default: turning it on is the workspace's opt-in to automatic
+  // triage and monitoring.
+  bool agent_runner_auto_enroll = 25;
+  // How many automatic sessions the admission path may create per hour. Zero means
+  // the server default (10).
+  int32 agent_runner_max_new_sessions_per_hour = 26;
+  // How many enrollments may be active (triaging or monitoring) at once. Zero means
+  // the server default (100).
+  int32 agent_runner_max_active_sessions = 27;
+  // How many days a triaged target sleeps before it is reviewed again. Zero means
+  // the server default (30).
+  int32 agent_runner_dormant_review_days = 28;
+  // The percentage of the hourly wake budget reserved for events and people; the
+  // admission path only spends what remains. Zero means the server default (50).
+  int32 agent_runner_event_budget_percent = 29;
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest

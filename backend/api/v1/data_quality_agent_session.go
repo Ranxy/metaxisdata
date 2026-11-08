@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -65,6 +67,11 @@ func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req 
 		}
 		metaType = rules[0].TargetType
 	}
+	// The target must exist in the registry: an enrollment or a manual session for a
+	// deleted object would only burn wakes until the reconciliation archives it.
+	if _, err := dataquality.ResolveTarget(ctx, s.store, targetGUID, metaType); err != nil {
+		return nil, err
+	}
 	databaseRef, err := databaseRefOfTarget(targetGUID)
 	if err != nil {
 		return nil, err
@@ -89,6 +96,8 @@ func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req 
 		AgentID:     agent.ID,
 		Objective:   objective,
 		CreatedBy:   principalIDPointer(currentUserID(ctx)),
+		Source:      storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_MANUAL,
+		Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
 	})
 	if err != nil {
 		if common.ErrorCode(err) == common.Conflict {
@@ -107,6 +116,11 @@ func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req 
 				errors.New("a session id collision occurred; retry the request"))
 		}
 		return nil, err
+	}
+	if _, adoptErr := s.store.AdoptQualityAgentSession(ctx, workspaceID, targetGUID, metaType, databaseRef,
+		message.ID, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR); adoptErr != nil {
+		slog.Warn("failed to record the session's enrollment row",
+			slog.String("session", message.ResourceID), log.WithError(adoptErr))
 	}
 	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, message, time.Now().UTC())), nil
 }
@@ -134,6 +148,8 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 	if database := strings.TrimSpace(req.Msg.GetDatabase()); database != "" {
 		find.DatabaseRef = &database
 	}
+	find.Source = storepb.QualityAgentSessionSource(req.Msg.GetSource())
+	find.Mode = storepb.QualityAgentSessionMode(req.Msg.GetMode())
 	switch state := req.Msg.GetState(); state {
 	case v1pb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_UNSPECIFIED:
 		// Every non-archived session.
@@ -186,13 +202,25 @@ func (s *DataQualityService) PauseQualityAgentSession(ctx context.Context, req *
 // it immediately.
 func (s *DataQualityService) ResumeQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.ResumeQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
 	now := time.Now().UTC()
-	return s.transitionQualityAgentSession(ctx, req.Msg.GetName(), req.Msg.GetExpectedRevision(),
+	session, err := s.transitionQualityAgentSession(ctx, req.Msg.GetName(), req.Msg.GetExpectedRevision(),
 		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED, &now)
+	if err != nil {
+		return nil, err
+	}
+	// The queued row may still carry the admission hint that it was skipped because a
+	// person paused the session; resuming clears it.
+	workspaceID, err := s.workspaceID(ctx, "workspaces/-")
+	if err == nil && session != nil {
+		if enrollment, findErr := s.store.GetQualityAgentEnrollmentByTarget(ctx, workspaceID, session.Msg.GetTarget().GetMetaGuid()); findErr == nil && enrollment != nil {
+			_ = s.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "")
+		}
+	}
+	return session, nil
 }
 
 // ArchiveQualityAgentSession tombstones a session; the transcript stays readable.
 func (s *DataQualityService) ArchiveQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.ArchiveQualityAgentSessionRequest]) (*connect.Response[emptypb.Empty], error) {
-	_, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
+	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +231,14 @@ func (s *DataQualityService) ArchiveQualityAgentSession(ctx context.Context, req
 	if !archived {
 		return nil, connect.NewError(connect.CodeAborted,
 			errors.New("the session changed since it was read; reload and try again"))
+	}
+	if session, readErr := s.store.GetQualityAgentSession(ctx, resourceID); readErr == nil && session != nil {
+		if markErr := s.store.MarkQualityAgentEnrollmentArchived(ctx, workspaceID, session.TargetGUID); markErr != nil {
+			slog.Warn("failed to exclude the archived session's enrollment",
+				slog.String("session", resourceID), log.WithError(markErr))
+		}
+	} else if readErr != nil {
+		slog.Warn("failed to read the archived session", slog.String("session", resourceID), log.WithError(readErr))
 	}
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
@@ -374,6 +410,10 @@ func (s *DataQualityService) GetQualityAgentRunnerStatus(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
+	enrollments, err := s.store.CountQualityAgentEnrollmentsByState(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
 	idle := enabled - running
 	if idle < 0 {
 		idle = 0
@@ -393,10 +433,22 @@ func (s *DataQualityService) GetQualityAgentRunnerStatus(ctx context.Context, re
 		CompactionTriggerTokens: int32(settings.AgentRunnerCompactionTriggerTokens),
 		IdleWakeSeconds:         int32(settings.AgentRunnerIdleWakeSeconds),
 		LastActivityTime:        timestampOrNil(lastActivity),
+		PendingEnrollments:      int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_PENDING]),
+		ActiveEnrollments:       int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE]),
+		DormantEnrollments:      int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT]),
+		ExcludedEnrollments:     int32(enrollments[storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED]),
+		MaxNewSessionsPerHour:   int32(settings.AgentRunnerMaxNewSessionsPerHour),
+		MaxActiveSessions:       int32(settings.AgentRunnerMaxActiveSessions),
+		AutoEnrollEnabled:       settings.AgentRunnerAutoEnroll,
 	}
 	if s.agentRunner != nil {
 		if tick := s.agentRunner.LastTick(); !tick.IsZero() {
 			response.RunnerLastTickTime = timestamppb.New(tick)
+		}
+	}
+	if s.enrollmentRunner != nil {
+		if scan := s.enrollmentRunner.LastEnrollmentScan(); !scan.IsZero() {
+			response.EnrollmentLastScanTime = timestamppb.New(scan)
 		}
 	}
 	return connect.NewResponse(response), nil
@@ -517,6 +569,8 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 		LeaseExpireTime:  timestampOrNil(message.LeaseUntil),
 		RestartCount:     message.RestartCount,
 		Running:          message.LeaseUntil != nil && message.LeaseUntil.After(now),
+		Source:           v1pb.QualityAgentSessionSource(message.Source),
+		Mode:             v1pb.QualityAgentSessionMode(message.Mode),
 		CreateTime:       timestamppb.New(message.CreatedAt),
 		UpdateTime:       timestamppb.New(message.UpdatedAt),
 		ArchiveTime:      timestampOrNil(message.ArchivedAt),
@@ -531,11 +585,17 @@ func convertQualityAgentSessionToV1(workspaceID string, message *store.QualityAg
 // display path is reconstructed from it. An unparseable GUID keeps an empty path and
 // the UI falls back to the GUID.
 func convertQualityAgentSessionTargetToV1(message *store.QualityAgentSessionMessage) *v1pb.QualityTarget {
+	return convertQualityTargetIdentityToV1(message.TargetGUID, message.TargetType)
+}
+
+// convertQualityTargetIdentityToV1 renders a target from its GUID and object type,
+// reconstructing the display path from the GUID segments.
+func convertQualityTargetIdentityToV1(targetGUID string, objectType storepb.MetaType) *v1pb.QualityTarget {
 	target := &v1pb.QualityTarget{
-		MetaGuid: message.TargetGUID,
-		MetaType: v1pb.MetaType(message.TargetType),
+		MetaGuid: targetGUID,
+		MetaType: v1pb.MetaType(objectType),
 	}
-	segments := common.SplitMetaGUID(message.TargetGUID)
+	segments := common.SplitMetaGUID(targetGUID)
 	if len(segments) < 2 {
 		return target
 	}

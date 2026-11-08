@@ -90,6 +90,10 @@ func TestSettingsFromProfileResolvesExplicitValues(t *testing.T) {
 		AgentRunnerCompactionTriggerTokens: DefaultAgentRunnerCompactionTriggerTokens,
 		AgentRunnerIdleWakeSeconds:         DefaultAgentRunnerIdleWakeSeconds,
 		AgentRunnerAutoInvestigateFailures: true,
+		AgentRunnerMaxNewSessionsPerHour:   DefaultAgentRunnerMaxNewSessionsPerHour,
+		AgentRunnerMaxActiveSessions:       DefaultAgentRunnerMaxActiveSessions,
+		AgentRunnerDormantReviewDays:       DefaultAgentRunnerDormantReviewDays,
+		AgentRunnerEventBudgetPercent:      DefaultAgentRunnerEventBudgetPercent,
 	}, SettingsFromProfile(profile))
 }
 
@@ -370,6 +374,11 @@ func TestSettingsFromProfileResolvesRunnerLimits(t *testing.T) {
 		AgentRunnerCompactionTriggerTokens: 131_072,
 		AgentRunnerIdleWakeSeconds:         3_600,
 		AgentRunnerAutoInvestigateFailures: proto.Bool(true),
+		AgentRunnerAutoEnroll:              true,
+		AgentRunnerMaxNewSessionsPerHour:   5,
+		AgentRunnerMaxActiveSessions:       7,
+		AgentRunnerDormantReviewDays:       14,
+		AgentRunnerEventBudgetPercent:      60,
 	}}
 	resolved := SettingsFromProfile(profile)
 	require.True(t, resolved.AgentRunnerEnabled)
@@ -380,6 +389,11 @@ func TestSettingsFromProfileResolvesRunnerLimits(t *testing.T) {
 	require.Equal(t, 131_072, resolved.AgentRunnerCompactionTriggerTokens)
 	require.Equal(t, 3_600, resolved.AgentRunnerIdleWakeSeconds)
 	require.True(t, resolved.AgentRunnerAutoInvestigateFailures)
+	require.True(t, resolved.AgentRunnerAutoEnroll)
+	require.Equal(t, 5, resolved.AgentRunnerMaxNewSessionsPerHour)
+	require.Equal(t, 7, resolved.AgentRunnerMaxActiveSessions)
+	require.Equal(t, 14, resolved.AgentRunnerDormantReviewDays)
+	require.Equal(t, 60, resolved.AgentRunnerEventBudgetPercent)
 
 	// A zero boolean means the store never wrote it, which is the on default.
 	require.True(t, SettingsFromProfile(&storepb.WorkspaceProfileSetting{DataQuality: &storepb.DataQualitySetting{

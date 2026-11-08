@@ -297,6 +297,48 @@ export declare type DataQualitySetting = Message<"metaxisdata.v1.DataQualitySett
    * @generated from field: optional bool agent_runner_auto_investigate_failures = 24;
    */
   agentRunnerAutoInvestigateFailures?: boolean;
+
+  /**
+   * Whether the runner enrolls every monitorable object in its database scope into
+   * its queue. Off by default: turning it on is the workspace's opt-in to automatic
+   * triage and monitoring. Every write stays a proposal a person approves.
+   *
+   * @generated from field: bool agent_runner_auto_enroll = 25;
+   */
+  agentRunnerAutoEnroll: boolean;
+
+  /**
+   * How many automatic sessions the admission path may create per hour; 0 means the
+   * server default (10), accepted range 1-1000.
+   *
+   * @generated from field: int32 agent_runner_max_new_sessions_per_hour = 26;
+   */
+  agentRunnerMaxNewSessionsPerHour: number;
+
+  /**
+   * How many enrollments may be active (triaging or monitoring) at once; 0 means the
+   * server default (100), accepted range 1-10000.
+   *
+   * @generated from field: int32 agent_runner_max_active_sessions = 27;
+   */
+  agentRunnerMaxActiveSessions: number;
+
+  /**
+   * How many days a triaged target sleeps before it is reviewed again; 0 means the
+   * server default (30), accepted range 1-365.
+   *
+   * @generated from field: int32 agent_runner_dormant_review_days = 28;
+   */
+  agentRunnerDormantReviewDays: number;
+
+  /**
+   * The percentage of the hourly wake budget reserved for failed checks and people;
+   * automated admission only spends the remainder. 0 means the server default (50),
+   * accepted range 10-90.
+   *
+   * @generated from field: int32 agent_runner_event_budget_percent = 29;
+   */
+  agentRunnerEventBudgetPercent: number;
 };
 
 /**

@@ -312,6 +312,10 @@
                 </li>
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentEnrollment"><span class="badge">M</span>QualityAgentEnrollment</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentMessage"><span class="badge">M</span>QualityAgentMessage</a>
                 </li>
               
@@ -545,11 +549,23 @@
               
               
                 <li>
+                  <a href="#metaxisdata.store.QualityAgentEnrollmentState"><span class="badge">E</span>QualityAgentEnrollmentState</a>
+                </li>
+              
+                <li>
                   <a href="#metaxisdata.store.QualityAgentMessageOrigin"><span class="badge">E</span>QualityAgentMessageOrigin</a>
                 </li>
               
                 <li>
                   <a href="#metaxisdata.store.QualityAgentMessageRole"><span class="badge">E</span>QualityAgentMessageRole</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentSessionMode"><span class="badge">E</span>QualityAgentSessionMode</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentSessionSource"><span class="badge">E</span>QualityAgentSessionSource</a>
                 </li>
               
                 <li>
@@ -2713,6 +2729,170 @@ storage. A consumer that turns the value into a rule parameter must skip it. </p
 
         
       
+        <h3 id="metaxisdata.store.QualityAgentEnrollment">QualityAgentEnrollment</h3>
+        <p>QualityAgentEnrollment is one target's place in the runner's queue: the desired</p><p>state derived from the database scope, plus the priority and admission hints a</p><p>person sees. The session row remains the execution state.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>workspace_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_guid</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>target_type</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>database_ref</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#metaxisdata.store.QualityAgentEnrollmentState">QualityAgentEnrollmentState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>mode</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionMode">QualityAgentSessionMode</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>priority</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>0..1000; larger is admitted first. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>priority_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Human-readable signals behind the score, for example &#34;rules,failing&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>blocked_reason</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Why the row is not progressing (a budget, a person or a missing dependency). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>session_id</td>
+                  <td><a href="#int64">int64</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>triage_count</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_triaged_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>next_review_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>discovered_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>last_seen_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>excluded_by</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>excluded_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>revision</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.QualityAgentMessage">QualityAgentMessage</h3>
         <p>QualityAgentMessage is one append-only transcript entry of a session.</p>
 
@@ -3059,6 +3239,20 @@ name); empty for model and runner messages. </p></td>
                 <tr>
                   <td>archived_at</td>
                   <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>source</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionSource">QualityAgentSessionSource</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>mode</td>
+                  <td><a href="#metaxisdata.store.QualityAgentSessionMode">QualityAgentSessionMode</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -5888,6 +6082,59 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
       
 
       
+        <h3 id="metaxisdata.store.QualityAgentEnrollmentState">QualityAgentEnrollmentState</h3>
+        <p>QualityAgentEnrollmentState is the queue state of one target in the runner's</p><p>scope. The enrollment row is the desired state; a session is created lazily</p><p>when the row is admitted.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_PENDING</td>
+                <td>1</td>
+                <td><p>Discovered and waiting for admission (a budget, a person or a dependency).</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE</td>
+                <td>2</td>
+                <td><p>Admitted: a session exists and is triaging or monitoring the target.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_DORMANT</td>
+                <td>3</td>
+                <td><p>Triaged with nothing left to do; waits for its next review or an approval.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED</td>
+                <td>4</td>
+                <td><p>A person opted the target out; discovery never re-admits it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE</td>
+                <td>5</td>
+                <td><p>The target&#39;s database left the runner&#39;s scope. Reversible.</p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_ENROLLMENT_STATE_GONE</td>
+                <td>6</td>
+                <td><p>The registry object no longer exists. The row is kept for history.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="metaxisdata.store.QualityAgentMessageOrigin">QualityAgentMessageOrigin</h3>
         <p>QualityAgentMessageOrigin says what produced a user or engine message.</p>
         <table class="enum-table">
@@ -5989,6 +6236,64 @@ duplicate. The default is false, matching SQL uniqueness. </p></td>
                 <td>QUALITY_AGENT_MESSAGE_ROLE_COMPACTION</td>
                 <td>6</td>
                 <td><p>A compaction checkpoint replaces the covered messages in model context.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentSessionMode">QualityAgentSessionMode</h3>
+        <p>QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an</p><p>already-covered target; TRIAGE analyses a target that has no quality coverage</p><p>and proposes a plan and checks for a person to approve.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_MODE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_MODE_MONITOR</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_MODE_TRIAGE</td>
+                <td>2</td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
+        <h3 id="metaxisdata.store.QualityAgentSessionSource">QualityAgentSessionSource</h3>
+        <p>QualityAgentSessionSource says who created a session: a person or the</p><p>enrollment queue. An automatic session is also distinguished by created_by.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_SOURCE_MANUAL</td>
+                <td>1</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>QUALITY_AGENT_SESSION_SOURCE_AUTO</td>
+                <td>2</td>
+                <td><p></p></td>
               </tr>
             
           </tbody>
@@ -13774,6 +14079,47 @@ server default (86400). </p></td>
                   <td>optional</td>
                   <td><p>Whether a failed check execution appends an event to its target&#39;s session and
 wakes it. On by default. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_auto_enroll</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>Whether the runner enrolls every monitorable object in its database scope into
+its queue. Off by default: turning it on is the workspace&#39;s opt-in to automatic
+triage and monitoring. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_max_new_sessions_per_hour</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many automatic sessions the admission path may create per hour. Zero means
+the server default (10). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_max_active_sessions</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many enrollments may be active (triaging or monitoring) at once. Zero means
+the server default (100). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_dormant_review_days</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>How many days a triaged target sleeps before it is reviewed again. Zero means
+the server default (30). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>agent_runner_event_budget_percent</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>The percentage of the hourly wake budget reserved for events and people; the
+admission path only spends what remains. Zero means the server default (50). </p></td>
                 </tr>
               
             </tbody>

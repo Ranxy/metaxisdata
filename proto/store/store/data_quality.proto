@@ -1301,6 +1301,42 @@ enum QualityAgentSessionState {
   QUALITY_AGENT_SESSION_STATE_ARCHIVED = 4;
 }
 
+// QualityAgentSessionSource says who created a session: a person or the
+// enrollment queue. An automatic session is also distinguished by created_by.
+enum QualityAgentSessionSource {
+  QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_SOURCE_MANUAL = 1;
+  QUALITY_AGENT_SESSION_SOURCE_AUTO = 2;
+}
+
+// QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an
+// already-covered target; TRIAGE analyses a target that has no quality coverage
+// and proposes a plan and checks for a person to approve.
+enum QualityAgentSessionMode {
+  QUALITY_AGENT_SESSION_MODE_UNSPECIFIED = 0;
+  QUALITY_AGENT_SESSION_MODE_MONITOR = 1;
+  QUALITY_AGENT_SESSION_MODE_TRIAGE = 2;
+}
+
+// QualityAgentEnrollmentState is the queue state of one target in the runner's
+// scope. The enrollment row is the desired state; a session is created lazily
+// when the row is admitted.
+enum QualityAgentEnrollmentState {
+  QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED = 0;
+  // Discovered and waiting for admission (a budget, a person or a dependency).
+  QUALITY_AGENT_ENROLLMENT_STATE_PENDING = 1;
+  // Admitted: a session exists and is triaging or monitoring the target.
+  QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE = 2;
+  // Triaged with nothing left to do; waits for its next review or an approval.
+  QUALITY_AGENT_ENROLLMENT_STATE_DORMANT = 3;
+  // A person opted the target out; discovery never re-admits it.
+  QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED = 4;
+  // The target's database left the runner's scope. Reversible.
+  QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE = 5;
+  // The registry object no longer exists. The row is kept for history.
+  QUALITY_AGENT_ENROLLMENT_STATE_GONE = 6;
+}
+
 // QualityAgentMessageRole is one entry in a session's conversation.
 enum QualityAgentMessageRole {
   QUALITY_AGENT_MESSAGE_ROLE_UNSPECIFIED = 0;
@@ -1368,6 +1404,38 @@ message QualityAgentSession {
   google.protobuf.Timestamp created_at = 24;
   google.protobuf.Timestamp updated_at = 25;
   google.protobuf.Timestamp archived_at = 26;
+  QualityAgentSessionSource source = 27;
+  QualityAgentSessionMode mode = 28;
+}
+
+// QualityAgentEnrollment is one target's place in the runner's queue: the desired
+// state derived from the database scope, plus the priority and admission hints a
+// person sees. The session row remains the execution state.
+message QualityAgentEnrollment {
+  int64 id = 1;
+  string workspace_id = 2;
+  string target_guid = 3;
+  int32 target_type = 4;
+  string database_ref = 5;
+  QualityAgentEnrollmentState state = 6;
+  QualityAgentSessionMode mode = 7;
+  // 0..1000; larger is admitted first.
+  int32 priority = 8;
+  // Human-readable signals behind the score, for example "rules,failing".
+  string priority_reason = 9;
+  // Why the row is not progressing (a budget, a person or a missing dependency).
+  string blocked_reason = 10;
+  int64 session_id = 11;
+  int32 triage_count = 12;
+  google.protobuf.Timestamp last_triaged_at = 13;
+  google.protobuf.Timestamp next_review_at = 14;
+  google.protobuf.Timestamp discovered_at = 15;
+  google.protobuf.Timestamp last_seen_at = 16;
+  int32 excluded_by = 17;
+  google.protobuf.Timestamp excluded_at = 18;
+  int32 revision = 19;
+  google.protobuf.Timestamp created_at = 20;
+  google.protobuf.Timestamp updated_at = 21;
 }
 
 // QualityToolCall is one tool invocation in an assistant message. It mirrors the
