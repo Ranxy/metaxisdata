@@ -1,0 +1,115 @@
+{
+  "instance": "test-pg-1",
+  "database": "e2e_dq",
+  "note": "PostgreSQL-only semantics: percent sampling, PERCENTILE, and cross-database reconciliation that needs a second statement. The negative gates (PERCENTILE on MySQL, range on jsonb) live in the driver because they prove a rejection, not a verdict.",
+  "rules": [
+    {
+      "key": "pg-orders-range-sampled",
+      "batch": "pg-orders",
+      "table": "dq_big",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "PG dq_big amount is at most 1000 (50% sample)",
+        "dimension": "QUALITY_DIMENSION_VALIDITY",
+        "ruleType": "QUALITY_RULE_TYPE_RANGE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "sampling": {
+            "percent": 50
+          },
+          "range": {
+            "column": "amount",
+            "max": "1000"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "sampled": true,
+        "executedSqlContains": [
+          "\"",
+          "$"
+        ]
+      }
+    },
+    {
+      "key": "pg-orders-aggregate-percentile",
+      "batch": "pg-orders",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "PG dq_orders median amount is between 0 and 1000",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_AGGREGATE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "aggregate": {
+            "column": "amount",
+            "function": "QUALITY_AGGREGATE_FUNCTION_PERCENTILE",
+            "percentile": 50,
+            "min": 0,
+            "max": 1000
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_PASS",
+        "observedValue": 30,
+        "totalRows": 5
+      }
+    },
+    {
+      "key": "pg-orders-null-percent",
+      "batch": "pg-orders",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "PG dq_orders customer_email is at most 30% null",
+        "dimension": "QUALITY_DIMENSION_COMPLETENESS",
+        "ruleType": "QUALITY_RULE_TYPE_NULL_PERCENT",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "nullPercent": {
+            "column": "customer_email",
+            "maxNullPct": 30
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 2,
+        "totalRows": 5
+      }
+    },
+    {
+      "key": "pg-orders-cross-table",
+      "batch": "pg-orders",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "PG dq_orders reconciles with e2e_dq_ref",
+        "dimension": "QUALITY_DIMENSION_CONSISTENCY",
+        "ruleType": "QUALITY_RULE_TYPE_CROSS_TABLE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "crossTable": {
+            "leftFunction": "QUALITY_AGGREGATE_FUNCTION_COUNT",
+            "rightFunction": "QUALITY_AGGREGATE_FUNCTION_COUNT",
+            "tolerance": 0,
+            "reference": {
+              "table": "dq_orders_rollup",
+              "metaType": "TABLE",
+              "database": "e2e_dq_ref"
+            }
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_PASS",
+        "referenceExecutedSqlContains": [
+          "dq_orders_rollup"
+        ]
+      }
+    }
+  ]
+}

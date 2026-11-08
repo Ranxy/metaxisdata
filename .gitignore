@@ -6,3 +6,7 @@ temp
 # that keeps the //go:embed pattern resolvable is tracked.
 backend/server/frontend_dist/*
 !backend/server/frontend_dist/.gitkeep
+
+# Python bytecode from the test fixtures under test/ (e.g. test/e2e_quality).
+__pycache__/
+*.pyc
