@@ -58,6 +58,17 @@ func wakePrompt(
 	if objective == "" {
 		objective = "keep this target trustworthy"
 	}
+	if session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
+		pendingNote := ""
+		if asks > 0 {
+			pendingNote = " A person asked something above; answer it first, then continue the triage if it still applies."
+		} else if events > 0 {
+			pendingNote = fmt.Sprintf(" %d new event(s) arrived above; review them first, then continue the triage if it still applies.", events)
+		}
+		return fmt.Sprintf(
+			"[triage wake %d] This target has no quality coverage yet.%s Use get_table_context to understand its schema, profiles and consumers, then propose coverage: draft_checks drafts concrete checks into the review queue; record_investigation and record_asset_fact record what you concluded. Every proposal is reviewed by a person; you cannot publish, approve, edit checks or change settings. If nothing is worth monitoring, say so briefly and record why. Do not repeat work you already recorded in an earlier triage. Target: %s. Objective: %s.",
+			wake, pendingNote, target, objective)
+	}
 	switch {
 	case asks > 0:
 		return fmt.Sprintf(
@@ -76,7 +87,7 @@ func wakePrompt(
 
 // modelToolDefs is the closed tool set of a model wake. It is read- and propose-only;
 // publishing, approving, editing checks and changing settings are not exposed.
-func modelToolDefs() []llm.ToolDef {
+func modelToolDefs(mode storepb.QualityAgentSessionMode) []llm.ToolDef {
 	defs := make([]llm.ToolDef, 0, 8)
 	add := func(name, description string, parameters any) {
 		var def llm.ToolDef
@@ -122,5 +133,28 @@ func modelToolDefs() []llm.ToolDef {
 			"after_minutes": map[string]any{"type": "integer", "minimum": 1, "maximum": 10080},
 			"reason":        map[string]any{"type": "string"},
 		}, "required": []string{"after_minutes"}})
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
+		add("get_table_context",
+			"Read the target's schema, column profiles, semantic labels and lineage consumers; no sample rows.",
+			empty)
+		add("draft_checks",
+			"Draft concrete checks for the target into the review queue; a person approves them before they run.",
+			map[string]any{"type": "object", "properties": map[string]any{
+				"intent": map[string]any{"type": "string", "description": "what the checks should watch, in one sentence"},
+				"columns": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "optional column names; at most 8",
+				},
+			}, "required": []string{"intent"}})
+	}
 	return defs
+}
+
+// maxTurnsFor bounds one wake's model turns by mode.
+func maxTurnsFor(mode storepb.QualityAgentSessionMode) int {
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
+		return triageMaxTurns
+	}
+	return modelMaxTurns
 }

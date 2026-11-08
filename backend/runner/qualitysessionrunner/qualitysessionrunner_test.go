@@ -15,17 +15,20 @@ import (
 
 // fakeStore is the in-memory slice of the store the runner tests need.
 type fakeStore struct {
-	agent           *store.QualityAgentMessage
-	claimed         []*store.QualityAgentSessionMessage
-	tokensSpent     int64
-	wakesSpent      int64
-	pendingInputSeq int64
-	progress        []*store.QualityAgentSessionWakeResult
-	states          []storepb.QualityAgentSessionState
-	blockedCodes    []string
-	nextWakes       []*time.Time
-	releasedWakes   []*time.Time
-	claimedLimit    int
+	agent                *store.QualityAgentMessage
+	claimed              []*store.QualityAgentSessionMessage
+	tokensSpent          int64
+	wakesSpent           int64
+	pendingInputSeq      int64
+	progress             []*store.QualityAgentSessionWakeResult
+	states               []storepb.QualityAgentSessionState
+	blockedCodes         []string
+	nextWakes            []*time.Time
+	releasedWakes        []*time.Time
+	claimedLimit         int
+	enrollment           *store.QualityAgentEnrollmentMessage
+	parkedEnrollment     string
+	enrollmentNextReview time.Time
 }
 
 func (*fakeStore) ResetStaleQualityAgentSessionLeases(context.Context, time.Time, int32) (int64, error) {
@@ -68,6 +71,19 @@ func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, 
 
 func (f *fakeStore) MaxQualityAgentInputSeqAfter(context.Context, int64, int64) (int64, error) {
 	return f.pendingInputSeq, nil
+}
+
+func (f *fakeStore) GetQualityAgentEnrollmentByTarget(context.Context, string, string) (*store.QualityAgentEnrollmentMessage, error) {
+	return f.enrollment, nil
+}
+
+func (f *fakeStore) UpdateQualityAgentEnrollmentAfterTriage(_ context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error) {
+	f.parkedEnrollment = resourceID
+	f.enrollmentNextReview = nextReviewAt
+	if f.enrollment == nil {
+		return nil, false, nil
+	}
+	return f.enrollment, true, nil
 }
 
 // fakeEngine reports one fixed outcome.
@@ -118,6 +134,26 @@ func testRunner(stores *fakeStore, engine Waker) *Runner {
 	}
 	stores.agent = &store.QualityAgentMessage{ID: 3, Enabled: true}
 	return runner
+}
+
+// A finished triage parks the queue row until its review, so the target does not wake
+// and re-triage every idle interval.
+func TestHostParksTheEnrollmentAfterTriage(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{enrollment: &store.QualityAgentEnrollmentMessage{ResourceID: "enr-1"}}
+	engine := &fakeEngine{outcome: agentrunner.Outcome{TriageComplete: true}}
+	runner := testRunner(stores, engine)
+	settings := testSettings()
+	settings.AgentRunnerDormantReviewDays = 30
+	session := testSession()
+	session.Mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE
+
+	runner.host(context.Background(), settings, session)
+
+	require.Equal(t, "enr-1", stores.parkedEnrollment)
+	require.WithinDuration(t,
+		time.Unix(10_000, 0).Add(30*24*time.Hour), stores.enrollmentNextReview, time.Second)
 }
 
 // An admin who turns autonomy off does not spend model tokens: the session parks on a

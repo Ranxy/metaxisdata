@@ -221,6 +221,10 @@ func (e *Engine) executeTool(
 		*blockedCode = input.Code
 		*blockedWhy = input.Reason
 		return marshalJSON(map[string]any{"blocked": true, "threshold": blockedThreshold})
+	case "get_table_context":
+		return e.getTableContextTool(ctx, session)
+	case "draft_checks":
+		return e.draftChecksTool(ctx, session, arguments)
 	case "schedule_wake":
 		var input struct {
 			AfterMinutes int32  `json:"after_minutes"`

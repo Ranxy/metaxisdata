@@ -277,7 +277,15 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			// Disabled or unconfigured analysis is not an error for the runner: the
 			// deterministic survey keeps working.
 			return config, resolveErr == nil, nil
-		}, s.metrics)
+		}, s.metrics,
+		agentrunner.WithTableContext(&qualityTriageContext{
+			store: stores,
+			now:   func() time.Time { return time.Now().UTC() },
+			loadSettings: func(ctx context.Context) (dataquality.Settings, error) {
+				return dataquality.LoadSettings(ctx, stores)
+			},
+		}),
+		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester}).DraftChecks))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	// The enrollment runner discovers the database scope into a queue and admits
 	// targets by priority; triage admission needs a model, so it reads the same

@@ -68,6 +68,11 @@ type Engine struct {
 	chat         Chat
 	resolveModel ResolveModel
 	metrics      *metrics.Metrics
+	// tableContext and draftChecks are the optional triage capabilities. A process that
+	// does not wire them still runs; a triage wake reports the missing capability
+	// instead of pretending to have analysed the table.
+	tableContext TableContextReader
+	draftChecks  DraftChecksFunc
 }
 
 // NewEngine creates the deterministic engine.
@@ -77,11 +82,14 @@ func NewEngine(store Store) *Engine {
 
 // NewModelEngine creates an engine that reasons with a model, falling back to the
 // deterministic survey when the model is disabled or unavailable.
-func NewModelEngine(store Store, chat Chat, resolve ResolveModel, m *metrics.Metrics) *Engine {
+func NewModelEngine(store Store, chat Chat, resolve ResolveModel, m *metrics.Metrics, options ...Option) *Engine {
 	engine := NewEngine(store)
 	engine.chat = chat
 	engine.resolveModel = resolve
 	engine.metrics = m
+	for _, option := range options {
+		option(engine)
+	}
 	return engine
 }
 
@@ -102,6 +110,9 @@ type Outcome struct {
 	NextWakeAt    *time.Time
 	TokensUsed    int64
 	ContextTokens int32
+	// TriageComplete tells the runner this wake finished a TRIAGE analysis of an
+	// uncovered target, so the enrollment row can park until its next review.
+	TriageComplete bool
 	// ProcessedSeq is the largest message seq this wake consumed. A newer message
 	// (an event that arrived mid-wake) triggers an immediate follow-up wake.
 	ProcessedSeq int64
@@ -159,6 +170,21 @@ func (e *Engine) runWake(ctx context.Context, session *store.QualityAgentSession
 		if err == nil && ok {
 			return e.modelWake(ctx, session, wake, system, pending, config, options)
 		}
+	}
+	// Triage is an analysis, not a bookkeeping survey: without a model there is nothing
+	// honest to record. Park the session for a person instead of retrying every ten
+	// minutes and appending an ENGINE row each time; a person configures the provider and
+	// resumes it.
+	if session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
+		e.recordEngine(ctx, session, wake, 0, "triage skipped: no model is configured")
+		return Outcome{
+			Blocked:       true,
+			BlockedCode:   "needs-human",
+			BlockedReason: "triage needs a model; configure an LLM provider and resume the session",
+			ProcessedSeq:  session.ProcessedSeq,
+			EngineState:   cloneEngineState(session.EngineState),
+			Summary:       "blocked: triage needs a model",
+		}, nil
 	}
 	return e.deterministicWake(ctx, session, wake, pending)
 }
@@ -230,9 +256,9 @@ func (e *Engine) modelWake(
 			Provider:             config,
 			Feature:              "dq_agent",
 			History:              conversation,
-			Tools:                modelToolDefs(),
+			Tools:                modelToolDefs(session.Mode),
 			Executor:             executor,
-			MaxTurns:             modelMaxTurns,
+			MaxTurns:             maxTurnsFor(session.Mode),
 			MaxConversationBytes: llm.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
@@ -367,12 +393,13 @@ func (e *Engine) modelWake(
 		summary = "wake finished; scheduled an earlier wake: " + scheduleReason
 	}
 	return Outcome{
-		NextWakeAt:    nextWake,
-		TokensUsed:    totalTokens,
-		ContextTokens: maxPrompt,
-		ProcessedSeq:  consumed,
-		EngineState:   state,
-		Summary:       summary,
+		NextWakeAt:     nextWake,
+		TriageComplete: session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
+		TokensUsed:     totalTokens,
+		ContextTokens:  maxPrompt,
+		ProcessedSeq:   consumed,
+		EngineState:    state,
+		Summary:        summary,
 	}, nil
 }
 
