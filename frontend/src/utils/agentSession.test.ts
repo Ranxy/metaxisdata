@@ -7,7 +7,9 @@ import {
   type QualityAgentSession,
   type QualityAgentSessionMessage,
   QualityAgentSessionMessageSchema,
+  QualityAgentSessionMode,
   QualityAgentSessionSchema,
+  QualityAgentSessionSource,
   QualityAgentSessionState,
   QualityTargetPathSchema,
   QualityTargetSchema,
@@ -22,6 +24,10 @@ import {
   agentMessageRoleKey,
   agentSessionHeartbeat,
   agentSessionMatchesSearch,
+  agentSessionModeKey,
+  agentSessionModeVariant,
+  agentSessionSourceKey,
+  agentSessionSourceVariant,
   agentSessionStateKey,
   agentSessionStateVariant,
   agentSessionTargetName,
@@ -564,5 +570,51 @@ describe("target display", () => {
     expect(agentSessionMatchesSearch(session, "public")).toBe(true);
     expect(agentSessionMatchesSearch(session, "instances/inst1")).toBe(true);
     expect(agentSessionMatchesSearch(session, "missing")).toBe(false);
+  });
+});
+
+describe("agentSession source and mode vocabulary", () => {
+  it("maps every source to its label key and badge variant", () => {
+    expect(agentSessionSourceKey(QualityAgentSessionSource.MANUAL)).toBe(
+      "dataQuality.agent.source.manual"
+    );
+    expect(agentSessionSourceKey(QualityAgentSessionSource.AUTO)).toBe(
+      "dataQuality.agent.source.auto"
+    );
+    expect(agentSessionSourceKey(QualityAgentSessionSource.UNSPECIFIED)).toBe(
+      "dataQuality.agent.source.unspecified"
+    );
+
+    expect(agentSessionSourceVariant(QualityAgentSessionSource.AUTO)).toBe(
+      "secondary"
+    );
+    expect(agentSessionSourceVariant(QualityAgentSessionSource.MANUAL)).toBe(
+      "outline"
+    );
+    expect(
+      agentSessionSourceVariant(QualityAgentSessionSource.UNSPECIFIED)
+    ).toBe("outline");
+  });
+
+  it("maps every mode to its label key and badge variant", () => {
+    expect(agentSessionModeKey(QualityAgentSessionMode.MONITOR)).toBe(
+      "dataQuality.agent.mode.monitor"
+    );
+    expect(agentSessionModeKey(QualityAgentSessionMode.TRIAGE)).toBe(
+      "dataQuality.agent.mode.triage"
+    );
+    expect(agentSessionModeKey(QualityAgentSessionMode.UNSPECIFIED)).toBe(
+      "dataQuality.agent.mode.unspecified"
+    );
+
+    expect(agentSessionModeVariant(QualityAgentSessionMode.MONITOR)).toBe(
+      "info"
+    );
+    expect(agentSessionModeVariant(QualityAgentSessionMode.TRIAGE)).toBe(
+      "warning"
+    );
+    expect(agentSessionModeVariant(QualityAgentSessionMode.UNSPECIFIED)).toBe(
+      "outline"
+    );
   });
 });

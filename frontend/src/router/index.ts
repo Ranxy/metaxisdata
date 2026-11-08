@@ -294,6 +294,20 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        // The runner's enrollment queue: which targets are discovered, waiting,
+        // admitted or excluded. Declared before the session's repeatable param so
+        // the static segment wins the match.
+        path: "agent/enrollment",
+        name: "DataQualityAgentEnrollment",
+        component: () =>
+          import("@/pages/data-quality/DataQualityAgentEnrollmentPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.rules.list",
+        },
+      },
+      {
         // The session's resource name is carried whole, one path segment per
         // name segment: a Get needs the real workspace, not the `-` shorthand.
         path: "agent/:sessionId+",

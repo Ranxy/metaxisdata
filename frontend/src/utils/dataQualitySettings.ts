@@ -33,6 +33,14 @@ export const MIN_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS = 16_384;
 export const MAX_AGENT_RUNNER_COMPACTION_TRIGGER_TOKENS = 4_194_304;
 export const MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS = 60;
 export const MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS = 604_800;
+export const MIN_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR = 1;
+export const MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR = 1000;
+export const MIN_AGENT_RUNNER_MAX_ACTIVE_SESSIONS = 1;
+export const MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS = 10_000;
+export const MIN_AGENT_RUNNER_DORMANT_REVIEW_DAYS = 1;
+export const MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS = 365;
+export const MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT = 10;
+export const MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT = 90;
 export const MAX_COLUMNS_PER_ANALYSIS_MAX = 200;
 export const DAILY_LLM_ANALYSIS_LIMIT_MAX = 1_000_000;
 export const MAX_DAILY_COLUMN_ANALYSIS_LIMIT = 1_000_000;
@@ -117,6 +125,16 @@ export interface DataQualitySettingsForm {
   agentRunnerIdleWakeSeconds: string;
   /** On by default: a failed check wakes the target's session. */
   agentRunnerAutoInvestigateFailures: boolean;
+  /** Discover every object in the runner's database scope and queue it. */
+  agentRunnerAutoEnroll: boolean;
+  /** Blank/0 means the server default (10); the form enforces 1-1000. */
+  agentRunnerMaxNewSessionsPerHour: string;
+  /** Blank/0 means the server default (100); the form enforces 1-10000. */
+  agentRunnerMaxActiveSessions: string;
+  /** Blank/0 means the server default (30); the form enforces 1-365. */
+  agentRunnerDormantReviewDays: string;
+  /** Blank/0 means the server default (50); the form enforces 10-90. */
+  agentRunnerEventBudgetPercent: string;
   weeklyDigest: WeeklyDigestForm;
 }
 
@@ -160,6 +178,19 @@ export function settingsToForm(
     ),
     agentRunnerAutoInvestigateFailures:
       setting?.agentRunnerAutoInvestigateFailures ?? true,
+    agentRunnerAutoEnroll: setting?.agentRunnerAutoEnroll ?? false,
+    agentRunnerMaxNewSessionsPerHour: numberToInput(
+      setting?.agentRunnerMaxNewSessionsPerHour
+    ),
+    agentRunnerMaxActiveSessions: numberToInput(
+      setting?.agentRunnerMaxActiveSessions
+    ),
+    agentRunnerDormantReviewDays: numberToInput(
+      setting?.agentRunnerDormantReviewDays
+    ),
+    agentRunnerEventBudgetPercent: numberToInput(
+      setting?.agentRunnerEventBudgetPercent
+    ),
     weeklyDigest: {
       enabled: digest?.enabled ?? DEFAULT_DIGEST.enabled,
       // An unset weekday is not a weekday; show the default the server resolves.
@@ -205,6 +236,15 @@ export function formToSetting(
     agentRunnerIdleWakeSeconds:
       inputToInt(form.agentRunnerIdleWakeSeconds) ?? 0,
     agentRunnerAutoInvestigateFailures: form.agentRunnerAutoInvestigateFailures,
+    agentRunnerAutoEnroll: form.agentRunnerAutoEnroll,
+    agentRunnerMaxNewSessionsPerHour:
+      inputToInt(form.agentRunnerMaxNewSessionsPerHour) ?? 0,
+    agentRunnerMaxActiveSessions:
+      inputToInt(form.agentRunnerMaxActiveSessions) ?? 0,
+    agentRunnerDormantReviewDays:
+      inputToInt(form.agentRunnerDormantReviewDays) ?? 0,
+    agentRunnerEventBudgetPercent:
+      inputToInt(form.agentRunnerEventBudgetPercent) ?? 0,
     // The whole `data_quality` field is written on save, so the digest has to be
     // part of the message even when this page did not touch it; otherwise the
     // write would clear a schedule configured elsewhere.
@@ -348,6 +388,48 @@ export function validateSettingsForm(
     issue("runnerIdleWakeSecondsInvalid", {
       min: MIN_AGENT_RUNNER_IDLE_WAKE_SECONDS,
       max: MAX_AGENT_RUNNER_IDLE_WAKE_SECONDS,
+    });
+  }
+  const maxNewSessions = checkRangeOrZero(
+    form.agentRunnerMaxNewSessionsPerHour,
+    MIN_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR,
+    MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR
+  );
+  if (maxNewSessions === "invalid") {
+    issue("runnerMaxNewSessionsPerHourInvalid", {
+      max: MAX_AGENT_RUNNER_MAX_NEW_SESSIONS_PER_HOUR,
+    });
+  }
+  const maxActiveSessions = checkRangeOrZero(
+    form.agentRunnerMaxActiveSessions,
+    MIN_AGENT_RUNNER_MAX_ACTIVE_SESSIONS,
+    MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS
+  );
+  if (maxActiveSessions === "invalid") {
+    issue("runnerMaxActiveSessionsInvalid", {
+      max: MAX_AGENT_RUNNER_MAX_ACTIVE_SESSIONS,
+    });
+  }
+  const dormantReviewDays = checkRangeOrZero(
+    form.agentRunnerDormantReviewDays,
+    MIN_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
+    MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS
+  );
+  if (dormantReviewDays === "invalid") {
+    issue("runnerDormantReviewDaysInvalid", {
+      min: MIN_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
+      max: MAX_AGENT_RUNNER_DORMANT_REVIEW_DAYS,
+    });
+  }
+  const eventBudgetPercent = checkRangeOrZero(
+    form.agentRunnerEventBudgetPercent,
+    MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
+    MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT
+  );
+  if (eventBudgetPercent === "invalid") {
+    issue("runnerEventBudgetPercentInvalid", {
+      min: MIN_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
+      max: MAX_AGENT_RUNNER_EVENT_BUDGET_PERCENT,
     });
   }
   const maxColumns = checkRange(

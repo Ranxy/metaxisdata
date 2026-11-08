@@ -5,6 +5,7 @@
       :description="t('dataQuality.agent.description')"
     >
       <template #actions>
+        <AgentPageTabs />
         <Button
           v-if="canUpdate"
           @click="pickerOpen = true"
@@ -130,7 +131,38 @@
             @keyup.enter="applySearch"
           />
         </div>
-        <div class="flex min-w-40 flex-col gap-1.5 [&>select]:hidden sm:ml-auto sm:w-44">
+        <div class="flex min-w-40 flex-col gap-1.5 [&>select]:hidden sm:ml-auto sm:w-48">
+          <Label
+            for="quality-agent-database"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.agent.filterDatabase") }}
+          </Label>
+          <Select
+            :model-value="databaseFilter || '-'"
+            @update:model-value="changeDatabase"
+          >
+            <SelectTrigger
+              id="quality-agent-database"
+              class="w-full"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="-">
+                {{ t("dataQuality.agent.allDatabases") }}
+              </SelectItem>
+              <SelectItem
+                v-for="option in databaseOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div class="flex min-w-36 flex-col gap-1.5 [&>select]:hidden sm:w-44">
           <Label
             for="quality-agent-state"
             class="text-sm font-medium leading-none"
@@ -154,6 +186,68 @@
                 :value="option.value"
               >
                 {{ option.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div class="flex min-w-32 flex-col gap-1.5 [&>select]:hidden sm:w-40">
+          <Label
+            for="quality-agent-source"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.agent.filterSource") }}
+          </Label>
+          <Select
+            :model-value="sourceFilter"
+            @update:model-value="changeSource"
+          >
+            <SelectTrigger
+              id="quality-agent-source"
+              class="w-full"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="-">
+                {{ t("dataQuality.agent.allSources") }}
+              </SelectItem>
+              <SelectItem
+                v-for="source in SOURCES"
+                :key="source"
+                :value="String(source)"
+              >
+                {{ t(agentSessionSourceKey(source)) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div class="flex min-w-32 flex-col gap-1.5 [&>select]:hidden sm:w-40">
+          <Label
+            for="quality-agent-mode"
+            class="text-sm font-medium leading-none"
+          >
+            {{ t("dataQuality.agent.filterMode") }}
+          </Label>
+          <Select
+            :model-value="modeFilter"
+            @update:model-value="changeMode"
+          >
+            <SelectTrigger
+              id="quality-agent-mode"
+              class="w-full"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="-">
+                {{ t("dataQuality.agent.allModes") }}
+              </SelectItem>
+              <SelectItem
+                v-for="mode in MODES"
+                :key="mode"
+                :value="String(mode)"
+              >
+                {{ t(agentSessionModeKey(mode)) }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -239,167 +333,205 @@
           </Button>
         </EmptyState>
 
-        <Table
-          v-else
-          class="[&_th]:whitespace-nowrap"
-        >
-          <TableHeader>
-            <TableRow>
-              <TableHead>{{ t("dataQuality.agent.columnTarget") }}</TableHead>
-              <TableHead>{{ t("dataQuality.agent.columnState") }}</TableHead>
-              <TableHead class="hidden text-right sm:table-cell">
-                {{ t("dataQuality.agent.columnWakes") }}
-              </TableHead>
-              <TableHead class="hidden md:table-cell">
-                {{ t("dataQuality.agent.columnLastActivity") }}
-              </TableHead>
-              <TableHead class="hidden text-right lg:table-cell">
-                {{ t("dataQuality.agent.columnTokens") }}
-              </TableHead>
-              <TableHead class="hidden lg:table-cell">
-                {{ t("dataQuality.agent.columnNextWake") }}
-              </TableHead>
-              <TableHead class="hidden xl:table-cell">
-                {{ t("dataQuality.agent.columnBlocked") }}
-              </TableHead>
-              <TableHead class="w-12 text-right">
-                <span class="sr-only">{{ t("common.actions") }}</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow
-              v-for="session in filtered"
-              :key="session.name"
-              class="cursor-pointer"
-              @click="openSession(session)"
-            >
-              <TableCell>
-                <div class="flex max-w-[14rem] flex-col gap-0.5 md:max-w-md">
-                  <RouterLink
-                    :to="targetRoute(session)"
-                    class="truncate font-medium hover:underline"
-                    :title="agentSessionTargetPath(session)"
-                    @click.stop
-                  >
-                    {{ agentSessionTargetName(session) }}
-                  </RouterLink>
-                  <span class="truncate font-mono text-xs text-muted-foreground">
-                    {{ agentSessionTargetPath(session) }}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <Badge :variant="agentSessionStateVariant(session.state)">
-                    {{ t(agentSessionStateKey(session.state)) }}
-                  </Badge>
-                  <span
-                    v-if="heartbeatOf(session).running"
-                    class="inline-flex items-center gap-1 text-xs text-info"
-                  >
-                    <span class="h-1.5 w-1.5 rounded-full bg-info" />
-                    {{ t("dataQuality.agent.running") }}
-                  </span>
-                  <Badge
-                    v-if="heartbeatOf(session).stale"
-                    variant="warning"
-                    :title="t('dataQuality.agent.possiblyStaleHint')"
-                  >
-                    {{ t("dataQuality.agent.possiblyStale") }}
-                  </Badge>
-                </div>
-              </TableCell>
-              <TableCell class="hidden text-right tabular-nums sm:table-cell">
-                {{ session.wakeCount }}
-              </TableCell>
-              <TableCell class="hidden whitespace-nowrap md:table-cell">
-                <span
-                  v-if="session.lastActivityTime"
-                  :title="formatDateTime(session.lastActivityTime, locale)"
-                >
-                  {{ formatRelativeTime(session.lastActivityTime, locale) }}
-                </span>
-                <span
-                  v-else
-                  class="text-muted-foreground"
-                >
-                  {{ t("dataQuality.agent.noActivity") }}
-                </span>
-              </TableCell>
-              <TableCell class="hidden text-right tabular-nums lg:table-cell">
-                {{ formatTokens(session.tokensUsed, locale) }}
-              </TableCell>
-              <TableCell class="hidden whitespace-nowrap lg:table-cell">
-                <span
-                  v-if="session.nextWakeTime"
-                  :title="formatDateTime(session.nextWakeTime, locale)"
-                >
-                  {{ formatRelativeTime(session.nextWakeTime, locale) }}
-                </span>
-                <span
-                  v-else
-                  class="text-muted-foreground"
-                >
-                  {{ t("dataQuality.agent.noNextWake") }}
-                </span>
-              </TableCell>
-              <TableCell class="hidden max-w-[16rem] xl:table-cell">
-                <template v-if="session.blockedCode || session.blockedReason">
-                  <Badge variant="warning">
-                    {{ session.blockedCode || t("dataQuality.agent.state.blocked") }}
-                  </Badge>
-                  <p
-                    v-if="session.blockedReason"
-                    class="mt-1 line-clamp-2 text-xs text-muted-foreground"
-                    :title="session.blockedReason"
-                  >
-                    {{ session.blockedReason }}
-                  </p>
-                </template>
-                <span
-                  v-else
-                  class="text-muted-foreground"
-                >-</span>
-              </TableCell>
-              <TableCell
-                class="text-right"
-                @click.stop
+        <div v-else>
+          <Table class="[&_th]:whitespace-nowrap">
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t("dataQuality.agent.columnTarget") }}</TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.agent.columnDatabase") }}
+                </TableHead>
+                <TableHead>{{ t("dataQuality.agent.columnState") }}</TableHead>
+                <TableHead class="hidden lg:table-cell">
+                  {{ t("dataQuality.agent.columnSource") }}
+                </TableHead>
+                <TableHead class="hidden lg:table-cell">
+                  {{ t("dataQuality.agent.columnMode") }}
+                </TableHead>
+                <TableHead class="hidden text-right sm:table-cell">
+                  {{ t("dataQuality.agent.columnWakes") }}
+                </TableHead>
+                <TableHead class="hidden md:table-cell">
+                  {{ t("dataQuality.agent.columnLastActivity") }}
+                </TableHead>
+                <TableHead class="hidden text-right lg:table-cell">
+                  {{ t("dataQuality.agent.columnTokens") }}
+                </TableHead>
+                <TableHead class="hidden lg:table-cell">
+                  {{ t("dataQuality.agent.columnNextWake") }}
+                </TableHead>
+                <TableHead class="hidden xl:table-cell">
+                  {{ t("dataQuality.agent.columnBlocked") }}
+                </TableHead>
+                <TableHead class="w-12 text-right">
+                  <span class="sr-only">{{ t("common.actions") }}</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="session in filtered"
+                :key="session.name"
+                class="cursor-pointer"
+                @click="openSession(session)"
               >
-                <div class="flex items-center justify-end gap-1">
-                  <AgentSessionActions
-                    :session="session"
-                    :can-update="canUpdate"
-                    @updated="onUpdated"
-                    @archived="load()"
-                    @reload="load()"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
-                    as-child
-                  >
+                <TableCell>
+                  <div class="flex max-w-[14rem] flex-col gap-0.5 md:max-w-md">
                     <RouterLink
-                      :to="sessionRoute(session)"
-                      :title="t('dataQuality.agent.openConversation')"
-                      :aria-label="t('dataQuality.agent.openConversation')"
+                      :to="targetRoute(session)"
+                      class="truncate font-medium hover:underline"
+                      :title="agentSessionTargetPath(session)"
+                      @click.stop
                     >
-                      <ChevronRight class="h-4 w-4" />
+                      {{ agentSessionTargetName(session) }}
                     </RouterLink>
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+                    <span class="truncate font-mono text-xs text-muted-foreground">
+                      {{ agentSessionTargetPath(session) }}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell class="hidden md:table-cell">
+                  <span
+                    class="whitespace-nowrap text-xs"
+                    :title="session.database"
+                  >
+                    {{ databaseRefLabel(session.database) }}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <Badge :variant="agentSessionStateVariant(session.state)">
+                      {{ t(agentSessionStateKey(session.state)) }}
+                    </Badge>
+                    <span
+                      v-if="heartbeatOf(session).running"
+                      class="inline-flex items-center gap-1 text-xs text-info"
+                    >
+                      <span class="h-1.5 w-1.5 rounded-full bg-info" />
+                      {{ t("dataQuality.agent.running") }}
+                    </span>
+                    <Badge
+                      v-if="heartbeatOf(session).stale"
+                      variant="warning"
+                      :title="t('dataQuality.agent.possiblyStaleHint')"
+                    >
+                      {{ t("dataQuality.agent.possiblyStale") }}
+                    </Badge>
+                  </div>
+                </TableCell>
+                <TableCell class="hidden lg:table-cell">
+                  <Badge :variant="agentSessionSourceVariant(session.source)">
+                    {{ t(agentSessionSourceKey(session.source)) }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="hidden lg:table-cell">
+                  <Badge :variant="agentSessionModeVariant(session.mode)">
+                    {{ t(agentSessionModeKey(session.mode)) }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="hidden text-right tabular-nums sm:table-cell">
+                  {{ session.wakeCount }}
+                </TableCell>
+                <TableCell class="hidden whitespace-nowrap md:table-cell">
+                  <span
+                    v-if="session.lastActivityTime"
+                    :title="formatDateTime(session.lastActivityTime, locale)"
+                  >
+                    {{ formatRelativeTime(session.lastActivityTime, locale) }}
+                  </span>
+                  <span
+                    v-else
+                    class="text-muted-foreground"
+                  >
+                    {{ t("dataQuality.agent.noActivity") }}
+                  </span>
+                </TableCell>
+                <TableCell class="hidden text-right tabular-nums lg:table-cell">
+                  {{ formatTokens(session.tokensUsed, locale) }}
+                </TableCell>
+                <TableCell class="hidden whitespace-nowrap lg:table-cell">
+                  <span
+                    v-if="session.nextWakeTime"
+                    :title="formatDateTime(session.nextWakeTime, locale)"
+                  >
+                    {{ formatRelativeTime(session.nextWakeTime, locale) }}
+                  </span>
+                  <span
+                    v-else
+                    class="text-muted-foreground"
+                  >
+                    {{ t("dataQuality.agent.noNextWake") }}
+                  </span>
+                </TableCell>
+                <TableCell class="hidden max-w-[16rem] xl:table-cell">
+                  <template v-if="session.blockedCode || session.blockedReason">
+                    <Badge variant="warning">
+                      {{ session.blockedCode || t("dataQuality.agent.state.blocked") }}
+                    </Badge>
+                    <p
+                      v-if="session.blockedReason"
+                      class="mt-1 line-clamp-2 text-xs text-muted-foreground"
+                      :title="session.blockedReason"
+                    >
+                      {{ session.blockedReason }}
+                    </p>
+                  </template>
+                  <span
+                    v-else
+                    class="text-muted-foreground"
+                  >-</span>
+                </TableCell>
+                <TableCell
+                  class="text-right"
+                  @click.stop
+                >
+                  <div class="flex items-center justify-end gap-1">
+                    <AgentSessionActions
+                      :session="session"
+                      :can-update="canUpdate"
+                      @updated="onUpdated"
+                      @archived="load()"
+                      @reload="reload()"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-8 w-8"
+                      as-child
+                    >
+                      <RouterLink
+                        :to="sessionRoute(session)"
+                        :title="t('dataQuality.agent.openConversation')"
+                        :aria-label="t('dataQuality.agent.openConversation')"
+                      >
+                        <ChevronRight class="h-4 w-4" />
+                      </RouterLink>
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+
+          <div class="px-6 pb-6">
+            <TablePager
+              v-model:page-size="pageSize"
+              :has-previous="hasPrevious"
+              :has-next="hasNext"
+              :disabled="isLoading"
+              @previous="goPrevious"
+              @next="goNext"
+            />
+          </div>
+
+          <p
+            v-if="filtered.length > 0"
+            class="border-t px-4 py-2 text-xs text-muted-foreground"
+          >
+            {{ t("dataQuality.agent.sessionCount", { count: filtered.length }) }}
+          </p>
+        </div>
       </PageState>
-      <p
-        v-if="sessions.length > 0 && filtered.length > 0"
-        class="border-t px-4 py-2 text-xs text-muted-foreground"
-      >
-        {{ t("dataQuality.agent.sessionCount", { count: filtered.length }) }}
-      </p>
     </Card>
 
     <TargetPicker
@@ -425,18 +557,22 @@ import {
   SearchX,
 } from "lucide-vue-next";
 import type { Component } from "vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { type LocationQuery, RouterLink, useRouter } from "vue-router";
 import {
   createQualityAgentSession,
   getQualityAgentMetrics,
   getQualityAgentRunnerStatus,
-  listQualityAgentSessions,
+  listQualityAgentSessionsPage,
 } from "@/api/data-quality";
+import { listDatabases } from "@/api/database";
+import { listAll } from "@/api/list";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
 import StatCard, { type StatCardTone } from "@/components/common/StatCard.vue";
+import TablePager from "@/components/common/TablePager.vue";
+import AgentPageTabs from "@/components/data-quality/AgentPageTabs.vue";
 import AgentSessionActions from "@/components/data-quality/AgentSessionActions.vue";
 import TargetPicker from "@/components/data-quality/TargetPicker.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
@@ -463,6 +599,7 @@ import {
 } from "@/components/ui/table";
 import { useDataQualityPermissions } from "@/composables/useDataQualityPermissions";
 import { useErrorMessage } from "@/composables/useErrorHandler";
+import { usePagedFetch } from "@/composables/usePagedFetch";
 import { usePolling } from "@/composables/usePolling";
 import { useUrlFilters } from "@/composables/useUrlFilters";
 import { notify } from "@/lib/notify";
@@ -470,12 +607,19 @@ import {
   type QualityAgentMetrics,
   type QualityAgentRunnerStatus,
   type QualityAgentSession,
+  QualityAgentSessionMode,
+  QualityAgentSessionSource,
   QualityAgentSessionState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { MetaType } from "@/types/proto-es/v1/database_service_pb";
+import { databaseRefLabel } from "@/utils/agentEnrollment";
 import {
   agentSessionHeartbeat,
   agentSessionMatchesSearch,
+  agentSessionModeKey,
+  agentSessionModeVariant,
+  agentSessionSourceKey,
+  agentSessionSourceVariant,
   agentSessionStateKey,
   agentSessionStateVariant,
   agentSessionTargetName,
@@ -487,7 +631,11 @@ import type { TargetSelection } from "@/utils/dataQualityForm";
 import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { isAborted } from "@/utils/error";
 import { guidToRouteParams } from "@/utils/guid";
-import { queryString } from "@/utils/queryFilters";
+import {
+  enumFilterValue,
+  enumFromFilter,
+  queryString,
+} from "@/utils/queryFilters";
 
 /**
  * The workspace's quality agent sessions: one long-lived conversation per table
@@ -495,8 +643,10 @@ import { queryString } from "@/utils/queryFilters";
  *
  * The list is the administrator's view — what is running, what is blocked, what
  * it spends and when it next wakes — while each row opens the transcript itself.
- * A live runner is polled every five seconds; an idle or disabled runner is not,
- * and a hidden tab pauses the poll through `usePolling`.
+ * The directory is server-paged and filtered (state, database, source and mode);
+ * the free-text search narrows the current page because the sessions RPC takes
+ * no search term. A live runner is polled every five seconds; an idle or disabled
+ * runner is not, and a hidden tab pauses the poll through `usePolling`.
  */
 
 type AgentStateFilter = "all" | "enabled" | "paused" | "blocked" | "archived";
@@ -504,41 +654,65 @@ type AgentStateFilter = "all" | "enabled" | "paused" | "blocked" | "archived";
 interface SessionFilters {
   state: AgentStateFilter;
   search: string;
+  database: string;
+  source: string;
+  mode: string;
 }
 
-const FILTER_QUERY_KEYS = ["state", "q"] as const;
+const FILTER_QUERY_KEYS = ["state", "q", "database", "source", "mode"] as const;
 const POLL_INTERVAL_MS = 5000;
+
+const SOURCES: readonly QualityAgentSessionSource[] = [
+  QualityAgentSessionSource.MANUAL,
+  QualityAgentSessionSource.AUTO,
+];
+const MODES: readonly QualityAgentSessionMode[] = [
+  QualityAgentSessionMode.MONITOR,
+  QualityAgentSessionMode.TRIAGE,
+];
+const ALL_SOURCES: readonly QualityAgentSessionSource[] = [
+  QualityAgentSessionSource.UNSPECIFIED,
+  ...SOURCES,
+];
+const ALL_MODES: readonly QualityAgentSessionMode[] = [
+  QualityAgentSessionMode.UNSPECIFIED,
+  ...MODES,
+];
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const { formatError } = useErrorMessage();
 const { canUpdate } = useDataQualityPermissions();
 
-const sessions = ref<QualityAgentSession[]>([]);
 const runner = ref<QualityAgentRunnerStatus>();
 const metrics = ref<QualityAgentMetrics>();
-const isLoading = ref(false);
+const runnerLoading = ref(false);
 const loadError = ref("");
 const runnerError = ref("");
 const createError = ref("");
 const pickerOpen = ref(false);
 const isCreating = ref(false);
-
-let loadGeneration = 0;
+const pageSize = ref(50);
 
 // ---- filters ----
+
+const AGENT_STATE_FILTERS: readonly AgentStateFilter[] = [
+  "enabled",
+  "paused",
+  "blocked",
+  "archived",
+];
 
 function parseFilters(query: LocationQuery): SessionFilters {
   const state = queryString(query.state);
   return {
-    state:
-      state === "enabled" ||
-      state === "paused" ||
-      state === "blocked" ||
-      state === "archived"
-        ? state
-        : "all",
+    state: AGENT_STATE_FILTERS.includes(state as AgentStateFilter)
+      ? (state as AgentStateFilter)
+      : "all",
     search: queryString(query.q).trim(),
+    database: queryString(query.database),
+    source: enumFilterValue(query.source, ALL_SOURCES),
+    mode: enumFilterValue(query.mode, ALL_MODES),
   };
 }
 
@@ -549,6 +723,15 @@ function serializeFilters(filters: SessionFilters): Record<string, string> {
   }
   if (filters.search) {
     owned.q = filters.search;
+  }
+  if (filters.database) {
+    owned.database = filters.database;
+  }
+  if (filters.source !== "-") {
+    owned.source = filters.source;
+  }
+  if (filters.mode !== "-") {
+    owned.mode = filters.mode;
   }
   return owned;
 }
@@ -564,6 +747,9 @@ const stateFilter = ref<AgentStateFilter>(initialFilters.state);
 const search = ref(initialFilters.search);
 /** The term the rows are filtered by, which only changes on Enter. */
 const appliedSearch = ref(initialFilters.search);
+const databaseFilter = ref(initialFilters.database);
+const sourceFilter = ref(initialFilters.source);
+const modeFilter = ref(initialFilters.mode);
 
 const selectedState = computed<QualityAgentSessionState>(() => {
   switch (stateFilter.value) {
@@ -579,6 +765,13 @@ const selectedState = computed<QualityAgentSessionState>(() => {
       return QualityAgentSessionState.UNSPECIFIED;
   }
 });
+
+const selectedSource = computed(() =>
+  enumFromFilter(sourceFilter.value, ALL_SOURCES)
+);
+const selectedMode = computed(() =>
+  enumFromFilter(modeFilter.value, ALL_MODES)
+);
 
 const stateOptions = computed<
   Array<{ value: AgentStateFilter; label: string }>
@@ -603,30 +796,50 @@ const stateOptions = computed<
 ]);
 
 const hasActiveFilters = computed(
-  () => stateFilter.value !== "all" || appliedSearch.value !== ""
-);
-
-const filtered = computed(() =>
-  sessions.value.filter((session) =>
-    agentSessionMatchesSearch(session, appliedSearch.value)
-  )
+  () =>
+    stateFilter.value !== "all" ||
+    appliedSearch.value !== "" ||
+    databaseFilter.value !== "" ||
+    sourceFilter.value !== "-" ||
+    modeFilter.value !== "-"
 );
 
 function currentFilters(): SessionFilters {
-  return { state: stateFilter.value, search: appliedSearch.value };
+  return {
+    state: stateFilter.value,
+    search: appliedSearch.value,
+    database: databaseFilter.value,
+    source: sourceFilter.value,
+    mode: modeFilter.value,
+  };
 }
 
 function changeState(value: unknown) {
   const next = String(value);
-  stateFilter.value =
-    next === "enabled" ||
-    next === "paused" ||
-    next === "blocked" ||
-    next === "archived"
-      ? next
-      : "all";
+  stateFilter.value = AGENT_STATE_FILTERS.includes(next as AgentStateFilter)
+    ? (next as AgentStateFilter)
+    : "all";
   urlFilters.write(currentFilters());
-  void load();
+  void reset();
+}
+
+function changeDatabase(value: unknown) {
+  const next = String(value);
+  databaseFilter.value = next === "-" ? "" : next;
+  urlFilters.write(currentFilters());
+  void reset();
+}
+
+function changeSource(value: unknown) {
+  sourceFilter.value = enumFilterValue(String(value), ALL_SOURCES);
+  urlFilters.write(currentFilters());
+  void reset();
+}
+
+function changeMode(value: unknown) {
+  modeFilter.value = enumFilterValue(String(value), ALL_MODES);
+  urlFilters.write(currentFilters());
+  void reset();
 }
 
 function applySearch() {
@@ -638,19 +851,64 @@ function clearFilters() {
   stateFilter.value = "all";
   search.value = "";
   appliedSearch.value = "";
+  databaseFilter.value = "";
+  sourceFilter.value = "-";
+  modeFilter.value = "-";
   urlFilters.write(currentFilters());
-  void load();
+  void reset();
 }
 
 urlFilters.watchExternal((filters) => {
-  const stateChanged = filters.state !== stateFilter.value;
   stateFilter.value = filters.state;
   search.value = filters.search;
   appliedSearch.value = filters.search;
-  if (stateChanged) {
-    void load();
-  }
+  databaseFilter.value = filters.database;
+  sourceFilter.value = filters.source;
+  modeFilter.value = filters.mode;
+  void reset();
 });
+
+// ---- database filter options ----
+
+/** The databases the runner may scope a session to; a read failure leaves the
+ * filter empty rather than blocking the page. */
+const databaseOptions = ref<Array<{ value: string; label: string }>>([]);
+
+async function loadDatabaseOptions() {
+  try {
+    const databases = await listAll(async (pageToken) => {
+      const response = await listDatabases({
+        parent: "workspaces/-",
+        pageSize: 1000,
+        pageToken,
+      });
+      return {
+        items: response.databases,
+        nextPageToken: response.nextPageToken,
+      };
+    });
+    databaseOptions.value = databases
+      .filter((database) => !!database.name)
+      .map((database) => ({
+        value: database.name,
+        label: databaseRefLabel(database.name),
+      }));
+  } catch {
+    databaseOptions.value = [];
+  }
+  // A saved filter whose database is gone stays selectable and visible.
+  if (
+    databaseFilter.value &&
+    !databaseOptions.value.some(
+      (option) => option.value === databaseFilter.value
+    )
+  ) {
+    databaseOptions.value.unshift({
+      value: databaseFilter.value,
+      label: databaseRefLabel(databaseFilter.value),
+    });
+  }
+}
 
 // ---- runner status ----
 
@@ -679,9 +937,9 @@ const runnerLastActivityLabel = computed(() =>
 /**
  * Per-state session counts, from the runner metrics only.
  *
- * The directory is filtered (state and target search), so counting its rows
- * would report the current filter's view as if it were the whole workspace.
- * Without metrics the cards show "—" rather than a wrong number.
+ * The directory is filtered (state, database, source, mode) and paged, so
+ * counting its rows would report the current page's view as if it were the whole
+ * workspace. Without metrics the cards show "—" rather than a wrong number.
  */
 const stateCounts = computed(
   (): Map<QualityAgentSessionState, number> | undefined => {
@@ -722,7 +980,50 @@ function stateCount(state: QualityAgentSessionState): string | number {
   return counts ? (counts.get(state) ?? 0) : "—";
 }
 
-// ---- loading ----
+// ---- paged list ----
+
+const {
+  items: sessions,
+  isLoading: listLoading,
+  hasNext,
+  hasPrevious,
+  reset,
+  refresh,
+  goNext,
+  goPrevious,
+} = usePagedFetch<QualityAgentSession>({
+  fetchPage: async (pageToken, signal) => {
+    loadError.value = "";
+    return await listQualityAgentSessionsPage({
+      pageSize: pageSize.value,
+      pageToken,
+      state: selectedState.value,
+      database: databaseFilter.value,
+      source: selectedSource.value,
+      mode: selectedMode.value,
+      signal,
+    });
+  },
+  onError: (e) => {
+    loadError.value = formatError(e, "dataQuality.agent.loadFailed");
+  },
+});
+
+const isLoading = computed(
+  () =>
+    runnerLoading.value || (listLoading.value && sessions.value.length === 0)
+);
+
+watch(pageSize, () => void reset());
+
+/** The rows the free-text search keeps; the server carries no search parameter. */
+const filtered = computed(() =>
+  sessions.value.filter((session) =>
+    agentSessionMatchesSearch(session, appliedSearch.value)
+  )
+);
+
+// ---- loading and polling ----
 
 const shouldPoll = computed(
   () =>
@@ -733,7 +1034,13 @@ const shouldPoll = computed(
     )
 );
 
-const polling = usePolling((signal) => load(true, signal), {
+/** One poll round: the runner's counters and the page the reader is on. */
+async function pollOnce(signal: AbortSignal) {
+  await Promise.all([loadRunner(signal), loadMetrics(signal)]);
+  await refresh({ signal });
+}
+
+const polling = usePolling(pollOnce, {
   intervalMs: POLL_INTERVAL_MS,
   shouldContinue: () => shouldPoll.value,
   continueOnError: true,
@@ -762,38 +1069,29 @@ async function loadMetrics(signal?: AbortSignal) {
 }
 
 async function load(silent = false, signal?: AbortSignal) {
-  const mine = ++loadGeneration;
   if (!silent) {
-    isLoading.value = true;
+    runnerLoading.value = true;
     loadError.value = "";
   }
   try {
     await Promise.all([loadRunner(signal), loadMetrics(signal)]);
-    const next = await listQualityAgentSessions({
-      state: selectedState.value,
-      signal,
-    });
-    if (mine !== loadGeneration || signal?.aborted) {
-      return;
-    }
-    sessions.value = next;
-  } catch (e: unknown) {
-    if (mine !== loadGeneration || isAborted(e)) {
-      return;
-    }
-    if (!silent) {
-      loadError.value = formatError(e, "dataQuality.agent.loadFailed");
-    }
   } finally {
-    if (mine === loadGeneration) {
-      isLoading.value = false;
+    if (!silent) {
+      runnerLoading.value = false;
     }
   }
+  await reset({ signal });
   if (shouldPoll.value) {
     polling.start();
   } else {
     polling.stop();
   }
+}
+
+/** Re-read the current page without going back to its first page. */
+async function reload() {
+  await Promise.all([loadRunner(), loadMetrics()]);
+  await refresh();
 }
 
 // ---- row actions ----
@@ -855,6 +1153,7 @@ async function onTargetPicked(selection: TargetSelection) {
 }
 
 onMounted(() => {
+  void loadDatabaseOptions();
   void load();
 });
 </script>

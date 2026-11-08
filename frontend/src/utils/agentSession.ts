@@ -4,6 +4,8 @@ import {
   QualityAgentMessageRole,
   type QualityAgentSession,
   type QualityAgentSessionMessage,
+  QualityAgentSessionMode,
+  QualityAgentSessionSource,
   QualityAgentSessionState,
   type QualityToolCall,
 } from "@/types/proto-es/v1/data_quality_service_pb";
@@ -116,6 +118,62 @@ function timestampMillis(value: Timestamp | undefined): number | undefined {
     return undefined;
   }
   return seconds * 1000 + Math.floor(nanos / 1_000_000);
+}
+
+// ---- session source and mode ----
+
+/** The label key for who created a session: a person or the enrollment queue. */
+export function agentSessionSourceKey(
+  source: QualityAgentSessionSource
+): string {
+  switch (source) {
+    case QualityAgentSessionSource.MANUAL:
+      return "dataQuality.agent.source.manual";
+    case QualityAgentSessionSource.AUTO:
+      return "dataQuality.agent.source.auto";
+    default:
+      return "dataQuality.agent.source.unspecified";
+  }
+}
+
+/** The badge variant for a session's source. An automatic session is quieter. */
+export function agentSessionSourceVariant(
+  source: QualityAgentSessionSource
+): QualityBadgeVariant {
+  switch (source) {
+    case QualityAgentSessionSource.AUTO:
+      return "secondary";
+    case QualityAgentSessionSource.MANUAL:
+      return "outline";
+    default:
+      return "outline";
+  }
+}
+
+/** The label key for what a wake does: monitor a covered target or triage one. */
+export function agentSessionModeKey(mode: QualityAgentSessionMode): string {
+  switch (mode) {
+    case QualityAgentSessionMode.MONITOR:
+      return "dataQuality.agent.mode.monitor";
+    case QualityAgentSessionMode.TRIAGE:
+      return "dataQuality.agent.mode.triage";
+    default:
+      return "dataQuality.agent.mode.unspecified";
+  }
+}
+
+/** The badge variant for a session's mode. Triage is the one still proposing. */
+export function agentSessionModeVariant(
+  mode: QualityAgentSessionMode
+): QualityBadgeVariant {
+  switch (mode) {
+    case QualityAgentSessionMode.MONITOR:
+      return "info";
+    case QualityAgentSessionMode.TRIAGE:
+      return "warning";
+    default:
+      return "outline";
+  }
 }
 
 // ---- transcript vocabulary ----

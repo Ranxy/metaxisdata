@@ -61,6 +61,18 @@ export const DYNAMIC_PREFIXES = [
   "dataQuality.agent.state.",
   "dataQuality.agent.role.",
   "dataQuality.agent.origin.",
+  // agentSessionSourceKey/agentSessionModeKey in src/utils/agentSession.ts return
+  // the label key for who created a session and what its wake does.
+  "dataQuality.agent.source.",
+  "dataQuality.agent.mode.",
+  // enrollmentStateKey/enrollmentPriorityReasonLabels/enrollmentBlockedReasonLabel
+  // in src/utils/agentEnrollment.ts return the label key for a queue state, a
+  // priority signal and a blocked reason; the queue page also picks a per-database
+  // count key through a table, which the checker cannot follow.
+  "dataQuality.agent.enrollment.state.",
+  "dataQuality.agent.enrollment.prioritySignal.",
+  "dataQuality.agent.enrollment.blocked.",
+  "dataQuality.agent.enrollment.database",
   // dataQuality.* — src/utils/dataQuality.ts maps an enum to its label key, and
   // describeThreshold returns the comparison key; the checker cannot follow a
   // key a helper returns. The vocabulary test there asserts both catalogs.
