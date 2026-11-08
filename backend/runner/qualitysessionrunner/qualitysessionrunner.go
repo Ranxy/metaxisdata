@@ -262,14 +262,16 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 // disable the agent after the session was created.
 func (r *Runner) scopeBlocker(ctx context.Context, settings dataquality.Settings, session *store.QualityAgentSessionMessage) (code, reason string, nextWake *time.Time) {
 	if session.DatabaseRef == "" || !settings.AgentRunnerDatabaseEnabled(session.DatabaseRef) {
-		return "needs-human", "the session's database is no longer in the runner's allowlist", nil
+		// Reversible: adding the database back lets the enrollment runner recover the
+		// session, so this must not be the needs-human dead end.
+		return "out-of-scope", "the session's database is no longer in the runner's allowlist", nil
 	}
 	agent, err := r.store.GetQualityAgentByID(ctx, session.AgentID)
 	if err != nil {
 		return "internal-error", "the session's agent could not be read", ptrTime(r.now().Add(retryWake))
 	}
 	if agent == nil || !agent.Enabled {
-		return "needs-human", "the session's agent is disabled", nil
+		return "agent-disabled", "the session's agent is disabled", nil
 	}
 	return "", "", nil
 }
