@@ -307,6 +307,18 @@ const (
 	// DataQualityServiceGetQualityAgentMetricsProcedure is the fully-qualified name of the
 	// DataQualityService's GetQualityAgentMetrics RPC.
 	DataQualityServiceGetQualityAgentMetricsProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
+	// DataQualityServiceListQualityAgentEnrollmentsProcedure is the fully-qualified name of the
+	// DataQualityService's ListQualityAgentEnrollments RPC.
+	DataQualityServiceListQualityAgentEnrollmentsProcedure = "/metaxisdata.v1.DataQualityService/ListQualityAgentEnrollments"
+	// DataQualityServiceGetQualityAgentEnrollmentSummaryProcedure is the fully-qualified name of the
+	// DataQualityService's GetQualityAgentEnrollmentSummary RPC.
+	DataQualityServiceGetQualityAgentEnrollmentSummaryProcedure = "/metaxisdata.v1.DataQualityService/GetQualityAgentEnrollmentSummary"
+	// DataQualityServiceUpdateQualityAgentEnrollmentProcedure is the fully-qualified name of the
+	// DataQualityService's UpdateQualityAgentEnrollment RPC.
+	DataQualityServiceUpdateQualityAgentEnrollmentProcedure = "/metaxisdata.v1.DataQualityService/UpdateQualityAgentEnrollment"
+	// DataQualityServiceRetryQualityAgentEnrollmentProcedure is the fully-qualified name of the
+	// DataQualityService's RetryQualityAgentEnrollment RPC.
+	DataQualityServiceRetryQualityAgentEnrollmentProcedure = "/metaxisdata.v1.DataQualityService/RetryQualityAgentEnrollment"
 )
 
 // DataQualityServiceClient is a client for the metaxisdata.v1.DataQualityService service.
@@ -649,6 +661,17 @@ type DataQualityServiceClient interface {
 	// Read the runner's evaluation: session states, token spend, the acceptance of the
 	// change requests it proposed, and investigation verdicts. Read-only.
 	GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error)
+	// List the runner's enrollment queue: one row per monitorable object in the
+	// runner's database scope, with its queue state, priority and session link.
+	ListQualityAgentEnrollments(context.Context, *connect.Request[v1.ListQualityAgentEnrollmentsRequest]) (*connect.Response[v1.ListQualityAgentEnrollmentsResponse], error)
+	// Read enrollment counts by state and by database. Read-only.
+	GetQualityAgentEnrollmentSummary(context.Context, *connect.Request[v1.GetQualityAgentEnrollmentSummaryRequest]) (*connect.Response[v1.QualityAgentEnrollmentSummary], error)
+	// Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
+	// as target states, and a stale expected_revision is rejected.
+	UpdateQualityAgentEnrollment(context.Context, *connect.Request[v1.UpdateQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error)
+	// Requeue one enrollment now: it becomes pending, its next review is due and its
+	// priority is raised.
+	RetryQualityAgentEnrollment(context.Context, *connect.Request[v1.RetryQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error)
 }
 
 // NewDataQualityServiceClient constructs a client for the metaxisdata.v1.DataQualityService
@@ -1208,6 +1231,30 @@ func NewDataQualityServiceClient(httpClient connect.HTTPClient, baseURL string, 
 			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentMetrics")),
 			connect.WithClientOptions(opts...),
 		),
+		listQualityAgentEnrollments: connect.NewClient[v1.ListQualityAgentEnrollmentsRequest, v1.ListQualityAgentEnrollmentsResponse](
+			httpClient,
+			baseURL+DataQualityServiceListQualityAgentEnrollmentsProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentEnrollments")),
+			connect.WithClientOptions(opts...),
+		),
+		getQualityAgentEnrollmentSummary: connect.NewClient[v1.GetQualityAgentEnrollmentSummaryRequest, v1.QualityAgentEnrollmentSummary](
+			httpClient,
+			baseURL+DataQualityServiceGetQualityAgentEnrollmentSummaryProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentEnrollmentSummary")),
+			connect.WithClientOptions(opts...),
+		),
+		updateQualityAgentEnrollment: connect.NewClient[v1.UpdateQualityAgentEnrollmentRequest, v1.QualityAgentEnrollment](
+			httpClient,
+			baseURL+DataQualityServiceUpdateQualityAgentEnrollmentProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityAgentEnrollment")),
+			connect.WithClientOptions(opts...),
+		),
+		retryQualityAgentEnrollment: connect.NewClient[v1.RetryQualityAgentEnrollmentRequest, v1.QualityAgentEnrollment](
+			httpClient,
+			baseURL+DataQualityServiceRetryQualityAgentEnrollmentProcedure,
+			connect.WithSchema(dataQualityServiceMethods.ByName("RetryQualityAgentEnrollment")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1304,6 +1351,10 @@ type dataQualityServiceClient struct {
 	listQualityAgentSessionMessages    *connect.Client[v1.ListQualityAgentSessionMessagesRequest, v1.ListQualityAgentSessionMessagesResponse]
 	getQualityAgentRunnerStatus        *connect.Client[v1.GetQualityAgentRunnerStatusRequest, v1.QualityAgentRunnerStatus]
 	getQualityAgentMetrics             *connect.Client[v1.GetQualityAgentMetricsRequest, v1.QualityAgentMetrics]
+	listQualityAgentEnrollments        *connect.Client[v1.ListQualityAgentEnrollmentsRequest, v1.ListQualityAgentEnrollmentsResponse]
+	getQualityAgentEnrollmentSummary   *connect.Client[v1.GetQualityAgentEnrollmentSummaryRequest, v1.QualityAgentEnrollmentSummary]
+	updateQualityAgentEnrollment       *connect.Client[v1.UpdateQualityAgentEnrollmentRequest, v1.QualityAgentEnrollment]
+	retryQualityAgentEnrollment        *connect.Client[v1.RetryQualityAgentEnrollmentRequest, v1.QualityAgentEnrollment]
 }
 
 // ListQualityRules calls metaxisdata.v1.DataQualityService.ListQualityRules.
@@ -1767,6 +1818,28 @@ func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, r
 	return c.getQualityAgentMetrics.CallUnary(ctx, req)
 }
 
+// ListQualityAgentEnrollments calls metaxisdata.v1.DataQualityService.ListQualityAgentEnrollments.
+func (c *dataQualityServiceClient) ListQualityAgentEnrollments(ctx context.Context, req *connect.Request[v1.ListQualityAgentEnrollmentsRequest]) (*connect.Response[v1.ListQualityAgentEnrollmentsResponse], error) {
+	return c.listQualityAgentEnrollments.CallUnary(ctx, req)
+}
+
+// GetQualityAgentEnrollmentSummary calls
+// metaxisdata.v1.DataQualityService.GetQualityAgentEnrollmentSummary.
+func (c *dataQualityServiceClient) GetQualityAgentEnrollmentSummary(ctx context.Context, req *connect.Request[v1.GetQualityAgentEnrollmentSummaryRequest]) (*connect.Response[v1.QualityAgentEnrollmentSummary], error) {
+	return c.getQualityAgentEnrollmentSummary.CallUnary(ctx, req)
+}
+
+// UpdateQualityAgentEnrollment calls
+// metaxisdata.v1.DataQualityService.UpdateQualityAgentEnrollment.
+func (c *dataQualityServiceClient) UpdateQualityAgentEnrollment(ctx context.Context, req *connect.Request[v1.UpdateQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error) {
+	return c.updateQualityAgentEnrollment.CallUnary(ctx, req)
+}
+
+// RetryQualityAgentEnrollment calls metaxisdata.v1.DataQualityService.RetryQualityAgentEnrollment.
+func (c *dataQualityServiceClient) RetryQualityAgentEnrollment(ctx context.Context, req *connect.Request[v1.RetryQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error) {
+	return c.retryQualityAgentEnrollment.CallUnary(ctx, req)
+}
+
 // DataQualityServiceHandler is an implementation of the metaxisdata.v1.DataQualityService service.
 type DataQualityServiceHandler interface {
 	// List rules, newest first.
@@ -2107,6 +2180,17 @@ type DataQualityServiceHandler interface {
 	// Read the runner's evaluation: session states, token spend, the acceptance of the
 	// change requests it proposed, and investigation verdicts. Read-only.
 	GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error)
+	// List the runner's enrollment queue: one row per monitorable object in the
+	// runner's database scope, with its queue state, priority and session link.
+	ListQualityAgentEnrollments(context.Context, *connect.Request[v1.ListQualityAgentEnrollmentsRequest]) (*connect.Response[v1.ListQualityAgentEnrollmentsResponse], error)
+	// Read enrollment counts by state and by database. Read-only.
+	GetQualityAgentEnrollmentSummary(context.Context, *connect.Request[v1.GetQualityAgentEnrollmentSummaryRequest]) (*connect.Response[v1.QualityAgentEnrollmentSummary], error)
+	// Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
+	// as target states, and a stale expected_revision is rejected.
+	UpdateQualityAgentEnrollment(context.Context, *connect.Request[v1.UpdateQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error)
+	// Requeue one enrollment now: it becomes pending, its next review is due and its
+	// priority is raised.
+	RetryQualityAgentEnrollment(context.Context, *connect.Request[v1.RetryQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error)
 }
 
 // NewDataQualityServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -2662,6 +2746,30 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentMetrics")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataQualityServiceListQualityAgentEnrollmentsHandler := connect.NewUnaryHandler(
+		DataQualityServiceListQualityAgentEnrollmentsProcedure,
+		svc.ListQualityAgentEnrollments,
+		connect.WithSchema(dataQualityServiceMethods.ByName("ListQualityAgentEnrollments")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceGetQualityAgentEnrollmentSummaryHandler := connect.NewUnaryHandler(
+		DataQualityServiceGetQualityAgentEnrollmentSummaryProcedure,
+		svc.GetQualityAgentEnrollmentSummary,
+		connect.WithSchema(dataQualityServiceMethods.ByName("GetQualityAgentEnrollmentSummary")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceUpdateQualityAgentEnrollmentHandler := connect.NewUnaryHandler(
+		DataQualityServiceUpdateQualityAgentEnrollmentProcedure,
+		svc.UpdateQualityAgentEnrollment,
+		connect.WithSchema(dataQualityServiceMethods.ByName("UpdateQualityAgentEnrollment")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataQualityServiceRetryQualityAgentEnrollmentHandler := connect.NewUnaryHandler(
+		DataQualityServiceRetryQualityAgentEnrollmentProcedure,
+		svc.RetryQualityAgentEnrollment,
+		connect.WithSchema(dataQualityServiceMethods.ByName("RetryQualityAgentEnrollment")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/metaxisdata.v1.DataQualityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataQualityServiceListQualityRulesProcedure:
@@ -2846,6 +2954,14 @@ func NewDataQualityServiceHandler(svc DataQualityServiceHandler, opts ...connect
 			dataQualityServiceGetQualityAgentRunnerStatusHandler.ServeHTTP(w, r)
 		case DataQualityServiceGetQualityAgentMetricsProcedure:
 			dataQualityServiceGetQualityAgentMetricsHandler.ServeHTTP(w, r)
+		case DataQualityServiceListQualityAgentEnrollmentsProcedure:
+			dataQualityServiceListQualityAgentEnrollmentsHandler.ServeHTTP(w, r)
+		case DataQualityServiceGetQualityAgentEnrollmentSummaryProcedure:
+			dataQualityServiceGetQualityAgentEnrollmentSummaryHandler.ServeHTTP(w, r)
+		case DataQualityServiceUpdateQualityAgentEnrollmentProcedure:
+			dataQualityServiceUpdateQualityAgentEnrollmentHandler.ServeHTTP(w, r)
+		case DataQualityServiceRetryQualityAgentEnrollmentProcedure:
+			dataQualityServiceRetryQualityAgentEnrollmentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -3217,4 +3333,20 @@ func (UnimplementedDataQualityServiceHandler) GetQualityAgentRunnerStatus(contex
 
 func (UnimplementedDataQualityServiceHandler) GetQualityAgentMetrics(context.Context, *connect.Request[v1.GetQualityAgentMetricsRequest]) (*connect.Response[v1.QualityAgentMetrics], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentMetrics is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) ListQualityAgentEnrollments(context.Context, *connect.Request[v1.ListQualityAgentEnrollmentsRequest]) (*connect.Response[v1.ListQualityAgentEnrollmentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.ListQualityAgentEnrollments is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) GetQualityAgentEnrollmentSummary(context.Context, *connect.Request[v1.GetQualityAgentEnrollmentSummaryRequest]) (*connect.Response[v1.QualityAgentEnrollmentSummary], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.GetQualityAgentEnrollmentSummary is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) UpdateQualityAgentEnrollment(context.Context, *connect.Request[v1.UpdateQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.UpdateQualityAgentEnrollment is not implemented"))
+}
+
+func (UnimplementedDataQualityServiceHandler) RetryQualityAgentEnrollment(context.Context, *connect.Request[v1.RetryQualityAgentEnrollmentRequest]) (*connect.Response[v1.QualityAgentEnrollment], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("metaxisdata.v1.DataQualityService.RetryQualityAgentEnrollment is not implemented"))
 }

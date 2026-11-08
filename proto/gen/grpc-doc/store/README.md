@@ -37,6 +37,7 @@
     - [GroupCheckConfig](#metaxisdata-store-GroupCheckConfig)
     - [NullPercentConfig](#metaxisdata-store-NullPercentConfig)
     - [ProfileValue](#metaxisdata-store-ProfileValue)
+    - [QualityAgentEnrollment](#metaxisdata-store-QualityAgentEnrollment)
     - [QualityAgentMessage](#metaxisdata-store-QualityAgentMessage)
     - [QualityAgentSession](#metaxisdata-store-QualityAgentSession)
     - [QualityAgentSessionEngineState](#metaxisdata-store-QualityAgentSessionEngineState)
@@ -96,8 +97,11 @@
     - [UniqueCombinationConfig](#metaxisdata-store-UniqueCombinationConfig)
     - [UniqueConfig](#metaxisdata-store-UniqueConfig)
   
+    - [QualityAgentEnrollmentState](#metaxisdata-store-QualityAgentEnrollmentState)
     - [QualityAgentMessageOrigin](#metaxisdata-store-QualityAgentMessageOrigin)
     - [QualityAgentMessageRole](#metaxisdata-store-QualityAgentMessageRole)
+    - [QualityAgentSessionMode](#metaxisdata-store-QualityAgentSessionMode)
+    - [QualityAgentSessionSource](#metaxisdata-store-QualityAgentSessionSource)
     - [QualityAgentSessionState](#metaxisdata-store-QualityAgentSessionState)
     - [QualityAggregateFunction](#metaxisdata-store-QualityAggregateFunction)
     - [QualityChangeRejectionReason](#metaxisdata-store-QualityChangeRejectionReason)
@@ -844,6 +848,43 @@ value the column holds.
 
 
 
+<a name="metaxisdata-store-QualityAgentEnrollment"></a>
+
+### QualityAgentEnrollment
+QualityAgentEnrollment is one target&#39;s place in the runner&#39;s queue: the desired
+state derived from the database scope, plus the priority and admission hints a
+person sees. The session row remains the execution state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| id | [int64](#int64) |  |  |
+| workspace_id | [string](#string) |  |  |
+| target_guid | [string](#string) |  |  |
+| target_type | [int32](#int32) |  |  |
+| database_ref | [string](#string) |  |  |
+| state | [QualityAgentEnrollmentState](#metaxisdata-store-QualityAgentEnrollmentState) |  |  |
+| mode | [QualityAgentSessionMode](#metaxisdata-store-QualityAgentSessionMode) |  |  |
+| priority | [int32](#int32) |  | 0..1000; larger is admitted first. |
+| priority_reason | [string](#string) |  | Human-readable signals behind the score, for example &#34;rules,failing&#34;. |
+| blocked_reason | [string](#string) |  | Why the row is not progressing (a budget, a person or a missing dependency). |
+| session_id | [int64](#int64) |  |  |
+| triage_count | [int32](#int32) |  |  |
+| last_triaged_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| next_review_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| discovered_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_seen_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| excluded_by | [int32](#int32) |  |  |
+| excluded_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| revision | [int32](#int32) |  |  |
+| created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-store-QualityAgentMessage"></a>
 
 ### QualityAgentMessage
@@ -913,6 +954,8 @@ QualityAgentSession is one target&#39;s durable agent conversation and wake sche
 | created_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | updated_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | archived_at | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| source | [QualityAgentSessionSource](#metaxisdata-store-QualityAgentSessionSource) |  |  |
+| mode | [QualityAgentSessionMode](#metaxisdata-store-QualityAgentSessionMode) |  |  |
 
 
 
@@ -2044,6 +2087,25 @@ measured per threshold_metric; the default fail threshold is zero.
  
 
 
+<a name="metaxisdata-store-QualityAgentEnrollmentState"></a>
+
+### QualityAgentEnrollmentState
+QualityAgentEnrollmentState is the queue state of one target in the runner&#39;s
+scope. The enrollment row is the desired state; a session is created lazily
+when the row is admitted.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_ENROLLMENT_STATE_PENDING | 1 | Discovered and waiting for admission (a budget, a person or a dependency). |
+| QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE | 2 | Admitted: a session exists and is triaging or monitoring the target. |
+| QUALITY_AGENT_ENROLLMENT_STATE_DORMANT | 3 | Triaged with nothing left to do; waits for its next review or an approval. |
+| QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED | 4 | A person opted the target out; discovery never re-admits it. |
+| QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE | 5 | The target&#39;s database left the runner&#39;s scope. Reversible. |
+| QUALITY_AGENT_ENROLLMENT_STATE_GONE | 6 | The registry object no longer exists. The row is kept for history. |
+
+
+
 <a name="metaxisdata-store-QualityAgentMessageOrigin"></a>
 
 ### QualityAgentMessageOrigin
@@ -2075,6 +2137,35 @@ QualityAgentMessageRole is one entry in a session&#39;s conversation.
 | QUALITY_AGENT_MESSAGE_ROLE_TOOL | 4 |  |
 | QUALITY_AGENT_MESSAGE_ROLE_ENGINE | 5 | An engine note is runner/UI bookkeeping and is never sent back to the model. |
 | QUALITY_AGENT_MESSAGE_ROLE_COMPACTION | 6 | A compaction checkpoint replaces the covered messages in model context. |
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionMode"></a>
+
+### QualityAgentSessionMode
+QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an
+already-covered target; TRIAGE analyses a target that has no quality coverage
+and proposes a plan and checks for a person to approve.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_MODE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_MODE_MONITOR | 1 |  |
+| QUALITY_AGENT_SESSION_MODE_TRIAGE | 2 |  |
+
+
+
+<a name="metaxisdata-store-QualityAgentSessionSource"></a>
+
+### QualityAgentSessionSource
+QualityAgentSessionSource says who created a session: a person or the
+enrollment queue. An automatic session is also distinguished by created_by.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_SOURCE_MANUAL | 1 |  |
+| QUALITY_AGENT_SESSION_SOURCE_AUTO | 2 |  |
 
 
 
@@ -4840,6 +4931,11 @@ metaxisdata.v1.DataQualitySetting.
 | agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages. Zero means the server default (262144). |
 | agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds. Zero means the server default (86400). |
 | agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
+| agent_runner_auto_enroll | [bool](#bool) |  | Whether the runner enrolls every monitorable object in its database scope into its queue. Off by default: turning it on is the workspace&#39;s opt-in to automatic triage and monitoring. |
+| agent_runner_max_new_sessions_per_hour | [int32](#int32) |  | How many automatic sessions the admission path may create per hour. Zero means the server default (10). |
+| agent_runner_max_active_sessions | [int32](#int32) |  | How many enrollments may be active (triaging or monitoring) at once. Zero means the server default (100). |
+| agent_runner_dormant_review_days | [int32](#int32) |  | How many days a triaged target sleeps before it is reviewed again. Zero means the server default (30). |
+| agent_runner_event_budget_percent | [int32](#int32) |  | The percentage of the hourly wake budget reserved for events and people; the admission path only spends what remains. Zero means the server default (50). |
 
 
 

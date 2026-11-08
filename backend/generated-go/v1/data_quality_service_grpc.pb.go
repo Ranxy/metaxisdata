@@ -111,6 +111,10 @@ const (
 	DataQualityService_ListQualityAgentSessionMessages_FullMethodName    = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessionMessages"
 	DataQualityService_GetQualityAgentRunnerStatus_FullMethodName        = "/metaxisdata.v1.DataQualityService/GetQualityAgentRunnerStatus"
 	DataQualityService_GetQualityAgentMetrics_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
+	DataQualityService_ListQualityAgentEnrollments_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualityAgentEnrollments"
+	DataQualityService_GetQualityAgentEnrollmentSummary_FullMethodName   = "/metaxisdata.v1.DataQualityService/GetQualityAgentEnrollmentSummary"
+	DataQualityService_UpdateQualityAgentEnrollment_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualityAgentEnrollment"
+	DataQualityService_RetryQualityAgentEnrollment_FullMethodName        = "/metaxisdata.v1.DataQualityService/RetryQualityAgentEnrollment"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -466,6 +470,17 @@ type DataQualityServiceClient interface {
 	// Read the runner's evaluation: session states, token spend, the acceptance of the
 	// change requests it proposed, and investigation verdicts. Read-only.
 	GetQualityAgentMetrics(ctx context.Context, in *GetQualityAgentMetricsRequest, opts ...grpc.CallOption) (*QualityAgentMetrics, error)
+	// List the runner's enrollment queue: one row per monitorable object in the
+	// runner's database scope, with its queue state, priority and session link.
+	ListQualityAgentEnrollments(ctx context.Context, in *ListQualityAgentEnrollmentsRequest, opts ...grpc.CallOption) (*ListQualityAgentEnrollmentsResponse, error)
+	// Read enrollment counts by state and by database. Read-only.
+	GetQualityAgentEnrollmentSummary(ctx context.Context, in *GetQualityAgentEnrollmentSummaryRequest, opts ...grpc.CallOption) (*QualityAgentEnrollmentSummary, error)
+	// Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
+	// as target states, and a stale expected_revision is rejected.
+	UpdateQualityAgentEnrollment(ctx context.Context, in *UpdateQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error)
+	// Requeue one enrollment now: it becomes pending, its next review is due and its
+	// priority is raised.
+	RetryQualityAgentEnrollment(ctx context.Context, in *RetryQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error)
 }
 
 type dataQualityServiceClient struct {
@@ -1422,6 +1437,46 @@ func (c *dataQualityServiceClient) GetQualityAgentMetrics(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) ListQualityAgentEnrollments(ctx context.Context, in *ListQualityAgentEnrollmentsRequest, opts ...grpc.CallOption) (*ListQualityAgentEnrollmentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentEnrollmentsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentEnrollments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentEnrollmentSummary(ctx context.Context, in *GetQualityAgentEnrollmentSummaryRequest, opts ...grpc.CallOption) (*QualityAgentEnrollmentSummary, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentEnrollmentSummary)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentEnrollmentSummary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualityAgentEnrollment(ctx context.Context, in *UpdateQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentEnrollment)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityAgentEnrollment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) RetryQualityAgentEnrollment(ctx context.Context, in *RetryQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentEnrollment)
+	err := c.cc.Invoke(ctx, DataQualityService_RetryQualityAgentEnrollment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataQualityServiceServer is the server API for DataQualityService service.
 // All implementations must embed UnimplementedDataQualityServiceServer
 // for forward compatibility.
@@ -1775,6 +1830,17 @@ type DataQualityServiceServer interface {
 	// Read the runner's evaluation: session states, token spend, the acceptance of the
 	// change requests it proposed, and investigation verdicts. Read-only.
 	GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error)
+	// List the runner's enrollment queue: one row per monitorable object in the
+	// runner's database scope, with its queue state, priority and session link.
+	ListQualityAgentEnrollments(context.Context, *ListQualityAgentEnrollmentsRequest) (*ListQualityAgentEnrollmentsResponse, error)
+	// Read enrollment counts by state and by database. Read-only.
+	GetQualityAgentEnrollmentSummary(context.Context, *GetQualityAgentEnrollmentSummaryRequest) (*QualityAgentEnrollmentSummary, error)
+	// Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
+	// as target states, and a stale expected_revision is rejected.
+	UpdateQualityAgentEnrollment(context.Context, *UpdateQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error)
+	// Requeue one enrollment now: it becomes pending, its next review is due and its
+	// priority is raised.
+	RetryQualityAgentEnrollment(context.Context, *RetryQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error)
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
 
@@ -2057,6 +2123,18 @@ func (UnimplementedDataQualityServiceServer) GetQualityAgentRunnerStatus(context
 }
 func (UnimplementedDataQualityServiceServer) GetQualityAgentMetrics(context.Context, *GetQualityAgentMetricsRequest) (*QualityAgentMetrics, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentMetrics not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentEnrollments(context.Context, *ListQualityAgentEnrollmentsRequest) (*ListQualityAgentEnrollmentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentEnrollments not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentEnrollmentSummary(context.Context, *GetQualityAgentEnrollmentSummaryRequest) (*QualityAgentEnrollmentSummary, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentEnrollmentSummary not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityAgentEnrollment(context.Context, *UpdateQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityAgentEnrollment not implemented")
+}
+func (UnimplementedDataQualityServiceServer) RetryQualityAgentEnrollment(context.Context, *RetryQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error) {
+	return nil, status.Error(codes.Unimplemented, "method RetryQualityAgentEnrollment not implemented")
 }
 func (UnimplementedDataQualityServiceServer) mustEmbedUnimplementedDataQualityServiceServer() {}
 func (UnimplementedDataQualityServiceServer) testEmbeddedByValue()                            {}
@@ -3689,6 +3767,78 @@ func _DataQualityService_GetQualityAgentMetrics_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_ListQualityAgentEnrollments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentEnrollmentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentEnrollments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentEnrollments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentEnrollments(ctx, req.(*ListQualityAgentEnrollmentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentEnrollmentSummary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentEnrollmentSummaryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentEnrollmentSummary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentEnrollmentSummary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentEnrollmentSummary(ctx, req.(*GetQualityAgentEnrollmentSummaryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualityAgentEnrollment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityAgentEnrollmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityAgentEnrollment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityAgentEnrollment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityAgentEnrollment(ctx, req.(*UpdateQualityAgentEnrollmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_RetryQualityAgentEnrollment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RetryQualityAgentEnrollmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).RetryQualityAgentEnrollment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_RetryQualityAgentEnrollment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).RetryQualityAgentEnrollment(ctx, req.(*RetryQualityAgentEnrollmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataQualityService_ServiceDesc is the grpc.ServiceDesc for DataQualityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -4043,6 +4193,22 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityAgentMetrics",
 			Handler:    _DataQualityService_GetQualityAgentMetrics_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentEnrollments",
+			Handler:    _DataQualityService_ListQualityAgentEnrollments_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentEnrollmentSummary",
+			Handler:    _DataQualityService_GetQualityAgentEnrollmentSummary_Handler,
+		},
+		{
+			MethodName: "UpdateQualityAgentEnrollment",
+			Handler:    _DataQualityService_UpdateQualityAgentEnrollment_Handler,
+		},
+		{
+			MethodName: "RetryQualityAgentEnrollment",
+			Handler:    _DataQualityService_RetryQualityAgentEnrollment_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

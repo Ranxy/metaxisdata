@@ -5128,6 +5128,188 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentEnrollments:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                List the runner's enrollment queue: one row per monitorable object in the
+                 runner's database scope, with its queue state, priority and session link.
+            operationId: DataQualityService_ListQualityAgentEnrollments
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: |-
+                    The maximum number of enrollments to return. If unspecified, at most 50 are
+                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: database
+                  in: query
+                  description: Exact database resource name. Empty keeps every database in scope.
+                  schema:
+                    type: string
+                - name: state
+                  in: query
+                  description: UNSPECIFIED keeps every state.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_ENROLLMENT_STATE_PENDING
+                        - QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE
+                        - QUALITY_AGENT_ENROLLMENT_STATE_DORMANT
+                        - QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED
+                        - QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE
+                        - QUALITY_AGENT_ENROLLMENT_STATE_GONE
+                    type: string
+                    format: enum
+                - name: mode
+                  in: query
+                  description: UNSPECIFIED keeps both modes.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_MODE_MONITOR
+                        - QUALITY_AGENT_SESSION_MODE_TRIAGE
+                    type: string
+                    format: enum
+                - name: search
+                  in: query
+                  description: |-
+                    A case-insensitive substring over the target GUID. The display path is encoded in
+                     the GUID's semicolon-separated segments, so a path fragment matches too.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentEnrollmentsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentEnrollments/{qualityAgentEnrollment}:
+        patch:
+            tags:
+                - DataQualityService
+            description: |-
+                Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
+                 as target states, and a stale expected_revision is rejected.
+            operationId: DataQualityService_UpdateQualityAgentEnrollment
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentEnrollment
+                  in: path
+                  description: The qualityAgentEnrollment id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateQualityAgentEnrollmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentEnrollment'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentEnrollments/{qualityAgentEnrollment}:retry:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Requeue one enrollment now: it becomes pending, its next review is due and its
+                 priority is raised.
+            operationId: DataQualityService_RetryQualityAgentEnrollment
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentEnrollment
+                  in: path
+                  description: The qualityAgentEnrollment id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RetryQualityAgentEnrollmentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentEnrollment'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentEnrollments:summary:
+        get:
+            tags:
+                - DataQualityService
+            description: Read enrollment counts by state and by database. Read-only.
+            operationId: DataQualityService_GetQualityAgentEnrollmentSummary
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentEnrollmentSummary'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentMetrics:
         get:
             tags:
@@ -5226,6 +5408,26 @@ paths:
                   in: query
                   schema:
                     type: string
+                - name: source
+                  in: query
+                  description: UNSPECIFIED keeps both manual and automatic sessions.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_SOURCE_MANUAL
+                        - QUALITY_AGENT_SESSION_SOURCE_AUTO
+                    type: string
+                    format: enum
+                - name: mode
+                  in: query
+                  description: UNSPECIFIED keeps both monitor and triage sessions.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_MODE_MONITOR
+                        - QUALITY_AGENT_SESSION_MODE_TRIAGE
+                    type: string
+                    format: enum
             responses:
                 "200":
                     description: OK
@@ -10937,6 +11139,36 @@ components:
                     description: |-
                         Whether a failed check execution appends an event to its target's session and
                          wakes it. On by default.
+                agentRunnerAutoEnroll:
+                    type: boolean
+                    description: |-
+                        Whether the runner enrolls every monitorable object in its database scope into
+                         its queue. Off by default: turning it on is the workspace's opt-in to automatic
+                         triage and monitoring.
+                agentRunnerMaxNewSessionsPerHour:
+                    type: integer
+                    description: |-
+                        How many automatic sessions the admission path may create per hour. Zero means
+                         the server default (10).
+                    format: int32
+                agentRunnerMaxActiveSessions:
+                    type: integer
+                    description: |-
+                        How many enrollments may be active (triaging or monitoring) at once. Zero means
+                         the server default (100).
+                    format: int32
+                agentRunnerDormantReviewDays:
+                    type: integer
+                    description: |-
+                        How many days a triaged target sleeps before it is reviewed again. Zero means
+                         the server default (30).
+                    format: int32
+                agentRunnerEventBudgetPercent:
+                    type: integer
+                    description: |-
+                        The percentage of the hourly wake budget reserved for events and people; the
+                         admission path only spends what remains. Zero means the server default (50).
+                    format: int32
             description: |-
                 DataQualitySetting is the stored form of the data quality settings; it mirrors
                  metaxisdata.v1.DataQualitySetting.
@@ -12935,6 +13167,15 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityAgentEnrollmentsResponse:
+            type: object
+            properties:
+                qualityAgentEnrollments:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentEnrollment'
+                nextPageToken:
+                    type: string
         ListQualityAgentSessionMessagesResponse:
             type: object
             properties:
@@ -14618,6 +14859,144 @@ components:
                 QualityAgent is one agent principal: an independent identity an administrator
                  creates for autonomous quality work. Its token is issued once, and disabling the
                  agent ends every token it holds.
+        QualityAgentDatabaseEnrollmentSummary:
+            type: object
+            properties:
+                database:
+                    type: string
+                    description: instances/{instance}/databases/{database}
+                pending:
+                    type: integer
+                    format: int32
+                active:
+                    type: integer
+                    format: int32
+                dormant:
+                    type: integer
+                    format: int32
+                excluded:
+                    type: integer
+                    format: int32
+                outOfScope:
+                    type: integer
+                    format: int32
+                gone:
+                    type: integer
+                    format: int32
+            description: QualityAgentDatabaseEnrollmentSummary is one database's slice of the queue.
+        QualityAgentEnrollment:
+            type: object
+            properties:
+                id:
+                    type: string
+                workspaceId:
+                    type: string
+                targetGuid:
+                    type: string
+                targetType:
+                    type: integer
+                    format: int32
+                databaseRef:
+                    type: string
+                state:
+                    enum:
+                        - QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_ENROLLMENT_STATE_PENDING
+                        - QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE
+                        - QUALITY_AGENT_ENROLLMENT_STATE_DORMANT
+                        - QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED
+                        - QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE
+                        - QUALITY_AGENT_ENROLLMENT_STATE_GONE
+                    type: string
+                    format: enum
+                mode:
+                    enum:
+                        - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_MODE_MONITOR
+                        - QUALITY_AGENT_SESSION_MODE_TRIAGE
+                    type: string
+                    format: enum
+                priority:
+                    type: integer
+                    description: 0..1000; larger is admitted first.
+                    format: int32
+                priorityReason:
+                    type: string
+                    description: Human-readable signals behind the score, for example "rules,failing".
+                blockedReason:
+                    type: string
+                    description: Why the row is not progressing (a budget, a person or a missing dependency).
+                sessionId:
+                    type: string
+                triageCount:
+                    type: integer
+                    format: int32
+                lastTriagedAt:
+                    type: string
+                    format: date-time
+                nextReviewAt:
+                    type: string
+                    format: date-time
+                discoveredAt:
+                    type: string
+                    format: date-time
+                lastSeenAt:
+                    type: string
+                    format: date-time
+                excludedBy:
+                    type: integer
+                    format: int32
+                excludedAt:
+                    type: string
+                    format: date-time
+                revision:
+                    type: integer
+                    format: int32
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentEnrollment is one target's place in the runner's queue: the desired
+                 state derived from the database scope, plus the priority and admission hints a
+                 person sees. The session row remains the execution state.
+        QualityAgentEnrollmentStateCount:
+            type: object
+            properties:
+                state:
+                    enum:
+                        - QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_ENROLLMENT_STATE_PENDING
+                        - QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE
+                        - QUALITY_AGENT_ENROLLMENT_STATE_DORMANT
+                        - QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED
+                        - QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE
+                        - QUALITY_AGENT_ENROLLMENT_STATE_GONE
+                    type: string
+                    format: enum
+                count:
+                    type: integer
+                    format: int32
+            description: QualityAgentEnrollmentStateCount is how many enrollments stand in one state.
+        QualityAgentEnrollmentSummary:
+            type: object
+            properties:
+                states:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentEnrollmentStateCount'
+                databases:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentDatabaseEnrollmentSummary'
+                lastScanTime:
+                    type: string
+                    format: date-time
+            description: |-
+                QualityAgentEnrollmentSummary is the queue at a glance: state counts, a breakdown
+                 by database, and when discovery last scanned a database (process-local).
         QualityAgentMetrics:
             type: object
             properties:
@@ -14718,6 +15097,34 @@ components:
                 runnerLastTickTime:
                     type: string
                     format: date-time
+                pendingEnrollments:
+                    type: integer
+                    description: |-
+                        Enrollment queue counts. A queue row is the desired state of one target in
+                         scope; a session is created lazily when the row is admitted.
+                    format: int32
+                activeEnrollments:
+                    type: integer
+                    format: int32
+                dormantEnrollments:
+                    type: integer
+                    format: int32
+                excludedEnrollments:
+                    type: integer
+                    format: int32
+                enrollmentLastScanTime:
+                    type: string
+                    description: 'The last discovery scan of any database. Process-local: a restart resets it.'
+                    format: date-time
+                maxNewSessionsPerHour:
+                    type: integer
+                    description: The effective admission limits so the queue page can explain a stalled row.
+                    format: int32
+                maxActiveSessions:
+                    type: integer
+                    format: int32
+                autoEnrollEnabled:
+                    type: boolean
             description: |-
                 QualityAgentRunnerStatus is the runner's live state at one instant. The budgets
                  and counters are durable; runner_last_tick_time is process-local and reset by a
@@ -14801,6 +15208,20 @@ components:
                 archivedAt:
                     type: string
                     format: date-time
+                source:
+                    enum:
+                        - QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_SOURCE_MANUAL
+                        - QUALITY_AGENT_SESSION_SOURCE_AUTO
+                    type: string
+                    format: enum
+                mode:
+                    enum:
+                        - QUALITY_AGENT_SESSION_MODE_UNSPECIFIED
+                        - QUALITY_AGENT_SESSION_MODE_MONITOR
+                        - QUALITY_AGENT_SESSION_MODE_TRIAGE
+                    type: string
+                    format: enum
             description: |-
                 QualityAgentSession is one target's durable agent conversation and wake schedule.
                  "Running" is expressed by lease_until, never by state.
@@ -17815,6 +18236,18 @@ components:
                 name:
                     type: string
                     description: 'Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}'
+        RetryQualityAgentEnrollmentRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment}'
+                expectedRevision:
+                    type: integer
+                    description: The revision the caller saw; a stale value is rejected with Aborted.
+                    format: int32
         RevokeConnectedAppRequest:
             required:
                 - name
@@ -19302,6 +19735,26 @@ components:
                     type: string
                     description: The list of fields to update.
                     format: field-mask
+        UpdateQualityAgentEnrollmentRequest:
+            required:
+                - enrollment
+                - updateMask
+            type: object
+            properties:
+                enrollment:
+                    allOf:
+                        - $ref: '#/components/schemas/QualityAgentEnrollment'
+                    description: The enrollment to change. Only state and mode in update_mask are accepted.
+                updateMask:
+                    type: string
+                    description: |-
+                        Supported paths: "state" (only PENDING and EXCLUDED are accepted) and "mode"
+                         (MONITOR and TRIAGE). The server rejects any other path.
+                    format: field-mask
+                expectedRevision:
+                    type: integer
+                    description: The revision the caller saw; a stale value is rejected with Aborted.
+                    format: int32
         UpdateQualityContractRequest:
             required:
                 - parent

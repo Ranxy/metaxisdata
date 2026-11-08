@@ -617,8 +617,24 @@ type DataQualitySetting struct {
 	// Whether a failed check execution appends an event to its target's session and
 	// wakes it. On by default.
 	AgentRunnerAutoInvestigateFailures *bool `protobuf:"varint,24,opt,name=agent_runner_auto_investigate_failures,json=agentRunnerAutoInvestigateFailures,proto3,oneof" json:"agent_runner_auto_investigate_failures,omitempty"`
-	unknownFields                      protoimpl.UnknownFields
-	sizeCache                          protoimpl.SizeCache
+	// Whether the runner enrolls every monitorable object in its database scope into
+	// its queue. Off by default: turning it on is the workspace's opt-in to automatic
+	// triage and monitoring.
+	AgentRunnerAutoEnroll bool `protobuf:"varint,25,opt,name=agent_runner_auto_enroll,json=agentRunnerAutoEnroll,proto3" json:"agent_runner_auto_enroll,omitempty"`
+	// How many automatic sessions the admission path may create per hour. Zero means
+	// the server default (10).
+	AgentRunnerMaxNewSessionsPerHour int32 `protobuf:"varint,26,opt,name=agent_runner_max_new_sessions_per_hour,json=agentRunnerMaxNewSessionsPerHour,proto3" json:"agent_runner_max_new_sessions_per_hour,omitempty"`
+	// How many enrollments may be active (triaging or monitoring) at once. Zero means
+	// the server default (100).
+	AgentRunnerMaxActiveSessions int32 `protobuf:"varint,27,opt,name=agent_runner_max_active_sessions,json=agentRunnerMaxActiveSessions,proto3" json:"agent_runner_max_active_sessions,omitempty"`
+	// How many days a triaged target sleeps before it is reviewed again. Zero means
+	// the server default (30).
+	AgentRunnerDormantReviewDays int32 `protobuf:"varint,28,opt,name=agent_runner_dormant_review_days,json=agentRunnerDormantReviewDays,proto3" json:"agent_runner_dormant_review_days,omitempty"`
+	// The percentage of the hourly wake budget reserved for events and people; the
+	// admission path only spends what remains. Zero means the server default (50).
+	AgentRunnerEventBudgetPercent int32 `protobuf:"varint,29,opt,name=agent_runner_event_budget_percent,json=agentRunnerEventBudgetPercent,proto3" json:"agent_runner_event_budget_percent,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *DataQualitySetting) Reset() {
@@ -803,6 +819,41 @@ func (x *DataQualitySetting) GetAgentRunnerAutoInvestigateFailures() bool {
 		return *x.AgentRunnerAutoInvestigateFailures
 	}
 	return false
+}
+
+func (x *DataQualitySetting) GetAgentRunnerAutoEnroll() bool {
+	if x != nil {
+		return x.AgentRunnerAutoEnroll
+	}
+	return false
+}
+
+func (x *DataQualitySetting) GetAgentRunnerMaxNewSessionsPerHour() int32 {
+	if x != nil {
+		return x.AgentRunnerMaxNewSessionsPerHour
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerMaxActiveSessions() int32 {
+	if x != nil {
+		return x.AgentRunnerMaxActiveSessions
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerDormantReviewDays() int32 {
+	if x != nil {
+		return x.AgentRunnerDormantReviewDays
+	}
+	return 0
+}
+
+func (x *DataQualitySetting) GetAgentRunnerEventBudgetPercent() int32 {
+	if x != nil {
+		return x.AgentRunnerEventBudgetPercent
+	}
+	return 0
 }
 
 // QualityDigestSetting is the stored form of the weekly data quality digest
@@ -1328,7 +1379,7 @@ const file_store_setting_proto_rawDesc = "" +
 	"\x05color\x18\x04 \x01(\tR\x05color\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc5\v\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaa\x0e\n" +
 	"\x12DataQualitySetting\x12.\n" +
 	"\x13enable_llm_analysis\x18\x01 \x01(\bR\x11enableLlmAnalysis\x120\n" +
 	"\x14llm_provider_profile\x18\x02 \x01(\tR\x12llmProviderProfile\x122\n" +
@@ -1352,7 +1403,12 @@ const file_store_setting_proto_rawDesc = "" +
 	"$agent_runner_max_concurrent_sessions\x18\x15 \x01(\x05R agentRunnerMaxConcurrentSessions\x12R\n" +
 	"&agent_runner_compaction_trigger_tokens\x18\x16 \x01(\x05R\"agentRunnerCompactionTriggerTokens\x12B\n" +
 	"\x1eagent_runner_idle_wake_seconds\x18\x17 \x01(\x05R\x1aagentRunnerIdleWakeSeconds\x12W\n" +
-	"&agent_runner_auto_investigate_failures\x18\x18 \x01(\bH\x00R\"agentRunnerAutoInvestigateFailures\x88\x01\x01B)\n" +
+	"&agent_runner_auto_investigate_failures\x18\x18 \x01(\bH\x00R\"agentRunnerAutoInvestigateFailures\x88\x01\x01\x127\n" +
+	"\x18agent_runner_auto_enroll\x18\x19 \x01(\bR\x15agentRunnerAutoEnroll\x12P\n" +
+	"&agent_runner_max_new_sessions_per_hour\x18\x1a \x01(\x05R agentRunnerMaxNewSessionsPerHour\x12F\n" +
+	" agent_runner_max_active_sessions\x18\x1b \x01(\x05R\x1cagentRunnerMaxActiveSessions\x12F\n" +
+	" agent_runner_dormant_review_days\x18\x1c \x01(\x05R\x1cagentRunnerDormantReviewDays\x12H\n" +
+	"!agent_runner_event_budget_percent\x18\x1d \x01(\x05R\x1dagentRunnerEventBudgetPercentB)\n" +
 	"'_agent_runner_auto_investigate_failuresJ\x04\b\x12\x10\x13J\x04\b\x13\x10\x14R\x1bagent_runner_goals_per_hourR!agent_runner_max_concurrent_goals\"\x9e\x01\n" +
 	"\x14QualityDigestSetting\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12<\n" +

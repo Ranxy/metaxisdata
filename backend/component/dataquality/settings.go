@@ -98,6 +98,32 @@ const (
 	// MaxAgentRunnerIdleWakeSeconds is the hard ceiling of the idle interval.
 	MaxAgentRunnerIdleWakeSeconds = 604_800
 
+	// DefaultAgentRunnerMaxNewSessionsPerHour is how many automatic sessions the
+	// admission path may create per hour when the setting does not say.
+	DefaultAgentRunnerMaxNewSessionsPerHour = 10
+	// MaxAgentRunnerNewSessionsPerHour is the hard ceiling of that rate.
+	MaxAgentRunnerNewSessionsPerHour = 1000
+	// DefaultAgentRunnerMaxActiveSessions is how many enrollments may be active
+	// (triaging or monitoring) at once when the setting does not say.
+	DefaultAgentRunnerMaxActiveSessions = 100
+	// MaxAgentRunnerActiveSessions is the hard ceiling of the active set.
+	MaxAgentRunnerActiveSessions = 10000
+	// DefaultAgentRunnerDormantReviewDays is how long a triaged target sleeps
+	// before it is reviewed again when the setting does not say.
+	DefaultAgentRunnerDormantReviewDays = 30
+	// MinAgentRunnerDormantReviewDays keeps a dormant target from waking too soon.
+	MinAgentRunnerDormantReviewDays = 1
+	// MaxAgentRunnerDormantReviewDays is the hard ceiling of the review interval.
+	MaxAgentRunnerDormantReviewDays = 365
+	// DefaultAgentRunnerEventBudgetPercent is the share of the hourly wake budget
+	// reserved for failed checks and people, leaving the rest to automated
+	// admission, when the setting does not say.
+	DefaultAgentRunnerEventBudgetPercent = 50
+	// MinAgentRunnerEventBudgetPercent and MaxAgentRunnerEventBudgetPercent bound
+	// the reservation so neither events nor automation can starve the other.
+	MinAgentRunnerEventBudgetPercent = 10
+	MaxAgentRunnerEventBudgetPercent = 90
+
 	// DefaultCheckTimeout is how long one check's query may run when its config
 	// does not say.
 	DefaultCheckTimeout = 60 * time.Second
@@ -163,6 +189,21 @@ type Settings struct {
 	// AgentRunnerAutoInvestigateFailures appends a failed execution as an event to
 	// the target's session and wakes it.
 	AgentRunnerAutoInvestigateFailures bool
+	// AgentRunnerAutoEnroll turns the database scope into a discovered queue: every
+	// monitorable object in scope is enrolled and admitted by priority. Off by
+	// default.
+	AgentRunnerAutoEnroll bool
+	// AgentRunnerMaxNewSessionsPerHour bounds how many automatic sessions admission
+	// may create per hour. Never zero after resolution.
+	AgentRunnerMaxNewSessionsPerHour int
+	// AgentRunnerMaxActiveSessions bounds how many enrollments may be active at once.
+	AgentRunnerMaxActiveSessions int
+	// AgentRunnerDormantReviewDays is how long a triaged target sleeps before it is
+	// reviewed again.
+	AgentRunnerDormantReviewDays int
+	// AgentRunnerEventBudgetPercent is the share of the hourly wake budget reserved for
+	// events and people; automated admission only spends the remainder.
+	AgentRunnerEventBudgetPercent int
 }
 
 // DefaultSettings returns the settings of a workspace that never saved any.
@@ -187,6 +228,10 @@ func DefaultSettings() Settings {
 		AgentRunnerCompactionTriggerTokens: DefaultAgentRunnerCompactionTriggerTokens,
 		AgentRunnerIdleWakeSeconds:         DefaultAgentRunnerIdleWakeSeconds,
 		AgentRunnerAutoInvestigateFailures: true,
+		AgentRunnerMaxNewSessionsPerHour:   DefaultAgentRunnerMaxNewSessionsPerHour,
+		AgentRunnerMaxActiveSessions:       DefaultAgentRunnerMaxActiveSessions,
+		AgentRunnerDormantReviewDays:       DefaultAgentRunnerDormantReviewDays,
+		AgentRunnerEventBudgetPercent:      DefaultAgentRunnerEventBudgetPercent,
 	}
 }
 
@@ -235,6 +280,11 @@ func SettingsFromProfile(profile *storepb.WorkspaceProfileSetting) Settings {
 	} else {
 		settings.AgentRunnerAutoInvestigateFailures = true
 	}
+	settings.AgentRunnerAutoEnroll = dataQuality.GetAgentRunnerAutoEnroll()
+	settings.AgentRunnerMaxNewSessionsPerHour = boundedMinMax(int(dataQuality.GetAgentRunnerMaxNewSessionsPerHour()), DefaultAgentRunnerMaxNewSessionsPerHour, 1, MaxAgentRunnerNewSessionsPerHour)
+	settings.AgentRunnerMaxActiveSessions = boundedLimit(int(dataQuality.GetAgentRunnerMaxActiveSessions()), DefaultAgentRunnerMaxActiveSessions, MaxAgentRunnerActiveSessions)
+	settings.AgentRunnerDormantReviewDays = boundedMinMax(int(dataQuality.GetAgentRunnerDormantReviewDays()), DefaultAgentRunnerDormantReviewDays, MinAgentRunnerDormantReviewDays, MaxAgentRunnerDormantReviewDays)
+	settings.AgentRunnerEventBudgetPercent = boundedMinMax(int(dataQuality.GetAgentRunnerEventBudgetPercent()), DefaultAgentRunnerEventBudgetPercent, MinAgentRunnerEventBudgetPercent, MaxAgentRunnerEventBudgetPercent)
 	return settings
 }
 

@@ -46,6 +46,8 @@ type QualityAgentSessionMessage struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	ArchivedAt        *time.Time
+	Source            storepb.QualityAgentSessionSource
+	Mode              storepb.QualityAgentSessionMode
 	// LastActivityAt is the newest message's created_at; set by the read queries that
 	// join the transcript.
 	LastActivityAt *time.Time
@@ -80,7 +82,8 @@ const qualityAgentSessionColumns = `id, resource_id, workspace_id, target_guid, 
 	COALESCE((SELECT principal_id FROM quality_agent WHERE quality_agent.id = agent_id), 0) AS agent_principal_id,
 	objective, state, blocked_code, blocked_reason, revision, wake_count, tokens_used,
 	context_tokens, summary, summary_through_seq, processed_seq, engine_state,
-	next_wake_at, lease_until, restart_count, created_by, created_at, updated_at, archived_at`
+	next_wake_at, lease_until, restart_count, created_by, created_at, updated_at, archived_at,
+	source, mode`
 
 // qualityAgentSessionReadColumns adds the newest message timestamp the list and detail
 // readers show as "last activity".
@@ -101,6 +104,11 @@ type CreateQualityAgentSessionInput struct {
 	AgentID     int64
 	Objective   string
 	CreatedBy   *int32
+	Source      storepb.QualityAgentSessionSource
+	Mode        storepb.QualityAgentSessionMode
+	// NextWakeAt staggers admitted sessions so a batch does not all become due in the
+	// same second. Nil means wake immediately.
+	NextWakeAt *time.Time
 }
 
 // CreateQualityAgentSession records one enabled session that wakes immediately.
@@ -112,16 +120,24 @@ func (s *Store) CreateQualityAgentSession(ctx context.Context, input *CreateQual
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate the session id")
 	}
+	source := input.Source
+	if source == storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED {
+		source = storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_MANUAL
+	}
+	mode := input.Mode
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
+		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
+	}
 	message, err := scanQualityAgentSession(s.GetDB().QueryRowContext(ctx, `
 		INSERT INTO quality_agent_session
 			(resource_id, workspace_id, target_guid, target_type, database_ref, agent_id,
-			 objective, state, next_wake_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)
+			 objective, state, next_wake_at, created_by, source, mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11, $12)
 		RETURNING `+qualityAgentSessionColumns,
 		resourceID, input.WorkspaceID, input.TargetGUID, int16(input.TargetType),
 		input.DatabaseRef, input.AgentID, input.Objective,
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED),
-		input.CreatedBy))
+		input.NextWakeAt, input.CreatedBy, int16(source), int16(mode)))
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, common.Errorf(common.Conflict, "an active session already covers this target")
@@ -165,6 +181,8 @@ type FindQualityAgentSessionMessage struct {
 	TargetGUID      *string
 	DatabaseRef     *string
 	States          []storepb.QualityAgentSessionState
+	Source          storepb.QualityAgentSessionSource
+	Mode            storepb.QualityAgentSessionMode
 	IncludeArchived bool
 	Limit           *int
 	Offset          *int
@@ -199,6 +217,12 @@ func (s *Store) ListQualityAgentSessions(ctx context.Context, find *FindQualityA
 			states = append(states, int16(state))
 		}
 		where += ` AND state = ANY(` + arg(pq.Array(states)) + `::int2[])`
+	}
+	if find.Source != storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED {
+		where += ` AND source = ` + arg(int16(find.Source))
+	}
+	if find.Mode != storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
+		where += ` AND mode = ` + arg(int16(find.Mode))
 	}
 	limit, offset := 100, 0
 	if find.Limit != nil && *find.Limit > 0 {
@@ -794,6 +818,8 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		engineState []byte
 		agentID     int64
 		agentPrinID int32
+		source      int16
+		mode        int16
 	)
 	dest := []any{
 		&message.ID, &message.ResourceID, &message.WorkspaceID, &message.TargetGUID,
@@ -803,6 +829,7 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 		&message.SummaryThroughSeq, &message.ProcessedSeq, &engineState,
 		&message.NextWakeAt, &message.LeaseUntil, &message.RestartCount, &message.CreatedBy,
 		&message.CreatedAt, &message.UpdatedAt, &message.ArchivedAt,
+		&source, &mode,
 	}
 	if withLastActivity {
 		dest = append(dest, &message.LastActivityAt)
@@ -814,6 +841,8 @@ func scanQualityAgentSessionFields(scanner interface{ Scan(dest ...any) error },
 	message.State = storepb.QualityAgentSessionState(state)
 	message.AgentID = agentID
 	message.AgentPrincipalID = agentPrinID
+	message.Source = storepb.QualityAgentSessionSource(source)
+	message.Mode = storepb.QualityAgentSessionMode(mode)
 	engineStateMessage := &storepb.QualityAgentSessionEngineState{}
 	if len(engineState) > 0 && string(engineState) != "{}" {
 		if err := common.ProtojsonUnmarshaler.Unmarshal(engineState, engineStateMessage); err != nil {
@@ -926,4 +955,34 @@ func (s *Store) CountQualityAgentSessionEventsSince(ctx context.Context, session
 		return 0, errors.Wrap(err, "failed to count the session events")
 	}
 	return count, nil
+}
+
+// CountQualityAgentSessionsCreatedSince counts the sessions one source created after
+// a time. The enrollment admission path uses it to bound automatic sessions per hour.
+func (s *Store) CountQualityAgentSessionsCreatedSince(ctx context.Context, workspaceID string, source storepb.QualityAgentSessionSource, since time.Time) (int, error) {
+	var count int
+	if err := s.GetDB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM quality_agent_session
+		WHERE workspace_id = $1 AND source = $2 AND created_at > $3`,
+		workspaceID, int16(source), since).Scan(&count); err != nil {
+		return 0, errors.Wrap(err, "failed to count the sessions created since")
+	}
+	return count, nil
+}
+
+// UpdateQualityAgentSessionMode switches a session between monitoring and triage. It
+// does not touch the wake schedule; the caller decides whether the change is due now.
+func (s *Store) UpdateQualityAgentSessionMode(ctx context.Context, resourceID string, mode storepb.QualityAgentSessionMode) (bool, error) {
+	result, err := s.GetDB().ExecContext(ctx, `
+		UPDATE quality_agent_session
+		SET mode = $2, revision = revision + 1, updated_at = NOW()
+		WHERE resource_id = $1 AND archived_at IS NULL`, resourceID, int16(mode))
+	if err != nil {
+		return false, errors.Wrap(err, "failed to update the session mode")
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to count the updated session mode")
+	}
+	return affected > 0, nil
 }

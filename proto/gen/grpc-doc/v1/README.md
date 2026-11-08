@@ -273,6 +273,7 @@
     - [FailureSample](#metaxisdata-v1-FailureSample)
     - [FreshnessConfig](#metaxisdata-v1-FreshnessConfig)
     - [GetQualityActionPolicyRequest](#metaxisdata-v1-GetQualityActionPolicyRequest)
+    - [GetQualityAgentEnrollmentSummaryRequest](#metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest)
     - [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest)
     - [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest)
     - [GetQualityAgentSessionRequest](#metaxisdata-v1-GetQualityAgentSessionRequest)
@@ -306,6 +307,8 @@
     - [ListColumnLabelsResponse](#metaxisdata-v1-ListColumnLabelsResponse)
     - [ListColumnProfilesRequest](#metaxisdata-v1-ListColumnProfilesRequest)
     - [ListColumnProfilesResponse](#metaxisdata-v1-ListColumnProfilesResponse)
+    - [ListQualityAgentEnrollmentsRequest](#metaxisdata-v1-ListQualityAgentEnrollmentsRequest)
+    - [ListQualityAgentEnrollmentsResponse](#metaxisdata-v1-ListQualityAgentEnrollmentsResponse)
     - [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest)
     - [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse)
     - [ListQualityAgentSessionsRequest](#metaxisdata-v1-ListQualityAgentSessionsRequest)
@@ -354,6 +357,10 @@
     - [QualityAction](#metaxisdata-v1-QualityAction)
     - [QualityActionPolicy](#metaxisdata-v1-QualityActionPolicy)
     - [QualityAgent](#metaxisdata-v1-QualityAgent)
+    - [QualityAgentDatabaseEnrollmentSummary](#metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary)
+    - [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment)
+    - [QualityAgentEnrollmentStateCount](#metaxisdata-v1-QualityAgentEnrollmentStateCount)
+    - [QualityAgentEnrollmentSummary](#metaxisdata-v1-QualityAgentEnrollmentSummary)
     - [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics)
     - [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus)
     - [QualityAgentSession](#metaxisdata-v1-QualityAgentSession)
@@ -428,6 +435,7 @@
     - [ReferentialIntegrityConfig](#metaxisdata-v1-ReferentialIntegrityConfig)
     - [RegexConfig](#metaxisdata-v1-RegexConfig)
     - [ResumeQualityAgentSessionRequest](#metaxisdata-v1-ResumeQualityAgentSessionRequest)
+    - [RetryQualityAgentEnrollmentRequest](#metaxisdata-v1-RetryQualityAgentEnrollmentRequest)
     - [RotateQualityAgentTokenRequest](#metaxisdata-v1-RotateQualityAgentTokenRequest)
     - [RotateQualityAgentTokenResponse](#metaxisdata-v1-RotateQualityAgentTokenResponse)
     - [RowCountChangeConfig](#metaxisdata-v1-RowCountChangeConfig)
@@ -452,6 +460,7 @@
     - [UniqueConfig](#metaxisdata-v1-UniqueConfig)
     - [UpdateColumnLabelRequest](#metaxisdata-v1-UpdateColumnLabelRequest)
     - [UpdateColumnLabelResponse](#metaxisdata-v1-UpdateColumnLabelResponse)
+    - [UpdateQualityAgentEnrollmentRequest](#metaxisdata-v1-UpdateQualityAgentEnrollmentRequest)
     - [UpdateQualityCodeTableRequest](#metaxisdata-v1-UpdateQualityCodeTableRequest)
     - [UpdateQualityContractRequest](#metaxisdata-v1-UpdateQualityContractRequest)
     - [UpdateQualityIssueRequest](#metaxisdata-v1-UpdateQualityIssueRequest)
@@ -464,8 +473,11 @@
     - [ColumnLabelAction](#metaxisdata-v1-ColumnLabelAction)
     - [ConfirmQualityMemoryRequest.Decision](#metaxisdata-v1-ConfirmQualityMemoryRequest-Decision)
     - [DecideQualityChangeRequestRequest.Decision](#metaxisdata-v1-DecideQualityChangeRequestRequest-Decision)
+    - [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState)
     - [QualityAgentMessageOrigin](#metaxisdata-v1-QualityAgentMessageOrigin)
     - [QualityAgentMessageRole](#metaxisdata-v1-QualityAgentMessageRole)
+    - [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode)
+    - [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource)
     - [QualityAgentSessionState](#metaxisdata-v1-QualityAgentSessionState)
     - [QualityAggregateFunction](#metaxisdata-v1-QualityAggregateFunction)
     - [QualityAssetCriticality](#metaxisdata-v1-QualityAssetCriticality)
@@ -5235,6 +5247,21 @@ timestamp follows on_empty.
 
 
 
+<a name="metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest"></a>
+
+### GetQualityAgentEnrollmentSummaryRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-GetQualityAgentMetricsRequest"></a>
 
 ### GetQualityAgentMetricsRequest
@@ -5786,6 +5813,43 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 
 
 
+<a name="metaxisdata-v1-ListQualityAgentEnrollmentsRequest"></a>
+
+### ListQualityAgentEnrollmentsRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| parent | [string](#string) |  | Format: workspaces/{workspace}. &#34;workspaces/-&#34; is the current workspace. |
+| page_size | [int32](#int32) |  | The maximum number of enrollments to return. If unspecified, at most 50 are returned. The maximum value is 1000; values above 1000 are coerced to 1000. |
+| page_token | [string](#string) |  |  |
+| database | [string](#string) |  | Exact database resource name. Empty keeps every database in scope. |
+| state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  | UNSPECIFIED keeps every state. |
+| mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both modes. |
+| search | [string](#string) |  | A case-insensitive substring over the target GUID. The display path is encoded in the GUID&#39;s semicolon-separated segments, so a path fragment matches too. |
+
+
+
+
+
+
+<a name="metaxisdata-v1-ListQualityAgentEnrollmentsResponse"></a>
+
+### ListQualityAgentEnrollmentsResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| quality_agent_enrollments | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | repeated |  |
+| next_page_token | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-ListQualityAgentSessionMessagesRequest"></a>
 
 ### ListQualityAgentSessionMessagesRequest
@@ -5834,6 +5898,8 @@ GroupCheckConfig bounds the row count of each group a set of columns forms.
 | target_guid | [string](#string) |  |  |
 | page_size | [int32](#int32) |  |  |
 | page_token | [string](#string) |  |  |
+| source | [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource) |  | UNSPECIFIED keeps both manual and automatic sessions. |
+| mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | UNSPECIFIED keeps both monitor and triage sessions. |
 
 
 
@@ -6682,6 +6748,94 @@ agent ends every token it holds.
 
 
 
+<a name="metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary"></a>
+
+### QualityAgentDatabaseEnrollmentSummary
+QualityAgentDatabaseEnrollmentSummary is one database&#39;s slice of the queue.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| database | [string](#string) |  | instances/{instance}/databases/{database} |
+| pending | [int32](#int32) |  |  |
+| active | [int32](#int32) |  |  |
+| dormant | [int32](#int32) |  |  |
+| excluded | [int32](#int32) |  |  |
+| out_of_scope | [int32](#int32) |  |  |
+| gone | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentEnrollment"></a>
+
+### QualityAgentEnrollment
+QualityAgentEnrollment is one target&#39;s place in the runner&#39;s queue: the desired
+state derived from the database scope, plus the priority and admission hints a
+person sees. The session row remains the execution state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentEnrollments/{id} |
+| target | [QualityTarget](#metaxisdata-v1-QualityTarget) |  | The target this enrollment covers. Its path is reconstructed from the GUID. |
+| database | [string](#string) |  | The database the target lives in: instances/{instance}/databases/{database}. |
+| state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  |  |
+| mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | MONITOR once the target has coverage; TRIAGE while it has none. |
+| priority | [int32](#int32) |  | 0..1000; larger is admitted first. |
+| priority_reason | [string](#string) |  | Human-readable signals behind the priority, for example &#34;rules,failing&#34;. |
+| blocked_reason | [string](#string) |  | Why the row is not progressing, for example &#34;budget&#34; or &#34;no-model&#34;. |
+| session | [string](#string) |  | The target&#39;s session, or empty before admission. |
+| triage_count | [int32](#int32) |  |  |
+| last_triaged_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| next_review_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| discovered_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| last_seen_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| revision | [int32](#int32) |  | Incremented by every mutation; human mutations carry the revision they saw. |
+| create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentEnrollmentStateCount"></a>
+
+### QualityAgentEnrollmentStateCount
+QualityAgentEnrollmentStateCount is how many enrollments stand in one state.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [QualityAgentEnrollmentState](#metaxisdata-v1-QualityAgentEnrollmentState) |  |  |
+| count | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="metaxisdata-v1-QualityAgentEnrollmentSummary"></a>
+
+### QualityAgentEnrollmentSummary
+QualityAgentEnrollmentSummary is the queue at a glance: state counts, a breakdown
+by database, and when discovery last scanned a database (process-local).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| states | [QualityAgentEnrollmentStateCount](#metaxisdata-v1-QualityAgentEnrollmentStateCount) | repeated |  |
+| databases | [QualityAgentDatabaseEnrollmentSummary](#metaxisdata-v1-QualityAgentDatabaseEnrollmentSummary) | repeated |  |
+| last_scan_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+
+
+
+
+
+
 <a name="metaxisdata-v1-QualityAgentMetrics"></a>
 
 ### QualityAgentMetrics
@@ -6737,6 +6891,14 @@ restart, so it is a liveness hint, not durable state.
 | idle_wake_seconds | [int32](#int32) |  |  |
 | last_activity_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | runner_last_tick_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| pending_enrollments | [int32](#int32) |  | Enrollment queue counts. A queue row is the desired state of one target in scope; a session is created lazily when the row is admitted. |
+| active_enrollments | [int32](#int32) |  |  |
+| dormant_enrollments | [int32](#int32) |  |  |
+| excluded_enrollments | [int32](#int32) |  |  |
+| enrollment_last_scan_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  | The last discovery scan of any database. Process-local: a restart resets it. |
+| max_new_sessions_per_hour | [int32](#int32) |  | The effective admission limits so the queue page can explain a stalled row. |
+| max_active_sessions | [int32](#int32) |  |  |
+| auto_enroll_enabled | [bool](#bool) |  |  |
 
 
 
@@ -6772,6 +6934,8 @@ schedule. &#34;Running&#34; is derived from lease_expire_time, never from state.
 | create_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | update_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
 | archive_time | [google.protobuf.Timestamp](#google-protobuf-Timestamp) |  |  |
+| source | [QualityAgentSessionSource](#metaxisdata-v1-QualityAgentSessionSource) |  | Who created the session: a person or the enrollment queue. |
+| mode | [QualityAgentSessionMode](#metaxisdata-v1-QualityAgentSessionMode) |  | MONITOR reviews a covered target; TRIAGE analyses an uncovered one. |
 
 
 
@@ -8391,6 +8555,22 @@ engine&#39;s own regex operator.
 
 
 
+<a name="metaxisdata-v1-RetryQualityAgentEnrollmentRequest"></a>
+
+### RetryQualityAgentEnrollmentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| name | [string](#string) |  | Format: workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment} |
+| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected with Aborted. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-RotateQualityAgentTokenRequest"></a>
 
 ### RotateQualityAgentTokenRequest
@@ -8843,6 +9023,23 @@ measured per threshold_metric; the default fail threshold is zero.
 
 
 
+<a name="metaxisdata-v1-UpdateQualityAgentEnrollmentRequest"></a>
+
+### UpdateQualityAgentEnrollmentRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| enrollment | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) |  | The enrollment to change. Only state and mode in update_mask are accepted. |
+| update_mask | [google.protobuf.FieldMask](#google-protobuf-FieldMask) |  | Supported paths: &#34;state&#34; (only PENDING and EXCLUDED are accepted) and &#34;mode&#34; (MONITOR and TRIAGE). The server rejects any other path. |
+| expected_revision | [int32](#int32) |  | The revision the caller saw; a stale value is rejected with Aborted. |
+
+
+
+
+
+
 <a name="metaxisdata-v1-UpdateQualityCodeTableRequest"></a>
 
 ### UpdateQualityCodeTableRequest
@@ -9023,6 +9220,25 @@ APPROVE applies the request&#39;s items; REJECT records the refusal.
 
 
 
+<a name="metaxisdata-v1-QualityAgentEnrollmentState"></a>
+
+### QualityAgentEnrollmentState
+QualityAgentEnrollmentState is the queue state of one target in the runner&#39;s
+scope. The enrollment row is the desired state; a session is created lazily when
+the row is admitted.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_ENROLLMENT_STATE_PENDING | 1 | Discovered and waiting for admission (a budget, a person or a dependency). |
+| QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE | 2 | Admitted: a session exists and is triaging or monitoring the target. |
+| QUALITY_AGENT_ENROLLMENT_STATE_DORMANT | 3 | Triaged with nothing left to do; waits for its next review or an approval. |
+| QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED | 4 | A person opted the target out; discovery never re-admits it. |
+| QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE | 5 | The target&#39;s database left the runner&#39;s scope. Reversible. |
+| QUALITY_AGENT_ENROLLMENT_STATE_GONE | 6 | The registry object no longer exists. The row is kept for history. |
+
+
+
 <a name="metaxisdata-v1-QualityAgentMessageOrigin"></a>
 
 ### QualityAgentMessageOrigin
@@ -9054,6 +9270,35 @@ QualityAgentMessageRole is one entry in a session&#39;s conversation.
 | QUALITY_AGENT_MESSAGE_ROLE_TOOL | 4 |  |
 | QUALITY_AGENT_MESSAGE_ROLE_ENGINE | 5 | Runner/UI bookkeeping; never sent back to the model. |
 | QUALITY_AGENT_MESSAGE_ROLE_COMPACTION | 6 | A compaction checkpoint that replaces the covered messages in model context. |
+
+
+
+<a name="metaxisdata-v1-QualityAgentSessionMode"></a>
+
+### QualityAgentSessionMode
+QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an
+already-covered target; TRIAGE analyses a target that has no quality coverage and
+proposes a plan and checks for a person to approve.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_MODE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_MODE_MONITOR | 1 |  |
+| QUALITY_AGENT_SESSION_MODE_TRIAGE | 2 |  |
+
+
+
+<a name="metaxisdata-v1-QualityAgentSessionSource"></a>
+
+### QualityAgentSessionSource
+QualityAgentSessionSource says who created a session: a person or the
+enrollment queue.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED | 0 |  |
+| QUALITY_AGENT_SESSION_SOURCE_MANUAL | 1 |  |
+| QUALITY_AGENT_SESSION_SOURCE_AUTO | 2 |  |
 
 
 
@@ -10002,6 +10247,10 @@ The report includes real sample values from failed checks (capped), so it is a w
 | ListQualityAgentSessionMessages | [ListQualityAgentSessionMessagesRequest](#metaxisdata-v1-ListQualityAgentSessionMessagesRequest) | [ListQualityAgentSessionMessagesResponse](#metaxisdata-v1-ListQualityAgentSessionMessagesResponse) | Read one session&#39;s transcript. after_seq polls for new messages. |
 | GetQualityAgentRunnerStatus | [GetQualityAgentRunnerStatusRequest](#metaxisdata-v1-GetQualityAgentRunnerStatusRequest) | [QualityAgentRunnerStatus](#metaxisdata-v1-QualityAgentRunnerStatus) | Read the runner&#39;s live state: what is running, what is due and how much of the budgets is spent. runner_last_tick_time is process-local and resets on restart. |
 | GetQualityAgentMetrics | [GetQualityAgentMetricsRequest](#metaxisdata-v1-GetQualityAgentMetricsRequest) | [QualityAgentMetrics](#metaxisdata-v1-QualityAgentMetrics) | Read the runner&#39;s evaluation: session states, token spend, the acceptance of the change requests it proposed, and investigation verdicts. Read-only. |
+| ListQualityAgentEnrollments | [ListQualityAgentEnrollmentsRequest](#metaxisdata-v1-ListQualityAgentEnrollmentsRequest) | [ListQualityAgentEnrollmentsResponse](#metaxisdata-v1-ListQualityAgentEnrollmentsResponse) | List the runner&#39;s enrollment queue: one row per monitorable object in the runner&#39;s database scope, with its queue state, priority and session link. |
+| GetQualityAgentEnrollmentSummary | [GetQualityAgentEnrollmentSummaryRequest](#metaxisdata-v1-GetQualityAgentEnrollmentSummaryRequest) | [QualityAgentEnrollmentSummary](#metaxisdata-v1-QualityAgentEnrollmentSummary) | Read enrollment counts by state and by database. Read-only. |
+| UpdateQualityAgentEnrollment | [UpdateQualityAgentEnrollmentRequest](#metaxisdata-v1-UpdateQualityAgentEnrollmentRequest) | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | Update one enrollment&#39;s queue state or mode. Only EXCLUDED/PENDING are accepted as target states, and a stale expected_revision is rejected. |
+| RetryQualityAgentEnrollment | [RetryQualityAgentEnrollmentRequest](#metaxisdata-v1-RetryQualityAgentEnrollmentRequest) | [QualityAgentEnrollment](#metaxisdata-v1-QualityAgentEnrollment) | Requeue one enrollment now: it becomes pending, its next review is due and its priority is raised. |
 
  
 
@@ -13373,6 +13622,11 @@ DataQualitySetting configures the data quality subsystem for the workspace.
 | agent_runner_compaction_trigger_tokens | [int32](#int32) |  | The context token threshold that triggers compaction of a session&#39;s older messages; 0 means the server default (262144). |
 | agent_runner_idle_wake_seconds | [int32](#int32) |  | How long an idle session sleeps between wakes, in seconds; 0 means the server default (86400). |
 | agent_runner_auto_investigate_failures | [bool](#bool) | optional | Whether a failed check execution appends an event to its target&#39;s session and wakes it. On by default. |
+| agent_runner_auto_enroll | [bool](#bool) |  | Whether the runner enrolls every monitorable object in its database scope into its queue. Off by default: turning it on is the workspace&#39;s opt-in to automatic triage and monitoring. Every write stays a proposal a person approves. |
+| agent_runner_max_new_sessions_per_hour | [int32](#int32) |  | How many automatic sessions the admission path may create per hour; 0 means the server default (10), accepted range 1-1000. |
+| agent_runner_max_active_sessions | [int32](#int32) |  | How many enrollments may be active (triaging or monitoring) at once; 0 means the server default (100), accepted range 1-10000. |
+| agent_runner_dormant_review_days | [int32](#int32) |  | How many days a triaged target sleeps before it is reviewed again; 0 means the server default (30), accepted range 1-365. |
+| agent_runner_event_budget_percent | [int32](#int32) |  | The percentage of the hourly wake budget reserved for failed checks and people; automated admission only spends the remainder. 0 means the server default (50), accepted range 10-90. |
 
 
 

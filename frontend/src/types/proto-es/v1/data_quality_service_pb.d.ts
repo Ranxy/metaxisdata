@@ -10308,6 +10308,20 @@ export declare type QualityAgentSession = Message<"metaxisdata.v1.QualityAgentSe
    * @generated from field: google.protobuf.Timestamp archive_time = 20;
    */
   archiveTime?: Timestamp;
+
+  /**
+   * Who created the session: a person or the enrollment queue.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionSource source = 21;
+   */
+  source: QualityAgentSessionSource;
+
+  /**
+   * MONITOR reviews a covered target; TRIAGE analyses an uncovered one.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionMode mode = 22;
+   */
+  mode: QualityAgentSessionMode;
 };
 
 /**
@@ -10499,6 +10513,53 @@ export declare type QualityAgentRunnerStatus = Message<"metaxisdata.v1.QualityAg
    * @generated from field: google.protobuf.Timestamp runner_last_tick_time = 15;
    */
   runnerLastTickTime?: Timestamp;
+
+  /**
+   * Enrollment queue counts. A queue row is the desired state of one target in
+   * scope; a session is created lazily when the row is admitted.
+   *
+   * @generated from field: int32 pending_enrollments = 16;
+   */
+  pendingEnrollments: number;
+
+  /**
+   * @generated from field: int32 active_enrollments = 17;
+   */
+  activeEnrollments: number;
+
+  /**
+   * @generated from field: int32 dormant_enrollments = 18;
+   */
+  dormantEnrollments: number;
+
+  /**
+   * @generated from field: int32 excluded_enrollments = 19;
+   */
+  excludedEnrollments: number;
+
+  /**
+   * The last discovery scan of any database. Process-local: a restart resets it.
+   *
+   * @generated from field: google.protobuf.Timestamp enrollment_last_scan_time = 20;
+   */
+  enrollmentLastScanTime?: Timestamp;
+
+  /**
+   * The effective admission limits so the queue page can explain a stalled row.
+   *
+   * @generated from field: int32 max_new_sessions_per_hour = 21;
+   */
+  maxNewSessionsPerHour: number;
+
+  /**
+   * @generated from field: int32 max_active_sessions = 22;
+   */
+  maxActiveSessions: number;
+
+  /**
+   * @generated from field: bool auto_enroll_enabled = 23;
+   */
+  autoEnrollEnabled: boolean;
 };
 
 /**
@@ -10750,6 +10811,20 @@ export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.Li
    * @generated from field: string page_token = 6;
    */
   pageToken: string;
+
+  /**
+   * UNSPECIFIED keeps both manual and automatic sessions.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionSource source = 7;
+   */
+  source: QualityAgentSessionSource;
+
+  /**
+   * UNSPECIFIED keeps both monitor and triage sessions.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionMode mode = 8;
+   */
+  mode: QualityAgentSessionMode;
 };
 
 /**
@@ -10972,6 +11047,383 @@ export declare type GetQualityAgentRunnerStatusRequest = Message<"metaxisdata.v1
  * Use `create(GetQualityAgentRunnerStatusRequestSchema)` to create a new message.
  */
 export declare const GetQualityAgentRunnerStatusRequestSchema: GenMessage<GetQualityAgentRunnerStatusRequest>;
+
+/**
+ * QualityAgentEnrollment is one target's place in the runner's queue: the desired
+ * state derived from the database scope, plus the priority and admission hints a
+ * person sees. The session row remains the execution state.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentEnrollment
+ */
+export declare type QualityAgentEnrollment = Message<"metaxisdata.v1.QualityAgentEnrollment"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentEnrollments/{id}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The target this enrollment covers. Its path is reconstructed from the GUID.
+   *
+   * @generated from field: metaxisdata.v1.QualityTarget target = 2;
+   */
+  target?: QualityTarget;
+
+  /**
+   * The database the target lives in: instances/{instance}/databases/{database}.
+   *
+   * @generated from field: string database = 3;
+   */
+  database: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentEnrollmentState state = 4;
+   */
+  state: QualityAgentEnrollmentState;
+
+  /**
+   * MONITOR once the target has coverage; TRIAGE while it has none.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionMode mode = 5;
+   */
+  mode: QualityAgentSessionMode;
+
+  /**
+   * 0..1000; larger is admitted first.
+   *
+   * @generated from field: int32 priority = 6;
+   */
+  priority: number;
+
+  /**
+   * Human-readable signals behind the priority, for example "rules,failing".
+   *
+   * @generated from field: string priority_reason = 7;
+   */
+  priorityReason: string;
+
+  /**
+   * Why the row is not progressing, for example "budget" or "no-model".
+   *
+   * @generated from field: string blocked_reason = 8;
+   */
+  blockedReason: string;
+
+  /**
+   * The target's session, or empty before admission.
+   *
+   * @generated from field: string session = 9;
+   */
+  session: string;
+
+  /**
+   * @generated from field: int32 triage_count = 10;
+   */
+  triageCount: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_triaged_time = 11;
+   */
+  lastTriagedTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp next_review_time = 12;
+   */
+  nextReviewTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp discovered_time = 13;
+   */
+  discoveredTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_seen_time = 14;
+   */
+  lastSeenTime?: Timestamp;
+
+  /**
+   * Incremented by every mutation; human mutations carry the revision they saw.
+   *
+   * @generated from field: int32 revision = 15;
+   */
+  revision: number;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 16;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 17;
+   */
+  updateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentEnrollment.
+ * Use `create(QualityAgentEnrollmentSchema)` to create a new message.
+ */
+export declare const QualityAgentEnrollmentSchema: GenMessage<QualityAgentEnrollment>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentEnrollmentsRequest
+ */
+export declare type ListQualityAgentEnrollmentsRequest = Message<"metaxisdata.v1.ListQualityAgentEnrollmentsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * The maximum number of enrollments to return. If unspecified, at most 50 are
+   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * Exact database resource name. Empty keeps every database in scope.
+   *
+   * @generated from field: string database = 4;
+   */
+  database: string;
+
+  /**
+   * UNSPECIFIED keeps every state.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentEnrollmentState state = 5;
+   */
+  state: QualityAgentEnrollmentState;
+
+  /**
+   * UNSPECIFIED keeps both modes.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentSessionMode mode = 6;
+   */
+  mode: QualityAgentSessionMode;
+
+  /**
+   * A case-insensitive substring over the target GUID. The display path is encoded in
+   * the GUID's semicolon-separated segments, so a path fragment matches too.
+   *
+   * @generated from field: string search = 7;
+   */
+  search: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentEnrollmentsRequest.
+ * Use `create(ListQualityAgentEnrollmentsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentEnrollmentsRequestSchema: GenMessage<ListQualityAgentEnrollmentsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentEnrollmentsResponse
+ */
+export declare type ListQualityAgentEnrollmentsResponse = Message<"metaxisdata.v1.ListQualityAgentEnrollmentsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentEnrollment quality_agent_enrollments = 1;
+   */
+  qualityAgentEnrollments: QualityAgentEnrollment[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentEnrollmentsResponse.
+ * Use `create(ListQualityAgentEnrollmentsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentEnrollmentsResponseSchema: GenMessage<ListQualityAgentEnrollmentsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentEnrollmentSummaryRequest
+ */
+export declare type GetQualityAgentEnrollmentSummaryRequest = Message<"metaxisdata.v1.GetQualityAgentEnrollmentSummaryRequest"> & {
+  /**
+   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentEnrollmentSummaryRequest.
+ * Use `create(GetQualityAgentEnrollmentSummaryRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentEnrollmentSummaryRequestSchema: GenMessage<GetQualityAgentEnrollmentSummaryRequest>;
+
+/**
+ * QualityAgentEnrollmentStateCount is how many enrollments stand in one state.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentEnrollmentStateCount
+ */
+export declare type QualityAgentEnrollmentStateCount = Message<"metaxisdata.v1.QualityAgentEnrollmentStateCount"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentEnrollmentState state = 1;
+   */
+  state: QualityAgentEnrollmentState;
+
+  /**
+   * @generated from field: int32 count = 2;
+   */
+  count: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentEnrollmentStateCount.
+ * Use `create(QualityAgentEnrollmentStateCountSchema)` to create a new message.
+ */
+export declare const QualityAgentEnrollmentStateCountSchema: GenMessage<QualityAgentEnrollmentStateCount>;
+
+/**
+ * QualityAgentDatabaseEnrollmentSummary is one database's slice of the queue.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentDatabaseEnrollmentSummary
+ */
+export declare type QualityAgentDatabaseEnrollmentSummary = Message<"metaxisdata.v1.QualityAgentDatabaseEnrollmentSummary"> & {
+  /**
+   * instances/{instance}/databases/{database}
+   *
+   * @generated from field: string database = 1;
+   */
+  database: string;
+
+  /**
+   * @generated from field: int32 pending = 2;
+   */
+  pending: number;
+
+  /**
+   * @generated from field: int32 active = 3;
+   */
+  active: number;
+
+  /**
+   * @generated from field: int32 dormant = 4;
+   */
+  dormant: number;
+
+  /**
+   * @generated from field: int32 excluded = 5;
+   */
+  excluded: number;
+
+  /**
+   * @generated from field: int32 out_of_scope = 6;
+   */
+  outOfScope: number;
+
+  /**
+   * @generated from field: int32 gone = 7;
+   */
+  gone: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentDatabaseEnrollmentSummary.
+ * Use `create(QualityAgentDatabaseEnrollmentSummarySchema)` to create a new message.
+ */
+export declare const QualityAgentDatabaseEnrollmentSummarySchema: GenMessage<QualityAgentDatabaseEnrollmentSummary>;
+
+/**
+ * QualityAgentEnrollmentSummary is the queue at a glance: state counts, a breakdown
+ * by database, and when discovery last scanned a database (process-local).
+ *
+ * @generated from message metaxisdata.v1.QualityAgentEnrollmentSummary
+ */
+export declare type QualityAgentEnrollmentSummary = Message<"metaxisdata.v1.QualityAgentEnrollmentSummary"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentEnrollmentStateCount states = 1;
+   */
+  states: QualityAgentEnrollmentStateCount[];
+
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentDatabaseEnrollmentSummary databases = 2;
+   */
+  databases: QualityAgentDatabaseEnrollmentSummary[];
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_scan_time = 3;
+   */
+  lastScanTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentEnrollmentSummary.
+ * Use `create(QualityAgentEnrollmentSummarySchema)` to create a new message.
+ */
+export declare const QualityAgentEnrollmentSummarySchema: GenMessage<QualityAgentEnrollmentSummary>;
+
+/**
+ * @generated from message metaxisdata.v1.UpdateQualityAgentEnrollmentRequest
+ */
+export declare type UpdateQualityAgentEnrollmentRequest = Message<"metaxisdata.v1.UpdateQualityAgentEnrollmentRequest"> & {
+  /**
+   * The enrollment to change. Only state and mode in update_mask are accepted.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentEnrollment enrollment = 1;
+   */
+  enrollment?: QualityAgentEnrollment;
+
+  /**
+   * Supported paths: "state" (only PENDING and EXCLUDED are accepted) and "mode"
+   * (MONITOR and TRIAGE). The server rejects any other path.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+
+  /**
+   * The revision the caller saw; a stale value is rejected with Aborted.
+   *
+   * @generated from field: int32 expected_revision = 3;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityAgentEnrollmentRequest.
+ * Use `create(UpdateQualityAgentEnrollmentRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityAgentEnrollmentRequestSchema: GenMessage<UpdateQualityAgentEnrollmentRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.RetryQualityAgentEnrollmentRequest
+ */
+export declare type RetryQualityAgentEnrollmentRequest = Message<"metaxisdata.v1.RetryQualityAgentEnrollmentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The revision the caller saw; a stale value is rejected with Aborted.
+   *
+   * @generated from field: int32 expected_revision = 2;
+   */
+  expectedRevision: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.RetryQualityAgentEnrollmentRequest.
+ * Use `create(RetryQualityAgentEnrollmentRequestSchema)` to create a new message.
+ */
+export declare const RetryQualityAgentEnrollmentRequestSchema: GenMessage<RetryQualityAgentEnrollmentRequest>;
 
 /**
  * QualityRuleType is the observation a rule makes. The value is immutable for a
@@ -13080,6 +13532,124 @@ export enum QualityAgentSessionState {
 export declare const QualityAgentSessionStateSchema: GenEnum<QualityAgentSessionState>;
 
 /**
+ * QualityAgentSessionSource says who created a session: a person or the
+ * enrollment queue.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentSessionSource
+ */
+export enum QualityAgentSessionSource {
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_SOURCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_SOURCE_MANUAL = 1;
+   */
+  MANUAL = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_SOURCE_AUTO = 2;
+   */
+  AUTO = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentSessionSource.
+ */
+export declare const QualityAgentSessionSourceSchema: GenEnum<QualityAgentSessionSource>;
+
+/**
+ * QualityAgentSessionMode is what a wake does for the target. MONITOR reviews an
+ * already-covered target; TRIAGE analyses a target that has no quality coverage and
+ * proposes a plan and checks for a person to approve.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentSessionMode
+ */
+export enum QualityAgentSessionMode {
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_MODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_MODE_MONITOR = 1;
+   */
+  MONITOR = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_SESSION_MODE_TRIAGE = 2;
+   */
+  TRIAGE = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentSessionMode.
+ */
+export declare const QualityAgentSessionModeSchema: GenEnum<QualityAgentSessionMode>;
+
+/**
+ * QualityAgentEnrollmentState is the queue state of one target in the runner's
+ * scope. The enrollment row is the desired state; a session is created lazily when
+ * the row is admitted.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentEnrollmentState
+ */
+export enum QualityAgentEnrollmentState {
+  /**
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * Discovered and waiting for admission (a budget, a person or a dependency).
+   *
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * Admitted: a session exists and is triaging or monitoring the target.
+   *
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE = 2;
+   */
+  ACTIVE = 2,
+
+  /**
+   * Triaged with nothing left to do; waits for its next review or an approval.
+   *
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_DORMANT = 3;
+   */
+  DORMANT = 3,
+
+  /**
+   * A person opted the target out; discovery never re-admits it.
+   *
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED = 4;
+   */
+  EXCLUDED = 4,
+
+  /**
+   * The target's database left the runner's scope. Reversible.
+   *
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE = 5;
+   */
+  OUT_OF_SCOPE = 5,
+
+  /**
+   * The registry object no longer exists. The row is kept for history.
+   *
+   * @generated from enum value: QUALITY_AGENT_ENROLLMENT_STATE_GONE = 6;
+   */
+  GONE = 6,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentEnrollmentState.
+ */
+export declare const QualityAgentEnrollmentStateSchema: GenEnum<QualityAgentEnrollmentState>;
+
+/**
  * QualityAgentMessageRole is one entry in a session's conversation.
  *
  * @generated from enum metaxisdata.v1.QualityAgentMessageRole
@@ -14257,6 +14827,49 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityAgentMetricsRequestSchema;
     output: typeof QualityAgentMetricsSchema;
+  },
+  /**
+   * List the runner's enrollment queue: one row per monitorable object in the
+   * runner's database scope, with its queue state, priority and session link.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentEnrollments
+   */
+  listQualityAgentEnrollments: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentEnrollmentsRequestSchema;
+    output: typeof ListQualityAgentEnrollmentsResponseSchema;
+  },
+  /**
+   * Read enrollment counts by state and by database. Read-only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentEnrollmentSummary
+   */
+  getQualityAgentEnrollmentSummary: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentEnrollmentSummaryRequestSchema;
+    output: typeof QualityAgentEnrollmentSummarySchema;
+  },
+  /**
+   * Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
+   * as target states, and a stale expected_revision is rejected.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityAgentEnrollment
+   */
+  updateQualityAgentEnrollment: {
+    methodKind: "unary";
+    input: typeof UpdateQualityAgentEnrollmentRequestSchema;
+    output: typeof QualityAgentEnrollmentSchema;
+  },
+  /**
+   * Requeue one enrollment now: it becomes pending, its next review is due and its
+   * priority is raised.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.RetryQualityAgentEnrollment
+   */
+  retryQualityAgentEnrollment: {
+    methodKind: "unary";
+    input: typeof RetryQualityAgentEnrollmentRequestSchema;
+    output: typeof QualityAgentEnrollmentSchema;
   },
 }>;
 

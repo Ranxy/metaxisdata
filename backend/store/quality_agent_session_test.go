@@ -123,6 +123,7 @@ func sessionScanValues(engineState []byte) []any {
 		int32(5000), "summary text", int64(11), int64(12), engineState,
 		(*time.Time)(nil), (*time.Time)(nil), int32(0), (*int32)(nil),
 		time.Unix(1000, 0).UTC(), time.Unix(2000, 0).UTC(), (*time.Time)(nil),
+		int16(1), int16(1),
 	}
 }
 
