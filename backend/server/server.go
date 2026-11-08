@@ -37,6 +37,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/notificationdispatcher"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitydigestrunner"
+	"github.com/Ranxy/metaxisdata/backend/runner/qualityenrollmentrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitysessionrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitysuggestionrunner"
@@ -146,6 +147,8 @@ type Server struct {
 	suggestionRunner *qualitysuggestionrunner.Runner
 	// sessionRunner hosts the built-in quality agent's long-lived sessions.
 	sessionRunner *qualitysessionrunner.Runner
+	// enrollmentRunner turns the runner's database scope into an admission queue.
+	enrollmentRunner *qualityenrollmentrunner.Runner
 	// dispatcher posts queued outbound notification deliveries.
 	dispatcher *notificationdispatcher.Runner
 	// digestRunner sends the weekly data quality digest on its schedule.
@@ -276,6 +279,13 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			return config, resolveErr == nil, nil
 		}, s.metrics)
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
+	// The enrollment runner discovers the database scope into a queue and admits
+	// targets by priority; triage admission needs a model, so it reads the same
+	// resolver the session engine uses.
+	s.enrollmentRunner = qualityenrollmentrunner.NewRunner(stores, func(ctx context.Context) bool {
+		config, _, resolveErr := suggester.ResolveConfig(ctx)
+		return resolveErr == nil && (config.BaseURL != "" || config.ModelName != "")
+	})
 
 	if err := s.initializeSetting(ctx); err != nil {
 		return nil, errors.Wrap(err, "failed to init config")
@@ -292,14 +302,14 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = newEchoServer()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.sessionRunner, nil, s.metrics); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.sessionRunner, s.enrollmentRunner, s.metrics); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.sessionRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.sessionRunner, s.enrollmentRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}

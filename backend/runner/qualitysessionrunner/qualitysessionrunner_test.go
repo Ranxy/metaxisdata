@@ -224,6 +224,6 @@ func TestHostBlocksASessionOutsideTheAllowlist(t *testing.T) {
 	runner.host(context.Background(), settings, testSession())
 
 	require.Zero(t, engine.called)
-	require.Equal(t, []string{"needs-human"}, stores.blockedCodes)
+	require.Equal(t, []string{"out-of-scope"}, stores.blockedCodes)
 	require.Nil(t, stores.nextWakes[0])
 }
