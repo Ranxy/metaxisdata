@@ -1,0 +1,513 @@
+{
+  "instance": "mysql-dev-1",
+  "database": "e2e_dq",
+  "note": "Every rule is checked against 20_seed.sql. The defect inventory is in that file; the expected verdicts below are the assertion the driver enforces.",
+  "rules": [
+    {
+      "key": "orders-row-count",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders has exactly 10 rows",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_ROW_COUNT",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "rowCount": {
+            "exactRows": "10"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_PASS",
+        "observedValue": 10,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-null-percent",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders customer_email has at most 3 nulls",
+        "dimension": "QUALITY_DIMENSION_COMPLETENESS",
+        "ruleType": "QUALITY_RULE_TYPE_NULL_PERCENT",
+        "severity": "QUALITY_SEVERITY_WARNING",
+        "config": {
+          "nullPercent": {
+            "column": "customer_email",
+            "maxNullCount": "3",
+            "warnNullCount": "1"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_WARN",
+        "failedRows": 2,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-unique",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders external_ref is unique",
+        "dimension": "QUALITY_DIMENSION_UNIQUENESS",
+        "ruleType": "QUALITY_RULE_TYPE_UNIQUE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "unique": {
+            "column": "external_ref"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-unique-combination",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders (customer_id, product_code) is unique",
+        "dimension": "QUALITY_DIMENSION_UNIQUENESS",
+        "ruleType": "QUALITY_RULE_TYPE_UNIQUE_COMBINATION",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "uniqueCombination": {
+            "columns": [
+              "customer_id",
+              "product_code"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-accepted-values",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders status is an accepted value",
+        "dimension": "QUALITY_DIMENSION_VALIDITY",
+        "ruleType": "QUALITY_RULE_TYPE_ACCEPTED_VALUES",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "acceptedValues": {
+            "column": "status",
+            "values": [
+              "paid",
+              "pending",
+              "shipped"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-range",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders amount is between 0 and 1000",
+        "dimension": "QUALITY_DIMENSION_VALIDITY",
+        "ruleType": "QUALITY_RULE_TYPE_RANGE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "range": {
+            "column": "amount",
+            "min": "0",
+            "max": "1000"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-regex",
+      "batch": "orders-a",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders product_code matches the code pattern",
+        "dimension": "QUALITY_DIMENSION_VALIDITY",
+        "ruleType": "QUALITY_RULE_TYPE_REGEX",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "regex": {
+            "column": "product_code",
+            "pattern": "^[A-Z]{3,8}$"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-string-length",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders product_code length is 3..8",
+        "dimension": "QUALITY_DIMENSION_VALIDITY",
+        "ruleType": "QUALITY_RULE_TYPE_STRING_LENGTH",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "stringLength": {
+            "column": "product_code",
+            "minLen": "3",
+            "maxLen": "8"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-referential",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders customer_id references a customer",
+        "dimension": "QUALITY_DIMENSION_CONSISTENCY",
+        "ruleType": "QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "referentialIntegrity": {
+            "childColumn": "customer_id",
+            "parentTable": "dq_reference_customers",
+            "parentColumn": "id"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-cross-column",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders shipped_quantity is at most quantity",
+        "dimension": "QUALITY_DIMENSION_CONSISTENCY",
+        "ruleType": "QUALITY_RULE_TYPE_CROSS_COLUMN",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "crossColumn": {
+            "leftColumn": "shipped_quantity",
+            "rightColumn": "quantity",
+            "op": "QUALITY_COMPARISON_OPERATOR_LTE"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-custom-sql",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders has no negative amount",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_CUSTOM_SQL",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "customSql": {
+            "sql": "SELECT id FROM dq_orders WHERE amount < 0"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "observedValue": 1
+      }
+    },
+    {
+      "key": "orders-cel",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders amount is non-negative (CEL)",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_CEL_EXPRESSION",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "celExpression": {
+            "expression": "amount >= 0.0",
+            "columns": [
+              "amount"
+            ],
+            "sampleRows": 1000
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-aggregate",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders mean amount is between 0 and 100",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_AGGREGATE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "aggregate": {
+            "column": "amount",
+            "function": "QUALITY_AGGREGATE_FUNCTION_AVG",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_PASS",
+        "observedValue": 50.5,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-standard-code",
+      "batch": "orders-b",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders credit_code is a valid USCC",
+        "dimension": "QUALITY_DIMENSION_VALIDITY",
+        "ruleType": "QUALITY_RULE_TYPE_STANDARD_CODE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "standardCode": {
+            "column": "credit_code",
+            "standard": "QUALITY_STANDARD_CODE_UNIFIED_SOCIAL_CREDIT_CODE"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 10
+      }
+    },
+    {
+      "key": "orders-row-count-change",
+      "batch": "row-count-change",
+      "table": "dq_orders",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders row count does not grow more than 20%",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_ROW_COUNT_CHANGE",
+        "severity": "QUALITY_SEVERITY_WARNING",
+        "config": {
+          "onEmpty": "QUALITY_EMPTY_BEHAVIOR_PASS",
+          "rowCountChange": {
+            "maxIncreasePct": 20
+          }
+        }
+      }
+    },
+    {
+      "key": "groups-group-check",
+      "batch": "groups",
+      "table": "dq_groups",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_groups has at most 2 rows per bucket",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_GROUP_CHECK",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "groupCheck": {
+            "columns": [
+              "bucket"
+            ],
+            "maxRowsPerGroup": "2"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 3
+      }
+    },
+    {
+      "key": "heartbeat-freshness",
+      "batch": "heartbeat",
+      "table": "dq_heartbeat",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_heartbeat is fresher than an hour",
+        "dimension": "QUALITY_DIMENSION_TIMELINESS",
+        "ruleType": "QUALITY_RULE_TYPE_FRESHNESS",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "freshness": {
+            "timestampColumn": "updated_at",
+            "maxLagSeconds": 3600
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL"
+      }
+    },
+    {
+      "key": "empty-row-count",
+      "batch": "empty",
+      "table": "dq_empty",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_empty has a non-negative mean amount",
+        "dimension": "QUALITY_DIMENSION_ACCURACY",
+        "ruleType": "QUALITY_RULE_TYPE_AGGREGATE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "aggregate": {
+            "column": "amount",
+            "function": "QUALITY_AGGREGATE_FUNCTION_SUM",
+            "min": 0
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_NOT_EVALUATED"
+      }
+    },
+    {
+      "key": "segment-segment-check",
+      "batch": "segment",
+      "table": "dq_segment",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_segment keeps every observed region",
+        "dimension": "QUALITY_DIMENSION_COMPLETENESS",
+        "ruleType": "QUALITY_RULE_TYPE_SEGMENT_CHECK",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "segmentCheck": {
+            "columns": [
+              "region"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "key": "rollup-cross-table",
+      "batch": "rollup",
+      "table": "dq_orders_rollup",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orders_rollup reconciles with dq_orders",
+        "dimension": "QUALITY_DIMENSION_CONSISTENCY",
+        "ruleType": "QUALITY_RULE_TYPE_CROSS_TABLE",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "crossTable": {
+            "leftFunction": "QUALITY_AGGREGATE_FUNCTION_COUNT",
+            "rightFunction": "QUALITY_AGGREGATE_FUNCTION_COUNT",
+            "tolerance": 0,
+            "reference": {
+              "table": "dq_orders",
+              "metaType": "TABLE"
+            }
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_PASS"
+      }
+    },
+    {
+      "key": "drift-schema-drift",
+      "batch": "drift",
+      "table": "dq_drift_target",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_drift_target keeps its saved column list",
+        "dimension": "QUALITY_DIMENSION_CONSISTENCY",
+        "ruleType": "QUALITY_RULE_TYPE_SCHEMA_DRIFT",
+        "severity": "QUALITY_SEVERITY_WARNING",
+        "config": {
+          "schemaDrift": {}
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_FAIL",
+        "failedRows": 1,
+        "totalRows": 2
+      }
+    },
+    {
+      "key": "orphan-row-count",
+      "batch": "orphan",
+      "table": "dq_orphan_target",
+      "metaType": "TABLE",
+      "rule": {
+        "title": "dq_orphan_target has rows",
+        "dimension": "QUALITY_DIMENSION_COMPLETENESS",
+        "ruleType": "QUALITY_RULE_TYPE_ROW_COUNT",
+        "severity": "QUALITY_SEVERITY_ERROR",
+        "config": {
+          "rowCount": {
+            "minRows": "1"
+          }
+        }
+      },
+      "expect": {
+        "outcome": "QUALITY_STATUS_SKIPPED",
+        "errorCode": "ORPHANED"
+      }
+    }
+  ]
+}
