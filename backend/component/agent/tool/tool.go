@@ -142,6 +142,15 @@ type Invocation struct {
 	// in-process (the built-in agent) must set it, because the interceptor does not
 	// run on that path.
 	Checker PermissionChecker
+	// Observer records one execution's outcome, duration and result size. A product
+	// wires it to its metrics; nil records nothing.
+	Observer Observer
+}
+
+// Observer records one tool execution. The product captures the labels it owns
+// (its product name); the pipeline supplies the tool, outcome and measurement.
+type Observer interface {
+	ObserveToolCall(tool, outcome string, duration time.Duration, resultBytes int)
 }
 
 // PermissionChecker resolves whether a principal holds a workspace permission.

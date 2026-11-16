@@ -228,3 +228,54 @@ func TestExecuteSkipsTheCheckWithoutAChecker(t *testing.T) {
 	require.False(t, result.IsError)
 	require.Equal(t, "ok", result.Content)
 }
+
+// fakeObserver records what the pipeline reported.
+type fakeObserver struct {
+	calls []observedToolCall
+}
+
+type observedToolCall struct {
+	tool     string
+	outcome  string
+	duration time.Duration
+	bytes    int
+}
+
+func (o *fakeObserver) ObserveToolCall(tool, outcome string, duration time.Duration, resultBytes int) {
+	o.calls = append(o.calls, observedToolCall{tool: tool, outcome: outcome, duration: duration, bytes: resultBytes})
+}
+
+func TestExecuteReportsEveryFinishedCall(t *testing.T) {
+	t.Parallel()
+
+	observer := &fakeObserver{}
+	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
+		return Result{Content: "ok"}, nil
+	})
+	set.Execute(context.Background(), Call{Name: "one"}, &Invocation{Observer: observer})
+
+	require.Len(t, observer.calls, 1)
+	require.Equal(t, "one", observer.calls[0].tool)
+	require.Equal(t, "success", observer.calls[0].outcome)
+	require.Equal(t, 2, observer.calls[0].bytes)
+	require.NotZero(t, observer.calls[0].duration)
+}
+
+func TestExecuteReportsADenialAsAnErrorOutcome(t *testing.T) {
+	t.Parallel()
+
+	meta := validTool("one").Meta
+	meta.Permission = "metaxisdata.test.read"
+	observer := &fakeObserver{}
+	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+		return Result{Content: "ok"}, nil
+	})
+	set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
+		Principal: &store.UserMessage{ID: 7},
+		Checker:   &fakePermissionChecker{allowed: false},
+		Observer:  observer,
+	})
+
+	require.Len(t, observer.calls, 1)
+	require.Equal(t, "error", observer.calls[0].outcome)
+}

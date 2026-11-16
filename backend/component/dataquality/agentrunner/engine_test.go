@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -659,4 +661,44 @@ func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
 	require.NotNil(t, toolRow)
 	require.Contains(t, toolRow.Content, "does not hold metaxisdata.dataQuality.rules.list")
 	require.NotEmpty(t, toolRow.Error)
+}
+
+// Every wake records one agent tool metric per executed tool, labelled with the
+// product spec and the tool name.
+func TestWakeRecordsToolMetrics(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	m := metrics.New()
+	require.NoError(t, m.Register(registry))
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "looking", toolCalls: []llm.ToolCall{toolCall("call_1", "get_target_summary", "{}")}},
+		{content: "done"},
+	}), resolveToModel, m)
+
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+
+	families, err := registry.Gather()
+	require.NoError(t, err)
+	found := false
+	for _, family := range families {
+		if family.GetName() != "metaxisdata_agent_tool_calls_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := map[string]string{}
+			for _, label := range metric.GetLabel() {
+				labels[label.GetName()] = label.GetValue()
+			}
+			require.Equal(t, "quality-monitor", labels["product"])
+			require.Equal(t, "get_target_summary", labels["tool"])
+			require.Equal(t, "success", labels["outcome"])
+			require.Equal(t, float64(1), metric.GetCounter().GetValue())
+			found = true
+		}
+	}
+	require.True(t, found, "the tool call metric was not recorded")
 }

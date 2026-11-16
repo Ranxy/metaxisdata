@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
@@ -27,8 +28,10 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 	if inv == nil {
 		inv = &Invocation{}
 	}
-	if result, refused := authorize(ctx, t, inv); refused {
-		return result
+	started := time.Now()
+	if refusedResult, refused := authorize(ctx, t, inv); refused {
+		observeTool(inv, t.Name, refusedResult, started)
+		return refusedResult
 	}
 
 	execCtx := ctx
@@ -53,7 +56,22 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 		result.Content = common.TruncateUTF8Bytes(result.Content, t.Meta.MaxResultBytes)
 		result.Truncated = true
 	}
+	observeTool(inv, t.Name, result, started)
 	return result
+}
+
+// observeTool reports one finished execution to the product's observer, if any.
+// A denial is an error outcome: a call the caller was not allowed to make is a
+// tool failure like any other.
+func observeTool(inv *Invocation, toolName string, result Result, started time.Time) {
+	if inv.Observer == nil {
+		return
+	}
+	outcome := "success"
+	if result.IsError {
+		outcome = "error"
+	}
+	inv.Observer.ObserveToolCall(toolName, outcome, time.Since(started), len(result.Content))
 }
 
 // authorize enforces a permission-authorized tool's IAM permission. It is a

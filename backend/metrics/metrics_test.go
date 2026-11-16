@@ -135,6 +135,10 @@ func TestRegisteredInstruments(t *testing.T) {
 		"metaxisdata_lineagevalidation_edges_total":           {"result"},
 		// Instance connection governor.
 		"metaxisdata_instance_connection_try_acquire_rejected_total": nil,
+		// Agent tool executions.
+		"metaxisdata_agent_tool_calls_total":           {"product", "tool", "outcome"},
+		"metaxisdata_agent_tool_call_duration_seconds": {"product", "tool"},
+		"metaxisdata_agent_tool_result_bytes":          {"product", "tool"},
 		// Outbound notifications.
 		"metaxisdata_notification_deliveries_attempted_total": {"outcome"},
 		"metaxisdata_notification_delivery_duration_seconds":  nil,

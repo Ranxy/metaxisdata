@@ -257,7 +257,7 @@ func (e *Engine) modelWake(
 		return Outcome{}, err
 	}
 	spec := specFor(session.Mode)
-	invocation, err := e.toolInvocation(ctx, session)
+	invocation, err := e.toolInvocation(ctx, session, spec.Name)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -418,9 +418,16 @@ func (e *Engine) modelWake(
 // session's agent principal, never the person who woke it. A product without a
 // checker (tests, a deployment that has not wired IAM) returns nil, which the
 // pipeline treats as "the transport already authorized this call".
-func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage) (*tool.Invocation, error) {
-	if e.checker == nil {
+func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage, product string) (*tool.Invocation, error) {
+	if e.checker == nil && e.metrics == nil {
 		return nil, nil
+	}
+	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now}
+	if e.metrics != nil {
+		invocation.Observer = agentToolObserver{metrics: e.metrics, product: product}
+	}
+	if e.checker == nil {
+		return invocation, nil
 	}
 	if session.AgentPrincipalID == 0 {
 		return nil, errors.New("the session has no agent principal")
@@ -432,12 +439,20 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 	if principal == nil {
 		return nil, errors.New("the session's agent principal no longer exists")
 	}
-	return &tool.Invocation{
-		Principal: principal,
-		Workspace: session.WorkspaceID,
-		Checker:   e.checker,
-		Now:       e.now,
-	}, nil
+	invocation.Principal = principal
+	invocation.Checker = e.checker
+	return invocation, nil
+}
+
+// agentToolObserver labels the shared tool metrics with this product's name.
+type agentToolObserver struct {
+	metrics *metrics.Metrics
+	product string
+}
+
+// ObserveToolCall records one tool execution for this product.
+func (o agentToolObserver) ObserveToolCall(toolName, outcome string, duration time.Duration, resultBytes int) {
+	o.metrics.ObserveAgentToolCall(o.product, toolName, outcome, duration, resultBytes)
 }
 
 // deterministicWake runs the no-model survey or event investigation. It consumes every
