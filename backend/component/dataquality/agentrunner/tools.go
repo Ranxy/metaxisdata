@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -80,29 +81,26 @@ func (e *Engine) gatherEvidence(ctx context.Context, session *store.QualityAgent
 	return result, nil
 }
 
-// toolExecutor runs one tool call for a model wake and journals nothing itself: the
-// wake recorder persists the assistant message, the tool result and the engine notes
-// from the event stream.
-func (e *Engine) toolExecutor(
-	ctx context.Context,
-	session *store.QualityAgentSessionMessage,
-	isToolResult map[string]bool,
-	blocked *bool,
-	blockedCode, blockedWhy *string,
-	nextWake **time.Time,
-	scheduleReason *string,
-) llm.ToolExecutor {
+// toolExecutor adapts one wake's resolved tool set to the loop's executor
+// contract. It journals nothing itself: the wake recorder persists the assistant
+// message, the tool result and the engine notes from the event stream.
+func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool) llm.ToolExecutor {
 	return func(call llm.ToolCall) ([]llm.ToolResult, error) {
-		result, err := e.executeTool(ctx, session, call.GetName(), call.Function.Arguments,
-			blocked, blockedCode, blockedWhy, nextWake, scheduleReason)
-		if err != nil {
-			return nil, err
+		result := set.Execute(ctx, tool.Call{
+			ID:        call.ID,
+			Name:      call.GetName(),
+			Arguments: json.RawMessage(call.Function.Arguments),
+		}, nil)
+		if result.Truncated {
+			truncated[call.ID] = true
 		}
-		if len(result) > toolResultLimit {
-			isToolResult[call.ID] = true
-			result = truncateBytes(result, toolResultLimit)
+		if result.IsError {
+			if result.Error != nil {
+				return nil, result.Error
+			}
+			return nil, errors.New(result.Content)
 		}
-		return []llm.ToolResult{{ToolCallID: call.ID, Content: result}}, nil
+		return []llm.ToolResult{{ToolCallID: call.ID, Content: result.Content}}, nil
 	}
 }
 

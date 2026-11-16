@@ -27,8 +27,6 @@ const (
 	// modelMaxTurns bounds one wake's LLM calls; the conversation it builds is
 	// bounded by the wake deadline as well.
 	modelMaxTurns = 8
-	// toolResultLimit bounds one tool result fed back to the model.
-	toolResultLimit = 8 << 10
 	// maxDecisionStatement matches the API's memory statement bound.
 	maxDecisionStatement = 4000
 	// blockedThreshold is how many consecutive wakes must report the same blocker
@@ -250,13 +248,23 @@ func (e *Engine) modelWake(
 		turnUsage      = map[int32]*llm.Usage{}
 	)
 	totalTokens = compactionTokens
-	executor := e.toolExecutor(ctx, session, truncatedTools, &blocked, &blockedCode, &blockedWhy, &nextWake, &scheduleReason)
+	set, err := e.toolSet(session, &toolControl{
+		blocked:        &blocked,
+		blockedCode:    &blockedCode,
+		blockedWhy:     &blockedWhy,
+		nextWake:       &nextWake,
+		scheduleReason: &scheduleReason,
+	})
+	if err != nil {
+		return Outcome{}, err
+	}
+	executor := toolExecutor(ctx, set, truncatedTools)
 	runLoop := func(conversation []llm.AgentMessage) *llm.AgentEvent {
 		chatConfig := llm.AgentConfig{
 			Provider:             config,
 			Feature:              "dq_agent",
 			History:              conversation,
-			Tools:                modelToolDefs(session.Mode),
+			Tools:                llmToolDefs(set.Schemas()),
 			Executor:             executor,
 			MaxTurns:             maxTurnsFor(session.Mode),
 			MaxConversationBytes: llm.DefaultMaxConversationBytes,

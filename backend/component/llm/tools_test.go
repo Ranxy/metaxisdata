@@ -78,23 +78,3 @@ func TestBuildContextFromMetadataToleratesMissingGUID(t *testing.T) {
 	require.Equal(t, "", context.Objects[1].GUID)
 	require.Equal(t, "p", context.Objects[1].Name)
 }
-
-func TestExplainSQLToolsAreFunctionDefinitions(t *testing.T) {
-	t.Parallel()
-
-	tools := ExplainSQLTools()
-	require.Len(t, tools, 2)
-
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		require.Equal(t, "function", tool.Type)
-		require.NotEmpty(t, tool.Function.Name)
-		require.NotEmpty(t, tool.Function.Description)
-		parameters, ok := tool.Function.Parameters.(map[string]any)
-		require.True(t, ok)
-		require.Equal(t, "object", parameters["type"])
-		require.NotEmpty(t, parameters["required"])
-		names = append(names, tool.Function.Name)
-	}
-	require.Equal(t, []string{"get_object_schema", "search_objects"}, names)
-}

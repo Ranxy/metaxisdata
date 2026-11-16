@@ -14,6 +14,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -136,10 +137,25 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		}
 	}
 
-	// Build tools.
-	tools := llm.ExplainSQLTools()
+	// Build the request's tool set. The model sees the set's schemas and can only
+	// run those same tools.
+	set, err := s.explainSQLToolSet(scopePrefix, instanceID)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build the explain SQL tools"))
+	}
 	executor := func(tc llm.ToolCall) ([]llm.ToolResult, error) {
-		return s.executeExplainTool(ctx, tc, scopePrefix, instanceID)
+		result := set.Execute(ctx, tool.Call{
+			ID:        tc.ID,
+			Name:      tc.GetName(),
+			Arguments: json.RawMessage(tc.Function.Arguments),
+		}, nil)
+		if result.IsError {
+			if result.Error != nil {
+				return nil, result.Error
+			}
+			return nil, errors.New(result.Content)
+		}
+		return []llm.ToolResult{{ToolCallID: tc.ID, Content: result.Content}}, nil
 	}
 
 	// Run agent loop.
@@ -153,7 +169,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		Metrics:              s.metrics,
 		SystemPrompt:         buildSystemPrompt(language, metaType, ctxObjects),
 		UserPrompt:           sqlText,
-		Tools:                tools,
+		Tools:                toolDefsFromSchemas(set.Schemas()),
 		Executor:             executor,
 		MaxTurns:             llm.DefaultMaxTurns,
 		MaxConversationBytes: llm.DefaultMaxConversationBytes,
@@ -454,17 +470,6 @@ func isTableLikeType(mt storepb.MetaType) bool {
 }
 
 // ---- Tool execution ----
-
-func (s *ExplainSQLService) executeExplainTool(ctx context.Context, tc llm.ToolCall, scopePrefix, instanceID string) ([]llm.ToolResult, error) {
-	switch tc.Function.Name {
-	case "get_object_schema":
-		return s.toolGetObjectSchema(ctx, tc, scopePrefix, instanceID)
-	case "search_objects":
-		return s.toolSearchObjects(ctx, tc, scopePrefix)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", tc.Function.Name)
-	}
-}
 
 func (s *ExplainSQLService) toolGetObjectSchema(ctx context.Context, tc llm.ToolCall, scopePrefix, instanceID string) ([]llm.ToolResult, error) {
 	var args struct {

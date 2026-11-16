@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -143,11 +142,6 @@ func truncateRunes(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit]) + "…"
-}
-
-// truncateBytes bounds a string at a byte budget without splitting a rune.
-func truncateBytes(value string, limit int) string {
-	return common.TruncateUTF8Bytes(value, limit)
 }
 
 func ptrTime(value time.Time) *time.Time { return &value }
