@@ -26,7 +26,7 @@ type toolSpec struct {
 func readMeta() tool.Meta {
 	return tool.Meta{
 		Group:          "quality",
-		Scope:          tool.ScopeCatalog,
+		Scope:          tool.ScopeProductOnly,
 		Authz:          tool.AuthzPermission,
 		ReadOnly:       true,
 		Permission:     string(permission.DataQualityRulesList),
@@ -41,7 +41,7 @@ func readMeta() tool.Meta {
 func proposeMeta(action dataquality.ActionID) tool.Meta {
 	return tool.Meta{
 		Group:          "quality",
-		Scope:          tool.ScopeCatalog,
+		Scope:          tool.ScopeProductOnly,
 		Authz:          tool.AuthzPermission,
 		SideEffect:     tool.SideEffectPropose,
 		Permission:     string(permission.DataQualityPlansUpdate),
@@ -151,7 +151,7 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 				}, "required": []string{"intent"}},
 				meta: tool.Meta{
 					Group:          "quality",
-					Scope:          tool.ScopeCatalog,
+					Scope:          tool.ScopeProductOnly,
 					Authz:          tool.AuthzPermission,
 					SideEffect:     tool.SideEffectPropose,
 					Permission:     string(permission.DataQualitySuggest),

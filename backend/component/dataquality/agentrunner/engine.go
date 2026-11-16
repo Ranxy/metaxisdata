@@ -20,6 +20,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -29,8 +30,6 @@ const (
 	// modelMaxTurns bounds one wake's LLM calls; the conversation it builds is
 	// bounded by the wake deadline as well.
 	modelMaxTurns = 8
-	// maxDecisionStatement matches the API's memory statement bound.
-	maxDecisionStatement = 4000
 	// blockedThreshold is how many consecutive wakes must report the same blocker
 	// before the session parks for a person.
 	blockedThreshold = 3
@@ -598,7 +597,7 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 	if contract != nil {
 		contractSettings = contract.Settings
 	}
-	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(contractSettings.GetIntent(), e.now()), ruleShapes(rules))
+	plan := dataquality.DerivePlan(contract != nil, dataquality.ActiveIntent(contractSettings.GetIntent(), e.now()), quality.RuleShapes(rules))
 	state := cloneEngineState(session.EngineState)
 	state.Phase = "survey"
 	done := doneSet(state)
@@ -608,7 +607,7 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 		if requirement.Satisfied || requirement.Exempted {
 			continue
 		}
-		gapLabels = append(gapLabels, gapLabel(requirement))
+		gapLabels = append(gapLabels, quality.GapLabel(requirement))
 	}
 	if len(gapLabels) == 0 {
 		e.recordEngine(ctx, session, wake, 0, "deterministic survey: no coverage gap")
@@ -643,7 +642,7 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 			RequestFingerprint: "coverage-gap:" + session.TargetGUID + ":" + label,
 			CreatedBy:          ptrInt32(session.AgentPrincipalID),
 		}
-		if _, err := e.recordInvestigation(ctx, investigation); err != nil {
+		if _, err := e.agentTools().CreateInvestigation(ctx, investigation); err != nil {
 			return Outcome{}, err
 		}
 		state.Done = append(state.Done, "gap:"+label)
@@ -652,7 +651,7 @@ func (e *Engine) maintain(ctx context.Context, session *store.QualityAgentSessio
 	}
 	if !done["asset_fact"] {
 		statement := fmt.Sprintf("the plan declares %d uncovered propert(ies): %s", len(gapLabels), joinLabels(gapLabels))
-		if err := e.recordAssetFact(ctx, session, statement); err != nil {
+		if err := e.agentTools().RecordAssetFactStatement(ctx, agentSessionOf(session), statement); err != nil {
 			return Outcome{}, err
 		}
 		state.Done = append(state.Done, "asset_fact")
@@ -733,7 +732,7 @@ func (e *Engine) investigateEvent(ctx context.Context, session *store.QualityAge
 		RequestFingerprint: "event-investigation:" + reference,
 		CreatedBy:          ptrInt32(session.AgentPrincipalID),
 	}
-	if _, err := e.recordInvestigation(ctx, investigation); err != nil {
+	if _, err := e.agentTools().CreateInvestigation(ctx, investigation); err != nil {
 		return Outcome{}, err
 	}
 	e.recordEngine(ctx, session, wake, 0, "deterministic investigation recorded for "+reference)

@@ -11,10 +11,10 @@
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | Agent runtime | `component/agent/` | turn/流式循环、事件、工具批调度（只读并行）、会话预算、prompt 分节（`agent.Prompt`）、指标 |
-| Tool catalog | `component/agent/tool/`（契约）+ `component/tools/{metadata,lineage,quality}/`（能力） | 工具定义 + 执行 + 策略元数据；一条执行管线。当前由 MCP 消费；内置 agent 的 DQ 工具与 ExplainSQL 工具仍是产品内实现（迁移 deferred） |
+| Tool catalog | `component/agent/tool/`（契约）+ `component/tools/{metadata,lineage,quality}/`（能力） | 工具定义 + 执行 + 策略元数据；一条执行管线。MCP 的 17 个工具、ExplainSQL 的 2 个工具、内置 DQ agent 的 10 个产品工具（`quality/agent.go`，`ScopeProductOnly`）都在 catalog 包内 |
 | Product preset | `component/dataquality/agentrunner/`、`api/v1/explain_sql_*.go` | 产品名、prompt、工具白名单、turn 预算、wake/会话编排、确定性回退 |
 
-依赖方向：MCP → catalog；内置 agent 产品 → runtime + catalog 契约；ExplainSQL → runtime + catalog 契约；runtime → `component/llm`（仅 provider 传输）。MCP 不 import runtime。`api/v1` 实现 catalog 声明的 service 接口，由 `server.go` 注入；catalog 不 import `api/v1`。
+依赖方向：MCP → catalog；内置 agent 产品 → runtime + catalog；ExplainSQL → runtime + catalog；runtime → `component/llm`（仅 provider 传输）。MCP 不 import runtime。`api/v1` 实现 catalog 声明的 service 接口，由 `server.go` 注入；catalog 不 import `api/v1`。
 
 ## 2. 工具契约与执行管线
 
@@ -52,7 +52,7 @@
 ### ExplainSQL（`api/v1/explain_sql_*.go`）
 
 - 已运行在 agent runtime 上，工具经共享 `tool.Set` 管线；wired checker（`iam.Manager`）与 Observer（`product="explain_sql"`）。
-- 工具本身仍是 ExplainSQL 专有的 2 个（`get_object_schema`/`search_objects`），**尚未**迁移到共享 metadata/lineage 工具——见 §5 deferred。
+- 两个工具（`get_object_schema`/`search_objects`）的定义与执行体在 `component/tools/metadata/explain.go`，保持原有模型可见名称/schema/紧凑 JSON；`api/v1/explain_sql_tools.go` 只保留按请求 scope 解析工具集与指标 observer。
 
 ## 4. 会话与转录
 
@@ -67,9 +67,7 @@
 - **不继承调用者权限**：内置 agent 一律以自己的 principal 执行（避免 confused deputy）；人类提问/建会话只是归因。
 - **IAM 在管线、动作策略在拥有事实的层**：`AuthzPermission` 写工具的 handler 内策略保留（RPC 路径）；内置 agent 的 propose 工具不调用 handler，因此在管线执行同一 `DecideAction`（单一判定点）。
 - **审计**：MCP 每次调用一行；内置 agent 只审计 `SideEffect != None` 的工具（读不审计，避免把每日巡检读放大成永久账本）。行 method 为 `agent/tools/call:<tool>`，actor 是 agent principal。
-- **工具迁移 deferred**：`component/tools/*` 目前只有 MCP 一个消费者；DQ agent 的 10 个工具仍是 `agentrunner` 产品内实现，ExplainSQL 的 2 个工具仍是 service 内实现。迁移会改变模型可见工具名/schema（ExplainSQL）或需要产品级回归网，暂不进行。
-- **transcript 表泛化 deferred**：若出现第二个持久长会话产品（ExplainSQL 多轮、元数据治理），再评估 `agent_session`/`agent_message` 与迁移。
-- **MCP 写工具不开放**；agent 的 `Publish` 副作用档位当前没有暴露路径。
+- **transcript 表泛化 deferred**：若出现第二个持久长会话产品，再评估 `agent_session`/`agent_message` 与迁移。**MCP 写工具不开放**；`Publish` 副作用档位当前没有暴露路径。
 - **单副本/调度语义不变**：lease/claim、runner 生命周期、事件接入均未迁移到 runtime。
 
 ## 6. 实施分期（已落地）
@@ -80,7 +78,7 @@
 | P1 | `llm` 拆传输层；`agent`（loop/events/prompt）；`agent/transcript` | done |
 | P2 | metadata/lineage/quality 工具包；MCP 17 工具全部委派，wire 冻结（工具定义仍由 MCP 持有） | done |
 | P3 | monitor/triage spec、控制工具返回值、IAM 按 principal、动作策略在管线 | done |
-| P4 | 工具级指标（agent + MCP）、只读工具并行；ExplainSQL catalog 迁移 | 指标/并行 done；迁移 deferred（§5） |
+| P4 | 工具级指标（agent + MCP）、只读工具并行、ExplainSQL 与 DQ 工具迁入 catalog | done |
 
 ## 7. Where things live
 
@@ -89,7 +87,7 @@
 | 工具契约/注册表/管线 | `component/agent/tool/{tool,registry,execute}.go` |
 | Loop/事件/prompt | `component/agent/{loop,event,prompt}.go`、`schema.go`（ToolDefs） |
 | 转录/压缩 | `component/agent/transcript/` |
-| 工具能力 | `component/tools/metadata/`（寻址、错误信封、metadata 工具）、`component/tools/lineage/`、`component/tools/quality/` |
+| 工具能力 | `component/tools/metadata/`（寻址、错误信封、metadata + ExplainSQL 工具）、`component/tools/lineage/`、`component/tools/quality/`（MCP 读 + DQ agent 产品工具） |
 | MCP 传输 | `backend/mcp/{server,tool_*}.go`（定义/鉴权/审计/指标） |
 | DQ 产品 | `component/dataquality/agentrunner/{spec,prompt,toolset,session_port,wakecontrol,engine,tools,triage}.go` |
 | ExplainSQL | `api/v1/explain_sql_{service,tools,context}.go` |
