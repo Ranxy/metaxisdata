@@ -24,6 +24,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/lineage"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -157,6 +158,8 @@ type Server struct {
 	catalog *metadata.Tools
 	// lineageTools holds the shared lineage tool bodies.
 	lineageTools *lineage.Tools
+	// qualityTools holds the shared quality tool bodies.
+	qualityTools *quality.Tools
 	// audit writes one ledger row per call. It is a field rather than a method call
 	// so a test can observe the ledger without a database; NewServer points it at
 	// the store-backed writer.
@@ -172,6 +175,7 @@ func NewServer(config Config) *Server {
 	server.resolver = metadata.NewResolver(config.Instances, config.Databases)
 	server.catalog = metadata.NewTools(config.Instances, config.Databases, config.Principals)
 	server.lineageTools = lineage.NewTools(config.Lineage, server.resolver)
+	server.qualityTools = quality.NewTools(config.Quality, server.resolver)
 	server.audit = server.auditToolCall
 	server.sdk = mcpsdk.NewServer(
 		// No version: this repository has no build version to report, and an empty
@@ -525,14 +529,4 @@ func requestHeaders(request *mcpsdk.CallToolRequest) http.Header {
 // decodeArguments parses a tool's arguments. An unknown field is ignored so a
 // client may send what a newer schema advertises; a malformed body is an
 // invalid_argument failure rather than a protocol error.
-func decodeArguments(raw json.RawMessage, destination any) error {
-	if len(raw) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(raw, destination); err != nil {
-		return invalidArgument("the arguments are not valid JSON for this tool: %v", err)
-	}
-	return nil
-}
-
 func boolPointer(value bool) *bool { return &value }

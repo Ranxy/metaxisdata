@@ -10,6 +10,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/component/tools/lineage"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 )
 
 // TestToolSchemasMatchTheirArgumentStructs reconciles the two hand-written halves
@@ -40,14 +41,14 @@ func TestToolSchemasMatchTheirArgumentStructs(t *testing.T) {
 		{tool: "list_metadata", args: metadata.ListMetadataArgs{}, nested: map[string]any{"parent": objectRef{}}},
 		{tool: "get_metadata", args: metadata.GetMetadataArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "get_ddl", args: metadata.GetDDLArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "get_quality_signal", args: getQualitySignalArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "list_quality_targets", args: listQualityTargetsArgs{}},
-		{tool: "get_quality_target", args: getQualityTargetArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "list_quality_issues", args: listQualityIssuesArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "list_quality_executions", args: listQualityExecutionsArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "get_quality_execution", args: getQualityExecutionArgs{}},
-		{tool: "get_quality_impact", args: getQualityImpactArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "get_quality_consumption_coverage", args: getQualityConsumptionCoverageArgs{}},
+		{tool: "get_quality_signal", args: quality.GetQualitySignalArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "list_quality_targets", args: quality.ListQualityTargetsArgs{}},
+		{tool: "get_quality_target", args: quality.GetQualityTargetArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "list_quality_issues", args: quality.ListQualityIssuesArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "list_quality_executions", args: quality.ListQualityExecutionsArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "get_quality_execution", args: quality.GetQualityExecutionArgs{}},
+		{tool: "get_quality_impact", args: quality.GetQualityImpactArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "get_quality_consumption_coverage", args: quality.GetQualityConsumptionCoverageArgs{}},
 		{tool: "analyze_sql", args: lineage.AnalyzeSQLArgs{}, nested: map[string]any{"scopes": analysisScope{}}},
 		{tool: "get_lineage_graph", args: lineage.GetLineageGraphArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "whoami", args: struct{}{}},
