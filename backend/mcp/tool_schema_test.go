@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
 )
 
 // TestToolSchemasMatchTheirArgumentStructs reconciles the two hand-written halves
@@ -31,12 +33,12 @@ func TestToolSchemasMatchTheirArgumentStructs(t *testing.T) {
 		// objects is described by its items type (analyze_sql's scopes).
 		nested map[string]any
 	}{
-		{tool: "list_instances", args: listInstancesArgs{}},
-		{tool: "list_databases", args: listDatabasesArgs{}},
-		{tool: "search_metadata", args: searchMetadataArgs{}},
-		{tool: "list_metadata", args: listMetadataArgs{}, nested: map[string]any{"parent": objectRef{}}},
-		{tool: "get_metadata", args: getMetadataArgs{}, nested: map[string]any{"object": objectRef{}}},
-		{tool: "get_ddl", args: getDDLArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "list_instances", args: metadata.ListInstancesArgs{}},
+		{tool: "list_databases", args: metadata.ListDatabasesArgs{}},
+		{tool: "search_metadata", args: metadata.SearchMetadataArgs{}},
+		{tool: "list_metadata", args: metadata.ListMetadataArgs{}, nested: map[string]any{"parent": objectRef{}}},
+		{tool: "get_metadata", args: metadata.GetMetadataArgs{}, nested: map[string]any{"object": objectRef{}}},
+		{tool: "get_ddl", args: metadata.GetDDLArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "get_quality_signal", args: getQualitySignalArgs{}, nested: map[string]any{"object": objectRef{}}},
 		{tool: "list_quality_targets", args: listQualityTargetsArgs{}},
 		{tool: "get_quality_target", args: getQualityTargetArgs{}, nested: map[string]any{"object": objectRef{}}},

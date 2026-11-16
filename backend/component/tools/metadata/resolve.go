@@ -64,7 +64,9 @@ type InstanceReader interface {
 type DatabaseReader interface {
 	ListDatabases(context.Context, *connect.Request[v1pb.ListDatabasesRequest]) (*connect.Response[v1pb.ListDatabasesResponse], error)
 	ListMetadata(context.Context, *connect.Request[v1pb.ListMetadataRequest]) (*connect.Response[v1pb.MetadataResponse], error)
+	GetMetadata(context.Context, *connect.Request[v1pb.GetMetadataRequest]) (*connect.Response[v1pb.GetMetadataResponse], error)
 	SearchMetadata(context.Context, *connect.Request[v1pb.SearchMetadataRequest]) (*connect.Response[v1pb.SearchMetadataResponse], error)
+	GetSchemaString(context.Context, *connect.Request[v1pb.GetSchemaStringRequest]) (*connect.Response[v1pb.MetadataSchemaString], error)
 }
 
 // Resolver turns name paths into the identifiers the read RPCs take.
@@ -113,6 +115,43 @@ func (r *Resolver) ResolveObject(ctx context.Context, ref ObjectRef, metaType v1
 		}
 	}
 	return r.SearchObject(ctx, parentGUID, ref.Name, metaType)
+}
+
+// ResolveParent resolves the object whose children a listing wants. A reference
+// with a name is an ordinary object; without one it is a container — a database
+// or a schema — which is the common case for "what is in here".
+func (r *Resolver) ResolveParent(ctx context.Context, ref ObjectRef, metaType v1pb.MetaType) (Resolved, error) {
+	if ref.Name == "" {
+		return r.ResolveContainer(ctx, ref)
+	}
+	return r.ResolveObject(ctx, ref, metaType)
+}
+
+// ResolveContainer resolves a database or schema reference, which has no name of
+// its own to look up.
+func (r *Resolver) ResolveContainer(ctx context.Context, ref ObjectRef) (Resolved, error) {
+	if ref.GUID != "" {
+		return Resolved{GUID: ref.GUID}, nil
+	}
+	if ref.Instance == "" || ref.Database == "" {
+		return Resolved{}, invalidArgument("parent needs a guid, or an instance and a database")
+	}
+	instanceName, err := r.ResolveInstance(ctx, ref.Instance)
+	if err != nil {
+		return Resolved{}, err
+	}
+	guid, err := r.ResolveDatabase(ctx, instanceName, ref.Database)
+	if err != nil {
+		return Resolved{}, err
+	}
+	if ref.Schema == "" {
+		return Resolved{GUID: guid}, nil
+	}
+	schemaGUID, err := r.ResolveSchema(ctx, guid, ref.Schema)
+	if err != nil {
+		return Resolved{}, err
+	}
+	return Resolved{GUID: schemaGUID}, nil
 }
 
 // ResolveScope turns one scope into the GUID the SQL analyzer resolves unqualified

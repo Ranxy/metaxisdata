@@ -41,6 +41,14 @@ func (f *fakeReaders) SearchMetadata(context.Context, *connect.Request[v1pb.Sear
 	return connect.NewResponse(&v1pb.SearchMetadataResponse{Results: f.results}), nil
 }
 
+func (*fakeReaders) GetMetadata(context.Context, *connect.Request[v1pb.GetMetadataRequest]) (*connect.Response[v1pb.GetMetadataResponse], error) {
+	return connect.NewResponse(&v1pb.GetMetadataResponse{}), nil
+}
+
+func (*fakeReaders) GetSchemaString(context.Context, *connect.Request[v1pb.GetSchemaStringRequest]) (*connect.Response[v1pb.MetadataSchemaString], error) {
+	return connect.NewResponse(&v1pb.MetadataSchemaString{}), nil
+}
+
 func TestResolveObjectPassesAGUIDThrough(t *testing.T) {
 	t.Parallel()
 

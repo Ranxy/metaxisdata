@@ -57,8 +57,13 @@ func newError(code, message, hint string) *Error {
 }
 
 // invalidArgument reports a malformed reference.
-func invalidArgument(message string) *Error {
-	return newError(CodeInvalidArgument, message, "")
+func invalidArgument(format string, args ...any) *Error {
+	return newError(CodeInvalidArgument, fmt.Sprintf(format, args...), "")
+}
+
+// internalFailure reports a failure the tool cannot classify further.
+func internalFailure(err error) *Error {
+	return newError(CodeInternal, err.Error(), "")
 }
 
 // notFound reports an unknown reference together with what the registry does have,

@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -21,7 +20,9 @@ type (
 
 // asToolError maps a shared resolver failure onto the MCP error envelope. A
 // failure that is already an MCP tool error (or a plain one) is preserved.
-func asToolError(err error) *toolError {
+// It returns the error interface so a nil failure stays nil instead of becoming a
+// typed nil in a caller's return value.
+func asToolError(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -60,33 +61,6 @@ func (s *Server) resolveScope(ctx context.Context, scope analysisScope) (string,
 	return guid, nil
 }
 
-// resolveInstance accepts a resource name, a bare id, or a display title.
-func (s *Server) resolveInstance(ctx context.Context, value string) (string, error) {
-	name, err := s.resolver.ResolveInstance(ctx, value)
-	if err != nil {
-		return "", asToolError(err)
-	}
-	return name, nil
-}
-
-// resolveDatabase accepts a GUID, a resource name, or a bare database name.
-func (s *Server) resolveDatabase(ctx context.Context, instanceName, value string) (string, error) {
-	guid, err := s.resolver.ResolveDatabase(ctx, instanceName, value)
-	if err != nil {
-		return "", asToolError(err)
-	}
-	return guid, nil
-}
-
-// resolveSchema finds a schema by name under a database.
-func (s *Server) resolveSchema(ctx context.Context, databaseGUID, value string) (string, error) {
-	guid, err := s.resolver.ResolveSchema(ctx, databaseGUID, value)
-	if err != nil {
-		return "", asToolError(err)
-	}
-	return guid, nil
-}
-
 // scopeRequired answers a statement that arrived without a scope.
 func (s *Server) scopeRequired(ctx context.Context) *toolError {
 	failure := s.resolver.ScopeRequired(ctx)
@@ -99,18 +73,4 @@ func (s *Server) scopeRequired(ctx context.Context) *toolError {
 		Hint:    failure.Hint,
 		Details: failure.Details,
 	}
-}
-
-// lastPathSegment reads the trailing name out of a resource name such as
-// "instances/1/databases/shop".
-func lastPathSegment(name string) string {
-	if index := strings.LastIndex(name, "/"); index >= 0 {
-		return name[index+1:]
-	}
-	return name
-}
-
-// storedMetadataName reads an object's name out of the stored payload.
-func storedMetadataName(stored *v1pb.StoredMetadata) string {
-	return metadata.StoredMetadataName(stored)
 }
