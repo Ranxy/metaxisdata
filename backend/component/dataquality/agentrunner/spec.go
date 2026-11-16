@@ -27,6 +27,8 @@ func readMeta() tool.Meta {
 		ReadOnly:       true,
 		Permission:     string(permission.DataQualityRulesList),
 		MaxResultBytes: maxToolResultBytes,
+		// Registry reads are independent of each other and of session state.
+		ParallelSafe: true,
 	}
 }
 

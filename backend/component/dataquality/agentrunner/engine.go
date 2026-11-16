@@ -81,6 +81,8 @@ type Engine struct {
 	// actionSettings loads the workspace settings the autonomy policy reads. A
 	// process that does not wire it skips the action-policy gate.
 	actionSettings func(ctx context.Context) (dataquality.Settings, error)
+	// maxParallelReads bounds concurrent parallel-safe tool calls in one batch.
+	maxParallelReads int
 }
 
 // NewEngine creates the deterministic engine.
@@ -276,6 +278,8 @@ func (e *Engine) modelWake(
 			MaxConversationBytes: agent.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
+			ParallelSafe:         set.IsParallelSafe,
+			MaxParallelToolCalls: e.maxParallelReads,
 		}
 		for event := range e.chat(ctx, chatConfig) {
 			switch event.Type {

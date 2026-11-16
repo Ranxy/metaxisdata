@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -226,40 +227,12 @@ func run(ctx context.Context, cfg Config, ch chan<- Event) {
 			return
 		}
 
-		// 3. Execute tools sequentially.
-		for _, tc := range assistantMsg.ToolCalls {
-			if !sendEvent(ctx, ch, Event{Type: EventToolStart, ToolCall: &tc, Turn: turn}) {
-				outcome = metrics.LLMOutcomeCanceled
-				return
-			}
-
-			// Execute.
-			results, execErr := cfg.Executor(tc)
-			var content string
-			if execErr != nil {
-				content = fmt.Sprintf("error: %s", execErr.Error())
-			} else if len(results) > 0 {
-				content = results[0].Content
-			}
-
-			evt := Event{Type: EventToolEnd, ToolCall: &tc, ToolResult: content, Turn: turn}
-			if execErr != nil {
-				evt.ToolError = execErr.Error()
-			}
-			if !sendEvent(ctx, ch, evt) {
-				outcome = metrics.LLMOutcomeCanceled
-				return
-			}
-
-			toolResult := Message{
-				Role: "toolResult", ToolCallID: tc.ID,
-				ToolName: tc.Function.Name,
-				Content:  content,
-			}
-			if err := appendMessage(toolResult); err != nil {
-				sendEvent(ctx, ch, Event{Type: EventError, Error: err})
-				return
-			}
+		// 3. Execute the batch: consecutive parallel-safe calls run together,
+		// everything else is a barrier and runs alone. Events and conversation
+		// messages commit in model order regardless of completion order.
+		if !executeToolBatch(ctx, cfg, assistantMsg.ToolCalls, turn, ch, appendMessage) {
+			outcome = metrics.LLMOutcomeCanceled
+			return
 		}
 	}
 
@@ -270,6 +243,101 @@ func run(ctx context.Context, cfg Config, ch chan<- Event) {
 		Type:  EventError,
 		Error: errors.Errorf("LLM agent reached the maximum of %d turns without producing a final answer", maxTurns),
 	})
+}
+
+// toolOutcome is one executed call's result.
+type toolOutcome struct {
+	content string
+	err     error
+}
+
+// executeToolBatch runs one model batch and reports whether the loop may
+// continue. It preserves model order in both the event stream and the
+// conversation: starts are emitted in order, then results are committed in
+// order, even when the bodies overlapped.
+func executeToolBatch(
+	ctx context.Context,
+	cfg Config,
+	calls []llm.ToolCall,
+	turn int,
+	ch chan<- Event,
+	appendMessage func(Message) error,
+) bool {
+	for index := 0; index < len(calls); {
+		batch := calls[index : index+1]
+		if cfg.MaxParallelToolCalls > 1 && cfg.ParallelSafe != nil && cfg.ParallelSafe(calls[index].Function.Name) {
+			for len(batch) < cfg.MaxParallelToolCalls && index+len(batch) < len(calls) {
+				next := calls[index+len(batch)]
+				if !cfg.ParallelSafe(next.Function.Name) {
+					break
+				}
+				batch = calls[index : index+len(batch)+1]
+			}
+		}
+		index += len(batch)
+
+		for position := range batch {
+			call := batch[position]
+			if !sendEvent(ctx, ch, Event{Type: EventToolStart, ToolCall: &call, Turn: turn}) {
+				return false
+			}
+		}
+		outcomes := runToolBatch(cfg, batch)
+		for position := range batch {
+			call := batch[position]
+			outcome := outcomes[position]
+			evt := Event{Type: EventToolEnd, ToolCall: &call, ToolResult: outcome.content, Turn: turn}
+			if outcome.err != nil {
+				evt.ToolError = outcome.err.Error()
+			}
+			if !sendEvent(ctx, ch, evt) {
+				return false
+			}
+			toolResult := Message{
+				Role: "toolResult", ToolCallID: call.ID,
+				ToolName: call.Function.Name,
+				Content:  outcome.content,
+			}
+			if err := appendMessage(toolResult); err != nil {
+				sendEvent(ctx, ch, Event{Type: EventError, Error: err})
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// runToolBatch executes the batch, overlapping the safe calls. A single call is
+// executed inline: spawning a goroutine for the serial path would only add a
+// scheduling point.
+func runToolBatch(cfg Config, batch []llm.ToolCall) []toolOutcome {
+	if len(batch) == 1 {
+		return []toolOutcome{executeOne(cfg, batch[0])}
+	}
+	outcomes := make([]toolOutcome, len(batch))
+	var wait sync.WaitGroup
+	wait.Add(len(batch))
+	for index := range batch {
+		go func(index int) {
+			defer wait.Done()
+			outcomes[index] = executeOne(cfg, batch[index])
+		}(index)
+	}
+	wait.Wait()
+	return outcomes
+}
+
+// executeOne runs one tool call and normalizes its failure into the content the
+// model reads.
+func executeOne(cfg Config, call llm.ToolCall) toolOutcome {
+	results, err := cfg.Executor(call)
+	if err != nil {
+		return toolOutcome{content: fmt.Sprintf("error: %s", err.Error()), err: err}
+	}
+	if len(results) == 0 {
+		return toolOutcome{}
+	}
+	return toolOutcome{content: results[0].Content}
 }
 
 // streamOneTurn calls the LLM once and returns the full assistant message and the

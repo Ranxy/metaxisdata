@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -86,6 +87,9 @@ func (e *Engine) gatherEvidence(ctx context.Context, session *store.QualityAgent
 // contract. It journals nothing itself: the wake recorder persists the assistant
 // message, the tool result and the engine notes from the event stream.
 func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool, invocation *tool.Invocation) agent.ToolExecutor {
+	// Parallel-safe calls may finish in any order, so the truncation flags they
+	// report need their own lock.
+	var truncatedMu sync.Mutex
 	return func(call llm.ToolCall) ([]llm.ToolResult, error) {
 		result := set.Execute(ctx, tool.Call{
 			ID:        call.ID,
@@ -93,7 +97,9 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 			Arguments: json.RawMessage(call.Function.Arguments),
 		}, invocation)
 		if result.Truncated {
+			truncatedMu.Lock()
 			truncated[call.ID] = true
+			truncatedMu.Unlock()
 		}
 		if result.IsError {
 			if result.Error != nil {

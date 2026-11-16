@@ -187,3 +187,27 @@ func namesOf(tools []Tool) []string {
 	}
 	return names
 }
+
+func TestSetReportsParallelSafety(t *testing.T) {
+	t.Parallel()
+
+	registry := NewRegistry()
+	read := validTool("read")
+	read.Meta.ReadOnly = true
+	read.Meta.ParallelSafe = true
+	require.NoError(t, registry.Register(read))
+
+	write := validTool("write")
+	write.Meta.Permission = "test.write"
+	write.Meta.SideEffect = SideEffectPropose
+	require.NoError(t, registry.Register(write))
+
+	set, err := registry.Resolve([]string{"read", "write"})
+	require.NoError(t, err)
+	require.True(t, set.IsParallelSafe("read"))
+	require.False(t, set.IsParallelSafe("write"))
+	require.False(t, set.IsParallelSafe("missing"))
+
+	var nilSet *Set
+	require.False(t, nilSet.IsParallelSafe("read"))
+}

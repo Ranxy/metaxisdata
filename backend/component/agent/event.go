@@ -90,6 +90,14 @@ type Config struct {
 	// Executor runs tool calls.
 	Executor ToolExecutor
 
+	// ParallelSafe reports whether a tool call may run concurrently with the next
+	// safe call in the same model batch. Nil keeps execution serial.
+	ParallelSafe func(toolName string) bool
+
+	// MaxParallelToolCalls bounds how many parallel-safe calls run at once. A
+	// value below 2 keeps execution serial.
+	MaxParallelToolCalls int
+
 	// MaxTurns limits the number of LLM calls (default DefaultMaxTurns).
 	MaxTurns int
 

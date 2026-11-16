@@ -95,6 +95,12 @@ func WithActionSettings(load func(ctx context.Context) (dataquality.Settings, er
 	return func(engine *Engine) { engine.actionSettings = load }
 }
 
+// WithMaxParallelReads lets one model batch run this many parallel-safe reads at
+// once. A value below 2 keeps execution serial.
+func WithMaxParallelReads(limit int) Option {
+	return func(engine *Engine) { engine.maxParallelReads = limit }
+}
+
 // getTableContextTool renders the target context as tool JSON.
 func (e *Engine) getTableContextTool(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
 	if e.tableContext == nil {

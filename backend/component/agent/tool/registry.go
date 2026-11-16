@@ -221,6 +221,16 @@ func (s *Set) Schemas() []Schema {
 	return out
 }
 
+// IsParallelSafe reports whether the named tool may run concurrently with the
+// other parallel-safe calls of the same model batch.
+func (s *Set) IsParallelSafe(name string) bool {
+	if s == nil {
+		return false
+	}
+	t, ok := s.byName[name]
+	return ok && t.Meta.ParallelSafe
+}
+
 // Tool returns one tool of the set.
 func (s *Set) Tool(name string) (Tool, bool) {
 	if s == nil {
