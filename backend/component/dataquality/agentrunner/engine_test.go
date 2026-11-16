@@ -29,10 +29,20 @@ type fakeStore struct {
 	investigations []*store.CreateQualityInvestigationInput
 	memoryInputs   []*store.CreateQualityMemoryInput
 	nextSeq        int64
+	agent          *store.QualityAgentMessage
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{executions: map[int64]*store.QualityExecutionMessage{}}
+	return &fakeStore{
+		executions: map[int64]*store.QualityExecutionMessage{},
+		agent:      &store.QualityAgentMessage{ID: 1, Enabled: true},
+	}
+}
+
+// GetQualityAgentByID returns the session's agent row, whose enabled flag the
+// action policy reads.
+func (f *fakeStore) GetQualityAgentByID(context.Context, int64) (*store.QualityAgentMessage, error) {
+	return f.agent, nil
 }
 
 // GetUserByID returns the session's agent principal, which the permission gate
@@ -742,6 +752,14 @@ func TestWakeEnforcesTheActionPolicy(t *testing.T) {
 	_, err = allowed.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.Len(t, allowedStore.investigations, 1)
+
+	// Autonomy on but the agent itself disabled: the policy reads the agent row.
+	disabledStore := newFakeStore()
+	disabledStore.agent.Enabled = false
+	disabled := NewModelEngine(disabledStore, scriptedChat(turns), resolveToModel, nil, autonomy(true))
+	_, err = disabled.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Empty(t, disabledStore.investigations, "a disabled agent must not write")
 }
 
 // fakeToolAudit collects the tool audit entries a wake reports.

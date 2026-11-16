@@ -401,3 +401,39 @@ func TestExecuteAuditsARefusedSideEffect(t *testing.T) {
 	require.NotNil(t, sink.entries[0].Failure)
 	require.Equal(t, CodePermissionDenied, sink.entries[0].Failure.Code)
 }
+
+func TestErrorModelContentCarriesTheActionableParts(t *testing.T) {
+	t.Parallel()
+
+	plain := NewError(CodeInvalidArgument, "object.name is required")
+	require.Equal(t, "object.name is required", plain.ModelContent())
+
+	full := &Error{
+		Code:       CodeNotFound,
+		Message:    `no table matches "orders"`,
+		Hint:       "search first, then address the result",
+		Candidates: []string{"orders_a", "orders_b"},
+		Retryable:  true,
+	}
+	content := full.ModelContent()
+	require.Contains(t, content, `no table matches "orders"`)
+	require.Contains(t, content, "hint: search first, then address the result")
+	require.Contains(t, content, "candidates: orders_a, orders_b")
+	require.Contains(t, content, "retryable: yes")
+}
+
+func TestExecuteDeniedPermissionLogsAndKeepsTheModelMessageShort(t *testing.T) {
+	t.Parallel()
+
+	meta := validTool("one").Meta
+	meta.Permission = "metaxisdata.test.read"
+	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+		return Result{Content: "ok"}, nil
+	})
+	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
+		Principal: &store.UserMessage{ID: 7},
+		Checker:   &fakePermissionChecker{allowed: false},
+	})
+	require.Equal(t, CodePermissionDenied, result.Error.Code)
+	require.Equal(t, "error: the caller does not hold metaxisdata.test.read", result.Content)
+}

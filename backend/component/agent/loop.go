@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -311,6 +310,16 @@ func executeToolBatch(
 	return true
 }
 
+// failureContent renders a tool failure for the model, using the structured
+// envelope when the executor returned one.
+func failureContent(err error) string {
+	var structured interface{ ModelContent() string }
+	if errors.As(err, &structured) {
+		return structured.ModelContent()
+	}
+	return err.Error()
+}
+
 // runToolBatch executes the batch, overlapping the safe calls. A single call is
 // executed inline: spawning a goroutine for the serial path would only add a
 // scheduling point.
@@ -332,11 +341,12 @@ func runToolBatch(cfg Config, batch []llm.ToolCall) []toolOutcome {
 }
 
 // executeOne runs one tool call and normalizes its failure into the content the
-// model reads.
+// model reads. A structured tool failure renders its hint, candidates and retry
+// signal; a plain error renders its message.
 func executeOne(cfg Config, call llm.ToolCall) toolOutcome {
 	results, err := cfg.Executor(call)
 	if err != nil {
-		return toolOutcome{content: fmt.Sprintf("error: %s", err.Error()), err: err}
+		return toolOutcome{content: "error: " + failureContent(err), err: err}
 	}
 	if len(results) == 0 {
 		return toolOutcome{}

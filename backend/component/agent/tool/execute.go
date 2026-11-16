@@ -111,6 +111,15 @@ func authorize(ctx context.Context, t Tool, inv *Invocation) (Result, bool) {
 	}
 	allowed, err := inv.Checker.CheckPermission(ctx, permission.Permission(t.Meta.Permission), inv.Principal)
 	if err != nil {
+		logger := inv.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Error("tool permission check failed",
+			slog.String("tool", t.Name),
+			slog.String("permission", t.Meta.Permission),
+			slog.Int("principal", inv.Principal.ID),
+			slog.Any("error", err))
 		return errorResult(NewError(CodeInternal, "the permission check failed")), true
 	}
 	if !allowed {
