@@ -27,6 +27,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -139,6 +140,8 @@ type Config struct {
 	// TrustedProxies decides whether a forwarded address may be believed in the
 	// audit row.
 	TrustedProxies []string
+	// Metrics records one tool call per dispatch. Nil disables instrumentation.
+	Metrics *metrics.Metrics
 	// Endpoints resolves the deployment's MCP resource identifier per request and
 	// says whether the surface is enabled.
 	Endpoints oauth.EndpointsFunc
@@ -344,8 +347,34 @@ func (s *Server) dispatch(ctx context.Context, request *mcpsdk.CallToolRequest, 
 	// be written.
 	s.touchConnectedApp(ctx, request)
 	result, err := s.invoke(ctx, request, definition, user)
+	s.observeToolCall(definition.Name, err, result, started)
 	s.audit(ctx, request, definition, user, err, started)
 	return result, err
+}
+
+// observeToolCall records one dispatch in the shared tool metrics. A refused call
+// is an error outcome, like any other tool failure.
+func (s *Server) observeToolCall(name string, failure error, result *mcpsdk.CallToolResult, started time.Time) {
+	if s.config.Metrics == nil {
+		return
+	}
+	outcome := "success"
+	if failure != nil {
+		outcome = "error"
+	}
+	resultBytes := 0
+	if result != nil {
+		switch structured := result.StructuredContent.(type) {
+		case json.RawMessage:
+			resultBytes = len(structured)
+		case []byte:
+			resultBytes = len(structured)
+		case string:
+			resultBytes = len(structured)
+		default:
+		}
+	}
+	s.config.Metrics.ObserveAgentToolCall("mcp", name, outcome, s.config.Now().Sub(started), resultBytes)
 }
 
 // touchConnectedApp records the tool call on the connected app the token belongs

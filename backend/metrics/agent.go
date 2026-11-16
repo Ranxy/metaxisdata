@@ -6,9 +6,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// agentMetrics instruments the tool executions of the built-in agent products.
-// Labels stay bounded: the tool names come from the static spec whitelist and the
-// product is the spec name.
+// agentMetrics instruments model-facing tool executions on every surface: the
+// built-in agent products and the MCP endpoint. Labels stay bounded: the tool
+// names come from a static whitelist and the product is the spec or surface name.
 type agentMetrics struct {
 	calls     *prometheus.CounterVec
 	duration  *prometheus.HistogramVec

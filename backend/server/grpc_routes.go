@@ -397,6 +397,7 @@ func configureGrpcRouters(
 		SourceCallLimiter: stateCfg.MCPSourceCallLimiter,
 		Stores:            stores,
 		TrustedProxies:    profile.TrustedProxies,
+		Metrics:           m,
 		Endpoints:         oauth.WorkspaceEndpoints(stores),
 	})
 	mcpHandler := http.NewCrossOriginProtection().Handler(mcpServer.Handler(tokenAuthenticator))
