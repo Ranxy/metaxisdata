@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -136,6 +137,17 @@ type Invocation struct {
 	// Now returns the current time; nil means time.Now. A product may pin it for
 	// tests and deterministic budgets.
 	Now func() time.Time
+	// Checker enforces a tool's IAM permission against Principal. A transport that
+	// already ran the ACL interceptor may leave it nil; a product that calls tools
+	// in-process (the built-in agent) must set it, because the interceptor does not
+	// run on that path.
+	Checker PermissionChecker
+}
+
+// PermissionChecker resolves whether a principal holds a workspace permission.
+// *iam.Manager implements it, and the interface lets a test decide the answer.
+type PermissionChecker interface {
+	CheckPermission(ctx context.Context, perm permission.Permission, principal *store.UserMessage) (bool, error)
 }
 
 // EvidenceRef is one citable reference a tool result carries. It is a reference,

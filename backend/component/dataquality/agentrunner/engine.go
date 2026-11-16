@@ -17,6 +17,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -51,6 +52,7 @@ type Store interface {
 	ListQualityAgentTranscriptMessages(ctx context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error)
 	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -72,6 +74,10 @@ type Engine struct {
 	// instead of pretending to have analysed the table.
 	tableContext TableContextReader
 	draftChecks  DraftChecksFunc
+	// checker enforces each tool's IAM permission against the session's agent
+	// principal. A process that does not wire it skips the check; production wires
+	// it, because an in-process tool call does not pass the RPC ACL interceptor.
+	checker tool.PermissionChecker
 }
 
 // NewEngine creates the deterministic engine.
@@ -250,7 +256,11 @@ func (e *Engine) modelWake(
 	if err != nil {
 		return Outcome{}, err
 	}
-	executor := toolExecutor(ctx, set, truncatedTools)
+	invocation, err := e.toolInvocation(ctx, session)
+	if err != nil {
+		return Outcome{}, err
+	}
+	executor := toolExecutor(ctx, set, truncatedTools, invocation)
 	runLoop := func(conversation []agent.Message) *agent.Event {
 		chatConfig := agent.Config{
 			Provider:             config,
@@ -400,6 +410,32 @@ func (e *Engine) modelWake(
 		ProcessedSeq:   consumed,
 		EngineState:    state,
 		Summary:        summary,
+	}, nil
+}
+
+// toolInvocation is the caller identity every tool in this wake runs under: the
+// session's agent principal, never the person who woke it. A product without a
+// checker (tests, a deployment that has not wired IAM) returns nil, which the
+// pipeline treats as "the transport already authorized this call".
+func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage) (*tool.Invocation, error) {
+	if e.checker == nil {
+		return nil, nil
+	}
+	if session.AgentPrincipalID == 0 {
+		return nil, errors.New("the session has no agent principal")
+	}
+	principal, err := e.store.GetUserByID(ctx, int(session.AgentPrincipalID))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the agent principal")
+	}
+	if principal == nil {
+		return nil, errors.New("the session's agent principal no longer exists")
+	}
+	return &tool.Invocation{
+		Principal: principal,
+		Workspace: session.WorkspaceID,
+		Checker:   e.checker,
+		Now:       e.now,
 	}, nil
 }
 

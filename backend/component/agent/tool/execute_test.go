@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // executeTool builds a one-tool set whose body is the given function.
@@ -143,4 +146,85 @@ func TestExecutePassesTheInvocation(t *testing.T) {
 	// A nil invocation is replaced, never passed through.
 	set.Execute(context.Background(), Call{Name: "one"}, nil)
 	require.NotNil(t, got)
+}
+
+// fakePermissionChecker records what a tool asked for and answers with the
+// configured verdict.
+type fakePermissionChecker struct {
+	allowed bool
+	asked   permission.Permission
+}
+
+func (c *fakePermissionChecker) CheckPermission(_ context.Context, perm permission.Permission, _ *store.UserMessage) (bool, error) {
+	c.asked = perm
+	return c.allowed, nil
+}
+
+func TestExecuteEnforcesTheDeclaredPermission(t *testing.T) {
+	t.Parallel()
+
+	meta := validTool("one").Meta
+	meta.Permission = "metaxisdata.test.read"
+	bodyRan := false
+	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+		bodyRan = true
+		return Result{Content: "ok"}, nil
+	})
+
+	checker := &fakePermissionChecker{allowed: true}
+	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
+		Principal: &store.UserMessage{ID: 7},
+		Checker:   checker,
+	})
+	require.False(t, result.IsError)
+	require.True(t, bodyRan)
+	require.Equal(t, permission.Permission("metaxisdata.test.read"), checker.asked)
+}
+
+func TestExecuteRefusesADeniedPermissionWithoutRunningTheBody(t *testing.T) {
+	t.Parallel()
+
+	meta := validTool("one").Meta
+	meta.Permission = "metaxisdata.test.read"
+	bodyRan := false
+	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+		bodyRan = true
+		return Result{Content: "ok"}, nil
+	})
+
+	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
+		Principal: &store.UserMessage{ID: 7},
+		Checker:   &fakePermissionChecker{allowed: false},
+	})
+	require.True(t, result.IsError)
+	require.Equal(t, CodePermissionDenied, result.Error.Code)
+	require.False(t, bodyRan, "a refused call must not run the tool body")
+}
+
+func TestExecuteRefusesACheckWithoutAPrincipal(t *testing.T) {
+	t.Parallel()
+
+	meta := validTool("one").Meta
+	meta.Permission = "metaxisdata.test.read"
+	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+		return Result{Content: "ok"}, nil
+	})
+
+	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{
+		Checker: &fakePermissionChecker{allowed: true},
+	})
+	require.True(t, result.IsError)
+	require.Equal(t, CodeUnauthenticated, result.Error.Code)
+}
+
+func TestExecuteSkipsTheCheckWithoutAChecker(t *testing.T) {
+	t.Parallel()
+
+	// A transport that already ran the ACL interceptor omits the checker.
+	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
+		return Result{Content: "ok"}, nil
+	})
+	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{})
+	require.False(t, result.IsError)
+	require.Equal(t, "ok", result.Content)
 }

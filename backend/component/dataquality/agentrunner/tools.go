@@ -85,13 +85,13 @@ func (e *Engine) gatherEvidence(ctx context.Context, session *store.QualityAgent
 // toolExecutor adapts one wake's resolved tool set to the loop's executor
 // contract. It journals nothing itself: the wake recorder persists the assistant
 // message, the tool result and the engine notes from the event stream.
-func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool) agent.ToolExecutor {
+func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool, invocation *tool.Invocation) agent.ToolExecutor {
 	return func(call llm.ToolCall) ([]llm.ToolResult, error) {
 		result := set.Execute(ctx, tool.Call{
 			ID:        call.ID,
 			Name:      call.GetName(),
 			Arguments: json.RawMessage(call.Function.Arguments),
-		}, nil)
+		}, invocation)
 		if result.Truncated {
 			truncated[call.ID] = true
 		}

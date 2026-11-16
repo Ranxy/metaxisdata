@@ -7,6 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -80,6 +81,11 @@ func WithTableContext(reader TableContextReader) Option {
 // WithDraftChecks gives the engine the check-drafting pipeline a triage wake uses.
 func WithDraftChecks(draft DraftChecksFunc) Option {
 	return func(engine *Engine) { engine.draftChecks = draft }
+}
+
+// WithPermissionChecker gives the engine the IAM checker a tool call is gated by.
+func WithPermissionChecker(checker tool.PermissionChecker) Option {
+	return func(engine *Engine) { engine.checker = checker }
 }
 
 // getTableContextTool renders the target context as tool JSON.

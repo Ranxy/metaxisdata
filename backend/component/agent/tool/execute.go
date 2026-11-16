@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 )
 
 // Execute runs one call through the shared pipeline: resolve, bound, run,
@@ -25,6 +26,9 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 	}
 	if inv == nil {
 		inv = &Invocation{}
+	}
+	if result, refused := authorize(ctx, t, inv); refused {
+		return result
 	}
 
 	execCtx := ctx
@@ -50,6 +54,29 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 		result.Truncated = true
 	}
 	return result
+}
+
+// authorize enforces a permission-authorized tool's IAM permission. It is a
+// no-op when the invocation carries no checker: a transport that already ran the
+// ACL interceptor owns that decision. A checker without a principal is refused,
+// because a permission check with nobody to check is not a decision.
+func authorize(ctx context.Context, t Tool, inv *Invocation) (Result, bool) {
+	if t.Meta.Authz != AuthzPermission || inv.Checker == nil {
+		return Result{}, false
+	}
+	if inv.Principal == nil {
+		return errorResult(NewError(CodeUnauthenticated,
+			"the tool call carries no verified identity")), true
+	}
+	allowed, err := inv.Checker.CheckPermission(ctx, permission.Permission(t.Meta.Permission), inv.Principal)
+	if err != nil {
+		return errorResult(NewError(CodeInternal, "the permission check failed")), true
+	}
+	if !allowed {
+		return errorResult(NewError(CodePermissionDenied,
+			"the caller does not hold "+t.Meta.Permission)), true
+	}
+	return Result{}, false
 }
 
 // run invokes one tool body with panic recovery. The recovered value is logged,

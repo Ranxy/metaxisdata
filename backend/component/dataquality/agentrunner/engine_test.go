@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -28,6 +29,12 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{executions: map[int64]*store.QualityExecutionMessage{}}
+}
+
+// GetUserByID returns the session's agent principal, which the permission gate
+// checks a tool against.
+func (*fakeStore) GetUserByID(context.Context, int) (*store.UserMessage, error) {
+	return &store.UserMessage{ID: 7, Type: storepb.PrincipalType_SERVICE_ACCOUNT}, nil
 }
 
 func (*fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
@@ -613,4 +620,43 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 		}
 	}
 	require.True(t, found)
+}
+
+// denyingChecker refuses every permission and records what was asked.
+type denyingChecker struct {
+	asked []permission.Permission
+}
+
+func (c *denyingChecker) CheckPermission(_ context.Context, perm permission.Permission, _ *store.UserMessage) (bool, error) {
+	c.asked = append(c.asked, perm)
+	return false, nil
+}
+
+// A tool call runs under the session's agent principal, and its declared IAM
+// permission is checked before the body runs. A refusal is a tool error the wake
+// survives, not a wake failure.
+func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	checker := &denyingChecker{}
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "checking", toolCalls: []llm.ToolCall{toolCall("call_1", "list_recent_executions", "{}")}},
+		{content: "done"},
+	}), resolveToModel, nil, WithPermissionChecker(checker))
+
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.False(t, outcome.Blocked)
+	require.Equal(t, []permission.Permission{permission.DataQualityRulesList}, checker.asked)
+
+	var toolRow *store.QualityAgentTranscriptMessage
+	for _, message := range stores.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
+			toolRow = message
+		}
+	}
+	require.NotNil(t, toolRow)
+	require.Contains(t, toolRow.Content, "does not hold metaxisdata.dataQuality.rules.list")
+	require.NotEmpty(t, toolRow.Error)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
+	"github.com/Ranxy/metaxisdata/backend/component/iam"
 	llmcomp "github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/component/notification"
 	"github.com/Ranxy/metaxisdata/backend/component/state"
@@ -272,6 +273,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
 	// The session runner hosts the built-in quality agent: one long-lived conversation
 	// per target, continued wake by wake.
+	// The agent's tools run in-process, so the RPC ACL interceptor never sees
+	// them; the engine checks each tool's permission against the session's agent
+	// principal itself.
+	agentIAM := iam.NewManager(stores)
 	sessionEngine := agentrunner.NewModelEngine(stores, agent.RunLoop,
 		func(ctx context.Context) (llmcomp.ResolvedConfig, bool, error) {
 			config, _, resolveErr := suggester.ResolveConfig(ctx)
@@ -286,7 +291,8 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 				return dataquality.LoadSettings(ctx, stores)
 			},
 		}),
-		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester}).DraftChecks))
+		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester}).DraftChecks),
+		agentrunner.WithPermissionChecker(agentIAM))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	// The enrollment runner discovers the database scope into a queue and admits
 	// targets by priority; triage admission needs a model, so it reads the same
