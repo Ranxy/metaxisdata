@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -156,4 +157,190 @@ func TestScopeRequiredCarriesTheAvailableDatabases(t *testing.T) {
 	details, ok := failure.Details.(map[string]any)
 	require.True(t, ok)
 	require.Len(t, details["databases"], 1)
+}
+
+// Every name-path refusal carries the hint that tells the caller how to fix the
+// call; the tool envelope would be incomplete without it.
+func TestNamePathRefusalsCarryTheirHint(t *testing.T) {
+	t.Parallel()
+
+	resolver := NewResolver(&fakeReaders{t: t}, &fakeReaders{t: t})
+	cases := []struct {
+		name string
+		call func() error
+		hint string
+	}{
+		{
+			name: "object name",
+			call: func() error {
+				_, err := resolver.ResolveObject(context.Background(), ObjectRef{Instance: "prod", Database: "shop"}, v1pb.MetaType_TABLE)
+				return err
+			},
+			hint: "address the object as {instance, database, schema?, name}, or pass a guid from an earlier result",
+		},
+		{
+			name: "object scope",
+			call: func() error {
+				_, err := resolver.ResolveObject(context.Background(), ObjectRef{Name: "orders"}, v1pb.MetaType_TABLE)
+				return err
+			},
+			hint: "an object's name is unique only inside one database",
+		},
+		{
+			name: "container",
+			call: func() error {
+				_, err := resolver.ResolveContainer(context.Background(), ObjectRef{})
+				return err
+			},
+			hint: "address it as {instance, database, schema?}, or pass a guid from an earlier result",
+		},
+		{
+			name: "scope",
+			call: func() error {
+				_, err := resolver.ResolveScope(context.Background(), AnalysisScope{Instance: "prod"})
+				return err
+			},
+			hint: "a statement's unqualified names cannot say which database they belong to",
+		},
+		{
+			name: "cross-instance guid",
+			call: func() error {
+				_, err := resolver.ResolveDatabase(context.Background(), "instances/1", "2;shop")
+				return err
+			},
+			hint: "pass a database name, or a guid from list_databases of the instance you named",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			failure := AsError(testCase.call())
+			require.NotNil(t, failure)
+			require.Equal(t, testCase.hint, failure.Hint)
+		})
+	}
+}
+
+func TestNormalizePageSizeClampsTheListingBudget(t *testing.T) {
+	t.Parallel()
+
+	size, err := normalizePageSize(0)
+	require.NoError(t, err)
+	require.Equal(t, int32(defaultPageSize), size)
+
+	size, err = normalizePageSize(5000)
+	require.NoError(t, err)
+	require.Equal(t, int32(maxPageSize), size)
+
+	size, err = normalizePageSize(50)
+	require.NoError(t, err)
+	require.Equal(t, int32(50), size)
+
+	_, err = normalizePageSize(-1)
+	require.Equal(t, CodeInvalidArgument, AsError(err).Code)
+}
+
+func TestParseMetaTypeReadsNamesAndRejectsNonsense(t *testing.T) {
+	t.Parallel()
+
+	metaType, err := parseMetaType("table")
+	require.NoError(t, err)
+	require.Equal(t, v1pb.MetaType_TABLE, metaType)
+
+	_, err = parseMetaType("nonsense")
+	require.Equal(t, CodeInvalidArgument, AsError(err).Code)
+}
+
+func TestFromRPCMapsTheConnectCodes(t *testing.T) {
+	t.Parallel()
+
+	cases := map[connect.Code]string{
+		connect.CodeNotFound:           CodeNotFound,
+		connect.CodePermissionDenied:   CodePermissionDenied,
+		connect.CodeInvalidArgument:    CodeInvalidArgument,
+		connect.CodeFailedPrecondition: CodeUnsupported,
+		connect.CodeDeadlineExceeded:   CodeTimeout,
+		connect.CodeUnknown:            CodeInternal,
+	}
+	for code, want := range cases {
+		failure := FromRPC(connect.NewError(code, errors.New("x")))
+		require.Equal(t, want, failure.Code, "code %v", code)
+	}
+	require.Nil(t, FromRPC(nil))
+}
+
+func TestResolveObjectResolvesANamePath(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{t: t,
+		instances: []*v1pb.Instance{{Name: "instances/1", Title: "prod"}},
+		databases: []*v1pb.Database{{Name: "instances/1/databases/shop", Guid: "1;shop"}},
+		results: []*v1pb.SearchMetadataResult{{
+			Guid:     "1;shop;;orders",
+			MetaType: v1pb.MetaType_TABLE,
+			Metadata: &v1pb.StoredMetadata{Type: &v1pb.StoredMetadata_TableMetadata{
+				TableMetadata: &v1pb.TableMetadata{Name: "orders"},
+			}},
+		}},
+	}
+	resolver := NewResolver(readers, readers)
+
+	resolved, err := resolver.ResolveObject(context.Background(),
+		ObjectRef{Instance: "prod", Database: "shop", Name: "orders"}, v1pb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Equal(t, "1;shop;;orders", resolved.GUID)
+	require.Equal(t, "orders", resolved.Name)
+}
+
+func TestSearchObjectReportsAmbiguityWithCandidates(t *testing.T) {
+	t.Parallel()
+
+	object := func(guid string) *v1pb.SearchMetadataResult {
+		return &v1pb.SearchMetadataResult{
+			Guid:     guid,
+			MetaType: v1pb.MetaType_TABLE,
+			Metadata: &v1pb.StoredMetadata{Type: &v1pb.StoredMetadata_TableMetadata{
+				TableMetadata: &v1pb.TableMetadata{Name: "orders"},
+			}},
+		}
+	}
+	readers := &fakeReaders{t: t, results: []*v1pb.SearchMetadataResult{
+		object("1;shop;;orders_a"),
+		object("1;shop;;orders_b"),
+	}}
+	resolver := NewResolver(readers, readers)
+
+	_, err := resolver.SearchObject(context.Background(), "1;shop", "orders", v1pb.MetaType_TABLE)
+	failure := AsError(err)
+	require.NotNil(t, failure)
+	require.Equal(t, CodeAmbiguous, failure.Code)
+	details, ok := failure.Details.(map[string]any)
+	require.True(t, ok)
+	require.Len(t, details["candidates"], 2)
+}
+
+func TestResolveObjectResolvesASchemaSegment(t *testing.T) {
+	t.Parallel()
+
+	readers := &fakeReaders{t: t,
+		instances: []*v1pb.Instance{{Name: "instances/1", Title: "prod"}},
+		databases: []*v1pb.Database{{Name: "instances/1/databases/shop", Guid: "1;shop"}},
+		schemas: []*v1pb.StoredMetadata{{
+			Guid: "1;shop;;public",
+			Type: &v1pb.StoredMetadata_SchemaMetadata{SchemaMetadata: &v1pb.SchemaMetadata{Name: "public"}},
+		}},
+		results: []*v1pb.SearchMetadataResult{{
+			Guid:     "1;shop;;public;orders",
+			MetaType: v1pb.MetaType_TABLE,
+			Metadata: &v1pb.StoredMetadata{Type: &v1pb.StoredMetadata_TableMetadata{
+				TableMetadata: &v1pb.TableMetadata{Name: "orders"},
+			}},
+		}},
+	}
+	resolver := NewResolver(readers, readers)
+
+	resolved, err := resolver.ResolveObject(context.Background(),
+		ObjectRef{Instance: "prod", Database: "shop", Schema: "public", Name: "orders"}, v1pb.MetaType_TABLE)
+	require.NoError(t, err)
+	require.Equal(t, "1;shop;;public;orders", resolved.GUID)
 }

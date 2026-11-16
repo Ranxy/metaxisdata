@@ -39,9 +39,10 @@ const (
 type AuthzMode int
 
 const (
-	// AuthzPermission is a tool backed by an RPC handler. The pipeline checks the
-	// caller's own IAM permission before execution, because the in-process
-	// handler call skips the ACL interceptor.
+	// AuthzPermission is a tool gated by an IAM permission. It typically wraps an
+	// RPC; an in-process product tool may declare the nearest-analogue permission
+	// instead (the DQ agent does), in which case the declaration states the
+	// capability the product's role must hold rather than the exact RPC that runs.
 	AuthzPermission AuthzMode = iota
 	// AuthzAction is a tool that calls a domain component with no RPC of its own;
 	// the autonomy action policy is its gate.

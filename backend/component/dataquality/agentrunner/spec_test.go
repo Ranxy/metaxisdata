@@ -95,3 +95,16 @@ func TestPromptsMentionOnlyTheirSpecTools(t *testing.T) {
 		}
 	}
 }
+
+// The server calls ValidateSpecs before the runner starts; the shipped specs must
+// pass it, which also proves every declared tool has an execution branch.
+func TestValidateSpecsAcceptsTheShippedSpecs(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, ValidateSpecs())
+	for _, spec := range []*Spec{monitorSpec(), triageSpec()} {
+		for _, declaration := range spec.Tools {
+			require.True(t, handlesTool(declaration.name), "spec %s declares %q without an execution branch", spec.Name, declaration.name)
+		}
+	}
+}

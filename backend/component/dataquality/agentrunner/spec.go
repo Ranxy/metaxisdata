@@ -1,6 +1,10 @@
 package agentrunner
 
 import (
+	"context"
+	"errors"
+	"fmt"
+
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
@@ -210,4 +214,46 @@ func specFor(mode storepb.QualityAgentSessionMode) *Spec {
 		return triageSpec()
 	}
 	return monitorSpec()
+}
+
+// ValidateSpecs checks the product declarations at startup: every spec's tools
+// register, the whitelist resolves, and the engine has an execution branch for
+// each name. The server calls it before constructing the runner, so a renamed or
+// misspelled tool fails the boot instead of reaching the model.
+func ValidateSpecs() error {
+	for _, spec := range []*Spec{monitorProduct, triageProduct} {
+		registry := tool.NewRegistry()
+		for _, declaration := range spec.Tools {
+			declarationTool := tool.Tool{
+				Name:        declaration.name,
+				Description: declaration.description,
+				Parameters:  declaration.parameters,
+				Meta:        declaration.meta,
+				Execute: func(context.Context, tool.Call, *tool.Invocation) (tool.Result, error) {
+					return tool.Result{}, errors.New("the declaration is not executable")
+				},
+			}
+			if err := registry.Register(declarationTool); err != nil {
+				return fmt.Errorf("spec %s: %w", spec.Name, err)
+			}
+		}
+		if _, err := registry.Resolve(specNames(spec.Tools)); err != nil {
+			return fmt.Errorf("spec %s: %w", spec.Name, err)
+		}
+		for _, declaration := range spec.Tools {
+			if !handlesTool(declaration.name) {
+				return fmt.Errorf("spec %s declares tool %q but the engine has no execution branch", spec.Name, declaration.name)
+			}
+		}
+	}
+	return nil
+}
+
+// specNames lists a spec's tool names in declaration order.
+func specNames(declarations []toolSpec) []string {
+	names := make([]string, 0, len(declarations))
+	for _, declaration := range declarations {
+		names = append(names, declaration.name)
+	}
+	return names
 }

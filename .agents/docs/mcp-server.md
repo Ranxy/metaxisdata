@@ -46,7 +46,7 @@
 | MCP 令牌可吊销 | 按签发来源（签名/kid/issuer/expiry，不带 audience）校验 | 原 `Logout` 只认 user audience，MCP 令牌就没有自助补救 |
 | 授权响应「含错误响应」带 `iss` | 错误路径也带（`RedirectWithError`，`backend/api/oauth/authorize.go:175`） | 拒绝路径可能是客户端唯一看到的那次响应；RFC 9207 的 mix-up 防护必须在那里成立 |
 
-其余 review 修复已并入代码，不再是待办：`authorization_code` 脱敏补齐（含 snake_case）、工具参数按 8 KiB 单串 / 256 KiB 整体截断（参数树 >64 KiB 只记 marker）、被禁用部署的 404 不写账本、`/oauth/authorize` 与 `/oauth/authorize/complete` 纳入按地址限流、consent 拒绝后导航到 complete（客户端才收得到 `access_denied`）、`external_url` 的重复 `/` 与 `:0443` 归一化、redirect URI 拒绝 userinfo、注册时重复 `redirect_uri` 去重、`last_used_at` 在兑换成功后更新、`resolveDatabase` 拒绝跨实例 GUID、`analyze_sql` 图展开上限 20（`backend/mcp/tool.go` 的 `maxExpandedTargets`）、列表型字段空值输出 `[]` 而非 `null`、MCP 实现不广播空版本、守卫测试钉住工具集合。
+其余 review 修复已并入代码，不再是待办：`authorization_code` 脱敏补齐（含 snake_case）、工具参数按 8 KiB 单串 / 256 KiB 整体截断（参数树 >64 KiB 只记 marker）、被禁用部署的 404 不写账本、`/oauth/authorize` 与 `/oauth/authorize/complete` 纳入按地址限流、consent 拒绝后导航到 complete（客户端才收得到 `access_denied`）、`external_url` 的重复 `/` 与 `:0443` 归一化、redirect URI 拒绝 userinfo、注册时重复 `redirect_uri` 去重、`last_used_at` 在兑换成功后更新、`resolveDatabase` 拒绝跨实例 GUID、`analyze_sql` 图展开上限 20（`backend/component/tools/lineage/tools.go` 的 `maxExpandedTargets`）、列表型字段空值输出 `[]` 而非 `null`、MCP 实现不广播空版本、守卫测试钉住工具集合。
 
 ## SDK 契约（实测）
 
@@ -73,7 +73,7 @@
 | 输出渲染 | `protojson` + `EmitUnpopulated` + 2 空格缩进 | **省略未设字段 + 紧凑 JSON**；只共享字段名风格与 enum 名 |
 | 列表类结果 | 完整 `StoredMetadata` | 只回**投影行**（`guid`/`name`/`metaType`/`parentGuid`）；详情走 `get_metadata` |
 | 临时关系 | 默认隐藏，`--include-temp` 打开 | **一次返回**，分成 `relations` 与 `temporaryRelations` |
-| 图与列过滤 | 客户端 N+1 展开/过滤 | 服务端组合（调用方只给 `depth`）；`column` 在工具层过滤（`backend/mcp/tool.go` 的 `filterGraphByColumn`） |
+| 图与列过滤 | 客户端 N+1 展开/过滤 | 服务端组合（调用方只给 `depth`）；`column` 在工具层过滤（`backend/component/tools/lineage/tools.go` 的 `filterGraphByColumn`） |
 | 分页 | 默认 1000 条，触顶给 `truncated` | `page_size`（默认 25、上限 200）+ `page_token`，响应给 `nextPageToken` |
 | 错误 | `code` + 文字 hint + 退出码 | 保留 `code` 词表（去掉退出码），加结构化 `details` |
 | 两层授权 | 退出码 1/2/4 | 传输层（401/403 + `WWW-Authenticate`）vs 工具层（`isError` + `permission_denied`） |
@@ -86,7 +86,7 @@
 
 ## 工具表
 
-17 个只读工具，实现在 `backend/mcp/tool.go` 的 `toolDefinitions`；权限必须等于 RPC 注解。行号会随代码增长而漂移，所以这里只指符号。
+17 个只读工具，**定义**在 `backend/mcp/tool.go` 的 `toolDefinitions`（名称/schema/权限/RPC/投影），**工具体**在 `backend/component/tools/{metadata,lineage,quality}`；权限必须等于 RPC 注解。行号会随代码增长而漂移，所以这里只指符号。
 
 | 工具 | RPC | 权限 | 入参要点 |
 | --- | --- | --- | --- |
@@ -110,7 +110,7 @@
 
 每条 `Description` 说明它回答什么问题、并指明什么时候该换另一个工具（`toolDefinitions` 的 `Description` 字段）；守卫测试要求非空（`backend/mcp/tool_guard_test.go` 的 `TestEveryToolMatchesItsRPC`）。
 
-**名字寻址（`object_ref`）** 是共用输入形状：`{"instance": "prod-mysql", "database": "shop", "schema": "public", "name": "orders"}`，每个字段接受名字或资源 id（`instances/1`）；`schema` 可省；也可直接给 `{"guid": "1;shop;;orders"}`（文档不要求模型构造）。`guid` 优先，否则拼路径；拼不出/歧义/不存在 → `not_found`/`ambiguous` 并在 `details.candidates` 列候选。解析器只有一个（`backend/mcp/ref.go`），解析结果同时驱动 scope 解析。
+**名字寻址（`object_ref`）** 是共用输入形状：`{"instance": "prod-mysql", "database": "shop", "schema": "public", "name": "orders"}`，每个字段接受名字或资源 id（`instances/1`）；`schema` 可省；也可直接给 `{"guid": "1;shop;;orders"}`（文档不要求模型构造）。`guid` 优先，否则拼路径；拼不出/歧义/不存在 → `not_found`/`ambiguous` 并在 `details.candidates` 列候选。解析器只有一个（`backend/component/tools/metadata/resolve.go`，`backend/mcp/ref.go` 只做类型 alias 与错误信封映射），解析结果同时驱动 scope 解析。
 
 ## 授权端点
 
@@ -211,7 +211,7 @@
 
 ## Where things live
 
-- RS 与工具：`backend/mcp/server.go`（Config/Handler/dispatch/审计）、`backend/mcp/tool.go`（工具表 + 17 个 Run）、`backend/mcp/ref.go`（object_ref/scope 解析）、`backend/mcp/errors.go`（错误信封）、`backend/mcp/auth.go`（`NewTokenVerifier`）、`backend/mcp/guide.go` + `backend/mcp/guide.md`（prompt）。
+- RS 与工具：`backend/mcp/server.go`（Config/Handler/dispatch/审计/指标）、`backend/mcp/tool.go`（工具表与投影 helper）、`backend/mcp/tool_{metadata,lineage,quality}.go`（委派）、`backend/mcp/ref.go`（类型 alias + 错误映射）、`backend/mcp/errors.go`（错误信封）、`backend/mcp/auth.go`（`NewTokenVerifier`）、`backend/mcp/guide.go` + `backend/mcp/guide.md`（prompt）。工具体、对象寻址与错误信封实现在 `backend/component/tools/*`，见 [agent-platform.md](agent-platform.md)。
 - AS：`backend/api/oauth/resource.go`（规范化 issuer/resource）、`backend/api/oauth/metadata.go`（PRM/AS metadata + 开关解析）、`backend/api/oauth/authorize.go`（PKCE/重定向/scope 安全核心）、`backend/api/oauth/token.go`（两种 grant）、`backend/api/oauth/register.go`（DCR）、`backend/api/oauth/server.go`（会话/错误渲染）、`backend/api/oauth/audit.go`。
 - consent RPC：`backend/api/v1/oauth_service.go`；proto `proto/v1/v1/oauth_service.proto`。
 - 已连接应用：`backend/api/v1/connected_app_service.go`（list/revoke、handler 侧 scope 与 `users.get` 可见性）、`backend/api/v1/filter.go` 的 `parseConnectedAppFilter`（CEL → 参数化 SQL，`state` 用 `CASE` 派生）、`proto/v1/v1/connected_app_service.proto`；前端 `frontend/src/pages/settings/ConnectedAppsSettingsPage.vue`、`frontend/src/pages/ConnectedAppsPage.vue`、`frontend/src/components/connected-app/`、`frontend/src/api/connected-app.ts`。

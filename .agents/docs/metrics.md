@@ -488,23 +488,23 @@ post-sync runner 调用。**计数必须埋在这两个 Processor 方法里并�
 
 ### 4.6 LLM
 
-**推荐在 agent loop 内部统一埋点**，而不是在每个调用点各埋一遍：给 `llm.AgentConfig`
-（`backend/component/llm/event.go` 的 `AgentConfig`）加 `Feature string` 和 `Metrics *metrics.Metrics`，
-`RunAgentLoop`（`backend/component/llm/agent.go`）在唯一出口处记录**调用数、耗时、token 与提供商/传输层错误**
+**推荐在 agent loop 内部统一埋点**，而不是在每个调用点各埋一遍：给 `agent.Config`
+（`backend/component/agent/event.go`）加 `Feature string` 和 `Metrics *metrics.Metrics`，
+`agent.RunLoop`（`backend/component/agent/loop.go`）在唯一出口处记录**调用数、耗时、token 与提供商/传输层错误**
 （空响应、stream 错误、达到最大轮数）。调用方（DQ 的三个分析 + ExplainSQL）只需填 `Feature`。
 注意：**JSON 结构解析失败发生在调用方**（DQ 的严格解析，模型答了但格式不合格），不在 agent loop 里，
 所以 `llm_parse_failures_total` 仍埋在 DQ 的解析点。
 
 **token 的 v1 范围（已确认）**：DQ 路径已经请求 `IncludeUsage`，v1 就保证这部分 token；
-ExplainSQL 的 `AgentConfig` **暂不打开** `IncludeUsage`（部分 OpenAI 兼容网关会拒绝 `stream_options`，
+ExplainSQL 的 `agent.Config` **暂不打开** `IncludeUsage`（部分 OpenAI 兼容网关会拒绝 `stream_options`，
 拒绝整个请求比缺 usage 更糟），先由 `llm_usage_missing_total{feature="explain_sql"}` 暴露缺失；
 等确认部署侧网关支持后，再单独开一个 PR 打开并补齐 token。
 
 | 指标 | 类型 | 标签 | 埋点 | 语义 / 注意 | 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| `metaxisdata_llm_calls_total` | counter | `feature,provider,outcome=success\|error\|empty_response\|canceled` | `RunAgentLoop` 出口 | 一次完成请求（L3 列分析按批次计，1 个 RPC 可 1–3 次） | P0 |
+| `metaxisdata_llm_calls_total` | counter | `feature,provider,outcome=success\|error\|empty_response\|canceled` | `agent.RunLoop` 出口 | 一次完成请求（L3 列分析按批次计，1 个 RPC 可 1–3 次） | P0 |
 | `metaxisdata_llm_call_duration_seconds` | histogram | `feature,provider` | 同上 | 提供商往返；无总超时（header 30s / idle 60s / 最多 6 轮），桶要覆盖到 300s | P0 |
-| `metaxisdata_llm_tokens_total` | counter | `feature,provider,kind=prompt\|completion` | 消费 `AgentEventUsage`/`AgentEventAgentEnd.Usage` | 提供商上报才有；**不是账单**。v1 只保证 DQ 路径（已开 `IncludeUsage`）；ExplainSQL 的 `IncludeUsage` 待验证网关后再开（已确认） | P0 |
+| `metaxisdata_llm_tokens_total` | counter | `feature,provider,kind=prompt\|completion` | 消费 `agent.EventUsage`/`agent.EventEnd.Usage` | 提供商上报才有；**不是账单**。v1 只保证 DQ 路径（已开 `IncludeUsage`）；ExplainSQL 的 `IncludeUsage` 待验证网关后再开（已确认） | P0 |
 | `metaxisdata_llm_usage_missing_total` | counter | `feature` | 无 usage 事件时 | 提供商没报 usage → token 面板会低估；也是网关不支持 `stream_options` 的信号。ExplainSQL 的 token 在 v1 不保证，**这条是它的补偿信号**，因此列为 P0 | P0 |
 
 The quality agent session runner labels its model calls `feature="dq_agent"` (one wake's rounds) and `feature="dq_agent_compaction"` (a context-compaction summary). Their sessions are durable rows, so the same spend is also readable through `GetQualityAgentRunnerStatus` and `GetQualityAgentMetrics`; the Prometheus counters are process metrics that reset on restart and are not the UI's source of truth. The runner's liveness is `metaxisdata_runner_up{runner="qualitysession"}`.
@@ -549,7 +549,7 @@ v1（P0 66 条，按目录行计）已经实现，按四个可独立评审的范
 | 基础设施 | 已实现 | `backend/metrics/`（全部 P0 instrument、proto 枚举→标签映射、nil 安全的记录方法、黄金指标名/标签白名单/nil 安全测试）；独立 `--metrics-addr` 监听器与私有 registry（`backend/server/server.go`）；HTTP 中间件（`backend/server/http_metrics.go`）；ConnectRPC 拦截器（`backend/api/v1/metrics_interceptor.go`）；`runner.Go` 的 up/panics；`Store.DBStats` 与自研 `metaxisdata_db_pool_*` collector；删除废弃的 echo-contrib 中间件 |
 | 元数据采集 | 已实现 | `schemasync`（owner-only gate、事务提交后按类型计数、扫描/实例/库/驱动耗时、重试与耗尽、连接预算背压、失败原因）；`maintenance` pass 级汇总（lineage 边数不计入 deleted_rows）；`lineagevalidation` 触发/pass/边；governor 的非阻塞租约拒绝 |
 | 血缘 / OpenLineage | 已实现 | `lineageanalyzer` 的每个终态分支（interrupted 与 timeout 用 sentinel 去重）、解析耗时、in-flight、重试耗尽、列/表边；队列深度 scrape collector；OpenLineage 请求失败（含 401 与限流拒绝）、事件级接受/拒绝、处理耗时、摄取边 |
-| 数据质量 / LLM / 目标库 | 已实现 | `qualityrunner` 调度、执行规划与生命周期、准入/延后/放弃、规则漏斗（每次执行一次）；`db.RunReadOnlyQuery` 单一埋点（`QueryOptions.Purpose`）；`RunAgentLoop` 统一记录 calls/duration/tokens/usage_missing；DQ 解析失败与 LLM 配额拒绝 |
+| 数据质量 / LLM / 目标库 | 已实现 | `qualityrunner` 调度、执行规划与生命周期、准入/延后/放弃、规则漏斗（每次执行一次）；`db.RunReadOnlyQuery` 单一埋点（`QueryOptions.Purpose`）；`agent.RunLoop` 统一记录 calls/duration/tokens/usage_missing；工具级 `agent_tool_*` 覆盖内置 agent 与 MCP（`backend/metrics/agent.go`）；DQ 解析失败与 LLM 配额拒绝 |
 
 测试与门禁：`backend/metrics` 有黄金指标名 + 标签白名单 + scrape collector + nil 安全测试；各域新增 hermetic 测试；`go build ./...`、`go vet -tags integration ./...`、`go test ./...` 通过。P1/P2 指标（例如 schemasync 队列 in-flight、DDL 明细、scan 指纹跳过、issue 计数、LLM cache 事件、连接等待时长直方图）尚未实现，命名与语义已在 §4 预留。
 

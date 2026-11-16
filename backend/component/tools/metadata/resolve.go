@@ -94,10 +94,12 @@ func (r *Resolver) ResolveObject(ctx context.Context, ref ObjectRef, metaType v1
 		return Resolved{GUID: ref.GUID, MetaType: metaType}, nil
 	}
 	if ref.Name == "" {
-		return Resolved{}, InvalidArgument("object.name is required unless object.guid is given")
+		return Resolved{}, InvalidArgumentHint("object.name is required unless object.guid is given",
+			"address the object as {instance, database, schema?, name}, or pass a guid from an earlier result")
 	}
 	if ref.Instance == "" || ref.Database == "" {
-		return Resolved{}, InvalidArgument("object.instance and object.database are required unless object.guid is given")
+		return Resolved{}, InvalidArgumentHint("object.instance and object.database are required unless object.guid is given",
+			"an object's name is unique only inside one database")
 	}
 
 	instanceName, err := r.ResolveInstance(ctx, ref.Instance)
@@ -134,7 +136,8 @@ func (r *Resolver) ResolveContainer(ctx context.Context, ref ObjectRef) (Resolve
 		return Resolved{GUID: ref.GUID}, nil
 	}
 	if ref.Instance == "" || ref.Database == "" {
-		return Resolved{}, InvalidArgument("parent needs a guid, or an instance and a database")
+		return Resolved{}, InvalidArgumentHint("parent needs a guid, or an instance and a database",
+			"address it as {instance, database, schema?}, or pass a guid from an earlier result")
 	}
 	instanceName, err := r.ResolveInstance(ctx, ref.Instance)
 	if err != nil {
@@ -158,7 +161,8 @@ func (r *Resolver) ResolveContainer(ctx context.Context, ref ObjectRef) (Resolve
 // names against.
 func (r *Resolver) ResolveScope(ctx context.Context, scope AnalysisScope) (string, error) {
 	if scope.Instance == "" || scope.Database == "" {
-		return "", InvalidArgument("a scope needs both instance and database")
+		return "", InvalidArgumentHint("a scope needs both instance and database",
+			"a statement's unqualified names cannot say which database they belong to")
 	}
 	instanceName, err := r.ResolveInstance(ctx, scope.Instance)
 	if err != nil {
@@ -212,7 +216,8 @@ func (r *Resolver) ResolveDatabase(ctx context.Context, instanceName, value stri
 		// instance the caller named: otherwise the reference silently addresses an
 		// object in a different instance.
 		if !guidBelongsToInstance(trimmed, instanceName) {
-			return "", InvalidArgument("the database guid does not belong to that instance")
+			return "", InvalidArgumentHint("the database guid does not belong to that instance",
+				"pass a database name, or a guid from list_databases of the instance you named")
 		}
 		return trimmed, nil
 	}

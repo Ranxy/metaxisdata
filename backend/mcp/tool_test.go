@@ -332,23 +332,15 @@ func firstOf(t *testing.T, payload map[string]any, key string) map[string]any {
 
 // --- fixtures ---
 
-func storedTable(guid, name string) *v1pb.StoredMetadata {
+func storedTable() *v1pb.StoredMetadata {
 	return &v1pb.StoredMetadata{
-		Guid: guid,
+		Guid: "1;shop;;orders",
 		Type: &v1pb.StoredMetadata_TableMetadata{TableMetadata: &v1pb.TableMetadata{
-			Name:    name,
+			Name:    "orders",
 			Columns: []*v1pb.ColumnMetadata{{Name: "amount", Type: "bigint"}},
 		}},
 	}
 }
-
-func storedSchema(guid, name string) *v1pb.StoredMetadata {
-	return &v1pb.StoredMetadata{
-		Guid: guid,
-		Type: &v1pb.StoredMetadata_SchemaMetadata{SchemaMetadata: &v1pb.SchemaMetadata{Name: name}},
-	}
-}
-
 func storedColumn(guid, name string) *v1pb.StoredMetadata {
 	return &v1pb.StoredMetadata{
 		Guid: guid,
@@ -385,163 +377,7 @@ func oneDatabase() func(*v1pb.ListDatabasesRequest) (*v1pb.ListDatabasesResponse
 	}
 }
 
-// --- addressing ---
-
-func TestResolveObjectPrefersAGUID(t *testing.T) {
-	t.Parallel()
-
-	// No reader is configured: any call at all fails the test.
-	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
-	object, err := server.resolveObject(context.Background(), objectRef{GUID: "1;shop;;orders", Name: "ignored"}, v1pb.MetaType_TABLE)
-	require.NoError(t, err)
-	require.Equal(t, "1;shop;;orders", object.GUID)
-}
-
-func TestResolveObjectResolvesANamePath(t *testing.T) {
-	t.Parallel()
-
-	readers := &fakeReaders{
-		listInstances: oneInstance(),
-		listDatabases: oneDatabase(),
-		searchMetadata: func(request *v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
-			require.Equal(t, "orders", request.GetSearchStr())
-			require.Equal(t, "1;shop", request.GetParentGuidPrefix())
-			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;;orders", "orders")),
-			}}, nil
-		},
-	}
-	server := newTestServer(t, readers, &fakeChecker{allow: true})
-	object, err := server.resolveObject(context.Background(), objectRef{Instance: "prod-mysql", Database: "shop", Name: "orders"}, v1pb.MetaType_TABLE)
-	require.NoError(t, err)
-	require.Equal(t, "1;shop;;orders", object.GUID)
-	require.Equal(t, v1pb.MetaType_TABLE, object.MetaType)
-	require.Equal(t, "orders", object.Name)
-}
-
-func TestResolveObjectReportsCandidates(t *testing.T) {
-	t.Parallel()
-
-	readers := &fakeReaders{
-		listInstances: oneInstance(),
-		listDatabases: oneDatabase(),
-		searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
-			// A near miss: the search found something, the name did not match.
-			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;;order_items", "order_items")),
-			}}, nil
-		},
-	}
-	server := newTestServer(t, readers, &fakeChecker{allow: true})
-	_, err := server.resolveObject(context.Background(), objectRef{Instance: "prod-mysql", Database: "shop", Name: "orders"}, v1pb.MetaType_UNSPECIFIED)
-
-	failure := failureOf(t, err)
-	require.Equal(t, codeNotFound, failure.Code)
-	require.Len(t, listOf(t, detailsOf(t, failure), "candidates"), 1)
-	require.Equal(t, "1;shop;;order_items", firstOf(t, detailsOf(t, failure), "candidates")["guid"])
-}
-
-func TestResolveObjectReportsAmbiguity(t *testing.T) {
-	t.Parallel()
-
-	readers := &fakeReaders{
-		listInstances: oneInstance(),
-		listDatabases: oneDatabase(),
-		// Two schemas hold a table with the same name, and the caller named no
-		// schema: guessing one would answer about the wrong object.
-		searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
-			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;public;orders", "orders")),
-				foundTable(storedTable("1;shop;sales;orders", "orders")),
-			}}, nil
-		},
-	}
-	server := newTestServer(t, readers, &fakeChecker{allow: true})
-	_, err := server.resolveObject(context.Background(), objectRef{Instance: "prod-mysql", Database: "shop", Name: "orders"}, v1pb.MetaType_UNSPECIFIED)
-
-	failure := failureOf(t, err)
-	require.Equal(t, codeAmbiguous, failure.Code)
-	require.Len(t, listOf(t, detailsOf(t, failure), "candidates"), 2)
-}
-
-func TestResolveObjectKeepsASiblingDatabaseOut(t *testing.T) {
-	t.Parallel()
-
-	// The search filter is a string prefix, so "1;shop" also matches
-	// "1;shop_archive"; the resolver requires the parent to be a whole segment.
-	readers := &fakeReaders{
-		listInstances: oneInstance(),
-		listDatabases: oneDatabase(),
-		searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
-			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop_archive;;orders", "orders")),
-			}}, nil
-		},
-	}
-	server := newTestServer(t, readers, &fakeChecker{allow: true})
-	_, err := server.resolveObject(context.Background(), objectRef{Instance: "prod-mysql", Database: "shop", Name: "orders"}, v1pb.MetaType_UNSPECIFIED)
-	require.Equal(t, codeNotFound, failureOf(t, err).Code)
-}
-
-func TestResolveObjectRejectsAnIncompleteReference(t *testing.T) {
-	t.Parallel()
-
-	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
-	cases := map[string]objectRef{
-		"no name":     {Instance: "prod-mysql", Database: "shop"},
-		"no instance": {Database: "shop", Name: "orders"},
-		"no database": {Instance: "prod-mysql", Name: "orders"},
-	}
-	for name, ref := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			_, err := server.resolveObject(context.Background(), ref, v1pb.MetaType_UNSPECIFIED)
-			require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
-		})
-	}
-}
-
-// TestResolveObjectResolvesASchema covers the engines that have a named schema
-// level: the schema is looked up under the database first, and the object search
-// is scoped to it.
-func TestResolveObjectResolvesASchema(t *testing.T) {
-	t.Parallel()
-
-	readers := &fakeReaders{
-		listInstances: oneInstance(),
-		listDatabases: oneDatabase(),
-		listMetadata: func(request *v1pb.ListMetadataRequest) (*v1pb.MetadataResponse, error) {
-			require.Equal(t, "1;shop", request.GetParentGuid())
-			require.Equal(t, v1pb.MetaType_SCHEMA, request.GetMetaType())
-			return &v1pb.MetadataResponse{TypesStoredMetadata: []*v1pb.MetadataResponse_Metadata{{
-				MetaType: v1pb.MetaType_SCHEMA,
-				List:     []*v1pb.StoredMetadata{storedSchema("1;shop;public", "public")},
-			}}}, nil
-		},
-		searchMetadata: func(request *v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
-			require.Equal(t, "1;shop;public", request.GetParentGuidPrefix())
-			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;public;orders", "orders")),
-			}}, nil
-		},
-	}
-	server := newTestServer(t, readers, &fakeChecker{allow: true})
-	object, err := server.resolveObject(context.Background(), objectRef{
-		Instance: "prod-mysql", Database: "shop", Schema: "public", Name: "orders",
-	}, v1pb.MetaType_TABLE)
-	require.NoError(t, err)
-	require.Equal(t, "1;shop;public;orders", object.GUID)
-}
-
 // --- scopes ---
-
-func TestResolveScopeNeedsBothFields(t *testing.T) {
-	t.Parallel()
-
-	server := newTestServer(t, &fakeReaders{}, &fakeChecker{allow: true})
-	_, err := server.resolveScope(context.Background(), analysisScope{Instance: "prod-mysql"})
-	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
-}
 
 func TestAnalyzeSQLNeedsAScopeAndListsWhatExists(t *testing.T) {
 	t.Parallel()
@@ -584,7 +420,7 @@ func TestListMetadataProjectsRowsAndClampsPageSize(t *testing.T) {
 			seen = request
 			return &v1pb.MetadataResponse{TypesStoredMetadata: []*v1pb.MetadataResponse_Metadata{{
 				MetaType: v1pb.MetaType_TABLE,
-				List:     []*v1pb.StoredMetadata{storedTable("1;shop;;orders", "orders")},
+				List:     []*v1pb.StoredMetadata{storedTable()},
 			}}}, nil
 		},
 	}
@@ -627,7 +463,7 @@ func TestSearchMetadataSearchesEverythingWithoutAScope(t *testing.T) {
 		searchMetadata: func(request *v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
 			seen = request
 			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;;orders", "orders")),
+				foundTable(storedTable()),
 			}}, nil
 		},
 	}
@@ -718,7 +554,7 @@ func TestGetLineageGraphFiltersByColumn(t *testing.T) {
 		listDatabases: oneDatabase(),
 		searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
 			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;;orders", "orders")),
+				foundTable(storedTable()),
 			}}, nil
 		},
 		getLineageGraph: func(*v1pb.GetLineageGraphRequest) (*v1pb.GetLineageGraphResponse, error) {
@@ -760,7 +596,7 @@ func TestGetQualitySignalReadsOneMonitoredTarget(t *testing.T) {
 		listDatabases: oneDatabase(),
 		searchMetadata: func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
 			return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-				foundTable(storedTable("1;shop;;orders", "orders")),
+				foundTable(storedTable()),
 			}}, nil
 		},
 		listQualityTargets: func(request *v1pb.ListQualityTargetsRequest) (*v1pb.ListQualityTargetsResponse, error) {
@@ -1640,7 +1476,7 @@ func TestQualityListingPassesAResolvedNamePathTargetGUID(t *testing.T) {
 
 	tableSearch := func(*v1pb.SearchMetadataRequest) (*v1pb.SearchMetadataResponse, error) {
 		return &v1pb.SearchMetadataResponse{Results: []*v1pb.SearchMetadataResult{
-			foundTable(storedTable("1;shop;;orders", "orders")),
+			foundTable(storedTable()),
 		}}, nil
 	}
 	object := map[string]string{"instance": "prod-mysql", "database": "shop", "name": "orders"}
@@ -1879,51 +1715,8 @@ func requestFor(t *testing.T, user *store.UserMessage, name, args string) *mcpsd
 
 // --- small helpers ---
 
-func TestToolErrorFromRPCMapsCodes(t *testing.T) {
+func TestParseDirectionMapsTheTransportWords(t *testing.T) {
 	t.Parallel()
-	cases := map[connect.Code]string{
-		connect.CodeNotFound:           codeNotFound,
-		connect.CodePermissionDenied:   codePermissionDenied,
-		connect.CodeInvalidArgument:    codeInvalidArgument,
-		connect.CodeFailedPrecondition: codeUnsupported,
-		connect.CodeDeadlineExceeded:   codeTimeout,
-		connect.CodeUnknown:            codeInternal,
-	}
-	for code, want := range cases {
-		require.Equal(t, want, toolErrorFromRPC(connect.NewError(code, errors.New("x"))).Code, "code %v", code)
-	}
-	require.Equal(t, codeUnsupported, toolErrorFromRPC(connect.NewError(connect.CodeFailedPrecondition, errors.New("no analyzer"))).Code,
-		"a capability the deployment lacks is not a bad argument")
-	require.Nil(t, toolErrorFromRPC(nil))
-}
-
-func TestNormalizePageSize(t *testing.T) {
-	t.Parallel()
-
-	size, err := normalizePageSize(0)
-	require.NoError(t, err)
-	require.Equal(t, int32(defaultPageSize), size)
-
-	size, err = normalizePageSize(5000)
-	require.NoError(t, err)
-	require.Equal(t, int32(maxPageSize), size)
-
-	size, err = normalizePageSize(50)
-	require.NoError(t, err)
-	require.Equal(t, int32(50), size)
-
-	_, err = normalizePageSize(-1)
-	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
-}
-
-func TestParseMetaTypeAndDirection(t *testing.T) {
-	t.Parallel()
-
-	metaType, err := parseMetaType("table")
-	require.NoError(t, err)
-	require.Equal(t, v1pb.MetaType_TABLE, metaType)
-	_, err = parseMetaType("nonsense")
-	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
 
 	require.Equal(t, v1pb.LineageType_SOURCE, mustDirection(t, "up"))
 	require.Equal(t, v1pb.LineageType_TARGET, mustDirection(t, "down"))

@@ -55,7 +55,7 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 	if result.Content == "" {
 		content, renderErr := renderValue(result.Value)
 		if renderErr != nil {
-			return errorResult(NewError(CodeInternal, renderErr.Error()))
+			return finish(errorResult(NewError(CodeInternal, renderErr.Error())))
 		}
 		result.Content = content
 	}

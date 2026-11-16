@@ -231,7 +231,11 @@ func run(ctx context.Context, cfg Config, ch chan<- Event) {
 		// everything else is a barrier and runs alone. Events and conversation
 		// messages commit in model order regardless of completion order.
 		if !executeToolBatch(ctx, cfg, assistantMsg.ToolCalls, turn, ch, appendMessage) {
-			outcome = metrics.LLMOutcomeCanceled
+			// A failed batch is a cancellation only when the caller went away; a
+			// budget/append failure is an error, not a canceled call.
+			if ctx.Err() != nil {
+				outcome = metrics.LLMOutcomeCanceled
+			}
 			return
 		}
 	}

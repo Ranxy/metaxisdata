@@ -2,10 +2,8 @@ package mcp
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
-	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 )
 
 const (
@@ -250,37 +248,6 @@ func (s *Server) toolDefinitions() []toolDefinition {
 }
 
 // --- shared helpers ---
-
-// normalizePageSize applies the listing budget: a negative size is a caller
-// mistake, and a larger one is clamped rather than refused, because the answer
-// stays truthful either way.
-func normalizePageSize(requested int32) (int32, error) {
-	switch {
-	case requested < 0:
-		return 0, invalidArgument("page_size must not be negative")
-	case requested == 0:
-		return defaultPageSize, nil
-	case requested > maxPageSize:
-		return maxPageSize, nil
-	default:
-		return requested, nil
-	}
-}
-
-// parseMetaType reads a meta type name. An empty value stays unspecified, which
-// lets the server infer the type from a GUID.
-func parseMetaType(value string) (v1pb.MetaType, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return v1pb.MetaType_UNSPECIFIED, nil
-	}
-	number, ok := v1pb.MetaType_value[strings.ToUpper(trimmed)]
-	if !ok {
-		return v1pb.MetaType_UNSPECIFIED, newToolError(codeInvalidArgument, fmt.Sprintf("unknown meta type %q", value),
-			"valid types include TABLE, VIEW, MATERIALIZED_VIEW, COLUMN, SCHEMA, MANUAL_SQL")
-	}
-	return v1pb.MetaType(number), nil
-}
 
 // objectSchema builds a tool's input schema. Every tool takes an object; a caller
 // that sends no arguments at all is still well formed.
