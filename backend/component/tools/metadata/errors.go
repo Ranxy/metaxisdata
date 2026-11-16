@@ -51,25 +51,25 @@ type Error struct {
 // Error implements error.
 func (e *Error) Error() string { return e.Message }
 
-// newError builds one failure.
-func newError(code, message, hint string) *Error {
+// NewError builds one failure.
+func NewError(code, message, hint string) *Error {
 	return &Error{Code: code, Message: message, Hint: hint}
 }
 
-// invalidArgument reports a malformed reference.
-func invalidArgument(format string, args ...any) *Error {
-	return newError(CodeInvalidArgument, fmt.Sprintf(format, args...), "")
+// InvalidArgument reports a malformed reference.
+func InvalidArgument(format string, args ...any) *Error {
+	return NewError(CodeInvalidArgument, fmt.Sprintf(format, args...), "")
 }
 
 // internalFailure reports a failure the tool cannot classify further.
 func internalFailure(err error) *Error {
-	return newError(CodeInternal, err.Error(), "")
+	return NewError(CodeInternal, err.Error(), "")
 }
 
 // notFound reports an unknown reference together with what the registry does have,
 // so the next call can be right instead of being a guess.
 func notFound(kind, value string, candidates []Candidate) *Error {
-	failure := newError(CodeNotFound, fmt.Sprintf("no %s matches %q", kind, value),
+	failure := NewError(CodeNotFound, fmt.Sprintf("no %s matches %q", kind, value),
 		"the candidates below are what the registry has: use one of them, or list/search first")
 	if len(candidates) > 0 {
 		failure.Details = map[string]any{"candidates": candidates}
@@ -87,10 +87,10 @@ func ambiguous(kind, value string, candidates []Candidate) *Error {
 	}
 }
 
-// fromRPC maps a ConnectRPC failure onto the tool vocabulary. The resolvers call
+// FromRPC maps a ConnectRPC failure onto the tool vocabulary. The resolvers call
 // the same read services the API exposes, so every failure a caller could see
 // there arrives here too and has to keep its meaning.
-func fromRPC(err error) *Error {
+func FromRPC(err error) *Error {
 	if err == nil {
 		return nil
 	}
@@ -100,23 +100,23 @@ func fromRPC(err error) *Error {
 	}
 	switch connect.CodeOf(err) {
 	case connect.CodeNotFound:
-		return newError(CodeNotFound, err.Error(), "search or list first to get a reference that exists")
+		return NewError(CodeNotFound, err.Error(), "search or list first to get a reference that exists")
 	case connect.CodeInvalidArgument:
-		return newError(CodeInvalidArgument, err.Error(), "the server refused the arguments; the message says which")
+		return NewError(CodeInvalidArgument, err.Error(), "the server refused the arguments; the message says which")
 	case connect.CodeFailedPrecondition:
-		return newError(CodeUnsupported, err.Error(), "this deployment cannot answer that as asked; the message says why")
+		return NewError(CodeUnsupported, err.Error(), "this deployment cannot answer that as asked; the message says why")
 	case connect.CodePermissionDenied:
-		return newError(CodePermissionDenied, err.Error(), "")
+		return NewError(CodePermissionDenied, err.Error(), "")
 	case connect.CodeUnauthenticated:
-		return newError(CodeUnauthenticated, err.Error(), "the client's authorization is gone: authorize it again")
+		return NewError(CodeUnauthenticated, err.Error(), "the client's authorization is gone: authorize it again")
 	case connect.CodeResourceExhausted:
-		return newError(CodeResourceExhausted, err.Error(), "back off before retrying")
+		return NewError(CodeResourceExhausted, err.Error(), "back off before retrying")
 	case connect.CodeUnavailable:
-		return newError(CodeUnavailable, err.Error(), "the server is not reachable right now; retrying may work")
+		return NewError(CodeUnavailable, err.Error(), "the server is not reachable right now; retrying may work")
 	case connect.CodeDeadlineExceeded, connect.CodeCanceled:
-		return newError(CodeTimeout, err.Error(), "retry, or ask for less at once")
+		return NewError(CodeTimeout, err.Error(), "retry, or ask for less at once")
 	default:
-		return newError(CodeInternal, err.Error(), "")
+		return NewError(CodeInternal, err.Error(), "")
 	}
 }
 

@@ -48,13 +48,13 @@ func NewTools(instances InstanceReader, databases DatabaseReader, principals Pri
 	}
 }
 
-// decodeArguments decodes a tool's raw arguments into its typed request.
-func decodeArguments(raw json.RawMessage, destination any) error {
+// DecodeArguments decodes a tool's raw arguments into its typed request.
+func DecodeArguments(raw json.RawMessage, destination any) error {
 	if len(raw) == 0 {
 		return nil
 	}
 	if err := json.Unmarshal(raw, destination); err != nil {
-		return invalidArgument("the arguments are not valid JSON for this tool: %v", err)
+		return InvalidArgument("the arguments are not valid JSON for this tool: %v", err)
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func decodeArguments(raw json.RawMessage, destination any) error {
 func normalizePageSize(requested int32) (int32, error) {
 	switch {
 	case requested < 0:
-		return 0, invalidArgument("page_size must not be negative")
+		return 0, InvalidArgument("page_size must not be negative")
 	case requested == 0:
 		return defaultPageSize, nil
 	case requested > maxPageSize:
@@ -83,7 +83,7 @@ func parseMetaType(value string) (v1pb.MetaType, error) {
 	}
 	number, ok := v1pb.MetaType_value[strings.ToUpper(trimmed)]
 	if !ok {
-		return v1pb.MetaType_UNSPECIFIED, newError(CodeInvalidArgument, fmt.Sprintf("unknown meta type %q", value),
+		return v1pb.MetaType_UNSPECIFIED, NewError(CodeInvalidArgument, fmt.Sprintf("unknown meta type %q", value),
 			"valid types include TABLE, VIEW, MATERIALIZED_VIEW, COLUMN, SCHEMA, MANUAL_SQL")
 	}
 	return v1pb.MetaType(number), nil
@@ -97,17 +97,35 @@ func parentGUIDOf(guid string) string {
 	return ""
 }
 
-// stringsOrEmpty keeps a list field a list.
-func stringsOrEmpty(values []string) []string {
+// StringsOrEmpty keeps a list field a list.
+func StringsOrEmpty(values []string) []string {
 	if values == nil {
 		return []string{}
 	}
 	return values
 }
 
-// protoJSON renders one message compactly with lowerCamelCase names and enums by
+// ProtoJSONValues renders a list; an empty list becomes [] rather than null, so
+// "nothing to report" never looks like "not reported".
+func ProtoJSONValues[T proto.Message](messages []T) (json.RawMessage, error) {
+	values := make([]json.RawMessage, 0, len(messages))
+	for _, message := range messages {
+		value, err := ProtoJSON(message)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
+	}
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return nil, internalFailure(err)
+	}
+	return json.RawMessage(payload), nil
+}
+
+// ProtoJSON renders one message compactly with lowerCamelCase names and enums by
 // name, without the unset fields a listing does not need.
-func protoJSON(message proto.Message) (json.RawMessage, error) {
+func ProtoJSON(message proto.Message) (json.RawMessage, error) {
 	payload, err := protojson.MarshalOptions{}.Marshal(message)
 	if err != nil {
 		return nil, internalFailure(err)
@@ -136,7 +154,7 @@ type listInstancesResult struct {
 
 func (t *Tools) ListInstances(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args ListInstancesArgs
-	if err := decodeArguments(raw, &args); err != nil {
+	if err := DecodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
 	pageSize, err := normalizePageSize(args.PageSize)
@@ -148,7 +166,7 @@ func (t *Tools) ListInstances(ctx context.Context, raw json.RawMessage) (any, er
 		PageToken: args.PageToken,
 	}))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	result := listInstancesResult{Instances: make([]instanceRow, 0, len(response.Msg.GetInstances()))}
 	for _, instance := range response.Msg.GetInstances() {
@@ -185,11 +203,11 @@ type listDatabasesResult struct {
 
 func (t *Tools) ListDatabases(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args ListDatabasesArgs
-	if err := decodeArguments(raw, &args); err != nil {
+	if err := DecodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(args.Instance) == "" {
-		return nil, newError(CodeInvalidArgument, "instance is required",
+		return nil, NewError(CodeInvalidArgument, "instance is required",
 			"list_instances shows the instances this workspace has")
 	}
 	pageSize, err := normalizePageSize(args.PageSize)
@@ -206,7 +224,7 @@ func (t *Tools) ListDatabases(ctx context.Context, raw json.RawMessage) (any, er
 		PageToken: args.PageToken,
 	}))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	result := listDatabasesResult{Databases: make([]databaseRow, 0, len(response.Msg.GetDatabases()))}
 	for _, database := range response.Msg.GetDatabases() {
@@ -250,11 +268,11 @@ type objectListResult struct {
 
 func (t *Tools) SearchMetadata(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args SearchMetadataArgs
-	if err := decodeArguments(raw, &args); err != nil {
+	if err := DecodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(args.Keyword) == "" {
-		return nil, invalidArgument("keyword is required")
+		return nil, InvalidArgument("keyword is required")
 	}
 	metaType, err := parseMetaType(args.MetaType)
 	if err != nil {
@@ -279,7 +297,7 @@ func (t *Tools) SearchMetadata(ctx context.Context, raw json.RawMessage) (any, e
 	scoped := strings.TrimSpace(args.Instance) != "" || strings.TrimSpace(args.Database) != "" || strings.TrimSpace(args.Schema) != ""
 	if scoped {
 		if strings.TrimSpace(args.Instance) == "" || strings.TrimSpace(args.Database) == "" {
-			return nil, newError(CodeInvalidArgument, "a scoped search needs instance and database",
+			return nil, NewError(CodeInvalidArgument, "a scoped search needs instance and database",
 				"search the whole workspace by leaving instance, database and schema out")
 		}
 		parentGUID, err := t.resolver.ResolveScope(ctx, AnalysisScope{Instance: args.Instance, Database: args.Database, Schema: args.Schema})
@@ -290,7 +308,7 @@ func (t *Tools) SearchMetadata(ctx context.Context, raw json.RawMessage) (any, e
 	}
 	response, err := t.databases.SearchMetadata(ctx, connect.NewRequest(request))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	result := objectListResult{Objects: make([]objectRow, 0, len(response.Msg.GetResults()))}
 	for _, found := range response.Msg.GetResults() {
@@ -323,7 +341,7 @@ type metadataListResult struct {
 
 func (t *Tools) ListMetadata(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args ListMetadataArgs
-	if err := decodeArguments(raw, &args); err != nil {
+	if err := DecodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
 	metaType, err := parseMetaType(args.MetaType)
@@ -333,7 +351,7 @@ func (t *Tools) ListMetadata(ctx context.Context, raw json.RawMessage) (any, err
 	if args.PageToken != "" && metaType == v1pb.MetaType_UNSPECIFIED {
 		// A listing that was not narrowed to one type carries one token per type,
 		// so a token without a type says nothing about where to continue.
-		return nil, newError(CodeInvalidArgument, "page_token needs meta_type",
+		return nil, NewError(CodeInvalidArgument, "page_token needs meta_type",
 			"a listing that was not narrowed to one type carries one token per type; name the type you are continuing")
 	}
 	pageSize, err := normalizePageSize(args.PageSize)
@@ -354,7 +372,7 @@ func (t *Tools) ListMetadata(ctx context.Context, raw json.RawMessage) (any, err
 	}
 	response, err := t.databases.ListMetadata(ctx, connect.NewRequest(request))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	result := metadataListResult{Objects: make([]objectRow, 0)}
 	tokens := map[string]string{}
@@ -393,7 +411,7 @@ type getMetadataResult struct {
 
 func (t *Tools) GetMetadata(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args GetMetadataArgs
-	if err := decodeArguments(raw, &args); err != nil {
+	if err := DecodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
 	metaType, err := parseMetaType(args.MetaType)
@@ -404,7 +422,7 @@ func (t *Tools) GetMetadata(ctx context.Context, raw json.RawMessage) (any, erro
 		// The registry cannot infer an object's type from its GUID, and the RPC
 		// refuses without one. Saying that here is the difference between a model
 		// retrying the same call and one that fixes it.
-		return nil, newError(CodeInvalidArgument, "meta_type is required when the reference is a bare guid",
+		return nil, NewError(CodeInvalidArgument, "meta_type is required when the reference is a bare guid",
 			"list_metadata and search_metadata return metaType with every object, or address the object by name instead")
 	}
 	object, err := t.resolver.ResolveObject(ctx, args.Object, metaType)
@@ -416,9 +434,9 @@ func (t *Tools) GetMetadata(ctx context.Context, raw json.RawMessage) (any, erro
 		MetaType: object.MetaType,
 	}))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
-	metadata, err := protoJSON(response.Msg.GetMetadata())
+	metadata, err := ProtoJSON(response.Msg.GetMetadata())
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +462,7 @@ type getDDLResult struct {
 
 func (t *Tools) GetDDL(ctx context.Context, raw json.RawMessage) (any, error) {
 	var args GetDDLArgs
-	if err := decodeArguments(raw, &args); err != nil {
+	if err := DecodeArguments(raw, &args); err != nil {
 		return nil, err
 	}
 	metaType, err := parseMetaType(args.MetaType)
@@ -452,7 +470,7 @@ func (t *Tools) GetDDL(ctx context.Context, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	if metaType == v1pb.MetaType_UNSPECIFIED && args.Object.GUID != "" {
-		return nil, newError(CodeInvalidArgument, "meta_type is required when the reference is a bare guid",
+		return nil, NewError(CodeInvalidArgument, "meta_type is required when the reference is a bare guid",
 			"list_metadata and search_metadata return metaType with every object, or address the object by name instead")
 	}
 	object, err := t.resolver.ResolveObject(ctx, args.Object, metaType)
@@ -464,7 +482,7 @@ func (t *Tools) GetDDL(ctx context.Context, raw json.RawMessage) (any, error) {
 		MetaType: object.MetaType,
 	}))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	return getDDLResult{GUID: object.GUID, Schema: response.Msg.GetSchema()}, nil
 }
@@ -482,10 +500,10 @@ type whoamiUser struct {
 func (t *Tools) Whoami(ctx context.Context) (any, error) {
 	response, err := t.principals.GetCurrentUser(ctx, connect.NewRequest(&emptypb.Empty{}))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	return whoamiResult{
 		User:        whoamiUser{Email: response.Msg.GetEmail(), Name: response.Msg.GetTitle()},
-		Permissions: stringsOrEmpty(response.Msg.GetPermissions()),
+		Permissions: StringsOrEmpty(response.Msg.GetPermissions()),
 	}, nil
 }

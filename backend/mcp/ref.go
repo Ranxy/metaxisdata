@@ -60,17 +60,3 @@ func (s *Server) resolveScope(ctx context.Context, scope analysisScope) (string,
 	}
 	return guid, nil
 }
-
-// scopeRequired answers a statement that arrived without a scope.
-func (s *Server) scopeRequired(ctx context.Context) *toolError {
-	failure := s.resolver.ScopeRequired(ctx)
-	if failure == nil {
-		return nil
-	}
-	return &toolError{
-		Code:    failure.Code,
-		Message: failure.Message,
-		Hint:    failure.Hint,
-		Details: failure.Details,
-	}
-}

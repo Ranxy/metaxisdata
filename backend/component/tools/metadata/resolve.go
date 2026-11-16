@@ -94,10 +94,10 @@ func (r *Resolver) ResolveObject(ctx context.Context, ref ObjectRef, metaType v1
 		return Resolved{GUID: ref.GUID, MetaType: metaType}, nil
 	}
 	if ref.Name == "" {
-		return Resolved{}, invalidArgument("object.name is required unless object.guid is given")
+		return Resolved{}, InvalidArgument("object.name is required unless object.guid is given")
 	}
 	if ref.Instance == "" || ref.Database == "" {
-		return Resolved{}, invalidArgument("object.instance and object.database are required unless object.guid is given")
+		return Resolved{}, InvalidArgument("object.instance and object.database are required unless object.guid is given")
 	}
 
 	instanceName, err := r.ResolveInstance(ctx, ref.Instance)
@@ -134,7 +134,7 @@ func (r *Resolver) ResolveContainer(ctx context.Context, ref ObjectRef) (Resolve
 		return Resolved{GUID: ref.GUID}, nil
 	}
 	if ref.Instance == "" || ref.Database == "" {
-		return Resolved{}, invalidArgument("parent needs a guid, or an instance and a database")
+		return Resolved{}, InvalidArgument("parent needs a guid, or an instance and a database")
 	}
 	instanceName, err := r.ResolveInstance(ctx, ref.Instance)
 	if err != nil {
@@ -158,7 +158,7 @@ func (r *Resolver) ResolveContainer(ctx context.Context, ref ObjectRef) (Resolve
 // names against.
 func (r *Resolver) ResolveScope(ctx context.Context, scope AnalysisScope) (string, error) {
 	if scope.Instance == "" || scope.Database == "" {
-		return "", invalidArgument("a scope needs both instance and database")
+		return "", InvalidArgument("a scope needs both instance and database")
 	}
 	instanceName, err := r.ResolveInstance(ctx, scope.Instance)
 	if err != nil {
@@ -185,7 +185,7 @@ func (r *Resolver) ResolveInstance(ctx context.Context, value string) (string, e
 		PageSize: refLookupPageSize,
 	}))
 	if err != nil {
-		return "", fromRPC(err)
+		return "", FromRPC(err)
 	}
 	var matches []*v1pb.Instance
 	for _, instance := range response.Msg.GetInstances() {
@@ -212,7 +212,7 @@ func (r *Resolver) ResolveDatabase(ctx context.Context, instanceName, value stri
 		// instance the caller named: otherwise the reference silently addresses an
 		// object in a different instance.
 		if !guidBelongsToInstance(trimmed, instanceName) {
-			return "", invalidArgument("the database guid does not belong to that instance")
+			return "", InvalidArgument("the database guid does not belong to that instance")
 		}
 		return trimmed, nil
 	}
@@ -221,7 +221,7 @@ func (r *Resolver) ResolveDatabase(ctx context.Context, instanceName, value stri
 		PageSize: refLookupPageSize,
 	}))
 	if err != nil {
-		return "", fromRPC(err)
+		return "", FromRPC(err)
 	}
 	var matches []*v1pb.Database
 	for _, database := range response.Msg.GetDatabases() {
@@ -251,7 +251,7 @@ func (r *Resolver) ResolveSchema(ctx context.Context, databaseGUID, value string
 		PageSize:   refLookupPageSize,
 	}))
 	if err != nil {
-		return "", fromRPC(err)
+		return "", FromRPC(err)
 	}
 	var matches []*v1pb.StoredMetadata
 	var candidates []Candidate
@@ -290,7 +290,7 @@ func (r *Resolver) SearchObject(ctx context.Context, parentGUID, name string, me
 	}
 	response, err := r.databases.SearchMetadata(ctx, connect.NewRequest(request))
 	if err != nil {
-		return Resolved{}, fromRPC(err)
+		return Resolved{}, FromRPC(err)
 	}
 	var matches []*v1pb.SearchMetadataResult
 	for _, result := range response.Msg.GetResults() {
@@ -328,10 +328,10 @@ func (r *Resolver) SearchObject(ctx context.Context, parentGUID, name string, me
 func (r *Resolver) ScopeRequired(ctx context.Context) *Error {
 	databases, err := r.AvailableDatabases(ctx)
 	if err != nil {
-		return newError(CodeScopeRequired, "analyze_sql needs at least one scope",
+		return NewError(CodeScopeRequired, "analyze_sql needs at least one scope",
 			"pass scopes: [{instance, database, schema?}]; the databases could not be listed right now")
 	}
-	failure := newError(CodeScopeRequired, "analyze_sql needs at least one scope",
+	failure := NewError(CodeScopeRequired, "analyze_sql needs at least one scope",
 		"pass scopes: [{instance, database, schema?}]; which database a statement belongs to is a decision only the caller can make")
 	if len(databases) > 0 {
 		failure.Details = map[string]any{"databases": databases}
@@ -347,7 +347,7 @@ func (r *Resolver) AvailableDatabases(ctx context.Context) ([]ScopeCandidate, er
 		PageSize: refLookupPageSize,
 	}))
 	if err != nil {
-		return nil, fromRPC(err)
+		return nil, FromRPC(err)
 	}
 	var candidates []ScopeCandidate
 	for _, instance := range instances.Msg.GetInstances() {

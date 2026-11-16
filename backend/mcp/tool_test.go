@@ -16,6 +16,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/lineage"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -563,7 +565,7 @@ func TestAnalyzeSQLRejectsBadArguments(t *testing.T) {
 	cases := []map[string]any{
 		{"sql": ""},
 		{"sql": "select 1", "depth": 11, "scopes": []map[string]string{{"instance": "i", "database": "d"}}},
-		{"sql": "select 1", "scopes": make([]map[string]string, maxAnalyzeSQLScopes+1)},
+		{"sql": "select 1", "scopes": make([]map[string]string, lineage.MaxAnalyzeSQLScopes+1)},
 	}
 	for _, args := range cases {
 		_, err := callTool(t, server, "analyze_sql", args)
@@ -1926,13 +1928,15 @@ func TestParseMetaTypeAndDirection(t *testing.T) {
 	require.Equal(t, v1pb.LineageType_SOURCE, mustDirection(t, "up"))
 	require.Equal(t, v1pb.LineageType_TARGET, mustDirection(t, "down"))
 	require.Equal(t, v1pb.LineageType_LINEAGE_TYPE_UNSPECIFIED, mustDirection(t, ""))
-	_, err = parseDirection("sideways")
-	require.Equal(t, codeInvalidArgument, failureOf(t, err).Code)
+	_, directionErr := lineage.ParseDirection("sideways")
+	failure := metadata.AsError(directionErr)
+	require.NotNil(t, failure)
+	require.Equal(t, metadata.CodeInvalidArgument, failure.Code)
 }
 
 func mustDirection(t *testing.T, value string) v1pb.LineageType {
 	t.Helper()
-	direction, err := parseDirection(value)
+	direction, err := lineage.ParseDirection(value)
 	require.NoError(t, err)
 	return direction
 }

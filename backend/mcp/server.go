@@ -22,6 +22,7 @@ import (
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/lineage"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -154,6 +155,8 @@ type Server struct {
 	resolver *metadata.Resolver
 	// catalog holds the shared metadata tool bodies.
 	catalog *metadata.Tools
+	// lineageTools holds the shared lineage tool bodies.
+	lineageTools *lineage.Tools
 	// audit writes one ledger row per call. It is a field rather than a method call
 	// so a test can observe the ledger without a database; NewServer points it at
 	// the store-backed writer.
@@ -168,6 +171,7 @@ func NewServer(config Config) *Server {
 	server := &Server{config: config}
 	server.resolver = metadata.NewResolver(config.Instances, config.Databases)
 	server.catalog = metadata.NewTools(config.Instances, config.Databases, config.Principals)
+	server.lineageTools = lineage.NewTools(config.Lineage, server.resolver)
 	server.audit = server.auditToolCall
 	server.sdk = mcpsdk.NewServer(
 		// No version: this repository has no build version to report, and an empty
