@@ -22,6 +22,7 @@ import (
 	clog "github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/audit"
+	"github.com/Ranxy/metaxisdata/backend/component/tools/metadata"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -148,6 +149,9 @@ type Config struct {
 type Server struct {
 	config Config
 	sdk    *mcpsdk.Server
+	// resolver is the shared name-addressing implementation the built-in agent
+	// also uses.
+	resolver *metadata.Resolver
 	// audit writes one ledger row per call. It is a field rather than a method call
 	// so a test can observe the ledger without a database; NewServer points it at
 	// the store-backed writer.
@@ -160,6 +164,7 @@ func NewServer(config Config) *Server {
 		config.Now = time.Now
 	}
 	server := &Server{config: config}
+	server.resolver = metadata.NewResolver(config.Instances, config.Databases)
 	server.audit = server.auditToolCall
 	server.sdk = mcpsdk.NewServer(
 		// No version: this repository has no build version to report, and an empty
