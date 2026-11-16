@@ -15,6 +15,7 @@ Rules for the Go server. Repo-wide rules live in the root [AGENTS.md](../AGENTS.
 | `backend/component/llm/` | LLM provider registry and the streaming chat-completion transport (one request, SSE parsing, failure classification) |
 | `backend/component/agent/` | The iterative agent loop: turns, tool dispatch, events, messages, conversation budget |
 | `backend/component/agent/transcript/` | Conversation rebuild, tool-call repair, token estimates, tool-result pruning and compaction planning |
+| `backend/component/agent/tool/` | The tool contract, registry and the execution pipeline (identity, IAM, action policy, timeout, result budget, audit, metrics) |
 | `backend/component/tools/metadata/` | Shared object/scope name addressing, the tool error envelope, and the metadata tool bodies both MCP and the built-in agent run |
 | `backend/component/tools/lineage/` | The analyze_sql and get_lineage_graph tool bodies, shared by both surfaces |
 | `backend/component/tools/quality/` | The read-only data-quality tool bodies (signal, targets, issues, executions, impact, coverage), shared by both surfaces |

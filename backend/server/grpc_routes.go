@@ -121,7 +121,7 @@ func configureGrpcRouters(
 	// when it is absent they are still planned PENDING rather than dropped.
 	dataQualityService := apiv1.NewDataQualityService(stores, dbFactory, qualityRunner, suggester, llmQuota, stateCfg, m, secret, profile, agentRunner, enrollmentRunner)
 	llmService := apiv1.NewLLMService(stores, llmRegistry)
-	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m)
+	explainSQLService := apiv1.NewExplainSQLService(stores, llmRegistry, lineageAnalyzer, m, iamManager)
 	settingService := apiv1.NewSettingService(stores, profile)
 	environmentService := apiv1.NewEnvironmentService(stores)
 	roleService := apiv1.NewRoleService(stores)
