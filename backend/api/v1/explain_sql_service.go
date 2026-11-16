@@ -124,7 +124,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 
 	// Build schema context. A store failure must surface instead of silently
 	// degrading to an empty context, which the model reads as "no such object".
-	var ctxObjects *llm.SchemaContext
+	var ctxObjects *explainSchemaContext
 	if metaGUID != "" {
 		ctxObjects, err = s.buildContextFromLineage(ctx, metaGUID, metaType)
 		if err != nil {
@@ -345,7 +345,7 @@ func resolveObjectIdentifier(name string, scopePrefix string, isMySQL bool) mode
 
 // ---- Context building ----
 
-func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType) (*llm.SchemaContext, error) {
+func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType) (*explainSchemaContext, error) {
 	lineageList, err := s.store.ListColumnLineage(ctx, &store.FindColumnLineageMessage{
 		MetaGUID: &metaGUID,
 		MetaType: &metaType,
@@ -375,7 +375,7 @@ func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUI
 	return s.fetchObjectsByGUIDs(ctx, guids)
 }
 
-func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix string, sqlText string) (*llm.SchemaContext, error) {
+func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix string, sqlText string) (*explainSchemaContext, error) {
 	instanceID := scopeInstanceID(scopePrefix)
 
 	inst, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
@@ -383,7 +383,7 @@ func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix
 		return nil, err
 	}
 	if inst == nil || inst.Metadata == nil {
-		return &llm.SchemaContext{}, nil
+		return &explainSchemaContext{}, nil
 	}
 	engine := inst.Metadata.Engine
 
@@ -395,7 +395,7 @@ func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix
 		slog.Debug("Failed to analyze SQL relations; continuing without schema context", log.WithError(err))
 	}
 	if len(relations) == 0 {
-		return &llm.SchemaContext{}, nil
+		return &explainSchemaContext{}, nil
 	}
 
 	guidSet := make(map[string]bool)
@@ -417,9 +417,9 @@ func (s *ExplainSQLService) buildContextFromSQL(ctx context.Context, scopePrefix
 	return s.fetchObjectsByGUIDs(ctx, guids)
 }
 
-func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []string) (*llm.SchemaContext, error) {
+func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []string) (*explainSchemaContext, error) {
 	if len(guids) == 0 {
-		return &llm.SchemaContext{}, nil
+		return &explainSchemaContext{}, nil
 	}
 
 	// Keep the GUID next to the metadata it was resolved from: the pairs used to
@@ -449,10 +449,10 @@ func (s *ExplainSQLService) fetchObjectsByGUIDs(ctx context.Context, guids []str
 	}
 
 	if len(metas) == 0 {
-		return &llm.SchemaContext{}, nil
+		return &explainSchemaContext{}, nil
 	}
 
-	ctxObj := llm.BuildContextFromMetadata(metas, matchedGUIDs)
+	ctxObj := buildExplainSchemaContext(metas, matchedGUIDs)
 	if len(ctxObj.Objects) > 10 {
 		ctxObj.Objects = ctxObj.Objects[:10]
 	}
@@ -497,7 +497,7 @@ func (s *ExplainSQLService) toolGetObjectSchema(ctx context.Context, tc llm.Tool
 		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
 	}
 
-	obj := llm.BuildContextFromMetadata([]*storepb.StoredMetadata{list[0].Metadata}, []string{guid})
+	obj := buildExplainSchemaContext([]*storepb.StoredMetadata{list[0].Metadata}, []string{guid})
 	if len(obj.Objects) == 0 {
 		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
 	}
@@ -558,7 +558,7 @@ func (s *ExplainSQLService) toolSearchObjects(ctx context.Context, tc llm.ToolCa
 		if item.Metadata == nil {
 			continue
 		}
-		obj := llm.BuildContextFromMetadata([]*storepb.StoredMetadata{item.Metadata}, []string{item.GUID})
+		obj := buildExplainSchemaContext([]*storepb.StoredMetadata{item.Metadata}, []string{item.GUID})
 		if len(obj.Objects) == 0 {
 			continue
 		}
@@ -677,7 +677,7 @@ func (s *ExplainSQLService) resolveSource(ctx context.Context, req *v1pb.Explain
 // a wholly translated answer instead of prose in one language under headings in
 // another. The language is normalized here as well, so the prompt cannot fall
 // back to Chinese headings for an unrecognized tag.
-func buildSystemPrompt(language string, metaType storepb.MetaType, ctx *llm.SchemaContext) string {
+func buildSystemPrompt(language string, metaType storepb.MetaType, ctx *explainSchemaContext) string {
 	typeLabel := metaType.String()
 	if metaType == storepb.MetaType_UNSPECIFIED {
 		typeLabel = "SQL"
@@ -716,7 +716,7 @@ You have tools to query schema information — use them when needed.
 		prompt.name, contextText)
 }
 
-func buildContextText(ctx *llm.SchemaContext) string {
+func buildContextText(ctx *explainSchemaContext) string {
 	if ctx == nil || len(ctx.Objects) == 0 {
 		return "\nNo schema context is available. Use the tools to query schema information."
 	}

@@ -1,45 +1,45 @@
-package llm
+package v1
 
 import (
 	"github.com/Ranxy/metaxisdata/backend/common"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-// SchemaContext holds pre-built schema information about database objects
-// that the LLM can query via tools.
-type SchemaContext struct {
-	Objects []SchemaObject
+// explainSchemaContext holds the pre-built schema information the ExplainSQL
+// prompt renders: the objects the statement reads, with their columns.
+type explainSchemaContext struct {
+	Objects []explainSchemaObject
 }
 
-// SchemaObject describes a database object (table, view, procedure, etc.).
-type SchemaObject struct {
+// explainSchemaObject describes a database object (table, view, procedure, etc.).
+type explainSchemaObject struct {
 	GUID       string
 	Name       string
 	SchemaName string
 	DBName     string
 	MetaType   storepb.MetaType
 	SQLText    string // DDL or definition
-	Columns    []ColumnInfo
+	Columns    []explainColumnInfo
 	Indexes    []string
 }
 
-// ColumnInfo describes a column.
-type ColumnInfo struct {
+// explainColumnInfo describes a column.
+type explainColumnInfo struct {
 	Name     string
 	Type     string
 	Nullable bool
 	Comment  string
 }
 
-// BuildContextFromMetadata builds schema context from the list of metadata objects.
-func BuildContextFromMetadata(metas []*storepb.StoredMetadata, guids []string) *SchemaContext {
-	ctx := &SchemaContext{}
+// buildExplainSchemaContext builds the prompt context from the metadata objects.
+func buildExplainSchemaContext(metas []*storepb.StoredMetadata, guids []string) *explainSchemaContext {
+	ctx := &explainSchemaContext{}
 	for i, meta := range metas {
 		guid := ""
 		if i < len(guids) {
 			guid = guids[i]
 		}
-		obj := convertToSchemaObject(guid, meta)
+		obj := convertToExplainSchemaObject(guid, meta)
 		if obj != nil {
 			ctx.Objects = append(ctx.Objects, *obj)
 		}
@@ -47,8 +47,8 @@ func BuildContextFromMetadata(metas []*storepb.StoredMetadata, guids []string) *
 	return ctx
 }
 
-func convertToSchemaObject(guid string, meta *storepb.StoredMetadata) *SchemaObject {
-	obj := &SchemaObject{GUID: guid}
+func convertToExplainSchemaObject(guid string, meta *storepb.StoredMetadata) *explainSchemaObject {
+	obj := &explainSchemaObject{GUID: guid}
 
 	switch {
 	case meta.GetTableMetadata() != nil:
@@ -56,7 +56,7 @@ func convertToSchemaObject(guid string, meta *storepb.StoredMetadata) *SchemaObj
 		obj.Name = t.Name
 		obj.MetaType = storepb.MetaType_TABLE
 		for _, c := range t.Columns {
-			obj.Columns = append(obj.Columns, ColumnInfo{
+			obj.Columns = append(obj.Columns, explainColumnInfo{
 				Name:     c.Name,
 				Type:     c.Type,
 				Nullable: c.Nullable,
@@ -73,7 +73,7 @@ func convertToSchemaObject(guid string, meta *storepb.StoredMetadata) *SchemaObj
 		obj.MetaType = storepb.MetaType_VIEW
 		obj.SQLText = v.Definition
 		for _, c := range v.Columns {
-			obj.Columns = append(obj.Columns, ColumnInfo{
+			obj.Columns = append(obj.Columns, explainColumnInfo{
 				Name:     c.Name,
 				Type:     c.Type,
 				Nullable: c.Nullable,
@@ -104,7 +104,7 @@ func convertToSchemaObject(guid string, meta *storepb.StoredMetadata) *SchemaObj
 		obj.Name = et.Name
 		obj.MetaType = storepb.MetaType_EXTERNAL_TABLE
 		for _, c := range et.Columns {
-			obj.Columns = append(obj.Columns, ColumnInfo{
+			obj.Columns = append(obj.Columns, explainColumnInfo{
 				Name: c.Name,
 				Type: c.Type,
 			})

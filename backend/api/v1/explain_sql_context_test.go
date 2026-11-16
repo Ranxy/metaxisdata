@@ -1,4 +1,4 @@
-package llm
+package v1
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
-func TestBuildContextFromMetadataPairsGUIDsWithObjects(t *testing.T) {
+func TestBuildExplainSchemaContextPairsGUIDsWithObjects(t *testing.T) {
 	t.Parallel()
 
 	metas := []*storepb.StoredMetadata{
@@ -25,7 +25,7 @@ func TestBuildContextFromMetadataPairsGUIDsWithObjects(t *testing.T) {
 		}}},
 	}
 
-	context := BuildContextFromMetadata(metas, []string{
+	context := buildExplainSchemaContext(metas, []string{
 		"instance_1;db1;public;users",
 		"instance_1;db1;public;user_order_view",
 	})
@@ -38,7 +38,7 @@ func TestBuildContextFromMetadataPairsGUIDsWithObjects(t *testing.T) {
 	require.Equal(t, "db1", users.DBName)
 	require.Equal(t, "public", users.SchemaName)
 	require.Equal(t, storepb.MetaType_TABLE, users.MetaType)
-	require.Equal(t, []ColumnInfo{{Name: "id", Type: "int", Nullable: false, Comment: "primary key"}}, users.Columns)
+	require.Equal(t, []explainColumnInfo{{Name: "id", Type: "int", Nullable: false, Comment: "primary key"}}, users.Columns)
 	require.Equal(t, []string{"users_pkey"}, users.Indexes)
 
 	view := context.Objects[1]
@@ -46,10 +46,10 @@ func TestBuildContextFromMetadataPairsGUIDsWithObjects(t *testing.T) {
 	require.Equal(t, "SELECT 1", view.SQLText)
 }
 
-func TestBuildContextFromMetadataSkipsUnsupportedObjects(t *testing.T) {
+func TestBuildExplainSchemaContextSkipsUnsupportedObjects(t *testing.T) {
 	t.Parallel()
 
-	context := BuildContextFromMetadata([]*storepb.StoredMetadata{
+	context := buildExplainSchemaContext([]*storepb.StoredMetadata{
 		{},
 		{Type: &storepb.StoredMetadata_SchemaMetadata{SchemaMetadata: &storepb.SchemaMetadata{Name: "public"}}},
 	}, []string{"instance_1;db1;public;whatever", "instance_1;db1;;public"})
@@ -57,12 +57,12 @@ func TestBuildContextFromMetadataSkipsUnsupportedObjects(t *testing.T) {
 	require.Empty(t, context.Objects)
 }
 
-func TestBuildContextFromMetadataToleratesMissingGUID(t *testing.T) {
+func TestBuildExplainSchemaContextToleratesMissingGUID(t *testing.T) {
 	t.Parallel()
 
 	// A shorter GUID list must not panic or misattribute a GUID to the wrong
 	// object: the object without a GUID is still converted, with an empty one.
-	context := BuildContextFromMetadata([]*storepb.StoredMetadata{
+	context := buildExplainSchemaContext([]*storepb.StoredMetadata{
 		{Type: &storepb.StoredMetadata_FunctionMetadata{FunctionMetadata: &storepb.FunctionMetadata{
 			Name:       "f",
 			Definition: "SELECT 1",
