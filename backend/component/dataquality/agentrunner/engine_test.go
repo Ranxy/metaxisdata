@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -701,4 +702,43 @@ func TestWakeRecordsToolMetrics(t *testing.T) {
 		}
 	}
 	require.True(t, found, "the tool call metric was not recorded")
+}
+
+// The action policy gate runs in the tool pipeline: a propose tool is refused when
+// the workspace autonomy switch is off, even though the runner would normally have
+// parked the session before the model ran.
+func TestWakeEnforcesTheActionPolicy(t *testing.T) {
+	t.Parallel()
+
+	autonomy := func(enabled bool) Option {
+		return WithActionSettings(func(context.Context) (dataquality.Settings, error) {
+			return dataquality.Settings{AgentAutonomyEnabled: enabled}, nil
+		})
+	}
+	turns := []scriptedTurn{
+		{content: "recording", toolCalls: []llm.ToolCall{toolCall("call_1", "record_investigation",
+			`{"summary":"the drop is a real data issue","verdict":"root_cause"}`)}},
+		{content: "done"},
+	}
+
+	deniedStore := newFakeStore()
+	denied := NewModelEngine(deniedStore, scriptedChat(turns), resolveToModel, nil, autonomy(false))
+	_, err := denied.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Empty(t, deniedStore.investigations, "a refused action must not write")
+
+	var toolRow *store.QualityAgentTranscriptMessage
+	for _, message := range deniedStore.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
+			toolRow = message
+		}
+	}
+	require.NotNil(t, toolRow)
+	require.Contains(t, toolRow.Content, "autonomy is disabled")
+
+	allowedStore := newFakeStore()
+	allowed := NewModelEngine(allowedStore, scriptedChat(turns), resolveToModel, nil, autonomy(true))
+	_, err = allowed.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, allowedStore.investigations, 1)
 }

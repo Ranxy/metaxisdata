@@ -279,3 +279,59 @@ func TestExecuteReportsADenialAsAnErrorOutcome(t *testing.T) {
 	require.Len(t, observer.calls, 1)
 	require.Equal(t, "error", observer.calls[0].outcome)
 }
+
+// fakeActionPolicy answers the autonomy gate and records the action asked about.
+type fakeActionPolicy struct {
+	decision ActionDecision
+	asked    string
+}
+
+func (p *fakeActionPolicy) Decide(_ context.Context, action string) (ActionDecision, error) {
+	p.asked = action
+	return p.decision, nil
+}
+
+func TestExecuteEnforcesTheActionPolicy(t *testing.T) {
+	t.Parallel()
+
+	meta := validTool("one").Meta
+	meta.Action = "A0-3"
+	bodyRan := false
+	set := executeTool(t, meta, func(context.Context, Call, *Invocation) (Result, error) {
+		bodyRan = true
+		return Result{Content: "ok"}, nil
+	})
+
+	allowed := &fakeActionPolicy{decision: ActionDecision{Allowed: true}}
+	result := set.Execute(context.Background(), Call{Name: "one"}, &Invocation{Policy: allowed})
+	require.False(t, result.IsError)
+	require.True(t, bodyRan)
+	require.Equal(t, "A0-3", allowed.asked)
+
+	bodyRan = false
+	pending := &fakeActionPolicy{decision: ActionDecision{Allowed: true, RequiresApproval: true, Reason: "a person must approve"}}
+	result = set.Execute(context.Background(), Call{Name: "one"}, &Invocation{Policy: pending})
+	require.True(t, result.IsError)
+	require.Equal(t, CodeActionDenied, result.Error.Code)
+	require.Contains(t, result.Content, "a person must approve")
+	require.False(t, bodyRan, "an approval-pending action must not run")
+
+	denied := &fakeActionPolicy{decision: ActionDecision{Reason: "autonomy is disabled"}}
+	result = set.Execute(context.Background(), Call{Name: "one"}, &Invocation{Policy: denied})
+	require.True(t, result.IsError)
+	require.Equal(t, CodeActionDenied, result.Error.Code)
+}
+
+func TestExecuteSkipsThePolicyForAToolWithNoAction(t *testing.T) {
+	t.Parallel()
+
+	bodyRan := false
+	set := executeTool(t, validTool("one").Meta, func(context.Context, Call, *Invocation) (Result, error) {
+		bodyRan = true
+		return Result{Content: "ok"}, nil
+	})
+	result := set.Execute(context.Background(), Call{Name: "one"},
+		&Invocation{Policy: &fakeActionPolicy{decision: ActionDecision{}}})
+	require.False(t, result.IsError)
+	require.True(t, bodyRan)
+}

@@ -33,6 +33,10 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 		observeTool(inv, t.Name, refusedResult, started)
 		return refusedResult
 	}
+	if refusedResult, refused := authorizeAction(ctx, t, inv); refused {
+		observeTool(inv, t.Name, refusedResult, started)
+		return refusedResult
+	}
 
 	execCtx := ctx
 	if t.Meta.Timeout > 0 {
@@ -93,6 +97,27 @@ func authorize(ctx context.Context, t Tool, inv *Invocation) (Result, bool) {
 	if !allowed {
 		return errorResult(NewError(CodePermissionDenied,
 			"the caller does not hold "+t.Meta.Permission)), true
+	}
+	return Result{}, false
+}
+
+// authorizeAction enforces the autonomy policy for a tool that declares an
+// action. The product decides; the pipeline refuses anything not plainly allowed,
+// so an approval-pending verdict never runs a write.
+func authorizeAction(ctx context.Context, t Tool, inv *Invocation) (Result, bool) {
+	if t.Meta.Action == "" || inv.Policy == nil {
+		return Result{}, false
+	}
+	decision, err := inv.Policy.Decide(ctx, t.Meta.Action)
+	if err != nil {
+		return errorResult(NewError(CodeInternal, "the action policy could not decide")), true
+	}
+	if !decision.Allowed || decision.RequiresApproval {
+		reason := decision.Reason
+		if reason == "" {
+			reason = "the action is not allowed for this agent"
+		}
+		return errorResult(NewError(CodeActionDenied, reason)), true
 	}
 	return Result{}, false
 }

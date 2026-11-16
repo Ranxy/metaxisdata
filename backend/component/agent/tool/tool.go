@@ -145,12 +145,34 @@ type Invocation struct {
 	// Observer records one execution's outcome, duration and result size. A product
 	// wires it to its metrics; nil records nothing.
 	Observer Observer
+	// Policy decides the autonomy question for a tool that declares Meta.Action:
+	// may this agent do this now? Nil skips the check (tests, a deployment without
+	// an autonomy model).
+	Policy ActionPolicy
 }
 
 // Observer records one tool execution. The product captures the labels it owns
 // (its product name); the pipeline supplies the tool, outcome and measurement.
 type Observer interface {
 	ObserveToolCall(tool, outcome string, duration time.Duration, resultBytes int)
+}
+
+// ActionDecision is one autonomy verdict for a gated tool.
+type ActionDecision struct {
+	// Allowed reports whether the agent may act.
+	Allowed bool
+	// RequiresApproval marks an allowed action a person must still approve; no
+	// write may run on it.
+	RequiresApproval bool
+	// Reason is the human-readable explanation a refusal carries.
+	Reason string
+}
+
+// ActionPolicy decides whether an agent may perform one action now. The product
+// supplies the domain rules (the DQ action catalog, its autonomy switches and the
+// target's criticality); the pipeline only enforces the verdict.
+type ActionPolicy interface {
+	Decide(ctx context.Context, action string) (ActionDecision, error)
 }
 
 // PermissionChecker resolves whether a principal holds a workspace permission.
@@ -202,6 +224,7 @@ const (
 	CodeResourceExhausted ErrorCode = "resource_exhausted"
 	CodeTimeout           ErrorCode = "tool_timeout"
 	CodeUnavailable       ErrorCode = "unavailable"
+	CodeActionDenied      ErrorCode = "action_denied"
 	CodeInternal          ErrorCode = "internal"
 )
 

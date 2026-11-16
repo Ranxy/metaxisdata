@@ -309,17 +309,6 @@ func (e *Engine) recordAssetFact(ctx context.Context, session *store.QualityAgen
 // confirms itself: a person is what turns it into knowledge. A critical asset needs a
 // person (the A1-6 amplifier), so the model must block instead.
 func (e *Engine) recordDecision(ctx context.Context, session *store.QualityAgentSessionMessage, statement string) error {
-	criticality := e.planCriticality(ctx, session)
-	decision := dataquality.DecideAction(dataquality.PolicyInput{
-		Action:          dataquality.ActionRecordDecisionWhy,
-		Actor:           dataquality.ActorAgent,
-		Criticality:     criticality,
-		AutonomyEnabled: true,
-		AgentEnabled:    true,
-	})
-	if !decision.Allowed || decision.RequiresApproval {
-		return errors.New("a decision about a critical asset needs a person; record the conclusion with block_session instead")
-	}
 	kind := storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION
 	existing, err := e.store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &session.TargetGUID, Kind: &kind})
 	if err != nil {

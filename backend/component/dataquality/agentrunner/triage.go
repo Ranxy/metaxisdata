@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -86,6 +87,12 @@ func WithDraftChecks(draft DraftChecksFunc) Option {
 // WithPermissionChecker gives the engine the IAM checker a tool call is gated by.
 func WithPermissionChecker(checker tool.PermissionChecker) Option {
 	return func(engine *Engine) { engine.checker = checker }
+}
+
+// WithActionSettings gives the engine the settings loader its autonomy policy
+// reads. Without it the action-policy gate is skipped.
+func WithActionSettings(load func(ctx context.Context) (dataquality.Settings, error)) Option {
+	return func(engine *Engine) { engine.actionSettings = load }
 }
 
 // getTableContextTool renders the target context as tool JSON.

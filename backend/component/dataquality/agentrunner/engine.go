@@ -78,6 +78,9 @@ type Engine struct {
 	// principal. A process that does not wire it skips the check; production wires
 	// it, because an in-process tool call does not pass the RPC ACL interceptor.
 	checker tool.PermissionChecker
+	// actionSettings loads the workspace settings the autonomy policy reads. A
+	// process that does not wire it skips the action-policy gate.
+	actionSettings func(ctx context.Context) (dataquality.Settings, error)
 }
 
 // NewEngine creates the deterministic engine.
@@ -419,12 +422,15 @@ func (e *Engine) modelWake(
 // checker (tests, a deployment that has not wired IAM) returns nil, which the
 // pipeline treats as "the transport already authorized this call".
 func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage, product string) (*tool.Invocation, error) {
-	if e.checker == nil && e.metrics == nil {
+	if e.checker == nil && e.metrics == nil && e.actionSettings == nil {
 		return nil, nil
 	}
 	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now}
 	if e.metrics != nil {
 		invocation.Observer = agentToolObserver{metrics: e.metrics, product: product}
+	}
+	if e.actionSettings != nil {
+		invocation.Policy = sessionActionPolicy{engine: e, session: session}
 	}
 	if e.checker == nil {
 		return invocation, nil
@@ -442,6 +448,42 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 	invocation.Principal = principal
 	invocation.Checker = e.checker
 	return invocation, nil
+}
+
+// sessionActionPolicy answers the autonomy question for one session's tools: the
+// product's action catalog decides, with the target's real criticality. The runner
+// has already parked a session whose workspace or agent switch is off, but the
+// policy re-reads the settings so the verdict is never based on stale state.
+type sessionActionPolicy struct {
+	engine  *Engine
+	session *store.QualityAgentSessionMessage
+}
+
+// Decide evaluates one action for this agent on this target.
+func (p sessionActionPolicy) Decide(ctx context.Context, action string) (tool.ActionDecision, error) {
+	settings, err := p.engine.actionSettings(ctx)
+	if err != nil {
+		return tool.ActionDecision{}, err
+	}
+	criticality := p.engine.planCriticality(ctx, p.session)
+	decision := dataquality.DecideAction(dataquality.PolicyInput{
+		Action:          dataquality.ActionID(action),
+		Actor:           dataquality.ActorAgent,
+		Criticality:     criticality,
+		AutonomyEnabled: settings.AgentAutonomyEnabled,
+		AgentEnabled:    true,
+	})
+	reason := decision.Reason
+	if !decision.Allowed && decision.RequiresApproval && dataquality.ActionID(action) == dataquality.ActionRecordDecisionWhy {
+		// Keep the actionable guidance the tool used to give the model when a
+		// critical asset hands the decision to a person.
+		reason = "a decision about a critical asset needs a person; record the conclusion with block_session instead"
+	}
+	return tool.ActionDecision{
+		Allowed:          decision.Allowed,
+		RequiresApproval: decision.RequiresApproval,
+		Reason:           reason,
+	}, nil
 }
 
 // agentToolObserver labels the shared tool metrics with this product's name.

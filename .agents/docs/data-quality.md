@@ -415,7 +415,7 @@ agent 是**独立主体**，不是“以某管理员身份运行”：管理员�
 
 ### 3.9e 动作目录与自治策略（WS2）
 
-`GetQualityActionPolicy`（只读，`rules.list`，不审计）返回 WS2 的 21 张动作卡（A0=7 / A1=6 / A2=5 / A3=3）与实时判定：`autonomy_level`、`actor`（AGENT/HUMAN）、`red_line`、`implemented`（代码里是否有写路径）、`agent_reachable`（agent 角色与 handler 是否真的暴露给它）、`agent_allowed`、`requires_approval`、`decision_code`（`ALLOWED` / `DENIED_AUTONOMY_OFF` / `DENIED_HUMAN_ONLY` / `DENIED_RED_LINE` / `DENIED_NOT_IMPLEMENTED` / `DENIED_NOT_EXPOSED` / `DENIED_CRITICAL` / `DENIED_UNKNOWN_ACTOR` / `REQUIRES_APPROVAL`）与可读 reason。判定实现在 `backend/component/dataquality/actions.go`：
+`GetQualityActionPolicy`（只读，`rules.list`，不审计）返回 WS2 的 21 张动作卡（A0=7 / A1=6 / A2=5 / A3=3）与实时判定：`autonomy_level`、`actor`（AGENT/HUMAN）、`red_line`、`implemented`（代码里是否有写路径）、`agent_reachable`（agent 角色与 handler 是否真的暴露给它）、`agent_allowed`、`requires_approval`、`decision_code`（`ALLOWED` / `DENIED_AUTONOMY_OFF` / `DENIED_HUMAN_ONLY` / `DENIED_RED_LINE` / `DENIED_NOT_IMPLEMENTED` / `DENIED_NOT_EXPOSED` / `DENIED_CRITICAL` / `DENIED_UNKNOWN_ACTOR` / `REQUIRES_APPROVAL`）与可读 reason。判定实现在 `backend/component/dataquality/actions.go`（内置 agent 的 propose 工具在工具管线里执行同一 `DecideAction`：agent principal + 目标的真实 criticality；通过 `StageQualityPlan`/变更单等 RPC 写入的路径仍由 handler 自己判定）：
 
 - **静态约束优先**：红线（mute、archive、ack schema、publish、close/reassign、authority expansion）与 HUMAN-only 动作对 agent 直接拒绝，不论开关；`implemented=false` 的动作以“尚未实现”拒绝；`implemented=true` 但 `agent_reachable=false` 的动作以 `DENIED_NOT_EXPOSED` 拒绝——代码有写路径不等于 agent 有入口（例如人建检查、agent 只能提议）。未知 actor 直接拒绝（fail closed）。
 - **动态开关**：agent 写入要求工作区 `agent_autonomy_enabled` 且 agent 自身 enabled；人不受影响。

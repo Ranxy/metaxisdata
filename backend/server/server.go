@@ -292,7 +292,10 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 			},
 		}),
 		agentrunner.WithDraftChecks((&qualityDraftChecks{suggester: suggester}).DraftChecks),
-		agentrunner.WithPermissionChecker(agentIAM))
+		agentrunner.WithPermissionChecker(agentIAM),
+		agentrunner.WithActionSettings(func(ctx context.Context) (dataquality.Settings, error) {
+			return dataquality.LoadSettings(ctx, stores)
+		}))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	// The enrollment runner discovers the database scope into a queue and admits
 	// targets by priority; triage admission needs a model, so it reads the same
