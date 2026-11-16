@@ -14,13 +14,13 @@ import (
 
 // collectStream drains parseStream into a slice. The channel is buffered well
 // past what each test produces, so parseStream never blocks.
-func collectStream(t *testing.T, body string) ([]rawStreamChunk, error) {
+func collectStream(t *testing.T, body string) ([]StreamChunk, error) {
 	t.Helper()
-	ch := make(chan rawStreamChunk, 64)
+	ch := make(chan StreamChunk, 64)
 	err := parseStream(context.Background(), strings.NewReader(body), ch)
 	close(ch)
 
-	var chunks []rawStreamChunk
+	var chunks []StreamChunk
 	for chunk := range ch {
 		chunks = append(chunks, chunk)
 	}
@@ -127,7 +127,7 @@ func TestParseStreamRejectsTruncatedAndIncompleteResponses(t *testing.T) {
 func TestParseStreamPropagatesReadErrors(t *testing.T) {
 	t.Parallel()
 
-	ch := make(chan rawStreamChunk, 8)
+	ch := make(chan StreamChunk, 8)
 	err := parseStream(context.Background(), &maxBytesReader{r: strings.NewReader("0123456789"), remaining: 4}, ch)
 	require.ErrorContains(t, err, "LLM response exceeded")
 }
@@ -154,7 +154,7 @@ func TestMaxBytesReaderFailsInsteadOfTruncating(t *testing.T) {
 	require.Equal(t, "0123", string(buf[:n]))
 
 	_, err = r.Read(buf)
-	require.ErrorIs(t, err, errResponseTooLarge)
+	require.ErrorIs(t, err, errStreamResponseTooLarge)
 }
 
 func TestBoundedBufferCapsDebugCopyOnly(t *testing.T) {

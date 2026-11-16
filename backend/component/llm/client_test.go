@@ -70,7 +70,7 @@ func TestStreamRawSendsRequestOptions(t *testing.T) {
 	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
 
 	cfg := requestOptionsConfig(t, server.URL)
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, path := capture.snapshot(t)
 	require.Equal(t, "/v1/chat/completions", path)
@@ -99,7 +99,7 @@ func TestStreamRawUsesTheProviderBudgetWhenNoCallerCapIsSet(t *testing.T) {
 	cfg := AgentConfig{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096,
 	}}
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
@@ -118,7 +118,7 @@ func TestStreamRawKeepsTheCallerCap(t *testing.T) {
 		Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096},
 		MaxTokens: 512,
 	}
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
@@ -135,7 +135,7 @@ func TestStreamRawOmitsUnsetRequestOptions(t *testing.T) {
 	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
 
 	cfg := AgentConfig{Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"}}
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
