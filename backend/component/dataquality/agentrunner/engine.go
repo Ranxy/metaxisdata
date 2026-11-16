@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -52,9 +53,9 @@ type Store interface {
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
 }
 
-// Chat runs the LLM tool loop. Production passes llm.RunAgentLoop; a test drives the
+// Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
 // engine with a scripted event stream.
-type Chat func(ctx context.Context, cfg llm.AgentConfig) <-chan llm.AgentEvent
+type Chat func(ctx context.Context, cfg agent.Config) <-chan agent.Event
 
 // ResolveModel reports the LLM configuration, or ok=false when analysis is disabled.
 type ResolveModel func(ctx context.Context) (llm.ResolvedConfig, bool, error)
@@ -211,7 +212,7 @@ func (e *Engine) modelWake(
 		messages []*store.QualityAgentTranscriptMessage
 		err      error
 	)
-	buildContext := func() ([]llm.AgentMessage, error) {
+	buildContext := func() ([]agent.Message, error) {
 		messages, err = e.loadTranscript(ctx, session)
 		if err != nil {
 			return nil, err
@@ -259,26 +260,26 @@ func (e *Engine) modelWake(
 		return Outcome{}, err
 	}
 	executor := toolExecutor(ctx, set, truncatedTools)
-	runLoop := func(conversation []llm.AgentMessage) *llm.AgentEvent {
-		chatConfig := llm.AgentConfig{
+	runLoop := func(conversation []agent.Message) *agent.Event {
+		chatConfig := agent.Config{
 			Provider:             config,
 			Feature:              "dq_agent",
 			History:              conversation,
 			Tools:                llmToolDefs(set.Schemas()),
 			Executor:             executor,
 			MaxTurns:             maxTurnsFor(session.Mode),
-			MaxConversationBytes: llm.DefaultMaxConversationBytes,
+			MaxConversationBytes: agent.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
 		}
 		for event := range e.chat(ctx, chatConfig) {
 			switch event.Type {
-			case llm.AgentEventTurnStart:
+			case agent.EventTurnStart:
 				turn = int32(event.Turn)
 				e.recordEngineKeyed(ctx, session, wake, turn,
 					fmt.Sprintf("model turn %d started", turn),
 					fmt.Sprintf("wake:%d:turn:%d:start", wake, turn))
-			case llm.AgentEventUsage:
+			case agent.EventUsage:
 				if event.Usage != nil {
 					turnUsage[int32(event.Turn)] = event.Usage
 					totalTokens += event.Usage.TotalTokens
@@ -289,7 +290,7 @@ func (e *Engine) modelWake(
 						maxPrompt = int32(event.Usage.PromptTokens)
 					}
 				}
-			case llm.AgentEventAssistant:
+			case agent.EventAssistant:
 				if event.Assistant == nil {
 					continue
 				}
@@ -306,7 +307,7 @@ func (e *Engine) modelWake(
 					CompletionTokens: usageCompletionTokens(usage),
 					IdempotencyKey:   assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),
 				})
-			case llm.AgentEventToolEnd:
+			case agent.EventToolEnd:
 				if event.ToolCall == nil {
 					continue
 				}
@@ -322,9 +323,9 @@ func (e *Engine) modelWake(
 					Truncated:      truncatedTools[event.ToolCall.ID],
 					IdempotencyKey: fmt.Sprintf("wake:%d:tool:%s", wake, event.ToolCall.ID),
 				})
-			case llm.AgentEventError:
+			case agent.EventError:
 				err := event.Error
-				return &llm.AgentEvent{Type: llm.AgentEventError, Error: err}
+				return &agent.Event{Type: agent.EventError, Error: err}
 			default:
 			}
 		}

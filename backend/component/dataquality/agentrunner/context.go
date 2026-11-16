@@ -3,6 +3,7 @@ package agentrunner
 import (
 	"unicode/utf8"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -23,16 +24,16 @@ func BuildConversation(
 	session *store.QualityAgentSessionMessage,
 	system *store.QualityAgentTranscriptMessage,
 	messages []*store.QualityAgentTranscriptMessage,
-) []llm.AgentMessage {
+) []agent.Message {
 	if session == nil {
 		session = &store.QualityAgentSessionMessage{}
 	}
-	conversation := make([]llm.AgentMessage, 0, len(messages)+2)
+	conversation := make([]agent.Message, 0, len(messages)+2)
 	if system != nil && system.Content != "" {
-		conversation = append(conversation, llm.AgentMessage{Role: "system", Content: system.Content})
+		conversation = append(conversation, agent.Message{Role: "system", Content: system.Content})
 	}
 	if session.Summary != "" {
-		conversation = append(conversation, llm.AgentMessage{
+		conversation = append(conversation, agent.Message{
 			Role: "user",
 			Content: checkpointPreamble + "\n\n<compacted-summary>\n" + session.Summary +
 				"\n</compacted-summary>",
@@ -43,15 +44,15 @@ func BuildConversation(
 		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM:
 			// The system message is prepended above; a historical copy is not repeated.
 		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER:
-			conversation = append(conversation, llm.AgentMessage{Role: "user", Content: message.Content})
+			conversation = append(conversation, agent.Message{Role: "user", Content: message.Content})
 		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT:
-			conversation = append(conversation, llm.AgentMessage{
+			conversation = append(conversation, agent.Message{
 				Role:      "assistant",
 				Content:   message.Content,
 				ToolCalls: toolCallsToLLM(message.ToolCalls),
 			})
 		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL:
-			conversation = append(conversation, llm.AgentMessage{
+			conversation = append(conversation, agent.Message{
 				Role:       "toolResult",
 				ToolCallID: message.ToolCallID,
 				ToolName:   message.ToolName,
@@ -87,12 +88,12 @@ func toolCallsToLLM(list *storepb.QualityToolCallList) []llm.ToolCall {
 // repairToolCalls inserts a synthetic result for every assistant tool call that has no
 // stored result, which is what a crash between the assistant message and the tool
 // execution leaves behind. A provider rejects a conversation with an unanswered call.
-func repairToolCalls(messages []llm.AgentMessage) []llm.AgentMessage {
-	repaired := make([]llm.AgentMessage, 0, len(messages))
+func repairToolCalls(messages []agent.Message) []agent.Message {
+	repaired := make([]agent.Message, 0, len(messages))
 	pending := make([]string, 0, 2)
 	flush := func() {
 		for _, id := range pending {
-			repaired = append(repaired, llm.AgentMessage{
+			repaired = append(repaired, agent.Message{
 				Role:       "toolResult",
 				ToolCallID: id,
 				Content:    "the server restarted before this tool ran; its result is unknown",
@@ -136,7 +137,7 @@ func repairToolCalls(messages []llm.AgentMessage) []llm.AgentMessage {
 // prompt_tokens is always preferred when a wake reported one; this estimate only sizes
 // messages added since, and it leans high (bytes/4 and about three quarters of a rune
 // per token) so a Chinese-heavy conversation is not undercounted.
-func EstimateTokens(messages []llm.AgentMessage) int {
+func EstimateTokens(messages []agent.Message) int {
 	total := 0
 	for _, message := range messages {
 		total += estimateTextTokens(message.Content)

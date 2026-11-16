@@ -12,7 +12,8 @@ Rules for the Go server. Repo-wide rules live in the root [AGENTS.md](../AGENTS.
 | `backend/api/auth/` | JWT issuance and verification, auth interceptor, token extraction from metadata/headers |
 | `backend/store/` | PostgreSQL store: table→message mapping, JSONB `protojson` columns, LRU caches, connection pool |
 | `backend/component/dbfactory/` | Builds a `db.Driver` from an instance's data source |
-| `backend/component/llm/` | LLM provider registry and the iterative agent loop (tools, events, messages) |
+| `backend/component/llm/` | LLM provider registry and the streaming chat-completion transport (one request, SSE parsing, failure classification) |
+| `backend/component/agent/` | The iterative agent loop: turns, tool dispatch, events, messages, conversation budget |
 | `backend/component/state/` | In-memory server state (token-revocation cache over the `revoked_token` table, per-instance connection limiter, pending device logins, request budgets) |
 | `backend/metrics/` | Prometheus instruments, enum-to-label mapping and the process registry; the dedicated endpoint and HTTP/RPC middleware live in `backend/server/` |
 | `backend/plugin/db/` | `db.Driver` interface and the MySQL-wire, PostgreSQL and MSSQL drivers (`mysql`, `pg`, `mssql`, `starrocks` — the last serving StarRocks and Doris) |

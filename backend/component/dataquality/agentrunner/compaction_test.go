@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -100,7 +101,7 @@ func TestPruneToolResultsKeepsTheEnds(t *testing.T) {
 	t.Parallel()
 
 	content := strings.Repeat("头部内容", 2000) + "TAIL-MARKER"
-	messages := []llm.AgentMessage{
+	messages := []agent.Message{
 		{Role: "toolResult", Content: content},
 		{Role: "toolResult", Content: "recent result"},
 	}

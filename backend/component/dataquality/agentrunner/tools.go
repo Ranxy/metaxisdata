@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
@@ -84,7 +85,7 @@ func (e *Engine) gatherEvidence(ctx context.Context, session *store.QualityAgent
 // toolExecutor adapts one wake's resolved tool set to the loop's executor
 // contract. It journals nothing itself: the wake recorder persists the assistant
 // message, the tool result and the engine notes from the event stream.
-func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool) llm.ToolExecutor {
+func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool) agent.ToolExecutor {
 	return func(call llm.ToolCall) ([]llm.ToolResult, error) {
 		result := set.Execute(ctx, tool.Call{
 			ID:        call.ID,

@@ -85,7 +85,7 @@ func TestStreamRawRetriesARejectedOutputBudget(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(provider.handle))
 			t.Cleanup(server.Close)
 
-			cfg := AgentConfig{Provider: ResolvedConfig{
+			cfg := StreamRequest{Provider: ResolvedConfig{
 				BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 				MaxOutputTokens: DefaultMaxOutputTokens,
 			}}
@@ -108,7 +108,7 @@ func TestStreamRawReportsTheSecondStatusWhenTheFallbackAlsoFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 		MaxOutputTokens: DefaultMaxOutputTokens,
 	}}
@@ -136,7 +136,7 @@ func TestStreamRawRecordsTheAttemptedBudgetOnStreamFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 		MaxOutputTokens: DefaultMaxOutputTokens,
 	}}
@@ -162,7 +162,7 @@ func TestStreamRawRecordsTheConfiguredBudgetWithoutARetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 		MaxOutputTokens: 8192,
 	}}
@@ -182,7 +182,7 @@ func TestStreamRawDoesNotRetryABudgetAtTheFallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{
+	cfg := StreamRequest{
 		Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
 		MaxTokens: fallbackMaxOutputTokens,
 	}
@@ -206,7 +206,7 @@ func TestStreamRawDoesNotRetryOtherStatuses(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(provider.handle))
 			t.Cleanup(server.Close)
 
-			cfg := AgentConfig{Provider: ResolvedConfig{
+			cfg := StreamRequest{Provider: ResolvedConfig{
 				BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 				MaxOutputTokens: DefaultMaxOutputTokens,
 			}}

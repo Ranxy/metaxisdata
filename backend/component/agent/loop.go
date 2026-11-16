@@ -1,4 +1,4 @@
-package llm
+package agent
 
 import (
 	"context"
@@ -8,8 +8,13 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
+
+// ToolExecutor executes one tool call and returns the result content the loop
+// feeds back to the model.
+type ToolExecutor func(toolCall llm.ToolCall) ([]llm.ToolResult, error)
 
 const (
 	// DefaultMaxTurns is how many LLM calls one agent loop may make before it
@@ -40,7 +45,7 @@ func (b *conversationBudget) add(size int) bool {
 
 // messageBudgetBytes sizes one message for the conversation cap: the text plus the
 // tool-call fields the conversation resends on every turn.
-func messageBudgetBytes(message AgentMessage) int {
+func messageBudgetBytes(message Message) int {
 	size := len(message.Content) + len(message.ToolCallID) + len(message.ToolName)
 	for _, call := range message.ToolCalls {
 		size += len(call.ID) + len(call.GetName()) + len(call.Function.Arguments)
@@ -50,10 +55,10 @@ func messageBudgetBytes(message AgentMessage) int {
 
 // ---- Agent Loop ----
 
-// RunAgentLoop runs the agent loop: LLM ↔ tool calls until completion.
+// RunLoop runs the agent loop: LLM ↔ tool calls until completion.
 // It emits events to the channel and closes it when done.
-func RunAgentLoop(ctx context.Context, cfg AgentConfig) <-chan AgentEvent {
-	ch := make(chan AgentEvent, 32)
+func RunLoop(ctx context.Context, cfg Config) <-chan Event {
+	ch := make(chan Event, 32)
 
 	go func() {
 		defer close(ch)
@@ -67,7 +72,7 @@ func RunAgentLoop(ctx context.Context, cfg AgentConfig) <-chan AgentEvent {
 // when the loop must stop, which happens when the consumer went away (it
 // stopped ranging and the buffer filled) or the request was cancelled. Without
 // the ctx branch a producer blocked on a full channel leaks forever.
-func sendEvent(ctx context.Context, ch chan<- AgentEvent, evt AgentEvent) bool {
+func sendEvent(ctx context.Context, ch chan<- Event, evt Event) bool {
 	select {
 	case ch <- evt:
 		return true
@@ -80,11 +85,11 @@ func sendEvent(ctx context.Context, ch chan<- AgentEvent, evt AgentEvent) bool {
 // cfg.Metrics as one completed model call, labelled with the caller's feature:
 // the loop is the only place that knows how the invocation ended, so no caller
 // records calls, duration or tokens itself.
-func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
+func run(ctx context.Context, cfg Config, ch chan<- Event) {
 	startedAt := time.Now()
 	outcome := metrics.LLMOutcomeError
 	var (
-		usage            Usage
+		usage            llm.Usage
 		usageReported    bool
 		responseReceived bool
 	)
@@ -124,13 +129,13 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 	// usage accumulates over the turns the provider reported; a provider that
 	// reports nothing leaves usageReported false rather than claiming zero tokens.
-	messages := make([]AgentMessage, 0, len(cfg.History)+2)
+	messages := make([]Message, 0, len(cfg.History)+2)
 	if len(cfg.History) > 0 {
 		// A session wake continues the stored conversation; the caller's History
 		// already carries its system message and the new wake message.
 		for _, message := range cfg.History {
 			if !budget.add(messageBudgetBytes(message)) {
-				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError,
+				sendEvent(ctx, ch, Event{Type: EventError,
 					Error: errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)})
 				return
 			}
@@ -140,15 +145,15 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		budget.add(len(cfg.SystemPrompt))
 		budget.add(len(cfg.UserPrompt))
 		messages = append(messages,
-			AgentMessage{Role: "system", Content: cfg.SystemPrompt},
-			AgentMessage{Role: "user", Content: cfg.UserPrompt},
+			Message{Role: "system", Content: cfg.SystemPrompt},
+			Message{Role: "user", Content: cfg.UserPrompt},
 		)
 	}
 
 	// appendMessage keeps the conversation inside its budget: every turn resends
 	// the whole conversation, so an oversized tool result would blow up both the
 	// request and the process's memory.
-	appendMessage := func(msg AgentMessage) error {
+	appendMessage := func(msg Message) error {
 		if !budget.add(messageBudgetBytes(msg)) {
 			return errors.Errorf("LLM conversation exceeded %d bytes", maxConversationBytes)
 		}
@@ -159,11 +164,11 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	for turn := 1; turn <= maxTurns; turn++ {
 		if ctx.Err() != nil {
 			outcome = metrics.LLMOutcomeCanceled
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: ctx.Err()})
+			sendEvent(ctx, ch, Event{Type: EventError, Error: ctx.Err()})
 			return
 		}
 
-		if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventTurnStart, Turn: turn}) {
+		if !sendEvent(ctx, ch, Event{Type: EventTurnStart, Turn: turn}) {
 			outcome = metrics.LLMOutcomeCanceled
 			return
 		}
@@ -175,14 +180,14 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 			if ctx.Err() != nil {
 				outcome = metrics.LLMOutcomeCanceled
 			}
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+			sendEvent(ctx, ch, Event{Type: EventError, Error: err})
 			return
 		}
 		responseReceived = true
 		if turnUsage != nil {
 			usageReported = true
-			usage.add(turnUsage)
-			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventUsage, Turn: turn, Usage: turnUsage}) {
+			usage.Add(turnUsage)
+			if !sendEvent(ctx, ch, Event{Type: EventUsage, Turn: turn, Usage: turnUsage}) {
 				outcome = metrics.LLMOutcomeCanceled
 				return
 			}
@@ -191,21 +196,21 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		// field) must not be returned or cached as an explanation.
 		if len(assistantMsg.ToolCalls) == 0 && strings.TrimSpace(assistantMsg.Content) == "" {
 			outcome = metrics.LLMOutcomeEmptyResponse
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: &ResponseError{
-				Code: FailureMalformed,
+			sendEvent(ctx, ch, Event{Type: EventError, Error: &llm.ResponseError{
+				Code: llm.FailureMalformed,
 				Err:  errors.New("LLM returned an empty response"),
 			}})
 			return
 		}
 		if err := appendMessage(assistantMsg); err != nil {
-			sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+			sendEvent(ctx, ch, Event{Type: EventError, Error: err})
 			return
 		}
 		// Report the completed message before the tool calls run: a session recorder
 		// persists it verbatim (the tool calls included) and the UI can show the
 		// assistant text while the tools execute.
 		completed := assistantMsg
-		if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventAssistant, Assistant: &completed, Turn: turn}) {
+		if !sendEvent(ctx, ch, Event{Type: EventAssistant, Assistant: &completed, Turn: turn}) {
 			outcome = metrics.LLMOutcomeCanceled
 			return
 		}
@@ -213,7 +218,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 		// 2. No tool calls → agent is done.
 		if len(assistantMsg.ToolCalls) == 0 {
 			outcome = metrics.LLMOutcomeSuccess
-			end := AgentEvent{Type: AgentEventAgentEnd}
+			end := Event{Type: EventEnd}
 			if usageReported {
 				end.Usage = &usage
 			}
@@ -223,7 +228,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 
 		// 3. Execute tools sequentially.
 		for _, tc := range assistantMsg.ToolCalls {
-			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventToolStart, ToolCall: &tc, Turn: turn}) {
+			if !sendEvent(ctx, ch, Event{Type: EventToolStart, ToolCall: &tc, Turn: turn}) {
 				outcome = metrics.LLMOutcomeCanceled
 				return
 			}
@@ -237,7 +242,7 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				content = results[0].Content
 			}
 
-			evt := AgentEvent{Type: AgentEventToolEnd, ToolCall: &tc, ToolResult: content, Turn: turn}
+			evt := Event{Type: EventToolEnd, ToolCall: &tc, ToolResult: content, Turn: turn}
 			if execErr != nil {
 				evt.ToolError = execErr.Error()
 			}
@@ -246,13 +251,13 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 				return
 			}
 
-			toolResult := AgentMessage{
+			toolResult := Message{
 				Role: "toolResult", ToolCallID: tc.ID,
 				ToolName: tc.Function.Name,
 				Content:  content,
 			}
 			if err := appendMessage(toolResult); err != nil {
-				sendEvent(ctx, ch, AgentEvent{Type: AgentEventError, Error: err})
+				sendEvent(ctx, ch, Event{Type: EventError, Error: err})
 				return
 			}
 		}
@@ -261,22 +266,22 @@ func run(ctx context.Context, cfg AgentConfig, ch chan<- AgentEvent) {
 	// Reaching here means every turn requested tool calls, so the last batch of
 	// tool results was never sent back to the model: the answer is incomplete
 	// and must not be presented or cached as final.
-	sendEvent(ctx, ch, AgentEvent{
-		Type:  AgentEventError,
+	sendEvent(ctx, ch, Event{
+		Type:  EventError,
 		Error: errors.Errorf("LLM agent reached the maximum of %d turns without producing a final answer", maxTurns),
 	})
 }
 
 // streamOneTurn calls the LLM once and returns the full assistant message and the
 // token usage the provider reported for this turn (nil when it reported none).
-func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch chan<- AgentEvent) (AgentMessage, *Usage, error) {
+func streamOneTurn(ctx context.Context, cfg Config, llmMsgs []llm.Message, ch chan<- Event) (Message, *llm.Usage, error) {
 	var (
 		fullContent strings.Builder
-		toolCalls   []ToolCall
-		turnUsage   *Usage
+		toolCalls   []llm.ToolCall
+		turnUsage   *llm.Usage
 	)
 
-	streamCh := Stream(ctx, StreamRequest{
+	streamCh := llm.Stream(ctx, llm.StreamRequest{
 		Provider:       cfg.Provider,
 		Messages:       llmMsgs,
 		Tools:          cfg.Tools,
@@ -292,12 +297,12 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 	// early let a successful call return while the debug capture was still running.
 	for chunk := range streamCh {
 		if chunk.Error != nil {
-			return AgentMessage{}, nil, chunk.Error
+			return Message{}, nil, chunk.Error
 		}
 		if chunk.Content != "" {
 			_, _ = fullContent.WriteString(chunk.Content)
-			if !sendEvent(ctx, ch, AgentEvent{Type: AgentEventContent, Content: chunk.Content}) {
-				return AgentMessage{}, nil, ctx.Err()
+			if !sendEvent(ctx, ch, Event{Type: EventContent, Content: chunk.Content}) {
+				return Message{}, nil, ctx.Err()
 			}
 		}
 		if len(chunk.ToolCalls) > 0 {
@@ -308,7 +313,7 @@ func streamOneTurn(ctx context.Context, cfg AgentConfig, llmMsgs []Message, ch c
 		}
 	}
 
-	return AgentMessage{
+	return Message{
 		Role:      "assistant",
 		Content:   fullContent.String(),
 		ToolCalls: toolCalls,

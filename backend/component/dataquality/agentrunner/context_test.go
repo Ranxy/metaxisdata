@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -101,7 +102,7 @@ func TestBuildConversationKeepsAnsweredToolCalls(t *testing.T) {
 func TestEstimateTokensCountsATextConversation(t *testing.T) {
 	t.Parallel()
 
-	estimate := EstimateTokens([]llm.AgentMessage{
+	estimate := EstimateTokens([]agent.Message{
 		{Role: "system", Content: "you are the agent"},
 		{Role: "user", Content: "a short sentence"},
 		{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "call_1"}}},

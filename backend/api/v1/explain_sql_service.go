@@ -14,6 +14,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -163,7 +164,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	// IncludeUsage stays off in v1: some OpenAI-compatible gateways reject the
 	// stream_options field, and a rejected request is worse than missing usage.
 	// The loop reports the missing usage, which is this path's compensation signal.
-	cfg := llm.AgentConfig{
+	cfg := agent.Config{
 		Provider:             *resolvedConfig,
 		Feature:              explainSQLFeature,
 		Metrics:              s.metrics,
@@ -171,8 +172,8 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		UserPrompt:           sqlText,
 		Tools:                toolDefsFromSchemas(set.Schemas()),
 		Executor:             executor,
-		MaxTurns:             llm.DefaultMaxTurns,
-		MaxConversationBytes: llm.DefaultMaxConversationBytes,
+		MaxTurns:             agent.DefaultMaxTurns,
+		MaxConversationBytes: agent.DefaultMaxConversationBytes,
 	}
 	if s.registry.DebugEnabled() {
 		cfg.DebugLogger = llm.NewDBDebugLogger(s.store, resolvedConfig.ProfileName, resolvedConfig.ModelName)
@@ -184,11 +185,11 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	agentCtx, cancelAgent := context.WithCancel(ctx)
 	defer cancelAgent()
 
-	for evt := range llm.RunAgentLoop(agentCtx, cfg) {
+	for evt := range agent.RunLoop(agentCtx, cfg) {
 		switch evt.Type {
-		case llm.AgentEventError:
+		case agent.EventError:
 			return connect.NewError(connect.CodeInternal, evt.Error)
-		case llm.AgentEventTurnStart:
+		case agent.EventTurnStart:
 			_ = stream.Send(&v1pb.ExplainSQLResponse{
 				Payload: &v1pb.ExplainSQLResponse_Progress{
 					Progress: &v1pb.ExplainSQLProgress{
@@ -197,7 +198,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 					},
 				},
 			})
-		case llm.AgentEventToolStart:
+		case agent.EventToolStart:
 			_ = stream.Send(&v1pb.ExplainSQLResponse{
 				Payload: &v1pb.ExplainSQLResponse_Progress{
 					Progress: &v1pb.ExplainSQLProgress{
@@ -208,7 +209,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 					},
 				},
 			})
-		case llm.AgentEventToolEnd:
+		case agent.EventToolEnd:
 			toolName := ""
 			if evt.ToolCall != nil {
 				toolName = evt.ToolCall.GetName()
@@ -224,7 +225,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 					},
 				},
 			})
-		case llm.AgentEventContent:
+		case agent.EventContent:
 			_, _ = fullResponse.WriteString(evt.Content)
 			chunk := &v1pb.ExplainSQLResponse{
 				Payload: &v1pb.ExplainSQLResponse_Content{Content: evt.Content},

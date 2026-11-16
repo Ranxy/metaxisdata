@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -139,43 +140,43 @@ func (e *Engine) maybeCompact(
 	if system != nil && system.Content != "" {
 		systemPrompt = system.Content
 	}
-	summaryMessages := []llm.AgentMessage{{Role: "system", Content: systemPrompt}}
+	summaryMessages := []agent.Message{{Role: "system", Content: systemPrompt}}
 	if session.Summary != "" {
-		summaryMessages = append(summaryMessages, llm.AgentMessage{
+		summaryMessages = append(summaryMessages, agent.Message{
 			Role:    "user",
 			Content: "Previous checkpoint summary (merge it; keep still-true facts and drop stale ones):\n" + session.Summary,
 		})
 	}
 	summaryMessages = append(summaryMessages, pruneToolResults(BuildConversation(nil, nil, region), 0)...)
-	summaryMessages = append(summaryMessages, llm.AgentMessage{Role: "user", Content: compactionInstruction})
+	summaryMessages = append(summaryMessages, agent.Message{Role: "user", Content: compactionInstruction})
 
 	var (
 		summary string
 		tokens  int64
 	)
-	for event := range e.chat(ctx, llm.AgentConfig{
+	for event := range e.chat(ctx, agent.Config{
 		Provider:             config,
 		Feature:              compactionFeature,
 		History:              summaryMessages,
 		MaxTurns:             1,
 		MaxTokens:            compactionMaxOutputTokens,
-		MaxConversationBytes: llm.DefaultMaxConversationBytes,
+		MaxConversationBytes: agent.DefaultMaxConversationBytes,
 		IncludeUsage:         true,
 		Metrics:              e.metrics,
 	}) {
 		switch event.Type {
-		case llm.AgentEventAssistant:
+		case agent.EventAssistant:
 			if event.Assistant != nil && strings.TrimSpace(event.Assistant.Content) != "" {
 				summary = event.Assistant.Content
 			}
-		case llm.AgentEventUsage:
+		case agent.EventUsage:
 			if event.Usage != nil {
 				tokens += event.Usage.TotalTokens
 				if event.Usage.TotalTokens == 0 {
 					tokens += event.Usage.PromptTokens + event.Usage.CompletionTokens
 				}
 			}
-		case llm.AgentEventError:
+		case agent.EventError:
 			return tokens, false, errors.Wrap(event.Error, "the context compaction failed")
 		default:
 		}
@@ -273,7 +274,7 @@ func estimateMessageTokens(message *store.QualityAgentTranscriptMessage) int {
 // head and tail. It runs before a summary call (no model request) and, with a recent
 // window, on the normal model context so an old oversized result stops being resent in
 // full on every turn.
-func pruneToolResults(messages []llm.AgentMessage, keepRecent int) []llm.AgentMessage {
+func pruneToolResults(messages []agent.Message, keepRecent int) []agent.Message {
 	limit := len(messages) - keepRecent
 	for index := 0; index < limit && index < len(messages); index++ {
 		message := &messages[index]
