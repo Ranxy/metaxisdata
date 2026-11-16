@@ -47,7 +47,7 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 
 	engine := NewEngine(newFakeStore())
 	engine.tableContext = fakeTableContextReader{}
-	result, err := engine.executeTool(context.Background(), testSession(), "get_table_context", "{}", nil, nil, nil, nil, nil)
+	result, err := engine.executeTool(context.Background(), testSession(), "get_table_context", "{}", nil)
 	require.NoError(t, err)
 	require.Contains(t, result, `"object":"orders"`)
 	require.Contains(t, result, `"downstreamConsumers":3`)
@@ -65,7 +65,7 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 		return []string{"orders amount not null", "orders id unique"}, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
-	result, err := engine.executeTool(context.Background(), testSession(), "draft_checks", args, nil, nil, nil, nil, nil)
+	result, err := engine.executeTool(context.Background(), testSession(), "draft_checks", args, nil)
 	require.NoError(t, err)
 	require.Len(t, gotColumns, maxTriageDraftColumns)
 	require.Equal(t, "watch order integrity", gotIntent)

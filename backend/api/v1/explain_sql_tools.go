@@ -23,7 +23,7 @@ func (s *ExplainSQLService) explainSQLToolSet(scopePrefix, instanceID string) (*
 			Permission: string(permission.DatabasesRead),
 		}
 	}
-	if err := registry.Register(tool.Tool{
+	err := registry.Register(tool.Tool{
 		Name:        "get_object_schema",
 		Description: "Get detailed schema information for a database object (table, view, function, procedure, etc.). Use this when the SQL references an object and you need to understand its structure (columns, types, indexes).",
 		Parameters: map[string]any{
@@ -41,10 +41,11 @@ func (s *ExplainSQLService) explainSQLToolSet(scopePrefix, instanceID string) (*
 			results, err := s.toolGetObjectSchema(ctx, explainToolCall(call), scopePrefix, instanceID)
 			return explainToolResult(results, err)
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
-	if err := registry.Register(tool.Tool{
+	err = registry.Register(tool.Tool{
 		Name:        "search_objects",
 		Description: "Search for database objects by keyword. Returns a list of matching object names and types. Use this to discover what objects exist before calling get_object_schema.",
 		Parameters: map[string]any{
@@ -62,7 +63,8 @@ func (s *ExplainSQLService) explainSQLToolSet(scopePrefix, instanceID string) (*
 			results, err := s.toolSearchObjects(ctx, explainToolCall(call), scopePrefix)
 			return explainToolResult(results, err)
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 	return registry.Resolve([]string{"get_object_schema", "search_objects"})
@@ -89,20 +91,4 @@ func explainToolResult(results []llm.ToolResult, err error) (tool.Result, error)
 		return tool.Result{}, nil
 	}
 	return tool.Result{Content: results[0].Content}, nil
-}
-
-// toolDefsFromSchemas projects tool schemas onto the provider's function
-// definitions. The agent runtime owns this projection once it is extracted; until
-// then each adapter carries the same conversion.
-func toolDefsFromSchemas(schemas []tool.Schema) []llm.ToolDef {
-	defs := make([]llm.ToolDef, 0, len(schemas))
-	for _, schema := range schemas {
-		var def llm.ToolDef
-		def.Type = "function"
-		def.Function.Name = schema.Name
-		def.Function.Description = schema.Description
-		def.Function.Parameters = schema.Parameters
-		defs = append(defs, def)
-	}
-	return defs
 }

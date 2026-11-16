@@ -110,10 +110,7 @@ func (e *Engine) executeTool(
 	ctx context.Context,
 	session *store.QualityAgentSessionMessage,
 	name, arguments string,
-	blocked *bool,
-	blockedCode, blockedWhy *string,
-	nextWake **time.Time,
-	scheduleReason *string,
+	control *wakeControl,
 ) (string, error) {
 	switch name {
 	case "get_target_summary":
@@ -216,9 +213,9 @@ func (e *Engine) executeTool(
 		if input.Code == "" || input.Reason == "" {
 			return "", errors.New("block_session needs a code and a reason")
 		}
-		*blocked = true
-		*blockedCode = input.Code
-		*blockedWhy = input.Reason
+		control.blocked = true
+		control.blockedCode = input.Code
+		control.blockedWhy = input.Reason
 		return marshalJSON(map[string]any{"blocked": true, "threshold": blockedThreshold})
 	case "get_table_context":
 		return e.getTableContextTool(ctx, session)
@@ -239,8 +236,8 @@ func (e *Engine) executeTool(
 		if minutes > 10080 {
 			minutes = 10080
 		}
-		*nextWake = ptrTime(e.now().Add(time.Duration(minutes) * time.Minute))
-		*scheduleReason = truncateRunes(input.Reason, 200)
+		control.nextWake = ptrTime(e.now().Add(time.Duration(minutes) * time.Minute))
+		control.scheduleReason = truncateRunes(input.Reason, 200)
 		return marshalJSON(map[string]any{"scheduled": true, "after_minutes": minutes})
 	default:
 		return "", fmt.Errorf("unknown tool %q", name)

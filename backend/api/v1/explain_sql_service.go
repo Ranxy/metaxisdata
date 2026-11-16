@@ -170,7 +170,7 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 		Metrics:              s.metrics,
 		SystemPrompt:         buildSystemPrompt(language, metaType, ctxObjects),
 		UserPrompt:           sqlText,
-		Tools:                toolDefsFromSchemas(set.Schemas()),
+		Tools:                agent.ToolDefs(set.Schemas()),
 		Executor:             executor,
 		MaxTurns:             agent.DefaultMaxTurns,
 		MaxConversationBytes: agent.DefaultMaxConversationBytes,

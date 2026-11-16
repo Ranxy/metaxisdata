@@ -238,24 +238,15 @@ func (e *Engine) modelWake(
 	state := cloneEngineState(session.EngineState)
 	var (
 		turn           int32
-		blocked        bool
-		blockedCode    string
-		blockedWhy     string
-		nextWake       *time.Time
-		scheduleReason string
 		totalTokens    int64
 		maxPrompt      int32
 		truncatedTools = map[string]bool{}
 		turnUsage      = map[int32]*llm.Usage{}
 	)
 	totalTokens = compactionTokens
-	set, err := e.toolSet(session, &toolControl{
-		blocked:        &blocked,
-		blockedCode:    &blockedCode,
-		blockedWhy:     &blockedWhy,
-		nextWake:       &nextWake,
-		scheduleReason: &scheduleReason,
-	})
+	// The control tools write this state; the wake applies it once, after the loop.
+	control := &wakeControl{}
+	set, err := e.toolSet(session, control)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -265,7 +256,7 @@ func (e *Engine) modelWake(
 			Provider:             config,
 			Feature:              "dq_agent",
 			History:              conversation,
-			Tools:                llmToolDefs(set.Schemas()),
+			Tools:                agent.ToolDefs(set.Schemas()),
 			Executor:             executor,
 			MaxTurns:             maxTurnsFor(session.Mode),
 			MaxConversationBytes: agent.DefaultMaxConversationBytes,
@@ -368,23 +359,23 @@ func (e *Engine) modelWake(
 	}
 
 	summary := "wake finished"
-	if blocked {
-		if state.BlockedCode == blockedCode {
+	if control.blocked {
+		if state.BlockedCode == control.blockedCode {
 			state.BlockedRounds++
 		} else {
-			state.BlockedCode = blockedCode
+			state.BlockedCode = control.blockedCode
 			state.BlockedRounds = 1
 		}
 		if state.BlockedRounds >= blockedThreshold {
 			return Outcome{
 				Blocked:       true,
-				BlockedCode:   blockedCode,
-				BlockedReason: blockedWhy,
+				BlockedCode:   control.blockedCode,
+				BlockedReason: control.blockedWhy,
 				TokensUsed:    totalTokens,
 				ContextTokens: maxPrompt,
 				ProcessedSeq:  consumed,
 				EngineState:   state,
-				Summary:       "blocked: " + blockedWhy,
+				Summary:       "blocked: " + control.blockedWhy,
 			}, nil
 		}
 		return Outcome{
@@ -393,16 +384,16 @@ func (e *Engine) modelWake(
 			ContextTokens: maxPrompt,
 			ProcessedSeq:  consumed,
 			EngineState:   state,
-			Summary:       fmt.Sprintf("reported the blocker %q once; waiting for it to persist", blockedCode),
+			Summary:       fmt.Sprintf("reported the blocker %q once; waiting for it to persist", control.blockedCode),
 		}, nil
 	}
 	state.BlockedCode = ""
 	state.BlockedRounds = 0
-	if scheduleReason != "" {
-		summary = "wake finished; scheduled an earlier wake: " + scheduleReason
+	if control.scheduleReason != "" {
+		summary = "wake finished; scheduled an earlier wake: " + control.scheduleReason
 	}
 	return Outcome{
-		NextWakeAt:     nextWake,
+		NextWakeAt:     control.nextWake,
 		TriageComplete: session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
 		TokensUsed:     totalTokens,
 		ContextTokens:  maxPrompt,
