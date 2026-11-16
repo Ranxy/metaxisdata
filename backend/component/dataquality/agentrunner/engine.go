@@ -256,6 +256,7 @@ func (e *Engine) modelWake(
 	if err != nil {
 		return Outcome{}, err
 	}
+	spec := specFor(session.Mode)
 	invocation, err := e.toolInvocation(ctx, session)
 	if err != nil {
 		return Outcome{}, err
@@ -264,11 +265,11 @@ func (e *Engine) modelWake(
 	runLoop := func(conversation []agent.Message) *agent.Event {
 		chatConfig := agent.Config{
 			Provider:             config,
-			Feature:              "dq_agent",
+			Feature:              spec.Feature,
 			History:              conversation,
 			Tools:                agent.ToolDefs(set.Schemas()),
 			Executor:             executor,
-			MaxTurns:             maxTurnsFor(session.Mode),
+			MaxTurns:             spec.MaxTurns,
 			MaxConversationBytes: agent.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
@@ -687,7 +688,7 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 		Wake:           0,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
-		Content:        systemPrompt(),
+		Content:        specFor(session.Mode).Prompt.Render(),
 		IdempotencyKey: "system:v1",
 	})
 }

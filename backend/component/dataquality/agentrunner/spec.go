@@ -2,6 +2,7 @@ package agentrunner
 
 import (
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -154,4 +155,57 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 		)
 	}
 	return specs
+}
+
+// Spec is one agent product: its name, prompt, tool whitelist and turn budget.
+// The mode selects which spec a session runs, so monitor and triage differ only
+// in declaration, never in engine code.
+type Spec struct {
+	// Name identifies the product in metrics and logs.
+	Name string
+	// Feature labels this product's model calls in metrics.
+	Feature string
+	// Prompt is the system prompt the runtime renders.
+	Prompt *agent.Prompt
+	// Tools is the explicit whitelist; the registry validates it at wake time.
+	Tools []toolSpec
+	// MaxTurns bounds one wake's model calls.
+	MaxTurns int
+}
+
+// The specs are process-level declarations: one prompt, one tool whitelist and one
+// turn budget per product, resolved once.
+var (
+	// monitorProduct is the long-lived monitoring product: one target, woken by
+	// events, questions and a daily cadence.
+	monitorProduct = &Spec{
+		Name:     "quality-monitor",
+		Feature:  "dq_agent",
+		Prompt:   qualityPrompt(),
+		Tools:    modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR),
+		MaxTurns: modelMaxTurns,
+	}
+	// triageProduct is the coverage product: it inspects an uncovered target,
+	// drafts checks and records what it concluded.
+	triageProduct = &Spec{
+		Name:     "quality-triage",
+		Feature:  "dq_agent",
+		Prompt:   qualityPrompt(),
+		Tools:    modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE),
+		MaxTurns: triageMaxTurns,
+	}
+)
+
+// monitorSpec returns the monitoring product.
+func monitorSpec() *Spec { return monitorProduct }
+
+// triageSpec returns the coverage product.
+func triageSpec() *Spec { return triageProduct }
+
+// specFor selects the product a session runs.
+func specFor(mode storepb.QualityAgentSessionMode) *Spec {
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
+		return triageSpec()
+	}
+	return monitorSpec()
 }
