@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -334,4 +335,69 @@ func TestExecuteSkipsThePolicyForAToolWithNoAction(t *testing.T) {
 		&Invocation{Policy: &fakeActionPolicy{decision: ActionDecision{}}})
 	require.False(t, result.IsError)
 	require.True(t, bodyRan)
+}
+
+// fakeAuditSink records the calls the pipeline audited.
+type fakeAuditSink struct {
+	entries []AuditEntry
+}
+
+func (s *fakeAuditSink) RecordToolCall(_ context.Context, entry AuditEntry) {
+	s.entries = append(s.entries, entry)
+}
+
+func TestExecuteAuditsSideEffectingCallsOnly(t *testing.T) {
+	t.Parallel()
+
+	propose := validTool("propose")
+	propose.Meta.SideEffect = SideEffectPropose
+	propose.Meta.Action = "A0-3"
+	read := validTool("read")
+	read.Meta.ReadOnly = true
+
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(propose))
+	require.NoError(t, registry.Register(read))
+	set, err := registry.Resolve([]string{"propose", "read"})
+	require.NoError(t, err)
+
+	sink := &fakeAuditSink{}
+	invocation := &Invocation{
+		Principal: &store.UserMessage{ID: 7},
+		Workspace: "ws",
+		Audit:     sink,
+	}
+	set.Execute(context.Background(), Call{Name: "propose", Arguments: json.RawMessage(`{"x":1}`)}, invocation)
+	set.Execute(context.Background(), Call{Name: "read"}, invocation)
+
+	require.Len(t, sink.entries, 1, "a read must not be audited")
+	entry := sink.entries[0]
+	require.Equal(t, "propose", entry.Tool)
+	require.Equal(t, "A0-3", entry.Action)
+	require.Equal(t, "ws", entry.Workspace)
+	require.Equal(t, 7, entry.Principal.ID)
+	require.JSONEq(t, `{"x":1}`, string(entry.Arguments))
+	require.Nil(t, entry.Failure)
+}
+
+func TestExecuteAuditsARefusedSideEffect(t *testing.T) {
+	t.Parallel()
+
+	propose := validTool("propose")
+	propose.Meta.SideEffect = SideEffectPropose
+	propose.Meta.Permission = "metaxisdata.test.write"
+	registry := NewRegistry()
+	require.NoError(t, registry.Register(propose))
+	set, err := registry.Resolve([]string{"propose"})
+	require.NoError(t, err)
+
+	sink := &fakeAuditSink{}
+	set.Execute(context.Background(), Call{Name: "propose"}, &Invocation{
+		Principal: &store.UserMessage{ID: 7},
+		Audit:     sink,
+		Checker:   &fakePermissionChecker{allowed: false},
+	})
+	require.Len(t, sink.entries, 1)
+	require.NotNil(t, sink.entries[0].Failure)
+	require.Equal(t, CodePermissionDenied, sink.entries[0].Failure.Code)
 }

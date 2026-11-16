@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -741,4 +742,37 @@ func TestWakeEnforcesTheActionPolicy(t *testing.T) {
 	_, err = allowed.Wake(context.Background(), testSession(), Options{})
 	require.NoError(t, err)
 	require.Len(t, allowedStore.investigations, 1)
+}
+
+// fakeToolAudit collects the tool audit entries a wake reports.
+type fakeToolAudit struct {
+	entries []tool.AuditEntry
+}
+
+func (s *fakeToolAudit) RecordToolCall(_ context.Context, entry tool.AuditEntry) {
+	s.entries = append(s.entries, entry)
+}
+
+// Side-effecting tool calls run under the agent principal and are reported to the
+// ledger; reads are not audited.
+func TestWakeAuditsProposeTools(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	sink := &fakeToolAudit{}
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "checking", toolCalls: []llm.ToolCall{
+			toolCall("call_1", "get_target_summary", "{}"),
+			toolCall("call_2", "record_investigation", `{"summary":"the drop is a real data issue"}`),
+		}},
+		{content: "done"},
+	}), resolveToModel, nil, WithToolAudit(sink))
+
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, sink.entries, 1)
+	require.Equal(t, "record_investigation", sink.entries[0].Tool)
+	require.Equal(t, string(dataquality.ActionWriteInvestigation), sink.entries[0].Action)
+	require.Equal(t, 7, sink.entries[0].Principal.ID)
+	require.Nil(t, sink.entries[0].Failure)
 }

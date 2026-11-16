@@ -83,6 +83,8 @@ type Engine struct {
 	actionSettings func(ctx context.Context) (dataquality.Settings, error)
 	// maxParallelReads bounds concurrent parallel-safe tool calls in one batch.
 	maxParallelReads int
+	// auditSink records side-effecting tool calls in the deployment ledger.
+	auditSink tool.AuditSink
 }
 
 // NewEngine creates the deterministic engine.
@@ -426,7 +428,7 @@ func (e *Engine) modelWake(
 // checker (tests, a deployment that has not wired IAM) returns nil, which the
 // pipeline treats as "the transport already authorized this call".
 func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage, product string) (*tool.Invocation, error) {
-	if e.checker == nil && e.metrics == nil && e.actionSettings == nil {
+	if e.checker == nil && e.metrics == nil && e.actionSettings == nil && e.auditSink == nil {
 		return nil, nil
 	}
 	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now}
@@ -436,7 +438,10 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 	if e.actionSettings != nil {
 		invocation.Policy = sessionActionPolicy{engine: e, session: session}
 	}
-	if e.checker == nil {
+	if e.auditSink != nil {
+		invocation.Audit = e.auditSink
+	}
+	if e.checker == nil && e.auditSink == nil {
 		return invocation, nil
 	}
 	if session.AgentPrincipalID == 0 {
@@ -450,7 +455,9 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 		return nil, errors.New("the session's agent principal no longer exists")
 	}
 	invocation.Principal = principal
-	invocation.Checker = e.checker
+	if e.checker != nil {
+		invocation.Checker = e.checker
+	}
 	return invocation, nil
 }
 

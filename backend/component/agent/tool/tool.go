@@ -149,6 +149,33 @@ type Invocation struct {
 	// may this agent do this now? Nil skips the check (tests, a deployment without
 	// an autonomy model).
 	Policy ActionPolicy
+	// Audit records the call in the deployment's ledger. A product wires it to the
+	// same ledger the RPC path writes; nil records nothing.
+	Audit AuditSink
+}
+
+// AuditEntry is one tool call as the ledger records it.
+type AuditEntry struct {
+	// Tool is the model-facing tool name.
+	Tool string
+	// Action is the autonomy action id, when the tool declares one.
+	Action string
+	// Principal is the caller the call ran as.
+	Principal *store.UserMessage
+	// Workspace is the workspace the call ran in.
+	Workspace string
+	// Arguments is the raw argument JSON.
+	Arguments json.RawMessage
+	// Failure is set when the call failed or was refused.
+	Failure *Error
+	// Duration is how long the call took.
+	Duration time.Duration
+}
+
+// AuditSink records tool calls. A write or proposal is audited here, which is the
+// ledger entry the in-process path would otherwise not get.
+type AuditSink interface {
+	RecordToolCall(ctx context.Context, entry AuditEntry)
 }
 
 // Observer records one tool execution. The product captures the labels it owns

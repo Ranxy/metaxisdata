@@ -449,7 +449,7 @@ agent 是**独立主体**，不是“以某管理员身份运行”：管理员�
 - **状态**：running 只由 `lease_until` 表达；`ENABLED/PAUSED/BLOCKED/ARCHIVED` 是持久状态，BLOCKED 是“等人/预算/范围”而不是失败；没有 COMPLETE，人归档后转录仍可读。人工 pause/resume/archive/wake 带 `expected_revision`，陈旧返回 `Aborted`。
 - **创建**：需要 runner 开关、目标数据库在 `agent_runner_databases` 允许列表、enabled 质量 agent；每目标一条活跃会话（部分唯一索引）。
 - **wake**：`qualitysessionrunner` 每 3s claim 到期会话（lease 15m、wake 10m），固定 worker pool 并发；一次 wake 追加一条 USER 消息（origin WAKE/EVENT/ASK），从 `summary_through_seq` 之后加载消息重建模型输入（SYSTEM + compaction checkpoint + 非 ENGINE 消息，悬空 tool call 补合成结果）；模型可用时用 `llm.AgentConfig.History` 续写同一 conversation，assistant/tool 消息随事件落库；不可用时跑确定性巡检/事件调查，同样写 ENGINE 记录。
-- **工具**：get_target_summary / list_recent_executions / get_memory / record_investigation / record_asset_fact / record_decision / block_session / schedule_wake。调查、资产事实与提议决策仍是 agent 的产物，写入沿用领域指纹幂等；模型不能发布/决策/改规则/改设置。
+- **工具**：get_target_summary / list_recent_executions / get_memory / record_investigation / record_asset_fact / record_decision / block_session / schedule_wake。调查、资产事实与提议决策仍是 agent 的产物，写入沿用领域指纹幂等；模型不能发布/决策/改规则/改设置。 提案类工具（investigation/asset fact/decision）在工具管线里按 agent principal 执行 IAM 与动作策略，并写一条审计行（method `agent/tools/call:<tool>`，actor 是 agent principal）；只读工具不审计，避免把每日巡检读放大成永久账本。
 - **调度**：wake 结束按 pending seq 水位决定立即续跑（wake 期间到达的事件/提问）；否则按 `agent_runner_idle_wake_seconds`（默认 24h）空闲；token/autonomy/wake 预算为可重试 block（整点/5 分钟），范围/agent 停用/重启超限为人工 block。
 - **事件接入**：执行进入 FAIL/ERROR 时向该目标已启用会话追加 USER(EVENT) 消息并立即唤醒（`agent_runner_auto_investigate_failures` 默认开；同一执行幂等；每会话每小时最多 20 条）。
 - **压缩**：阈值 `agent_runner_compaction_trigger_tokens`（默认 256k）；详见 D-120。本期不做消息保留期清理，转录长期保留。

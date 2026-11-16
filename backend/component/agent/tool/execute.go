@@ -29,13 +29,16 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 		inv = &Invocation{}
 	}
 	started := time.Now()
+	finish := func(result Result) Result {
+		auditTool(ctx, inv, t, call, result, started)
+		observeTool(inv, t.Name, result, started)
+		return result
+	}
 	if refusedResult, refused := authorize(ctx, t, inv); refused {
-		observeTool(inv, t.Name, refusedResult, started)
-		return refusedResult
+		return finish(refusedResult)
 	}
 	if refusedResult, refused := authorizeAction(ctx, t, inv); refused {
-		observeTool(inv, t.Name, refusedResult, started)
-		return refusedResult
+		return finish(refusedResult)
 	}
 
 	execCtx := ctx
@@ -60,8 +63,24 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 		result.Content = common.TruncateUTF8Bytes(result.Content, t.Meta.MaxResultBytes)
 		result.Truncated = true
 	}
-	observeTool(inv, t.Name, result, started)
-	return result
+	return finish(result)
+}
+
+// auditTool records one side-effecting call. Reads are not audited: the agent's
+// ledger is about what it changed, and a wake reads several times per day.
+func auditTool(ctx context.Context, inv *Invocation, t Tool, call Call, result Result, started time.Time) {
+	if inv.Audit == nil || t.Meta.SideEffect == SideEffectNone {
+		return
+	}
+	inv.Audit.RecordToolCall(ctx, AuditEntry{
+		Tool:      t.Name,
+		Action:    t.Meta.Action,
+		Principal: inv.Principal,
+		Workspace: inv.Workspace,
+		Arguments: call.Arguments,
+		Failure:   result.Error,
+		Duration:  time.Since(started),
+	})
 }
 
 // observeTool reports one finished execution to the product's observer, if any.

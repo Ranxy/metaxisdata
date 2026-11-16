@@ -101,6 +101,11 @@ func WithMaxParallelReads(limit int) Option {
 	return func(engine *Engine) { engine.maxParallelReads = limit }
 }
 
+// WithToolAudit records side-effecting tool calls in the deployment ledger.
+func WithToolAudit(sink tool.AuditSink) Option {
+	return func(engine *Engine) { engine.auditSink = sink }
+}
+
 // getTableContextTool renders the target context as tool JSON.
 func (e *Engine) getTableContextTool(ctx context.Context, session *store.QualityAgentSessionMessage) (string, error) {
 	if e.tableContext == nil {
