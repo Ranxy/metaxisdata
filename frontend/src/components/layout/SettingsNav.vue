@@ -31,6 +31,7 @@
 import {
   AppWindow,
   Bell,
+  Bot,
   ClipboardList,
   Gauge,
   Globe,
@@ -77,6 +78,13 @@ const ALL_ITEMS = computed<SettingsNavItem[]>(() => [
     label: t("menu.environments"),
     path: "/settings/environments",
     icon: Globe,
+    permission: "metaxisdata.settings.get",
+  },
+  {
+    key: "qualityAgents",
+    label: t("menu.qualityAgents"),
+    path: "/settings/quality-agents",
+    icon: Bot,
     permission: "metaxisdata.settings.get",
   },
   {

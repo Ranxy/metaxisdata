@@ -1085,18 +1085,6 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("hides the field label action when model assistance is off", async () => {
-    mocks.getWorkspaceProfileSetting.mockResolvedValue({
-      dataQuality: { enableLlmAnalysis: false },
-    });
-    const { wrapper } = await mountPage();
-
-    expect(buttonByText(label("dataQuality.suggest.labels"))).toBeUndefined();
-    // The deterministic recommendation still works with the model off.
-    expect(buttonByText(label("dataQuality.recommend.label"))).toBeDefined();
-    wrapper.unmount();
-  });
-
   it("profiles a stale field before asking the model for its label", async () => {
     mocks.listColumnProfiles.mockResolvedValue([freshProfile("email", 8)]);
     mocks.suggestColumnLabels.mockResolvedValue({
@@ -1121,44 +1109,6 @@ describe("DataQualityTargetPage", () => {
     wrapper.unmount();
   });
 
-  it("recommends checks from the copilot's quick action without the model", async () => {
-    mocks.getWorkspaceProfileSetting.mockResolvedValue({
-      dataQuality: { enableLlmAnalysis: false },
-    });
-    const drafted = draftSuggestion(
-      DRAFT_AMOUNT,
-      "Amounts stay in range",
-      "amount",
-      "rowCount"
-    );
-    let queueReads = 0;
-    mocks.listQualitySuggestions.mockImplementation(async () => {
-      queueReads += 1;
-      return queueReads === 1 ? draftPage([]) : draftPage([drafted]);
-    });
-    mocks.recommendQualityChecks.mockResolvedValue({
-      qualitySuggestions: [drafted],
-      summary: create(QualitySuggestionQueueSummarySchema, { created: 1 }),
-    });
-    const { wrapper } = await mountPage();
-
-    buttonByText(label("dataQuality.recommend.label"))?.click();
-    await flushPromises();
-
-    expect(mocks.recommendQualityChecks).toHaveBeenCalledWith({
-      tableGuid: TARGET,
-      metaType: MetaType.TABLE,
-      columns: ["email", "amount"],
-      language: "en-US",
-      forceRegenerate: false,
-    });
-    // The page reads the queue back, so the strip shows what the pass queued.
-    expect(wrapper.text()).toContain(
-      label("dataQuality.workspace.draftsTitle")
-    );
-    wrapper.unmount();
-  });
-
   it("explains when stale columns cannot be profiled without permission", async () => {
     mocks.listColumnProfiles.mockResolvedValue([
       freshProfile("email", 8),
@@ -1179,64 +1129,6 @@ describe("DataQualityTargetPage", () => {
     expect(wrapper.text()).toContain(
       label("dataQuality.suggest.profileRequired")
     );
-    wrapper.unmount();
-  });
-
-  it("renders AI drafts inline and marks the ones a pass just returned", async () => {
-    mocks.getQualityTarget.mockResolvedValue(
-      response({ summary: summaryFixture({ pendingDraftCount: 1 }) })
-    );
-    mocks.listQualitySuggestions.mockResolvedValue(
-      draftPage([
-        draftSuggestion(DRAFT_EMAIL, "Emails must not be empty", "email"),
-      ])
-    );
-    const { wrapper } = await mountPage();
-
-    expect(wrapper.text()).toContain(
-      label("dataQuality.workspace.summaryDrafts", { count: 1 })
-    );
-
-    const existing = wrapper.findAllComponents(TargetDraftCard);
-    expect(existing).toHaveLength(1);
-    expect(existing[0]?.text()).toContain("Emails must not be empty");
-    expect(existing[0]?.text()).toContain(
-      label("dataQuality.workspace.draftBadge")
-    );
-    expect(existing[0]?.text()).toContain(
-      label("dataQuality.workspace.draftColumn", { column: "email" })
-    );
-    // An already queued draft is highlighted by the card's base ring only.
-    expect(existing[0]?.classes()).toContain("ring-1");
-
-    const input = document.body.querySelector<HTMLTextAreaElement>("textarea");
-    expect(input).not.toBeNull();
-    input!.value = "Keep amounts in a sane range";
-    input!.dispatchEvent(new Event("input"));
-    await flushPromises();
-    buttonByText(label("dataQuality.copilot.generate"))?.click();
-    await flushPromises();
-
-    // The new draft joins the column section the pass filed it under, and only
-    // the returned rows carry the transient highlight. The header count follows
-    // the local queue without re-reading the workspace.
-    const drafts = wrapper.findAllComponents(TargetDraftCard);
-    const created = drafts.find((card) =>
-      card.text().includes("Amounts stay in range")
-    );
-    expect(created).toBeDefined();
-    expect(created?.classes()).toContain("ring-2");
-    expect(created?.classes()).toContain("animate-in");
-    expect(
-      drafts
-        .find((card) => card.text().includes("Emails must not be empty"))
-        ?.classes()
-    ).toContain("ring-1");
-    expect(wrapper.text()).toContain("amount");
-    expect(wrapper.text()).toContain(
-      label("dataQuality.workspace.summaryDrafts", { count: 2 })
-    );
-    expect(mocks.getQualityTarget).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 

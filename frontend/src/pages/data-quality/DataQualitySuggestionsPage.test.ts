@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { Select } from "@/components/ui/select";
-import { notify } from "@/lib/notify";
 import { i18n } from "@/locales";
 import { useAuthStore } from "@/store/modules/auth";
 import {
@@ -586,117 +585,6 @@ describe("DataQualitySuggestionsPage", () => {
     wrapper.unmount();
   });
 
-  it("reloads the jobs panel after a submission and selects what a job settles", async () => {
-    mocks.listQualitySuggestions.mockResolvedValue({
-      items: queue(),
-      nextPageToken: "page-2",
-    });
-    const { wrapper } = await mountPage("/data-quality/suggestions?draft=1");
-
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestions.workbench.description")
-    );
-    // The panel loads once on mount (recent page + independent RUNNING list).
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(2);
-    // Move off page one so the completion reset is observable.
-    buttonByText(label("common.next"))?.click();
-    await flushPromises();
-    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pageToken: "page-2" })
-    );
-
-    const queued = draftSuggestion(
-      "workspaces/ws/qualitySuggestions/draft-3",
-      "Queued by the job",
-      OTHER_TARGET
-    );
-    const missing = draftSuggestion(
-      "workspaces/ws/qualitySuggestions/draft-4",
-      "Queued but filtered out",
-      OTHER_TARGET
-    );
-    const info = vi.spyOn(notify, "info");
-    const success = vi.spyOn(notify, "success");
-
-    // The workbench only submits a job; the panel reloads immediately.
-    wrapper
-      .findComponent({ name: "SuggestionWorkbench" })
-      .vm.$emit("submitted", { name: "workspaces/ws/qualitySuggestionJobs/j" });
-    await flushPromises();
-    expect(mocks.listQualitySuggestionJobs).toHaveBeenCalledTimes(4);
-
-    // When the job settles, its suggestions are the newest rows: page one,
-    // select the visible pending ones, and explain any that are not visible.
-    mocks.listQualitySuggestions.mockResolvedValue({
-      items: [queued],
-      nextPageToken: "",
-    });
-    wrapper
-      .findComponent({ name: "SuggestionJobsPanel" })
-      .vm.$emit("settled", [queued.name, missing.name]);
-    await flushPromises();
-
-    expect(mocks.listQualitySuggestions).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pageToken: "" })
-    );
-    expect(wrapper.text()).toContain(
-      label("dataQuality.suggestions.selectedCount", { count: 1 })
-    );
-    expect(info).toHaveBeenCalledWith(
-      label("dataQuality.suggestions.queuedPartial", {
-        selected: 1,
-        total: 2,
-      })
-    );
-    expect(success).toHaveBeenCalledWith(
-      label("dataQuality.suggestions.jobs.settledToast", { count: 2 })
-    );
-    info.mockRestore();
-    success.mockRestore();
-    wrapper.unmount();
-  });
-
-  it("refreshes the current queue when a job settles without suggestions", async () => {
-    const { wrapper } = await mountPage();
-
-    wrapper
-      .findComponent({ name: "SuggestionJobsPanel" })
-      .vm.$emit("settled", []);
-    await flushPromises();
-
-    expect(mocks.listQualitySuggestions).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).not.toContain(
-      label("dataQuality.suggestions.selectedCount", { count: 1 })
-    );
-    wrapper.unmount();
-  });
-
-  it("opens the workbench from the deep link even when the LLM switch is off", async () => {
-    mocks.getWorkspaceProfileSetting.mockResolvedValue({
-      dataQuality: { enableLlmAnalysis: false },
-    });
-    const { wrapper } = await mountPage("/data-quality/suggestions?draft=1");
-    await flushPromises();
-
-    // The deep link is never a dead end: the workbench explains why drafting is
-    // unavailable and points at the settings.
-    expect(document.body.textContent).toContain(
-      label("dataQuality.suggestions.workbench.description")
-    );
-    expect(document.body.textContent).toContain(
-      label("dataQuality.llm.disabledHint")
-    );
-    const generate = [
-      ...document.body.querySelectorAll<HTMLElement>('[role="dialog"] button'),
-    ].find((button) =>
-      button.textContent?.includes(
-        label("dataQuality.suggestions.workbench.submit")
-      )
-    ) as HTMLButtonElement | undefined;
-    expect(generate?.disabled).toBe(true);
-    wrapper.unmount();
-  });
-
   it("opens the detail drawer and decides a label there", async () => {
     const { wrapper } = await mountPage();
 
@@ -877,21 +765,6 @@ describe("DataQualitySuggestionsPage", () => {
         kind: QualitySuggestionKind.UNSPECIFIED,
       })
     );
-    wrapper.unmount();
-  });
-
-  it("retires the draft deep link when the workbench closes", async () => {
-    const { wrapper, router } = await mountPage(
-      "/data-quality/suggestions?draft=1&kind=1"
-    );
-    expect(router.currentRoute.value.query.draft).toBe("1");
-
-    wrapper
-      .findComponent({ name: "SuggestionWorkbench" })
-      .vm.$emit("update:open", false);
-    await flushPromises();
-
-    expect(router.currentRoute.value.query).toEqual({ kind: "1" });
     wrapper.unmount();
   });
 

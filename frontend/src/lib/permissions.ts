@@ -146,6 +146,9 @@ export const PERMISSION_GROUPS = [
       "metaxisdata.dataQuality.codeTables.create",
       "metaxisdata.dataQuality.codeTables.update",
       "metaxisdata.dataQuality.codeTables.delete",
+      "metaxisdata.dataQuality.agents.get",
+      "metaxisdata.dataQuality.agents.list",
+      "metaxisdata.dataQuality.agents.manage",
     ],
   },
   {

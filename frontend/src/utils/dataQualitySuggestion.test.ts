@@ -7,16 +7,11 @@ import {
   QualityDimension,
   QualityLabelSource,
   QualityLabelStatus,
-  QualityLLMDiagnosticSchema,
   QualityRuleConfigSchema,
   QualityRuleState,
   QualityRuleType,
   QualitySemanticType,
   QualitySeverity,
-  QualitySuggestionJobSchema,
-  QualitySuggestionJobStatus,
-  QualitySuggestionJobTargetSchema,
-  QualitySuggestionJobTargetState,
   QualitySuggestionKind,
   QualitySuggestionQueueSummarySchema,
   QualitySuggestionSchema,
@@ -34,27 +29,18 @@ import {
   buildRuleFromSuggestion,
   columnProfileHighlights,
   configEntryLabelKey,
-  diagnosticCodeKey,
-  diagnosticHintKey,
-  diagnosticSummary,
   formatConfidence,
-  formatDiagnosticCount,
   groupSelectionState,
   groupSuggestionsByTarget,
-  isActiveSuggestionJob,
   isLabelSuggestion,
   isPendingDraft,
   isPendingLabel,
   isPendingSuggestion,
-  jobIntentSnippet,
-  jobSuggestionNames,
-  jobTargetLabel,
   labelEvidenceLines,
   labelSourceKey,
   labelStatusKey,
   labelSuggestionOf,
   labelSummary,
-  MAX_SUGGESTION_JOB_TARGETS,
   ruleConfigEntries,
   ruleDraftOf,
   selectableSuggestions,
@@ -63,11 +49,6 @@ import {
   suggestionConfidence,
   suggestionConfidencePercent,
   suggestionGroupMetaType,
-  suggestionJobProgress,
-  suggestionJobStatusKey,
-  suggestionJobStatusVariant,
-  suggestionJobTargetStateKey,
-  suggestionJobTargetStateVariant,
   suggestionKindKey,
   suggestionLabelTypeKey,
   suggestionRationale,
@@ -83,7 +64,6 @@ import {
   suggestionTargetPath,
   suggestionToEditorPrefill,
   summarizeBatchResults,
-  syncDraftErrorHintKey,
 } from "./dataQualitySuggestion";
 
 function ruleSuggestion() {
@@ -672,325 +652,6 @@ describe("batch results", () => {
       ],
     });
     expect(summarizeBatchResults([])).toEqual({ succeeded: 0, failed: [] });
-  });
-});
-
-describe("drafting jobs", () => {
-  function jobTarget(
-    options: {
-      guid?: string;
-      state?: QualitySuggestionJobTargetState;
-      suggestions?: string[];
-    } = {}
-  ) {
-    return create(QualitySuggestionJobTargetSchema, {
-      target: create(QualityTargetSchema, {
-        metaGuid: options.guid ?? "inst1;db1;public;orders",
-        metaType: MetaType.TABLE,
-        path: {
-          instance: "inst1",
-          database: "db1",
-          schema: "public",
-          object: "orders",
-        },
-      }),
-      state: options.state ?? QualitySuggestionJobTargetState.PENDING,
-      suggestions: options.suggestions ?? [],
-    });
-  }
-
-  function job(
-    options: {
-      status?: QualitySuggestionJobStatus;
-      targets?: ReturnType<typeof jobTarget>[];
-      targetCount?: number;
-      completedTargetCount?: number;
-      suggestionCount?: number;
-      intent?: string;
-    } = {}
-  ) {
-    return create(QualitySuggestionJobSchema, {
-      name: "workspaces/ws/qualitySuggestionJobs/job-1",
-      status: options.status ?? QualitySuggestionJobStatus.RUNNING,
-      intent: options.intent ?? "Keep orders healthy",
-      targets: options.targets ?? [jobTarget()],
-      targetCount: options.targetCount ?? 2,
-      completedTargetCount: options.completedTargetCount ?? 1,
-      suggestionCount: options.suggestionCount ?? 3,
-    });
-  }
-
-  it("names the job lifecycle and per-target state", () => {
-    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.PENDING)).toBe(
-      "dataQuality.suggestionJobStatus.pending"
-    );
-    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.RUNNING)).toBe(
-      "dataQuality.suggestionJobStatus.running"
-    );
-    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.COMPLETED)).toBe(
-      "dataQuality.suggestionJobStatus.completed"
-    );
-    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.FAILED)).toBe(
-      "dataQuality.suggestionJobStatus.failed"
-    );
-    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.CANCELED)).toBe(
-      "dataQuality.suggestionJobStatus.canceled"
-    );
-    expect(suggestionJobStatusKey(QualitySuggestionJobStatus.UNSPECIFIED)).toBe(
-      "dataQuality.suggestionJobStatus.unspecified"
-    );
-    expect(suggestionJobStatusKey(99 as QualitySuggestionJobStatus)).toBe(
-      "dataQuality.suggestionJobStatus.unspecified"
-    );
-
-    expect(
-      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.PENDING)
-    ).toBe("dataQuality.suggestionJobTargetState.pending");
-    expect(
-      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.RUNNING)
-    ).toBe("dataQuality.suggestionJobTargetState.running");
-    expect(
-      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.DONE)
-    ).toBe("dataQuality.suggestionJobTargetState.done");
-    expect(
-      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.FAILED)
-    ).toBe("dataQuality.suggestionJobTargetState.failed");
-    expect(
-      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.SKIPPED)
-    ).toBe("dataQuality.suggestionJobTargetState.skipped");
-    expect(
-      suggestionJobTargetStateKey(QualitySuggestionJobTargetState.UNSPECIFIED)
-    ).toBe("dataQuality.suggestionJobTargetState.unspecified");
-    expect(
-      suggestionJobTargetStateKey(99 as QualitySuggestionJobTargetState)
-    ).toBe("dataQuality.suggestionJobTargetState.unspecified");
-  });
-
-  it("tones the job and target badges", () => {
-    expect(suggestionJobStatusVariant(QualitySuggestionJobStatus.PENDING)).toBe(
-      "warning"
-    );
-    expect(suggestionJobStatusVariant(QualitySuggestionJobStatus.RUNNING)).toBe(
-      "info"
-    );
-    expect(
-      suggestionJobStatusVariant(QualitySuggestionJobStatus.COMPLETED)
-    ).toBe("success");
-    expect(suggestionJobStatusVariant(QualitySuggestionJobStatus.FAILED)).toBe(
-      "danger"
-    );
-    expect(
-      suggestionJobStatusVariant(QualitySuggestionJobStatus.CANCELED)
-    ).toBe("neutral");
-    expect(
-      suggestionJobStatusVariant(QualitySuggestionJobStatus.UNSPECIFIED)
-    ).toBe("secondary");
-    expect(
-      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.RUNNING)
-    ).toBe("info");
-    expect(
-      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.DONE)
-    ).toBe("success");
-    expect(
-      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.FAILED)
-    ).toBe("danger");
-    expect(
-      suggestionJobTargetStateVariant(QualitySuggestionJobTargetState.SKIPPED)
-    ).toBe("neutral");
-    expect(
-      suggestionJobTargetStateVariant(
-        QualitySuggestionJobTargetState.UNSPECIFIED
-      )
-    ).toBe("secondary");
-  });
-
-  it("knows which jobs are still active", () => {
-    expect(
-      isActiveSuggestionJob(job({ status: QualitySuggestionJobStatus.PENDING }))
-    ).toBe(true);
-    expect(
-      isActiveSuggestionJob(job({ status: QualitySuggestionJobStatus.RUNNING }))
-    ).toBe(true);
-    for (const status of [
-      QualitySuggestionJobStatus.COMPLETED,
-      QualitySuggestionJobStatus.FAILED,
-      QualitySuggestionJobStatus.CANCELED,
-      QualitySuggestionJobStatus.UNSPECIFIED,
-    ]) {
-      expect(isActiveSuggestionJob(job({ status }))).toBe(false);
-    }
-  });
-
-  it("summarises target progress and clamps nonsense", () => {
-    expect(suggestionJobProgress(job())).toEqual({
-      total: 2,
-      completed: 1,
-      percent: 50,
-      suggestions: 3,
-    });
-    expect(
-      suggestionJobProgress(
-        job({
-          targetCount: 0,
-          targets: [],
-          completedTargetCount: 0,
-          suggestionCount: 0,
-        })
-      )
-    ).toEqual({ total: 0, completed: 0, percent: 0, suggestions: 0 });
-    expect(
-      suggestionJobProgress(
-        job({ targetCount: 2, completedTargetCount: 9, suggestionCount: 0 })
-      ).percent
-    ).toBe(100);
-    // A job without the computed counts falls back to its target list.
-    expect(
-      suggestionJobProgress(job({ targets: [jobTarget(), jobTarget()] }))
-    ).toMatchObject({ total: 2 });
-  });
-
-  it("collects the suggestions the job queued", () => {
-    expect(
-      jobSuggestionNames(
-        job({
-          targets: [
-            jobTarget({ suggestions: ["s1", "s2"] }),
-            jobTarget({ guid: "inst1;db1;public;users" }),
-            jobTarget({ suggestions: ["s3"] }),
-          ],
-        })
-      )
-    ).toEqual(["s1", "s2", "s3"]);
-    expect(jobSuggestionNames(job({ targets: [] }))).toEqual([]);
-  });
-
-  it("labels a target from the job's path snapshot", () => {
-    expect(jobTargetLabel(jobTarget())).toBe("inst1 · db1 · public · orders");
-    expect(jobTargetLabel(jobTarget(), "Warehouse")).toBe(
-      "Warehouse · db1 · public · orders"
-    );
-    // A target without a snapshot path falls back to the GUID.
-    const guidOnly = create(QualitySuggestionJobTargetSchema, {
-      target: create(QualityTargetSchema, {
-        metaGuid: "inst1;db1;public;orders",
-        metaType: MetaType.TABLE,
-      }),
-    });
-    expect(jobTargetLabel(guidOnly)).toBe("inst1 · db1 · public · orders");
-    expect(jobTargetLabel(create(QualitySuggestionJobTargetSchema, {}))).toBe(
-      "-"
-    );
-  });
-
-  it("snippets a long intent", () => {
-    expect(
-      jobIntentSnippet(job({ intent: "  Keep\norders   healthy  " }))
-    ).toBe("Keep orders healthy");
-    const long = "x".repeat(120);
-    const snippet = jobIntentSnippet(job({ intent: long }));
-    expect(snippet).toHaveLength(80);
-    expect(snippet.endsWith("…")).toBe(true);
-    expect(MAX_SUGGESTION_JOB_TARGETS).toBe(20);
-  });
-});
-
-describe("LLM failure diagnostics", () => {
-  const CODES: Array<[string, string]> = [
-    ["TRUNCATED", "truncated"],
-    ["STREAM_INCOMPLETE", "streamIncomplete"],
-    ["PROVIDER_STATUS", "providerStatus"],
-    ["PROVIDER_REQUEST", "providerRequest"],
-    ["RESPONSE_TOO_LARGE", "responseTooLarge"],
-    ["UNEXPECTED_FINISH_REASON", "unexpectedFinishReason"],
-    ["TIMEOUT", "timeout"],
-    ["MALFORMED_RESPONSE", "malformedResponse"],
-    ["PARSE", "parse"],
-  ];
-
-  it("maps every classifier code to its label and hint key", () => {
-    for (const [code, suffix] of CODES) {
-      expect(diagnosticCodeKey(code)).toBe(
-        `dataQuality.suggestions.diagnostic.code.${suffix}`
-      );
-      expect(diagnosticHintKey(code)).toBe(
-        `dataQuality.suggestions.diagnostic.hint.${suffix}`
-      );
-    }
-    // The server sends upper case; a lower-case copy still classifies.
-    expect(diagnosticCodeKey("truncated")).toBe(
-      "dataQuality.suggestions.diagnostic.code.truncated"
-    );
-    expect(diagnosticCodeKey("")).toBe(
-      "dataQuality.suggestions.diagnostic.code.unknown"
-    );
-    expect(diagnosticHintKey("SOMETHING_NEW")).toBe(
-      "dataQuality.suggestions.diagnostic.hint.unknown"
-    );
-  });
-
-  it("formats reported counts and hides unreported zeros", () => {
-    expect(formatDiagnosticCount(0n)).toBe("-");
-    expect(formatDiagnosticCount(0)).toBe("-");
-    expect(formatDiagnosticCount(8192)).toBe("8,192");
-    expect(formatDiagnosticCount(1_234n)).toBe("1,234");
-  });
-
-  it("summarises the provider facts behind a failure", () => {
-    const diagnostic = create(QualityLLMDiagnosticSchema, {
-      errorCode: "TRUNCATED",
-      provider: "openai",
-      model: "gpt-test",
-      promptVersion: "dq-rules-v3",
-      finishReason: "length",
-      maxOutputTokens: 8192,
-      promptTokens: 1200n,
-      completionTokens: 8192n,
-      totalTokens: 9392n,
-      promptChars: 5400n,
-      correlationId: "corr-123",
-      providerStatus: 200,
-      debugPayloadAvailable: true,
-    });
-    expect(diagnosticSummary(diagnostic)).toEqual({
-      providerModel: "openai · gpt-test",
-      promptVersion: "dq-rules-v3",
-      finishReason: "length",
-      maxOutputTokens: "8,192",
-      promptTokens: "1,200",
-      completionTokens: "8,192",
-      totalTokens: "9,392",
-      promptChars: "5,400",
-      providerStatus: "200",
-      correlationId: "corr-123",
-    });
-  });
-
-  it("leaves unreported summary facts empty-looking", () => {
-    const summary = diagnosticSummary(create(QualityLLMDiagnosticSchema, {}));
-    expect(summary.providerModel).toBe("-");
-    expect(summary.promptVersion).toBe("-");
-    expect(summary.finishReason).toBe("-");
-    expect(summary.maxOutputTokens).toBe("-");
-    expect(summary.promptTokens).toBe("-");
-    expect(summary.completionTokens).toBe("-");
-    expect(summary.totalTokens).toBe("-");
-    expect(summary.promptChars).toBe("-");
-    expect(summary.providerStatus).toBe("-");
-    expect(summary.correlationId).toBe("");
-  });
-
-  it("recognises a synchronous truncation error", () => {
-    const key = "dataQuality.suggestions.diagnostic.syncTruncatedHint";
-    expect(
-      syncDraftErrorHintKey(
-        "internal: the LLM analysis failed: LLM response was truncated by the provider (finish_reason=length)"
-      )
-    ).toBe(key);
-    expect(
-      syncDraftErrorHintKey("the model stopped at the output token limit")
-    ).toBe(key);
-    expect(syncDraftErrorHintKey("internal: connection reset")).toBeUndefined();
-    expect(syncDraftErrorHintKey("")).toBeUndefined();
   });
 });
 
