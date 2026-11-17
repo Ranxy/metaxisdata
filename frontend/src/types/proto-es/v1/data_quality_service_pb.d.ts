@@ -7,6 +7,7 @@ import type { Message } from "@bufbuild/protobuf";
 import type { Duration, EmptySchema, FieldMask, Timestamp } from "@bufbuild/protobuf/wkt";
 import type { MetaType } from "./database_service_pb";
 import type { ExplainSQLMetadata, ExplainSQLProgress } from "./explain_sql_service_pb";
+import type { DayOfWeek } from "./setting_service_pb";
 
 /**
  * Describes the file v1/data_quality_service.proto.
@@ -4263,495 +4264,6 @@ export declare type BatchUpdateQualitySuggestionResult = Message<"metaxisdata.v1
 export declare const BatchUpdateQualitySuggestionResultSchema: GenMessage<BatchUpdateQualitySuggestionResult>;
 
 /**
- * QualitySuggestionJobTarget is one target of a drafting job and what happened
- * to it. `suggestions` names the queued suggestions this target produced.
- *
- * @generated from message metaxisdata.v1.QualitySuggestionJobTarget
- */
-export declare type QualitySuggestionJobTarget = Message<"metaxisdata.v1.QualitySuggestionJobTarget"> & {
-  /**
-   * @generated from field: metaxisdata.v1.QualityTarget target = 1;
-   */
-  target?: QualityTarget;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualitySuggestionJobTargetState state = 2;
-   */
-  state: QualitySuggestionJobTargetState;
-
-  /**
-   * The suggestions queued from this target so far.
-   * Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
-   *
-   * @generated from field: repeated string suggestions = 3;
-   */
-  suggestions: string[];
-
-  /**
-   * Empty unless this target failed; then why.
-   *
-   * @generated from field: string error = 4;
-   */
-  error: string;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp start_time = 5;
-   */
-  startTime?: Timestamp;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp finish_time = 6;
-   */
-  finishTime?: Timestamp;
-
-  /**
-   * Set when the target failed in the model call: the classifier, provider
-   * facts, stop reason and usage behind the error, plus the correlation id that
-   * ties it to the server log and the debug log.
-   *
-   * @generated from field: metaxisdata.v1.QualityLLMDiagnostic diagnostic = 7;
-   */
-  diagnostic?: QualityLLMDiagnostic;
-
-  /**
-   * What this target's pass did to the review queue. Set on success.
-   *
-   * @generated from field: metaxisdata.v1.QualitySuggestionQueueSummary summary = 8;
-   */
-  summary?: QualitySuggestionQueueSummary;
-};
-
-/**
- * Describes the message metaxisdata.v1.QualitySuggestionJobTarget.
- * Use `create(QualitySuggestionJobTargetSchema)` to create a new message.
- */
-export declare const QualitySuggestionJobTargetSchema: GenMessage<QualitySuggestionJobTarget>;
-
-/**
- * QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
- * can act on and an operator can correlate with logs. It never includes the
- * prompt or the model response; those are available on demand when runtime debug
- * mode captured them (see GetQualitySuggestionJobTargetDebug).
- *
- * @generated from message metaxisdata.v1.QualityLLMDiagnostic
- */
-export declare type QualityLLMDiagnostic = Message<"metaxisdata.v1.QualityLLMDiagnostic"> & {
-  /**
-   * A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
-   * STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
-   * TIMEOUT, PARSE, UNKNOWN.
-   *
-   * @generated from field: string error_code = 1;
-   */
-  errorCode: string;
-
-  /**
-   * @generated from field: string provider = 2;
-   */
-  provider: string;
-
-  /**
-   * @generated from field: string model = 3;
-   */
-  model: string;
-
-  /**
-   * @generated from field: string prompt_version = 4;
-   */
-  promptVersion: string;
-
-  /**
-   * The output-token budget the call asked for; TRUNCATED points at this.
-   *
-   * @generated from field: int32 max_output_tokens = 5;
-   */
-  maxOutputTokens: number;
-
-  /**
-   * @generated from field: string finish_reason = 6;
-   */
-  finishReason: string;
-
-  /**
-   * @generated from field: int64 prompt_tokens = 7;
-   */
-  promptTokens: bigint;
-
-  /**
-   * @generated from field: int64 completion_tokens = 8;
-   */
-  completionTokens: bigint;
-
-  /**
-   * @generated from field: int64 total_tokens = 9;
-   */
-  totalTokens: bigint;
-
-  /**
-   * How large the prompt was, so a context/usage problem is visible.
-   *
-   * @generated from field: int64 prompt_chars = 10;
-   */
-  promptChars: bigint;
-
-  /**
-   * Copy this into server logs or the debug log lookup.
-   *
-   * @generated from field: string correlation_id = 11;
-   */
-  correlationId: string;
-
-  /**
-   * @generated from field: int32 provider_status = 12;
-   */
-  providerStatus: number;
-
-  /**
-   * Whether GetQualitySuggestionJobTargetDebug can return the raw bodies.
-   *
-   * @generated from field: bool debug_payload_available = 13;
-   */
-  debugPayloadAvailable: boolean;
-};
-
-/**
- * Describes the message metaxisdata.v1.QualityLLMDiagnostic.
- * Use `create(QualityLLMDiagnosticSchema)` to create a new message.
- */
-export declare const QualityLLMDiagnosticSchema: GenMessage<QualityLLMDiagnostic>;
-
-/**
- * QualitySuggestionJob is one background AI drafting run over a set of targets.
- * It is the durable unit of the asynchronous drafting flow: it outlives the
- * browser tab that submitted it and is safe to poll.
- *
- * @generated from message metaxisdata.v1.QualitySuggestionJob
- */
-export declare type QualitySuggestionJob = Message<"metaxisdata.v1.QualitySuggestionJob"> & {
-  /**
-   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualitySuggestionJobStatus status = 2;
-   */
-  status: QualitySuggestionJobStatus;
-
-  /**
-   * The natural-language intent the job drafts for, shared by every target.
-   *
-   * @generated from field: string intent = 3;
-   */
-  intent: string;
-
-  /**
-   * The language the intent and drafts are written in, e.g. "en" or "zh-CN".
-   *
-   * @generated from field: string language = 4;
-   */
-  language: string;
-
-  /**
-   * @generated from field: repeated metaxisdata.v1.QualitySuggestionJobTarget targets = 5;
-   */
-  targets: QualitySuggestionJobTarget[];
-
-  /**
-   * Total targets, targets no longer PENDING/RUNNING, and queued suggestions.
-   *
-   * @generated from field: int32 target_count = 6;
-   */
-  targetCount: number;
-
-  /**
-   * @generated from field: int32 completed_target_count = 7;
-   */
-  completedTargetCount: number;
-
-  /**
-   * @generated from field: int32 suggestion_count = 8;
-   */
-  suggestionCount: number;
-
-  /**
-   * The provider facts of the analysis; set when the runner starts the job.
-   *
-   * @generated from field: string provider = 9;
-   */
-  provider: string;
-
-  /**
-   * @generated from field: string model = 10;
-   */
-  model: string;
-
-  /**
-   * @generated from field: string prompt_version = 11;
-   */
-  promptVersion: string;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp create_time = 12;
-   */
-  createTime?: Timestamp;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp start_time = 13;
-   */
-  startTime?: Timestamp;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp finish_time = 14;
-   */
-  finishTime?: Timestamp;
-
-  /**
-   * Empty unless the whole job failed; per-target failures live on the targets.
-   *
-   * @generated from field: string error = 15;
-   */
-  error: string;
-
-  /**
-   * Format: users/{user}.
-   *
-   * @generated from field: string created_by = 16;
-   */
-  createdBy: string;
-
-  /**
-   * True when this response returns a job that was already PENDING or RUNNING for
-   * the same intent, targets and columns. Re-submitting an identical request is
-   * idempotent: no second job or analysis is started.
-   *
-   * @generated from field: bool deduplicated = 17;
-   */
-  deduplicated: boolean;
-};
-
-/**
- * Describes the message metaxisdata.v1.QualitySuggestionJob.
- * Use `create(QualitySuggestionJobSchema)` to create a new message.
- */
-export declare const QualitySuggestionJobSchema: GenMessage<QualitySuggestionJob>;
-
-/**
- * @generated from message metaxisdata.v1.CreateQualitySuggestionJobRequest
- */
-export declare type CreateQualitySuggestionJobRequest = Message<"metaxisdata.v1.CreateQualitySuggestionJobRequest"> & {
-  /**
-   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-   *
-   * @generated from field: string parent = 1;
-   */
-  parent: string;
-
-  /**
-   * The natural-language intent, e.g. "email must not be empty". At most 2000
-   * characters.
-   *
-   * @generated from field: string intent = 2;
-   */
-  intent: string;
-
-  /**
-   * The language the intent and drafts are written in, e.g. "en" or "zh-CN".
-   *
-   * @generated from field: string language = 3;
-   */
-  language: string;
-
-  /**
-   * The tables or views to draft for, at most 20. Set meta_guid, meta_type and
-   * optionally columns; the path and columns are snapshotted for progress. The
-   * job visits them in order.
-   *
-   * @generated from field: repeated metaxisdata.v1.QualityTarget targets = 4;
-   */
-  targets: QualityTarget[];
-
-  /**
-   * Re-propose drafts that were already accepted or rejected, and re-analyze
-   * columns that already have a fact. The queue is still deduplicated by identity:
-   * regeneration refreshes a pending proposal instead of appending a duplicate.
-   *
-   * @generated from field: bool force_regenerate = 5;
-   */
-  forceRegenerate: boolean;
-};
-
-/**
- * Describes the message metaxisdata.v1.CreateQualitySuggestionJobRequest.
- * Use `create(CreateQualitySuggestionJobRequestSchema)` to create a new message.
- */
-export declare const CreateQualitySuggestionJobRequestSchema: GenMessage<CreateQualitySuggestionJobRequest>;
-
-/**
- * @generated from message metaxisdata.v1.GetQualitySuggestionJobRequest
- */
-export declare type GetQualitySuggestionJobRequest = Message<"metaxisdata.v1.GetQualitySuggestionJobRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.GetQualitySuggestionJobRequest.
- * Use `create(GetQualitySuggestionJobRequestSchema)` to create a new message.
- */
-export declare const GetQualitySuggestionJobRequestSchema: GenMessage<GetQualitySuggestionJobRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListQualitySuggestionJobsRequest
- */
-export declare type ListQualitySuggestionJobsRequest = Message<"metaxisdata.v1.ListQualitySuggestionJobsRequest"> & {
-  /**
-   * Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-   *
-   * @generated from field: string parent = 1;
-   */
-  parent: string;
-
-  /**
-   * The maximum number of jobs to return. If unspecified, at most 20 are
-   * returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-   *
-   * @generated from field: int32 page_size = 2;
-   */
-  pageSize: number;
-
-  /**
-   * A page token, received from a previous ListQualitySuggestionJobs call.
-   *
-   * @generated from field: string page_token = 3;
-   */
-  pageToken: string;
-
-  /**
-   * @generated from field: metaxisdata.v1.QualitySuggestionJobStatus status = 4;
-   */
-  status: QualitySuggestionJobStatus;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListQualitySuggestionJobsRequest.
- * Use `create(ListQualitySuggestionJobsRequestSchema)` to create a new message.
- */
-export declare const ListQualitySuggestionJobsRequestSchema: GenMessage<ListQualitySuggestionJobsRequest>;
-
-/**
- * @generated from message metaxisdata.v1.ListQualitySuggestionJobsResponse
- */
-export declare type ListQualitySuggestionJobsResponse = Message<"metaxisdata.v1.ListQualitySuggestionJobsResponse"> & {
-  /**
-   * @generated from field: repeated metaxisdata.v1.QualitySuggestionJob quality_suggestion_jobs = 1;
-   */
-  qualitySuggestionJobs: QualitySuggestionJob[];
-
-  /**
-   * @generated from field: string next_page_token = 2;
-   */
-  nextPageToken: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.ListQualitySuggestionJobsResponse.
- * Use `create(ListQualitySuggestionJobsResponseSchema)` to create a new message.
- */
-export declare const ListQualitySuggestionJobsResponseSchema: GenMessage<ListQualitySuggestionJobsResponse>;
-
-/**
- * @generated from message metaxisdata.v1.CancelQualitySuggestionJobRequest
- */
-export declare type CancelQualitySuggestionJobRequest = Message<"metaxisdata.v1.CancelQualitySuggestionJobRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.CancelQualitySuggestionJobRequest.
- * Use `create(CancelQualitySuggestionJobRequestSchema)` to create a new message.
- */
-export declare const CancelQualitySuggestionJobRequestSchema: GenMessage<CancelQualitySuggestionJobRequest>;
-
-/**
- * @generated from message metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest
- */
-export declare type GetQualitySuggestionJobTargetDebugRequest = Message<"metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest"> & {
-  /**
-   * Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-   *
-   * @generated from field: string name = 1;
-   */
-  name: string;
-
-  /**
-   * The zero-based index of the target in the job's target list.
-   *
-   * @generated from field: int32 target_index = 2;
-   */
-  targetIndex: number;
-};
-
-/**
- * Describes the message metaxisdata.v1.GetQualitySuggestionJobTargetDebugRequest.
- * Use `create(GetQualitySuggestionJobTargetDebugRequestSchema)` to create a new message.
- */
-export declare const GetQualitySuggestionJobTargetDebugRequestSchema: GenMessage<GetQualitySuggestionJobTargetDebugRequest>;
-
-/**
- * @generated from message metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse
- */
-export declare type GetQualitySuggestionJobTargetDebugResponse = Message<"metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse"> & {
-  /**
-   * False when runtime debug was off, the write failed, or the seven-day debug
-   * log retention already pruned the row.
-   *
-   * @generated from field: bool available = 1;
-   */
-  available: boolean;
-
-  /**
-   * @generated from field: string correlation_id = 2;
-   */
-  correlationId: string;
-
-  /**
-   * @generated from field: string request_body = 3;
-   */
-  requestBody: string;
-
-  /**
-   * @generated from field: string response_body = 4;
-   */
-  responseBody: string;
-
-  /**
-   * The classifier code of the failure, so the client can show its hint even
-   * when the raw bodies are gone.
-   *
-   * @generated from field: string error_code = 5;
-   */
-  errorCode: string;
-};
-
-/**
- * Describes the message metaxisdata.v1.GetQualitySuggestionJobTargetDebugResponse.
- * Use `create(GetQualitySuggestionJobTargetDebugResponseSchema)` to create a new message.
- */
-export declare const GetQualitySuggestionJobTargetDebugResponseSchema: GenMessage<GetQualitySuggestionJobTargetDebugResponse>;
-
-/**
  * @generated from message metaxisdata.v1.ListColumnProfilesRequest
  */
 export declare type ListColumnProfilesRequest = Message<"metaxisdata.v1.ListColumnProfilesRequest"> & {
@@ -8648,6 +8160,132 @@ export declare type GetQualityActionPolicyRequest = Message<"metaxisdata.v1.GetQ
 export declare const GetQualityActionPolicyRequestSchema: GenMessage<GetQualityActionPolicyRequest>;
 
 /**
+ * QualityAgentReportSchedule is the agent's patrol report cadence.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentReportSchedule
+ */
+export declare type QualityAgentReportSchedule = Message<"metaxisdata.v1.QualityAgentReportSchedule"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentReportFrequency frequency = 1;
+   */
+  frequency: QualityAgentReportFrequency;
+
+  /**
+   * "HH:MM" in timezone.
+   *
+   * @generated from field: string time = 2;
+   */
+  time: string;
+
+  /**
+   * @generated from field: string timezone = 3;
+   */
+  timezone: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.DayOfWeek day_of_week = 4;
+   */
+  dayOfWeek: DayOfWeek;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentReportSchedule.
+ * Use `create(QualityAgentReportScheduleSchema)` to create a new message.
+ */
+export declare const QualityAgentReportScheduleSchema: GenMessage<QualityAgentReportSchedule>;
+
+/**
+ * QualityAgentAdoptionSetting is the guardrail configuration of the adopt capability.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentAdoptionSetting
+ */
+export declare type QualityAgentAdoptionSetting = Message<"metaxisdata.v1.QualityAgentAdoptionSetting"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAdoptionMode mode = 1;
+   */
+  mode: QualityAgentAdoptionMode;
+
+  /**
+   * Rule types eligible for automatic adoption; empty means the server default
+   * low-risk set.
+   *
+   * @generated from field: repeated metaxisdata.v1.QualityRuleType rule_types = 2;
+   */
+  ruleTypes: QualityRuleType[];
+
+  /**
+   * Minimum confidence (0..1) a draft needs; 0 means the server default (0.7).
+   *
+   * @generated from field: double confidence_threshold = 3;
+   */
+  confidenceThreshold: number;
+
+  /**
+   * Daily adoption ceiling; 0 means the server default (10).
+   *
+   * @generated from field: int32 max_per_day = 4;
+   */
+  maxPerDay: number;
+
+  /**
+   * Whether critical assets may be auto-adopted; default false.
+   *
+   * @generated from field: bool allow_critical = 5;
+   */
+  allowCritical: boolean;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAdoptionSetting.
+ * Use `create(QualityAgentAdoptionSettingSchema)` to create a new message.
+ */
+export declare const QualityAgentAdoptionSettingSchema: GenMessage<QualityAgentAdoptionSetting>;
+
+/**
+ * QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
+ * default; the workspace hard caps still apply.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentBudget
+ */
+export declare type QualityAgentBudget = Message<"metaxisdata.v1.QualityAgentBudget"> & {
+  /**
+   * @generated from field: int64 tokens_per_hour = 1;
+   */
+  tokensPerHour: bigint;
+
+  /**
+   * @generated from field: int32 wakes_per_hour = 2;
+   */
+  wakesPerHour: number;
+
+  /**
+   * @generated from field: int32 max_concurrent_sessions = 3;
+   */
+  maxConcurrentSessions: number;
+
+  /**
+   * @generated from field: int32 max_new_sessions_per_hour = 4;
+   */
+  maxNewSessionsPerHour: number;
+
+  /**
+   * @generated from field: int32 max_active_sessions = 5;
+   */
+  maxActiveSessions: number;
+
+  /**
+   * @generated from field: int32 conversation_messages_per_hour = 6;
+   */
+  conversationMessagesPerHour: number;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentBudget.
+ * Use `create(QualityAgentBudgetSchema)` to create a new message.
+ */
+export declare const QualityAgentBudgetSchema: GenMessage<QualityAgentBudget>;
+
+/**
  * QualityAgent is one agent principal: an independent identity an administrator
  * creates for autonomous quality work. Its token is issued once, and disabling the
  * agent ends every token it holds.
@@ -8688,6 +8326,69 @@ export declare type QualityAgent = Message<"metaxisdata.v1.QualityAgent"> & {
    * @generated from field: google.protobuf.Timestamp create_time = 6;
    */
   createTime?: Timestamp;
+
+  /**
+   * Runtime state; DISABLED is permanent and enabled is false.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentState state = 7;
+   */
+  state: QualityAgentState;
+
+  /**
+   * Format: users/{user}. The owner is the only caller who may talk to the agent.
+   *
+   * @generated from field: string owner = 8;
+   */
+  owner: string;
+
+  /**
+   * Database resource names in scope: instances/{instance}/databases/{database}.
+   *
+   * @generated from field: repeated string databases = 9;
+   */
+  databases: string[];
+
+  /**
+   * Capability ids: "suggest", "adopt", "patrol"; extensible server-side.
+   *
+   * @generated from field: repeated string capabilities = 10;
+   */
+  capabilities: string[];
+
+  /**
+   * LLM provider profile; empty means the workspace default.
+   *
+   * @generated from field: string provider_profile = 11;
+   */
+  providerProfile: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentReportSchedule report_schedule = 12;
+   */
+  reportSchedule?: QualityAgentReportSchedule;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAdoptionSetting adoption = 13;
+   */
+  adoption?: QualityAgentAdoptionSetting;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentBudget budget = 14;
+   */
+  budget?: QualityAgentBudget;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent's
+   * conversation session, created lazily.
+   *
+   * @generated from field: string conversation = 15;
+   */
+  conversation: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp update_time = 16;
+   */
+  updateTime?: Timestamp;
 };
 
 /**
@@ -8716,6 +8417,49 @@ export declare type CreateQualityAgentRequest = Message<"metaxisdata.v1.CreateQu
    * @generated from field: string description = 3;
    */
   description: string;
+
+  /**
+   * Format: users/{user}. Required; the agent's owner and only conversationalist.
+   *
+   * @generated from field: string owner = 4;
+   */
+  owner: string;
+
+  /**
+   * Database resource names in scope; at least one is required.
+   *
+   * @generated from field: repeated string databases = 5;
+   */
+  databases: string[];
+
+  /**
+   * Capability ids; at least one is required.
+   *
+   * @generated from field: repeated string capabilities = 6;
+   */
+  capabilities: string[];
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentReportSchedule report_schedule = 7;
+   */
+  reportSchedule?: QualityAgentReportSchedule;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAdoptionSetting adoption = 8;
+   */
+  adoption?: QualityAgentAdoptionSetting;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentBudget budget = 9;
+   */
+  budget?: QualityAgentBudget;
+
+  /**
+   * Whether to start the agent immediately; default false keeps it DRAFT.
+   *
+   * @generated from field: bool start = 10;
+   */
+  start: boolean;
 };
 
 /**
@@ -8723,6 +8467,582 @@ export declare type CreateQualityAgentRequest = Message<"metaxisdata.v1.CreateQu
  * Use `create(CreateQualityAgentRequestSchema)` to create a new message.
  */
 export declare const CreateQualityAgentRequestSchema: GenMessage<CreateQualityAgentRequest>;
+
+/**
+ * GetQualityAgentRequest reads one agent with its configuration.
+ *
+ * @generated from message metaxisdata.v1.GetQualityAgentRequest
+ */
+export declare type GetQualityAgentRequest = Message<"metaxisdata.v1.GetQualityAgentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentRequest.
+ * Use `create(GetQualityAgentRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentRequestSchema: GenMessage<GetQualityAgentRequest>;
+
+/**
+ * SendQualityAgentMessageRequest appends the owner's message and wakes the agent.
+ *
+ * @generated from message metaxisdata.v1.SendQualityAgentMessageRequest
+ */
+export declare type SendQualityAgentMessageRequest = Message<"metaxisdata.v1.SendQualityAgentMessageRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The owner's message. The field name is deliberately not `content`: the audit
+   * redaction list matches field names and this body must not enter the ledger.
+   *
+   * @generated from field: string message_body = 2;
+   */
+  messageBody: string;
+
+  /**
+   * A client-generated idempotency id; repeating it returns the existing message.
+   *
+   * @generated from field: string request_id = 3;
+   */
+  requestId: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.SendQualityAgentMessageRequest.
+ * Use `create(SendQualityAgentMessageRequestSchema)` to create a new message.
+ */
+export declare const SendQualityAgentMessageRequestSchema: GenMessage<SendQualityAgentMessageRequest>;
+
+/**
+ * ListQualityAgentConversationMessagesRequest reads the agent's conversation.
+ *
+ * @generated from message metaxisdata.v1.ListQualityAgentConversationMessagesRequest
+ */
+export declare type ListQualityAgentConversationMessagesRequest = Message<"metaxisdata.v1.ListQualityAgentConversationMessagesRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+
+  /**
+   * Return messages with seq greater than this; the polling watermark.
+   *
+   * @generated from field: int64 after_seq = 4;
+   */
+  afterSeq: bigint;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentConversationMessagesRequest.
+ * Use `create(ListQualityAgentConversationMessagesRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentConversationMessagesRequestSchema: GenMessage<ListQualityAgentConversationMessagesRequest>;
+
+/**
+ * ListQualityAgentConversationMessagesResponse is one chronological page.
+ *
+ * @generated from message metaxisdata.v1.ListQualityAgentConversationMessagesResponse
+ */
+export declare type ListQualityAgentConversationMessagesResponse = Message<"metaxisdata.v1.ListQualityAgentConversationMessagesResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentSessionMessage quality_agent_conversation_messages = 1;
+   */
+  qualityAgentConversationMessages: QualityAgentSessionMessage[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentConversationMessagesResponse.
+ * Use `create(ListQualityAgentConversationMessagesResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentConversationMessagesResponseSchema: GenMessage<ListQualityAgentConversationMessagesResponse>;
+
+/**
+ * QualityAgentReport is one deterministic patrol report over an agent's scope.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentReport
+ */
+export declare type QualityAgentReport = Message<"metaxisdata.v1.QualityAgentReport"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentReportTrigger trigger = 3;
+   */
+  trigger: QualityAgentReportTrigger;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentReportPeriod period_kind = 4;
+   */
+  periodKind: QualityAgentReportPeriod;
+
+  /**
+   * Stable period identity: YYYY-MM-DD for daily, ISO year-week for weekly.
+   *
+   * @generated from field: string period_key = 5;
+   */
+  periodKey: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp period_start = 6;
+   */
+  periodStart?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp period_end = 7;
+   */
+  periodEnd?: Timestamp;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentReportState state = 8;
+   */
+  state: QualityAgentReportState;
+
+  /**
+   * Database resource names the report covers.
+   *
+   * @generated from field: repeated string databases = 9;
+   */
+  databases: string[];
+
+  /**
+   * @generated from field: int32 target_count = 10;
+   */
+  targetCount: number;
+
+  /**
+   * @generated from field: int32 covered_target_count = 11;
+   */
+  coveredTargetCount: number;
+
+  /**
+   * @generated from field: int32 rule_count = 12;
+   */
+  ruleCount: number;
+
+  /**
+   * @generated from field: int32 execution_count = 13;
+   */
+  executionCount: number;
+
+  /**
+   * @generated from field: int32 passed_count = 14;
+   */
+  passedCount: number;
+
+  /**
+   * @generated from field: int32 warned_count = 15;
+   */
+  warnedCount: number;
+
+  /**
+   * @generated from field: int32 failed_count = 16;
+   */
+  failedCount: number;
+
+  /**
+   * @generated from field: int32 errored_count = 17;
+   */
+  erroredCount: number;
+
+  /**
+   * @generated from field: int32 new_issue_count = 18;
+   */
+  newIssueCount: number;
+
+  /**
+   * @generated from field: int32 open_issue_count = 19;
+   */
+  openIssueCount: number;
+
+  /**
+   * @generated from field: int32 pending_proposal_count = 20;
+   */
+  pendingProposalCount: number;
+
+  /**
+   * @generated from field: int64 tokens_used = 21;
+   */
+  tokensUsed: bigint;
+
+  /**
+   * @generated from field: string body_markdown = 22;
+   */
+  bodyMarkdown: string;
+
+  /**
+   * @generated from field: string failure_reason = 23;
+   */
+  failureReason: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 24;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp generate_time = 25;
+   */
+  generateTime?: Timestamp;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentReport.
+ * Use `create(QualityAgentReportSchema)` to create a new message.
+ */
+export declare const QualityAgentReportSchema: GenMessage<QualityAgentReport>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentReportsRequest
+ */
+export declare type ListQualityAgentReportsRequest = Message<"metaxisdata.v1.ListQualityAgentReportsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentReportsRequest.
+ * Use `create(ListQualityAgentReportsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentReportsRequestSchema: GenMessage<ListQualityAgentReportsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentReportsResponse
+ */
+export declare type ListQualityAgentReportsResponse = Message<"metaxisdata.v1.ListQualityAgentReportsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentReport quality_agent_reports = 1;
+   */
+  qualityAgentReports: QualityAgentReport[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentReportsResponse.
+ * Use `create(ListQualityAgentReportsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentReportsResponseSchema: GenMessage<ListQualityAgentReportsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.GetQualityAgentReportRequest
+ */
+export declare type GetQualityAgentReportRequest = Message<"metaxisdata.v1.GetQualityAgentReportRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.GetQualityAgentReportRequest.
+ * Use `create(GetQualityAgentReportRequestSchema)` to create a new message.
+ */
+export declare const GetQualityAgentReportRequestSchema: GenMessage<GetQualityAgentReportRequest>;
+
+/**
+ * QualityAgentAttention is one owner escalation inside an agent.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentAttention
+ */
+export declare type QualityAgentAttention = Message<"metaxisdata.v1.QualityAgentAttention"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 2;
+   */
+  agent: string;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAttentionKind kind = 3;
+   */
+  kind: QualityAgentAttentionKind;
+
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgentAttentionStatus status = 4;
+   */
+  status: QualityAgentAttentionStatus;
+
+  /**
+   * The target session to resume when the owner answers; empty for an agent event.
+   *
+   * @generated from field: string session = 5;
+   */
+  session: string;
+
+  /**
+   * The resource the owner should open, e.g. a report or a proposal.
+   *
+   * @generated from field: string reference = 6;
+   */
+  reference: string;
+
+  /**
+   * @generated from field: string title = 7;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string question = 8;
+   */
+  question: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp create_time = 9;
+   */
+  createTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp resolve_time = 10;
+   */
+  resolveTime?: Timestamp;
+
+  /**
+   * Format: users/{user}; empty while open.
+   *
+   * @generated from field: string resolved_by = 11;
+   */
+  resolvedBy: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAttention.
+ * Use `create(QualityAgentAttentionSchema)` to create a new message.
+ */
+export declare const QualityAgentAttentionSchema: GenMessage<QualityAgentAttention>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentAttentionsRequest
+ */
+export declare type ListQualityAgentAttentionsRequest = Message<"metaxisdata.v1.ListQualityAgentAttentionsRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string parent = 1;
+   */
+  parent: string;
+
+  /**
+   * UNSPECIFIED lists every status.
+   *
+   * @generated from field: metaxisdata.v1.QualityAgentAttentionStatus status = 2;
+   */
+  status: QualityAgentAttentionStatus;
+
+  /**
+   * @generated from field: int32 page_size = 3;
+   */
+  pageSize: number;
+
+  /**
+   * @generated from field: string page_token = 4;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentAttentionsRequest.
+ * Use `create(ListQualityAgentAttentionsRequestSchema)` to create a new message.
+ */
+export declare const ListQualityAgentAttentionsRequestSchema: GenMessage<ListQualityAgentAttentionsRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.ListQualityAgentAttentionsResponse
+ */
+export declare type ListQualityAgentAttentionsResponse = Message<"metaxisdata.v1.ListQualityAgentAttentionsResponse"> & {
+  /**
+   * @generated from field: repeated metaxisdata.v1.QualityAgentAttention quality_agent_attentions = 1;
+   */
+  qualityAgentAttentions: QualityAgentAttention[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ListQualityAgentAttentionsResponse.
+ * Use `create(ListQualityAgentAttentionsResponseSchema)` to create a new message.
+ */
+export declare const ListQualityAgentAttentionsResponseSchema: GenMessage<ListQualityAgentAttentionsResponse>;
+
+/**
+ * @generated from message metaxisdata.v1.ReplyQualityAgentAttentionRequest
+ */
+export declare type ReplyQualityAgentAttentionRequest = Message<"metaxisdata.v1.ReplyQualityAgentAttentionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * The owner's answer. Named message_body so the audit ledger redacts it.
+   *
+   * @generated from field: string message_body = 2;
+   */
+  messageBody: string;
+
+  /**
+   * @generated from field: string request_id = 3;
+   */
+  requestId: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.ReplyQualityAgentAttentionRequest.
+ * Use `create(ReplyQualityAgentAttentionRequestSchema)` to create a new message.
+ */
+export declare const ReplyQualityAgentAttentionRequestSchema: GenMessage<ReplyQualityAgentAttentionRequest>;
+
+/**
+ * @generated from message metaxisdata.v1.DismissQualityAgentAttentionRequest
+ */
+export declare type DismissQualityAgentAttentionRequest = Message<"metaxisdata.v1.DismissQualityAgentAttentionRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.DismissQualityAgentAttentionRequest.
+ * Use `create(DismissQualityAgentAttentionRequestSchema)` to create a new message.
+ */
+export declare const DismissQualityAgentAttentionRequestSchema: GenMessage<DismissQualityAgentAttentionRequest>;
+
+/**
+ * UpdateQualityAgentRequest replaces the masked configuration fields.
+ *
+ * @generated from message metaxisdata.v1.UpdateQualityAgentRequest
+ */
+export declare type UpdateQualityAgentRequest = Message<"metaxisdata.v1.UpdateQualityAgentRequest"> & {
+  /**
+   * @generated from field: metaxisdata.v1.QualityAgent quality_agent = 1;
+   */
+  qualityAgent?: QualityAgent;
+
+  /**
+   * Fields to replace: display_name, description, owner, databases, capabilities,
+   * provider_profile, report_schedule, adoption, budget.
+   *
+   * @generated from field: google.protobuf.FieldMask update_mask = 2;
+   */
+  updateMask?: FieldMask;
+};
+
+/**
+ * Describes the message metaxisdata.v1.UpdateQualityAgentRequest.
+ * Use `create(UpdateQualityAgentRequestSchema)` to create a new message.
+ */
+export declare const UpdateQualityAgentRequestSchema: GenMessage<UpdateQualityAgentRequest>;
+
+/**
+ * StartQualityAgentRequest activates a draft or paused agent.
+ *
+ * @generated from message metaxisdata.v1.StartQualityAgentRequest
+ */
+export declare type StartQualityAgentRequest = Message<"metaxisdata.v1.StartQualityAgentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.StartQualityAgentRequest.
+ * Use `create(StartQualityAgentRequestSchema)` to create a new message.
+ */
+export declare const StartQualityAgentRequestSchema: GenMessage<StartQualityAgentRequest>;
+
+/**
+ * PauseQualityAgentRequest pauses an active agent without disabling its identity.
+ *
+ * @generated from message metaxisdata.v1.PauseQualityAgentRequest
+ */
+export declare type PauseQualityAgentRequest = Message<"metaxisdata.v1.PauseQualityAgentRequest"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.PauseQualityAgentRequest.
+ * Use `create(PauseQualityAgentRequestSchema)` to create a new message.
+ */
+export declare const PauseQualityAgentRequestSchema: GenMessage<PauseQualityAgentRequest>;
 
 /**
  * @generated from message metaxisdata.v1.CreateQualityAgentResponse
@@ -10825,6 +11145,13 @@ export declare type ListQualityAgentSessionsRequest = Message<"metaxisdata.v1.Li
    * @generated from field: metaxisdata.v1.QualityAgentSessionMode mode = 8;
    */
   mode: QualityAgentSessionMode;
+
+  /**
+   * Administrator diagnostics filter: keep only this agent's sessions.
+   *
+   * @generated from field: string agent = 9;
+   */
+  agent: string;
 };
 
 /**
@@ -11218,6 +11545,13 @@ export declare type ListQualityAgentEnrollmentsRequest = Message<"metaxisdata.v1
    * @generated from field: string search = 7;
    */
   search: string;
+
+  /**
+   * Administrator diagnostics filter: keep only this agent's queue rows.
+   *
+   * @generated from field: string agent = 8;
+   */
+  agent: string;
 };
 
 /**
@@ -12772,92 +13106,6 @@ export enum QualityTrendNotice {
 export declare const QualityTrendNoticeSchema: GenEnum<QualityTrendNotice>;
 
 /**
- * QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.
- *
- * @generated from enum metaxisdata.v1.QualitySuggestionJobStatus
- */
-export enum QualitySuggestionJobStatus {
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_PENDING = 1;
-   */
-  PENDING = 1,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_RUNNING = 2;
-   */
-  RUNNING = 2,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_COMPLETED = 3;
-   */
-  COMPLETED = 3,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_FAILED = 4;
-   */
-  FAILED = 4,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_STATUS_CANCELED = 5;
-   */
-  CANCELED = 5,
-}
-
-/**
- * Describes the enum metaxisdata.v1.QualitySuggestionJobStatus.
- */
-export declare const QualitySuggestionJobStatusSchema: GenEnum<QualitySuggestionJobStatus>;
-
-/**
- * QualitySuggestionJobTargetState is where one target of a drafting job stands.
- * SKIPPED means the job stopped before asking the model for that target; FAILED
- * means the model was asked and the target could not produce suggestions.
- *
- * @generated from enum metaxisdata.v1.QualitySuggestionJobTargetState
- */
-export enum QualitySuggestionJobTargetState {
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED = 0;
-   */
-  UNSPECIFIED = 0,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING = 1;
-   */
-  PENDING = 1,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING = 2;
-   */
-  RUNNING = 2,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE = 3;
-   */
-  DONE = 3,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED = 4;
-   */
-  FAILED = 4,
-
-  /**
-   * @generated from enum value: QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED = 5;
-   */
-  SKIPPED = 5,
-}
-
-/**
- * Describes the enum metaxisdata.v1.QualitySuggestionJobTargetState.
- */
-export declare const QualitySuggestionJobTargetStateSchema: GenEnum<QualitySuggestionJobTargetState>;
-
-/**
  * QualityTargetOrder is how the target directory is ordered.
  *
  * @generated from enum metaxisdata.v1.QualityTargetOrder
@@ -13453,6 +13701,264 @@ export enum QualityInvestigationVerdict {
  * Describes the enum metaxisdata.v1.QualityInvestigationVerdict.
  */
 export declare const QualityInvestigationVerdictSchema: GenEnum<QualityInvestigationVerdict>;
+
+/**
+ * QualityAgentState is the runtime lifecycle of one quality agent.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentState
+ */
+export enum QualityAgentState {
+  /**
+   * @generated from enum value: QUALITY_AGENT_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_STATE_DRAFT = 1;
+   */
+  DRAFT = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_STATE_ACTIVE = 2;
+   */
+  ACTIVE = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_STATE_PAUSED = 3;
+   */
+  PAUSED = 3,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_STATE_DISABLED = 4;
+   */
+  DISABLED = 4,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentState.
+ */
+export declare const QualityAgentStateSchema: GenEnum<QualityAgentState>;
+
+/**
+ * QualityAgentReportFrequency is how often an agent's patrol report is generated.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentReportFrequency
+ */
+export enum QualityAgentReportFrequency {
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_FREQUENCY_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_FREQUENCY_OFF = 1;
+   */
+  OFF = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_FREQUENCY_DAILY = 2;
+   */
+  DAILY = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_FREQUENCY_WEEKLY = 3;
+   */
+  WEEKLY = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentReportFrequency.
+ */
+export declare const QualityAgentReportFrequencySchema: GenEnum<QualityAgentReportFrequency>;
+
+/**
+ * QualityAgentAdoptionMode says what happens to a low-risk suggestion an agent
+ * auto-adopts. PAUSED creates the check disabled for the owner to enable; ACTIVE
+ * creates it enabled. Both require the adopt capability.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentAdoptionMode
+ */
+export enum QualityAgentAdoptionMode {
+  /**
+   * @generated from enum value: QUALITY_AGENT_ADOPTION_MODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ADOPTION_MODE_OFF = 1;
+   */
+  OFF = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ADOPTION_MODE_PAUSED = 2;
+   */
+  PAUSED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ADOPTION_MODE_ACTIVE = 3;
+   */
+  ACTIVE = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentAdoptionMode.
+ */
+export declare const QualityAgentAdoptionModeSchema: GenEnum<QualityAgentAdoptionMode>;
+
+/**
+ * QualityAgentReportTrigger says what produced a report.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentReportTrigger
+ */
+export enum QualityAgentReportTrigger {
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED = 1;
+   */
+  SCHEDULED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND = 2;
+   */
+  ON_DEMAND = 2,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentReportTrigger.
+ */
+export declare const QualityAgentReportTriggerSchema: GenEnum<QualityAgentReportTrigger>;
+
+/**
+ * QualityAgentReportPeriod is the report's period shape.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentReportPeriod
+ */
+export enum QualityAgentReportPeriod {
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_PERIOD_DAILY = 1;
+   */
+  DAILY = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_PERIOD_WEEKLY = 2;
+   */
+  WEEKLY = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND = 3;
+   */
+  ON_DEMAND = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentReportPeriod.
+ */
+export declare const QualityAgentReportPeriodSchema: GenEnum<QualityAgentReportPeriod>;
+
+/**
+ * QualityAgentReportState is the asynchronous report generation state.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentReportState
+ */
+export enum QualityAgentReportState {
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_STATE_READY = 2;
+   */
+  READY = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_REPORT_STATE_FAILED = 3;
+   */
+  FAILED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentReportState.
+ */
+export declare const QualityAgentReportStateSchema: GenEnum<QualityAgentReportState>;
+
+/**
+ * QualityAgentAttentionKind is why the owner is needed.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentAttentionKind
+ */
+export enum QualityAgentAttentionKind {
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_BLOCKED = 1;
+   */
+  BLOCKED = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING = 2;
+   */
+  PROPOSAL_PENDING = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY = 3;
+   */
+  REPORT_ANOMALY = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentAttentionKind.
+ */
+export declare const QualityAgentAttentionKindSchema: GenEnum<QualityAgentAttentionKind>;
+
+/**
+ * QualityAgentAttentionStatus is the to-do's lifecycle.
+ *
+ * @generated from enum metaxisdata.v1.QualityAgentAttentionStatus
+ */
+export enum QualityAgentAttentionStatus {
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_OPEN = 1;
+   */
+  OPEN = 1,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_RESOLVED = 2;
+   */
+  RESOLVED = 2,
+
+  /**
+   * @generated from enum value: QUALITY_AGENT_ATTENTION_STATUS_DISMISSED = 3;
+   */
+  DISMISSED = 3,
+}
+
+/**
+ * Describes the enum metaxisdata.v1.QualityAgentAttentionStatus.
+ */
+export declare const QualityAgentAttentionStatusSchema: GenEnum<QualityAgentAttentionStatus>;
 
 /**
  * QualityContractChangeKind says which sections of a version changed against its
@@ -14150,64 +14656,6 @@ export declare const DataQualityService: GenService<{
     output: typeof BatchUpdateQualitySuggestionsResponseSchema;
   },
   /**
-   * Start a background AI drafting job over one or more tables. The call returns
-   * as soon as the job is queued: the runner asks the model for each target in
-   * turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
-   * progress. Queued suggestions appear in the review queue like any other.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualitySuggestionJob
-   */
-  createQualitySuggestionJob: {
-    methodKind: "unary";
-    input: typeof CreateQualitySuggestionJobRequestSchema;
-    output: typeof QualitySuggestionJobSchema;
-  },
-  /**
-   * Read one drafting job, including per-target progress and the suggestions it
-   * queued so far.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualitySuggestionJob
-   */
-  getQualitySuggestionJob: {
-    methodKind: "unary";
-    input: typeof GetQualitySuggestionJobRequestSchema;
-    output: typeof QualitySuggestionJobSchema;
-  },
-  /**
-   * List drafting jobs, newest first.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualitySuggestionJobs
-   */
-  listQualitySuggestionJobs: {
-    methodKind: "unary";
-    input: typeof ListQualitySuggestionJobsRequestSchema;
-    output: typeof ListQualitySuggestionJobsResponseSchema;
-  },
-  /**
-   * Ask a drafting job to stop. A pending job is canceled immediately; a running
-   * job finishes its current target, marks the rest skipped and ends CANCELED.
-   * Suggestions already queued are kept.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.CancelQualitySuggestionJob
-   */
-  cancelQualitySuggestionJob: {
-    methodKind: "unary";
-    input: typeof CancelQualitySuggestionJobRequestSchema;
-    output: typeof QualitySuggestionJobSchema;
-  },
-  /**
-   * Read the raw request and response bodies of one failed target when runtime
-   * debug mode captured them. The target's diagnostic carries the correlation id
-   * and says whether a body is available; llm_debug_log keeps it for seven days.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualitySuggestionJobTargetDebug
-   */
-  getQualitySuggestionJobTargetDebug: {
-    methodKind: "unary";
-    input: typeof GetQualitySuggestionJobTargetDebugRequestSchema;
-    output: typeof GetQualitySuggestionJobTargetDebugResponseSchema;
-  },
-  /**
    * List the cached deterministic profiles of columns. Profiles are read-only
    * measurements; there is no get or update.
    *
@@ -14649,7 +15097,122 @@ export declare const DataQualityService: GenService<{
     output: typeof CreateQualityAgentResponseSchema;
   },
   /**
-   * List the workspace's agent principals, without tokens.
+   * Read one agent with its runtime configuration.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgent
+   */
+  getQualityAgent: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentRequestSchema;
+    output: typeof QualityAgentSchema;
+  },
+  /**
+   * Append the owner's message to the agent's conversation and wake it. Only the
+   * agent's owner may send; administrators may read but not talk.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.SendQualityAgentMessage
+   */
+  sendQualityAgentMessage: {
+    methodKind: "unary";
+    input: typeof SendQualityAgentMessageRequestSchema;
+    output: typeof QualityAgentSessionMessageSchema;
+  },
+  /**
+   * Read the agent's front-office conversation. The owner and administrators may
+   * read; only the owner may send.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentConversationMessages
+   */
+  listQualityAgentConversationMessages: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentConversationMessagesRequestSchema;
+    output: typeof ListQualityAgentConversationMessagesResponseSchema;
+  },
+  /**
+   * List one agent's patrol reports, newest period first.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentReports
+   */
+  listQualityAgentReports: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentReportsRequestSchema;
+    output: typeof ListQualityAgentReportsResponseSchema;
+  },
+  /**
+   * Read one report with its rendered body.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.GetQualityAgentReport
+   */
+  getQualityAgentReport: {
+    methodKind: "unary";
+    input: typeof GetQualityAgentReportRequestSchema;
+    output: typeof QualityAgentReportSchema;
+  },
+  /**
+   * List one agent's escalations. The owner and administrators may read.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentAttentions
+   */
+  listQualityAgentAttentions: {
+    methodKind: "unary";
+    input: typeof ListQualityAgentAttentionsRequestSchema;
+    output: typeof ListQualityAgentAttentionsResponseSchema;
+  },
+  /**
+   * Answer an escalation as the owner. The reply is appended to the target session,
+   * the session is resumed, and the attention is resolved; a retry on a closed
+   * attention is a no-op.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.ReplyQualityAgentAttention
+   */
+  replyQualityAgentAttention: {
+    methodKind: "unary";
+    input: typeof ReplyQualityAgentAttentionRequestSchema;
+    output: typeof QualityAgentAttentionSchema;
+  },
+  /**
+   * Dismiss an escalation without resuming the session. Owner only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.DismissQualityAgentAttention
+   */
+  dismissQualityAgentAttention: {
+    methodKind: "unary";
+    input: typeof DismissQualityAgentAttentionRequestSchema;
+    output: typeof QualityAgentAttentionSchema;
+  },
+  /**
+   * Replace the masked configuration of one agent. Administrator only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityAgent
+   */
+  updateQualityAgent: {
+    methodKind: "unary";
+    input: typeof UpdateQualityAgentRequestSchema;
+    output: typeof QualityAgentSchema;
+  },
+  /**
+   * Activate a DRAFT or PAUSED agent. Administrator only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.StartQualityAgent
+   */
+  startQualityAgent: {
+    methodKind: "unary";
+    input: typeof StartQualityAgentRequestSchema;
+    output: typeof QualityAgentSchema;
+  },
+  /**
+   * Pause an ACTIVE agent. Administrator only.
+   *
+   * @generated from rpc metaxisdata.v1.DataQualityService.PauseQualityAgent
+   */
+  pauseQualityAgent: {
+    methodKind: "unary";
+    input: typeof PauseQualityAgentRequestSchema;
+    output: typeof QualityAgentSchema;
+  },
+  /**
+   * List the workspace's agents. Administrators see every agent; other members
+   * see the agents they own.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgents
    */
@@ -14726,17 +15289,6 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityLLMUsageSchema;
   },
   /**
-   * Create one target's long-lived agent session. The target's database must be in
-   * the runner's allowlist, the runner must be enabled and an enabled agent must exist.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.CreateQualityAgentSession
-   */
-  createQualityAgentSession: {
-    methodKind: "unary";
-    input: typeof CreateQualityAgentSessionRequestSchema;
-    output: typeof QualityAgentSessionSchema;
-  },
-  /**
    * List the workspace's sessions by newest activity first.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ListQualityAgentSessions
@@ -14757,43 +15309,14 @@ export declare const DataQualityService: GenService<{
     output: typeof QualityAgentSessionSchema;
   },
   /**
-   * Pause a session: no new wake starts, the conversation stays.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.PauseQualityAgentSession
-   */
-  pauseQualityAgentSession: {
-    methodKind: "unary";
-    input: typeof PauseQualityAgentSessionRequestSchema;
-    output: typeof QualityAgentSessionSchema;
-  },
-  /**
-   * Resume a paused or blocked session; it wakes immediately.
+   * Resume a stuck session. Administrator-only recovery, used from diagnostics after
+   * a restart-limit/internal-error block; it is not a product action.
    *
    * @generated from rpc metaxisdata.v1.DataQualityService.ResumeQualityAgentSession
    */
   resumeQualityAgentSession: {
     methodKind: "unary";
     input: typeof ResumeQualityAgentSessionRequestSchema;
-    output: typeof QualityAgentSessionSchema;
-  },
-  /**
-   * Archive a session (a tombstone). The conversation stays readable.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.ArchiveQualityAgentSession
-   */
-  archiveQualityAgentSession: {
-    methodKind: "unary";
-    input: typeof ArchiveQualityAgentSessionRequestSchema;
-    output: typeof EmptySchema;
-  },
-  /**
-   * Append a person's message to the session and wake it immediately.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.WakeQualityAgentSession
-   */
-  wakeQualityAgentSession: {
-    methodKind: "unary";
-    input: typeof WakeQualityAgentSessionRequestSchema;
     output: typeof QualityAgentSessionSchema;
   },
   /**
@@ -14848,28 +15371,6 @@ export declare const DataQualityService: GenService<{
     methodKind: "unary";
     input: typeof GetQualityAgentEnrollmentSummaryRequestSchema;
     output: typeof QualityAgentEnrollmentSummarySchema;
-  },
-  /**
-   * Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
-   * as target states, and a stale expected_revision is rejected.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.UpdateQualityAgentEnrollment
-   */
-  updateQualityAgentEnrollment: {
-    methodKind: "unary";
-    input: typeof UpdateQualityAgentEnrollmentRequestSchema;
-    output: typeof QualityAgentEnrollmentSchema;
-  },
-  /**
-   * Requeue one enrollment now: it becomes pending, its next review is due and its
-   * priority is raised.
-   *
-   * @generated from rpc metaxisdata.v1.DataQualityService.RetryQualityAgentEnrollment
-   */
-  retryQualityAgentEnrollment: {
-    methodKind: "unary";
-    input: typeof RetryQualityAgentEnrollmentRequestSchema;
-    output: typeof QualityAgentEnrollmentSchema;
   },
 }>;
 

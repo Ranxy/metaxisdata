@@ -73,6 +73,12 @@ export declare type Notification = Message<"metaxisdata.v1.Notification"> & {
      */
     value: DataQualityDetail;
     case: "dataQuality";
+  } | {
+    /**
+     * @generated from field: metaxisdata.v1.QualityAgentAttentionDetail quality_agent_attention = 9;
+     */
+    value: QualityAgentAttentionDetail;
+    case: "qualityAgentAttention";
   } | { case: undefined; value?: undefined };
 };
 
@@ -246,6 +252,51 @@ export declare type OpenLineageDetail = Message<"metaxisdata.v1.OpenLineageDetai
  * Use `create(OpenLineageDetailSchema)` to create a new message.
  */
 export declare const OpenLineageDetailSchema: GenMessage<OpenLineageDetail>;
+
+/**
+ * QualityAgentAttentionDetail reports one agent escalation. The client renders the
+ * message from the structured detail and its own i18n catalog.
+ *
+ * @generated from message metaxisdata.v1.QualityAgentAttentionDetail
+ */
+export declare type QualityAgentAttentionDetail = Message<"metaxisdata.v1.QualityAgentAttentionDetail"> & {
+  /**
+   * Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+   *
+   * @generated from field: string agent = 1;
+   */
+  agent: string;
+
+  /**
+   * Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+   *
+   * @generated from field: string attention = 2;
+   */
+  attention: string;
+
+  /**
+   * 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (store QualityAgentAttentionKind).
+   *
+   * @generated from field: int32 kind = 3;
+   */
+  kind: number;
+
+  /**
+   * @generated from field: string title = 4;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string question = 5;
+   */
+  question: string;
+};
+
+/**
+ * Describes the message metaxisdata.v1.QualityAgentAttentionDetail.
+ * Use `create(QualityAgentAttentionDetailSchema)` to create a new message.
+ */
+export declare const QualityAgentAttentionDetailSchema: GenMessage<QualityAgentAttentionDetail>;
 
 /**
  * @generated from message metaxisdata.v1.ListNotificationsRequest
@@ -1531,6 +1582,13 @@ export enum NotificationType {
    * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY_DIGEST = 4;
    */
   DATA_QUALITY_DIGEST = 4,
+
+  /**
+   * A quality agent escalated a session or a proposal to its owner.
+   *
+   * @generated from enum value: NOTIFICATION_TYPE_DATA_QUALITY_AGENT = 5;
+   */
+  DATA_QUALITY_AGENT = 5,
 }
 
 /**

@@ -13,6 +13,7 @@ import "google/protobuf/timestamp.proto";
 import "v1/annotation.proto";
 import "v1/database_service.proto";
 import "v1/explain_sql_service.proto";
+import "v1/setting_service.proto";
 
 option go_package = "github.com/Ranxy/metaxisdata/backend/generated-go/v1";
 
@@ -356,55 +357,6 @@ service DataQualityService {
       post: "/v1/{parent=workspaces/*}/qualitySuggestions:batchDecide"
       body: "*"
     };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
-  }
-
-  // Start a background AI drafting job over one or more tables. The call returns
-  // as soon as the job is queued: the runner asks the model for each target in
-  // turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
-  // progress. Queued suggestions appear in the review queue like any other.
-  rpc CreateQualitySuggestionJob(CreateQualitySuggestionJobRequest) returns (QualitySuggestionJob) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualitySuggestionJobs"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
-  }
-
-  // Read one drafting job, including per-target progress and the suggestions it
-  // queued so far.
-  rpc GetQualitySuggestionJob(GetQualitySuggestionJobRequest) returns (QualitySuggestionJob) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualitySuggestionJobs/*}"};
-    option (google.api.method_signature) = "name";
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
-  }
-
-  // List drafting jobs, newest first.
-  rpc ListQualitySuggestionJobs(ListQualitySuggestionJobsRequest) returns (ListQualitySuggestionJobsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualitySuggestionJobs"};
-    option (google.api.method_signature) = "parent";
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
-  }
-
-  // Ask a drafting job to stop. A pending job is canceled immediately; a running
-  // job finishes its current target, marks the rest skipped and ends CANCELED.
-  // Suggestions already queued are kept.
-  rpc CancelQualitySuggestionJob(CancelQualitySuggestionJobRequest) returns (QualitySuggestionJob) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualitySuggestionJobs/*}:cancel"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
-  }
-
-  // Read the raw request and response bodies of one failed target when runtime
-  // debug mode captured them. The target's diagnostic carries the correlation id
-  // and says whether a body is available; llm_debug_log keeps it for seven days.
-  rpc GetQualitySuggestionJobTargetDebug(GetQualitySuggestionJobTargetDebugRequest) returns (GetQualitySuggestionJobTargetDebugResponse) {
-    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualitySuggestionJobs/*}:debug"};
     option (metaxisdata.v1.audit) = true;
     option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.suggest";
   }
@@ -767,13 +719,107 @@ service DataQualityService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
-  // List the workspace's agent principals, without tokens.
+  // Read one agent with its runtime configuration.
+  rpc GetQualityAgent(GetQualityAgentRequest) returns (QualityAgent) {
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Append the owner's message to the agent's conversation and wake it. Only the
+  // agent's owner may send; administrators may read but not talk.
+  rpc SendQualityAgentMessage(SendQualityAgentMessageRequest) returns (QualityAgentSessionMessage) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:message"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Read the agent's front-office conversation. The owner and administrators may
+  // read; only the owner may send.
+  rpc ListQualityAgentConversationMessages(ListQualityAgentConversationMessagesRequest) returns (ListQualityAgentConversationMessagesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/conversation"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // List one agent's patrol reports, newest period first.
+  rpc ListQualityAgentReports(ListQualityAgentReportsRequest) returns (ListQualityAgentReportsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/reports"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Read one report with its rendered body.
+  rpc GetQualityAgentReport(GetQualityAgentReportRequest) returns (QualityAgentReport) {
+    option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentReports/*}"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // List one agent's escalations. The owner and administrators may read.
+  rpc ListQualityAgentAttentions(ListQualityAgentAttentionsRequest) returns (ListQualityAgentAttentionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgents/*}/attentions"};
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Answer an escalation as the owner. The reply is appended to the target session,
+  // the session is resumed, and the attention is resolved; a retry on a closed
+  // attention is a no-op.
+  rpc ReplyQualityAgentAttention(ReplyQualityAgentAttentionRequest) returns (QualityAgentAttention) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgentAttentions/*}:reply"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Dismiss an escalation without resuming the session. Owner only.
+  rpc DismissQualityAgentAttention(DismissQualityAgentAttentionRequest) returns (QualityAgentAttention) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgentAttentions/*}:dismiss"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.get";
+  }
+
+  // Replace the masked configuration of one agent. Administrator only.
+  rpc UpdateQualityAgent(UpdateQualityAgentRequest) returns (QualityAgent) {
+    option (google.api.http) = {
+      patch: "/v1/{quality_agent.name=workspaces/*/qualityAgents/*}"
+      body: "quality_agent"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+  }
+
+  // Activate a DRAFT or PAUSED agent. Administrator only.
+  rpc StartQualityAgent(StartQualityAgentRequest) returns (QualityAgent) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:start"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+  }
+
+  // Pause an ACTIVE agent. Administrator only.
+  rpc PauseQualityAgent(PauseQualityAgentRequest) returns (QualityAgent) {
+    option (google.api.http) = {
+      post: "/v1/{name=workspaces/*/qualityAgents/*}:pause"
+      body: "*"
+    };
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
+  }
+
+  // List the workspace's agents. Administrators see every agent; other members
+  // see the agents they own.
   rpc ListQualityAgents(ListQualityAgentsRequest) returns (ListQualityAgentsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgents"};
-    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.list";
   }
 
   // Disable an agent principal. Its tokens stop authenticating immediately; the
@@ -784,7 +830,7 @@ service DataQualityService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Rotate an agent's bearer token: mint a new one and invalidate every token
@@ -795,7 +841,7 @@ service DataQualityService {
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.settings.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Approve or reject a change request. Approving applies each item through its
@@ -834,70 +880,35 @@ service DataQualityService {
 
   // ---- Quality agent sessions ----
 
-  // Create one target's long-lived agent session. The target's database must be in
-  // the runner's allowlist, the runner must be enabled and an enabled agent must exist.
-  rpc CreateQualityAgentSession(CreateQualityAgentSessionRequest) returns (QualityAgentSession) {
-    option (google.api.http) = {
-      post: "/v1/{parent=workspaces/*}/qualityAgentSessions"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
   // List the workspace's sessions by newest activity first.
   rpc ListQualityAgentSessions(ListQualityAgentSessionsRequest) returns (ListQualityAgentSessionsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentSessions"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Read one session.
   rpc GetQualityAgentSession(GetQualityAgentSessionRequest) returns (QualityAgentSession) {
     option (google.api.http) = {get: "/v1/{name=workspaces/*/qualityAgentSessions/*}"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Pause a session: no new wake starts, the conversation stays.
-  rpc PauseQualityAgentSession(PauseQualityAgentSessionRequest) returns (QualityAgentSession) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:pause"
-      body: "*"
-    };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
-  // Resume a paused or blocked session; it wakes immediately.
+  // Resume a stuck session. Administrator-only recovery, used from diagnostics after
+  // a restart-limit/internal-error block; it is not a product action.
   rpc ResumeQualityAgentSession(ResumeQualityAgentSessionRequest) returns (QualityAgentSession) {
     option (google.api.http) = {
       post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:resume"
       body: "*"
     };
     option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Archive a session (a tombstone). The conversation stays readable.
-  rpc ArchiveQualityAgentSession(ArchiveQualityAgentSessionRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/{name=workspaces/*/qualityAgentSessions/*}"};
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Append a person's message to the session and wake it immediately.
-  rpc WakeQualityAgentSession(WakeQualityAgentSessionRequest) returns (QualityAgentSession) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentSessions/*}:wake"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Read one session's transcript. after_seq polls for new messages.
   rpc ListQualityAgentSessionMessages(ListQualityAgentSessionMessagesRequest) returns (ListQualityAgentSessionMessagesResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*/qualityAgentSessions/*}/messages"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+    option (metaxisdata.v1.audit) = true;
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Read the runner's live state: what is running, what is due and how much of the
@@ -920,35 +931,13 @@ service DataQualityService {
   // runner's database scope, with its queue state, priority and session link.
   rpc ListQualityAgentEnrollments(ListQualityAgentEnrollmentsRequest) returns (ListQualityAgentEnrollmentsResponse) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentEnrollments"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 
   // Read enrollment counts by state and by database. Read-only.
   rpc GetQualityAgentEnrollmentSummary(GetQualityAgentEnrollmentSummaryRequest) returns (QualityAgentEnrollmentSummary) {
     option (google.api.http) = {get: "/v1/{parent=workspaces/*}/qualityAgentEnrollments:summary"};
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.list";
-  }
-
-  // Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
-  // as target states, and a stale expected_revision is rejected.
-  rpc UpdateQualityAgentEnrollment(UpdateQualityAgentEnrollmentRequest) returns (QualityAgentEnrollment) {
-    option (google.api.http) = {
-      patch: "/v1/{enrollment.name=workspaces/*/qualityAgentEnrollments/*}"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
-  }
-
-  // Requeue one enrollment now: it becomes pending, its next review is due and its
-  // priority is raised.
-  rpc RetryQualityAgentEnrollment(RetryQualityAgentEnrollmentRequest) returns (QualityAgentEnrollment) {
-    option (google.api.http) = {
-      post: "/v1/{name=workspaces/*/qualityAgentEnrollments/*}:retry"
-      body: "*"
-    };
-    option (metaxisdata.v1.audit) = true;
-    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.rules.update";
+    option (metaxisdata.v1.permission) = "metaxisdata.dataQuality.agents.manage";
   }
 }
 
@@ -2865,209 +2854,6 @@ message BatchUpdateQualitySuggestionResult {
   string name = 3;
 }
 
-// QualitySuggestionJobStatus is the lifecycle of a background AI drafting job.
-enum QualitySuggestionJobStatus {
-  QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED = 0;
-  QUALITY_SUGGESTION_JOB_STATUS_PENDING = 1;
-  QUALITY_SUGGESTION_JOB_STATUS_RUNNING = 2;
-  QUALITY_SUGGESTION_JOB_STATUS_COMPLETED = 3;
-  QUALITY_SUGGESTION_JOB_STATUS_FAILED = 4;
-  QUALITY_SUGGESTION_JOB_STATUS_CANCELED = 5;
-}
-
-// QualitySuggestionJobTargetState is where one target of a drafting job stands.
-// SKIPPED means the job stopped before asking the model for that target; FAILED
-// means the model was asked and the target could not produce suggestions.
-enum QualitySuggestionJobTargetState {
-  QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED = 0;
-  QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING = 1;
-  QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING = 2;
-  QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE = 3;
-  QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED = 4;
-  QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED = 5;
-}
-
-// QualitySuggestionJobTarget is one target of a drafting job and what happened
-// to it. `suggestions` names the queued suggestions this target produced.
-message QualitySuggestionJobTarget {
-  QualityTarget target = 1;
-
-  QualitySuggestionJobTargetState state = 2;
-
-  // The suggestions queued from this target so far.
-  // Format: workspaces/{workspace}/qualitySuggestions/{quality_suggestion}
-  repeated string suggestions = 3;
-
-  // Empty unless this target failed; then why.
-  string error = 4;
-
-  google.protobuf.Timestamp start_time = 5;
-  google.protobuf.Timestamp finish_time = 6;
-
-  // Set when the target failed in the model call: the classifier, provider
-  // facts, stop reason and usage behind the error, plus the correlation id that
-  // ties it to the server log and the debug log.
-  QualityLLMDiagnostic diagnostic = 7;
-
-  // What this target's pass did to the review queue. Set on success.
-  QualitySuggestionQueueSummary summary = 8;
-}
-
-// QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
-// can act on and an operator can correlate with logs. It never includes the
-// prompt or the model response; those are available on demand when runtime debug
-// mode captured them (see GetQualitySuggestionJobTargetDebug).
-message QualityLLMDiagnostic {
-  // A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
-  // STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
-  // TIMEOUT, PARSE, UNKNOWN.
-  string error_code = 1;
-  string provider = 2;
-  string model = 3;
-  string prompt_version = 4;
-  // The output-token budget the call asked for; TRUNCATED points at this.
-  int32 max_output_tokens = 5;
-  string finish_reason = 6;
-  int64 prompt_tokens = 7;
-  int64 completion_tokens = 8;
-  int64 total_tokens = 9;
-  // How large the prompt was, so a context/usage problem is visible.
-  int64 prompt_chars = 10;
-  // Copy this into server logs or the debug log lookup.
-  string correlation_id = 11;
-  int32 provider_status = 12;
-  // Whether GetQualitySuggestionJobTargetDebug can return the raw bodies.
-  bool debug_payload_available = 13;
-}
-
-// QualitySuggestionJob is one background AI drafting run over a set of targets.
-// It is the durable unit of the asynchronous drafting flow: it outlives the
-// browser tab that submitted it and is safe to poll.
-message QualitySuggestionJob {
-  option (google.api.resource) = {
-    type: "metaxisdata/QualitySuggestionJob"
-    pattern: "workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}"
-  };
-
-  // Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-  string name = 1;
-
-  QualitySuggestionJobStatus status = 2;
-
-  // The natural-language intent the job drafts for, shared by every target.
-  string intent = 3;
-
-  // The language the intent and drafts are written in, e.g. "en" or "zh-CN".
-  string language = 4;
-
-  repeated QualitySuggestionJobTarget targets = 5;
-
-  // Total targets, targets no longer PENDING/RUNNING, and queued suggestions.
-  int32 target_count = 6;
-  int32 completed_target_count = 7;
-  int32 suggestion_count = 8;
-
-  // The provider facts of the analysis; set when the runner starts the job.
-  string provider = 9;
-  string model = 10;
-  string prompt_version = 11;
-
-  google.protobuf.Timestamp create_time = 12;
-  google.protobuf.Timestamp start_time = 13;
-  google.protobuf.Timestamp finish_time = 14;
-
-  // Empty unless the whole job failed; per-target failures live on the targets.
-  string error = 15;
-
-  // Format: users/{user}.
-  string created_by = 16 [(google.api.resource_reference) = {type: "metaxisdata/User"}];
-
-  // True when this response returns a job that was already PENDING or RUNNING for
-  // the same intent, targets and columns. Re-submitting an identical request is
-  // idempotent: no second job or analysis is started.
-  bool deduplicated = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
-}
-
-message CreateQualitySuggestionJobRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // The natural-language intent, e.g. "email must not be empty". At most 2000
-  // characters.
-  string intent = 2 [(google.api.field_behavior) = REQUIRED];
-
-  // The language the intent and drafts are written in, e.g. "en" or "zh-CN".
-  string language = 3;
-
-  // The tables or views to draft for, at most 20. Set meta_guid, meta_type and
-  // optionally columns; the path and columns are snapshotted for progress. The
-  // job visits them in order.
-  repeated QualityTarget targets = 4 [(google.api.field_behavior) = REQUIRED];
-
-  // Re-propose drafts that were already accepted or rejected, and re-analyze
-  // columns that already have a fact. The queue is still deduplicated by identity:
-  // regeneration refreshes a pending proposal instead of appending a duplicate.
-  bool force_regenerate = 5;
-}
-
-message GetQualitySuggestionJobRequest {
-  // Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestionJob"}
-  ];
-}
-
-message ListQualitySuggestionJobsRequest {
-  // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
-  string parent = 1 [(google.api.field_behavior) = REQUIRED];
-
-  // The maximum number of jobs to return. If unspecified, at most 20 are
-  // returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-  int32 page_size = 2;
-
-  // A page token, received from a previous ListQualitySuggestionJobs call.
-  string page_token = 3;
-
-  QualitySuggestionJobStatus status = 4;
-}
-
-message ListQualitySuggestionJobsResponse {
-  repeated QualitySuggestionJob quality_suggestion_jobs = 1;
-  string next_page_token = 2;
-}
-
-message CancelQualitySuggestionJobRequest {
-  // Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestionJob"}
-  ];
-}
-
-message GetQualitySuggestionJobTargetDebugRequest {
-  // Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}
-  string name = 1 [
-    (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "metaxisdata/QualitySuggestionJob"}
-  ];
-
-  // The zero-based index of the target in the job's target list.
-  int32 target_index = 2;
-}
-
-message GetQualitySuggestionJobTargetDebugResponse {
-  // False when runtime debug was off, the write failed, or the seven-day debug
-  // log retention already pruned the row.
-  bool available = 1;
-  string correlation_id = 2;
-  string request_body = 3;
-  string response_body = 4;
-  // The classifier code of the failure, so the client can show its hint even
-  // when the raw bodies are gone.
-  string error_code = 5;
-}
-
 message ListColumnProfilesRequest {
   // Format: workspaces/{workspace}. "workspaces/-" is the current workspace.
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
@@ -4490,6 +4276,67 @@ message GetQualityActionPolicyRequest {
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// QualityAgentState is the runtime lifecycle of one quality agent.
+enum QualityAgentState {
+  QUALITY_AGENT_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_STATE_DRAFT = 1;
+  QUALITY_AGENT_STATE_ACTIVE = 2;
+  QUALITY_AGENT_STATE_PAUSED = 3;
+  QUALITY_AGENT_STATE_DISABLED = 4;
+}
+
+// QualityAgentReportFrequency is how often an agent's patrol report is generated.
+enum QualityAgentReportFrequency {
+  QUALITY_AGENT_REPORT_FREQUENCY_UNSPECIFIED = 0;
+  QUALITY_AGENT_REPORT_FREQUENCY_OFF = 1;
+  QUALITY_AGENT_REPORT_FREQUENCY_DAILY = 2;
+  QUALITY_AGENT_REPORT_FREQUENCY_WEEKLY = 3;
+}
+
+// QualityAgentAdoptionMode says what happens to a low-risk suggestion an agent
+// auto-adopts. PAUSED creates the check disabled for the owner to enable; ACTIVE
+// creates it enabled. Both require the adopt capability.
+enum QualityAgentAdoptionMode {
+  QUALITY_AGENT_ADOPTION_MODE_UNSPECIFIED = 0;
+  QUALITY_AGENT_ADOPTION_MODE_OFF = 1;
+  QUALITY_AGENT_ADOPTION_MODE_PAUSED = 2;
+  QUALITY_AGENT_ADOPTION_MODE_ACTIVE = 3;
+}
+
+// QualityAgentReportSchedule is the agent's patrol report cadence.
+message QualityAgentReportSchedule {
+  QualityAgentReportFrequency frequency = 1;
+  // "HH:MM" in timezone.
+  string time = 2;
+  string timezone = 3;
+  DayOfWeek day_of_week = 4;
+}
+
+// QualityAgentAdoptionSetting is the guardrail configuration of the adopt capability.
+message QualityAgentAdoptionSetting {
+  QualityAgentAdoptionMode mode = 1;
+  // Rule types eligible for automatic adoption; empty means the server default
+  // low-risk set.
+  repeated QualityRuleType rule_types = 2;
+  // Minimum confidence (0..1) a draft needs; 0 means the server default (0.7).
+  double confidence_threshold = 3;
+  // Daily adoption ceiling; 0 means the server default (10).
+  int32 max_per_day = 4;
+  // Whether critical assets may be auto-adopted; default false.
+  bool allow_critical = 5;
+}
+
+// QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
+// default; the workspace hard caps still apply.
+message QualityAgentBudget {
+  int64 tokens_per_hour = 1;
+  int32 wakes_per_hour = 2;
+  int32 max_concurrent_sessions = 3;
+  int32 max_new_sessions_per_hour = 4;
+  int32 max_active_sessions = 5;
+  int32 conversation_messages_per_hour = 6;
+}
+
 // QualityAgent is one agent principal: an independent identity an administrator
 // creates for autonomous quality work. Its token is issued once, and disabling the
 // agent ends every token it holds.
@@ -4502,6 +4349,24 @@ message QualityAgent {
   // Format: users/{user}. Empty when unknown.
   string created_by = 5;
   google.protobuf.Timestamp create_time = 6;
+
+  // Runtime state; DISABLED is permanent and enabled is false.
+  QualityAgentState state = 7;
+  // Format: users/{user}. The owner is the only caller who may talk to the agent.
+  string owner = 8;
+  // Database resource names in scope: instances/{instance}/databases/{database}.
+  repeated string databases = 9;
+  // Capability ids: "suggest", "adopt", "patrol"; extensible server-side.
+  repeated string capabilities = 10;
+  // LLM provider profile; empty means the workspace default.
+  string provider_profile = 11;
+  QualityAgentReportSchedule report_schedule = 12;
+  QualityAgentAdoptionSetting adoption = 13;
+  QualityAgentBudget budget = 14;
+  // Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent's
+  // conversation session, created lazily.
+  string conversation = 15;
+  google.protobuf.Timestamp update_time = 16;
 }
 
 message CreateQualityAgentRequest {
@@ -4509,6 +4374,246 @@ message CreateQualityAgentRequest {
   string parent = 1 [(google.api.field_behavior) = REQUIRED];
   string display_name = 2 [(google.api.field_behavior) = REQUIRED];
   string description = 3;
+  // Format: users/{user}. Required; the agent's owner and only conversationalist.
+  string owner = 4 [(google.api.field_behavior) = REQUIRED];
+  // Database resource names in scope; at least one is required.
+  repeated string databases = 5;
+  // Capability ids; at least one is required.
+  repeated string capabilities = 6;
+  QualityAgentReportSchedule report_schedule = 7;
+  QualityAgentAdoptionSetting adoption = 8;
+  QualityAgentBudget budget = 9;
+  // Whether to start the agent immediately; default false keeps it DRAFT.
+  bool start = 10;
+}
+
+// GetQualityAgentRequest reads one agent with its configuration.
+message GetQualityAgentRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+}
+
+// SendQualityAgentMessageRequest appends the owner's message and wakes the agent.
+message SendQualityAgentMessageRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // The owner's message. The field name is deliberately not `content`: the audit
+  // redaction list matches field names and this body must not enter the ledger.
+  string message_body = 2 [(google.api.field_behavior) = REQUIRED];
+  // A client-generated idempotency id; repeating it returns the existing message.
+  string request_id = 3;
+}
+
+// ListQualityAgentConversationMessagesRequest reads the agent's conversation.
+message ListQualityAgentConversationMessagesRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  int32 page_size = 2;
+  string page_token = 3;
+  // Return messages with seq greater than this; the polling watermark.
+  int64 after_seq = 4;
+}
+
+// ListQualityAgentConversationMessagesResponse is one chronological page.
+message ListQualityAgentConversationMessagesResponse {
+  repeated QualityAgentSessionMessage quality_agent_conversation_messages = 1;
+  string next_page_token = 2;
+}
+
+// QualityAgentReportTrigger says what produced a report.
+enum QualityAgentReportTrigger {
+  QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED = 0;
+  QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED = 1;
+  QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND = 2;
+}
+
+// QualityAgentReportPeriod is the report's period shape.
+enum QualityAgentReportPeriod {
+  QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED = 0;
+  QUALITY_AGENT_REPORT_PERIOD_DAILY = 1;
+  QUALITY_AGENT_REPORT_PERIOD_WEEKLY = 2;
+  QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND = 3;
+}
+
+// QualityAgentReportState is the asynchronous report generation state.
+enum QualityAgentReportState {
+  QUALITY_AGENT_REPORT_STATE_UNSPECIFIED = 0;
+  QUALITY_AGENT_REPORT_STATE_PENDING = 1;
+  QUALITY_AGENT_REPORT_STATE_READY = 2;
+  QUALITY_AGENT_REPORT_STATE_FAILED = 3;
+}
+
+// QualityAgentReport is one deterministic patrol report over an agent's scope.
+message QualityAgentReport {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityAgentReport"
+    pattern: "workspaces/{workspace}/qualityAgentReports/{quality_agent_report}"
+  };
+
+  // Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  QualityAgentReportTrigger trigger = 3;
+  QualityAgentReportPeriod period_kind = 4;
+  // Stable period identity: YYYY-MM-DD for daily, ISO year-week for weekly.
+  string period_key = 5;
+  google.protobuf.Timestamp period_start = 6;
+  google.protobuf.Timestamp period_end = 7;
+  QualityAgentReportState state = 8;
+  // Database resource names the report covers.
+  repeated string databases = 9;
+  int32 target_count = 10;
+  int32 covered_target_count = 11;
+  int32 rule_count = 12;
+  int32 execution_count = 13;
+  int32 passed_count = 14;
+  int32 warned_count = 15;
+  int32 failed_count = 16;
+  int32 errored_count = 17;
+  int32 new_issue_count = 18;
+  int32 open_issue_count = 19;
+  int32 pending_proposal_count = 20;
+  int64 tokens_used = 21;
+  string body_markdown = 22;
+  string failure_reason = 23;
+  google.protobuf.Timestamp create_time = 24;
+  google.protobuf.Timestamp generate_time = 25;
+}
+
+message ListQualityAgentReportsRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListQualityAgentReportsResponse {
+  repeated QualityAgentReport quality_agent_reports = 1;
+  string next_page_token = 2;
+}
+
+message GetQualityAgentReportRequest {
+  // Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentReport"}
+  ];
+}
+
+// QualityAgentAttentionKind is why the owner is needed.
+enum QualityAgentAttentionKind {
+  QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED = 0;
+  QUALITY_AGENT_ATTENTION_KIND_BLOCKED = 1;
+  QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING = 2;
+  QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY = 3;
+}
+
+// QualityAgentAttentionStatus is the to-do's lifecycle.
+enum QualityAgentAttentionStatus {
+  QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED = 0;
+  QUALITY_AGENT_ATTENTION_STATUS_OPEN = 1;
+  QUALITY_AGENT_ATTENTION_STATUS_RESOLVED = 2;
+  QUALITY_AGENT_ATTENTION_STATUS_DISMISSED = 3;
+}
+
+// QualityAgentAttention is one owner escalation inside an agent.
+message QualityAgentAttention {
+  option (google.api.resource) = {
+    type: "metaxisdata/QualityAgentAttention"
+    pattern: "workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}"
+  };
+
+  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+  string name = 1;
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 2;
+  QualityAgentAttentionKind kind = 3;
+  QualityAgentAttentionStatus status = 4;
+  // The target session to resume when the owner answers; empty for an agent event.
+  string session = 5;
+  // The resource the owner should open, e.g. a report or a proposal.
+  string reference = 6;
+  string title = 7;
+  string question = 8;
+  google.protobuf.Timestamp create_time = 9;
+  google.protobuf.Timestamp resolve_time = 10;
+  // Format: users/{user}; empty while open.
+  string resolved_by = 11;
+}
+
+message ListQualityAgentAttentionsRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+  // UNSPECIFIED lists every status.
+  QualityAgentAttentionStatus status = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListQualityAgentAttentionsResponse {
+  repeated QualityAgentAttention quality_agent_attentions = 1;
+  string next_page_token = 2;
+}
+
+message ReplyQualityAgentAttentionRequest {
+  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentAttention"}
+  ];
+  // The owner's answer. Named message_body so the audit ledger redacts it.
+  string message_body = 2 [(google.api.field_behavior) = REQUIRED];
+  string request_id = 3;
+}
+
+message DismissQualityAgentAttentionRequest {
+  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgentAttention"}
+  ];
+}
+
+// UpdateQualityAgentRequest replaces the masked configuration fields.
+message UpdateQualityAgentRequest {
+  QualityAgent quality_agent = 1 [(google.api.field_behavior) = REQUIRED];
+  // Fields to replace: display_name, description, owner, databases, capabilities,
+  // provider_profile, report_schedule, adoption, budget.
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+// StartQualityAgentRequest activates a draft or paused agent.
+message StartQualityAgentRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
+}
+
+// PauseQualityAgentRequest pauses an active agent without disabling its identity.
+message PauseQualityAgentRequest {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}
+  ];
 }
 
 message CreateQualityAgentResponse {
@@ -5269,6 +5374,8 @@ message ListQualityAgentSessionsRequest {
   QualityAgentSessionSource source = 7;
   // UNSPECIFIED keeps both monitor and triage sessions.
   QualityAgentSessionMode mode = 8;
+  // Administrator diagnostics filter: keep only this agent's sessions.
+  string agent = 9 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}];
 }
 
 message ListQualityAgentSessionsResponse {
@@ -5385,6 +5492,8 @@ message ListQualityAgentEnrollmentsRequest {
   // A case-insensitive substring over the target GUID. The display path is encoded in
   // the GUID's semicolon-separated segments, so a path fragment matches too.
   string search = 7;
+  // Administrator diagnostics filter: keep only this agent's queue rows.
+  string agent = 8 [(google.api.resource_reference) = {type: "metaxisdata/QualityAgent"}];
 }
 
 message ListQualityAgentEnrollmentsResponse {

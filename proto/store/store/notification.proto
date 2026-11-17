@@ -22,6 +22,8 @@ enum NotificationType {
   // The workspace's scheduled data quality digest. It has no in-app copy; only
   // the outbound channels subscribed to this type receive it.
   NOTIFICATION_TYPE_DATA_QUALITY_DIGEST = 4;
+  // A quality agent escalated a session or a proposal to its owner.
+  NOTIFICATION_TYPE_DATA_QUALITY_AGENT = 5;
 }
 
 // NotificationSeverity ranks a notification for the recipient.
@@ -105,6 +107,7 @@ message Notification {
     SchemaSyncDetail schema_sync = 9;
     OpenLineageDetail openlineage = 10;
     DataQualityDetail data_quality = 11;
+    QualityAgentAttentionDetail quality_agent_attention = 12;
   }
 }
 
@@ -406,6 +409,20 @@ message NotificationDeliveryEvent {
   // field. Storing ids rather than addresses keeps a changed or deleted account
   // resolving at delivery time.
   repeated int32 audience_user_ids = 6;
+}
+
+// QualityAgentAttentionDetail reports one agent escalation in the inbox. The
+// client renders the prose; the server stores only identities and the bounded
+// question text.
+message QualityAgentAttentionDetail {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 1;
+  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+  string attention = 2;
+  // 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY.
+  int32 kind = 3;
+  string title = 4;
+  string question = 5;
 }
 
 // NotificationRoute is one owner/team routing rule, as notification_route.payload.

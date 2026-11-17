@@ -5128,6 +5128,85 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentAttentions/{qualityAgentAttention}:dismiss:
+        post:
+            tags:
+                - DataQualityService
+            description: Dismiss an escalation without resuming the session. Owner only.
+            operationId: DataQualityService_DismissQualityAgentAttention
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentAttention
+                  in: path
+                  description: The qualityAgentAttention id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DismissQualityAgentAttentionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentAttention'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentAttentions/{qualityAgentAttention}:reply:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Answer an escalation as the owner. The reply is appended to the target session,
+                 the session is resumed, and the attention is resolved; a retry on a closed
+                 attention is a no-op.
+            operationId: DataQualityService_ReplyQualityAgentAttention
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentAttention
+                  in: path
+                  description: The qualityAgentAttention id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ReplyQualityAgentAttentionRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentAttention'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentEnrollments:
         get:
             tags:
@@ -5191,6 +5270,11 @@ paths:
                      the GUID's semicolon-separated segments, so a path fragment matches too.
                   schema:
                     type: string
+                - name: agent
+                  in: query
+                  description: 'Administrator diagnostics filter: keep only this agent''s queue rows.'
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -5198,86 +5282,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListQualityAgentEnrollmentsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentEnrollments/{qualityAgentEnrollment}:
-        patch:
-            tags:
-                - DataQualityService
-            description: |-
-                Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
-                 as target states, and a stale expected_revision is rejected.
-            operationId: DataQualityService_UpdateQualityAgentEnrollment
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentEnrollment
-                  in: path
-                  description: The qualityAgentEnrollment id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/UpdateQualityAgentEnrollmentRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentEnrollment'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentEnrollments/{qualityAgentEnrollment}:retry:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Requeue one enrollment now: it becomes pending, its next review is due and its
-                 priority is raised.
-            operationId: DataQualityService_RetryQualityAgentEnrollment
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentEnrollment
-                  in: path
-                  description: The qualityAgentEnrollment id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/RetryQualityAgentEnrollmentRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentEnrollment'
                 default:
                     description: Default error response
                     content:
@@ -5332,6 +5336,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityAgentMetrics'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgentReports/{qualityAgentReport}:
+        get:
+            tags:
+                - DataQualityService
+            description: Read one report with its rendered body.
+            operationId: DataQualityService_GetQualityAgentReport
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgentReport
+                  in: path
+                  description: The qualityAgentReport id.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentReport'
                 default:
                     description: Default error response
                     content:
@@ -5428,6 +5464,11 @@ paths:
                         - QUALITY_AGENT_SESSION_MODE_TRIAGE
                     type: string
                     format: enum
+                - name: agent
+                  in: query
+                  description: 'Administrator diagnostics filter: keep only this agent''s sessions.'
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: OK
@@ -5435,39 +5476,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListQualityAgentSessionsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Create one target's long-lived agent session. The target's database must be in
-                 the runner's allowlist, the runner must be enabled and an enabled agent must exist.
-            operationId: DataQualityService_CreateQualityAgentSession
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateQualityAgentSessionRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentSession'
                 default:
                     description: Default error response
                     content:
@@ -5500,39 +5508,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QualityAgentSession'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        delete:
-            tags:
-                - DataQualityService
-            description: Archive a session (a tombstone). The conversation stays readable.
-            operationId: DataQualityService_ArchiveQualityAgentSession
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentSession
-                  in: path
-                  description: The qualityAgentSession id.
-                  required: true
-                  schema:
-                    type: string
-                - name: expectedRevision
-                  in: query
-                  schema:
-                    type: integer
-                    format: int32
-            responses:
-                "200":
-                    description: OK
-                    content: {}
                 default:
                     description: Default error response
                     content:
@@ -5590,49 +5565,13 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:pause:
-        post:
-            tags:
-                - DataQualityService
-            description: 'Pause a session: no new wake starts, the conversation stays.'
-            operationId: DataQualityService_PauseQualityAgentSession
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentSession
-                  in: path
-                  description: The qualityAgentSession id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/PauseQualityAgentSessionRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentSession'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:resume:
         post:
             tags:
                 - DataQualityService
-            description: Resume a paused or blocked session; it wakes immediately.
+            description: |-
+                Resume a stuck session. Administrator-only recovery, used from diagnostics after
+                 a restart-limit/internal-error block; it is not a product action.
             operationId: DataQualityService_ResumeQualityAgentSession
             parameters:
                 - name: workspace
@@ -5666,49 +5605,13 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualityAgentSessions/{qualityAgentSession}:wake:
-        post:
-            tags:
-                - DataQualityService
-            description: Append a person's message to the session and wake it immediately.
-            operationId: DataQualityService_WakeQualityAgentSession
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualityAgentSession
-                  in: path
-                  description: The qualityAgentSession id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/WakeQualityAgentSessionRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualityAgentSession'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents:
         get:
             tags:
                 - DataQualityService
-            description: List the workspace's agent principals, without tokens.
+            description: |-
+                List the workspace's agents. Administrators see every agent; other members
+                 see the agents they own.
             operationId: DataQualityService_ListQualityAgents
             parameters:
                 - name: workspace
@@ -5774,6 +5677,193 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:
+        patch:
+            tags:
+                - DataQualityService
+            description: Replace the masked configuration of one agent. Administrator only.
+            operationId: DataQualityService_UpdateQualityAgent
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: updateMask
+                  in: query
+                  description: |-
+                    Fields to replace: display_name, description, owner, databases, capabilities,
+                     provider_profile, report_schedule, adoption, budget.
+                  schema:
+                    type: string
+                    format: field-mask
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/QualityAgent'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgent'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/attentions:
+        get:
+            tags:
+                - DataQualityService
+            description: List one agent's escalations. The owner and administrators may read.
+            operationId: DataQualityService_ListQualityAgentAttentions
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  description: UNSPECIFIED lists every status.
+                  schema:
+                    enum:
+                        - QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED
+                        - QUALITY_AGENT_ATTENTION_STATUS_OPEN
+                        - QUALITY_AGENT_ATTENTION_STATUS_RESOLVED
+                        - QUALITY_AGENT_ATTENTION_STATUS_DISMISSED
+                    type: string
+                    format: enum
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentAttentionsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/conversation:
+        get:
+            tags:
+                - DataQualityService
+            description: |-
+                Read the agent's front-office conversation. The owner and administrators may
+                 read; only the owner may send.
+            operationId: DataQualityService_ListQualityAgentConversationMessages
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+                - name: afterSeq
+                  in: query
+                  description: Return messages with seq greater than this; the polling watermark.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentConversationMessagesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}/reports:
+        get:
+            tags:
+                - DataQualityService
+            description: List one agent's patrol reports, newest period first.
+            operationId: DataQualityService_ListQualityAgentReports
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListQualityAgentReportsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:disable:
         post:
             tags:
@@ -5800,6 +5890,84 @@ paths:
                     application/json:
                         schema:
                             $ref: '#/components/schemas/DisableQualityAgentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgent'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:message:
+        post:
+            tags:
+                - DataQualityService
+            description: |-
+                Append the owner's message to the agent's conversation and wake it. Only the
+                 agent's owner may send; administrators may read but not talk.
+            operationId: DataQualityService_SendQualityAgentMessage
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SendQualityAgentMessageRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgentSessionMessage'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:pause:
+        post:
+            tags:
+                - DataQualityService
+            description: Pause an ACTIVE agent. Administrator only.
+            operationId: DataQualityService_PauseQualityAgent
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PauseQualityAgentRequest'
                 required: true
             responses:
                 "200":
@@ -5848,6 +6016,44 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/RotateQualityAgentTokenResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /v1/workspaces/{workspace}/qualityAgents/{qualityAgent}:start:
+        post:
+            tags:
+                - DataQualityService
+            description: Activate a DRAFT or PAUSED agent. Administrator only.
+            operationId: DataQualityService_StartQualityAgent
+            parameters:
+                - name: workspace
+                  in: path
+                  description: The workspace id.
+                  required: true
+                  schema:
+                    type: string
+                - name: qualityAgent
+                  in: path
+                  description: The qualityAgent id.
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StartQualityAgentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/QualityAgent'
                 default:
                     description: Default error response
                     content:
@@ -8150,208 +8356,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualitySuggestionJobs:
-        get:
-            tags:
-                - DataQualityService
-            description: List drafting jobs, newest first.
-            operationId: DataQualityService_ListQualitySuggestionJobs
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: pageSize
-                  in: query
-                  description: |-
-                    The maximum number of jobs to return. If unspecified, at most 20 are
-                     returned. The maximum value is 1000; values above 1000 are coerced to 1000.
-                  schema:
-                    type: integer
-                    format: int32
-                - name: pageToken
-                  in: query
-                  description: A page token, received from a previous ListQualitySuggestionJobs call.
-                  schema:
-                    type: string
-                - name: status
-                  in: query
-                  schema:
-                    enum:
-                        - QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED
-                        - QUALITY_SUGGESTION_JOB_STATUS_PENDING
-                        - QUALITY_SUGGESTION_JOB_STATUS_RUNNING
-                        - QUALITY_SUGGESTION_JOB_STATUS_COMPLETED
-                        - QUALITY_SUGGESTION_JOB_STATUS_FAILED
-                        - QUALITY_SUGGESTION_JOB_STATUS_CANCELED
-                    type: string
-                    format: enum
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListQualitySuggestionJobsResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Start a background AI drafting job over one or more tables. The call returns
-                 as soon as the job is queued: the runner asks the model for each target in
-                 turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
-                 progress. Queued suggestions appear in the review queue like any other.
-            operationId: DataQualityService_CreateQualitySuggestionJob
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CreateQualitySuggestionJobRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualitySuggestionJob'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualitySuggestionJobs/{qualitySuggestionJob}:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                Read one drafting job, including per-target progress and the suggestions it
-                 queued so far.
-            operationId: DataQualityService_GetQualitySuggestionJob
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualitySuggestionJob
-                  in: path
-                  description: The qualitySuggestionJob id.
-                  required: true
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualitySuggestionJob'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualitySuggestionJobs/{qualitySuggestionJob}:cancel:
-        post:
-            tags:
-                - DataQualityService
-            description: |-
-                Ask a drafting job to stop. A pending job is canceled immediately; a running
-                 job finishes its current target, marks the rest skipped and ends CANCELED.
-                 Suggestions already queued are kept.
-            operationId: DataQualityService_CancelQualitySuggestionJob
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualitySuggestionJob
-                  in: path
-                  description: The qualitySuggestionJob id.
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/CancelQualitySuggestionJobRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/QualitySuggestionJob'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /v1/workspaces/{workspace}/qualitySuggestionJobs/{qualitySuggestionJob}:debug:
-        get:
-            tags:
-                - DataQualityService
-            description: |-
-                Read the raw request and response bodies of one failed target when runtime
-                 debug mode captured them. The target's diagnostic carries the correlation id
-                 and says whether a body is available; llm_debug_log keeps it for seven days.
-            operationId: DataQualityService_GetQualitySuggestionJobTargetDebug
-            parameters:
-                - name: workspace
-                  in: path
-                  description: The workspace id.
-                  required: true
-                  schema:
-                    type: string
-                - name: qualitySuggestionJob
-                  in: path
-                  description: The qualitySuggestionJob id.
-                  required: true
-                  schema:
-                    type: string
-                - name: targetIndex
-                  in: query
-                  description: The zero-based index of the target in the job's target list.
-                  schema:
-                    type: integer
-                    format: int32
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/GetQualitySuggestionJobTargetDebugResponse'
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
     /v1/workspaces/{workspace}/qualitySuggestions:
         get:
             tags:
@@ -10038,14 +10042,6 @@ components:
                     type: number
                     format: double
             description: BoundingBox is the bounding box of a spatial index.
-        CancelQualitySuggestionJobRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}'
         CelExpressionConfig:
             type: object
             properties:
@@ -10521,6 +10517,7 @@ components:
             required:
                 - parent
                 - displayName
+                - owner
             type: object
             properties:
                 parent:
@@ -10530,6 +10527,28 @@ components:
                     type: string
                 description:
                     type: string
+                owner:
+                    type: string
+                    description: 'Format: users/{user}. Required; the agent''s owner and only conversationalist.'
+                databases:
+                    type: array
+                    items:
+                        type: string
+                    description: Database resource names in scope; at least one is required.
+                capabilities:
+                    type: array
+                    items:
+                        type: string
+                    description: Capability ids; at least one is required.
+                reportSchedule:
+                    $ref: '#/components/schemas/QualityAgentReportSchedule'
+                adoption:
+                    $ref: '#/components/schemas/QualityAgentAdoptionSetting'
+                budget:
+                    $ref: '#/components/schemas/QualityAgentBudget'
+                start:
+                    type: boolean
+                    description: Whether to start the agent immediately; default false keeps it DRAFT.
         CreateQualityAgentResponse:
             type: object
             properties:
@@ -10540,45 +10559,6 @@ components:
                     description: |-
                         The bearer token, returned exactly once. It authenticates as the agent
                          principal and cannot be retrieved again; rotate it if lost.
-        CreateQualityAgentSessionRequest:
-            required:
-                - parent
-                - targetGuid
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                targetGuid:
-                    type: string
-                metaType:
-                    enum:
-                        - UNSPECIFIED
-                        - INSTANCE
-                        - DATABASE
-                        - SCHEMA
-                        - TABLE
-                        - EXTERNAL_TABLE
-                        - EXTERNAL_DATASET
-                        - MANUAL_SQL
-                        - APPLICATION_SQL
-                        - VIEW
-                        - MATERIALIZED_VIEW
-                        - COLUMN
-                        - INDEX
-                        - FOREIGN_KEY
-                        - PROCEDURE
-                        - FUNCTION
-                        - SEQUENCE
-                        - OPENLINEAGE
-                    type: string
-                    format: enum
-                objective:
-                    type: string
-                    description: Empty means "keep this target trustworthy".
-                agent:
-                    type: string
-                    description: 'Format: users/{user}. Empty uses the first enabled quality agent.'
         CreateQualityChangeRequestRequest:
             required:
                 - parent
@@ -10777,38 +10757,6 @@ components:
                          The suggestion is marked accepted once the rule exists. A decision that
                          cannot be written does not roll the created rule back; it is logged and the
                          suggestion can be decided explicitly.
-        CreateQualitySuggestionJobRequest:
-            required:
-                - parent
-                - intent
-                - targets
-            type: object
-            properties:
-                parent:
-                    type: string
-                    description: 'Format: workspaces/{workspace}. "workspaces/-" is the current workspace.'
-                intent:
-                    type: string
-                    description: |-
-                        The natural-language intent, e.g. "email must not be empty". At most 2000
-                         characters.
-                language:
-                    type: string
-                    description: The language the intent and drafts are written in, e.g. "en" or "zh-CN".
-                targets:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualityTarget'
-                    description: |-
-                        The tables or views to draft for, at most 20. Set meta_guid, meta_type and
-                         optionally columns; the path and columns are snapshotted for progress. The
-                         job visits them in order.
-                forceRegenerate:
-                    type: boolean
-                    description: |-
-                        Re-propose drafts that were already accepted or rejected, and re-analyze
-                         columns that already have a fact. The queue is still deduplicated by identity:
-                         regeneration refreshes a pending proposal instead of appending a duplicate.
         CreateSSOStateResponse:
             type: object
             properties:
@@ -11517,6 +11465,14 @@ components:
                 name:
                     type: string
                     description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+        DismissQualityAgentAttentionRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
         EmailChannelConfig:
             type: object
             properties:
@@ -12228,25 +12184,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityContractCheck'
-        GetQualitySuggestionJobTargetDebugResponse:
-            type: object
-            properties:
-                available:
-                    type: boolean
-                    description: |-
-                        False when runtime debug was off, the write failed, or the seven-day debug
-                         log retention already pruned the row.
-                correlationId:
-                    type: string
-                requestBody:
-                    type: string
-                responseBody:
-                    type: string
-                errorCode:
-                    type: string
-                    description: |-
-                        The classifier code of the failure, so the client can show its hint even
-                         when the raw bodies are gone.
         GetQualityTargetImpactResponse:
             type: object
             properties:
@@ -13167,6 +13104,25 @@ components:
                         $ref: '#/components/schemas/OpenLineageTask'
                 nextPageToken:
                     type: string
+        ListQualityAgentAttentionsResponse:
+            type: object
+            properties:
+                qualityAgentAttentions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentAttention'
+                nextPageToken:
+                    type: string
+        ListQualityAgentConversationMessagesResponse:
+            type: object
+            properties:
+                qualityAgentConversationMessages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentSessionMessage'
+                nextPageToken:
+                    type: string
+            description: ListQualityAgentConversationMessagesResponse is one chronological page.
         ListQualityAgentEnrollmentsResponse:
             type: object
             properties:
@@ -13174,6 +13130,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityAgentEnrollment'
+                nextPageToken:
+                    type: string
+        ListQualityAgentReportsResponse:
+            type: object
+            properties:
+                qualityAgentReports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/QualityAgentReport'
                 nextPageToken:
                     type: string
         ListQualityAgentSessionMessagesResponse:
@@ -13315,15 +13280,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/QualityRun'
-                nextPageToken:
-                    type: string
-        ListQualitySuggestionJobsResponse:
-            type: object
-            properties:
-                qualitySuggestionJobs:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualitySuggestionJob'
                 nextPageToken:
                     type: string
         ListQualitySuggestionsResponse:
@@ -13878,6 +13834,7 @@ components:
                         - NOTIFICATION_TYPE_OPENLINEAGE
                         - NOTIFICATION_TYPE_DATA_QUALITY
                         - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
+                        - NOTIFICATION_TYPE_DATA_QUALITY_AGENT
                     type: string
                     format: enum
                 severity:
@@ -13906,6 +13863,8 @@ components:
                     $ref: '#/components/schemas/OpenLineageDetail'
                 dataQuality:
                     $ref: '#/components/schemas/DataQualityDetail'
+                qualityAgentAttention:
+                    $ref: '#/components/schemas/QualityAgentAttentionDetail'
             description: |-
                 Notification is one in-app message for one recipient: the outcome of a sync
                  operation the recipient asked for, or an ingestion failure the workspace
@@ -13942,6 +13901,7 @@ components:
                             - NOTIFICATION_TYPE_OPENLINEAGE
                             - NOTIFICATION_TYPE_DATA_QUALITY
                             - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
+                            - NOTIFICATION_TYPE_DATA_QUALITY_AGENT
                         type: string
                         format: enum
                     description: |-
@@ -14017,6 +13977,7 @@ components:
                         - NOTIFICATION_TYPE_OPENLINEAGE
                         - NOTIFICATION_TYPE_DATA_QUALITY
                         - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
+                        - NOTIFICATION_TYPE_DATA_QUALITY_AGENT
                     type: string
                     format: enum
                 severity:
@@ -14098,6 +14059,7 @@ components:
                             - NOTIFICATION_TYPE_OPENLINEAGE
                             - NOTIFICATION_TYPE_DATA_QUALITY
                             - NOTIFICATION_TYPE_DATA_QUALITY_DIGEST
+                            - NOTIFICATION_TYPE_DATA_QUALITY_AGENT
                         type: string
                         format: enum
                     description: |-
@@ -14588,17 +14550,15 @@ components:
                     type: string
                 latestEventType:
                     type: string
-        PauseQualityAgentSessionRequest:
+        PauseQualityAgentRequest:
             required:
                 - name
             type: object
             properties:
                 name:
                     type: string
-                expectedRevision:
-                    type: integer
-                    description: The revision the caller saw; a stale value is rejected.
-                    format: int32
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+            description: PauseQualityAgentRequest pauses an active agent without disabling its identity.
         PreviewQualityRuleRequest:
             required:
                 - parent
@@ -14855,10 +14815,192 @@ components:
                 createTime:
                     type: string
                     format: date-time
+                state:
+                    enum:
+                        - QUALITY_AGENT_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_STATE_DRAFT
+                        - QUALITY_AGENT_STATE_ACTIVE
+                        - QUALITY_AGENT_STATE_PAUSED
+                        - QUALITY_AGENT_STATE_DISABLED
+                    type: string
+                    description: Runtime state; DISABLED is permanent and enabled is false.
+                    format: enum
+                owner:
+                    type: string
+                    description: 'Format: users/{user}. The owner is the only caller who may talk to the agent.'
+                databases:
+                    type: array
+                    items:
+                        type: string
+                    description: 'Database resource names in scope: instances/{instance}/databases/{database}.'
+                capabilities:
+                    type: array
+                    items:
+                        type: string
+                    description: 'Capability ids: "suggest", "adopt", "patrol"; extensible server-side.'
+                providerProfile:
+                    type: string
+                    description: LLM provider profile; empty means the workspace default.
+                reportSchedule:
+                    $ref: '#/components/schemas/QualityAgentReportSchedule'
+                adoption:
+                    $ref: '#/components/schemas/QualityAgentAdoptionSetting'
+                budget:
+                    $ref: '#/components/schemas/QualityAgentBudget'
+                conversation:
+                    type: string
+                    description: |-
+                        Format: workspaces/{workspace}/qualityAgentSessions/{session}. The agent's
+                         conversation session, created lazily.
+                updateTime:
+                    type: string
+                    format: date-time
             description: |-
                 QualityAgent is one agent principal: an independent identity an administrator
                  creates for autonomous quality work. Its token is issued once, and disabling the
                  agent ends every token it holds.
+        QualityAgentAdoptionSetting:
+            type: object
+            properties:
+                mode:
+                    enum:
+                        - QUALITY_AGENT_ADOPTION_MODE_UNSPECIFIED
+                        - QUALITY_AGENT_ADOPTION_MODE_OFF
+                        - QUALITY_AGENT_ADOPTION_MODE_PAUSED
+                        - QUALITY_AGENT_ADOPTION_MODE_ACTIVE
+                    type: string
+                    format: enum
+                ruleTypes:
+                    type: array
+                    items:
+                        enum:
+                            - QUALITY_RULE_TYPE_UNSPECIFIED
+                            - QUALITY_RULE_TYPE_ROW_COUNT
+                            - QUALITY_RULE_TYPE_ROW_COUNT_CHANGE
+                            - QUALITY_RULE_TYPE_NULL_PERCENT
+                            - QUALITY_RULE_TYPE_UNIQUE
+                            - QUALITY_RULE_TYPE_UNIQUE_COMBINATION
+                            - QUALITY_RULE_TYPE_ACCEPTED_VALUES
+                            - QUALITY_RULE_TYPE_RANGE
+                            - QUALITY_RULE_TYPE_REGEX
+                            - QUALITY_RULE_TYPE_STRING_LENGTH
+                            - QUALITY_RULE_TYPE_REFERENTIAL_INTEGRITY
+                            - QUALITY_RULE_TYPE_CROSS_COLUMN
+                            - QUALITY_RULE_TYPE_FRESHNESS
+                            - QUALITY_RULE_TYPE_CUSTOM_SQL
+                            - QUALITY_RULE_TYPE_CEL_EXPRESSION
+                            - QUALITY_RULE_TYPE_SCHEMA_DRIFT
+                            - QUALITY_RULE_TYPE_GROUP_CHECK
+                            - QUALITY_RULE_TYPE_AGGREGATE
+                            - QUALITY_RULE_TYPE_CROSS_TABLE
+                            - QUALITY_RULE_TYPE_STANDARD_CODE
+                            - QUALITY_RULE_TYPE_SEGMENT_CHECK
+                        type: string
+                        format: enum
+                    description: |-
+                        Rule types eligible for automatic adoption; empty means the server default
+                         low-risk set.
+                confidenceThreshold:
+                    type: number
+                    description: Minimum confidence (0..1) a draft needs; 0 means the server default (0.7).
+                    format: double
+                maxPerDay:
+                    type: integer
+                    description: Daily adoption ceiling; 0 means the server default (10).
+                    format: int32
+                allowCritical:
+                    type: boolean
+                    description: Whether critical assets may be auto-adopted; default false.
+            description: QualityAgentAdoptionSetting is the guardrail configuration of the adopt capability.
+        QualityAgentAttention:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                kind:
+                    enum:
+                        - QUALITY_AGENT_ATTENTION_KIND_UNSPECIFIED
+                        - QUALITY_AGENT_ATTENTION_KIND_BLOCKED
+                        - QUALITY_AGENT_ATTENTION_KIND_PROPOSAL_PENDING
+                        - QUALITY_AGENT_ATTENTION_KIND_REPORT_ANOMALY
+                    type: string
+                    format: enum
+                status:
+                    enum:
+                        - QUALITY_AGENT_ATTENTION_STATUS_UNSPECIFIED
+                        - QUALITY_AGENT_ATTENTION_STATUS_OPEN
+                        - QUALITY_AGENT_ATTENTION_STATUS_RESOLVED
+                        - QUALITY_AGENT_ATTENTION_STATUS_DISMISSED
+                    type: string
+                    format: enum
+                session:
+                    type: string
+                    description: The target session to resume when the owner answers; empty for an agent event.
+                reference:
+                    type: string
+                    description: The resource the owner should open, e.g. a report or a proposal.
+                title:
+                    type: string
+                question:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+                resolveTime:
+                    type: string
+                    format: date-time
+                resolvedBy:
+                    type: string
+                    description: 'Format: users/{user}; empty while open.'
+            description: QualityAgentAttention is one owner escalation inside an agent.
+        QualityAgentAttentionDetail:
+            type: object
+            properties:
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                attention:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
+                kind:
+                    type: integer
+                    description: 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY.
+                    format: int32
+                title:
+                    type: string
+                question:
+                    type: string
+            description: |-
+                QualityAgentAttentionDetail reports one agent escalation in the inbox. The
+                 client renders the prose; the server stores only identities and the bounded
+                 question text.
+        QualityAgentBudget:
+            type: object
+            properties:
+                tokensPerHour:
+                    type: string
+                wakesPerHour:
+                    type: integer
+                    format: int32
+                maxConcurrentSessions:
+                    type: integer
+                    format: int32
+                maxNewSessionsPerHour:
+                    type: integer
+                    format: int32
+                maxActiveSessions:
+                    type: integer
+                    format: int32
+                conversationMessagesPerHour:
+                    type: integer
+                    format: int32
+            description: |-
+                QualityAgentBudget is one agent's runtime budget. Zero fields mean the server
+                 default; the workspace hard caps still apply.
         QualityAgentDatabaseEnrollmentSummary:
             type: object
             properties:
@@ -15054,6 +15196,127 @@ components:
             description: |-
                 QualityAgentMetrics is the runner's evaluation: what it did, what it spent and
                  how the proposals it made were decided. All of it is derived from existing rows.
+        QualityAgentReport:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentReports/{quality_agent_report}'
+                agent:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                trigger:
+                    enum:
+                        - QUALITY_AGENT_REPORT_TRIGGER_UNSPECIFIED
+                        - QUALITY_AGENT_REPORT_TRIGGER_SCHEDULED
+                        - QUALITY_AGENT_REPORT_TRIGGER_ON_DEMAND
+                    type: string
+                    format: enum
+                periodKind:
+                    enum:
+                        - QUALITY_AGENT_REPORT_PERIOD_UNSPECIFIED
+                        - QUALITY_AGENT_REPORT_PERIOD_DAILY
+                        - QUALITY_AGENT_REPORT_PERIOD_WEEKLY
+                        - QUALITY_AGENT_REPORT_PERIOD_ON_DEMAND
+                    type: string
+                    format: enum
+                periodKey:
+                    type: string
+                    description: 'Stable period identity: YYYY-MM-DD for daily, ISO year-week for weekly.'
+                periodStart:
+                    type: string
+                    format: date-time
+                periodEnd:
+                    type: string
+                    format: date-time
+                state:
+                    enum:
+                        - QUALITY_AGENT_REPORT_STATE_UNSPECIFIED
+                        - QUALITY_AGENT_REPORT_STATE_PENDING
+                        - QUALITY_AGENT_REPORT_STATE_READY
+                        - QUALITY_AGENT_REPORT_STATE_FAILED
+                    type: string
+                    format: enum
+                databases:
+                    type: array
+                    items:
+                        type: string
+                    description: Database resource names the report covers.
+                targetCount:
+                    type: integer
+                    format: int32
+                coveredTargetCount:
+                    type: integer
+                    format: int32
+                ruleCount:
+                    type: integer
+                    format: int32
+                executionCount:
+                    type: integer
+                    format: int32
+                passedCount:
+                    type: integer
+                    format: int32
+                warnedCount:
+                    type: integer
+                    format: int32
+                failedCount:
+                    type: integer
+                    format: int32
+                erroredCount:
+                    type: integer
+                    format: int32
+                newIssueCount:
+                    type: integer
+                    format: int32
+                openIssueCount:
+                    type: integer
+                    format: int32
+                pendingProposalCount:
+                    type: integer
+                    format: int32
+                tokensUsed:
+                    type: string
+                bodyMarkdown:
+                    type: string
+                failureReason:
+                    type: string
+                createTime:
+                    type: string
+                    format: date-time
+                generateTime:
+                    type: string
+                    format: date-time
+            description: QualityAgentReport is one deterministic patrol report over an agent's scope.
+        QualityAgentReportSchedule:
+            type: object
+            properties:
+                frequency:
+                    enum:
+                        - QUALITY_AGENT_REPORT_FREQUENCY_UNSPECIFIED
+                        - QUALITY_AGENT_REPORT_FREQUENCY_OFF
+                        - QUALITY_AGENT_REPORT_FREQUENCY_DAILY
+                        - QUALITY_AGENT_REPORT_FREQUENCY_WEEKLY
+                    type: string
+                    format: enum
+                time:
+                    type: string
+                    description: '"HH:MM" in timezone.'
+                timezone:
+                    type: string
+                dayOfWeek:
+                    enum:
+                        - DAY_OF_WEEK_UNSPECIFIED
+                        - DAY_OF_WEEK_MONDAY
+                        - DAY_OF_WEEK_TUESDAY
+                        - DAY_OF_WEEK_WEDNESDAY
+                        - DAY_OF_WEEK_THURSDAY
+                        - DAY_OF_WEEK_FRIDAY
+                        - DAY_OF_WEEK_SATURDAY
+                        - DAY_OF_WEEK_SUNDAY
+                    type: string
+                    format: enum
+            description: QualityAgentReportSchedule is the agent's patrol report cadence.
         QualityAgentRunnerStatus:
             type: object
             properties:
@@ -16452,50 +16715,6 @@ components:
                 QualityIssue is the durable problem behind a rule's failures. A rule has at
                  most one unresolved issue; a later failing run touches it instead of opening
                  another, and a resolved issue is never reopened.
-        QualityLLMDiagnostic:
-            type: object
-            properties:
-                errorCode:
-                    type: string
-                    description: |-
-                        A stable machine-readable classifier, e.g. TRUNCATED (finish_reason=length),
-                         STREAM_INCOMPLETE, PROVIDER_STATUS, PROVIDER_REQUEST, RESPONSE_TOO_LARGE,
-                         TIMEOUT, PARSE, UNKNOWN.
-                provider:
-                    type: string
-                model:
-                    type: string
-                promptVersion:
-                    type: string
-                maxOutputTokens:
-                    type: integer
-                    description: The output-token budget the call asked for; TRUNCATED points at this.
-                    format: int32
-                finishReason:
-                    type: string
-                promptTokens:
-                    type: string
-                completionTokens:
-                    type: string
-                totalTokens:
-                    type: string
-                promptChars:
-                    type: string
-                    description: How large the prompt was, so a context/usage problem is visible.
-                correlationId:
-                    type: string
-                    description: Copy this into server logs or the debug log lookup.
-                providerStatus:
-                    type: integer
-                    format: int32
-                debugPayloadAvailable:
-                    type: boolean
-                    description: Whether GetQualitySuggestionJobTargetDebug can return the raw bodies.
-            description: |-
-                QualityLLMDiagnostic explains why one LLM analysis failed, in a form a person
-                 can act on and an operator can correlate with logs. It never includes the
-                 prompt or the model response; those are available on demand when runtime debug
-                 mode captured them (see GetQualitySuggestionJobTargetDebug).
         QualityLLMUsage:
             type: object
             properties:
@@ -17518,119 +17737,6 @@ components:
                 QualitySuggestion is one model-proposed rule draft or semantic label waiting
                  for a reviewer. Nothing here is a rule: accepting a suggestion goes through the
                  normal rule or label path.
-        QualitySuggestionJob:
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualitySuggestionJobs/{quality_suggestion_job}'
-                status:
-                    enum:
-                        - QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED
-                        - QUALITY_SUGGESTION_JOB_STATUS_PENDING
-                        - QUALITY_SUGGESTION_JOB_STATUS_RUNNING
-                        - QUALITY_SUGGESTION_JOB_STATUS_COMPLETED
-                        - QUALITY_SUGGESTION_JOB_STATUS_FAILED
-                        - QUALITY_SUGGESTION_JOB_STATUS_CANCELED
-                    type: string
-                    format: enum
-                intent:
-                    type: string
-                    description: The natural-language intent the job drafts for, shared by every target.
-                language:
-                    type: string
-                    description: The language the intent and drafts are written in, e.g. "en" or "zh-CN".
-                targets:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/QualitySuggestionJobTarget'
-                targetCount:
-                    type: integer
-                    description: Total targets, targets no longer PENDING/RUNNING, and queued suggestions.
-                    format: int32
-                completedTargetCount:
-                    type: integer
-                    format: int32
-                suggestionCount:
-                    type: integer
-                    format: int32
-                provider:
-                    type: string
-                    description: The provider facts of the analysis; set when the runner starts the job.
-                model:
-                    type: string
-                promptVersion:
-                    type: string
-                createTime:
-                    type: string
-                    format: date-time
-                startTime:
-                    type: string
-                    format: date-time
-                finishTime:
-                    type: string
-                    format: date-time
-                error:
-                    type: string
-                    description: Empty unless the whole job failed; per-target failures live on the targets.
-                createdBy:
-                    type: string
-                    description: 'Format: users/{user}.'
-                deduplicated:
-                    readOnly: true
-                    type: boolean
-                    description: |-
-                        True when this response returns a job that was already PENDING or RUNNING for
-                         the same intent, targets and columns. Re-submitting an identical request is
-                         idempotent: no second job or analysis is started.
-            description: |-
-                QualitySuggestionJob is one background AI drafting run over a set of targets.
-                 It is the durable unit of the asynchronous drafting flow: it outlives the
-                 browser tab that submitted it and is safe to poll.
-        QualitySuggestionJobTarget:
-            type: object
-            properties:
-                targetGuid:
-                    type: string
-                targetType:
-                    type: integer
-                    description: The metaxisdata.v1.MetaType number; the store module does not import v1.
-                    format: int32
-                path:
-                    $ref: '#/components/schemas/QualityTargetPath'
-                columns:
-                    type: array
-                    items:
-                        type: string
-                state:
-                    enum:
-                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED
-                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING
-                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING
-                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE
-                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED
-                        - QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED
-                    type: string
-                    format: enum
-                suggestionResourceIds:
-                    type: array
-                    items:
-                        type: string
-                    description: Resource ids (not names) of the suggestions this target queued.
-                error:
-                    type: string
-                startedAtUnixMs:
-                    type: string
-                finishedAtUnixMs:
-                    type: string
-                diagnostic:
-                    allOf:
-                        - $ref: '#/components/schemas/QualityLLMDiagnostic'
-                    description: Set when the target failed in the model call; the classifier and context.
-                summary:
-                    allOf:
-                        - $ref: '#/components/schemas/QualitySuggestionQueueSummary'
-                    description: What this target's generation pass did to the review queue. Set on success.
         QualitySuggestionPayload:
             type: object
             properties:
@@ -18218,6 +18324,20 @@ components:
                 RegexConfig counts rows whose column value does not match a regular
                  expression. The pattern is Go RE2 syntax and is also translated for the
                  engine's own regex operator.
+        ReplyQualityAgentAttentionRequest:
+            required:
+                - name
+                - messageBody
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}'
+                messageBody:
+                    type: string
+                    description: The owner's answer. Named message_body so the audit ledger redacts it.
+                requestId:
+                    type: string
         ResumeQualityAgentSessionRequest:
             required:
                 - name
@@ -18236,18 +18356,6 @@ components:
                 name:
                     type: string
                     description: 'Format: workspaces/{workspace}/notificationDeliveries/{notification_delivery}'
-        RetryQualityAgentEnrollmentRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: 'Format: workspaces/{workspace}/qualityAgentEnrollments/{quality_agent_enrollment}'
-                expectedRevision:
-                    type: integer
-                    description: The revision the caller saw; a stale value is rejected with Aborted.
-                    format: int32
         RevokeConnectedAppRequest:
             required:
                 - name
@@ -18801,6 +18909,24 @@ components:
                         The rule types the deterministic mapping would suggest for this label, in
                          display order. The model may rank types but may not invent one.
             description: SemanticLabelSuggestion is a model-proposed semantic label for one column.
+        SendQualityAgentMessageRequest:
+            required:
+                - name
+                - messageBody
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+                messageBody:
+                    type: string
+                    description: |-
+                        The owner's message. The field name is deliberately not `content`: the audit
+                         redaction list matches field names and this body must not enter the ledger.
+                requestId:
+                    type: string
+                    description: A client-generated idempotency id; repeating it returns the existing message.
+            description: SendQualityAgentMessageRequest appends the owner's message and wakes the agent.
         SendTestEmailRequest:
             type: object
             properties: {}
@@ -18974,6 +19100,15 @@ components:
                  exists, and whether the value must exist in the standard's built-in code
                  table. The rule reads a bounded sample of the column and validates every row
                  in process, so its verdict is a sample verdict like cel_expression's.
+        StartQualityAgentRequest:
+            required:
+                - name
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Format: workspaces/{workspace}/qualityAgents/{quality_agent}'
+            description: StartQualityAgentRequest activates a draft or paused agent.
         Status:
             type: object
             properties:
@@ -19735,26 +19870,6 @@ components:
                     type: string
                     description: The list of fields to update.
                     format: field-mask
-        UpdateQualityAgentEnrollmentRequest:
-            required:
-                - enrollment
-                - updateMask
-            type: object
-            properties:
-                enrollment:
-                    allOf:
-                        - $ref: '#/components/schemas/QualityAgentEnrollment'
-                    description: The enrollment to change. Only state and mode in update_mask are accepted.
-                updateMask:
-                    type: string
-                    description: |-
-                        Supported paths: "state" (only PENDING and EXCLUDED are accepted) and "mode"
-                         (MONITOR and TRIAGE). The server rejects any other path.
-                    format: field-mask
-                expectedRevision:
-                    type: integer
-                    description: The revision the caller saw; a stale value is rejected with Aborted.
-                    format: int32
         UpdateQualityContractRequest:
             required:
                 - parent
@@ -20013,23 +20128,6 @@ components:
                         $ref: '#/components/schemas/RuleMetadata'
                     description: The rules is the list of rules in a view (PostgreSQL specific).
             description: ViewMetadata is the metadata for views.
-        WakeQualityAgentSessionRequest:
-            required:
-                - name
-            type: object
-            properties:
-                name:
-                    type: string
-                content:
-                    type: string
-                    description: The person's question or instruction; it becomes a user message in the session.
-                requestId:
-                    type: string
-                    description: |-
-                        A client-generated idempotency id for this message. Repeating the same id returns
-                         the session without appending a second message; empty means the server generates a
-                         random one (a repeat is then a new message, which is what a person asking the same
-                         question twice means).
         WeComChannelConfig:
             type: object
             properties: {}
