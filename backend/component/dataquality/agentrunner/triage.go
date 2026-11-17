@@ -7,6 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -80,6 +82,28 @@ func WithTableContext(reader TableContextReader) Option {
 // WithDraftChecks gives the engine the check-drafting pipeline a triage wake uses.
 func WithDraftChecks(draft DraftChecksFunc) Option {
 	return func(engine *Engine) { engine.draftChecks = draft }
+}
+
+// WithPermissionChecker gives the engine the IAM checker a tool call is gated by.
+func WithPermissionChecker(checker tool.PermissionChecker) Option {
+	return func(engine *Engine) { engine.checker = checker }
+}
+
+// WithActionSettings gives the engine the settings loader its autonomy policy
+// reads. Without it the action-policy gate is skipped.
+func WithActionSettings(load func(ctx context.Context) (dataquality.Settings, error)) Option {
+	return func(engine *Engine) { engine.actionSettings = load }
+}
+
+// WithMaxParallelReads lets one model batch run this many parallel-safe reads at
+// once. A value below 2 keeps execution serial.
+func WithMaxParallelReads(limit int) Option {
+	return func(engine *Engine) { engine.maxParallelReads = limit }
+}
+
+// WithToolAudit records side-effecting tool calls in the deployment ledger.
+func WithToolAudit(sink tool.AuditSink) Option {
+	return func(engine *Engine) { engine.auditSink = sink }
 }
 
 // getTableContextTool renders the target context as tool JSON.

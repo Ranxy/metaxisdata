@@ -32,11 +32,11 @@ func TestTriageWakeWithoutAModelRetries(t *testing.T) {
 func TestModelToolDefsDependOnMode(t *testing.T) {
 	t.Parallel()
 
-	monitor := specNames(modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR))
+	monitor := specNames(monitorSpec().Tools)
 	require.NotContains(t, monitor, "get_table_context")
 	require.NotContains(t, monitor, "draft_checks")
 
-	triage := specNames(modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE))
+	triage := specNames(triageSpec().Tools)
 	require.Contains(t, triage, "get_table_context")
 	require.Contains(t, triage, "draft_checks")
 	require.Contains(t, triage, "record_investigation")

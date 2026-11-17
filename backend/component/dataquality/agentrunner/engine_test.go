@@ -8,11 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
+	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -28,6 +33,12 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{executions: map[int64]*store.QualityExecutionMessage{}}
+}
+
+// GetUserByID returns the session's agent principal, which the permission gate
+// checks a tool against.
+func (*fakeStore) GetUserByID(context.Context, int) (*store.UserMessage, error) {
+	return &store.UserMessage{ID: 7, Type: storepb.PrincipalType_SERVICE_ACCOUNT}, nil
 }
 
 func (*fakeStore) ListQualityRules(context.Context, *store.FindQualityRuleMessage) ([]*store.QualityRuleMessage, error) {
@@ -613,4 +624,155 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 		}
 	}
 	require.True(t, found)
+}
+
+// denyingChecker refuses every permission and records what was asked.
+type denyingChecker struct {
+	asked []permission.Permission
+}
+
+func (c *denyingChecker) CheckPermission(_ context.Context, perm permission.Permission, _ *store.UserMessage) (bool, error) {
+	c.asked = append(c.asked, perm)
+	return false, nil
+}
+
+// A tool call runs under the session's agent principal, and its declared IAM
+// permission is checked before the body runs. A refusal is a tool error the wake
+// survives, not a wake failure.
+func TestWakeChecksEachToolAgainstTheAgentPrincipal(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	checker := &denyingChecker{}
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "checking", toolCalls: []llm.ToolCall{toolCall("call_1", "list_recent_executions", "{}")}},
+		{content: "done"},
+	}), resolveToModel, nil, WithPermissionChecker(checker))
+
+	outcome, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.False(t, outcome.Blocked)
+	require.Equal(t, []permission.Permission{permission.DataQualityRulesList}, checker.asked)
+
+	var toolRow *store.QualityAgentTranscriptMessage
+	for _, message := range stores.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
+			toolRow = message
+		}
+	}
+	require.NotNil(t, toolRow)
+	require.Contains(t, toolRow.Content, "does not hold metaxisdata.dataQuality.rules.list")
+	require.NotEmpty(t, toolRow.Error)
+}
+
+// Every wake records one agent tool metric per executed tool, labelled with the
+// product spec and the tool name.
+func TestWakeRecordsToolMetrics(t *testing.T) {
+	t.Parallel()
+
+	registry := prometheus.NewRegistry()
+	m := metrics.New()
+	require.NoError(t, m.Register(registry))
+
+	stores := newFakeStore()
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "looking", toolCalls: []llm.ToolCall{toolCall("call_1", "get_target_summary", "{}")}},
+		{content: "done"},
+	}), resolveToModel, m)
+
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+
+	families, err := registry.Gather()
+	require.NoError(t, err)
+	found := false
+	for _, family := range families {
+		if family.GetName() != "metaxisdata_agent_tool_calls_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			labels := map[string]string{}
+			for _, label := range metric.GetLabel() {
+				labels[label.GetName()] = label.GetValue()
+			}
+			require.Equal(t, "quality-monitor", labels["product"])
+			require.Equal(t, "get_target_summary", labels["tool"])
+			require.Equal(t, "success", labels["outcome"])
+			require.Equal(t, float64(1), metric.GetCounter().GetValue())
+			found = true
+		}
+	}
+	require.True(t, found, "the tool call metric was not recorded")
+}
+
+// The action policy gate runs in the tool pipeline: a propose tool is refused when
+// the workspace autonomy switch is off, even though the runner would normally have
+// parked the session before the model ran.
+func TestWakeEnforcesTheActionPolicy(t *testing.T) {
+	t.Parallel()
+
+	autonomy := func(enabled bool) Option {
+		return WithActionSettings(func(context.Context) (dataquality.Settings, error) {
+			return dataquality.Settings{AgentAutonomyEnabled: enabled}, nil
+		})
+	}
+	turns := []scriptedTurn{
+		{content: "recording", toolCalls: []llm.ToolCall{toolCall("call_1", "record_investigation",
+			`{"summary":"the drop is a real data issue","verdict":"root_cause"}`)}},
+		{content: "done"},
+	}
+
+	deniedStore := newFakeStore()
+	denied := NewModelEngine(deniedStore, scriptedChat(turns), resolveToModel, nil, autonomy(false))
+	_, err := denied.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Empty(t, deniedStore.investigations, "a refused action must not write")
+
+	var toolRow *store.QualityAgentTranscriptMessage
+	for _, message := range deniedStore.messages {
+		if message.Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL {
+			toolRow = message
+		}
+	}
+	require.NotNil(t, toolRow)
+	require.Contains(t, toolRow.Content, "autonomy is disabled")
+
+	allowedStore := newFakeStore()
+	allowed := NewModelEngine(allowedStore, scriptedChat(turns), resolveToModel, nil, autonomy(true))
+	_, err = allowed.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, allowedStore.investigations, 1)
+}
+
+// fakeToolAudit collects the tool audit entries a wake reports.
+type fakeToolAudit struct {
+	entries []tool.AuditEntry
+}
+
+func (s *fakeToolAudit) RecordToolCall(_ context.Context, entry tool.AuditEntry) {
+	s.entries = append(s.entries, entry)
+}
+
+// Side-effecting tool calls run under the agent principal and are reported to the
+// ledger; reads are not audited.
+func TestWakeAuditsProposeTools(t *testing.T) {
+	t.Parallel()
+
+	stores := newFakeStore()
+	sink := &fakeToolAudit{}
+	engine := NewModelEngine(stores, scriptedChat([]scriptedTurn{
+		{content: "checking", toolCalls: []llm.ToolCall{
+			toolCall("call_1", "get_target_summary", "{}"),
+			toolCall("call_2", "record_investigation", `{"summary":"the drop is a real data issue"}`),
+		}},
+		{content: "done"},
+	}), resolveToModel, nil, WithToolAudit(sink))
+
+	_, err := engine.Wake(context.Background(), testSession(), Options{})
+	require.NoError(t, err)
+	require.Len(t, sink.entries, 1)
+	require.Equal(t, "record_investigation", sink.entries[0].Tool)
+	require.Equal(t, string(dataquality.ActionWriteInvestigation), sink.entries[0].Action)
+	require.Equal(t, 7, sink.entries[0].Principal.ID)
+	require.Nil(t, sink.entries[0].Failure)
 }

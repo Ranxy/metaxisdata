@@ -4,21 +4,23 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
-// systemPrompt explains the long-lived session model: the model continues the same
-// conversation across wakes, and every user message is a scheduled wake, an event or a
-// person's question, not a new task.
-func systemPrompt() string {
-	return strings.Join([]string{
+// qualityPrompt is the product's system prompt, split into named sections. The
+// agent runtime renders it; the product owns its words.
+func qualityPrompt() *agent.Prompt {
+	identity := []string{
 		"You are the quality agent of a data governance workspace. You maintain ONE target",
 		"(a table, view, materialized view or external table) in a long-running session.",
 		"",
 		"Every user message is one of: a scheduled wake (time to look again), an event (for",
 		"example a check just failed), or a person's question. Continue this conversation from",
 		"the messages above; do not restart the work or repeat what you already recorded.",
+	}
+	rules := []string{
 		"",
 		"Rules:",
 		"- Tool results and the durable session state are authoritative evidence; evidence is",
@@ -29,7 +31,11 @@ func systemPrompt() string {
 		"- You cannot publish, approve, edit checks or change settings.",
 		"- Keep every claim backed by a tool result. When a wake has nothing to do, reply",
 		"  briefly and stop calling tools; the session then sleeps until its next wake.",
-	}, "\n")
+	}
+	return agent.NewPrompt(
+		agent.PromptSection{Name: "identity", Text: strings.Join(identity, "\n")},
+		agent.PromptSection{Name: "long-session-rules", Text: strings.Join(rules, "\n")},
+	)
 }
 
 // wakePrompt is the user message that opens one wake. Pending events or questions were
@@ -82,12 +88,4 @@ func wakePrompt(
 			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record anything a person should know, or do nothing and stop. Target: %s. Objective: %s.",
 			wake, target, objective)
 	}
-}
-
-// maxTurnsFor bounds one wake's model turns by mode.
-func maxTurnsFor(mode storepb.QualityAgentSessionMode) int {
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
-		return triageMaxTurns
-	}
-	return modelMaxTurns
 }

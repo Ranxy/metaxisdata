@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 )
 
 // Execute runs one call through the shared pipeline: resolve, bound, run,
@@ -25,6 +27,18 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 	}
 	if inv == nil {
 		inv = &Invocation{}
+	}
+	started := time.Now()
+	finish := func(result Result) Result {
+		auditTool(ctx, inv, t, call, result, started)
+		observeTool(inv, t.Name, result, started)
+		return result
+	}
+	if refusedResult, refused := authorize(ctx, t, inv); refused {
+		return finish(refusedResult)
+	}
+	if refusedResult, refused := authorizeAction(ctx, t, inv); refused {
+		return finish(refusedResult)
 	}
 
 	execCtx := ctx
@@ -49,7 +63,82 @@ func (s *Set) Execute(ctx context.Context, call Call, inv *Invocation) Result {
 		result.Content = common.TruncateUTF8Bytes(result.Content, t.Meta.MaxResultBytes)
 		result.Truncated = true
 	}
-	return result
+	return finish(result)
+}
+
+// auditTool records one side-effecting call. Reads are not audited: the agent's
+// ledger is about what it changed, and a wake reads several times per day.
+func auditTool(ctx context.Context, inv *Invocation, t Tool, call Call, result Result, started time.Time) {
+	if inv.Audit == nil || t.Meta.SideEffect == SideEffectNone {
+		return
+	}
+	inv.Audit.RecordToolCall(ctx, AuditEntry{
+		Tool:      t.Name,
+		Action:    t.Meta.Action,
+		Principal: inv.Principal,
+		Workspace: inv.Workspace,
+		Arguments: call.Arguments,
+		Failure:   result.Error,
+		Duration:  time.Since(started),
+	})
+}
+
+// observeTool reports one finished execution to the product's observer, if any.
+// A denial is an error outcome: a call the caller was not allowed to make is a
+// tool failure like any other.
+func observeTool(inv *Invocation, toolName string, result Result, started time.Time) {
+	if inv.Observer == nil {
+		return
+	}
+	outcome := "success"
+	if result.IsError {
+		outcome = "error"
+	}
+	inv.Observer.ObserveToolCall(toolName, outcome, time.Since(started), len(result.Content))
+}
+
+// authorize enforces a permission-authorized tool's IAM permission. It is a
+// no-op when the invocation carries no checker: a transport that already ran the
+// ACL interceptor owns that decision. A checker without a principal is refused,
+// because a permission check with nobody to check is not a decision.
+func authorize(ctx context.Context, t Tool, inv *Invocation) (Result, bool) {
+	if t.Meta.Authz != AuthzPermission || inv.Checker == nil {
+		return Result{}, false
+	}
+	if inv.Principal == nil {
+		return errorResult(NewError(CodeUnauthenticated,
+			"the tool call carries no verified identity")), true
+	}
+	allowed, err := inv.Checker.CheckPermission(ctx, permission.Permission(t.Meta.Permission), inv.Principal)
+	if err != nil {
+		return errorResult(NewError(CodeInternal, "the permission check failed")), true
+	}
+	if !allowed {
+		return errorResult(NewError(CodePermissionDenied,
+			"the caller does not hold "+t.Meta.Permission)), true
+	}
+	return Result{}, false
+}
+
+// authorizeAction enforces the autonomy policy for a tool that declares an
+// action. The product decides; the pipeline refuses anything not plainly allowed,
+// so an approval-pending verdict never runs a write.
+func authorizeAction(ctx context.Context, t Tool, inv *Invocation) (Result, bool) {
+	if t.Meta.Action == "" || inv.Policy == nil {
+		return Result{}, false
+	}
+	decision, err := inv.Policy.Decide(ctx, t.Meta.Action)
+	if err != nil {
+		return errorResult(NewError(CodeInternal, "the action policy could not decide")), true
+	}
+	if !decision.Allowed || decision.RequiresApproval {
+		reason := decision.Reason
+		if reason == "" {
+			reason = "the action is not allowed for this agent"
+		}
+		return errorResult(NewError(CodeActionDenied, reason)), true
+	}
+	return Result{}, false
 }
 
 // run invokes one tool body with panic recovery. The recovered value is logged,

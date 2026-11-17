@@ -2,10 +2,12 @@ package v1
 
 import (
 	"context"
+	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
+	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
 // explainSQLToolSet builds the read-only tool set of one ExplainSQL request. The
@@ -91,4 +93,18 @@ func explainToolResult(results []llm.ToolResult, err error) (tool.Result, error)
 		return tool.Result{}, nil
 	}
 	return tool.Result{Content: results[0].Content}, nil
+}
+
+// explainToolObserver records the ExplainSQL tool calls under the explain_sql
+// product label in the shared tool metrics.
+type explainToolObserver struct {
+	metrics *metrics.Metrics
+}
+
+// ObserveToolCall records one ExplainSQL tool execution.
+func (o explainToolObserver) ObserveToolCall(toolName, outcome string, duration time.Duration, resultBytes int) {
+	if o.metrics == nil {
+		return
+	}
+	o.metrics.ObserveAgentToolCall("explain_sql", toolName, outcome, duration, resultBytes)
 }

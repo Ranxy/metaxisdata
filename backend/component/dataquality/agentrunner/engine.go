@@ -17,6 +17,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -51,6 +52,7 @@ type Store interface {
 	ListQualityAgentTranscriptMessages(ctx context.Context, find *store.FindQualityAgentTranscriptMessage) ([]*store.QualityAgentTranscriptMessage, error)
 	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
+	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -72,6 +74,17 @@ type Engine struct {
 	// instead of pretending to have analysed the table.
 	tableContext TableContextReader
 	draftChecks  DraftChecksFunc
+	// checker enforces each tool's IAM permission against the session's agent
+	// principal. A process that does not wire it skips the check; production wires
+	// it, because an in-process tool call does not pass the RPC ACL interceptor.
+	checker tool.PermissionChecker
+	// actionSettings loads the workspace settings the autonomy policy reads. A
+	// process that does not wire it skips the action-policy gate.
+	actionSettings func(ctx context.Context) (dataquality.Settings, error)
+	// maxParallelReads bounds concurrent parallel-safe tool calls in one batch.
+	maxParallelReads int
+	// auditSink records side-effecting tool calls in the deployment ledger.
+	auditSink tool.AuditSink
 }
 
 // NewEngine creates the deterministic engine.
@@ -250,18 +263,25 @@ func (e *Engine) modelWake(
 	if err != nil {
 		return Outcome{}, err
 	}
-	executor := toolExecutor(ctx, set, truncatedTools)
+	spec := specFor(session.Mode)
+	invocation, err := e.toolInvocation(ctx, session, spec.Name)
+	if err != nil {
+		return Outcome{}, err
+	}
+	executor := toolExecutor(ctx, set, truncatedTools, invocation)
 	runLoop := func(conversation []agent.Message) *agent.Event {
 		chatConfig := agent.Config{
 			Provider:             config,
-			Feature:              "dq_agent",
+			Feature:              spec.Feature,
 			History:              conversation,
 			Tools:                agent.ToolDefs(set.Schemas()),
 			Executor:             executor,
-			MaxTurns:             maxTurnsFor(session.Mode),
+			MaxTurns:             spec.MaxTurns,
 			MaxConversationBytes: agent.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
+			ParallelSafe:         set.IsParallelSafe,
+			MaxParallelToolCalls: e.maxParallelReads,
 		}
 		for event := range e.chat(ctx, chatConfig) {
 			switch event.Type {
@@ -401,6 +421,91 @@ func (e *Engine) modelWake(
 		EngineState:    state,
 		Summary:        summary,
 	}, nil
+}
+
+// toolInvocation is the caller identity every tool in this wake runs under: the
+// session's agent principal, never the person who woke it. A product without a
+// checker (tests, a deployment that has not wired IAM) returns nil, which the
+// pipeline treats as "the transport already authorized this call".
+func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgentSessionMessage, product string) (*tool.Invocation, error) {
+	if e.checker == nil && e.metrics == nil && e.actionSettings == nil && e.auditSink == nil {
+		return nil, nil
+	}
+	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now}
+	if e.metrics != nil {
+		invocation.Observer = agentToolObserver{metrics: e.metrics, product: product}
+	}
+	if e.actionSettings != nil {
+		invocation.Policy = sessionActionPolicy{engine: e, session: session}
+	}
+	if e.auditSink != nil {
+		invocation.Audit = e.auditSink
+	}
+	if e.checker == nil && e.auditSink == nil {
+		return invocation, nil
+	}
+	if session.AgentPrincipalID == 0 {
+		return nil, errors.New("the session has no agent principal")
+	}
+	principal, err := e.store.GetUserByID(ctx, int(session.AgentPrincipalID))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read the agent principal")
+	}
+	if principal == nil {
+		return nil, errors.New("the session's agent principal no longer exists")
+	}
+	invocation.Principal = principal
+	if e.checker != nil {
+		invocation.Checker = e.checker
+	}
+	return invocation, nil
+}
+
+// sessionActionPolicy answers the autonomy question for one session's tools: the
+// product's action catalog decides, with the target's real criticality. The runner
+// has already parked a session whose workspace or agent switch is off, but the
+// policy re-reads the settings so the verdict is never based on stale state.
+type sessionActionPolicy struct {
+	engine  *Engine
+	session *store.QualityAgentSessionMessage
+}
+
+// Decide evaluates one action for this agent on this target.
+func (p sessionActionPolicy) Decide(ctx context.Context, action string) (tool.ActionDecision, error) {
+	settings, err := p.engine.actionSettings(ctx)
+	if err != nil {
+		return tool.ActionDecision{}, err
+	}
+	criticality := p.engine.planCriticality(ctx, p.session)
+	decision := dataquality.DecideAction(dataquality.PolicyInput{
+		Action:          dataquality.ActionID(action),
+		Actor:           dataquality.ActorAgent,
+		Criticality:     criticality,
+		AutonomyEnabled: settings.AgentAutonomyEnabled,
+		AgentEnabled:    true,
+	})
+	reason := decision.Reason
+	if !decision.Allowed && decision.RequiresApproval && dataquality.ActionID(action) == dataquality.ActionRecordDecisionWhy {
+		// Keep the actionable guidance the tool used to give the model when a
+		// critical asset hands the decision to a person.
+		reason = "a decision about a critical asset needs a person; record the conclusion with block_session instead"
+	}
+	return tool.ActionDecision{
+		Allowed:          decision.Allowed,
+		RequiresApproval: decision.RequiresApproval,
+		Reason:           reason,
+	}, nil
+}
+
+// agentToolObserver labels the shared tool metrics with this product's name.
+type agentToolObserver struct {
+	metrics *metrics.Metrics
+	product string
+}
+
+// ObserveToolCall records one tool execution for this product.
+func (o agentToolObserver) ObserveToolCall(toolName, outcome string, duration time.Duration, resultBytes int) {
+	o.metrics.ObserveAgentToolCall(o.product, toolName, outcome, duration, resultBytes)
 }
 
 // deterministicWake runs the no-model survey or event investigation. It consumes every
@@ -651,7 +756,7 @@ func (e *Engine) ensureSystemMessage(ctx context.Context, session *store.Quality
 		Wake:           0,
 		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
 		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_RUNNER,
-		Content:        systemPrompt(),
+		Content:        specFor(session.Mode).Prompt.Render(),
 		IdempotencyKey: "system:v1",
 	})
 }

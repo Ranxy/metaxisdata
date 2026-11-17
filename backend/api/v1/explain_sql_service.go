@@ -46,11 +46,14 @@ type ExplainSQLService struct {
 	// metrics records LLM call, token and cache outcomes; a nil value disables
 	// instrumentation.
 	metrics *metrics.Metrics
+	// checker enforces each tool's IAM permission for the requesting user. Nil
+	// skips the check (tests).
+	checker tool.PermissionChecker
 }
 
 // NewExplainSQLService creates a new ExplainSQLService.
-func NewExplainSQLService(st *store.Store, registry *llm.Registry, lineageAnalyzer *lineage.Analyzer, m *metrics.Metrics) *ExplainSQLService {
-	return &ExplainSQLService{store: st, registry: registry, lineage: lineageAnalyzer, metrics: m}
+func NewExplainSQLService(st *store.Store, registry *llm.Registry, lineageAnalyzer *lineage.Analyzer, m *metrics.Metrics, checker tool.PermissionChecker) *ExplainSQLService {
+	return &ExplainSQLService{store: st, registry: registry, lineage: lineageAnalyzer, metrics: m, checker: checker}
 }
 
 // ExplainSQL explains SQL using LLM.
@@ -144,12 +147,18 @@ func (s *ExplainSQLService) ExplainSQL(ctx context.Context, req *connect.Request
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to build the explain SQL tools"))
 	}
+	user, _ := GetUserFromContext(ctx)
+	invocation := &tool.Invocation{
+		Principal: user,
+		Checker:   s.checker,
+		Observer:  explainToolObserver{metrics: s.metrics},
+	}
 	executor := func(tc llm.ToolCall) ([]llm.ToolResult, error) {
 		result := set.Execute(ctx, tool.Call{
 			ID:        tc.ID,
 			Name:      tc.GetName(),
 			Arguments: json.RawMessage(tc.Function.Arguments),
-		}, nil)
+		}, invocation)
 		if result.IsError {
 			if result.Error != nil {
 				return nil, result.Error

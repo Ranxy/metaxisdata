@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -85,15 +86,20 @@ func (e *Engine) gatherEvidence(ctx context.Context, session *store.QualityAgent
 // toolExecutor adapts one wake's resolved tool set to the loop's executor
 // contract. It journals nothing itself: the wake recorder persists the assistant
 // message, the tool result and the engine notes from the event stream.
-func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool) agent.ToolExecutor {
+func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool, invocation *tool.Invocation) agent.ToolExecutor {
+	// Parallel-safe calls may finish in any order, so the truncation flags they
+	// report need their own lock.
+	var truncatedMu sync.Mutex
 	return func(call llm.ToolCall) ([]llm.ToolResult, error) {
 		result := set.Execute(ctx, tool.Call{
 			ID:        call.ID,
 			Name:      call.GetName(),
 			Arguments: json.RawMessage(call.Function.Arguments),
-		}, nil)
+		}, invocation)
 		if result.Truncated {
+			truncatedMu.Lock()
 			truncated[call.ID] = true
+			truncatedMu.Unlock()
 		}
 		if result.IsError {
 			if result.Error != nil {
@@ -309,17 +315,6 @@ func (e *Engine) recordAssetFact(ctx context.Context, session *store.QualityAgen
 // confirms itself: a person is what turns it into knowledge. A critical asset needs a
 // person (the A1-6 amplifier), so the model must block instead.
 func (e *Engine) recordDecision(ctx context.Context, session *store.QualityAgentSessionMessage, statement string) error {
-	criticality := e.planCriticality(ctx, session)
-	decision := dataquality.DecideAction(dataquality.PolicyInput{
-		Action:          dataquality.ActionRecordDecisionWhy,
-		Actor:           dataquality.ActorAgent,
-		Criticality:     criticality,
-		AutonomyEnabled: true,
-		AgentEnabled:    true,
-	})
-	if !decision.Allowed || decision.RequiresApproval {
-		return errors.New("a decision about a critical asset needs a person; record the conclusion with block_session instead")
-	}
 	kind := storepb.QualityMemoryKind_QUALITY_MEMORY_KIND_DECISION
 	existing, err := e.store.ListQualityMemories(ctx, &store.FindQualityMemoryMessage{Subject: &session.TargetGUID, Kind: &kind})
 	if err != nil {

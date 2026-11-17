@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Ranxy/metaxisdata/backend/common/permission"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -136,6 +137,75 @@ type Invocation struct {
 	// Now returns the current time; nil means time.Now. A product may pin it for
 	// tests and deterministic budgets.
 	Now func() time.Time
+	// Checker enforces a tool's IAM permission against Principal. A transport that
+	// already ran the ACL interceptor may leave it nil; a product that calls tools
+	// in-process (the built-in agent) must set it, because the interceptor does not
+	// run on that path.
+	Checker PermissionChecker
+	// Observer records one execution's outcome, duration and result size. A product
+	// wires it to its metrics; nil records nothing.
+	Observer Observer
+	// Policy decides the autonomy question for a tool that declares Meta.Action:
+	// may this agent do this now? Nil skips the check (tests, a deployment without
+	// an autonomy model).
+	Policy ActionPolicy
+	// Audit records the call in the deployment's ledger. A product wires it to the
+	// same ledger the RPC path writes; nil records nothing.
+	Audit AuditSink
+}
+
+// AuditEntry is one tool call as the ledger records it.
+type AuditEntry struct {
+	// Tool is the model-facing tool name.
+	Tool string
+	// Action is the autonomy action id, when the tool declares one.
+	Action string
+	// Principal is the caller the call ran as.
+	Principal *store.UserMessage
+	// Workspace is the workspace the call ran in.
+	Workspace string
+	// Arguments is the raw argument JSON.
+	Arguments json.RawMessage
+	// Failure is set when the call failed or was refused.
+	Failure *Error
+	// Duration is how long the call took.
+	Duration time.Duration
+}
+
+// AuditSink records tool calls. A write or proposal is audited here, which is the
+// ledger entry the in-process path would otherwise not get.
+type AuditSink interface {
+	RecordToolCall(ctx context.Context, entry AuditEntry)
+}
+
+// Observer records one tool execution. The product captures the labels it owns
+// (its product name); the pipeline supplies the tool, outcome and measurement.
+type Observer interface {
+	ObserveToolCall(tool, outcome string, duration time.Duration, resultBytes int)
+}
+
+// ActionDecision is one autonomy verdict for a gated tool.
+type ActionDecision struct {
+	// Allowed reports whether the agent may act.
+	Allowed bool
+	// RequiresApproval marks an allowed action a person must still approve; no
+	// write may run on it.
+	RequiresApproval bool
+	// Reason is the human-readable explanation a refusal carries.
+	Reason string
+}
+
+// ActionPolicy decides whether an agent may perform one action now. The product
+// supplies the domain rules (the DQ action catalog, its autonomy switches and the
+// target's criticality); the pipeline only enforces the verdict.
+type ActionPolicy interface {
+	Decide(ctx context.Context, action string) (ActionDecision, error)
+}
+
+// PermissionChecker resolves whether a principal holds a workspace permission.
+// *iam.Manager implements it, and the interface lets a test decide the answer.
+type PermissionChecker interface {
+	CheckPermission(ctx context.Context, perm permission.Permission, principal *store.UserMessage) (bool, error)
 }
 
 // EvidenceRef is one citable reference a tool result carries. It is a reference,
@@ -181,6 +251,7 @@ const (
 	CodeResourceExhausted ErrorCode = "resource_exhausted"
 	CodeTimeout           ErrorCode = "tool_timeout"
 	CodeUnavailable       ErrorCode = "unavailable"
+	CodeActionDenied      ErrorCode = "action_denied"
 	CodeInternal          ErrorCode = "internal"
 )
 

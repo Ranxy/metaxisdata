@@ -101,16 +101,19 @@ var PredefinedRoles = []*RoleMessage{
 	{
 		ResourceID:  QualityAgentRole,
 		Name:        "Quality agent",
-		Description: "Autonomous quality work: read quality plans and checks, write plan declarations, proposed change requests and evidence-backed investigations. It cannot publish, approve or edit rules.",
+		Description: "Autonomous quality work: read quality plans and checks, write plan declarations, proposed change requests, evidence-backed investigations and check drafts. It cannot publish, approve or edit rules.",
 		Permissions: qualityAgentPermissions,
 	},
 }
 
 // qualityAgentPermissions is the agent role's minimum. It stays a subset of the
-// member read baseline plus the one write an agent owns.
+// member read baseline plus the writes an agent owns. The quality agent drafts
+// checks into the review queue through the suggestion pipeline, so it holds
+// suggest; it still cannot publish, approve, edit rules or change settings.
 var qualityAgentPermissions = permissionSet(
 	permission.DataQualityRulesGet,
 	permission.DataQualityRulesList,
+	permission.DataQualitySuggest,
 	permission.DataQualityPlansUpdate,
 )
 
