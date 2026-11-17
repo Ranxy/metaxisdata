@@ -7,6 +7,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // triageMaxTurns bounds one triage wake's LLM calls. Triage reads context, drafts
@@ -30,6 +31,16 @@ type Option func(*Engine)
 // WithTableContext gives the engine the read-only table context a triage wake uses.
 func WithTableContext(reader TableContextReader) Option {
 	return func(engine *Engine) { engine.tableContext = reader }
+}
+
+// AdoptionFunc runs after a successful triage wake: it applies the agent's
+// auto-adoption guardrails to the drafts that wake queued. A nil hook leaves every
+// draft in the review queue.
+type AdoptionFunc func(ctx context.Context, session *store.QualityAgentSessionMessage)
+
+// WithAdoption gives the engine the auto-adoption pass a triage wake runs.
+func WithAdoption(adoption AdoptionFunc) Option {
+	return func(engine *Engine) { engine.adoption = adoption }
 }
 
 // WithDraftChecks gives the engine the check-drafting pipeline a triage wake uses.

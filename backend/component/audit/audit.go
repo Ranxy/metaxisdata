@@ -253,7 +253,12 @@ func IsSensitiveAuditField(key string) bool {
 		// audited because it is a bulk read, but its body carries
 		// failed-sample-derived data. The field name is the contract; see
 		// ExportQualityReportResponse.
-		"requestbody", "request_body", "responsebody", "response_body", "htmlcontent", "html_content":
+		"requestbody", "request_body", "responsebody", "response_body", "htmlcontent", "html_content",
+		// The owner's conversation message. The ledger is permanent; the transcript
+		// table is the only place the text belongs. The field is deliberately named
+		// message_body rather than content so this does not redact the LLM/explain
+		// content fields of unrelated messages.
+		"messagebody", "message_body":
 		return true
 	}
 	// A numeric output budget is not a credential. The generic "token" marker

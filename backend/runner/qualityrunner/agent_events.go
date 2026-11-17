@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
@@ -15,9 +16,9 @@ import (
 // told about per hour, so a storm of failing checks cannot flood the conversation.
 const maxSessionEventsPerHour = 20
 
-// intakeAgentEvents appends a failed or errored execution as an event to its target's
-// agent session and wakes it immediately. It only touches sessions that are enabled and
-// in the runner's database allowlist; every failure is logged and never fails the batch.
+// intakeAgentEvents appends a failed or errored execution as an event to every
+// agent session covering the target. Each session is checked against its own agent's
+// configuration and scope; failures are logged and never fail the batch.
 func (r *Runner) intakeAgentEvents(ctx context.Context, workspaceID string, executions []*ruleExecution) {
 	settings := r.currentSettings()
 	if !settings.AgentRunnerEnabled || !settings.AgentRunnerAutoInvestigateFailures {
@@ -32,47 +33,60 @@ func (r *Runner) intakeAgentEvents(ctx context.Context, workspaceID string, exec
 		if status != storepb.QualityStatus_QUALITY_STATUS_FAIL && status != storepb.QualityStatus_QUALITY_STATUS_ERROR {
 			continue
 		}
-		session, err := r.stores.GetQualityAgentSessionByTarget(ctx, workspaceID, execution.result.TargetGUID)
+		sessions, err := r.stores.ListQualityAgentSessionsByTarget(ctx, workspaceID, execution.result.TargetGUID)
 		if err != nil {
-			slog.Warn("failed to read the target's agent session for an event",
+			slog.Warn("failed to read the target's agent sessions for an event",
 				slog.Int64("execution", execution.result.ID), log.WithError(err))
 			continue
 		}
-		if session == nil || !sessionAcceptsAgentEvents(session) {
-			continue
+		for _, session := range sessions {
+			r.intakeAgentEvent(ctx, workspaceID, execution, session, now)
 		}
-		if session.DatabaseRef == "" || !settings.AgentRunnerDatabaseEnabled(session.DatabaseRef) {
-			continue
-		}
-		events, err := r.stores.CountQualityAgentSessionEventsSince(ctx, session.ID, now.Add(-time.Hour))
-		if err != nil {
-			slog.Warn("failed to count the session events", slog.String("session", session.ResourceID), log.WithError(err))
-			continue
-		}
-		if events >= maxSessionEventsPerHour {
-			slog.Warn("skipped a quality agent event: the session already received its hourly events",
-				slog.String("session", session.ResourceID), slog.Int64("execution", execution.result.ID))
-			continue
-		}
-		_, appendErr := r.stores.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
-			SessionID:      session.ID,
-			WorkspaceID:    workspaceID,
-			Wake:           session.WakeCount + 1,
-			Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-			Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
-			Content:        executionEventContent(execution),
-			Reference:      fmt.Sprintf("qualityExecutions/%d", execution.result.ID),
-			IdempotencyKey: fmt.Sprintf("event:execution:%d", execution.result.ID),
-		})
-		if appendErr != nil {
-			slog.Warn("failed to append a quality agent event",
-				slog.String("session", session.ResourceID), slog.Int64("execution", execution.result.ID), log.WithError(appendErr))
-			continue
-		}
-		if _, err := r.stores.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now); err != nil {
-			slog.Warn("failed to wake the session after an event",
-				slog.String("session", session.ResourceID), log.WithError(err))
-		}
+	}
+}
+
+// intakeAgentEvent appends one execution event to one session when that session's
+// agent is active and still covers the target's database.
+func (r *Runner) intakeAgentEvent(ctx context.Context, workspaceID string, execution *ruleExecution, session *store.QualityAgentSessionMessage, now time.Time) {
+	if !sessionAcceptsAgentEvents(session) {
+		return
+	}
+	config, err := r.stores.GetQualityAgentConfig(ctx, session.AgentID)
+	if err != nil || config == nil || config.State != store.QualityAgentStateActive {
+		return
+	}
+	databases, err := r.stores.ListQualityAgentDatabases(ctx, session.AgentID)
+	if err != nil || !slices.Contains(databases, session.DatabaseRef) {
+		return
+	}
+	events, err := r.stores.CountQualityAgentSessionEventsSince(ctx, session.ID, now.Add(-time.Hour))
+	if err != nil {
+		slog.Warn("failed to count the session events", slog.String("session", session.ResourceID), log.WithError(err))
+		return
+	}
+	if events >= maxSessionEventsPerHour {
+		slog.Warn("skipped a quality agent event: the session already received its hourly events",
+			slog.String("session", session.ResourceID), slog.Int64("execution", execution.result.ID))
+		return
+	}
+	_, appendErr := r.stores.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
+		SessionID:      session.ID,
+		WorkspaceID:    workspaceID,
+		Wake:           session.WakeCount + 1,
+		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
+		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT,
+		Content:        executionEventContent(execution),
+		Reference:      fmt.Sprintf("qualityExecutions/%d", execution.result.ID),
+		IdempotencyKey: fmt.Sprintf("event:execution:%d", execution.result.ID),
+	})
+	if appendErr != nil {
+		slog.Warn("failed to append a quality agent event",
+			slog.String("session", session.ResourceID), slog.Int64("execution", execution.result.ID), log.WithError(appendErr))
+		return
+	}
+	if _, err := r.stores.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, now); err != nil {
+		slog.Warn("failed to wake the session after an event",
+			slog.String("session", session.ResourceID), log.WithError(err))
 	}
 }
 

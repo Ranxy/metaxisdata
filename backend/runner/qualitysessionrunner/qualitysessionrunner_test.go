@@ -26,6 +26,10 @@ type fakeStore struct {
 	nextWakes            []*time.Time
 	releasedWakes        []*time.Time
 	claimedLimit         int
+	config               *store.QualityAgentConfigMessage
+	databases            []string
+	tokensSpentAll       int64
+	wakesSpentAll        int64
 	enrollment           *store.QualityAgentEnrollmentMessage
 	parkedEnrollment     string
 	enrollmentNextReview time.Time
@@ -61,19 +65,43 @@ func (f *fakeStore) ReleaseQualityAgentSessionLease(_ context.Context, _ string,
 	return true, nil
 }
 
-func (f *fakeStore) SumQualityAgentSessionTokensSince(context.Context, string, time.Time) (int64, error) {
+func (f *fakeStore) SumQualityAgentSessionTokensSince(context.Context, string, int64, time.Time) (int64, error) {
 	return f.tokensSpent, nil
 }
 
-func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, time.Time) (int64, error) {
+func (f *fakeStore) CountQualityAgentSessionWakesSince(context.Context, string, int64, time.Time) (int64, error) {
 	return f.wakesSpent, nil
+}
+
+func (f *fakeStore) SumQualityAgentSessionTokensSinceAll(context.Context, string, time.Time) (int64, error) {
+	return f.tokensSpentAll, nil
+}
+
+func (f *fakeStore) CountQualityAgentSessionWakesSinceAll(context.Context, string, time.Time) (int64, error) {
+	return f.wakesSpentAll, nil
+}
+
+func (*fakeStore) CountQualityAgentSessionsByLease(context.Context, string, int64, time.Time) (int32, error) {
+	return 0, nil
+}
+
+func (*fakeStore) CountQualityAgentSessionsByLeaseAll(context.Context, string, time.Time) (int32, error) {
+	return 0, nil
+}
+
+func (f *fakeStore) GetQualityAgentConfig(context.Context, int64) (*store.QualityAgentConfigMessage, error) {
+	return f.config, nil
+}
+
+func (f *fakeStore) ListQualityAgentDatabases(context.Context, int64) ([]string, error) {
+	return f.databases, nil
 }
 
 func (f *fakeStore) MaxQualityAgentInputSeqAfter(context.Context, int64, int64) (int64, error) {
 	return f.pendingInputSeq, nil
 }
 
-func (f *fakeStore) GetQualityAgentEnrollmentByTarget(context.Context, string, string) (*store.QualityAgentEnrollmentMessage, error) {
+func (f *fakeStore) GetQualityAgentEnrollmentByTarget(context.Context, string, int64, string) (*store.QualityAgentEnrollmentMessage, error) {
 	return f.enrollment, nil
 }
 
@@ -106,6 +134,7 @@ func testSession() *store.QualityAgentSessionMessage {
 		TargetGUID:  "target-1",
 		DatabaseRef: "instances/i1/databases/d1",
 		AgentID:     3,
+		Kind:        1,
 		Revision:    4,
 		State:       storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED,
 	}
@@ -133,6 +162,8 @@ func testRunner(stores *fakeStore, engine Waker) *Runner {
 		tick:         time.Second,
 	}
 	stores.agent = &store.QualityAgentMessage{ID: 3, Enabled: true}
+	stores.config = &store.QualityAgentConfigMessage{AgentID: 3, State: store.QualityAgentStateActive}
+	stores.databases = []string{"instances/i1/databases/d1"}
 	return runner
 }
 
@@ -254,8 +285,8 @@ func TestHostBlocksASessionOutsideTheAllowlist(t *testing.T) {
 	stores := &fakeStore{}
 	engine := &fakeEngine{}
 	runner := testRunner(stores, engine)
+	stores.databases = []string{"instances/other/databases/d9"}
 	settings := testSettings()
-	settings.AgentRunnerDatabases = []string{"instances/other/databases/d9"}
 
 	runner.host(context.Background(), settings, testSession())
 

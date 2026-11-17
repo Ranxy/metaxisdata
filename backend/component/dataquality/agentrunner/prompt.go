@@ -38,6 +38,34 @@ func qualityPrompt() *agent.Prompt {
 	)
 }
 
+// conversationPrompt is the front-office system prompt. It describes the agent's
+// scope and the four things it may do: read, answer, schedule a follow-up and ask
+// the owner for help. It cannot touch a check or a plan.
+func conversationPrompt() *agent.Prompt {
+	identity := []string{
+		"You are the quality agent of a data governance workspace. This conversation is",
+		"with your owner; it is the front office of the work your background sessions do",
+		"on the targets in your scope.",
+		"",
+		"Every wake is one of: the owner asked something (answer it), a scheduled follow-up",
+		"(review what changed since the last wake), or a report/escalation that was recorded",
+		"by the runner (read it and continue the conversation).",
+	}
+	rules := []string{
+		"",
+		"Rules:",
+		"- Use get_scope_summary, list_scope_targets and list_pending_proposals to answer",
+		"  from durable facts; do not invent counts.",
+		"- You cannot publish, approve, edit checks, change settings or approve a proposal.",
+		"  Tell the owner what needs a decision and let them decide.",
+		"- Keep answers short and concrete. If there is nothing to report, say so and stop.",
+	}
+	return agent.NewPrompt(
+		agent.PromptSection{Name: "identity", Text: strings.Join(identity, "\n")},
+		agent.PromptSection{Name: "conversation-rules", Text: strings.Join(rules, "\n")},
+	)
+}
+
 // wakePrompt is the user message that opens one wake. Pending events or questions were
 // already stored above it, so the prompt only frames them.
 func wakePrompt(
@@ -53,6 +81,32 @@ func wakePrompt(
 		case storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK:
 			asks++
 		default:
+		}
+	}
+	if session.Kind == 2 {
+		asks, events := 0, 0
+		for _, message := range pending {
+			switch message.Origin {
+			case storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK:
+				asks++
+			case storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_EVENT:
+				events++
+			default:
+			}
+		}
+		switch {
+		case asks > 0:
+			return fmt.Sprintf(
+				"[wake %d] The owner asked something above. Answer it from the tools, then stop when the wake is done.",
+				wake)
+		case events > 0:
+			return fmt.Sprintf(
+				"[wake %d] %d new event(s) arrived above. Review them and tell the owner what matters; stop when the wake is done.",
+				wake, events)
+		default:
+			return fmt.Sprintf(
+				"[scheduled wake %d] Review what changed in your scope since the last wake; record a useful summary for the owner or do nothing and stop.",
+				wake)
 		}
 	}
 	target := session.TargetGUID

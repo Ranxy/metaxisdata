@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/http2"
 
+	"github.com/Ranxy/metaxisdata/backend/common"
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
 	"github.com/Ranxy/metaxisdata/backend/component/agent"
@@ -38,11 +39,11 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/runner/lineagevalidation"
 	"github.com/Ranxy/metaxisdata/backend/runner/maintenance"
 	"github.com/Ranxy/metaxisdata/backend/runner/notificationdispatcher"
+	"github.com/Ranxy/metaxisdata/backend/runner/qualityagentrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitydigestrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityenrollmentrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualityrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/qualitysessionrunner"
-	"github.com/Ranxy/metaxisdata/backend/runner/qualitysuggestionrunner"
 	"github.com/Ranxy/metaxisdata/backend/runner/schemasync"
 	"github.com/Ranxy/metaxisdata/backend/store"
 
@@ -145,10 +146,9 @@ type Server struct {
 	lineageValidate *lineagevalidation.Runner
 	maintenance     *maintenance.Runner
 	qualityRunner   *qualityrunner.Runner
-	// suggestionRunner executes the durable AI drafting jobs the API queues.
-	suggestionRunner *qualitysuggestionrunner.Runner
 	// sessionRunner hosts the built-in quality agent's long-lived sessions.
-	sessionRunner *qualitysessionrunner.Runner
+	sessionRunner     *qualitysessionrunner.Runner
+	agentReportRunner *qualityagentrunner.Runner
 	// enrollmentRunner turns the runner's database scope into an admission queue.
 	enrollmentRunner *qualityenrollmentrunner.Runner
 	// dispatcher posts queued outbound notification deliveries.
@@ -275,7 +275,6 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// daily budget a request does.
 	llmQuota := dataquality.NewLLMQuota(s.metrics)
 	suggester := dataquality.NewSuggester(stores, s.llmRegistry, llmQuota, s.metrics)
-	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
 	// The session runner hosts the built-in quality agent: one long-lived conversation
 	// per target, continued wake by wake.
 	// The agent's tools run in-process, so the RPC ACL interceptor never sees
@@ -309,6 +308,42 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		agentrunner.WithMaxParallelReads(agentMaxParallelReads),
 		agentrunner.WithToolAudit(agentToolAuditSink{stores: stores}))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
+	s.sessionRunner.SetAttentionSink(func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string) {
+		config, err := s.store.GetQualityAgentConfig(ctx, session.AgentID)
+		if err != nil || config == nil || config.OwnerPrincipalID == nil {
+			return
+		}
+		agent, err := s.store.GetQualityAgentByID(ctx, session.AgentID)
+		if err != nil || agent == nil {
+			return
+		}
+		attention, created, err := s.store.CreateQualityAgentAttention(ctx, &store.QualityAgentAttentionMessage{
+			WorkspaceID: session.WorkspaceID,
+			AgentID:     session.AgentID,
+			Kind:        store.QualityAgentAttentionKindBlocked,
+			SessionID:   &session.ID,
+			Reference:   session.ResourceID,
+			Title:       "The agent needs help with a target session",
+			Question:    reason,
+			DedupeKey:   "blocked:" + session.ResourceID + ":" + code,
+			CreatedAt:   time.Now().UTC(),
+		})
+		if err != nil || !created {
+			return
+		}
+		detail := &storepb.QualityAgentAttentionDetail{
+			Agent:     common.FormatWorkspace(session.WorkspaceID) + "/qualityAgents/" + agent.ResourceID,
+			Attention: common.FormatWorkspace(session.WorkspaceID) + "/qualityAgentAttentions/" + attention.ResourceID,
+			Kind:      int32(store.QualityAgentAttentionKindBlocked),
+			Title:     attention.Title,
+			Question:  attention.Question,
+		}
+		if err := s.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID,
+			"dqagent:"+attention.ResourceID, detail); err != nil {
+			slog.Warn("failed to send a quality agent attention notification", log.WithError(err))
+		}
+	})
+	s.agentReportRunner = qualityagentrunner.NewRunner(stores, s.notifier)
 	// The enrollment runner discovers the database scope into a queue and admits
 	// targets by priority; triage admission needs a model, so it reads the same
 	// resolver the session engine uses.
@@ -332,14 +367,14 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// Configure echo server.
 	s.echoServer = newEchoServer()
 
-	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.sessionRunner, s.enrollmentRunner, s.metrics); err != nil {
+	if err := configureGrpcRouters(ctx, s.echoServer, s.store, s.profile, s.stateCfg, s.profile.Secret, dbFactory, s.schemaSync, s.qualityRunner, s.llmRegistry, suggester, llmQuota, lineageEngines, s.notifier, s.sessionRunner, s.enrollmentRunner, sessionEngine, s.metrics); err != nil {
 		return nil, errors.Wrapf(err, "failed to configure gRPC routers")
 	}
 
 	// Keeping the set in one list (instead of a hand-written Add(4) and four
 	// goroutines) keeps the wait group count and the actual runners in sync, and
 	// gives each one the shared panic boundary in runner.Go.
-	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.suggestionRunner, s.sessionRunner, s.enrollmentRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
+	runners := []runner.Runner{s.lineageAnalyzer, s.schemaSync, s.qualityRunner, s.sessionRunner, s.enrollmentRunner, s.agentReportRunner, s.digestRunner, s.lineageValidate, s.maintenance, s.dispatcher}
 	for _, r := range runners {
 		runner.Go(s.runnerCtx, &s.runnerWG, r, s.metrics)
 	}

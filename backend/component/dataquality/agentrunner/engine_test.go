@@ -41,6 +41,18 @@ func newFakeStore() *fakeStore {
 
 // GetQualityAgentByID returns the session's agent row, whose enabled flag the
 // action policy reads.
+func (*fakeStore) QualityAgentEnrollmentSummary(context.Context, string, int64) ([]*store.QualityAgentDatabaseEnrollmentSummary, error) {
+	return nil, nil
+}
+
+func (*fakeStore) ListQualityAgentEnrollments(context.Context, *store.FindQualityAgentEnrollmentMessage) ([]*store.QualityAgentEnrollmentMessage, error) {
+	return nil, nil
+}
+
+func (*fakeStore) ListQualitySuggestions(context.Context, *store.FindQualitySuggestionMessage) ([]*store.QualitySuggestionMessage, error) {
+	return nil, nil
+}
+
 func (f *fakeStore) GetQualityAgentByID(context.Context, int64) (*store.QualityAgentMessage, error) {
 	return f.agent, nil
 }

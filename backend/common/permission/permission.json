@@ -253,6 +253,18 @@
       "id": "metaxisdata.dataQuality.labels.update"
     },
     {
+      "name": "DataQualityAgentsGet",
+      "id": "metaxisdata.dataQuality.agents.get"
+    },
+    {
+      "name": "DataQualityAgentsList",
+      "id": "metaxisdata.dataQuality.agents.list"
+    },
+    {
+      "name": "DataQualityAgentsManage",
+      "id": "metaxisdata.dataQuality.agents.manage"
+    },
+    {
       "name": "DataQualityTemplatesList",
       "id": "metaxisdata.dataQuality.templates.list"
     },
