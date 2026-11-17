@@ -104,7 +104,7 @@ func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req 
 			// The partial unique index is "one active session per target"; a random
 			// resource-id collision would be a different (and far rarer) conflict, so
 			// confirm the target really has a session before claiming it.
-			existing, findErr := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, targetGUID)
+			existing, findErr := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agent.ID, targetGUID)
 			if findErr != nil {
 				return nil, findErr
 			}
@@ -117,8 +117,9 @@ func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req 
 		}
 		return nil, err
 	}
-	if _, adoptErr := s.store.AdoptQualityAgentSession(ctx, workspaceID, targetGUID, metaType, databaseRef,
-		message.ID, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR); adoptErr != nil {
+	_, adoptErr := s.store.AdoptQualityAgentSession(ctx, workspaceID, agent.ID, targetGUID, metaType, databaseRef,
+		message.ID, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)
+	if adoptErr != nil {
 		slog.Warn("failed to record the session's enrollment row",
 			slog.String("session", message.ResourceID), log.WithError(adoptErr))
 	}
@@ -141,7 +142,18 @@ func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *
 		return nil, err
 	}
 	limit := offset.limit + 1
-	find := &store.FindQualityAgentSessionMessage{WorkspaceID: &workspaceID, Limit: &limit, Offset: &offset.offset}
+	find := &store.FindQualityAgentSessionMessage{WorkspaceID: &workspaceID, Kind: 1, Limit: &limit, Offset: &offset.offset}
+	if agentName := strings.TrimSpace(req.Msg.GetAgent()); agentName != "" {
+		_, agentResourceID, err := s.qualityAgentResourceID(ctx, agentName)
+		if err != nil {
+			return nil, err
+		}
+		agent, err := s.fetchQualityAgent(ctx, agentResourceID)
+		if err != nil {
+			return nil, err
+		}
+		find.AgentID = &agent.ID
+	}
 	if guid := strings.TrimSpace(req.Msg.GetTargetGuid()); guid != "" {
 		find.TargetGUID = &guid
 	}
@@ -211,8 +223,13 @@ func (s *DataQualityService) ResumeQualityAgentSession(ctx context.Context, req 
 	// person paused the session; resuming clears it.
 	workspaceID, err := s.workspaceID(ctx, "workspaces/-")
 	if err == nil && session != nil {
-		if enrollment, findErr := s.store.GetQualityAgentEnrollmentByTarget(ctx, workspaceID, session.Msg.GetTarget().GetMetaGuid()); findErr == nil && enrollment != nil {
-			_ = s.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "")
+		_, resourceID, nameErr := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
+		if nameErr == nil {
+			if stored, readErr := s.store.GetQualityAgentSession(ctx, resourceID); readErr == nil && stored != nil {
+				if enrollment, findErr := s.store.GetQualityAgentEnrollmentByTarget(ctx, workspaceID, stored.AgentID, stored.TargetGUID); findErr == nil && enrollment != nil {
+					_ = s.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "")
+				}
+			}
 		}
 	}
 	return session, nil
@@ -233,7 +250,7 @@ func (s *DataQualityService) ArchiveQualityAgentSession(ctx context.Context, req
 			errors.New("the session changed since it was read; reload and try again"))
 	}
 	if session, readErr := s.store.GetQualityAgentSession(ctx, resourceID); readErr == nil && session != nil {
-		if markErr := s.store.MarkQualityAgentEnrollmentArchived(ctx, workspaceID, session.TargetGUID); markErr != nil {
+		if markErr := s.store.MarkQualityAgentEnrollmentArchived(ctx, workspaceID, session.AgentID, session.TargetGUID); markErr != nil {
 			slog.Warn("failed to exclude the archived session's enrollment",
 				slog.String("session", resourceID), log.WithError(markErr))
 		}
@@ -386,31 +403,31 @@ func (s *DataQualityService) GetQualityAgentRunnerStatus(ctx context.Context, re
 		return nil, errLoadQualitySettings(err)
 	}
 	now := time.Now().UTC()
-	running, err := s.store.CountQualityAgentSessionsByLease(ctx, workspaceID, now)
+	running, err := s.store.CountQualityAgentSessionsByLeaseAll(ctx, workspaceID, now)
 	if err != nil {
 		return nil, err
 	}
-	enabled, err := s.store.CountQualityAgentSessionsByState(ctx, workspaceID, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)
+	enabled, err := s.store.CountQualityAgentSessionsByStateAll(ctx, workspaceID, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED)
 	if err != nil {
 		return nil, err
 	}
-	blocked, err := s.store.CountQualityAgentSessionsByState(ctx, workspaceID, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED)
+	blocked, err := s.store.CountQualityAgentSessionsByStateAll(ctx, workspaceID, storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED)
 	if err != nil {
 		return nil, err
 	}
-	tokens, err := s.store.SumQualityAgentSessionTokensSince(ctx, workspaceID, now.Add(-time.Hour))
+	tokens, err := s.store.SumQualityAgentSessionTokensSinceAll(ctx, workspaceID, now.Add(-time.Hour))
 	if err != nil {
 		return nil, err
 	}
-	wakes, err := s.store.CountQualityAgentSessionWakesSince(ctx, workspaceID, now.Add(-time.Hour))
+	wakes, err := s.store.CountQualityAgentSessionWakesSinceAll(ctx, workspaceID, now.Add(-time.Hour))
 	if err != nil {
 		return nil, err
 	}
-	lastActivity, err := s.store.LastQualityAgentSessionActivity(ctx, workspaceID)
+	lastActivity, err := s.store.LastQualityAgentSessionActivityAll(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	enrollments, err := s.store.CountQualityAgentEnrollmentsByState(ctx, workspaceID)
+	enrollments, err := s.store.CountQualityAgentEnrollmentsByStateAll(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}

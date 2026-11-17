@@ -383,6 +383,17 @@ func convertToV1Notification(notification *storepb.Notification, workspaceID str
 		converted.Detail = &v1pb.Notification_DataQuality{
 			DataQuality: convertDataQualityDetail(notification.GetDataQuality()),
 		}
+	case notification.GetQualityAgentAttention() != nil:
+		detail := notification.GetQualityAgentAttention()
+		converted.Detail = &v1pb.Notification_QualityAgentAttention{
+			QualityAgentAttention: &v1pb.QualityAgentAttentionDetail{
+				Agent:     detail.GetAgent(),
+				Attention: detail.GetAttention(),
+				Kind:      detail.GetKind(),
+				Title:     detail.GetTitle(),
+				Question:  detail.GetQuestion(),
+			},
+		}
 	default:
 		// A detail written by a newer server is not in this build's catalog; the
 		// envelope still renders, and the client falls back to a generic line.
@@ -398,6 +409,8 @@ func convertNotificationType(notificationType storepb.NotificationType) v1pb.Not
 		return v1pb.NotificationType_NOTIFICATION_TYPE_OPENLINEAGE
 	case storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY:
 		return v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY
+	case storepb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_AGENT:
+		return v1pb.NotificationType_NOTIFICATION_TYPE_DATA_QUALITY_AGENT
 	case storepb.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED:
 		return v1pb.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED
 	default:

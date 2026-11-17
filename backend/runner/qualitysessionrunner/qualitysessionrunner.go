@@ -8,6 +8,7 @@ package qualitysessionrunner
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,15 +45,25 @@ type SessionStore interface {
 	ResetStaleQualityAgentSessionLeases(ctx context.Context, now time.Time, restartLimit int32) (int64, error)
 	ClaimDueQualityAgentSessions(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]*store.QualityAgentSessionMessage, error)
 	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
+	GetQualityAgentConfig(ctx context.Context, agentID int64) (*store.QualityAgentConfigMessage, error)
+	ListQualityAgentDatabases(ctx context.Context, agentID int64) ([]string, error)
 	UpdateQualityAgentSessionProgress(ctx context.Context, resourceID string, result *store.QualityAgentSessionWakeResult) (*store.QualityAgentSessionMessage, error)
 	UpdateQualityAgentSessionState(ctx context.Context, resourceID string, expectedRevision int32, state storepb.QualityAgentSessionState, blockedCode, blockedReason string, nextWakeAt *time.Time) (*store.QualityAgentSessionMessage, bool, error)
 	ReleaseQualityAgentSessionLease(ctx context.Context, resourceID string, nextWakeAt *time.Time) (bool, error)
-	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
-	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, since time.Time) (int64, error)
+	SumQualityAgentSessionTokensSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
+	CountQualityAgentSessionWakesSince(ctx context.Context, workspaceID string, agentID int64, since time.Time) (int64, error)
+	SumQualityAgentSessionTokensSinceAll(ctx context.Context, workspaceID string, since time.Time) (int64, error)
+	CountQualityAgentSessionWakesSinceAll(ctx context.Context, workspaceID string, since time.Time) (int64, error)
+	CountQualityAgentSessionsByLease(ctx context.Context, workspaceID string, agentID int64, now time.Time) (int32, error)
+	CountQualityAgentSessionsByLeaseAll(ctx context.Context, workspaceID string, now time.Time) (int32, error)
 	MaxQualityAgentInputSeqAfter(ctx context.Context, sessionID int64, afterSeq int64) (int64, error)
-	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
+	GetQualityAgentEnrollmentByTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) (*store.QualityAgentEnrollmentMessage, error)
 	UpdateQualityAgentEnrollmentAfterTriage(ctx context.Context, resourceID string, nextReviewAt time.Time) (*store.QualityAgentEnrollmentMessage, bool, error)
 }
+
+// AttentionSink is called after a session is parked for a person. The wiring loads
+// the agent owner, writes the attention to-do and sends the inbox notification.
+type AttentionSink func(ctx context.Context, session *store.QualityAgentSessionMessage, code, reason string)
 
 // Runner hosts the agent's sessions.
 type Runner struct {
@@ -68,6 +79,14 @@ type Runner struct {
 	wg       sync.WaitGroup
 	// lastTick is process-local liveness for the status read; a restart resets it.
 	lastTick atomic.Int64
+	// attention escalates a session parked for a person. Nil keeps the runner
+	// usable without notifications (tests, embedded use).
+	attention AttentionSink
+}
+
+// SetAttentionSink wires the owner escalation. It is called once before Run.
+func (r *Runner) SetAttentionSink(sink AttentionSink) {
+	r.attention = sink
 }
 
 // NewRunner creates the session runner. Production passes the model engine; a nil
@@ -168,39 +187,84 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 		r.block(ctx, session, code, reason, next)
 		return
 	}
-	if !settings.AgentAutonomyEnabled {
+	// Autonomy is the workspace write switch. It pauses autonomous target wakes;
+	// the owner's conversation (kind=2) stays available read-only.
+	if session.Kind == 1 && !settings.AgentAutonomyEnabled {
 		r.block(ctx, session, "autonomy-off", "agent autonomy is disabled in this workspace",
 			ptrTime(r.now().Add(5*time.Minute)))
 		return
 	}
-	tokenLimit := settings.AgentRunnerTokensPerHour
-	if tokenLimit <= 0 {
-		tokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
-	}
-	spent, err := r.store.SumQualityAgentSessionTokensSince(ctx, session.WorkspaceID, r.now().Add(-time.Hour))
+	config, err := r.store.GetQualityAgentConfig(ctx, session.AgentID)
 	if err != nil {
-		r.block(ctx, session, "internal-error", "the token spend could not be read",
+		r.block(ctx, session, "internal-error", "the agent's configuration could not be read",
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if spent >= tokenLimit {
-		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
-		r.block(ctx, session, "token-budget", "the workspace spent its hourly agent token budget", &nextWindow)
+	if config == nil || config.State != store.QualityAgentStateActive {
+		r.block(ctx, session, "agent-disabled", "the agent is not active", nil)
 		return
 	}
-	wakeLimit := settings.AgentRunnerWakesPerHour
-	if wakeLimit <= 0 {
-		wakeLimit = dataquality.DefaultAgentRunnerWakesPerHour
+	if config.MaxConcurrentSessions > 0 {
+		running, err := r.store.CountQualityAgentSessionsByLease(ctx, session.WorkspaceID, session.AgentID, r.now())
+		if err != nil {
+			r.block(ctx, session, "internal-error", "the agent concurrency could not be read",
+				ptrTime(r.now().Add(retryWake)))
+			return
+		}
+		if running > config.MaxConcurrentSessions {
+			r.block(ctx, session, "concurrency-limit", "the agent reached its concurrent session limit",
+				ptrTime(r.now().Add(time.Minute)))
+			return
+		}
 	}
-	wakes, err := r.store.CountQualityAgentSessionWakesSince(ctx, session.WorkspaceID, r.now().Add(-time.Hour))
+	workspaceTokenLimit := settings.AgentRunnerTokensPerHour
+	if workspaceTokenLimit <= 0 {
+		workspaceTokenLimit = dataquality.DefaultAgentRunnerTokensPerHour
+	}
+	agentTokenLimit := config.TokensPerHour
+	if agentTokenLimit <= 0 {
+		agentTokenLimit = workspaceTokenLimit
+	}
+	spent, err := r.store.SumQualityAgentSessionTokensSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
 	if err != nil {
-		r.block(ctx, session, "internal-error", "the wake count could not be read",
+		r.block(ctx, session, "internal-error", "the agent token spend could not be read",
 			ptrTime(r.now().Add(retryWake)))
 		return
 	}
-	if wakes >= int64(wakeLimit) {
+	spentAll, err := r.store.SumQualityAgentSessionTokensSinceAll(ctx, session.WorkspaceID, r.now().Add(-time.Hour))
+	if err != nil {
+		r.block(ctx, session, "internal-error", "the workspace token spend could not be read",
+			ptrTime(r.now().Add(retryWake)))
+		return
+	}
+	if spent >= agentTokenLimit || spentAll >= workspaceTokenLimit {
 		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
-		r.block(ctx, session, "wake-budget", "the workspace spent its hourly wake budget", &nextWindow)
+		r.block(ctx, session, "token-budget", "the hourly agent token budget is spent", &nextWindow)
+		return
+	}
+	workspaceWakeLimit := settings.AgentRunnerWakesPerHour
+	if workspaceWakeLimit <= 0 {
+		workspaceWakeLimit = dataquality.DefaultAgentRunnerWakesPerHour
+	}
+	agentWakeLimit := int(config.WakesPerHour)
+	if agentWakeLimit <= 0 {
+		agentWakeLimit = workspaceWakeLimit
+	}
+	wakes, err := r.store.CountQualityAgentSessionWakesSince(ctx, session.WorkspaceID, session.AgentID, r.now().Add(-time.Hour))
+	if err != nil {
+		r.block(ctx, session, "internal-error", "the agent wake count could not be read",
+			ptrTime(r.now().Add(retryWake)))
+		return
+	}
+	wakesAll, err := r.store.CountQualityAgentSessionWakesSinceAll(ctx, session.WorkspaceID, r.now().Add(-time.Hour))
+	if err != nil {
+		r.block(ctx, session, "internal-error", "the workspace wake count could not be read",
+			ptrTime(r.now().Add(retryWake)))
+		return
+	}
+	if wakes >= int64(agentWakeLimit) || wakesAll >= int64(workspaceWakeLimit) {
+		nextWindow := r.now().Truncate(time.Hour).Add(time.Hour)
+		r.block(ctx, session, "wake-budget", "the hourly agent wake budget is spent", &nextWindow)
 		return
 	}
 
@@ -276,13 +340,40 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 // scopeBlocker reports why a session may not run any more, or "" when it is in scope.
 // It is the run-time half of the allowlist: an administrator can remove a database or
 // disable the agent after the session was created.
-func (r *Runner) scopeBlocker(ctx context.Context, settings dataquality.Settings, session *store.QualityAgentSessionMessage) (code, reason string, nextWake *time.Time) {
-	if session.DatabaseRef == "" || !settings.AgentRunnerDatabaseEnabled(session.DatabaseRef) {
-		// Reversible: adding the database back lets the enrollment runner recover the
-		// session, so this must not be the needs-human dead end.
-		return "out-of-scope", "the session's database is no longer in the runner's allowlist", nil
+func (r *Runner) scopeBlocker(ctx context.Context, _ dataquality.Settings, session *store.QualityAgentSessionMessage) (code, reason string, nextWake *time.Time) {
+	if session.Kind == 2 {
+		// The agent conversation has no target database.
+		if code, reason, next := r.agentStateBlocker(ctx, session.AgentID); code != "" {
+			return code, reason, next
+		}
+		return "", "", nil
 	}
-	agent, err := r.store.GetQualityAgentByID(ctx, session.AgentID)
+	if session.DatabaseRef == "" {
+		return "out-of-scope", "the session's database is no longer in the agent's scope", nil
+	}
+	config, err := r.store.GetQualityAgentConfig(ctx, session.AgentID)
+	if err != nil {
+		return "internal-error", "the agent's configuration could not be read", ptrTime(r.now().Add(retryWake))
+	}
+	if config == nil {
+		return "agent-disabled", "the session's agent has no runtime configuration", nil
+	}
+	if config.State != store.QualityAgentStateActive {
+		return "agent-disabled", "the agent is not active", nil
+	}
+	databases, err := r.store.ListQualityAgentDatabases(ctx, session.AgentID)
+	if err != nil {
+		return "internal-error", "the agent's scope could not be read", ptrTime(r.now().Add(retryWake))
+	}
+	if !slices.Contains(databases, session.DatabaseRef) {
+		return "out-of-scope", "the session's database is no longer in the agent's scope", nil
+	}
+	return r.agentStateBlocker(ctx, session.AgentID)
+}
+
+// agentStateBlocker reports whether the session's agent identity is enabled.
+func (r *Runner) agentStateBlocker(ctx context.Context, agentID int64) (code, reason string, nextWake *time.Time) {
+	agent, err := r.store.GetQualityAgentByID(ctx, agentID)
 	if err != nil {
 		return "internal-error", "the session's agent could not be read", ptrTime(r.now().Add(retryWake))
 	}
@@ -303,6 +394,19 @@ func (r *Runner) block(ctx context.Context, session *store.QualityAgentSessionMe
 	} else if !parked {
 		slog.Warn("the quality agent session changed before it could be parked",
 			slog.String("session", session.ResourceID))
+	} else if r.attention != nil && attentionWorthy(code) {
+		r.attention(ctx, session, code, reason)
+	}
+}
+
+// attentionWorthy reports whether a blocked code needs the owner's decision rather
+// than the next retry. Budget, concurrency and scope blocks stay runner-managed.
+func attentionWorthy(code string) bool {
+	switch code {
+	case "needs-human", "restart-limit", "model-reported":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -310,7 +414,7 @@ func (r *Runner) block(ctx context.Context, session *store.QualityAgentSessionMe
 // failure to update the queue row must not fail the wake: the transcript is already
 // recorded and the next review tick retries the queue side.
 func (r *Runner) parkEnrollmentAfterTriage(ctx context.Context, session *store.QualityAgentSessionMessage, settings dataquality.Settings) {
-	enrollment, err := r.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.TargetGUID)
+	enrollment, err := r.store.GetQualityAgentEnrollmentByTarget(ctx, session.WorkspaceID, session.AgentID, session.TargetGUID)
 	if err != nil {
 		slog.Warn("failed to read the enrollment of a triaged session",
 			slog.String("session", session.ResourceID), log.WithError(err))

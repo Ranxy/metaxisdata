@@ -68,6 +68,9 @@ const (
 	DataQualityChangeRequestsDecide    Permission = "metaxisdata.dataQuality.changeRequests.decide"
 	DataQualityProfileRun              Permission = "metaxisdata.dataQuality.profile.run"
 	DataQualityLabelsUpdate            Permission = "metaxisdata.dataQuality.labels.update"
+	DataQualityAgentsGet               Permission = "metaxisdata.dataQuality.agents.get"
+	DataQualityAgentsList              Permission = "metaxisdata.dataQuality.agents.list"
+	DataQualityAgentsManage            Permission = "metaxisdata.dataQuality.agents.manage"
 	DataQualityTemplatesList           Permission = "metaxisdata.dataQuality.templates.list"
 	DataQualityTemplatesCreate         Permission = "metaxisdata.dataQuality.templates.create"
 	DataQualityTemplatesUpdate         Permission = "metaxisdata.dataQuality.templates.update"
@@ -173,6 +176,9 @@ var allPermissions = []Permission{
 	DataQualityChangeRequestsDecide,
 	DataQualityProfileRun,
 	DataQualityLabelsUpdate,
+	DataQualityAgentsGet,
+	DataQualityAgentsList,
+	DataQualityAgentsManage,
 	DataQualityTemplatesList,
 	DataQualityTemplatesCreate,
 	DataQualityTemplatesUpdate,

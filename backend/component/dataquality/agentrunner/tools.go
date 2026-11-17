@@ -53,7 +53,8 @@ func handlesTool(name string) bool {
 	switch name {
 	case "get_target_summary", "list_recent_executions", "get_memory",
 		"record_investigation", "record_asset_fact", "record_decision",
-		"block_session", "schedule_wake", "get_table_context", "draft_checks":
+		"block_session", "schedule_wake", "get_table_context", "draft_checks",
+		"get_scope_summary", "list_scope_targets", "list_pending_proposals":
 		return true
 	default:
 		return false
@@ -88,6 +89,8 @@ func (e *Engine) executeTool(
 		return tools.GetTableContext(ctx, agentSession)
 	case "draft_checks":
 		return tools.DraftChecks(ctx, agentSession, arguments)
+	case "get_scope_summary", "list_scope_targets", "list_pending_proposals":
+		return e.conversationToolResult(ctx, session, name)
 	case "block_session":
 		var input struct {
 			Code   string `json:"code"`
@@ -149,6 +152,9 @@ func (e *Engine) agentTools() *quality.AgentTools {
 
 // planCriticality derives the target's plan criticality for the policy gate.
 func (e *Engine) planCriticality(ctx context.Context, session *store.QualityAgentSessionMessage) dataquality.AssetCriticality {
+	if session.TargetGUID == "" {
+		return dataquality.CriticalityExperimental
+	}
 	rules, err := e.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &session.TargetGUID})
 	if err != nil {
 		return 0

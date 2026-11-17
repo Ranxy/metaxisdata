@@ -16,7 +16,7 @@ const maxToolResultBytes = 8 << 10
 // per wake because a tool body reads the session and its wake state; the
 // declarations are shared.
 func (e *Engine) toolSet(session *store.QualityAgentSessionMessage, control *wakeControl) (*tool.Set, error) {
-	specs := specFor(session.Mode).Tools
+	specs := specForSession(session).Tools
 	registry := tool.NewRegistry()
 	names := make([]string, 0, len(specs))
 	for _, spec := range specs {

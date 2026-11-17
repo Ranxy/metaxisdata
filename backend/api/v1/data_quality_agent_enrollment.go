@@ -47,6 +47,17 @@ func (s *DataQualityService) ListQualityAgentEnrollments(ctx context.Context, re
 		Limit:       &limit,
 		Offset:      &offset.offset,
 	}
+	if agentName := strings.TrimSpace(req.Msg.GetAgent()); agentName != "" {
+		_, agentResourceID, err := s.qualityAgentResourceID(ctx, agentName)
+		if err != nil {
+			return nil, err
+		}
+		agent, err := s.fetchQualityAgent(ctx, agentResourceID)
+		if err != nil {
+			return nil, err
+		}
+		find.AgentID = agent.ID
+	}
 	if database := strings.TrimSpace(req.Msg.GetDatabase()); database != "" {
 		find.DatabaseRef = &database
 	}
@@ -90,11 +101,11 @@ func (s *DataQualityService) GetQualityAgentEnrollmentSummary(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	counts, err := s.store.CountQualityAgentEnrollmentsByState(ctx, workspaceID)
+	counts, err := s.store.CountQualityAgentEnrollmentsByStateAll(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	databases, err := s.store.QualityAgentEnrollmentSummary(ctx, workspaceID)
+	databases, err := s.store.QualityAgentEnrollmentSummaryAll(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +209,7 @@ func (s *DataQualityService) UpdateQualityAgentEnrollment(ctx context.Context, r
 	// A mode change must reach the live session too; otherwise an enrollment switched to
 	// TRIAGE would keep monitoring until the session were recreated.
 	if requestHasPath(paths, "mode") {
-		if session, err := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.TargetGUID); err == nil && session != nil && session.ArchivedAt == nil {
+		if session, err := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, enrollment.AgentID, enrollment.TargetGUID); err == nil && session != nil && session.ArchivedAt == nil {
 			if _, modeErr := s.store.UpdateQualityAgentSessionMode(ctx, session.ResourceID, enrollment.Mode); modeErr != nil {
 				return nil, modeErr
 			}
@@ -207,7 +218,7 @@ func (s *DataQualityService) UpdateQualityAgentEnrollment(ctx context.Context, r
 	// Excluding a target pauses the agent's conversation with it; keep the session as
 	// the readable transcript and stop its wakes instead of leaving it enabled.
 	if requestHasPath(paths, "state") && req.Msg.GetEnrollment().GetState() == v1pb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_EXCLUDED {
-		if err := s.archiveAgentSessionOfTarget(ctx, workspaceID, enrollment.TargetGUID); err != nil {
+		if err := s.archiveAgentSessionOfTarget(ctx, workspaceID, enrollment.AgentID, enrollment.TargetGUID); err != nil {
 			return nil, err
 		}
 		// Archiving wrote a second revision bump on the enrollment; return the current row.
@@ -257,7 +268,7 @@ func (s *DataQualityService) RetryQualityAgentEnrollment(ctx context.Context, re
 	}
 	// If the target already has a live session, let the next wake use the new queue
 	// decision instead of waiting for its idle cadence.
-	if session, err := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, updated.TargetGUID); err == nil && session != nil && session.ArchivedAt == nil {
+	if session, err := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, updated.AgentID, updated.TargetGUID); err == nil && session != nil && session.ArchivedAt == nil {
 		if _, wakeErr := s.store.AdvanceQualityAgentSessionWake(ctx, session.ResourceID, time.Now().UTC()); wakeErr != nil {
 			return nil, wakeErr
 		}
@@ -279,8 +290,8 @@ func (s *DataQualityService) enrollmentSessionNames(ctx context.Context, workspa
 
 // archiveAgentSessionOfTarget archives the target's live session after a person
 // excluded the enrollment. A missing or already archived session is not an error.
-func (s *DataQualityService) archiveAgentSessionOfTarget(ctx context.Context, workspaceID, targetGUID string) error {
-	session, err := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, targetGUID)
+func (s *DataQualityService) archiveAgentSessionOfTarget(ctx context.Context, workspaceID string, agentID int64, targetGUID string) error {
+	session, err := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agentID, targetGUID)
 	if err != nil {
 		return err
 	}

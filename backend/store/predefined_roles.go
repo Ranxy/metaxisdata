@@ -80,6 +80,10 @@ var memberBaselinePermissions = permissionSet(
 	// of the member baseline; creating, editing and deleting them is a write.
 	permission.DataQualityTemplatesList,
 	permission.DataQualityCodeTablesList,
+	// Agents are readable by members so an owner can open the agents they own;
+	// the handler filters the list to owned agents and rejects non-owners.
+	permission.DataQualityAgentsGet,
+	permission.DataQualityAgentsList,
 )
 
 // PredefinedRoles are the read-only, Go-defined roles shown on the Roles page

@@ -10,6 +10,7 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
+	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
 // toolSpec is one static declaration of a model-wake tool. The declaration is
@@ -163,6 +164,51 @@ func modelToolSpecs(mode storepb.QualityAgentSessionMode) []toolSpec {
 	return specs
 }
 
+// conversationToolSpecs is the front-office tool set: reads over the agent's scope
+// and queue, plus the two wake controls. It deliberately cannot touch a single
+// target's plan or checks; that work belongs to the target sessions.
+func conversationToolSpecs() []toolSpec {
+	empty := map[string]any{"type": "object", "properties": map[string]any{}}
+	return []toolSpec{
+		{
+			name:        "get_scope_summary",
+			description: "Read the agent's scope health: databases, discovered/monitored/dormant targets and the queue split.",
+			parameters:  empty,
+			meta:        readMeta(),
+		},
+		{
+			name:        "list_scope_targets",
+			description: "List targets in the agent's scope with their queue state, mode and priority.",
+			parameters:  empty,
+			meta:        readMeta(),
+		},
+		{
+			name:        "list_pending_proposals",
+			description: "List this agent's pending check drafts waiting for the owner to review.",
+			parameters:  empty,
+			meta:        readMeta(),
+		},
+		{
+			name:        "schedule_wake",
+			description: "Ask for an earlier wake when there is concrete unfinished work.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"after_minutes": map[string]any{"type": "integer", "minimum": 1, "maximum": 10080},
+				"reason":        map[string]any{"type": "string"},
+			}, "required": []string{"after_minutes"}},
+			meta: internalMeta(),
+		},
+		{
+			name:        "block_session",
+			description: "Report a blocker that needs the owner.",
+			parameters: map[string]any{"type": "object", "properties": map[string]any{
+				"code":   map[string]any{"type": "string"},
+				"reason": map[string]any{"type": "string"},
+			}, "required": []string{"code", "reason"}},
+			meta: internalMeta(),
+		},
+	}
+}
+
 // Spec is one agent product: its name, prompt, tool whitelist and turn budget.
 // The mode selects which spec a session runs, so monitor and triage differ only
 // in declaration, never in engine code.
@@ -182,6 +228,15 @@ type Spec struct {
 // The specs are process-level declarations: one prompt, one tool whitelist and one
 // turn budget per product, resolved once.
 var (
+	// conversationProduct is the agent's front office: the owner's conversation,
+	// woken only by a question or a scheduled follow-up.
+	conversationProduct = &Spec{
+		Name:     "quality-assistant",
+		Feature:  "dq_agent",
+		Prompt:   conversationPrompt(),
+		Tools:    conversationToolSpecs(),
+		MaxTurns: modelMaxTurns,
+	}
 	// monitorProduct is the long-lived monitoring product: one target, woken by
 	// events, questions and a daily cadence.
 	monitorProduct = &Spec{
@@ -208,7 +263,16 @@ func monitorSpec() *Spec { return monitorProduct }
 // triageSpec returns the coverage product.
 func triageSpec() *Spec { return triageProduct }
 
-// specFor selects the product a session runs.
+// specForSession selects the product a session runs. A conversation session has no
+// target; target sessions pick monitor or triage from their mode.
+func specForSession(session *store.QualityAgentSessionMessage) *Spec {
+	if session != nil && session.Kind == 2 {
+		return conversationProduct
+	}
+	return specFor(session.Mode)
+}
+
+// specFor selects the product a target session runs.
 func specFor(mode storepb.QualityAgentSessionMode) *Spec {
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
 		return triageSpec()
@@ -221,7 +285,7 @@ func specFor(mode storepb.QualityAgentSessionMode) *Spec {
 // each name. The server calls it before constructing the runner, so a renamed or
 // misspelled tool fails the boot instead of reaching the model.
 func ValidateSpecs() error {
-	for _, spec := range []*Spec{monitorProduct, triageProduct} {
+	for _, spec := range []*Spec{monitorProduct, triageProduct, conversationProduct} {
 		registry := tool.NewRegistry()
 		for _, declaration := range spec.Tools {
 			declarationTool := tool.Tool{
