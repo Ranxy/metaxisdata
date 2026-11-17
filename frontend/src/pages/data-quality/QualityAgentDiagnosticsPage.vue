@@ -10,7 +10,9 @@
           size="sm"
           as-child
         >
-          <RouterLink :to="{ name: 'QualityAgent', params: { agentId: String(route.params.agentId) } }">
+          <RouterLink
+            :to="{ name: 'QualityAgent', params: { workspace: String(route.params.workspace), agentId: String(route.params.agentId) } }"
+          >
             {{ t("common.back") }}
           </RouterLink>
         </Button>
@@ -199,7 +201,7 @@ const busySession = ref("");
 const transcriptOpen = ref(false);
 const transcript = ref<QualityAgentSessionMessage[]>([]);
 
-const agentName = `workspaces/-/qualityAgents/${String(route.params.agentId)}`;
+const agentName = `workspaces/${String(route.params.workspace)}/qualityAgents/${String(route.params.agentId)}`;
 
 function stateLabel(state: QualityAgentSessionState): string {
   switch (state) {

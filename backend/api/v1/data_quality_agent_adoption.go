@@ -33,7 +33,8 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 		return
 	}
 	if config.State != store.QualityAgentStateActive ||
-		config.AdoptionMode != store.QualityAgentAdoptionModeActive ||
+		(config.AdoptionMode != store.QualityAgentAdoptionModeActive &&
+			config.AdoptionMode != store.QualityAgentAdoptionModePaused) ||
 		!slices.Contains(config.Capabilities, "adopt") ||
 		!slices.Contains(config.Capabilities, "suggest") {
 		return
@@ -105,6 +106,10 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 		if adopted >= limit {
 			return
 		}
+		state := v1pb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
+		if config.AdoptionMode == store.QualityAgentAdoptionModePaused {
+			state = v1pb.QualityRuleState_QUALITY_RULE_STATE_PAUSED
+		}
 		rule := &v1pb.QualityRule{
 			Title:       draft.GetTitle(),
 			Description: draft.GetRationale(),
@@ -112,6 +117,7 @@ func (s *DataQualityService) AdoptQualitySuggestions(ctx context.Context, sessio
 			RuleType:    v1pb.QualityRuleType(ruleType),
 			Config:      convertQualityRuleConfigToV1(draft.GetConfig()),
 			Severity:    v1pb.QualitySeverity(draft.GetSeverity()),
+			State:       state,
 			Target: &v1pb.QualityTarget{
 				MetaGuid: suggestion.TargetGUID,
 				MetaType: v1pb.MetaType(suggestion.TargetType),

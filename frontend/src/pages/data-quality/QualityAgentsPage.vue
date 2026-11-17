@@ -82,7 +82,7 @@
               variant="outline"
               as-child
             >
-              <RouterLink :to="{ name: 'QualityAgent', params: { agentId: agent.name.split('/').pop() } }">
+              <RouterLink :to="agentRoute(agent.name)">
                 {{ t("qualityAgents.open") }}
               </RouterLink>
             </Button>
@@ -167,6 +167,14 @@ function capabilityLabel(id: string): string {
     default:
       return id;
   }
+}
+
+function agentRoute(name: string) {
+  const parts = name.split("/");
+  return {
+    name: "QualityAgent",
+    params: { workspace: parts[1], agentId: parts[3] },
+  };
 }
 
 function ownerLabel(owner: string): string {

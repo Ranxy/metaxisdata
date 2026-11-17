@@ -41,7 +41,7 @@ const queueQualitySuggestionQuery = `
 		provider, model, prompt_version, created_by, created_at, confidence, refreshed_at
 	)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NULL)
-	ON CONFLICT (target_guid, target_type, signature) WHERE status = 1
+	ON CONFLICT (target_guid, target_type, signature) WHERE status = 1 AND agent_id IS NULL
 	DO UPDATE SET
 		payload = EXCLUDED.payload,
 		source = EXCLUDED.source,
@@ -192,6 +192,10 @@ func qualitySuggestionWhere(find *FindQualitySuggestionMessage) (string, []any, 
 	if find.AgentID != nil {
 		args = append(args, *find.AgentID)
 		where = append(where, fmt.Sprintf("agent_id = $%d", len(args)))
+	}
+	if find.CreatedAfter != nil {
+		args = append(args, *find.CreatedAfter)
+		where = append(where, fmt.Sprintf("created_at >= $%d", len(args)))
 	}
 	if find.TargetGUID != nil && strings.TrimSpace(*find.TargetGUID) != "" {
 		where, args = appendGUIDSubtreeCondition(where, args, "target_guid", strings.TrimSpace(*find.TargetGUID))

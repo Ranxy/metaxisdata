@@ -23,7 +23,7 @@
           {{ t("qualityAgents.pause") }}
         </Button>
         <Button
-          v-if="canManage && agent && agent.state === QualityAgentState.PAUSED"
+          v-if="canManage && agent && (agent.state === QualityAgentState.PAUSED || agent.state === QualityAgentState.DRAFT)"
           size="sm"
           :disabled="busy"
           @click="start"
@@ -37,7 +37,7 @@
           as-child
         >
           <RouterLink
-            :to="{ name: 'QualityAgentDiagnostics', params: { agentId: String(route.params.agentId) } }"
+            :to="{ name: 'QualityAgentDiagnostics', params: { workspace: String(route.params.workspace), agentId: String(route.params.agentId) } }"
           >
             {{ t("qualityAgent.openDiagnostics") }}
           </RouterLink>

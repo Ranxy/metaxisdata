@@ -402,7 +402,7 @@ func TestDecideQualitySuggestionQueryGuardsThePendingState(t *testing.T) {
 	// unique index, not a read-then-write, is what makes concurrent generation
 	// passes converge on one pending row.
 	require.Contains(t, queueQualitySuggestionQuery, "INSERT INTO quality_suggestion")
-	require.Contains(t, queueQualitySuggestionQuery, "ON CONFLICT (target_guid, target_type, signature) WHERE status = 1")
+	require.Contains(t, queueQualitySuggestionQuery, "ON CONFLICT (target_guid, target_type, signature) WHERE status = 1 AND agent_id IS NULL")
 	require.Contains(t, queueQualitySuggestionQuery, "DO UPDATE SET")
 	require.Contains(t, queueQualitySuggestionQuery, "refreshed_at = EXCLUDED.created_at")
 	requirePlaceholdersMatchArgs(t, queueQualitySuggestionQuery,

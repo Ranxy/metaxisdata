@@ -162,10 +162,14 @@ func (s *DataQualityService) qualityAgentAttentionResourceID(ctx context.Context
 	if err != nil {
 		return "", "", connectErrorInvalid("invalid quality agent attention name")
 	}
-	if err := s.validateResourceWorkspace(ctx, tokens[0]); err != nil {
+	workspace, err := s.canonicalAgentWorkspace(ctx, tokens[0])
+	if err != nil {
 		return "", "", err
 	}
-	return tokens[0], tokens[1], nil
+	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
+		return "", "", err
+	}
+	return workspace, tokens[1], nil
 }
 
 func convertQualityAgentAttentionToV1(workspaceID, agentResourceID, sessionResourceID string, attention *store.QualityAgentAttentionMessage) *v1pb.QualityAgentAttention {

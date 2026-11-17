@@ -227,7 +227,7 @@ func (s *Store) BuildQualityAgentReportSnapshot(ctx context.Context, agentID int
 	}
 	rows, err := s.GetDB().QueryContext(ctx, `
 		SELECT status, COUNT(*) FROM quality_execution
-		WHERE state = $4 AND created_at >= $2 AND created_at < $3 AND EXISTS (
+		WHERE state = $4 AND finished_at >= $2 AND finished_at < $3 AND EXISTS (
 			SELECT 1 FROM unnest($1::text[]) p WHERE left(target_guid, length(p)) = p
 		) GROUP BY status`,
 		pq.Array(prefixes), since, until,

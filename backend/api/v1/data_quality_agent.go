@@ -334,10 +334,28 @@ func (s *DataQualityService) qualityAgentResourceID(ctx context.Context, name st
 	if err != nil {
 		return "", "", connectErrorInvalid("%v", err)
 	}
+	workspace, err = s.canonicalAgentWorkspace(ctx, workspace)
+	if err != nil {
+		return "", "", err
+	}
 	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
 		return "", "", err
 	}
 	return workspace, resourceID, nil
+}
+
+// canonicalAgentWorkspace resolves the AIP wildcard workspace on the agent family
+// of RPCs. Unlike a list parent, a single-resource name may still be addressed with
+// - by an older deep link; the rest of data quality canonicalizes the same way.
+func (s *DataQualityService) canonicalAgentWorkspace(ctx context.Context, workspace string) (string, error) {
+	if workspace != "-" {
+		return workspace, nil
+	}
+	workspaceID, err := s.store.GetWorkspaceID(ctx)
+	if err != nil {
+		return "", connect.NewError(connect.CodeInternal, errors.Wrap(err, "failed to resolve the workspace"))
+	}
+	return workspaceID, nil
 }
 
 func parseQualityAgentName(name string) (string, string, error) {

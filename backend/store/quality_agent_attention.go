@@ -256,6 +256,10 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 	}
 	var answered *QualityAgentTranscriptMessage
 	if attention.SessionID != nil {
+		if _, lockErr := tx.ExecContext(ctx,
+			`SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`, *attention.SessionID); lockErr != nil {
+			return nil, nil, false, errors.Wrap(lockErr, "failed to lock the attention's session")
+		}
 		var wake int32
 		if err := tx.QueryRowContext(ctx,
 			`SELECT wake_count + 1 FROM quality_agent_session WHERE id = $1`,
@@ -278,15 +282,22 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 		if err != nil {
 			return nil, nil, false, errors.Wrap(err, "failed to append the attention reply")
 		}
-		if _, err := tx.ExecContext(ctx, `
+		result, updateErr := tx.ExecContext(ctx, `
 			UPDATE quality_agent_session
-			SET state = $2, blocked_code = '', blocked_reason = '',
-				next_wake_at = LEAST(COALESCE(next_wake_at, $3), $3),
+			SET state = CASE WHEN state = $2 THEN $3 ELSE state END,
+				blocked_code = CASE WHEN state = $2 THEN '' ELSE blocked_code END,
+				blocked_reason = CASE WHEN state = $2 THEN '' ELSE blocked_reason END,
+				next_wake_at = LEAST(COALESCE(next_wake_at, $4), $4),
 				revision = revision + 1, updated_at = NOW()
-			WHERE id = $1`,
+			WHERE id = $1 AND archived_at IS NULL`,
 			*attention.SessionID,
-			int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED), now); err != nil {
-			return nil, nil, false, errors.Wrap(err, "failed to resume the attention's session")
+			int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
+			int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED), now)
+		if updateErr != nil {
+			return nil, nil, false, errors.Wrap(updateErr, "failed to resume the attention's session")
+		}
+		if affected, rowsErr := result.RowsAffected(); rowsErr != nil || affected == 0 {
+			return nil, nil, false, errors.New("the attention's session is archived or missing")
 		}
 	}
 	var conversationID int64
@@ -294,6 +305,16 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 		SELECT id FROM quality_agent_session
 		WHERE agent_id = $1 AND kind = 2 AND archived_at IS NULL LIMIT 1`,
 		attention.AgentID).Scan(&conversationID); err == nil {
+		role := storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER
+		body := content
+		if attention.SessionID != nil {
+			role = storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE
+			body = "The owner replied to the escalation."
+		}
+		if _, lockErr := tx.ExecContext(ctx,
+			`SELECT id FROM quality_agent_session WHERE id = $1 FOR UPDATE`, conversationID); lockErr != nil {
+			return nil, nil, false, errors.Wrap(lockErr, "failed to lock the attention conversation")
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO quality_agent_message
 				(session_id, workspace_id, seq, wake, turn, role, origin, content, tool_calls,
@@ -302,11 +323,9 @@ func (s *Store) ReplyQualityAgentAttentionAtomic(ctx context.Context, resourceID
 			VALUES ($1, $2,
 				(SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_agent_message WHERE session_id = $1),
 				0, 0, $3, $4, $5, '{}', '', '', $6, 0, 0, 0, '', false, $7, $8)`,
-			conversationID, workspaceID,
-			int16(storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ENGINE),
+			conversationID, workspaceID, int16(role),
 			int16(storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK),
-			"The owner replied to the escalation.", resourceID,
-			"attention-note:"+resourceID, createdBy); err != nil {
+			body, resourceID, "attention-note:"+resourceID, createdBy); err != nil {
 			return nil, nil, false, errors.Wrap(err, "failed to record the reply in the conversation")
 		}
 		if _, err := tx.ExecContext(ctx, `

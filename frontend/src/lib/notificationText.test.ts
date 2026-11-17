@@ -469,7 +469,7 @@ describe("quality agent attention", () => {
       title: "The agent needs help",
       question: "Should the check be paused?",
     });
-    expect(text.href).toBe("/data-quality/agents/agent1");
+    expect(text.href).toBe("/data-quality/agents/ws/agent1");
   });
 
   it("falls back to the generic title without a question", () => {
