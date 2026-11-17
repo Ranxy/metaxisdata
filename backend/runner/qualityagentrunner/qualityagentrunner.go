@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -114,7 +115,8 @@ func (r *Runner) runOnce(ctx context.Context) {
 		return
 	}
 	for _, config := range configs {
-		if !enabled[config.AgentID] || config.State != store.QualityAgentStateActive {
+		if !enabled[config.AgentID] || config.State != store.QualityAgentStateActive ||
+			!slices.Contains(config.Capabilities, "patrol") {
 			continue
 		}
 		databases := scopes[config.AgentID]
@@ -272,12 +274,12 @@ func dueReport(config *store.QualityAgentConfigMessage, now time.Time) (reportSc
 		return reportSchedule{
 			periodKind:  store.QualityAgentReportPeriodDaily,
 			periodKey:   scheduled.Format("2006-01-02"),
-			periodStart: scheduled.Add(-24 * time.Hour),
+			periodStart: scheduled.AddDate(0, 0, -1),
 			periodEnd:   scheduled,
 			location:    location,
 		}, true, nil
 	case store.QualityAgentReportFrequencyWeekly:
-		weekday := time.Weekday((int(config.ReportWeekday) + 6) % 7)
+		weekday := time.Weekday(int(config.ReportWeekday) % 7)
 		scheduled := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), hour, minute, 0, 0, location)
 		for scheduled.Weekday() != weekday {
 			scheduled = scheduled.AddDate(0, 0, -1)
@@ -289,7 +291,7 @@ func dueReport(config *store.QualityAgentConfigMessage, now time.Time) (reportSc
 		return reportSchedule{
 			periodKind:  store.QualityAgentReportPeriodWeekly,
 			periodKey:   fmt.Sprintf("%d-W%02d", year, week),
-			periodStart: scheduled.Add(-7 * 24 * time.Hour),
+			periodStart: scheduled.AddDate(0, 0, -7),
 			periodEnd:   scheduled,
 			location:    location,
 		}, true, nil

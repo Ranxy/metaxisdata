@@ -305,7 +305,7 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: "agents/:agentId",
+        path: "agents/:workspace/:agentId",
         name: "QualityAgent",
         component: () => import("@/pages/data-quality/QualityAgentPage.vue"),
         meta: {
@@ -318,7 +318,7 @@ const routes: RouteRecordRaw[] = [
         // Hidden administrator diagnostics: the raw work threads and their
         // transcripts for one agent, plus the audited resume action. No product
         // navigation points here except the admin-only link on the agent home.
-        path: "agents/:agentId/diagnostics",
+        path: "agents/:workspace/:agentId/diagnostics",
         name: "QualityAgentDiagnostics",
         component: () =>
           import("@/pages/data-quality/QualityAgentDiagnosticsPage.vue"),

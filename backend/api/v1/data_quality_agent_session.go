@@ -2,18 +2,15 @@ package v1
 
 import (
 	"context"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/pkg/errors"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
-	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	v1pb "github.com/Ranxy/metaxisdata/backend/generated-go/v1"
@@ -22,8 +19,6 @@ import (
 
 const (
 	qualityAgentSessionPrefix = "qualityAgentSessions/"
-	// maxAgentSessionText bounds a session objective and one person's question.
-	maxAgentSessionText = 4000
 )
 
 // AgentRunnerStatusProvider is the process-local liveness signal of the session runner.
@@ -32,101 +27,6 @@ type AgentRunnerStatusProvider interface {
 	LastTick() time.Time
 }
 
-// CreateQualityAgentSession records one target's long-lived agent session. The runner
-// must be enabled, the target's database must be in the allowlist and an enabled quality
-// agent must exist; every check happens before the write.
-func (s *DataQualityService) CreateQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.CreateQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
-	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
-	if err != nil {
-		return nil, err
-	}
-	settings, err := dataquality.LoadSettings(ctx, s.store)
-	if err != nil {
-		return nil, errLoadQualitySettings(err)
-	}
-	if !settings.AgentRunnerEnabled {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the quality agent runner is disabled in this workspace"))
-	}
-	if len(settings.AgentRunnerDatabases) == 0 {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the runner has no database in scope; enable at least one"))
-	}
-	targetGUID := strings.TrimSpace(req.Msg.GetTargetGuid())
-	if targetGUID == "" {
-		return nil, connectErrorInvalid("a session needs a target so the agent can scope it")
-	}
-	metaType := storepb.MetaType(req.Msg.GetMetaType())
-	if metaType == storepb.MetaType_UNSPECIFIED {
-		rules, err := s.store.ListQualityRules(ctx, &store.FindQualityRuleMessage{TargetGUID: &targetGUID})
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read the target's rules")
-		}
-		if len(rules) == 0 {
-			return nil, connectErrorInvalid("meta_type is required when the target has no rules")
-		}
-		metaType = rules[0].TargetType
-	}
-	// The target must exist in the registry: an enrollment or a manual session for a
-	// deleted object would only burn wakes until the reconciliation archives it.
-	if _, err := dataquality.ResolveTarget(ctx, s.store, targetGUID, metaType); err != nil {
-		return nil, err
-	}
-	databaseRef, err := databaseRefOfTarget(targetGUID)
-	if err != nil {
-		return nil, err
-	}
-	if !settings.AgentRunnerDatabaseEnabled(databaseRef) {
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.Errorf("database %q is not in the runner's allowlist", databaseRef))
-	}
-	agent, err := s.resolveQualityAgent(ctx, req.Msg.GetAgent())
-	if err != nil {
-		return nil, err
-	}
-	objective := strings.TrimSpace(req.Msg.GetObjective())
-	if len(objective) > maxAgentSessionText {
-		return nil, connectErrorInvalid("the objective is too long (max %d bytes)", maxAgentSessionText)
-	}
-	message, err := s.store.CreateQualityAgentSession(ctx, &store.CreateQualityAgentSessionInput{
-		WorkspaceID: workspaceID,
-		TargetGUID:  targetGUID,
-		TargetType:  metaType,
-		DatabaseRef: databaseRef,
-		AgentID:     agent.ID,
-		Objective:   objective,
-		CreatedBy:   principalIDPointer(currentUserID(ctx)),
-		Source:      storepb.QualityAgentSessionSource_QUALITY_AGENT_SESSION_SOURCE_MANUAL,
-		Mode:        storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR,
-	})
-	if err != nil {
-		if common.ErrorCode(err) == common.Conflict {
-			// The partial unique index is "one active session per target"; a random
-			// resource-id collision would be a different (and far rarer) conflict, so
-			// confirm the target really has a session before claiming it.
-			existing, findErr := s.store.GetQualityAgentSessionByTarget(ctx, workspaceID, agent.ID, targetGUID)
-			if findErr != nil {
-				return nil, findErr
-			}
-			if existing != nil {
-				return nil, connect.NewError(connect.CodeAlreadyExists,
-					errors.Errorf("the target already has an active agent session"))
-			}
-			return nil, connect.NewError(connect.CodeInternal,
-				errors.New("a session id collision occurred; retry the request"))
-		}
-		return nil, err
-	}
-	_, adoptErr := s.store.AdoptQualityAgentSession(ctx, workspaceID, agent.ID, targetGUID, metaType, databaseRef,
-		message.ID, storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR)
-	if adoptErr != nil {
-		slog.Warn("failed to record the session's enrollment row",
-			slog.String("session", message.ResourceID), log.WithError(adoptErr))
-	}
-	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, message, time.Now().UTC())), nil
-}
-
-// ListQualityAgentSessions lists the workspace's sessions by newest activity first.
 func (s *DataQualityService) ListQualityAgentSessions(ctx context.Context, req *connect.Request[v1pb.ListQualityAgentSessionsRequest]) (*connect.Response[v1pb.ListQualityAgentSessionsResponse], error) {
 	workspaceID, err := s.workspaceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -204,14 +104,6 @@ func (s *DataQualityService) GetQualityAgentSession(ctx context.Context, req *co
 	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, message, time.Now().UTC())), nil
 }
 
-// PauseQualityAgentSession stops new wakes; the conversation stays.
-func (s *DataQualityService) PauseQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.PauseQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
-	return s.transitionQualityAgentSession(ctx, req.Msg.GetName(), req.Msg.GetExpectedRevision(),
-		storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED, nil)
-}
-
-// ResumeQualityAgentSession puts a paused or blocked session back to enabled and wakes
-// it immediately.
 func (s *DataQualityService) ResumeQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.ResumeQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
 	now := time.Now().UTC()
 	session, err := s.transitionQualityAgentSession(ctx, req.Msg.GetName(), req.Msg.GetExpectedRevision(),
@@ -235,103 +127,6 @@ func (s *DataQualityService) ResumeQualityAgentSession(ctx context.Context, req 
 	return session, nil
 }
 
-// ArchiveQualityAgentSession tombstones a session; the transcript stays readable.
-func (s *DataQualityService) ArchiveQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.ArchiveQualityAgentSessionRequest]) (*connect.Response[emptypb.Empty], error) {
-	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
-	if err != nil {
-		return nil, err
-	}
-	archived, err := s.store.ArchiveQualityAgentSession(ctx, resourceID, req.Msg.GetExpectedRevision(), time.Now().UTC())
-	if err != nil {
-		return nil, err
-	}
-	if !archived {
-		return nil, connect.NewError(connect.CodeAborted,
-			errors.New("the session changed since it was read; reload and try again"))
-	}
-	if session, readErr := s.store.GetQualityAgentSession(ctx, resourceID); readErr == nil && session != nil {
-		if markErr := s.store.MarkQualityAgentEnrollmentArchived(ctx, workspaceID, session.AgentID, session.TargetGUID); markErr != nil {
-			slog.Warn("failed to exclude the archived session's enrollment",
-				slog.String("session", resourceID), log.WithError(markErr))
-		}
-	} else if readErr != nil {
-		slog.Warn("failed to read the archived session", slog.String("session", resourceID), log.WithError(readErr))
-	}
-	return connect.NewResponse(&emptypb.Empty{}), nil
-}
-
-// WakeQualityAgentSession appends a person's message and makes the session due now. A
-// wake already running keeps its lease; the runner picks the message up immediately
-// after it finishes.
-func (s *DataQualityService) WakeQualityAgentSession(ctx context.Context, req *connect.Request[v1pb.WakeQualityAgentSessionRequest]) (*connect.Response[v1pb.QualityAgentSession], error) {
-	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetName())
-	if err != nil {
-		return nil, err
-	}
-	session, err := s.fetchQualityAgentSession(ctx, resourceID)
-	if err != nil {
-		return nil, err
-	}
-	if session.ArchivedAt != nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("an archived session cannot be woken"))
-	}
-	switch session.State {
-	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_ENABLED:
-	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED:
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the session is paused; resume it before sending a message"))
-	case storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED:
-		return nil, connect.NewError(connect.CodeFailedPrecondition,
-			errors.Errorf("the session is blocked (%s); resume it before sending a message", session.BlockedCode))
-	default:
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the session cannot be woken"))
-	}
-	content := strings.TrimSpace(req.Msg.GetContent())
-	if content == "" {
-		return nil, connectErrorInvalid("a wake needs a message for the agent")
-	}
-	if len(content) > maxAgentSessionText {
-		return nil, connectErrorInvalid("the message is too long (max %d bytes)", maxAgentSessionText)
-	}
-	now := time.Now().UTC()
-	// A client request id makes a retried send idempotent. Without one the server mints a
-	// random key so asking the same question twice really appends twice.
-	requestID := strings.TrimSpace(req.Msg.GetRequestId())
-	if len(requestID) > 128 {
-		return nil, connectErrorInvalid("request_id is too long (max 128 bytes)")
-	}
-	key := "ask:" + requestID
-	if requestID == "" {
-		random, err := common.RandomString(12)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to generate the message id")
-		}
-		key = "ask:" + random
-	}
-	_, err = s.store.AppendQualityAgentTranscriptMessage(ctx, &store.QualityAgentTranscriptMessage{
-		SessionID:      session.ID,
-		WorkspaceID:    workspaceID,
-		Wake:           session.WakeCount + 1,
-		Role:           storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-		Origin:         storepb.QualityAgentMessageOrigin_QUALITY_AGENT_MESSAGE_ORIGIN_ASK,
-		Content:        content,
-		IdempotencyKey: key,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.store.AdvanceQualityAgentSessionWake(ctx, resourceID, now); err != nil {
-		return nil, err
-	}
-	updated, err := s.fetchQualityAgentSession(ctx, resourceID)
-	if err != nil {
-		return nil, err
-	}
-	return connect.NewResponse(convertQualityAgentSessionToV1(workspaceID, updated, now)), nil
-}
-
-// ListQualityAgentSessionMessages reads one session's transcript. after_seq polls for
-// new messages; without it the newest page is returned in chronological order.
 func (s *DataQualityService) ListQualityAgentSessionMessages(ctx context.Context, req *connect.Request[v1pb.ListQualityAgentSessionMessagesRequest]) (*connect.Response[v1pb.ListQualityAgentSessionMessagesResponse], error) {
 	workspaceID, resourceID, err := s.qualityAgentSessionResourceID(ctx, req.Msg.GetParent())
 	if err != nil {
@@ -544,10 +339,14 @@ func (s *DataQualityService) qualityAgentSessionResourceID(ctx context.Context, 
 	if err != nil {
 		return "", "", connectErrorInvalid("invalid quality agent session name")
 	}
-	if err := s.validateResourceWorkspace(ctx, tokens[0]); err != nil {
+	workspace, err := s.canonicalAgentWorkspace(ctx, tokens[0])
+	if err != nil {
 		return "", "", err
 	}
-	return tokens[0], tokens[1], nil
+	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
+		return "", "", err
+	}
+	return workspace, tokens[1], nil
 }
 
 func (s *DataQualityService) fetchQualityAgentSession(ctx context.Context, resourceID string) (*store.QualityAgentSessionMessage, error) {
@@ -671,39 +470,6 @@ func databaseRefOfTarget(targetGUID string) (string, error) {
 	return common.FormatDatabase(segments[0], segments[1]), nil
 }
 
-// resolveQualityAgent picks the agent a session runs as: the requested one, or the first
-// enabled quality agent of the workspace.
-func (s *DataQualityService) resolveQualityAgent(ctx context.Context, name string) (*store.QualityAgentMessage, error) {
-	if name = strings.TrimSpace(name); name != "" {
-		principalID, err := parseUserResourceID(name)
-		if err != nil {
-			return nil, connectErrorInvalid("%v", err)
-		}
-		agent, err := s.store.GetQualityAgentByPrincipalID(ctx, principalID)
-		if err != nil {
-			return nil, err
-		}
-		if agent == nil || !agent.Enabled {
-			return nil, connect.NewError(connect.CodeFailedPrecondition,
-				errors.Errorf("agent %q is not an enabled quality agent", name))
-		}
-		return agent, nil
-	}
-	agents, err := s.store.ListQualityAgents(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, agent := range agents {
-		if agent.Enabled {
-			return agent, nil
-		}
-	}
-	return nil, connect.NewError(connect.CodeFailedPrecondition,
-		errors.New("create an enabled quality agent before creating a session"))
-}
-
-// llmConfigured reports whether a model wake can run. A disabled or unconfigured
-// analysis is not an error: the runner falls back to the deterministic survey.
 func (s *DataQualityService) llmConfigured(ctx context.Context) bool {
 	if s.suggester == nil {
 		return false

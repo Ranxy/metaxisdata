@@ -3583,6 +3583,7 @@
     "reportOff": "Off",
     "reportTime": "Report time",
     "reportTimezone": "Report timezone",
+    "reportWeekday": "Report weekday",
     "reportWeekly": "Weekly",
     "rotateToken": "Rotate token",
     "saved": "Workspace switches saved",

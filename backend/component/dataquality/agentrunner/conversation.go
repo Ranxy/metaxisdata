@@ -13,7 +13,7 @@ import (
 
 // conversationWake answers without a model: it records the current scope summary as
 // an assistant message so the owner still gets a useful reply.
-func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, _ []*store.QualityAgentTranscriptMessage) (Outcome, error) {
+func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAgentSessionMessage, wake int32, pending []*store.QualityAgentTranscriptMessage) (Outcome, error) {
 	summary, err := e.scopeSummary(ctx, session)
 	if err != nil {
 		return Outcome{}, err
@@ -28,8 +28,14 @@ func (e *Engine) conversationWake(ctx context.Context, session *store.QualityAge
 	if appendErr != nil {
 		return Outcome{}, appendErr
 	}
+	processed := session.ProcessedSeq
+	for _, message := range pending {
+		if message.Seq > processed {
+			processed = message.Seq
+		}
+	}
 	return Outcome{
-		ProcessedSeq: session.ProcessedSeq,
+		ProcessedSeq: processed,
 		EngineState:  cloneEngineState(session.EngineState),
 		Summary:      "answered from the deterministic scope summary",
 	}, nil

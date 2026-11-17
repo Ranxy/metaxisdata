@@ -267,7 +267,7 @@ func TestAdmissionStopsWhenAutonomyIsOff(t *testing.T) {
 func testActiveAgent(fake *fakeStore) *activeAgent {
 	return &activeAgent{
 		agent:     fake.agent,
-		config:    &store.QualityAgentConfigMessage{AgentID: 7, State: store.QualityAgentStateActive},
+		config:    &store.QualityAgentConfigMessage{AgentID: 7, State: store.QualityAgentStateActive, Capabilities: []string{"suggest", "patrol"}},
 		databases: []string{"instances/i/databases/d"},
 	}
 }

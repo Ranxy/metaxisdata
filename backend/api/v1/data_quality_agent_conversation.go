@@ -144,6 +144,15 @@ func (s *DataQualityService) ListQualityAgentConversationMessages(ctx context.Co
 		response.NextPageToken = nextPageToken
 	}
 	for _, message := range messages {
+		// The front office is product content only: SYSTEM prompts, ENGINE notes,
+		// tool results and compaction rows stay behind the audited admin diagnostics
+		// RPC. Strip tool calls as well; the model's raw tool arguments are not part
+		// of the owner's conversation.
+		if message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER &&
+			message.Role != storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT {
+			continue
+		}
+		message.ToolCalls = &storepb.QualityToolCallList{}
 		response.QualityAgentConversationMessages = append(response.QualityAgentConversationMessages,
 			convertQualityAgentMessageToV1(workspaceID, conversation.ResourceID, message))
 	}

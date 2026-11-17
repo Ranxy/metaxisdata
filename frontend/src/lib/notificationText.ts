@@ -247,7 +247,9 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
 function qualityAgentAttentionText(
   detail: QualityAgentAttentionDetail
 ): NotificationText {
-  const agentID = detail.agent.split("/").pop() ?? "";
+  const parts = detail.agent.split("/");
+  const workspace = parts[1] ?? "";
+  const agentID = parts[3] ?? "";
   const question = detail.question.trim();
   return {
     titleKey:
@@ -260,7 +262,10 @@ function qualityAgentAttentionText(
     },
     messageKey: "notifications.qualityAgentMessage",
     messageParams: { agent: agentID },
-    href: agentID === "" ? undefined : `/data-quality/agents/${agentID}`,
+    href:
+      workspace === "" || agentID === ""
+        ? undefined
+        : `/data-quality/agents/${workspace}/${agentID}`,
   };
 }
 

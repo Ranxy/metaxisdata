@@ -44,9 +44,9 @@
         <div class="flex items-start gap-3">
           <Checkbox
             id="qa-runner-enabled"
-            :checked="switches.runnerEnabled"
+            :checked="!switches.runnerEnabled"
             :disabled="!canManage || savingSwitch"
-            @update:checked="saveSwitch('runner', $event === true)"
+            @update:checked="saveSwitch('runner', $event !== true)"
           />
           <div>
             <Label for="qa-runner-enabled">{{ t("qualityAgents.pauseAll") }}</Label>
@@ -143,7 +143,7 @@
                       {{ t("qualityAgents.pause") }}
                     </Button>
                     <Button
-                      v-if="canManage && agent.state === QualityAgentState.PAUSED"
+                      v-if="canManage && (agent.state === QualityAgentState.PAUSED || agent.state === QualityAgentState.DRAFT)"
                       variant="ghost"
                       size="sm"
                       :disabled="busyAgent === agent.name"
@@ -273,6 +273,24 @@
                 v-model="form.reportTimezone"
                 placeholder="Asia/Shanghai"
               />
+            </div>
+            <div
+              v-if="form.reportFrequency === 'weekly'"
+              class="space-y-1"
+            >
+              <Label>{{ t("qualityAgents.reportWeekday") }}</Label>
+              <Select v-model="form.reportWeekday">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="weekday in weekdays"
+                    :key="weekday.value"
+                    :value="weekday.value"
+                  >
+                    {{ t(weekday.key) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -560,6 +578,16 @@ const capabilities = [
   },
 ];
 
+const weekdays = [
+  { value: "1", key: "dataQualitySettings.weekdayMonday" },
+  { value: "2", key: "dataQualitySettings.weekdayTuesday" },
+  { value: "3", key: "dataQualitySettings.weekdayWednesday" },
+  { value: "4", key: "dataQualitySettings.weekdayThursday" },
+  { value: "5", key: "dataQualitySettings.weekdayFriday" },
+  { value: "6", key: "dataQualitySettings.weekdaySaturday" },
+  { value: "7", key: "dataQualitySettings.weekdaySunday" },
+];
+
 const lowRiskRuleTypes = [
   QualityRuleType.ROW_COUNT,
   QualityRuleType.NULL_PERCENT,
@@ -586,6 +614,7 @@ const form = ref({
   reportFrequency: "daily",
   reportTime: "09:00",
   reportTimezone: "UTC",
+  reportWeekday: "1",
   adoptionMode: "paused",
   adoptionMaxPerDay: 10,
   adoptionConfidence: 0.7,
@@ -655,7 +684,11 @@ function stateVariant(state: QualityAgentState) {
 }
 
 function agentHomeRoute(name: string) {
-  return `/data-quality/agents/${name.split("/").slice(2).join("/")}`;
+  const parts = name.split("/");
+  return {
+    name: "QualityAgent",
+    params: { workspace: parts[1], agentId: parts[3] },
+  };
 }
 
 function toggleAdoptionRuleType(ruleType: number, checked: boolean) {
@@ -667,9 +700,24 @@ function toggleAdoptionRuleType(ruleType: number, checked: boolean) {
 }
 
 function toggleCapability(id: string, checked: boolean) {
-  form.value.capabilities = checked
-    ? [...form.value.capabilities, id]
-    : form.value.capabilities.filter((candidate) => candidate !== id);
+  if (checked) {
+    form.value.capabilities = form.value.capabilities.includes(id)
+      ? form.value.capabilities
+      : [...form.value.capabilities, id];
+    // Adopt is meaningless without Suggest; adding it also adds the prerequisite.
+    if (id === "adopt" && !form.value.capabilities.includes("suggest")) {
+      form.value.capabilities = [...form.value.capabilities, "suggest"];
+    }
+    return;
+  }
+  form.value.capabilities = form.value.capabilities.filter(
+    (candidate) => candidate !== id
+  );
+  if (id === "suggest") {
+    form.value.capabilities = form.value.capabilities.filter(
+      (candidate) => candidate !== "adopt"
+    );
+  }
 }
 
 function toggleDatabase(name: string, checked: boolean) {
@@ -773,6 +821,7 @@ function openCreate() {
     reportFrequency: "daily",
     reportTime: "09:00",
     reportTimezone: "UTC",
+    reportWeekday: "1",
     adoptionMode: "paused",
     adoptionMaxPerDay: 10,
     adoptionConfidence: 0.7,
@@ -804,6 +853,7 @@ async function submitCreate() {
                   : QualityAgentReportFrequency.OFF,
             time: form.value.reportTime,
             timezone: form.value.reportTimezone,
+            dayOfWeek: Number(form.value.reportWeekday),
           }
         : { frequency: QualityAgentReportFrequency.OFF },
       adoption: form.value.capabilities.includes("adopt")

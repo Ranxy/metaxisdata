@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -739,7 +740,7 @@ func (r *Runner) admit(ctx context.Context, workspaceID string, settings dataqua
 			_ = r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "out-of-scope")
 			continue
 		}
-		if err := r.admitOne(ctx, workspaceID, current.agent.ID, enrollment, index, now); err != nil {
+		if err := r.admitOne(ctx, workspaceID, current, enrollment, index, now); err != nil {
 			slog.Warn("failed to admit an enrollment",
 				slog.String("enrollment", enrollment.ResourceID), log.WithError(err))
 		}
@@ -760,10 +761,19 @@ func (r *Runner) reasonCandidates(ctx context.Context, workspaceID string, agent
 
 // admitOne creates the target's session or resumes an existing one, then links the
 // enrollment to it.
-func (r *Runner) admitOne(ctx context.Context, workspaceID string, agentID int64, enrollment *store.QualityAgentEnrollmentMessage, index int, now time.Time) error {
+func (r *Runner) admitOne(ctx context.Context, workspaceID string, current *activeAgent, enrollment *store.QualityAgentEnrollmentMessage, index int, now time.Time) error {
+	agentID := current.agent.ID
 	mode := enrollment.Mode
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_UNSPECIFIED {
 		mode = storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR
+	}
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE &&
+		!slices.Contains(current.config.Capabilities, "suggest") {
+		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-suggest-disabled")
+	}
+	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR &&
+		!slices.Contains(current.config.Capabilities, "patrol") {
+		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "capability-patrol-disabled")
 	}
 	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE && !r.llmConfiguredFor(ctx) {
 		return r.store.SetQualityAgentEnrollmentBlockedReason(ctx, enrollment.ResourceID, "no-model")

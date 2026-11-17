@@ -538,6 +538,10 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		}
 		suggestion = claimed
 	}
+	ruleState := storepb.QualityRuleState(rule.GetState())
+	if ruleState == storepb.QualityRuleState_QUALITY_RULE_STATE_UNSPECIFIED {
+		ruleState = storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED
+	}
 	created, err := s.store.CreateQualityRule(ctx, &store.QualityRuleMessage{
 		ResourceID:     resourceID,
 		Title:          rule.GetTitle(),
@@ -550,7 +554,7 @@ func (s *DataQualityService) createQualityRuleFromRequest(ctx context.Context, w
 		TargetMetaHash: schemaHash,
 		Config:         config,
 		Severity:       storepb.QualitySeverity(rule.GetSeverity()),
-		State:          storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED,
+		State:          ruleState,
 		FrequencyTier:  frequencyTier,
 		OwnerID:        ownerID,
 		Tags:           append([]string(nil), rule.GetTags()...),

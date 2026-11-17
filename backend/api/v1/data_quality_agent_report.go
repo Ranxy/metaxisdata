@@ -69,6 +69,10 @@ func (s *DataQualityService) qualityAgentReportResourceID(ctx context.Context, n
 	if err != nil {
 		return "", "", connectErrorInvalid("%v", err)
 	}
+	workspace, err = s.canonicalAgentWorkspace(ctx, workspace)
+	if err != nil {
+		return "", "", err
+	}
 	if err := s.validateResourceWorkspace(ctx, workspace); err != nil {
 		return "", "", err
 	}

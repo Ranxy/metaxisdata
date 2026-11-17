@@ -309,6 +309,8 @@ func (r *Runner) host(ctx context.Context, settings dataquality.Settings, sessio
 		} else if !parked {
 			slog.Warn("the quality agent session changed before it could be parked",
 				slog.String("session", session.ResourceID))
+		} else if r.attention != nil && attentionWorthy(outcome.BlockedCode) {
+			r.attention(ctx, session, outcome.BlockedCode, outcome.BlockedReason)
 		}
 		return
 	}
@@ -400,13 +402,17 @@ func (r *Runner) block(ctx context.Context, session *store.QualityAgentSessionMe
 }
 
 // attentionWorthy reports whether a blocked code needs the owner's decision rather
-// than the next retry. Budget, concurrency and scope blocks stay runner-managed.
+// than the next retry. Retryable budget/concurrency codes and runner-managed scope
+// or disabled-agent parks stay silent.
 func attentionWorthy(code string) bool {
-	switch code {
-	case "needs-human", "restart-limit", "model-reported":
-		return true
-	default:
+	if store.QualityAgentSessionBlockedCodeRetryable(code) {
 		return false
+	}
+	switch code {
+	case "out-of-scope", "agent-disabled", "autonomy-off":
+		return false
+	default:
+		return true
 	}
 }
 

@@ -3583,6 +3583,7 @@
     "reportOff": "关闭",
     "reportTime": "报告时间",
     "reportTimezone": "报告时区",
+    "reportWeekday": "报告星期",
     "reportWeekly": "每周",
     "rotateToken": "轮换 Token",
     "saved": "工作区开关已保存",
