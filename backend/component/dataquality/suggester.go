@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
@@ -398,7 +399,7 @@ func (s *Suggester) runJSONCompletion(ctx context.Context, config llm.ResolvedCo
 		CorrelationId:   correlationID,
 	}
 
-	agentConfig := llm.AgentConfig{
+	agentConfig := agent.Config{
 		Provider:       config,
 		Feature:        feature,
 		Metrics:        s.metrics,
@@ -427,11 +428,11 @@ func (s *Suggester) runJSONCompletion(ctx context.Context, config llm.ResolvedCo
 		builder strings.Builder
 		usage   *llm.Usage
 	)
-	for event := range llm.RunAgentLoop(ctx, agentConfig) {
+	for event := range agent.RunLoop(ctx, agentConfig) {
 		switch event.Type {
-		case llm.AgentEventContent:
+		case agent.EventContent:
 			_, _ = builder.WriteString(event.Content)
-		case llm.AgentEventUsage:
+		case agent.EventUsage:
 			if event.Usage == nil {
 				continue
 			}
@@ -441,13 +442,13 @@ func (s *Suggester) runJSONCompletion(ctx context.Context, config llm.ResolvedCo
 			usage.PromptTokens += event.Usage.PromptTokens
 			usage.CompletionTokens += event.Usage.CompletionTokens
 			usage.TotalTokens += event.Usage.TotalTokens
-		case llm.AgentEventError:
+		case agent.EventError:
 			callErr := event.Error
 			if callErr == nil {
 				callErr = errors.New("the LLM analysis failed")
 			}
 			return "", usage, diagnostic, s.failedCompletionError(feature, diagnostic, usage, callErr, debugCaptured.Load())
-		case llm.AgentEventTurnStart, llm.AgentEventToolStart, llm.AgentEventToolEnd, llm.AgentEventAgentEnd:
+		case agent.EventTurnStart, agent.EventToolStart, agent.EventToolEnd, agent.EventEnd:
 			// One turn, no tools: nothing to do for these events.
 		default:
 			// An event kind added later needs no handling here until it matters.

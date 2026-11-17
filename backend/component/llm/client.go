@@ -43,9 +43,6 @@ type ToolResult struct {
 	Content    string
 }
 
-// ToolExecutor executes tool calls and returns results.
-type ToolExecutor func(toolCall ToolCall) ([]ToolResult, error)
-
 // DebugLogger receives full request/response bodies for debugging.
 type DebugLogger func(reqBody string, respBody string)
 
@@ -65,7 +62,7 @@ type Usage struct {
 // add accumulates one turn's usage into a running total. A missing total is
 // derived from its parts, so a provider that reports only the two components
 // still yields a usable sum.
-func (u *Usage) add(other *Usage) {
+func (u *Usage) Add(other *Usage) {
 	if u == nil || other == nil {
 		return
 	}

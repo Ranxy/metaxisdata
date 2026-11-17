@@ -37,9 +37,10 @@ func (c *capturedRequest) snapshot(t *testing.T) ([]byte, string) {
 	return c.body, c.path
 }
 
-// optionProvider answers with one fixed SSE body and records the request.
-func optionProvider(t *testing.T, sseBody string, capture *capturedRequest) *httptest.Server {
+// optionProvider answers one plain completion and records the request.
+func optionProvider(t *testing.T, capture *capturedRequest) *httptest.Server {
 	t.Helper()
+	const sseBody = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capture.record(r)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -50,9 +51,9 @@ func optionProvider(t *testing.T, sseBody string, capture *capturedRequest) *htt
 }
 
 // requestOptionsConfig is the config whose new fields the request-body tests pin.
-func requestOptionsConfig(t *testing.T, baseURL string) AgentConfig {
+func requestOptionsConfig(t *testing.T, baseURL string) StreamRequest {
 	t.Helper()
-	return AgentConfig{
+	return StreamRequest{
 		Provider:       ResolvedConfig{BaseURL: baseURL, ModelName: "test-model", APIKey: "key"},
 		Temperature:    proto.Float64(0.2),
 		MaxTokens:      512,
@@ -67,10 +68,10 @@ func TestStreamRawSendsRequestOptions(t *testing.T) {
 	t.Parallel()
 
 	capture := &capturedRequest{}
-	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+	server := optionProvider(t, capture)
 
 	cfg := requestOptionsConfig(t, server.URL)
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, path := capture.snapshot(t)
 	require.Equal(t, "/v1/chat/completions", path)
@@ -94,12 +95,12 @@ func TestStreamRawUsesTheProviderBudgetWhenNoCallerCapIsSet(t *testing.T) {
 	t.Parallel()
 
 	capture := &capturedRequest{}
-	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+	server := optionProvider(t, capture)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096,
 	}}
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
@@ -112,13 +113,13 @@ func TestStreamRawKeepsTheCallerCap(t *testing.T) {
 	t.Parallel()
 
 	capture := &capturedRequest{}
-	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+	server := optionProvider(t, capture)
 
-	cfg := AgentConfig{
+	cfg := StreamRequest{
 		Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", MaxOutputTokens: 4096},
 		MaxTokens: 512,
 	}
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
@@ -132,10 +133,10 @@ func TestStreamRawOmitsUnsetRequestOptions(t *testing.T) {
 	t.Parallel()
 
 	capture := &capturedRequest{}
-	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
+	server := optionProvider(t, capture)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"}}
-	drainStream(streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	cfg := StreamRequest{Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"}}
+	drainStream(Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 
 	body, _ := capture.snapshot(t)
 	var request map[string]any
@@ -143,27 +144,6 @@ func TestStreamRawOmitsUnsetRequestOptions(t *testing.T) {
 	for _, absent := range []string{"temperature", "max_tokens", "response_format", "stream_options", "tools"} {
 		require.NotContains(t, request, absent)
 	}
-}
-
-// AgentConfig is the only seam the agent loop has: what it carries is what the
-// provider receives, on every turn.
-func TestAgentConfigForwardsRequestOptions(t *testing.T) {
-	t.Parallel()
-
-	capture := &capturedRequest{}
-	server := optionProvider(t, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\ndata: [DONE]\n", capture)
-
-	cfg := requestOptionsConfig(t, server.URL)
-	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
-	require.NotEmpty(t, events)
-
-	body, _ := capture.snapshot(t)
-	var request map[string]any
-	require.NoError(t, json.Unmarshal(body, &request))
-	require.Contains(t, request, "temperature")
-	require.Contains(t, request, "max_tokens")
-	require.Contains(t, request, "response_format")
-	require.Contains(t, request, "stream_options")
 }
 
 // Usage arrives in a chunk of its own after the choice that carries the finish
@@ -257,146 +237,22 @@ func TestParseStreamRejectsANonStreamingErrorBody(t *testing.T) {
 	require.Contains(t, err.Error(), "no choices")
 }
 
-// The agent loop reports one usage event per turn and the run's total on the end
-// event, so a caller can record cost without guessing.
-func TestRunAgentLoopReportsUsage(t *testing.T) {
-	t.Parallel()
-
-	server := optionProvider(t, `data: {"choices":[{"delta":{"content":"ok"}}]}
-data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
-data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":3,"total_tokens":12}}
-data: [DONE]
-`, &capturedRequest{})
-
-	cfg := AgentConfig{Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"}, IncludeUsage: true}
-	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
-
-	var usageEvents []AgentEvent
-	var end *AgentEvent
-	for index := range events {
-		evt := events[index]
-		if evt.Type == AgentEventUsage {
-			usageEvents = append(usageEvents, evt)
-		}
-		if evt.Type == AgentEventAgentEnd {
-			end = &events[index]
-		}
-	}
-	require.Len(t, usageEvents, 1)
-	require.Equal(t, 1, usageEvents[0].Turn)
-	require.NotNil(t, usageEvents[0].Usage)
-	require.Equal(t, int64(12), usageEvents[0].Usage.TotalTokens)
-	require.NotNil(t, end)
-	require.NotNil(t, end.Usage)
-	require.Equal(t, int64(9), end.Usage.PromptTokens)
-	require.Equal(t, int64(3), end.Usage.CompletionTokens)
-	require.Equal(t, int64(12), end.Usage.TotalTokens)
-}
-
-// usageAcrossTurnsProvider reports a tool call with usage on the first call and a
-// final answer with usage on the second.
-func usageAcrossTurnsProvider(t *testing.T) *httptest.Server {
-	t.Helper()
-	var mu sync.Mutex
-	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		calls++
-		call := calls
-		mu.Unlock()
-		w.Header().Set("Content-Type", "text/event-stream")
-		if call == 1 {
-			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{}\"}}]}}]}\n")
-			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n")
-			_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}\n")
-			_, _ = io.WriteString(w, "data: [DONE]\n")
-			return
-		}
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"done\"}}]}\n")
-		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n")
-		_, _ = io.WriteString(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":5,\"total_tokens\":25}}\n")
-		_, _ = io.WriteString(w, "data: [DONE]\n")
-	}))
-	t.Cleanup(server.Close)
-	return server
-}
-
-func TestRunAgentLoopAggregatesUsageAcrossTurns(t *testing.T) {
-	t.Parallel()
-
-	server := usageAcrossTurnsProvider(t)
-	cfg := AgentConfig{
-		Provider:     ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
-		MaxTurns:     3,
-		Tools:        []ToolDef{{Type: "function"}},
-		Executor:     func(ToolCall) ([]ToolResult, error) { return []ToolResult{{Content: "result"}}, nil },
-		IncludeUsage: true,
-	}
-	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
-
-	usageEvents := 0
-	var end *AgentEvent
-	for index := range events {
-		evt := events[index]
-		if evt.Type == AgentEventUsage {
-			usageEvents++
-		}
-		if evt.Type == AgentEventAgentEnd {
-			end = &events[index]
-		}
-	}
-	require.Equal(t, 2, usageEvents, "one usage event per turn")
-	require.NotNil(t, end)
-	require.NotNil(t, end.Usage)
-	require.Equal(t, int64(30), end.Usage.PromptTokens)
-	require.Equal(t, int64(7), end.Usage.CompletionTokens)
-	require.Equal(t, int64(37), end.Usage.TotalTokens)
-}
-
-// A provider that ignores stream=true still completes through the agent loop.
-func TestRunAgentLoopAcceptsANonStreamingProvider(t *testing.T) {
-	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"plain answer"},"finish_reason":"stop"}]}`)
-	}))
-	t.Cleanup(server.Close)
-
-	cfg := AgentConfig{Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"}}
-	events := collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
-
-	var content string
-	var ended bool
-	for _, evt := range events {
-		if evt.Type == AgentEventContent {
-			content += evt.Content
-		}
-		if evt.Type == AgentEventAgentEnd {
-			ended = true
-		}
-		require.NotEqual(t, AgentEventError, evt.Type, "no error: %v", evt.Error)
-	}
-	require.Equal(t, "plain answer", content)
-	require.True(t, ended)
-}
-
 // The usage total is derived when a provider reports only the components, so a
 // caller that records the total still gets a number.
 func TestUsageAddDerivesAMissingTotal(t *testing.T) {
 	t.Parallel()
 
 	var total Usage
-	total.add(&Usage{PromptTokens: 4, CompletionTokens: 6})
+	total.Add(&Usage{PromptTokens: 4, CompletionTokens: 6})
 	require.Equal(t, int64(10), total.TotalTokens)
-	total.add(&Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 5})
+	total.Add(&Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 5})
 	require.Equal(t, int64(15), total.TotalTokens)
 
 	// A nil side is a no-op, never a panic.
-	total.add(nil)
+	total.Add(nil)
 	require.Equal(t, int64(5), total.PromptTokens, "a nil side leaves the running total alone")
 	var nilUsage *Usage
-	require.NotPanics(t, func() { nilUsage.add(&Usage{PromptTokens: 1}) })
+	require.NotPanics(t, func() { nilUsage.Add(&Usage{PromptTokens: 1}) })
 	require.Nil(t, nilUsage)
 }
 

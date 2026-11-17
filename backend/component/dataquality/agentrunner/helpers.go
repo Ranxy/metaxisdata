@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
-	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -145,11 +144,6 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit]) + "…"
 }
 
-// truncateBytes bounds a string at a byte budget without splitting a rune.
-func truncateBytes(value string, limit int) string {
-	return common.TruncateUTF8Bytes(value, limit)
-}
-
 func ptrTime(value time.Time) *time.Time { return &value }
 
 func ptrInt32(value int32) *int32 { return &value }
@@ -183,7 +177,7 @@ func criticalityLabel(criticality dataquality.AssetCriticality) string {
 // assistantIdempotencyKey identifies one assistant message of a wake. The content and
 // the tool calls are part of the key: a crash-retried turn that the model answered
 // differently must append a new row instead of colliding with the half-written one.
-func assistantIdempotencyKey(wake, turn int32, assistant *llm.AgentMessage) string {
+func assistantIdempotencyKey(wake, turn int32, assistant *agent.Message) string {
 	hash := sha256.New()
 	_, _ = hash.Write([]byte(assistant.Content))
 	for _, call := range assistant.ToolCalls {

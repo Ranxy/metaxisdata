@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -33,11 +32,11 @@ func TestTriageWakeWithoutAModelRetries(t *testing.T) {
 func TestModelToolDefsDependOnMode(t *testing.T) {
 	t.Parallel()
 
-	monitor := toolNames(modelToolDefs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR))
+	monitor := specNames(modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_MONITOR))
 	require.NotContains(t, monitor, "get_table_context")
 	require.NotContains(t, monitor, "draft_checks")
 
-	triage := toolNames(modelToolDefs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE))
+	triage := specNames(modelToolSpecs(storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE))
 	require.Contains(t, triage, "get_table_context")
 	require.Contains(t, triage, "draft_checks")
 	require.Contains(t, triage, "record_investigation")
@@ -48,7 +47,7 @@ func TestGetTableContextToolReadsTheReader(t *testing.T) {
 
 	engine := NewEngine(newFakeStore())
 	engine.tableContext = fakeTableContextReader{}
-	result, err := engine.executeTool(context.Background(), testSession(), "get_table_context", "{}", nil, nil, nil, nil, nil)
+	result, err := engine.executeTool(context.Background(), testSession(), "get_table_context", "{}", nil)
 	require.NoError(t, err)
 	require.Contains(t, result, `"object":"orders"`)
 	require.Contains(t, result, `"downstreamConsumers":3`)
@@ -66,7 +65,7 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 		return []string{"orders amount not null", "orders id unique"}, nil
 	}
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
-	result, err := engine.executeTool(context.Background(), testSession(), "draft_checks", args, nil, nil, nil, nil, nil)
+	result, err := engine.executeTool(context.Background(), testSession(), "draft_checks", args, nil)
 	require.NoError(t, err)
 	require.Len(t, gotColumns, maxTriageDraftColumns)
 	require.Equal(t, "watch order integrity", gotIntent)
@@ -90,10 +89,10 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 	}, nil
 }
 
-func toolNames(defs []llm.ToolDef) []string {
-	names := make([]string, 0, len(defs))
-	for _, def := range defs {
-		names = append(names, def.Function.Name)
+func specNames(specs []toolSpec) []string {
+	names := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		names = append(names, spec.name)
 	}
 	return names
 }

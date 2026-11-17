@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/pkg/errors"
 
-	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
+	"github.com/Ranxy/metaxisdata/backend/component/agent/transcript"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -16,25 +16,8 @@ import (
 )
 
 const (
-	// compactionRetainRatio is the share of the trigger budget kept verbatim as the
-	// recent tail; the older region is summarized.
-	compactionRetainRatio = 0.16
-	// compactionForcedRetainRatio is the smaller tail kept after a provider rejected
-	// the context as too large.
-	compactionForcedRetainRatio = 0.08
-	// compactionForcedRetainTokens caps the forced tail so an overflow always leaves a
-	// region big enough to summarize.
-	compactionForcedRetainTokens = 4_096
-	// compactionMinRegionMessages avoids a summary call for a trivial region.
-	compactionMinRegionMessages = 4
 	// compactionMaxOutputTokens bounds the summary text.
 	compactionMaxOutputTokens = 8192
-	// pruneToolResultHead and pruneToolResultTail keep the useful ends of an old tool
-	// result while dropping the middle before a summary call.
-	pruneToolResultHead = 2048
-	pruneToolResultTail = 512
-	// pruneMarker replaces the removed middle of a tool result.
-	pruneMarker = "\n\n[... tool result pruned ...]\n\n"
 	// keepRecentToolResults is how many recent messages keep their tool results intact
 	// in the model context. Older results keep only their head and tail; the window is
 	// small enough that a few oversized results cannot keep the context over budget.
@@ -107,75 +90,62 @@ func (e *Engine) maybeCompact(
 	if trigger <= 0 {
 		trigger = dataquality.DefaultAgentRunnerCompactionTriggerTokens
 	}
+	entries := transcriptEntries(messages)
 	// Prune first: replacing the middle of old tool results is free and may already be
 	// enough. Only when the pruned context is still over the trigger is a summary call
 	// worth its tokens.
-	pruned := pruneToolResults(BuildConversation(session, nil, messages), keepRecentToolResults)
-	pressure := EstimateTokens(pruned)
+	pruned := transcript.PruneToolResults(transcript.BuildConversation("", session.Summary, entries), keepRecentToolResults)
+	pressure := transcript.EstimateTokens(pruned)
 	if !forced && pressure <= trigger {
 		return 0, false, nil
 	}
-	retain := int(float64(trigger) * compactionRetainRatio)
-	if forced {
-		// An overflow is an emergency: keep only a small recent tail, not a share of the
-		// trigger (which may be far above the conversation that just overflowed).
-		retain = int(float64(trigger) * compactionForcedRetainRatio)
-		if retain > compactionForcedRetainTokens {
-			retain = compactionForcedRetainTokens
-		}
-	}
-	cut := balancedCut(messages, retainedCut(messages, retain))
-	start := 0
-	for start < cut && messages[start].Role == storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM {
-		start++
-	}
-	if cut-start < compactionMinRegionMessages {
+	plan, ok := transcript.PlanCompaction(entries, trigger, forced)
+	if !ok {
 		return 0, false, nil
 	}
-	region := messages[start:cut]
-	throughSeq := region[len(region)-1].Seq
+	throughSeq := plan.ThroughSeq
 
 	systemPrompt := compactionSystemPrompt()
 	if system != nil && system.Content != "" {
 		systemPrompt = system.Content
 	}
-	summaryMessages := []llm.AgentMessage{{Role: "system", Content: systemPrompt}}
+	summaryMessages := []agent.Message{{Role: "system", Content: systemPrompt}}
 	if session.Summary != "" {
-		summaryMessages = append(summaryMessages, llm.AgentMessage{
+		summaryMessages = append(summaryMessages, agent.Message{
 			Role:    "user",
 			Content: "Previous checkpoint summary (merge it; keep still-true facts and drop stale ones):\n" + session.Summary,
 		})
 	}
-	summaryMessages = append(summaryMessages, pruneToolResults(BuildConversation(nil, nil, region), 0)...)
-	summaryMessages = append(summaryMessages, llm.AgentMessage{Role: "user", Content: compactionInstruction})
+	summaryMessages = append(summaryMessages, transcript.PruneToolResults(transcript.BuildConversation("", "", plan.Region), 0)...)
+	summaryMessages = append(summaryMessages, agent.Message{Role: "user", Content: compactionInstruction})
 
 	var (
 		summary string
 		tokens  int64
 	)
-	for event := range e.chat(ctx, llm.AgentConfig{
+	for event := range e.chat(ctx, agent.Config{
 		Provider:             config,
 		Feature:              compactionFeature,
 		History:              summaryMessages,
 		MaxTurns:             1,
 		MaxTokens:            compactionMaxOutputTokens,
-		MaxConversationBytes: llm.DefaultMaxConversationBytes,
+		MaxConversationBytes: agent.DefaultMaxConversationBytes,
 		IncludeUsage:         true,
 		Metrics:              e.metrics,
 	}) {
 		switch event.Type {
-		case llm.AgentEventAssistant:
+		case agent.EventAssistant:
 			if event.Assistant != nil && strings.TrimSpace(event.Assistant.Content) != "" {
 				summary = event.Assistant.Content
 			}
-		case llm.AgentEventUsage:
+		case agent.EventUsage:
 			if event.Usage != nil {
 				tokens += event.Usage.TotalTokens
 				if event.Usage.TotalTokens == 0 {
 					tokens += event.Usage.PromptTokens + event.Usage.CompletionTokens
 				}
 			}
-		case llm.AgentEventError:
+		case agent.EventError:
 			return tokens, false, errors.Wrap(event.Error, "the context compaction failed")
 		default:
 		}
@@ -185,7 +155,7 @@ func (e *Engine) maybeCompact(
 		return tokens, false, errors.New("the context compaction produced no summary")
 	}
 	// A summary larger than the span it replaces is not progress; keep the original.
-	if estimateTextTokens(summary) >= EstimateTokens(BuildConversation(nil, nil, region)) {
+	if transcript.EstimateTextTokens(summary) >= transcript.EstimateTokens(transcript.BuildConversation("", "", plan.Region)) {
 		return tokens, false, nil
 	}
 	_, appendErr := e.appendMessage(ctx, session, &store.QualityAgentTranscriptMessage{
@@ -211,92 +181,12 @@ func (e *Engine) maybeCompact(
 	return tokens, true, nil
 }
 
-// retainedCut returns the index of the first message that stays verbatim: the tail
-// whose estimated tokens reach the retention budget.
-func retainedCut(messages []*store.QualityAgentTranscriptMessage, retain int) int {
-	total := 0
-	for index := len(messages) - 1; index >= 0; index-- {
-		total += estimateMessageTokens(messages[index])
-		if total >= retain {
-			return index
-		}
-	}
-	return 0
-}
-
-// balancedCut moves a cut earlier until it does not split an assistant tool call from
-// its results. A provider rejects a conversation whose tool call has no result.
+// balancedCut is the transcript mechanism's balanced cut.
 func balancedCut(messages []*store.QualityAgentTranscriptMessage, cut int) int {
-	if cut <= 0 || cut > len(messages) {
-		return 0
-	}
-	// A cut is balanced when no assistant tool call crosses it. A user/system/compaction
-	// message is a turn boundary, so it flushes any pending call (the same semantics as
-	// the context repair); otherwise one crash-dangling call would make every later cut
-	// look unbalanced and disable compaction for the whole session.
-	pending := make([]int, len(messages)+1)
-	for index, message := range messages {
-		pending[index+1] = pending[index]
-		switch message.Role {
-		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_ASSISTANT:
-			pending[index+1] += len(message.ToolCalls.GetToolCalls())
-		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_TOOL:
-			if pending[index+1] > 0 {
-				pending[index+1]--
-			}
-		case storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_USER,
-			storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_SYSTEM,
-			storepb.QualityAgentMessageRole_QUALITY_AGENT_MESSAGE_ROLE_COMPACTION:
-			pending[index+1] = 0
-		default:
-		}
-	}
-	for index := cut; index > 0; index-- {
-		if pending[index] == 0 {
-			return index
-		}
-	}
-	return 0
+	return transcript.BalancedCut(transcriptEntries(messages), cut)
 }
 
-// estimateMessageTokens approximates one stored message's tokens.
-func estimateMessageTokens(message *store.QualityAgentTranscriptMessage) int {
-	total := estimateTextTokens(message.Content) + estimateTextTokens(message.ToolCallID) +
-		estimateTextTokens(message.ToolName)
-	for _, call := range message.ToolCalls.GetToolCalls() {
-		total += estimateTextTokens(call.GetName()) + estimateTextTokens(call.GetArguments())
-	}
-	return total
-}
-
-// pruneToolResults replaces the middle of old tool results with a marker, keeping the
-// head and tail. It runs before a summary call (no model request) and, with a recent
-// window, on the normal model context so an old oversized result stops being resent in
-// full on every turn.
-func pruneToolResults(messages []llm.AgentMessage, keepRecent int) []llm.AgentMessage {
-	limit := len(messages) - keepRecent
-	for index := 0; index < limit && index < len(messages); index++ {
-		message := &messages[index]
-		if message.Role != "toolResult" {
-			continue
-		}
-		if len(message.Content) <= pruneToolResultHead+pruneToolResultTail+len(pruneMarker) {
-			continue
-		}
-		message.Content = common.TruncateUTF8Bytes(message.Content, pruneToolResultHead) +
-			pruneMarker + lastRunes(message.Content, pruneToolResultTail)
-	}
-	return messages
-}
-
-// lastRunes returns at most limit bytes from the end of value, never splitting a rune.
-func lastRunes(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	start := len(value) - limit
-	for start < len(value) && !utf8.RuneStart(value[start]) {
-		start++
-	}
-	return value[start:]
+// pruneToolResults replaces the middle of old tool results with a marker.
+func pruneToolResults(messages []agent.Message, keepRecent int) []agent.Message {
+	return transcript.PruneToolResults(messages, keepRecent)
 }

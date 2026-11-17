@@ -1,4 +1,4 @@
-package llm
+package agent
 
 import (
 	"context"
@@ -10,13 +10,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 )
 
-// TestRunAgentLoopRecordsOneCallWithTokens pins the central LLM instrumentation:
+// TestRunLoopRecordsOneCallWithTokens pins the central LLM instrumentation:
 // one invocation is one call, labelled with the caller's feature and the provider
 // profile, and it carries the tokens the provider reported across the turns.
-func TestRunAgentLoopRecordsOneCallWithTokens(t *testing.T) {
+func TestRunLoopRecordsOneCallWithTokens(t *testing.T) {
 	t.Parallel()
 
 	registry := prometheus.NewRegistry()
@@ -24,16 +25,16 @@ func TestRunAgentLoopRecordsOneCallWithTokens(t *testing.T) {
 	require.NoError(t, m.Register(registry))
 
 	server := usageAcrossTurnsProvider(t)
-	cfg := AgentConfig{
-		Provider:     ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", ProfileName: "profile-a"},
+	cfg := Config{
+		Provider:     llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", ProfileName: "profile-a"},
 		Feature:      "test_feature",
 		Metrics:      m,
 		MaxTurns:     3,
-		Tools:        []ToolDef{{Type: "function"}},
-		Executor:     func(ToolCall) ([]ToolResult, error) { return []ToolResult{{Content: "result"}}, nil },
+		Tools:        []llm.ToolDef{{Type: "function"}},
+		Executor:     func(llm.ToolCall) ([]llm.ToolResult, error) { return []llm.ToolResult{{Content: "result"}}, nil },
 		IncludeUsage: true,
 	}
-	collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
+	collectEvents(t, RunLoop(context.Background(), cfg))
 
 	require.Equal(t, 1.0, gatheredLLMCounter(t, registry, "metaxisdata_llm_calls_total", map[string]string{
 		"feature":  "test_feature",
@@ -59,10 +60,10 @@ func TestRunAgentLoopRecordsOneCallWithTokens(t *testing.T) {
 	}))
 }
 
-// TestRunAgentLoopReportsMissingUsage covers the ExplainSQL compatibility path: a
+// TestRunLoopReportsMissingUsage covers the ExplainSQL compatibility path: a
 // provider that reports no usage is visible through usage_missing_total instead of
 // being silently counted as zero tokens.
-func TestRunAgentLoopReportsMissingUsage(t *testing.T) {
+func TestRunLoopReportsMissingUsage(t *testing.T) {
 	t.Parallel()
 
 	registry := prometheus.NewRegistry()
@@ -70,12 +71,12 @@ func TestRunAgentLoopReportsMissingUsage(t *testing.T) {
 	require.NoError(t, m.Register(registry))
 
 	server := noUsageProvider(t)
-	cfg := AgentConfig{
-		Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", ProfileName: "profile-a"},
+	cfg := Config{
+		Provider: llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", ProfileName: "profile-a"},
 		Feature:  "explain_sql",
 		Metrics:  m,
 	}
-	collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
+	collectEvents(t, RunLoop(context.Background(), cfg))
 
 	require.Equal(t, 1.0, gatheredLLMCounter(t, registry, "metaxisdata_llm_calls_total", map[string]string{
 		"feature":  "explain_sql",
@@ -92,10 +93,10 @@ func TestRunAgentLoopReportsMissingUsage(t *testing.T) {
 	}))
 }
 
-// TestRunAgentLoopRecordsAnEmptyResponse keeps the empty-response outcome distinct
+// TestRunLoopRecordsAnEmptyResponse keeps the empty-response outcome distinct
 // from a transport error: both fail the invocation, but only one is the provider's
 // answer being unusable.
-func TestRunAgentLoopRecordsAnEmptyResponse(t *testing.T) {
+func TestRunLoopRecordsAnEmptyResponse(t *testing.T) {
 	t.Parallel()
 
 	registry := prometheus.NewRegistry()
@@ -109,13 +110,13 @@ func TestRunAgentLoopRecordsAnEmptyResponse(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{
-		Provider: ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", ProfileName: "profile-a"},
+	cfg := Config{
+		Provider: llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key", ProfileName: "profile-a"},
 		Feature:  "dq_rule_draft",
 		Metrics:  m,
 		MaxTurns: 1,
 	}
-	collectAgentEvents(t, RunAgentLoop(context.Background(), cfg))
+	collectEvents(t, RunLoop(context.Background(), cfg))
 
 	require.Equal(t, 1.0, gatheredLLMCounter(t, registry, "metaxisdata_llm_calls_total", map[string]string{
 		"feature":  "dq_rule_draft",

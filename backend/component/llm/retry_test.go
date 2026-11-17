@@ -58,7 +58,7 @@ data: [DONE]
 
 // collectRawStream drains one raw stream and returns the concatenated content and
 // the first error chunk.
-func collectRawStream(t *testing.T, stream <-chan rawStreamChunk) (string, error) {
+func collectRawStream(t *testing.T, stream <-chan StreamChunk) (string, error) {
 	t.Helper()
 	var (
 		content string
@@ -85,11 +85,11 @@ func TestStreamRawRetriesARejectedOutputBudget(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(provider.handle))
 			t.Cleanup(server.Close)
 
-			cfg := AgentConfig{Provider: ResolvedConfig{
+			cfg := StreamRequest{Provider: ResolvedConfig{
 				BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 				MaxOutputTokens: DefaultMaxOutputTokens,
 			}}
-			content, err := collectRawStream(t, streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+			content, err := collectRawStream(t, Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 			require.NoError(t, err)
 			require.Contains(t, content, "suggestions")
 
@@ -108,11 +108,11 @@ func TestStreamRawReportsTheSecondStatusWhenTheFallbackAlsoFails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 		MaxOutputTokens: DefaultMaxOutputTokens,
 	}}
-	_, err := collectRawStream(t, streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	_, err := collectRawStream(t, Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 	var responseErr *ResponseError
 	require.ErrorAs(t, err, &responseErr)
 	require.Equal(t, FailureProviderStatus, responseErr.Code)
@@ -136,11 +136,11 @@ func TestStreamRawRecordsTheAttemptedBudgetOnStreamFailures(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 		MaxOutputTokens: DefaultMaxOutputTokens,
 	}}
-	_, err := collectRawStream(t, streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	_, err := collectRawStream(t, Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 	var responseErr *ResponseError
 	require.ErrorAs(t, err, &responseErr)
 	require.Equal(t, FailureTruncated, responseErr.Code)
@@ -162,11 +162,11 @@ func TestStreamRawRecordsTheConfiguredBudgetWithoutARetry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{Provider: ResolvedConfig{
+	cfg := StreamRequest{Provider: ResolvedConfig{
 		BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 		MaxOutputTokens: 8192,
 	}}
-	_, err := collectRawStream(t, streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	_, err := collectRawStream(t, Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 	var responseErr *ResponseError
 	require.ErrorAs(t, err, &responseErr)
 	require.Equal(t, FailureTruncated, responseErr.Code)
@@ -182,11 +182,11 @@ func TestStreamRawDoesNotRetryABudgetAtTheFallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(provider.handle))
 	t.Cleanup(server.Close)
 
-	cfg := AgentConfig{
+	cfg := StreamRequest{
 		Provider:  ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
 		MaxTokens: fallbackMaxOutputTokens,
 	}
-	_, err := collectRawStream(t, streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+	_, err := collectRawStream(t, Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 	var responseErr *ResponseError
 	require.ErrorAs(t, err, &responseErr)
 	require.Equal(t, FailureProviderStatus, responseErr.Code)
@@ -206,11 +206,11 @@ func TestStreamRawDoesNotRetryOtherStatuses(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(provider.handle))
 			t.Cleanup(server.Close)
 
-			cfg := AgentConfig{Provider: ResolvedConfig{
+			cfg := StreamRequest{Provider: ResolvedConfig{
 				BaseURL: server.URL, ModelName: "test-model", APIKey: "key",
 				MaxOutputTokens: DefaultMaxOutputTokens,
 			}}
-			_, err := collectRawStream(t, streamRaw(context.Background(), cfg, []Message{{Role: "user", Content: "hi"}}))
+			_, err := collectRawStream(t, Stream(context.Background(), streamRequestForTest(cfg, []Message{{Role: "user", Content: "hi"}})))
 			var responseErr *ResponseError
 			require.ErrorAs(t, err, &responseErr)
 			require.Equal(t, FailureProviderStatus, responseErr.Code)

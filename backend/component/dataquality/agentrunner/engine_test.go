@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
@@ -158,24 +159,24 @@ type scriptedTurn struct {
 // scriptedChat plays a fixed sequence of LLM turns and executes their tool calls
 // through the wake's executor, like the real loop does.
 func scriptedChat(turns []scriptedTurn) Chat {
-	return func(_ context.Context, cfg llm.AgentConfig) <-chan llm.AgentEvent {
-		events := make(chan llm.AgentEvent, 32)
+	return func(_ context.Context, cfg agent.Config) <-chan agent.Event {
+		events := make(chan agent.Event, 32)
 		go func() {
 			defer close(events)
 			for i, turn := range turns {
 				number := i + 1
-				events <- llm.AgentEvent{Type: llm.AgentEventTurnStart, Turn: number}
-				events <- llm.AgentEvent{Type: llm.AgentEventUsage, Turn: number,
+				events <- agent.Event{Type: agent.EventTurnStart, Turn: number}
+				events <- agent.Event{Type: agent.EventUsage, Turn: number,
 					Usage: &llm.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110}}
-				assistant := llm.AgentMessage{Role: "assistant", Content: turn.content, ToolCalls: turn.toolCalls}
-				events <- llm.AgentEvent{Type: llm.AgentEventAssistant, Assistant: &assistant, Turn: number}
+				assistant := agent.Message{Role: "assistant", Content: turn.content, ToolCalls: turn.toolCalls}
+				events <- agent.Event{Type: agent.EventAssistant, Assistant: &assistant, Turn: number}
 				for _, call := range turn.toolCalls {
 					results, err := cfg.Executor(call)
 					content := ""
 					if len(results) > 0 {
 						content = results[0].Content
 					}
-					event := llm.AgentEvent{Type: llm.AgentEventToolEnd, ToolCall: &call, ToolResult: content, Turn: number}
+					event := agent.Event{Type: agent.EventToolEnd, ToolCall: &call, ToolResult: content, Turn: number}
 					if err != nil {
 						event.ToolResult = "error: " + err.Error()
 						event.ToolError = err.Error()
@@ -183,11 +184,11 @@ func scriptedChat(turns []scriptedTurn) Chat {
 					events <- event
 				}
 				if len(turn.toolCalls) == 0 {
-					events <- llm.AgentEvent{Type: llm.AgentEventAgentEnd, Turn: number}
+					events <- agent.Event{Type: agent.EventEnd, Turn: number}
 					return
 				}
 			}
-			events <- llm.AgentEvent{Type: llm.AgentEventAgentEnd}
+			events <- agent.Event{Type: agent.EventEnd}
 		}()
 		return events
 	}
@@ -574,26 +575,26 @@ func TestWakeCompactsAndRetriesAfterAContextOverflow(t *testing.T) {
 		}
 	}
 	calls := 0
-	chat := func(_ context.Context, _ llm.AgentConfig) <-chan llm.AgentEvent {
+	chat := func(_ context.Context, _ agent.Config) <-chan agent.Event {
 		calls++
-		events := make(chan llm.AgentEvent, 8)
+		events := make(chan agent.Event, 8)
 		go func() {
 			defer close(events)
 			switch calls {
 			case 1:
-				events <- llm.AgentEvent{Type: llm.AgentEventError,
+				events <- agent.Event{Type: agent.EventError,
 					Error: &llm.ResponseError{Code: llm.FailureContextOverflow}}
 			case 2:
-				events <- llm.AgentEvent{Type: llm.AgentEventAssistant,
-					Assistant: &llm.AgentMessage{Role: "assistant", Content: "## Next Step\n- (none)"}}
-				events <- llm.AgentEvent{Type: llm.AgentEventAgentEnd}
+				events <- agent.Event{Type: agent.EventAssistant,
+					Assistant: &agent.Message{Role: "assistant", Content: "## Next Step\n- (none)"}}
+				events <- agent.Event{Type: agent.EventEnd}
 			default:
-				events <- llm.AgentEvent{Type: llm.AgentEventTurnStart, Turn: 1}
-				events <- llm.AgentEvent{Type: llm.AgentEventUsage, Turn: 1,
+				events <- agent.Event{Type: agent.EventTurnStart, Turn: 1}
+				events <- agent.Event{Type: agent.EventUsage, Turn: 1,
 					Usage: &llm.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110}}
-				events <- llm.AgentEvent{Type: llm.AgentEventAssistant,
-					Assistant: &llm.AgentMessage{Role: "assistant", Content: "recovered"}}
-				events <- llm.AgentEvent{Type: llm.AgentEventAgentEnd}
+				events <- agent.Event{Type: agent.EventAssistant,
+					Assistant: &agent.Message{Role: "assistant", Content: "recovered"}}
+				events <- agent.Event{Type: agent.EventEnd}
 			}
 		}()
 		return events

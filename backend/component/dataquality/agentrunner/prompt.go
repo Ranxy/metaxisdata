@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
@@ -83,72 +82,6 @@ func wakePrompt(
 			"[scheduled wake %d] Nothing new arrived. Review the target's current state and recent executions; record anything a person should know, or do nothing and stop. Target: %s. Objective: %s.",
 			wake, target, objective)
 	}
-}
-
-// modelToolDefs is the closed tool set of a model wake. It is read- and propose-only;
-// publishing, approving, editing checks and changing settings are not exposed.
-func modelToolDefs(mode storepb.QualityAgentSessionMode) []llm.ToolDef {
-	defs := make([]llm.ToolDef, 0, 8)
-	add := func(name, description string, parameters any) {
-		var def llm.ToolDef
-		def.Type = "function"
-		def.Function.Name = name
-		def.Function.Description = description
-		def.Function.Parameters = parameters
-		defs = append(defs, def)
-	}
-	empty := map[string]any{"type": "object", "properties": map[string]any{}}
-	add("get_target_summary",
-		"Read the target's plan state, criticality, rule count and uncovered declared properties.", empty)
-	add("list_recent_executions",
-		"List the target's recent executions with their outcomes and failed row counts.", empty)
-	add("get_memory",
-		"List the confirmed memories about the target.", empty)
-	add("record_investigation",
-		"Record an investigation with the evidence behind it.",
-		map[string]any{"type": "object", "properties": map[string]any{
-			"summary":   map[string]any{"type": "string"},
-			"verdict":   map[string]any{"type": "string", "enum": []string{"root_cause", "contributing_factor", "inconclusive"}},
-			"reference": map[string]any{"type": "string", "description": "an execution resource name when the investigation is about one"},
-		}, "required": []string{"summary"}})
-	add("record_asset_fact",
-		"Record a deterministic observation about the target as an asset fact.",
-		map[string]any{"type": "object", "properties": map[string]any{
-			"statement": map[string]any{"type": "string"},
-		}, "required": []string{"statement"}})
-	add("record_decision",
-		"Record a proposed decision about the target; a person confirms it before it counts as knowledge.",
-		map[string]any{"type": "object", "properties": map[string]any{
-			"statement": map[string]any{"type": "string"},
-		}, "required": []string{"statement"}})
-	add("block_session",
-		"Report a blocker that needs a person. The same code must persist for three consecutive wakes before the session parks.",
-		map[string]any{"type": "object", "properties": map[string]any{
-			"code":   map[string]any{"type": "string"},
-			"reason": map[string]any{"type": "string"},
-		}, "required": []string{"code", "reason"}})
-	add("schedule_wake",
-		"Ask for an earlier wake when there is concrete unfinished work.",
-		map[string]any{"type": "object", "properties": map[string]any{
-			"after_minutes": map[string]any{"type": "integer", "minimum": 1, "maximum": 10080},
-			"reason":        map[string]any{"type": "string"},
-		}, "required": []string{"after_minutes"}})
-	if mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE {
-		add("get_table_context",
-			"Read the target's schema, column profiles, semantic labels and lineage consumers; no sample rows.",
-			empty)
-		add("draft_checks",
-			"Draft concrete checks for the target into the review queue; a person approves them before they run.",
-			map[string]any{"type": "object", "properties": map[string]any{
-				"intent": map[string]any{"type": "string", "description": "what the checks should watch, in one sentence"},
-				"columns": map[string]any{
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-					"description": "optional column names; at most 8",
-				},
-			}, "required": []string{"intent"}})
-	}
-	return defs
 }
 
 // maxTurnsFor bounds one wake's model turns by mode.

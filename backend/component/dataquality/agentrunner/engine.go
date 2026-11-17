@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/Ranxy/metaxisdata/backend/common"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
@@ -27,8 +28,6 @@ const (
 	// modelMaxTurns bounds one wake's LLM calls; the conversation it builds is
 	// bounded by the wake deadline as well.
 	modelMaxTurns = 8
-	// toolResultLimit bounds one tool result fed back to the model.
-	toolResultLimit = 8 << 10
 	// maxDecisionStatement matches the API's memory statement bound.
 	maxDecisionStatement = 4000
 	// blockedThreshold is how many consecutive wakes must report the same blocker
@@ -54,9 +53,9 @@ type Store interface {
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
 }
 
-// Chat runs the LLM tool loop. Production passes llm.RunAgentLoop; a test drives the
+// Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
 // engine with a scripted event stream.
-type Chat func(ctx context.Context, cfg llm.AgentConfig) <-chan llm.AgentEvent
+type Chat func(ctx context.Context, cfg agent.Config) <-chan agent.Event
 
 // ResolveModel reports the LLM configuration, or ok=false when analysis is disabled.
 type ResolveModel func(ctx context.Context) (llm.ResolvedConfig, bool, error)
@@ -213,7 +212,7 @@ func (e *Engine) modelWake(
 		messages []*store.QualityAgentTranscriptMessage
 		err      error
 	)
-	buildContext := func() ([]llm.AgentMessage, error) {
+	buildContext := func() ([]agent.Message, error) {
 		messages, err = e.loadTranscript(ctx, session)
 		if err != nil {
 			return nil, err
@@ -239,38 +238,39 @@ func (e *Engine) modelWake(
 	state := cloneEngineState(session.EngineState)
 	var (
 		turn           int32
-		blocked        bool
-		blockedCode    string
-		blockedWhy     string
-		nextWake       *time.Time
-		scheduleReason string
 		totalTokens    int64
 		maxPrompt      int32
 		truncatedTools = map[string]bool{}
 		turnUsage      = map[int32]*llm.Usage{}
 	)
 	totalTokens = compactionTokens
-	executor := e.toolExecutor(ctx, session, truncatedTools, &blocked, &blockedCode, &blockedWhy, &nextWake, &scheduleReason)
-	runLoop := func(conversation []llm.AgentMessage) *llm.AgentEvent {
-		chatConfig := llm.AgentConfig{
+	// The control tools write this state; the wake applies it once, after the loop.
+	control := &wakeControl{}
+	set, err := e.toolSet(session, control)
+	if err != nil {
+		return Outcome{}, err
+	}
+	executor := toolExecutor(ctx, set, truncatedTools)
+	runLoop := func(conversation []agent.Message) *agent.Event {
+		chatConfig := agent.Config{
 			Provider:             config,
 			Feature:              "dq_agent",
 			History:              conversation,
-			Tools:                modelToolDefs(session.Mode),
+			Tools:                agent.ToolDefs(set.Schemas()),
 			Executor:             executor,
 			MaxTurns:             maxTurnsFor(session.Mode),
-			MaxConversationBytes: llm.DefaultMaxConversationBytes,
+			MaxConversationBytes: agent.DefaultMaxConversationBytes,
 			IncludeUsage:         true,
 			Metrics:              e.metrics,
 		}
 		for event := range e.chat(ctx, chatConfig) {
 			switch event.Type {
-			case llm.AgentEventTurnStart:
+			case agent.EventTurnStart:
 				turn = int32(event.Turn)
 				e.recordEngineKeyed(ctx, session, wake, turn,
 					fmt.Sprintf("model turn %d started", turn),
 					fmt.Sprintf("wake:%d:turn:%d:start", wake, turn))
-			case llm.AgentEventUsage:
+			case agent.EventUsage:
 				if event.Usage != nil {
 					turnUsage[int32(event.Turn)] = event.Usage
 					totalTokens += event.Usage.TotalTokens
@@ -281,7 +281,7 @@ func (e *Engine) modelWake(
 						maxPrompt = int32(event.Usage.PromptTokens)
 					}
 				}
-			case llm.AgentEventAssistant:
+			case agent.EventAssistant:
 				if event.Assistant == nil {
 					continue
 				}
@@ -298,7 +298,7 @@ func (e *Engine) modelWake(
 					CompletionTokens: usageCompletionTokens(usage),
 					IdempotencyKey:   assistantIdempotencyKey(wake, int32(event.Turn), event.Assistant),
 				})
-			case llm.AgentEventToolEnd:
+			case agent.EventToolEnd:
 				if event.ToolCall == nil {
 					continue
 				}
@@ -314,9 +314,9 @@ func (e *Engine) modelWake(
 					Truncated:      truncatedTools[event.ToolCall.ID],
 					IdempotencyKey: fmt.Sprintf("wake:%d:tool:%s", wake, event.ToolCall.ID),
 				})
-			case llm.AgentEventError:
+			case agent.EventError:
 				err := event.Error
-				return &llm.AgentEvent{Type: llm.AgentEventError, Error: err}
+				return &agent.Event{Type: agent.EventError, Error: err}
 			default:
 			}
 		}
@@ -359,23 +359,23 @@ func (e *Engine) modelWake(
 	}
 
 	summary := "wake finished"
-	if blocked {
-		if state.BlockedCode == blockedCode {
+	if control.blocked {
+		if state.BlockedCode == control.blockedCode {
 			state.BlockedRounds++
 		} else {
-			state.BlockedCode = blockedCode
+			state.BlockedCode = control.blockedCode
 			state.BlockedRounds = 1
 		}
 		if state.BlockedRounds >= blockedThreshold {
 			return Outcome{
 				Blocked:       true,
-				BlockedCode:   blockedCode,
-				BlockedReason: blockedWhy,
+				BlockedCode:   control.blockedCode,
+				BlockedReason: control.blockedWhy,
 				TokensUsed:    totalTokens,
 				ContextTokens: maxPrompt,
 				ProcessedSeq:  consumed,
 				EngineState:   state,
-				Summary:       "blocked: " + blockedWhy,
+				Summary:       "blocked: " + control.blockedWhy,
 			}, nil
 		}
 		return Outcome{
@@ -384,16 +384,16 @@ func (e *Engine) modelWake(
 			ContextTokens: maxPrompt,
 			ProcessedSeq:  consumed,
 			EngineState:   state,
-			Summary:       fmt.Sprintf("reported the blocker %q once; waiting for it to persist", blockedCode),
+			Summary:       fmt.Sprintf("reported the blocker %q once; waiting for it to persist", control.blockedCode),
 		}, nil
 	}
 	state.BlockedCode = ""
 	state.BlockedRounds = 0
-	if scheduleReason != "" {
-		summary = "wake finished; scheduled an earlier wake: " + scheduleReason
+	if control.scheduleReason != "" {
+		summary = "wake finished; scheduled an earlier wake: " + control.scheduleReason
 	}
 	return Outcome{
-		NextWakeAt:     nextWake,
+		NextWakeAt:     control.nextWake,
 		TriageComplete: session.Mode == storepb.QualityAgentSessionMode_QUALITY_AGENT_SESSION_MODE_TRIAGE,
 		TokensUsed:     totalTokens,
 		ContextTokens:  maxPrompt,

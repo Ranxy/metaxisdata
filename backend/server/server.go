@@ -17,6 +17,7 @@ import (
 
 	"github.com/Ranxy/metaxisdata/backend/common/log"
 	"github.com/Ranxy/metaxisdata/backend/common/version"
+	"github.com/Ranxy/metaxisdata/backend/component/agent"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality"
 	"github.com/Ranxy/metaxisdata/backend/component/dataquality/agentrunner"
 	"github.com/Ranxy/metaxisdata/backend/component/dbfactory"
@@ -271,7 +272,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s.suggestionRunner = qualitysuggestionrunner.NewRunner(stores, suggester)
 	// The session runner hosts the built-in quality agent: one long-lived conversation
 	// per target, continued wake by wake.
-	sessionEngine := agentrunner.NewModelEngine(stores, llmcomp.RunAgentLoop,
+	sessionEngine := agentrunner.NewModelEngine(stores, agent.RunLoop,
 		func(ctx context.Context) (llmcomp.ResolvedConfig, bool, error) {
 			config, _, resolveErr := suggester.ResolveConfig(ctx)
 			// Disabled or unconfigured analysis is not an error for the runner: the
