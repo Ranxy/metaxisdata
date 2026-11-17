@@ -48,13 +48,13 @@ const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, target_gui
 	triage_count, last_triaged_at, next_review_at, discovered_at, last_seen_at,
 	excluded_by, excluded_at, revision, created_at, updated_at`
 
-// qualityAgentEnrollmentColumnsForJoin is qualityAgentEnrollmentColumns qualified with
-// the enrollment alias. The qualification is load-bearing: the recoverable read joins
-// quality_agent_session, which repeats the queue's id, state, created_at and other
-// column names, so an unqualified projection is ambiguous to PostgreSQL (SQLSTATE
-// 42702) and the whole read fails. Keep the column order identical to
-// qualityAgentEnrollmentColumns; scanQualityAgentEnrollment depends on it.
-const qualityAgentEnrollmentColumnsForJoin = `e.id, e.resource_id, e.workspace_id,
+// qualityAgentEnrollmentColumnsQualified is qualityAgentEnrollmentColumns qualified with
+// the enrollment alias. The qualification is load-bearing: a read that aliases the queue
+// next to a table repeating its column names (the recoverable read joins
+// quality_agent_session) is ambiguous to PostgreSQL (SQLSTATE 42702) and fails entirely.
+// Keep the column order identical to qualityAgentEnrollmentColumns;
+// scanQualityAgentEnrollment depends on it.
+const qualityAgentEnrollmentColumnsQualified = `e.id, e.resource_id, e.workspace_id,
 	e.target_guid, e.target_type, e.database_ref, e.state, e.mode, e.priority,
 	e.priority_reason, e.blocked_reason, e.session_id, e.triage_count, e.last_triaged_at,
 	e.next_review_at, e.discovered_at, e.last_seen_at, e.excluded_by, e.excluded_at,
@@ -207,6 +207,14 @@ const restoreInScopeEnrollmentsQuery = `
 		SET state = $3, next_review_at = NULL, revision = revision + 1, updated_at = NOW()
 		WHERE workspace_id = $1 AND state = $4 AND database_ref = ANY($2)`
 
+// scopeDatabaseArray encodes the runner's database allowlist for the scope statements.
+// An empty allowlist means no database is in scope, so it must encode as an empty array:
+// pq encodes a nil slice as NULL, and `= ANY(NULL)` matches no row, which would turn
+// clearing the scope into a no-op instead of parking the queue.
+func scopeDatabaseArray(keepDatabases []string) pq.StringArray {
+	return pq.StringArray(append([]string{}, keepDatabases...))
+}
+
 // ReconcileQualityAgentEnrollmentScope aligns the queue with the settings' database
 // list: rows outside the list become OUT_OF_SCOPE and their sessions are blocked with
 // the reversible out-of-scope code; rows that came back become PENDING again, so
@@ -218,10 +226,7 @@ func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, worksp
 		return 0, 0, errors.Wrap(err, "failed to begin the enrollment scope transaction")
 	}
 	defer func() { _ = tx.Rollback() }()
-	// pq encodes a nil slice as NULL, and `= ANY(NULL)` matches no row, so normalize the
-	// empty allowlist to an empty array; otherwise clearing the scope would be a no-op
-	// instead of parking the queue.
-	keep := pq.Array(append([]string{}, keepDatabases...))
+	keep := scopeDatabaseArray(keepDatabases)
 	outResult, err := tx.ExecContext(ctx, reconcileOutOfScopeEnrollmentsQuery,
 		workspaceID, keep,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
@@ -427,15 +432,11 @@ func (s *Store) ListDueDormantQualityAgentEnrollments(ctx context.Context, works
 	return enrollments, nil
 }
 
-// ListCoveredDormantQualityAgentEnrollments returns dormant rows whose target has
-// gained coverage: an enabled check or a published contract. Admission promotes them
-// back to monitoring without a person doing anything.
-func (s *Store) ListCoveredDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, limit int) ([]*QualityAgentEnrollmentMessage, error) {
-	if limit <= 0 {
-		limit = 1
-	}
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualityAgentEnrollmentColumns+` FROM quality_agent_enrollment e
+// coveredDormantQualityAgentEnrollmentsQuery finds dormant rows whose target gained
+// coverage: an enabled check or a published contract. The queue is aliased for the
+// correlated subqueries, so the projection is the alias-qualified one.
+const coveredDormantQualityAgentEnrollmentsQuery = `
+		SELECT ` + qualityAgentEnrollmentColumnsQualified + ` FROM quality_agent_enrollment e
 		WHERE e.workspace_id = $1 AND e.state = $2
 			AND (
 				EXISTS (
@@ -449,7 +450,16 @@ func (s *Store) ListCoveredDormantQualityAgentEnrollments(ctx context.Context, w
 				)
 			)
 		ORDER BY e.priority DESC, e.target_guid ASC
-		LIMIT $4`,
+		LIMIT $4`
+
+// ListCoveredDormantQualityAgentEnrollments returns dormant rows whose target has
+// gained coverage: an enabled check or a published contract. Admission promotes them
+// back to monitoring without a person doing anything.
+func (s *Store) ListCoveredDormantQualityAgentEnrollments(ctx context.Context, workspaceID string, limit int) ([]*QualityAgentEnrollmentMessage, error) {
+	if limit <= 0 {
+		limit = 1
+	}
+	rows, err := s.GetDB().QueryContext(ctx, coveredDormantQualityAgentEnrollmentsQuery,
 		workspaceID,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_DORMANT),
 		int16(storepb.QualityRuleState_QUALITY_RULE_STATE_ENABLED),
@@ -917,7 +927,7 @@ func (s *Store) ListQualityAgentSessionResourceIDs(ctx context.Context, workspac
 // whose session a reversible condition blocked. The projection must stay qualified with
 // the enrollment alias because the join partner repeats the queue's column names.
 const recoverableQualityAgentEnrollmentsQuery = `
-		SELECT ` + qualityAgentEnrollmentColumnsForJoin + ` FROM quality_agent_enrollment e
+		SELECT ` + qualityAgentEnrollmentColumnsQualified + ` FROM quality_agent_enrollment e
 		JOIN quality_agent_session s ON s.id = e.session_id
 		WHERE e.workspace_id = $1 AND e.state = $2
 			AND s.archived_at IS NULL AND s.state = $3

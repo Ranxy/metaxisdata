@@ -115,18 +115,45 @@ func TestReconcileScopeQueryPinsSafetyPredicates(t *testing.T) {
 	})
 }
 
-// The recoverable read joins quality_agent_session, which repeats the queue's column
-// names: an unqualified projection makes PostgreSQL report the id column as ambiguous
-// (SQLSTATE 42702) and the whole read fails. Pin the qualification and its order.
-func TestRecoverableEnrollmentQueryQualifiesTheJoinedProjection(t *testing.T) {
+// Every read that aliases the queue must use the alias-qualified projection. The
+// recoverable read joins quality_agent_session, which repeats the queue's column names:
+// an unqualified projection makes PostgreSQL report the id column as ambiguous (SQLSTATE
+// 42702) and the whole read fails. Pin that each statement embeds the shared constant
+// (instead of re-inlining a list) and that the constant keeps the projection order.
+func TestAliasedEnrollmentQueriesUseTheQualifiedProjection(t *testing.T) {
 	t.Parallel()
 
-	require.Contains(t, recoverableQualityAgentEnrollmentsQuery,
-		"JOIN quality_agent_session s ON s.id = e.session_id")
 	require.Equal(t,
 		strings.Join(strings.Fields(qualifyColumnList(qualityAgentEnrollmentColumns, "e.")), " "),
-		strings.Join(strings.Fields(qualityAgentEnrollmentColumnsForJoin), " "))
+		strings.Join(strings.Fields(qualityAgentEnrollmentColumnsQualified), " "))
+	for _, query := range []string{
+		recoverableQualityAgentEnrollmentsQuery,
+		coveredDormantQualityAgentEnrollmentsQuery,
+	} {
+		require.Contains(t, query, qualityAgentEnrollmentColumnsQualified)
+	}
+	require.Contains(t, recoverableQualityAgentEnrollmentsQuery,
+		"JOIN quality_agent_session s ON s.id = e.session_id")
 	requirePlaceholdersMatchArgs(t, recoverableQualityAgentEnrollmentsQuery, []any{
 		"ws", int16(2), int16(3), 20,
 	})
+	requirePlaceholdersMatchArgs(t, coveredDormantQualityAgentEnrollmentsQuery, []any{
+		"ws", int16(3), int16(1), 20,
+	})
+}
+
+// scopeDatabaseArray must never encode the allowlist as NULL: `= ANY(NULL)` matches no
+// row, so an enabled runner with an empty scope would clear nothing instead of parking
+// the queue.
+func TestScopeDatabaseArrayNeverEncodesNull(t *testing.T) {
+	t.Parallel()
+
+	for _, databases := range [][]string{nil, {}} {
+		value, err := scopeDatabaseArray(databases).Value()
+		require.NoError(t, err)
+		require.Equal(t, "{}", value)
+	}
+	value, err := scopeDatabaseArray([]string{"instances/i/databases/d"}).Value()
+	require.NoError(t, err)
+	require.Equal(t, `{"instances/i/databases/d"}`, value)
 }
