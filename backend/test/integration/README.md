@@ -67,6 +67,22 @@ then removes the profile and restores the switch. It never runs by default, so t
 suites stay free and hermetic. The credential is read from the environment only; the
 scenario never writes it to the repository or its output.
 
+### ExplainSQL tool wiring (no provider credential)
+
+`runner/explain_sql_service_test.go` drives the shipping ExplainSQL loop against
+the real server with a local OpenAI-compatible stub (`httptest`) registered as a
+throwaway provider profile. The scenario never reaches a real model and holds no
+API key: the stub checks only the dummy key stored on the disposable profile.
+It answers the first turn with a `get_object_schema` call and the second with
+the explanation text, which proves the two catalog tools reach the model and
+execute against the real metadata store.
+
+The same gate's refusal branch is covered hermetically instead
+(`TestExplainSQLToolCallsArePermissionGated` in `backend/api/v1`): every
+authenticated principal holds `databases.read` through the
+`allUsers -> workspaceMember` baseline, so the public API cannot construct a
+caller who may explain SQL yet fails the tool's permission check.
+
 ### Docker-less runs
 
 Without external services, the harness probes the container runtime before starting anything. When no Docker-compatible daemon is reachable the suite prints `skipping integration tests: docker is unavailable` and exits 0, so `make test-integration-smoke`, `make test-integration` and `make test-integration-mysql` are safe to run on machines without Docker.
