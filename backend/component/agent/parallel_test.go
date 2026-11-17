@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/agent/tool"
 	"github.com/Ranxy/metaxisdata/backend/component/llm"
 )
 
@@ -153,4 +154,35 @@ func TestMaxParallelToolCallsBoundsConcurrency(t *testing.T) {
 	collectEvents(t, RunLoop(context.Background(), cfg))
 	require.LessOrEqual(t, peak.Load(), int32(2))
 	require.Greater(t, peak.Load(), int32(1), "the parallel-safe calls should have overlapped")
+}
+
+// A structured tool failure reaches the model with its hint and candidates, not
+// just the message.
+func TestStructuredToolFailureRendersItsEnvelope(t *testing.T) {
+	t.Parallel()
+
+	server := batchProvider(t, []llm.ToolCall{call("call_1", "lookup")})
+	cfg := Config{
+		Provider: llm.ResolvedConfig{BaseURL: server.URL, ModelName: "test-model", APIKey: "key"},
+		MaxTurns: 3,
+		Executor: func(llm.ToolCall) ([]llm.ToolResult, error) {
+			return nil, &tool.Error{
+				Code:       tool.CodeNotFound,
+				Message:    `no table matches "orders"`,
+				Hint:       "search first",
+				Candidates: []string{"orders_a"},
+			}
+		},
+	}
+	events := collectEvents(t, RunLoop(context.Background(), cfg))
+
+	var content string
+	for _, event := range events {
+		if event.Type == EventToolEnd {
+			content = event.ToolResult
+		}
+	}
+	require.Contains(t, content, `no table matches "orders"`)
+	require.Contains(t, content, "hint: search first")
+	require.Contains(t, content, "candidates: orders_a")
 }

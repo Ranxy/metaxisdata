@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Ranxy/metaxisdata/backend/common/permission"
@@ -39,9 +40,10 @@ const (
 type AuthzMode int
 
 const (
-	// AuthzPermission is a tool backed by an RPC handler. The pipeline checks the
-	// caller's own IAM permission before execution, because the in-process
-	// handler call skips the ACL interceptor.
+	// AuthzPermission is a tool gated by an IAM permission. It typically wraps an
+	// RPC; an in-process product tool may declare the nearest-analogue permission
+	// instead (the DQ agent does), in which case the declaration states the
+	// capability the product's role must hold rather than the exact RPC that runs.
 	AuthzPermission AuthzMode = iota
 	// AuthzAction is a tool that calls a domain component with no RPC of its own;
 	// the autonomy action policy is its gate.
@@ -269,12 +271,33 @@ type Error struct {
 	Retryable bool
 }
 
-// Error implements error.
+// Error implements error. It returns only the message because the audit row and
+// the UI show that; the model-facing rendering goes through ModelContent.
 func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
 	return e.Message
+}
+
+// ModelContent is what a model reads for this failure: the message plus the hint,
+// the candidates a reference could have meant, and whether a retry may work. It is
+// the in-process counterpart of the MCP error envelope.
+func (e *Error) ModelContent() string {
+	if e == nil {
+		return ""
+	}
+	parts := []string{e.Message}
+	if e.Hint != "" {
+		parts = append(parts, "hint: "+e.Hint)
+	}
+	if len(e.Candidates) > 0 {
+		parts = append(parts, "candidates: "+strings.Join(e.Candidates, ", "))
+	}
+	if e.Retryable {
+		parts = append(parts, "retryable: yes")
+	}
+	return strings.Join(parts, "\n")
 }
 
 // NewError builds a tool error.

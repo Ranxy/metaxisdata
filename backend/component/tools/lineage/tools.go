@@ -1,7 +1,8 @@
 package lineage
 
-// The lineage tool bodies. MCP and the built-in agent run these; the transport
-// keeps its schema, permission and audit envelope.
+// The lineage tool bodies MCP runs. The built-in agent and ExplainSQL tool
+// migration is deferred; the transport keeps its schema, permission and audit
+// envelope.
 
 import (
 	"context"

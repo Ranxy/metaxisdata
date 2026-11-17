@@ -172,6 +172,11 @@ type Server struct {
 }
 
 // NewServer creates a server.
+// agentMaxParallelReads bounds how many parallel-safe reads one wake batch runs
+// at once. Reads are registry lookups; the bound keeps one wake from opening an
+// unbounded number of concurrent queries.
+const agentMaxParallelReads = 4
+
 func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	s := &Server{
 		profile:   profile,
@@ -277,6 +282,11 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 	// them; the engine checks each tool's permission against the session's agent
 	// principal itself.
 	agentIAM := iam.NewManager(stores)
+	// A renamed spec tool must fail the boot, not reach the model as an unknown
+	// tool during a wake.
+	if err := agentrunner.ValidateSpecs(); err != nil {
+		return nil, errors.Wrap(err, "invalid quality agent spec")
+	}
 	sessionEngine := agentrunner.NewModelEngine(stores, agent.RunLoop,
 		func(ctx context.Context) (llmcomp.ResolvedConfig, bool, error) {
 			config, _, resolveErr := suggester.ResolveConfig(ctx)
@@ -296,7 +306,7 @@ func NewServer(ctx context.Context, profile *config.Profile) (*Server, error) {
 		agentrunner.WithActionSettings(func(ctx context.Context) (dataquality.Settings, error) {
 			return dataquality.LoadSettings(ctx, stores)
 		}),
-		agentrunner.WithMaxParallelReads(4),
+		agentrunner.WithMaxParallelReads(agentMaxParallelReads),
 		agentrunner.WithToolAudit(agentToolAuditSink{stores: stores}))
 	s.sessionRunner = qualitysessionrunner.NewRunner(stores, sessionEngine)
 	// The enrollment runner discovers the database scope into a queue and admits

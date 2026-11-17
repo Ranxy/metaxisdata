@@ -111,6 +111,20 @@ func toolExecutor(ctx context.Context, set *tool.Set, truncated map[string]bool,
 	}
 }
 
+// handlesTool reports whether executeTool has a branch for name. ValidateSpecs
+// uses it so a declaration typo fails at startup instead of surfacing to the
+// model as "unknown tool" during a wake.
+func handlesTool(name string) bool {
+	switch name {
+	case "get_target_summary", "list_recent_executions", "get_memory",
+		"record_investigation", "record_asset_fact", "record_decision",
+		"block_session", "schedule_wake", "get_table_context", "draft_checks":
+		return true
+	default:
+		return false
+	}
+}
+
 // executeTool dispatches one model tool call.
 func (e *Engine) executeTool(
 	ctx context.Context,

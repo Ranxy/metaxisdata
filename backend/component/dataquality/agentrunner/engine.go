@@ -53,6 +53,7 @@ type Store interface {
 	MaxQualityAgentTranscriptSeq(ctx context.Context, sessionID int64) (int64, error)
 	UpdateQualityAgentSessionCompaction(ctx context.Context, resourceID, summary string, throughSeq int64) (bool, error)
 	GetUserByID(ctx context.Context, id int) (*store.UserMessage, error)
+	GetQualityAgentByID(ctx context.Context, id int64) (*store.QualityAgentMessage, error)
 }
 
 // Chat runs the LLM tool loop. Production passes agent.RunLoop; a test drives the
@@ -431,7 +432,7 @@ func (e *Engine) toolInvocation(ctx context.Context, session *store.QualityAgent
 	if e.checker == nil && e.metrics == nil && e.actionSettings == nil && e.auditSink == nil {
 		return nil, nil
 	}
-	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now}
+	invocation := &tool.Invocation{Workspace: session.WorkspaceID, Now: e.now, Logger: slog.Default()}
 	if e.metrics != nil {
 		invocation.Observer = agentToolObserver{metrics: e.metrics, product: product}
 	}
@@ -477,12 +478,19 @@ func (p sessionActionPolicy) Decide(ctx context.Context, action string) (tool.Ac
 		return tool.ActionDecision{}, err
 	}
 	criticality := p.engine.planCriticality(ctx, p.session)
+	agent, err := p.engine.store.GetQualityAgentByID(ctx, p.session.AgentID)
+	if err != nil {
+		return tool.ActionDecision{}, errors.Wrap(err, "failed to read the agent's state")
+	}
+	if agent == nil {
+		return tool.ActionDecision{}, errors.New("the session's agent no longer exists")
+	}
 	decision := dataquality.DecideAction(dataquality.PolicyInput{
 		Action:          dataquality.ActionID(action),
 		Actor:           dataquality.ActorAgent,
 		Criticality:     criticality,
 		AutonomyEnabled: settings.AgentAutonomyEnabled,
-		AgentEnabled:    true,
+		AgentEnabled:    agent.Enabled,
 	})
 	reason := decision.Reason
 	if !decision.Allowed && decision.RequiresApproval && dataquality.ActionID(action) == dataquality.ActionRecordDecisionWhy {

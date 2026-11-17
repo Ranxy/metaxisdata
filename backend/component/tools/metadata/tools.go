@@ -1,7 +1,8 @@
 package metadata
 
-// The metadata tool bodies. MCP and the built-in agent both run these; the
-// transport keeps its own schema, permission and audit envelope.
+// The metadata tool bodies MCP runs. The shared resolver and error envelope in
+// this package are what other products will run once their tool migration lands
+// (deferred); the transport keeps its own schema, permission and audit envelope.
 
 import (
 	"context"

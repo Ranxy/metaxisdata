@@ -88,11 +88,3 @@ func (fakeTableContextReader) ReadTableContext(context.Context, string, storepb.
 		Downstream: 3,
 	}, nil
 }
-
-func specNames(specs []toolSpec) []string {
-	names := make([]string, 0, len(specs))
-	for _, spec := range specs {
-		names = append(names, spec.name)
-	}
-	return names
-}

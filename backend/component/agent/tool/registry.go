@@ -8,9 +8,10 @@ import (
 	"sync"
 )
 
-// Registry holds every tool a process registered. Registration is static: it
-// happens once at wiring time, and a validation failure is a boot error rather
-// than a runtime surprise.
+// Registry holds the tools one consumer resolves a set from. A product that ships
+// fixed specs validates them at startup (so a bad declaration is a boot error);
+// a transport that resolves a per-request set (MCP, ExplainSQL) builds and
+// resolves that set from its own declarations.
 type Registry struct {
 	mu    sync.RWMutex
 	tools map[string]Tool

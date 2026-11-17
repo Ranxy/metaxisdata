@@ -61,6 +61,13 @@ func InvalidArgument(format string, args ...any) *Error {
 	return NewError(CodeInvalidArgument, fmt.Sprintf(format, args...), "")
 }
 
+// InvalidArgumentHint reports a malformed reference together with the next step
+// the caller should take. The hint is part of the tool envelope, so a name-path
+// failure must carry it on every surface.
+func InvalidArgumentHint(message, hint string) *Error {
+	return NewError(CodeInvalidArgument, message, hint)
+}
+
 // internalFailure reports a failure the tool cannot classify further.
 func internalFailure(err error) *Error {
 	return NewError(CodeInternal, err.Error(), "")

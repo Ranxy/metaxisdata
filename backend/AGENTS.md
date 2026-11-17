@@ -16,9 +16,9 @@ Rules for the Go server. Repo-wide rules live in the root [AGENTS.md](../AGENTS.
 | `backend/component/agent/` | The iterative agent loop: turns, tool dispatch, events, messages, conversation budget |
 | `backend/component/agent/transcript/` | Conversation rebuild, tool-call repair, token estimates, tool-result pruning and compaction planning |
 | `backend/component/agent/tool/` | The tool contract, registry and the execution pipeline (identity, IAM, action policy, timeout, result budget, audit, metrics) |
-| `backend/component/tools/metadata/` | Shared object/scope name addressing, the tool error envelope, and the metadata tool bodies both MCP and the built-in agent run |
-| `backend/component/tools/lineage/` | The analyze_sql and get_lineage_graph tool bodies, shared by both surfaces |
-| `backend/component/tools/quality/` | The read-only data-quality tool bodies (signal, targets, issues, executions, impact, coverage), shared by both surfaces |
+| `backend/component/tools/metadata/` | Shared object/scope name addressing, the tool error envelope, and the metadata tool bodies MCP runs (agent/ExplainSQL migration deferred) |
+| `backend/component/tools/lineage/` | The analyze_sql and get_lineage_graph tool bodies MCP runs (agent/ExplainSQL migration deferred) |
+| `backend/component/tools/quality/` | The read-only data-quality tool bodies MCP runs (signal, targets, issues, executions, impact, coverage); the DQ agent uses its own product-local tools |
 | `backend/component/state/` | In-memory server state (token-revocation cache over the `revoked_token` table, per-instance connection limiter, pending device logins, request budgets) |
 | `backend/metrics/` | Prometheus instruments, enum-to-label mapping and the process registry; the dedicated endpoint and HTTP/RPC middleware live in `backend/server/` |
 | `backend/plugin/db/` | `db.Driver` interface and the MySQL-wire, PostgreSQL and MSSQL drivers (`mysql`, `pg`, `mssql`, `starrocks` — the last serving StarRocks and Doris) |

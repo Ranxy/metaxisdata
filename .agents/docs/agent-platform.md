@@ -11,10 +11,10 @@
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | Agent runtime | `component/agent/` | turn/流式循环、事件、工具批调度（只读并行）、会话预算、prompt 分节（`agent.Prompt`）、指标 |
-| Tool catalog | `component/agent/tool/`（契约）+ `component/tools/{metadata,lineage,quality}/`（能力） | 工具定义 + 执行 + 策略元数据；一条执行管线；被内置 agent 与 MCP 两个前端消费 |
+| Tool catalog | `component/agent/tool/`（契约）+ `component/tools/{metadata,lineage,quality}/`（能力） | 工具定义 + 执行 + 策略元数据；一条执行管线。当前由 MCP 消费；内置 agent 的 DQ 工具与 ExplainSQL 工具仍是产品内实现（迁移 deferred） |
 | Product preset | `component/dataquality/agentrunner/`、`api/v1/explain_sql_*.go` | 产品名、prompt、工具白名单、turn 预算、wake/会话编排、确定性回退 |
 
-依赖方向：MCP/product → catalog → runtime → `component/llm`（仅 provider 传输）。`api/v1` 实现 catalog 声明的 service 接口，由 `server.go` 注入；catalog 不 import `api/v1`。
+依赖方向：MCP → catalog；内置 agent 产品 → runtime + catalog 契约；ExplainSQL → runtime + catalog 契约；runtime → `component/llm`（仅 provider 传输）。MCP 不 import runtime。`api/v1` 实现 catalog 声明的 service 接口，由 `server.go` 注入；catalog 不 import `api/v1`。
 
 ## 2. 工具契约与执行管线
 
@@ -28,7 +28,7 @@
 
 执行顺序（`Set.Execute`）：查表 → 身份 → IAM（`AuthzPermission` 且 Invocation 带 Checker）→ 动作策略（`Meta.Action` 非空且带 Policy；`RequiresApproval` 也拒绝）→ 超时/panic 隔离 → 结果渲染与 `MaxResultBytes` 截断 → 审计（仅 `SideEffect != None`）→ 指标（Observer）。
 
-- 错误是结构化的 `tool.Error{Code,Message,Hint,Candidates,Retryable}`，模型可见、wake 不会因普通工具失败而中止。
+- 错误是结构化的 `tool.Error{Code,Message,Hint,Candidates,Retryable}`；code/hint/candidates 供审计、UI 与程序化调用方使用。内置 agent 当前只把 `Message` 渲染给模型（`"error: " + Message`），而 MCP 把完整信封放进 `isError` 结果。普通工具失败不会中止 wake。
 - `Invocation` 显式携带 Principal/Workspace/Checker/Policy/Observer/Audit，工具不读进程内隐式状态。
 - `MaxResultBytes=0` 表示不截断；DQ 工具显式 8 KiB（与历史行为一致）。
 
@@ -63,11 +63,11 @@
 
 ## 5. 决策与已知限制
 
-- **单 module、静态装配**：无运行期插件/DI/HMR；工具在 `server.go` 启动时注册，spec 白名单 boot 时解析，未知/重复工具是启动错误。
+- **单 module、静态装配**：无运行期插件/DI/HMR。DQ 的两个 spec 在 `server.go` 启动时由 `agentrunner.ValidateSpecs` 校验（注册、白名单解析、每个名字都有执行分支）；MCP 与 ExplainSQL 按请求构建自己的工具集并 Resolve，没有进程级 registry。
 - **不继承调用者权限**：内置 agent 一律以自己的 principal 执行（避免 confused deputy）；人类提问/建会话只是归因。
 - **IAM 在管线、动作策略在拥有事实的层**：`AuthzPermission` 写工具的 handler 内策略保留（RPC 路径）；内置 agent 的 propose 工具不调用 handler，因此在管线执行同一 `DecideAction`（单一判定点）。
 - **审计**：MCP 每次调用一行；内置 agent 只审计 `SideEffect != None` 的工具（读不审计，避免把每日巡检读放大成永久账本）。行 method 为 `agent/tools/call:<tool>`，actor 是 agent principal。
-- **ExplainSQL 工具目录迁移 deferred**：会改变模型可见的工具名/schema 与前端进度展示；收益仅是消除 2 个工具实现的重复。需要先有 ExplainSQL 行为回归网（golden/集成）再迁移。
+- **工具迁移 deferred**：`component/tools/*` 目前只有 MCP 一个消费者；DQ agent 的 10 个工具仍是 `agentrunner` 产品内实现，ExplainSQL 的 2 个工具仍是 service 内实现。迁移会改变模型可见工具名/schema（ExplainSQL）或需要产品级回归网，暂不进行。
 - **transcript 表泛化 deferred**：若出现第二个持久长会话产品（ExplainSQL 多轮、元数据治理），再评估 `agent_session`/`agent_message` 与迁移。
 - **MCP 写工具不开放**；agent 的 `Publish` 副作用档位当前没有暴露路径。
 - **单副本/调度语义不变**：lease/claim、runner 生命周期、事件接入均未迁移到 runtime。
@@ -78,7 +78,7 @@
 | --- | --- | --- |
 | P0 | `agent/tool` 契约 + 注册表 + 管线；ExplainSQL 与 DQ 工具接入 | done |
 | P1 | `llm` 拆传输层；`agent`（loop/events/prompt）；`agent/transcript` | done |
-| P2 | metadata/lineage/quality 工具包；MCP 17 工具全部委派，wire 冻结 | done |
+| P2 | metadata/lineage/quality 工具包；MCP 17 工具全部委派，wire 冻结（工具定义仍由 MCP 持有） | done |
 | P3 | monitor/triage spec、控制工具返回值、IAM 按 principal、动作策略在管线 | done |
 | P4 | 工具级指标（agent + MCP）、只读工具并行；ExplainSQL catalog 迁移 | 指标/并行 done；迁移 deferred（§5） |
 

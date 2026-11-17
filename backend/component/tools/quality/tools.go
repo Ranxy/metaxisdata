@@ -2,8 +2,9 @@ package quality
 
 // The read-only quality tool bodies: the trust signal, the target directory and
 // one target's workspace, the issue ledger, executions and their evidence, the
-// lineage impact, and consumption coverage. MCP and the built-in agent run these;
-// the transport keeps its schema, permission and audit envelope.
+// lineage impact, and consumption coverage. MCP runs these; the built-in agent's
+// own quality tools are product-local (migration deferred), and the transport
+// keeps its schema, permission and audit envelope.
 
 import (
 	"context"

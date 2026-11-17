@@ -3,9 +3,6 @@ package mcp
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-
-	"connectrpc.com/connect"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -48,52 +45,14 @@ func newToolError(code, message, hint string) *toolError {
 	return &toolError{Code: code, Message: message, Hint: hint}
 }
 
-func invalidArgument(format string, args ...any) *toolError {
-	return newToolError(codeInvalidArgument, fmt.Sprintf(format, args...), "")
+func internalFailure(err error) *toolError {
+	return newToolError(codeInternal, err.Error(), "")
 }
 
+// permissionDenied reports a caller missing the tool's declared permission.
 func permissionDenied(permission string) *toolError {
 	return newToolError(codePermissionDenied, "the caller does not hold "+permission,
 		"a workspace administrator can grant it; another tool may answer part of the question")
-}
-
-// toolErrorFromRPC maps a ConnectRPC failure onto the tool vocabulary. The read
-// services are the same ones the ConnectRPC API exposes, so every failure a
-// caller could see there arrives here too, and it has to keep its meaning.
-func toolErrorFromRPC(err error) *toolError {
-	if err == nil {
-		return nil
-	}
-	var failure *toolError
-	if errors.As(err, &failure) {
-		return failure
-	}
-	switch connect.CodeOf(err) {
-	case connect.CodeNotFound:
-		return newToolError(codeNotFound, err.Error(), "search or list first to get a reference that exists")
-	case connect.CodeInvalidArgument:
-		return newToolError(codeInvalidArgument, err.Error(), "the server refused the arguments; the message says which")
-	case connect.CodeFailedPrecondition:
-		// The arguments were fine; the deployment cannot answer this at all. An
-		// engine with no lineage analyzer is the case that happens in practice.
-		return newToolError(codeUnsupported, err.Error(), "this deployment cannot answer that as asked; the message says why")
-	case connect.CodePermissionDenied:
-		return newToolError(codePermissionDenied, err.Error(), "")
-	case connect.CodeUnauthenticated:
-		return newToolError(codeUnauthenticated, err.Error(), "the client's authorization is gone: authorize it again")
-	case connect.CodeResourceExhausted:
-		return newToolError(codeResourceExhausted, err.Error(), "back off before retrying")
-	case connect.CodeUnavailable:
-		return newToolError(codeUnavailable, err.Error(), "the server is not reachable right now; retrying may work")
-	case connect.CodeDeadlineExceeded, connect.CodeCanceled:
-		return newToolError(codeTimeout, err.Error(), "retry, or ask for less at once")
-	default:
-		return newToolError(codeInternal, err.Error(), "")
-	}
-}
-
-func internalFailure(err error) *toolError {
-	return newToolError(codeInternal, err.Error(), "")
 }
 
 // errNoPermissionChecker means the server was built without an authorization
