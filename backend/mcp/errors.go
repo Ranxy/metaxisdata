@@ -52,28 +52,6 @@ func invalidArgument(format string, args ...any) *toolError {
 	return newToolError(codeInvalidArgument, fmt.Sprintf(format, args...), "")
 }
 
-// notFound reports an unknown reference together with what the registry does
-// have, so the next call can be right instead of being a guess.
-func notFound(kind, value string, candidates []candidate) *toolError {
-	failure := newToolError(codeNotFound, fmt.Sprintf("no %s matches %q", kind, value),
-		"the candidates below are what the registry has: use one of them, or list/search first")
-	if len(candidates) > 0 {
-		failure.Details = map[string]any{"candidates": candidates}
-	}
-	return failure
-}
-
-// ambiguous reports a name several objects answer to. Guessing one of them would
-// silently answer about the wrong object, so it refuses and shows the choices.
-func ambiguous(kind, value string, candidates []candidate) *toolError {
-	return &toolError{
-		Code:    codeAmbiguous,
-		Message: fmt.Sprintf("%q matches %d %ss", value, len(candidates), kind),
-		Hint:    "pass a more specific reference, or the guid of the one you mean",
-		Details: map[string]any{"candidates": candidates},
-	}
-}
-
 func permissionDenied(permission string) *toolError {
 	return newToolError(codePermissionDenied, "the caller does not hold "+permission,
 		"a workspace administrator can grant it; another tool may answer part of the question")
