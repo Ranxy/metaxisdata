@@ -448,14 +448,6 @@
                 </li>
               
                 <li>
-                  <a href="#metaxisdata.store.QualitySuggestionJobTarget"><span class="badge">M</span>QualitySuggestionJobTarget</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualitySuggestionJobTargets"><span class="badge">M</span>QualitySuggestionJobTargets</a>
-                </li>
-              
-                <li>
                   <a href="#metaxisdata.store.QualitySuggestionPayload"><span class="badge">M</span>QualitySuggestionPayload</a>
                 </li>
               
@@ -714,14 +706,6 @@
               
                 <li>
                   <a href="#metaxisdata.store.QualityStatus"><span class="badge">E</span>QualityStatus</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualitySuggestionJobStatus"><span class="badge">E</span>QualitySuggestionJobStatus</a>
-                </li>
-              
-                <li>
-                  <a href="#metaxisdata.store.QualitySuggestionJobTargetState"><span class="badge">E</span>QualitySuggestionJobTargetState</a>
                 </li>
               
                 <li>
@@ -1106,6 +1090,10 @@
               
                 <li>
                   <a href="#metaxisdata.store.OpenLineageDetail"><span class="badge">M</span>OpenLineageDetail</a>
+                </li>
+              
+                <li>
+                  <a href="#metaxisdata.store.QualityAgentAttentionDetail"><span class="badge">M</span>QualityAgentAttentionDetail</a>
                 </li>
               
                 <li>
@@ -4314,7 +4302,7 @@ comparison uses the fingerprint schema that version was written with. </p></td>
         
       
         <h3 id="metaxisdata.store.QualityLLMDiagnostic">QualityLLMDiagnostic</h3>
-        <p>QualitySuggestionJobTarget is one table a background drafting job visits. The</p><p>path and columns are a snapshot taken at submission, so the job still renders</p><p>after the registry changes; resolution happens again when the model is asked.</p><p>QualityLLMDiagnostic is the structured context of one failed LLM analysis: the</p><p>classifier code, provider facts, the provider's stop reason, token usage when</p><p>the provider reported it, and the correlation id that ties the failure to the</p><p>server log and (when runtime debug was on) the llm_debug_log row. It never</p><p>contains prompt or response bodies.</p>
+        <p>QualityLLMDiagnostic is the structured context of one failed LLM analysis: the</p><p>classifier code, provider facts, the provider's stop reason, token usage when</p><p>the provider reported it, and the correlation id that ties the failure to the</p><p>server log and (when runtime debug was on) the llm_debug_log row. It never</p><p>contains prompt or response bodies.</p>
 
         
           <table class="field-table">
@@ -4782,124 +4770,6 @@ own sampling clause. Only some engines have one; the rest refuse it. </p></td>
                   <td>not_evaluated</td>
                   <td><a href="#int32">int32</a></td>
                   <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.QualitySuggestionJobTarget">QualitySuggestionJobTarget</h3>
-        <p></p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>target_guid</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>target_type</td>
-                  <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>The metaxisdata.v1.MetaType number; the store module does not import v1. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>path</td>
-                  <td><a href="#metaxisdata.store.QualityTargetPath">QualityTargetPath</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>columns</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>state</td>
-                  <td><a href="#metaxisdata.store.QualitySuggestionJobTargetState">QualitySuggestionJobTargetState</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>suggestion_resource_ids</td>
-                  <td><a href="#string">string</a></td>
-                  <td>repeated</td>
-                  <td><p>Resource ids (not names) of the suggestions this target queued. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>error</td>
-                  <td><a href="#string">string</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>started_at_unix_ms</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>finished_at_unix_ms</td>
-                  <td><a href="#int64">int64</a></td>
-                  <td></td>
-                  <td><p> </p></td>
-                </tr>
-              
-                <tr>
-                  <td>diagnostic</td>
-                  <td><a href="#metaxisdata.store.QualityLLMDiagnostic">QualityLLMDiagnostic</a></td>
-                  <td></td>
-                  <td><p>Set when the target failed in the model call; the classifier and context. </p></td>
-                </tr>
-              
-                <tr>
-                  <td>summary</td>
-                  <td><a href="#metaxisdata.store.QualitySuggestionQueueSummary">QualitySuggestionQueueSummary</a></td>
-                  <td></td>
-                  <td><p>What this target&#39;s generation pass did to the review queue. Set on success. </p></td>
-                </tr>
-              
-            </tbody>
-          </table>
-
-          
-
-        
-      
-        <h3 id="metaxisdata.store.QualitySuggestionJobTargets">QualitySuggestionJobTargets</h3>
-        <p>QualitySuggestionJobTargets is the JSONB payload of</p><p>quality_suggestion_job.targets.</p>
-
-        
-          <table class="field-table">
-            <thead>
-              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
-            </thead>
-            <tbody>
-              
-                <tr>
-                  <td>targets</td>
-                  <td><a href="#metaxisdata.store.QualitySuggestionJobTarget">QualitySuggestionJobTarget</a></td>
-                  <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -8075,100 +7945,6 @@ the server (for example an industry or municipal code set).</p></td>
               <tr>
                 <td>QUALITY_STATUS_NOT_EVALUATED</td>
                 <td>6</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.QualitySuggestionJobStatus">QualitySuggestionJobStatus</h3>
-        <p>QualitySuggestionJobStatus is the lifecycle of one background AI drafting job.</p><p>The status is a scalar column; the JSONB targets carry a per-target state.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_STATUS_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_STATUS_PENDING</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_STATUS_RUNNING</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_STATUS_COMPLETED</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_STATUS_FAILED</td>
-                <td>4</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_STATUS_CANCELED</td>
-                <td>5</td>
-                <td><p></p></td>
-              </tr>
-            
-          </tbody>
-        </table>
-      
-        <h3 id="metaxisdata.store.QualitySuggestionJobTargetState">QualitySuggestionJobTargetState</h3>
-        <p>QualitySuggestionJobTargetState is where one target of a background drafting</p><p>job stands. SKIPPED means the job stopped before visiting it (cancel or quota),</p><p>which is different from FAILED: the model was never asked.</p>
-        <table class="enum-table">
-          <thead>
-            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
-          </thead>
-          <tbody>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_UNSPECIFIED</td>
-                <td>0</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_PENDING</td>
-                <td>1</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_RUNNING</td>
-                <td>2</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_DONE</td>
-                <td>3</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_FAILED</td>
-                <td>4</td>
-                <td><p></p></td>
-              </tr>
-            
-              <tr>
-                <td>QUALITY_SUGGESTION_JOB_TARGET_STATE_SKIPPED</td>
-                <td>5</td>
                 <td><p></p></td>
               </tr>
             
@@ -12793,6 +12569,13 @@ to the event&#39;s suppression window. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>quality_agent_attention</td>
+                  <td><a href="#metaxisdata.store.QualityAgentAttentionDetail">QualityAgentAttentionDetail</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -13214,6 +12997,58 @@ an in-app audience; the digest has none and is not routed. </p></td>
 
         
       
+        <h3 id="metaxisdata.store.QualityAgentAttentionDetail">QualityAgentAttentionDetail</h3>
+        <p>QualityAgentAttentionDetail reports one agent escalation in the inbox. The</p><p>client renders the prose; the server stores only identities and the bounded</p><p>question text.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>agent</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgents/{quality_agent} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>attention</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention} </p></td>
+                </tr>
+              
+                <tr>
+                  <td>kind</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>title</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>question</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="metaxisdata.store.SchemaSyncDetail">SchemaSyncDetail</h3>
         <p>SchemaSyncDetail reports one sync operation: the instance metadata step plus</p><p>every database that was queued by it.</p>
 
@@ -13578,6 +13413,12 @@ storm that was merged into one summary.</p></td>
                 <td>4</td>
                 <td><p>The workspace&#39;s scheduled data quality digest. It has no in-app copy; only
 the outbound channels subscribed to this type receive it.</p></td>
+              </tr>
+            
+              <tr>
+                <td>NOTIFICATION_TYPE_DATA_QUALITY_AGENT</td>
+                <td>5</td>
+                <td><p>A quality agent escalated a session or a proposal to its owner.</p></td>
               </tr>
             
           </tbody>

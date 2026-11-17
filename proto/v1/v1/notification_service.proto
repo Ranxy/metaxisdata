@@ -227,6 +227,8 @@ enum NotificationType {
   // executions, problems and owners. It has no in-app copy; only the outbound
   // channels subscribed to this type receive it.
   NOTIFICATION_TYPE_DATA_QUALITY_DIGEST = 4;
+  // A quality agent escalated a session or a proposal to its owner.
+  NOTIFICATION_TYPE_DATA_QUALITY_AGENT = 5;
 }
 
 // NotificationSeverity ranks a notification for its recipient.
@@ -295,6 +297,7 @@ message Notification {
     SchemaSyncDetail schema_sync = 6;
     OpenLineageDetail openlineage = 7;
     DataQualityDetail data_quality = 8;
+    QualityAgentAttentionDetail quality_agent_attention = 9;
   }
 }
 
@@ -344,6 +347,19 @@ message OpenLineageDetail {
   int32 received_count = 7;
   int32 failed_count = 8;
   string error = 9;
+}
+
+// QualityAgentAttentionDetail reports one agent escalation. The client renders the
+// message from the structured detail and its own i18n catalog.
+message QualityAgentAttentionDetail {
+  // Format: workspaces/{workspace}/qualityAgents/{quality_agent}
+  string agent = 1;
+  // Format: workspaces/{workspace}/qualityAgentAttentions/{quality_agent_attention}
+  string attention = 2;
+  // 1 BLOCKED, 2 PROPOSAL_PENDING, 3 REPORT_ANOMALY (store QualityAgentAttentionKind).
+  int32 kind = 3;
+  string title = 4;
+  string question = 5;
 }
 
 message ListNotificationsRequest {

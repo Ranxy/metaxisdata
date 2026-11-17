@@ -20,101 +20,101 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataQualityService_ListQualityRules_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListQualityRules"
-	DataQualityService_GetQualityRule_FullMethodName                     = "/metaxisdata.v1.DataQualityService/GetQualityRule"
-	DataQualityService_CreateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
-	DataQualityService_BatchCreateQualityRules_FullMethodName            = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
-	DataQualityService_BatchUpdateQualityRules_FullMethodName            = "/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules"
-	DataQualityService_UpdateQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
-	DataQualityService_DeleteQualityRule_FullMethodName                  = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
-	DataQualityService_ListQualityRuleTemplates_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityRuleTemplates"
-	DataQualityService_GetQualityRuleTemplate_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityRuleTemplate"
-	DataQualityService_CreateQualityRuleTemplate_FullMethodName          = "/metaxisdata.v1.DataQualityService/CreateQualityRuleTemplate"
-	DataQualityService_UpdateQualityRuleTemplate_FullMethodName          = "/metaxisdata.v1.DataQualityService/UpdateQualityRuleTemplate"
-	DataQualityService_DeleteQualityRuleTemplate_FullMethodName          = "/metaxisdata.v1.DataQualityService/DeleteQualityRuleTemplate"
-	DataQualityService_ListQualityCodeTables_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityCodeTables"
-	DataQualityService_GetQualityCodeTable_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityCodeTable"
-	DataQualityService_CreateQualityCodeTable_FullMethodName             = "/metaxisdata.v1.DataQualityService/CreateQualityCodeTable"
-	DataQualityService_UpdateQualityCodeTable_FullMethodName             = "/metaxisdata.v1.DataQualityService/UpdateQualityCodeTable"
-	DataQualityService_DeleteQualityCodeTable_FullMethodName             = "/metaxisdata.v1.DataQualityService/DeleteQualityCodeTable"
-	DataQualityService_PreviewQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
-	DataQualityService_RunQualityRules_FullMethodName                    = "/metaxisdata.v1.DataQualityService/RunQualityRules"
-	DataQualityService_ListQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
-	DataQualityService_GetQualityExecution_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
-	DataQualityService_GetQualityRuleTrend_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityRuleTrend"
-	DataQualityService_ExportQualityExecutions_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExportQualityExecutions"
-	DataQualityService_ListQualityRuns_FullMethodName                    = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
-	DataQualityService_GetQualityRun_FullMethodName                      = "/metaxisdata.v1.DataQualityService/GetQualityRun"
-	DataQualityService_ListQualityIssues_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
-	DataQualityService_GetQualityIssue_FullMethodName                    = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
-	DataQualityService_ExportQualityIssues_FullMethodName                = "/metaxisdata.v1.DataQualityService/ExportQualityIssues"
-	DataQualityService_UpdateQualityIssue_FullMethodName                 = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
-	DataQualityService_ListQualitySuggestions_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
-	DataQualityService_GetQualitySuggestion_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
-	DataQualityService_UpdateQualitySuggestion_FullMethodName            = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
-	DataQualityService_BatchUpdateQualitySuggestions_FullMethodName      = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
-	DataQualityService_CreateQualitySuggestionJob_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob"
-	DataQualityService_GetQualitySuggestionJob_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob"
-	DataQualityService_ListQualitySuggestionJobs_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs"
-	DataQualityService_CancelQualitySuggestionJob_FullMethodName         = "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob"
-	DataQualityService_GetQualitySuggestionJobTargetDebug_FullMethodName = "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJobTargetDebug"
-	DataQualityService_ListColumnProfiles_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
-	DataQualityService_ListColumnLabels_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
-	DataQualityService_UpdateColumnLabel_FullMethodName                  = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
-	DataQualityService_ProfileColumns_FullMethodName                     = "/metaxisdata.v1.DataQualityService/ProfileColumns"
-	DataQualityService_SuggestQualityRule_FullMethodName                 = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
-	DataQualityService_SuggestColumnLabels_FullMethodName                = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
-	DataQualityService_RecommendQualityChecks_FullMethodName             = "/metaxisdata.v1.DataQualityService/RecommendQualityChecks"
-	DataQualityService_ExplainQualityExecution_FullMethodName            = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
-	DataQualityService_GetQualityOverview_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
-	DataQualityService_GetQualityConsumptionCoverage_FullMethodName      = "/metaxisdata.v1.DataQualityService/GetQualityConsumptionCoverage"
-	DataQualityService_ListQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
-	DataQualityService_ExportQualityTargets_FullMethodName               = "/metaxisdata.v1.DataQualityService/ExportQualityTargets"
-	DataQualityService_GetQualityTarget_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
-	DataQualityService_GetQualityTargetImpact_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityTargetImpact"
-	DataQualityService_AcknowledgeQualityTargetSchema_FullMethodName     = "/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema"
-	DataQualityService_ExportQualityReport_FullMethodName                = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
-	DataQualityService_UpdateQualityTargetSchedule_FullMethodName        = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
-	DataQualityService_GetQualityTargetSchedule_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityTargetSchedule"
-	DataQualityService_GetQualityContract_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityContract"
-	DataQualityService_ListQualityPlans_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListQualityPlans"
-	DataQualityService_ListQualityCoverageGaps_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListQualityCoverageGaps"
-	DataQualityService_UpdateQualityContract_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
-	DataQualityService_PublishQualityContract_FullMethodName             = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
-	DataQualityService_CreateQualityInvestigation_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityInvestigation"
-	DataQualityService_GetQualityInvestigation_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityInvestigation"
-	DataQualityService_ListQualityInvestigations_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityInvestigations"
-	DataQualityService_GetQualityActionPolicy_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
-	DataQualityService_CreateQualityMemory_FullMethodName                = "/metaxisdata.v1.DataQualityService/CreateQualityMemory"
-	DataQualityService_ListQualityMemories_FullMethodName                = "/metaxisdata.v1.DataQualityService/ListQualityMemories"
-	DataQualityService_ConfirmQualityMemory_FullMethodName               = "/metaxisdata.v1.DataQualityService/ConfirmQualityMemory"
-	DataQualityService_DeleteQualityMemory_FullMethodName                = "/metaxisdata.v1.DataQualityService/DeleteQualityMemory"
-	DataQualityService_StageQualityPlan_FullMethodName                   = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
-	DataQualityService_CreateQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
-	DataQualityService_GetQualityChangeRequest_FullMethodName            = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
-	DataQualityService_ListQualityChangeRequests_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityChangeRequests"
-	DataQualityService_CreateQualityAgent_FullMethodName                 = "/metaxisdata.v1.DataQualityService/CreateQualityAgent"
-	DataQualityService_ListQualityAgents_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityAgents"
-	DataQualityService_DisableQualityAgent_FullMethodName                = "/metaxisdata.v1.DataQualityService/DisableQualityAgent"
-	DataQualityService_RotateQualityAgentToken_FullMethodName            = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
-	DataQualityService_DecideQualityChangeRequest_FullMethodName         = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
-	DataQualityService_ListQualityContractRevisions_FullMethodName       = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
-	DataQualityService_GetQualityContractRevision_FullMethodName         = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
-	DataQualityService_GetQualityLLMUsage_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
-	DataQualityService_CreateQualityAgentSession_FullMethodName          = "/metaxisdata.v1.DataQualityService/CreateQualityAgentSession"
-	DataQualityService_ListQualityAgentSessions_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessions"
-	DataQualityService_GetQualityAgentSession_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentSession"
-	DataQualityService_PauseQualityAgentSession_FullMethodName           = "/metaxisdata.v1.DataQualityService/PauseQualityAgentSession"
-	DataQualityService_ResumeQualityAgentSession_FullMethodName          = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentSession"
-	DataQualityService_ArchiveQualityAgentSession_FullMethodName         = "/metaxisdata.v1.DataQualityService/ArchiveQualityAgentSession"
-	DataQualityService_WakeQualityAgentSession_FullMethodName            = "/metaxisdata.v1.DataQualityService/WakeQualityAgentSession"
-	DataQualityService_ListQualityAgentSessionMessages_FullMethodName    = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessionMessages"
-	DataQualityService_GetQualityAgentRunnerStatus_FullMethodName        = "/metaxisdata.v1.DataQualityService/GetQualityAgentRunnerStatus"
-	DataQualityService_GetQualityAgentMetrics_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
-	DataQualityService_ListQualityAgentEnrollments_FullMethodName        = "/metaxisdata.v1.DataQualityService/ListQualityAgentEnrollments"
-	DataQualityService_GetQualityAgentEnrollmentSummary_FullMethodName   = "/metaxisdata.v1.DataQualityService/GetQualityAgentEnrollmentSummary"
-	DataQualityService_UpdateQualityAgentEnrollment_FullMethodName       = "/metaxisdata.v1.DataQualityService/UpdateQualityAgentEnrollment"
-	DataQualityService_RetryQualityAgentEnrollment_FullMethodName        = "/metaxisdata.v1.DataQualityService/RetryQualityAgentEnrollment"
+	DataQualityService_ListQualityRules_FullMethodName                     = "/metaxisdata.v1.DataQualityService/ListQualityRules"
+	DataQualityService_GetQualityRule_FullMethodName                       = "/metaxisdata.v1.DataQualityService/GetQualityRule"
+	DataQualityService_CreateQualityRule_FullMethodName                    = "/metaxisdata.v1.DataQualityService/CreateQualityRule"
+	DataQualityService_BatchCreateQualityRules_FullMethodName              = "/metaxisdata.v1.DataQualityService/BatchCreateQualityRules"
+	DataQualityService_BatchUpdateQualityRules_FullMethodName              = "/metaxisdata.v1.DataQualityService/BatchUpdateQualityRules"
+	DataQualityService_UpdateQualityRule_FullMethodName                    = "/metaxisdata.v1.DataQualityService/UpdateQualityRule"
+	DataQualityService_DeleteQualityRule_FullMethodName                    = "/metaxisdata.v1.DataQualityService/DeleteQualityRule"
+	DataQualityService_ListQualityRuleTemplates_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityRuleTemplates"
+	DataQualityService_GetQualityRuleTemplate_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityRuleTemplate"
+	DataQualityService_CreateQualityRuleTemplate_FullMethodName            = "/metaxisdata.v1.DataQualityService/CreateQualityRuleTemplate"
+	DataQualityService_UpdateQualityRuleTemplate_FullMethodName            = "/metaxisdata.v1.DataQualityService/UpdateQualityRuleTemplate"
+	DataQualityService_DeleteQualityRuleTemplate_FullMethodName            = "/metaxisdata.v1.DataQualityService/DeleteQualityRuleTemplate"
+	DataQualityService_ListQualityCodeTables_FullMethodName                = "/metaxisdata.v1.DataQualityService/ListQualityCodeTables"
+	DataQualityService_GetQualityCodeTable_FullMethodName                  = "/metaxisdata.v1.DataQualityService/GetQualityCodeTable"
+	DataQualityService_CreateQualityCodeTable_FullMethodName               = "/metaxisdata.v1.DataQualityService/CreateQualityCodeTable"
+	DataQualityService_UpdateQualityCodeTable_FullMethodName               = "/metaxisdata.v1.DataQualityService/UpdateQualityCodeTable"
+	DataQualityService_DeleteQualityCodeTable_FullMethodName               = "/metaxisdata.v1.DataQualityService/DeleteQualityCodeTable"
+	DataQualityService_PreviewQualityRule_FullMethodName                   = "/metaxisdata.v1.DataQualityService/PreviewQualityRule"
+	DataQualityService_RunQualityRules_FullMethodName                      = "/metaxisdata.v1.DataQualityService/RunQualityRules"
+	DataQualityService_ListQualityExecutions_FullMethodName                = "/metaxisdata.v1.DataQualityService/ListQualityExecutions"
+	DataQualityService_GetQualityExecution_FullMethodName                  = "/metaxisdata.v1.DataQualityService/GetQualityExecution"
+	DataQualityService_GetQualityRuleTrend_FullMethodName                  = "/metaxisdata.v1.DataQualityService/GetQualityRuleTrend"
+	DataQualityService_ExportQualityExecutions_FullMethodName              = "/metaxisdata.v1.DataQualityService/ExportQualityExecutions"
+	DataQualityService_ListQualityRuns_FullMethodName                      = "/metaxisdata.v1.DataQualityService/ListQualityRuns"
+	DataQualityService_GetQualityRun_FullMethodName                        = "/metaxisdata.v1.DataQualityService/GetQualityRun"
+	DataQualityService_ListQualityIssues_FullMethodName                    = "/metaxisdata.v1.DataQualityService/ListQualityIssues"
+	DataQualityService_GetQualityIssue_FullMethodName                      = "/metaxisdata.v1.DataQualityService/GetQualityIssue"
+	DataQualityService_ExportQualityIssues_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ExportQualityIssues"
+	DataQualityService_UpdateQualityIssue_FullMethodName                   = "/metaxisdata.v1.DataQualityService/UpdateQualityIssue"
+	DataQualityService_ListQualitySuggestions_FullMethodName               = "/metaxisdata.v1.DataQualityService/ListQualitySuggestions"
+	DataQualityService_GetQualitySuggestion_FullMethodName                 = "/metaxisdata.v1.DataQualityService/GetQualitySuggestion"
+	DataQualityService_UpdateQualitySuggestion_FullMethodName              = "/metaxisdata.v1.DataQualityService/UpdateQualitySuggestion"
+	DataQualityService_BatchUpdateQualitySuggestions_FullMethodName        = "/metaxisdata.v1.DataQualityService/BatchUpdateQualitySuggestions"
+	DataQualityService_ListColumnProfiles_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListColumnProfiles"
+	DataQualityService_ListColumnLabels_FullMethodName                     = "/metaxisdata.v1.DataQualityService/ListColumnLabels"
+	DataQualityService_UpdateColumnLabel_FullMethodName                    = "/metaxisdata.v1.DataQualityService/UpdateColumnLabel"
+	DataQualityService_ProfileColumns_FullMethodName                       = "/metaxisdata.v1.DataQualityService/ProfileColumns"
+	DataQualityService_SuggestQualityRule_FullMethodName                   = "/metaxisdata.v1.DataQualityService/SuggestQualityRule"
+	DataQualityService_SuggestColumnLabels_FullMethodName                  = "/metaxisdata.v1.DataQualityService/SuggestColumnLabels"
+	DataQualityService_RecommendQualityChecks_FullMethodName               = "/metaxisdata.v1.DataQualityService/RecommendQualityChecks"
+	DataQualityService_ExplainQualityExecution_FullMethodName              = "/metaxisdata.v1.DataQualityService/ExplainQualityExecution"
+	DataQualityService_GetQualityOverview_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityOverview"
+	DataQualityService_GetQualityConsumptionCoverage_FullMethodName        = "/metaxisdata.v1.DataQualityService/GetQualityConsumptionCoverage"
+	DataQualityService_ListQualityTargets_FullMethodName                   = "/metaxisdata.v1.DataQualityService/ListQualityTargets"
+	DataQualityService_ExportQualityTargets_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ExportQualityTargets"
+	DataQualityService_GetQualityTarget_FullMethodName                     = "/metaxisdata.v1.DataQualityService/GetQualityTarget"
+	DataQualityService_GetQualityTargetImpact_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityTargetImpact"
+	DataQualityService_AcknowledgeQualityTargetSchema_FullMethodName       = "/metaxisdata.v1.DataQualityService/AcknowledgeQualityTargetSchema"
+	DataQualityService_ExportQualityReport_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ExportQualityReport"
+	DataQualityService_UpdateQualityTargetSchedule_FullMethodName          = "/metaxisdata.v1.DataQualityService/UpdateQualityTargetSchedule"
+	DataQualityService_GetQualityTargetSchedule_FullMethodName             = "/metaxisdata.v1.DataQualityService/GetQualityTargetSchedule"
+	DataQualityService_GetQualityContract_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityContract"
+	DataQualityService_ListQualityPlans_FullMethodName                     = "/metaxisdata.v1.DataQualityService/ListQualityPlans"
+	DataQualityService_ListQualityCoverageGaps_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityCoverageGaps"
+	DataQualityService_UpdateQualityContract_FullMethodName                = "/metaxisdata.v1.DataQualityService/UpdateQualityContract"
+	DataQualityService_PublishQualityContract_FullMethodName               = "/metaxisdata.v1.DataQualityService/PublishQualityContract"
+	DataQualityService_CreateQualityInvestigation_FullMethodName           = "/metaxisdata.v1.DataQualityService/CreateQualityInvestigation"
+	DataQualityService_GetQualityInvestigation_FullMethodName              = "/metaxisdata.v1.DataQualityService/GetQualityInvestigation"
+	DataQualityService_ListQualityInvestigations_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListQualityInvestigations"
+	DataQualityService_GetQualityActionPolicy_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityActionPolicy"
+	DataQualityService_CreateQualityMemory_FullMethodName                  = "/metaxisdata.v1.DataQualityService/CreateQualityMemory"
+	DataQualityService_ListQualityMemories_FullMethodName                  = "/metaxisdata.v1.DataQualityService/ListQualityMemories"
+	DataQualityService_ConfirmQualityMemory_FullMethodName                 = "/metaxisdata.v1.DataQualityService/ConfirmQualityMemory"
+	DataQualityService_DeleteQualityMemory_FullMethodName                  = "/metaxisdata.v1.DataQualityService/DeleteQualityMemory"
+	DataQualityService_StageQualityPlan_FullMethodName                     = "/metaxisdata.v1.DataQualityService/StageQualityPlan"
+	DataQualityService_CreateQualityChangeRequest_FullMethodName           = "/metaxisdata.v1.DataQualityService/CreateQualityChangeRequest"
+	DataQualityService_GetQualityChangeRequest_FullMethodName              = "/metaxisdata.v1.DataQualityService/GetQualityChangeRequest"
+	DataQualityService_ListQualityChangeRequests_FullMethodName            = "/metaxisdata.v1.DataQualityService/ListQualityChangeRequests"
+	DataQualityService_CreateQualityAgent_FullMethodName                   = "/metaxisdata.v1.DataQualityService/CreateQualityAgent"
+	DataQualityService_GetQualityAgent_FullMethodName                      = "/metaxisdata.v1.DataQualityService/GetQualityAgent"
+	DataQualityService_SendQualityAgentMessage_FullMethodName              = "/metaxisdata.v1.DataQualityService/SendQualityAgentMessage"
+	DataQualityService_ListQualityAgentConversationMessages_FullMethodName = "/metaxisdata.v1.DataQualityService/ListQualityAgentConversationMessages"
+	DataQualityService_ListQualityAgentReports_FullMethodName              = "/metaxisdata.v1.DataQualityService/ListQualityAgentReports"
+	DataQualityService_GetQualityAgentReport_FullMethodName                = "/metaxisdata.v1.DataQualityService/GetQualityAgentReport"
+	DataQualityService_ListQualityAgentAttentions_FullMethodName           = "/metaxisdata.v1.DataQualityService/ListQualityAgentAttentions"
+	DataQualityService_ReplyQualityAgentAttention_FullMethodName           = "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention"
+	DataQualityService_DismissQualityAgentAttention_FullMethodName         = "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention"
+	DataQualityService_UpdateQualityAgent_FullMethodName                   = "/metaxisdata.v1.DataQualityService/UpdateQualityAgent"
+	DataQualityService_StartQualityAgent_FullMethodName                    = "/metaxisdata.v1.DataQualityService/StartQualityAgent"
+	DataQualityService_PauseQualityAgent_FullMethodName                    = "/metaxisdata.v1.DataQualityService/PauseQualityAgent"
+	DataQualityService_ListQualityAgents_FullMethodName                    = "/metaxisdata.v1.DataQualityService/ListQualityAgents"
+	DataQualityService_DisableQualityAgent_FullMethodName                  = "/metaxisdata.v1.DataQualityService/DisableQualityAgent"
+	DataQualityService_RotateQualityAgentToken_FullMethodName              = "/metaxisdata.v1.DataQualityService/RotateQualityAgentToken"
+	DataQualityService_DecideQualityChangeRequest_FullMethodName           = "/metaxisdata.v1.DataQualityService/DecideQualityChangeRequest"
+	DataQualityService_ListQualityContractRevisions_FullMethodName         = "/metaxisdata.v1.DataQualityService/ListQualityContractRevisions"
+	DataQualityService_GetQualityContractRevision_FullMethodName           = "/metaxisdata.v1.DataQualityService/GetQualityContractRevision"
+	DataQualityService_GetQualityLLMUsage_FullMethodName                   = "/metaxisdata.v1.DataQualityService/GetQualityLLMUsage"
+	DataQualityService_ListQualityAgentSessions_FullMethodName             = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessions"
+	DataQualityService_GetQualityAgentSession_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityAgentSession"
+	DataQualityService_ResumeQualityAgentSession_FullMethodName            = "/metaxisdata.v1.DataQualityService/ResumeQualityAgentSession"
+	DataQualityService_ListQualityAgentSessionMessages_FullMethodName      = "/metaxisdata.v1.DataQualityService/ListQualityAgentSessionMessages"
+	DataQualityService_GetQualityAgentRunnerStatus_FullMethodName          = "/metaxisdata.v1.DataQualityService/GetQualityAgentRunnerStatus"
+	DataQualityService_GetQualityAgentMetrics_FullMethodName               = "/metaxisdata.v1.DataQualityService/GetQualityAgentMetrics"
+	DataQualityService_ListQualityAgentEnrollments_FullMethodName          = "/metaxisdata.v1.DataQualityService/ListQualityAgentEnrollments"
+	DataQualityService_GetQualityAgentEnrollmentSummary_FullMethodName     = "/metaxisdata.v1.DataQualityService/GetQualityAgentEnrollmentSummary"
 )
 
 // DataQualityServiceClient is the client API for DataQualityService service.
@@ -255,24 +255,6 @@ type DataQualityServiceClient interface {
 	// independent: a failure is reported in its own result and does not abort the
 	// rest.
 	BatchUpdateQualitySuggestions(ctx context.Context, in *BatchUpdateQualitySuggestionsRequest, opts ...grpc.CallOption) (*BatchUpdateQualitySuggestionsResponse, error)
-	// Start a background AI drafting job over one or more tables. The call returns
-	// as soon as the job is queued: the runner asks the model for each target in
-	// turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
-	// progress. Queued suggestions appear in the review queue like any other.
-	CreateQualitySuggestionJob(ctx context.Context, in *CreateQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
-	// Read one drafting job, including per-target progress and the suggestions it
-	// queued so far.
-	GetQualitySuggestionJob(ctx context.Context, in *GetQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
-	// List drafting jobs, newest first.
-	ListQualitySuggestionJobs(ctx context.Context, in *ListQualitySuggestionJobsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionJobsResponse, error)
-	// Ask a drafting job to stop. A pending job is canceled immediately; a running
-	// job finishes its current target, marks the rest skipped and ends CANCELED.
-	// Suggestions already queued are kept.
-	CancelQualitySuggestionJob(ctx context.Context, in *CancelQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error)
-	// Read the raw request and response bodies of one failed target when runtime
-	// debug mode captured them. The target's diagnostic carries the correlation id
-	// and says whether a body is available; llm_debug_log keeps it for seven days.
-	GetQualitySuggestionJobTargetDebug(ctx context.Context, in *GetQualitySuggestionJobTargetDebugRequest, opts ...grpc.CallOption) (*GetQualitySuggestionJobTargetDebugResponse, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(ctx context.Context, in *ListColumnProfilesRequest, opts ...grpc.CallOption) (*ListColumnProfilesResponse, error)
@@ -426,7 +408,34 @@ type DataQualityServiceClient interface {
 	// token is a normal access token for that principal, so disabling the agent makes
 	// every token it issued unusable. Administrator only.
 	CreateQualityAgent(ctx context.Context, in *CreateQualityAgentRequest, opts ...grpc.CallOption) (*CreateQualityAgentResponse, error)
-	// List the workspace's agent principals, without tokens.
+	// Read one agent with its runtime configuration.
+	GetQualityAgent(ctx context.Context, in *GetQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
+	// Append the owner's message to the agent's conversation and wake it. Only the
+	// agent's owner may send; administrators may read but not talk.
+	SendQualityAgentMessage(ctx context.Context, in *SendQualityAgentMessageRequest, opts ...grpc.CallOption) (*QualityAgentSessionMessage, error)
+	// Read the agent's front-office conversation. The owner and administrators may
+	// read; only the owner may send.
+	ListQualityAgentConversationMessages(ctx context.Context, in *ListQualityAgentConversationMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentConversationMessagesResponse, error)
+	// List one agent's patrol reports, newest period first.
+	ListQualityAgentReports(ctx context.Context, in *ListQualityAgentReportsRequest, opts ...grpc.CallOption) (*ListQualityAgentReportsResponse, error)
+	// Read one report with its rendered body.
+	GetQualityAgentReport(ctx context.Context, in *GetQualityAgentReportRequest, opts ...grpc.CallOption) (*QualityAgentReport, error)
+	// List one agent's escalations. The owner and administrators may read.
+	ListQualityAgentAttentions(ctx context.Context, in *ListQualityAgentAttentionsRequest, opts ...grpc.CallOption) (*ListQualityAgentAttentionsResponse, error)
+	// Answer an escalation as the owner. The reply is appended to the target session,
+	// the session is resumed, and the attention is resolved; a retry on a closed
+	// attention is a no-op.
+	ReplyQualityAgentAttention(ctx context.Context, in *ReplyQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
+	// Dismiss an escalation without resuming the session. Owner only.
+	DismissQualityAgentAttention(ctx context.Context, in *DismissQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error)
+	// Replace the masked configuration of one agent. Administrator only.
+	UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
+	// Activate a DRAFT or PAUSED agent. Administrator only.
+	StartQualityAgent(ctx context.Context, in *StartQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
+	// Pause an ACTIVE agent. Administrator only.
+	PauseQualityAgent(ctx context.Context, in *PauseQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
+	// List the workspace's agents. Administrators see every agent; other members
+	// see the agents they own.
 	ListQualityAgents(ctx context.Context, in *ListQualityAgentsRequest, opts ...grpc.CallOption) (*ListQualityAgentsResponse, error)
 	// Disable an agent principal. Its tokens stop authenticating immediately; the
 	// agent row stays for the audit trail.
@@ -447,21 +456,13 @@ type DataQualityServiceClient interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(ctx context.Context, in *GetQualityLLMUsageRequest, opts ...grpc.CallOption) (*QualityLLMUsage, error)
-	// Create one target's long-lived agent session. The target's database must be in
-	// the runner's allowlist, the runner must be enabled and an enabled agent must exist.
-	CreateQualityAgentSession(ctx context.Context, in *CreateQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
 	// List the workspace's sessions by newest activity first.
 	ListQualityAgentSessions(ctx context.Context, in *ListQualityAgentSessionsRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionsResponse, error)
 	// Read one session.
 	GetQualityAgentSession(ctx context.Context, in *GetQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
-	// Pause a session: no new wake starts, the conversation stays.
-	PauseQualityAgentSession(ctx context.Context, in *PauseQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
-	// Resume a paused or blocked session; it wakes immediately.
+	// Resume a stuck session. Administrator-only recovery, used from diagnostics after
+	// a restart-limit/internal-error block; it is not a product action.
 	ResumeQualityAgentSession(ctx context.Context, in *ResumeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
-	// Archive a session (a tombstone). The conversation stays readable.
-	ArchiveQualityAgentSession(ctx context.Context, in *ArchiveQualityAgentSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// Append a person's message to the session and wake it immediately.
-	WakeQualityAgentSession(ctx context.Context, in *WakeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error)
 	// Read one session's transcript. after_seq polls for new messages.
 	ListQualityAgentSessionMessages(ctx context.Context, in *ListQualityAgentSessionMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionMessagesResponse, error)
 	// Read the runner's live state: what is running, what is due and how much of the
@@ -475,12 +476,6 @@ type DataQualityServiceClient interface {
 	ListQualityAgentEnrollments(ctx context.Context, in *ListQualityAgentEnrollmentsRequest, opts ...grpc.CallOption) (*ListQualityAgentEnrollmentsResponse, error)
 	// Read enrollment counts by state and by database. Read-only.
 	GetQualityAgentEnrollmentSummary(ctx context.Context, in *GetQualityAgentEnrollmentSummaryRequest, opts ...grpc.CallOption) (*QualityAgentEnrollmentSummary, error)
-	// Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
-	// as target states, and a stale expected_revision is rejected.
-	UpdateQualityAgentEnrollment(ctx context.Context, in *UpdateQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error)
-	// Requeue one enrollment now: it becomes pending, its next review is due and its
-	// priority is raised.
-	RetryQualityAgentEnrollment(ctx context.Context, in *RetryQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error)
 }
 
 type dataQualityServiceClient struct {
@@ -833,56 +828,6 @@ func (c *dataQualityServiceClient) BatchUpdateQualitySuggestions(ctx context.Con
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BatchUpdateQualitySuggestionsResponse)
 	err := c.cc.Invoke(ctx, DataQualityService_BatchUpdateQualitySuggestions_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) CreateQualitySuggestionJob(ctx context.Context, in *CreateQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualitySuggestionJob)
-	err := c.cc.Invoke(ctx, DataQualityService_CreateQualitySuggestionJob_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) GetQualitySuggestionJob(ctx context.Context, in *GetQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualitySuggestionJob)
-	err := c.cc.Invoke(ctx, DataQualityService_GetQualitySuggestionJob_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ListQualitySuggestionJobs(ctx context.Context, in *ListQualitySuggestionJobsRequest, opts ...grpc.CallOption) (*ListQualitySuggestionJobsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListQualitySuggestionJobsResponse)
-	err := c.cc.Invoke(ctx, DataQualityService_ListQualitySuggestionJobs_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) CancelQualitySuggestionJob(ctx context.Context, in *CancelQualitySuggestionJobRequest, opts ...grpc.CallOption) (*QualitySuggestionJob, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualitySuggestionJob)
-	err := c.cc.Invoke(ctx, DataQualityService_CancelQualitySuggestionJob_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) GetQualitySuggestionJobTargetDebug(ctx context.Context, in *GetQualitySuggestionJobTargetDebugRequest, opts ...grpc.CallOption) (*GetQualitySuggestionJobTargetDebugResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetQualitySuggestionJobTargetDebugResponse)
-	err := c.cc.Invoke(ctx, DataQualityService_GetQualitySuggestionJobTargetDebug_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1267,6 +1212,116 @@ func (c *dataQualityServiceClient) CreateQualityAgent(ctx context.Context, in *C
 	return out, nil
 }
 
+func (c *dataQualityServiceClient) GetQualityAgent(ctx context.Context, in *GetQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgent)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) SendQualityAgentMessage(ctx context.Context, in *SendQualityAgentMessageRequest, opts ...grpc.CallOption) (*QualityAgentSessionMessage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentSessionMessage)
+	err := c.cc.Invoke(ctx, DataQualityService_SendQualityAgentMessage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgentConversationMessages(ctx context.Context, in *ListQualityAgentConversationMessagesRequest, opts ...grpc.CallOption) (*ListQualityAgentConversationMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentConversationMessagesResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentConversationMessages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgentReports(ctx context.Context, in *ListQualityAgentReportsRequest, opts ...grpc.CallOption) (*ListQualityAgentReportsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentReportsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentReports_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) GetQualityAgentReport(ctx context.Context, in *GetQualityAgentReportRequest, opts ...grpc.CallOption) (*QualityAgentReport, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentReport)
+	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentReport_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ListQualityAgentAttentions(ctx context.Context, in *ListQualityAgentAttentionsRequest, opts ...grpc.CallOption) (*ListQualityAgentAttentionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQualityAgentAttentionsResponse)
+	err := c.cc.Invoke(ctx, DataQualityService_ListQualityAgentAttentions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) ReplyQualityAgentAttention(ctx context.Context, in *ReplyQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentAttention)
+	err := c.cc.Invoke(ctx, DataQualityService_ReplyQualityAgentAttention_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) DismissQualityAgentAttention(ctx context.Context, in *DismissQualityAgentAttentionRequest, opts ...grpc.CallOption) (*QualityAgentAttention, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgentAttention)
+	err := c.cc.Invoke(ctx, DataQualityService_DismissQualityAgentAttention_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgent)
+	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) StartQualityAgent(ctx context.Context, in *StartQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgent)
+	err := c.cc.Invoke(ctx, DataQualityService_StartQualityAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dataQualityServiceClient) PauseQualityAgent(ctx context.Context, in *PauseQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QualityAgent)
+	err := c.cc.Invoke(ctx, DataQualityService_PauseQualityAgent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *dataQualityServiceClient) ListQualityAgents(ctx context.Context, in *ListQualityAgentsRequest, opts ...grpc.CallOption) (*ListQualityAgentsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityAgentsResponse)
@@ -1337,16 +1392,6 @@ func (c *dataQualityServiceClient) GetQualityLLMUsage(ctx context.Context, in *G
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) CreateQualityAgentSession(ctx context.Context, in *CreateQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentSession)
-	err := c.cc.Invoke(ctx, DataQualityService_CreateQualityAgentSession_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *dataQualityServiceClient) ListQualityAgentSessions(ctx context.Context, in *ListQualityAgentSessionsRequest, opts ...grpc.CallOption) (*ListQualityAgentSessionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQualityAgentSessionsResponse)
@@ -1367,40 +1412,10 @@ func (c *dataQualityServiceClient) GetQualityAgentSession(ctx context.Context, i
 	return out, nil
 }
 
-func (c *dataQualityServiceClient) PauseQualityAgentSession(ctx context.Context, in *PauseQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentSession)
-	err := c.cc.Invoke(ctx, DataQualityService_PauseQualityAgentSession_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *dataQualityServiceClient) ResumeQualityAgentSession(ctx context.Context, in *ResumeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityAgentSession)
 	err := c.cc.Invoke(ctx, DataQualityService_ResumeQualityAgentSession_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) ArchiveQualityAgentSession(ctx context.Context, in *ArchiveQualityAgentSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, DataQualityService_ArchiveQualityAgentSession_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) WakeQualityAgentSession(ctx context.Context, in *WakeQualityAgentSessionRequest, opts ...grpc.CallOption) (*QualityAgentSession, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentSession)
-	err := c.cc.Invoke(ctx, DataQualityService_WakeQualityAgentSession_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1451,26 +1466,6 @@ func (c *dataQualityServiceClient) GetQualityAgentEnrollmentSummary(ctx context.
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(QualityAgentEnrollmentSummary)
 	err := c.cc.Invoke(ctx, DataQualityService_GetQualityAgentEnrollmentSummary_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) UpdateQualityAgentEnrollment(ctx context.Context, in *UpdateQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentEnrollment)
-	err := c.cc.Invoke(ctx, DataQualityService_UpdateQualityAgentEnrollment_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *dataQualityServiceClient) RetryQualityAgentEnrollment(ctx context.Context, in *RetryQualityAgentEnrollmentRequest, opts ...grpc.CallOption) (*QualityAgentEnrollment, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QualityAgentEnrollment)
-	err := c.cc.Invoke(ctx, DataQualityService_RetryQualityAgentEnrollment_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1615,24 +1610,6 @@ type DataQualityServiceServer interface {
 	// independent: a failure is reported in its own result and does not abort the
 	// rest.
 	BatchUpdateQualitySuggestions(context.Context, *BatchUpdateQualitySuggestionsRequest) (*BatchUpdateQualitySuggestionsResponse, error)
-	// Start a background AI drafting job over one or more tables. The call returns
-	// as soon as the job is queued: the runner asks the model for each target in
-	// turn, and clients poll GetQualitySuggestionJob (or list the jobs) for
-	// progress. Queued suggestions appear in the review queue like any other.
-	CreateQualitySuggestionJob(context.Context, *CreateQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
-	// Read one drafting job, including per-target progress and the suggestions it
-	// queued so far.
-	GetQualitySuggestionJob(context.Context, *GetQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
-	// List drafting jobs, newest first.
-	ListQualitySuggestionJobs(context.Context, *ListQualitySuggestionJobsRequest) (*ListQualitySuggestionJobsResponse, error)
-	// Ask a drafting job to stop. A pending job is canceled immediately; a running
-	// job finishes its current target, marks the rest skipped and ends CANCELED.
-	// Suggestions already queued are kept.
-	CancelQualitySuggestionJob(context.Context, *CancelQualitySuggestionJobRequest) (*QualitySuggestionJob, error)
-	// Read the raw request and response bodies of one failed target when runtime
-	// debug mode captured them. The target's diagnostic carries the correlation id
-	// and says whether a body is available; llm_debug_log keeps it for seven days.
-	GetQualitySuggestionJobTargetDebug(context.Context, *GetQualitySuggestionJobTargetDebugRequest) (*GetQualitySuggestionJobTargetDebugResponse, error)
 	// List the cached deterministic profiles of columns. Profiles are read-only
 	// measurements; there is no get or update.
 	ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error)
@@ -1786,7 +1763,34 @@ type DataQualityServiceServer interface {
 	// token is a normal access token for that principal, so disabling the agent makes
 	// every token it issued unusable. Administrator only.
 	CreateQualityAgent(context.Context, *CreateQualityAgentRequest) (*CreateQualityAgentResponse, error)
-	// List the workspace's agent principals, without tokens.
+	// Read one agent with its runtime configuration.
+	GetQualityAgent(context.Context, *GetQualityAgentRequest) (*QualityAgent, error)
+	// Append the owner's message to the agent's conversation and wake it. Only the
+	// agent's owner may send; administrators may read but not talk.
+	SendQualityAgentMessage(context.Context, *SendQualityAgentMessageRequest) (*QualityAgentSessionMessage, error)
+	// Read the agent's front-office conversation. The owner and administrators may
+	// read; only the owner may send.
+	ListQualityAgentConversationMessages(context.Context, *ListQualityAgentConversationMessagesRequest) (*ListQualityAgentConversationMessagesResponse, error)
+	// List one agent's patrol reports, newest period first.
+	ListQualityAgentReports(context.Context, *ListQualityAgentReportsRequest) (*ListQualityAgentReportsResponse, error)
+	// Read one report with its rendered body.
+	GetQualityAgentReport(context.Context, *GetQualityAgentReportRequest) (*QualityAgentReport, error)
+	// List one agent's escalations. The owner and administrators may read.
+	ListQualityAgentAttentions(context.Context, *ListQualityAgentAttentionsRequest) (*ListQualityAgentAttentionsResponse, error)
+	// Answer an escalation as the owner. The reply is appended to the target session,
+	// the session is resumed, and the attention is resolved; a retry on a closed
+	// attention is a no-op.
+	ReplyQualityAgentAttention(context.Context, *ReplyQualityAgentAttentionRequest) (*QualityAgentAttention, error)
+	// Dismiss an escalation without resuming the session. Owner only.
+	DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error)
+	// Replace the masked configuration of one agent. Administrator only.
+	UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error)
+	// Activate a DRAFT or PAUSED agent. Administrator only.
+	StartQualityAgent(context.Context, *StartQualityAgentRequest) (*QualityAgent, error)
+	// Pause an ACTIVE agent. Administrator only.
+	PauseQualityAgent(context.Context, *PauseQualityAgentRequest) (*QualityAgent, error)
+	// List the workspace's agents. Administrators see every agent; other members
+	// see the agents they own.
 	ListQualityAgents(context.Context, *ListQualityAgentsRequest) (*ListQualityAgentsResponse, error)
 	// Disable an agent principal. Its tokens stop authenticating immediately; the
 	// agent row stays for the audit trail.
@@ -1807,21 +1811,13 @@ type DataQualityServiceServer interface {
 	// settings, with server defaults resolved). The counters are process state: a
 	// restart resets them and they roll over at 00:00 UTC.
 	GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error)
-	// Create one target's long-lived agent session. The target's database must be in
-	// the runner's allowlist, the runner must be enabled and an enabled agent must exist.
-	CreateQualityAgentSession(context.Context, *CreateQualityAgentSessionRequest) (*QualityAgentSession, error)
 	// List the workspace's sessions by newest activity first.
 	ListQualityAgentSessions(context.Context, *ListQualityAgentSessionsRequest) (*ListQualityAgentSessionsResponse, error)
 	// Read one session.
 	GetQualityAgentSession(context.Context, *GetQualityAgentSessionRequest) (*QualityAgentSession, error)
-	// Pause a session: no new wake starts, the conversation stays.
-	PauseQualityAgentSession(context.Context, *PauseQualityAgentSessionRequest) (*QualityAgentSession, error)
-	// Resume a paused or blocked session; it wakes immediately.
+	// Resume a stuck session. Administrator-only recovery, used from diagnostics after
+	// a restart-limit/internal-error block; it is not a product action.
 	ResumeQualityAgentSession(context.Context, *ResumeQualityAgentSessionRequest) (*QualityAgentSession, error)
-	// Archive a session (a tombstone). The conversation stays readable.
-	ArchiveQualityAgentSession(context.Context, *ArchiveQualityAgentSessionRequest) (*emptypb.Empty, error)
-	// Append a person's message to the session and wake it immediately.
-	WakeQualityAgentSession(context.Context, *WakeQualityAgentSessionRequest) (*QualityAgentSession, error)
 	// Read one session's transcript. after_seq polls for new messages.
 	ListQualityAgentSessionMessages(context.Context, *ListQualityAgentSessionMessagesRequest) (*ListQualityAgentSessionMessagesResponse, error)
 	// Read the runner's live state: what is running, what is due and how much of the
@@ -1835,12 +1831,6 @@ type DataQualityServiceServer interface {
 	ListQualityAgentEnrollments(context.Context, *ListQualityAgentEnrollmentsRequest) (*ListQualityAgentEnrollmentsResponse, error)
 	// Read enrollment counts by state and by database. Read-only.
 	GetQualityAgentEnrollmentSummary(context.Context, *GetQualityAgentEnrollmentSummaryRequest) (*QualityAgentEnrollmentSummary, error)
-	// Update one enrollment's queue state or mode. Only EXCLUDED/PENDING are accepted
-	// as target states, and a stale expected_revision is rejected.
-	UpdateQualityAgentEnrollment(context.Context, *UpdateQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error)
-	// Requeue one enrollment now: it becomes pending, its next review is due and its
-	// priority is raised.
-	RetryQualityAgentEnrollment(context.Context, *RetryQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error)
 	mustEmbedUnimplementedDataQualityServiceServer()
 }
 
@@ -1950,21 +1940,6 @@ func (UnimplementedDataQualityServiceServer) UpdateQualitySuggestion(context.Con
 func (UnimplementedDataQualityServiceServer) BatchUpdateQualitySuggestions(context.Context, *BatchUpdateQualitySuggestionsRequest) (*BatchUpdateQualitySuggestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchUpdateQualitySuggestions not implemented")
 }
-func (UnimplementedDataQualityServiceServer) CreateQualitySuggestionJob(context.Context, *CreateQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateQualitySuggestionJob not implemented")
-}
-func (UnimplementedDataQualityServiceServer) GetQualitySuggestionJob(context.Context, *GetQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetQualitySuggestionJob not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ListQualitySuggestionJobs(context.Context, *ListQualitySuggestionJobsRequest) (*ListQualitySuggestionJobsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListQualitySuggestionJobs not implemented")
-}
-func (UnimplementedDataQualityServiceServer) CancelQualitySuggestionJob(context.Context, *CancelQualitySuggestionJobRequest) (*QualitySuggestionJob, error) {
-	return nil, status.Error(codes.Unimplemented, "method CancelQualitySuggestionJob not implemented")
-}
-func (UnimplementedDataQualityServiceServer) GetQualitySuggestionJobTargetDebug(context.Context, *GetQualitySuggestionJobTargetDebugRequest) (*GetQualitySuggestionJobTargetDebugResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetQualitySuggestionJobTargetDebug not implemented")
-}
 func (UnimplementedDataQualityServiceServer) ListColumnProfiles(context.Context, *ListColumnProfilesRequest) (*ListColumnProfilesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListColumnProfiles not implemented")
 }
@@ -2073,6 +2048,39 @@ func (UnimplementedDataQualityServiceServer) ListQualityChangeRequests(context.C
 func (UnimplementedDataQualityServiceServer) CreateQualityAgent(context.Context, *CreateQualityAgentRequest) (*CreateQualityAgentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateQualityAgent not implemented")
 }
+func (UnimplementedDataQualityServiceServer) GetQualityAgent(context.Context, *GetQualityAgentRequest) (*QualityAgent, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgent not implemented")
+}
+func (UnimplementedDataQualityServiceServer) SendQualityAgentMessage(context.Context, *SendQualityAgentMessageRequest) (*QualityAgentSessionMessage, error) {
+	return nil, status.Error(codes.Unimplemented, "method SendQualityAgentMessage not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentConversationMessages(context.Context, *ListQualityAgentConversationMessagesRequest) (*ListQualityAgentConversationMessagesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentConversationMessages not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentReports(context.Context, *ListQualityAgentReportsRequest) (*ListQualityAgentReportsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentReports not implemented")
+}
+func (UnimplementedDataQualityServiceServer) GetQualityAgentReport(context.Context, *GetQualityAgentReportRequest) (*QualityAgentReport, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentReport not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ListQualityAgentAttentions(context.Context, *ListQualityAgentAttentionsRequest) (*ListQualityAgentAttentionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentAttentions not implemented")
+}
+func (UnimplementedDataQualityServiceServer) ReplyQualityAgentAttention(context.Context, *ReplyQualityAgentAttentionRequest) (*QualityAgentAttention, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReplyQualityAgentAttention not implemented")
+}
+func (UnimplementedDataQualityServiceServer) DismissQualityAgentAttention(context.Context, *DismissQualityAgentAttentionRequest) (*QualityAgentAttention, error) {
+	return nil, status.Error(codes.Unimplemented, "method DismissQualityAgentAttention not implemented")
+}
+func (UnimplementedDataQualityServiceServer) UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateQualityAgent not implemented")
+}
+func (UnimplementedDataQualityServiceServer) StartQualityAgent(context.Context, *StartQualityAgentRequest) (*QualityAgent, error) {
+	return nil, status.Error(codes.Unimplemented, "method StartQualityAgent not implemented")
+}
+func (UnimplementedDataQualityServiceServer) PauseQualityAgent(context.Context, *PauseQualityAgentRequest) (*QualityAgent, error) {
+	return nil, status.Error(codes.Unimplemented, "method PauseQualityAgent not implemented")
+}
 func (UnimplementedDataQualityServiceServer) ListQualityAgents(context.Context, *ListQualityAgentsRequest) (*ListQualityAgentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgents not implemented")
 }
@@ -2094,26 +2102,14 @@ func (UnimplementedDataQualityServiceServer) GetQualityContractRevision(context.
 func (UnimplementedDataQualityServiceServer) GetQualityLLMUsage(context.Context, *GetQualityLLMUsageRequest) (*QualityLLMUsage, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityLLMUsage not implemented")
 }
-func (UnimplementedDataQualityServiceServer) CreateQualityAgentSession(context.Context, *CreateQualityAgentSessionRequest) (*QualityAgentSession, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateQualityAgentSession not implemented")
-}
 func (UnimplementedDataQualityServiceServer) ListQualityAgentSessions(context.Context, *ListQualityAgentSessionsRequest) (*ListQualityAgentSessionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentSessions not implemented")
 }
 func (UnimplementedDataQualityServiceServer) GetQualityAgentSession(context.Context, *GetQualityAgentSessionRequest) (*QualityAgentSession, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentSession not implemented")
 }
-func (UnimplementedDataQualityServiceServer) PauseQualityAgentSession(context.Context, *PauseQualityAgentSessionRequest) (*QualityAgentSession, error) {
-	return nil, status.Error(codes.Unimplemented, "method PauseQualityAgentSession not implemented")
-}
 func (UnimplementedDataQualityServiceServer) ResumeQualityAgentSession(context.Context, *ResumeQualityAgentSessionRequest) (*QualityAgentSession, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResumeQualityAgentSession not implemented")
-}
-func (UnimplementedDataQualityServiceServer) ArchiveQualityAgentSession(context.Context, *ArchiveQualityAgentSessionRequest) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "method ArchiveQualityAgentSession not implemented")
-}
-func (UnimplementedDataQualityServiceServer) WakeQualityAgentSession(context.Context, *WakeQualityAgentSessionRequest) (*QualityAgentSession, error) {
-	return nil, status.Error(codes.Unimplemented, "method WakeQualityAgentSession not implemented")
 }
 func (UnimplementedDataQualityServiceServer) ListQualityAgentSessionMessages(context.Context, *ListQualityAgentSessionMessagesRequest) (*ListQualityAgentSessionMessagesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQualityAgentSessionMessages not implemented")
@@ -2129,12 +2125,6 @@ func (UnimplementedDataQualityServiceServer) ListQualityAgentEnrollments(context
 }
 func (UnimplementedDataQualityServiceServer) GetQualityAgentEnrollmentSummary(context.Context, *GetQualityAgentEnrollmentSummaryRequest) (*QualityAgentEnrollmentSummary, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQualityAgentEnrollmentSummary not implemented")
-}
-func (UnimplementedDataQualityServiceServer) UpdateQualityAgentEnrollment(context.Context, *UpdateQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateQualityAgentEnrollment not implemented")
-}
-func (UnimplementedDataQualityServiceServer) RetryQualityAgentEnrollment(context.Context, *RetryQualityAgentEnrollmentRequest) (*QualityAgentEnrollment, error) {
-	return nil, status.Error(codes.Unimplemented, "method RetryQualityAgentEnrollment not implemented")
 }
 func (UnimplementedDataQualityServiceServer) mustEmbedUnimplementedDataQualityServiceServer() {}
 func (UnimplementedDataQualityServiceServer) testEmbeddedByValue()                            {}
@@ -2733,96 +2723,6 @@ func _DataQualityService_BatchUpdateQualitySuggestions_Handler(srv interface{}, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).BatchUpdateQualitySuggestions(ctx, req.(*BatchUpdateQualitySuggestionsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_CreateQualitySuggestionJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateQualitySuggestionJobRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).CreateQualitySuggestionJob(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_CreateQualitySuggestionJob_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).CreateQualitySuggestionJob(ctx, req.(*CreateQualitySuggestionJobRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_GetQualitySuggestionJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetQualitySuggestionJobRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).GetQualitySuggestionJob(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_GetQualitySuggestionJob_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).GetQualitySuggestionJob(ctx, req.(*GetQualitySuggestionJobRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ListQualitySuggestionJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListQualitySuggestionJobsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ListQualitySuggestionJobs(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ListQualitySuggestionJobs_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ListQualitySuggestionJobs(ctx, req.(*ListQualitySuggestionJobsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_CancelQualitySuggestionJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CancelQualitySuggestionJobRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).CancelQualitySuggestionJob(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_CancelQualitySuggestionJob_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).CancelQualitySuggestionJob(ctx, req.(*CancelQualitySuggestionJobRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_GetQualitySuggestionJobTargetDebug_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetQualitySuggestionJobTargetDebugRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).GetQualitySuggestionJobTargetDebug(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_GetQualitySuggestionJobTargetDebug_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).GetQualitySuggestionJobTargetDebug(ctx, req.(*GetQualitySuggestionJobTargetDebugRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3461,6 +3361,204 @@ func _DataQualityService_CreateQualityAgent_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataQualityService_GetQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgent(ctx, req.(*GetQualityAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_SendQualityAgentMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendQualityAgentMessageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).SendQualityAgentMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_SendQualityAgentMessage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).SendQualityAgentMessage(ctx, req.(*SendQualityAgentMessageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgentConversationMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentConversationMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentConversationMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentConversationMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentConversationMessages(ctx, req.(*ListQualityAgentConversationMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgentReports_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentReportsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentReports(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentReports_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentReports(ctx, req.(*ListQualityAgentReportsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_GetQualityAgentReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQualityAgentReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).GetQualityAgentReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_GetQualityAgentReport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).GetQualityAgentReport(ctx, req.(*GetQualityAgentReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ListQualityAgentAttentions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQualityAgentAttentionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ListQualityAgentAttentions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ListQualityAgentAttentions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ListQualityAgentAttentions(ctx, req.(*ListQualityAgentAttentionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_ReplyQualityAgentAttention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplyQualityAgentAttentionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).ReplyQualityAgentAttention(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_ReplyQualityAgentAttention_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).ReplyQualityAgentAttention(ctx, req.(*ReplyQualityAgentAttentionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_DismissQualityAgentAttention_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DismissQualityAgentAttentionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).DismissQualityAgentAttention(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_DismissQualityAgentAttention_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).DismissQualityAgentAttention(ctx, req.(*DismissQualityAgentAttentionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_UpdateQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateQualityAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).UpdateQualityAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_UpdateQualityAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).UpdateQualityAgent(ctx, req.(*UpdateQualityAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_StartQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartQualityAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).StartQualityAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_StartQualityAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).StartQualityAgent(ctx, req.(*StartQualityAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DataQualityService_PauseQualityAgent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseQualityAgentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataQualityServiceServer).PauseQualityAgent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataQualityService_PauseQualityAgent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataQualityServiceServer).PauseQualityAgent(ctx, req.(*PauseQualityAgentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DataQualityService_ListQualityAgents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQualityAgentsRequest)
 	if err := dec(in); err != nil {
@@ -3587,24 +3685,6 @@ func _DataQualityService_GetQualityLLMUsage_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_CreateQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateQualityAgentSessionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).CreateQualityAgentSession(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_CreateQualityAgentSession_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).CreateQualityAgentSession(ctx, req.(*CreateQualityAgentSessionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DataQualityService_ListQualityAgentSessions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQualityAgentSessionsRequest)
 	if err := dec(in); err != nil {
@@ -3641,24 +3721,6 @@ func _DataQualityService_GetQualityAgentSession_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _DataQualityService_PauseQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseQualityAgentSessionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).PauseQualityAgentSession(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_PauseQualityAgentSession_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).PauseQualityAgentSession(ctx, req.(*PauseQualityAgentSessionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DataQualityService_ResumeQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ResumeQualityAgentSessionRequest)
 	if err := dec(in); err != nil {
@@ -3673,42 +3735,6 @@ func _DataQualityService_ResumeQualityAgentSession_Handler(srv interface{}, ctx 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).ResumeQualityAgentSession(ctx, req.(*ResumeQualityAgentSessionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_ArchiveQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ArchiveQualityAgentSessionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).ArchiveQualityAgentSession(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_ArchiveQualityAgentSession_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).ArchiveQualityAgentSession(ctx, req.(*ArchiveQualityAgentSessionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_WakeQualityAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(WakeQualityAgentSessionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).WakeQualityAgentSession(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_WakeQualityAgentSession_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).WakeQualityAgentSession(ctx, req.(*WakeQualityAgentSessionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3799,42 +3825,6 @@ func _DataQualityService_GetQualityAgentEnrollmentSummary_Handler(srv interface{
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DataQualityServiceServer).GetQualityAgentEnrollmentSummary(ctx, req.(*GetQualityAgentEnrollmentSummaryRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_UpdateQualityAgentEnrollment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateQualityAgentEnrollmentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).UpdateQualityAgentEnrollment(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_UpdateQualityAgentEnrollment_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).UpdateQualityAgentEnrollment(ctx, req.(*UpdateQualityAgentEnrollmentRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _DataQualityService_RetryQualityAgentEnrollment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RetryQualityAgentEnrollmentRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DataQualityServiceServer).RetryQualityAgentEnrollment(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DataQualityService_RetryQualityAgentEnrollment_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DataQualityServiceServer).RetryQualityAgentEnrollment(ctx, req.(*RetryQualityAgentEnrollmentRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3969,26 +3959,6 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchUpdateQualitySuggestions",
 			Handler:    _DataQualityService_BatchUpdateQualitySuggestions_Handler,
-		},
-		{
-			MethodName: "CreateQualitySuggestionJob",
-			Handler:    _DataQualityService_CreateQualitySuggestionJob_Handler,
-		},
-		{
-			MethodName: "GetQualitySuggestionJob",
-			Handler:    _DataQualityService_GetQualitySuggestionJob_Handler,
-		},
-		{
-			MethodName: "ListQualitySuggestionJobs",
-			Handler:    _DataQualityService_ListQualitySuggestionJobs_Handler,
-		},
-		{
-			MethodName: "CancelQualitySuggestionJob",
-			Handler:    _DataQualityService_CancelQualitySuggestionJob_Handler,
-		},
-		{
-			MethodName: "GetQualitySuggestionJobTargetDebug",
-			Handler:    _DataQualityService_GetQualitySuggestionJobTargetDebug_Handler,
 		},
 		{
 			MethodName: "ListColumnProfiles",
@@ -4127,6 +4097,50 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_CreateQualityAgent_Handler,
 		},
 		{
+			MethodName: "GetQualityAgent",
+			Handler:    _DataQualityService_GetQualityAgent_Handler,
+		},
+		{
+			MethodName: "SendQualityAgentMessage",
+			Handler:    _DataQualityService_SendQualityAgentMessage_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentConversationMessages",
+			Handler:    _DataQualityService_ListQualityAgentConversationMessages_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentReports",
+			Handler:    _DataQualityService_ListQualityAgentReports_Handler,
+		},
+		{
+			MethodName: "GetQualityAgentReport",
+			Handler:    _DataQualityService_GetQualityAgentReport_Handler,
+		},
+		{
+			MethodName: "ListQualityAgentAttentions",
+			Handler:    _DataQualityService_ListQualityAgentAttentions_Handler,
+		},
+		{
+			MethodName: "ReplyQualityAgentAttention",
+			Handler:    _DataQualityService_ReplyQualityAgentAttention_Handler,
+		},
+		{
+			MethodName: "DismissQualityAgentAttention",
+			Handler:    _DataQualityService_DismissQualityAgentAttention_Handler,
+		},
+		{
+			MethodName: "UpdateQualityAgent",
+			Handler:    _DataQualityService_UpdateQualityAgent_Handler,
+		},
+		{
+			MethodName: "StartQualityAgent",
+			Handler:    _DataQualityService_StartQualityAgent_Handler,
+		},
+		{
+			MethodName: "PauseQualityAgent",
+			Handler:    _DataQualityService_PauseQualityAgent_Handler,
+		},
+		{
 			MethodName: "ListQualityAgents",
 			Handler:    _DataQualityService_ListQualityAgents_Handler,
 		},
@@ -4155,10 +4169,6 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_GetQualityLLMUsage_Handler,
 		},
 		{
-			MethodName: "CreateQualityAgentSession",
-			Handler:    _DataQualityService_CreateQualityAgentSession_Handler,
-		},
-		{
 			MethodName: "ListQualityAgentSessions",
 			Handler:    _DataQualityService_ListQualityAgentSessions_Handler,
 		},
@@ -4167,20 +4177,8 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _DataQualityService_GetQualityAgentSession_Handler,
 		},
 		{
-			MethodName: "PauseQualityAgentSession",
-			Handler:    _DataQualityService_PauseQualityAgentSession_Handler,
-		},
-		{
 			MethodName: "ResumeQualityAgentSession",
 			Handler:    _DataQualityService_ResumeQualityAgentSession_Handler,
-		},
-		{
-			MethodName: "ArchiveQualityAgentSession",
-			Handler:    _DataQualityService_ArchiveQualityAgentSession_Handler,
-		},
-		{
-			MethodName: "WakeQualityAgentSession",
-			Handler:    _DataQualityService_WakeQualityAgentSession_Handler,
 		},
 		{
 			MethodName: "ListQualityAgentSessionMessages",
@@ -4201,14 +4199,6 @@ var DataQualityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetQualityAgentEnrollmentSummary",
 			Handler:    _DataQualityService_GetQualityAgentEnrollmentSummary_Handler,
-		},
-		{
-			MethodName: "UpdateQualityAgentEnrollment",
-			Handler:    _DataQualityService_UpdateQualityAgentEnrollment_Handler,
-		},
-		{
-			MethodName: "RetryQualityAgentEnrollment",
-			Handler:    _DataQualityService_RetryQualityAgentEnrollment_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

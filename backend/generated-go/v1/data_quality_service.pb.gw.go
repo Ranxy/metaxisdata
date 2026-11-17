@@ -1592,241 +1592,6 @@ func local_request_DataQualityService_BatchUpdateQualitySuggestions_0(ctx contex
 	return msg, metadata, err
 }
 
-func request_DataQualityService_CreateQualitySuggestionJob_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq CreateQualitySuggestionJobRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["parent"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
-	}
-	protoReq.Parent, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
-	}
-	msg, err := client.CreateQualitySuggestionJob(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_CreateQualitySuggestionJob_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq CreateQualitySuggestionJobRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["parent"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
-	}
-	protoReq.Parent, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
-	}
-	msg, err := server.CreateQualitySuggestionJob(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_DataQualityService_GetQualitySuggestionJob_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq GetQualitySuggestionJobRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := client.GetQualitySuggestionJob(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_GetQualitySuggestionJob_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq GetQualitySuggestionJobRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := server.GetQualitySuggestionJob(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-var filter_DataQualityService_ListQualitySuggestionJobs_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
-
-func request_DataQualityService_ListQualitySuggestionJobs_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListQualitySuggestionJobsRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["parent"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
-	}
-	protoReq.Parent, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualitySuggestionJobs_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := client.ListQualitySuggestionJobs(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_ListQualitySuggestionJobs_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListQualitySuggestionJobsRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["parent"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
-	}
-	protoReq.Parent, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualitySuggestionJobs_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.ListQualitySuggestionJobs(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_DataQualityService_CancelQualitySuggestionJob_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq CancelQualitySuggestionJobRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := client.CancelQualitySuggestionJob(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_CancelQualitySuggestionJob_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq CancelQualitySuggestionJobRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := server.CancelQualitySuggestionJob(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-var filter_DataQualityService_GetQualitySuggestionJobTargetDebug_0 = &utilities.DoubleArray{Encoding: map[string]int{"name": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
-
-func request_DataQualityService_GetQualitySuggestionJobTargetDebug_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq GetQualitySuggestionJobTargetDebugRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_GetQualitySuggestionJobTargetDebug_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := client.GetQualitySuggestionJobTargetDebug(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_GetQualitySuggestionJobTargetDebug_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq GetQualitySuggestionJobTargetDebugRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_GetQualitySuggestionJobTargetDebug_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.GetQualitySuggestionJobTargetDebug(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 var filter_DataQualityService_ListColumnProfiles_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 
 func request_DataQualityService_ListColumnProfiles_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -3453,6 +3218,510 @@ func local_request_DataQualityService_CreateQualityAgent_0(ctx context.Context, 
 	return msg, metadata, err
 }
 
+func request_DataQualityService_SendQualityAgentMessage_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq SendQualityAgentMessageRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.SendQualityAgentMessage(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_SendQualityAgentMessage_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq SendQualityAgentMessageRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.SendQualityAgentMessage(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+var filter_DataQualityService_ListQualityAgentConversationMessages_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+
+func request_DataQualityService_ListQualityAgentConversationMessages_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ListQualityAgentConversationMessagesRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualityAgentConversationMessages_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := client.ListQualityAgentConversationMessages(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_ListQualityAgentConversationMessages_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ListQualityAgentConversationMessagesRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualityAgentConversationMessages_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := server.ListQualityAgentConversationMessages(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+var filter_DataQualityService_ListQualityAgentReports_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+
+func request_DataQualityService_ListQualityAgentReports_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ListQualityAgentReportsRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualityAgentReports_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := client.ListQualityAgentReports(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_ListQualityAgentReports_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ListQualityAgentReportsRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualityAgentReports_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := server.ListQualityAgentReports(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_GetQualityAgentReport_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetQualityAgentReportRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.GetQualityAgentReport(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_GetQualityAgentReport_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq GetQualityAgentReportRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.GetQualityAgentReport(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+var filter_DataQualityService_ListQualityAgentAttentions_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+
+func request_DataQualityService_ListQualityAgentAttentions_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ListQualityAgentAttentionsRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualityAgentAttentions_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := client.ListQualityAgentAttentions(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_ListQualityAgentAttentions_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ListQualityAgentAttentionsRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	val, ok := pathParams["parent"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
+	}
+	protoReq.Parent, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ListQualityAgentAttentions_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := server.ListQualityAgentAttentions(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_ReplyQualityAgentAttention_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ReplyQualityAgentAttentionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.ReplyQualityAgentAttention(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_ReplyQualityAgentAttention_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq ReplyQualityAgentAttentionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.ReplyQualityAgentAttention(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_DismissQualityAgentAttention_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq DismissQualityAgentAttentionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.DismissQualityAgentAttention(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_DismissQualityAgentAttention_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq DismissQualityAgentAttentionRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.DismissQualityAgentAttention(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+var filter_DataQualityService_UpdateQualityAgent_0 = &utilities.DoubleArray{Encoding: map[string]int{"quality_agent": 0, "name": 1}, Base: []int{1, 2, 1, 0, 0}, Check: []int{0, 1, 2, 3, 2}}
+
+func request_DataQualityService_UpdateQualityAgent_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq UpdateQualityAgentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	newReader, berr := utilities.IOReaderFactory(req.Body)
+	if berr != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", berr)
+	}
+	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq.QualityAgent); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	if protoReq.UpdateMask == nil || len(protoReq.UpdateMask.GetPaths()) == 0 {
+		if fieldMask, err := runtime.FieldMaskFromRequestBody(newReader(), protoReq.QualityAgent); err != nil {
+			return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+		} else {
+			protoReq.UpdateMask = fieldMask
+		}
+	}
+	val, ok := pathParams["quality_agent.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "quality_agent.name")
+	}
+	err = runtime.PopulateFieldFromPath(&protoReq, "quality_agent.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "quality_agent.name", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_UpdateQualityAgent_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := client.UpdateQualityAgent(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_UpdateQualityAgent_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq UpdateQualityAgentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	newReader, berr := utilities.IOReaderFactory(req.Body)
+	if berr != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", berr)
+	}
+	if err := marshaler.NewDecoder(newReader()).Decode(&protoReq.QualityAgent); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if protoReq.UpdateMask == nil || len(protoReq.UpdateMask.GetPaths()) == 0 {
+		if fieldMask, err := runtime.FieldMaskFromRequestBody(newReader(), protoReq.QualityAgent); err != nil {
+			return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+		} else {
+			protoReq.UpdateMask = fieldMask
+		}
+	}
+	val, ok := pathParams["quality_agent.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "quality_agent.name")
+	}
+	err = runtime.PopulateFieldFromPath(&protoReq, "quality_agent.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "quality_agent.name", err)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_UpdateQualityAgent_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	msg, err := server.UpdateQualityAgent(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_StartQualityAgent_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq StartQualityAgentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.StartQualityAgent(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_StartQualityAgent_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq StartQualityAgentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.StartQualityAgent(ctx, &protoReq)
+	return msg, metadata, err
+}
+
+func request_DataQualityService_PauseQualityAgent_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq PauseQualityAgentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := client.PauseQualityAgent(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+}
+
+func local_request_DataQualityService_PauseQualityAgent_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var (
+		protoReq PauseQualityAgentRequest
+		metadata runtime.ServerMetadata
+		err      error
+	)
+	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+	msg, err := server.PauseQualityAgent(ctx, &protoReq)
+	return msg, metadata, err
+}
+
 var filter_DataQualityService_ListQualityAgents_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 
 func request_DataQualityService_ListQualityAgents_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -3786,51 +4055,6 @@ func local_request_DataQualityService_GetQualityLLMUsage_0(ctx context.Context, 
 	return msg, metadata, err
 }
 
-func request_DataQualityService_CreateQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq CreateQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["parent"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
-	}
-	protoReq.Parent, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
-	}
-	msg, err := client.CreateQualityAgentSession(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_CreateQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq CreateQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["parent"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "parent")
-	}
-	protoReq.Parent, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
-	}
-	msg, err := server.CreateQualityAgentSession(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 var filter_DataQualityService_ListQualityAgentSessions_0 = &utilities.DoubleArray{Encoding: map[string]int{"parent": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 
 func request_DataQualityService_ListQualityAgentSessions_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -3923,51 +4147,6 @@ func local_request_DataQualityService_GetQualityAgentSession_0(ctx context.Conte
 	return msg, metadata, err
 }
 
-func request_DataQualityService_PauseQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq PauseQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := client.PauseQualityAgentSession(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_PauseQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq PauseQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := server.PauseQualityAgentSession(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 func request_DataQualityService_ResumeQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ResumeQualityAgentSessionRequest
@@ -4010,104 +4189,6 @@ func local_request_DataQualityService_ResumeQualityAgentSession_0(ctx context.Co
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
 	}
 	msg, err := server.ResumeQualityAgentSession(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-var filter_DataQualityService_ArchiveQualityAgentSession_0 = &utilities.DoubleArray{Encoding: map[string]int{"name": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
-
-func request_DataQualityService_ArchiveQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ArchiveQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ArchiveQualityAgentSession_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := client.ArchiveQualityAgentSession(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_ArchiveQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ArchiveQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	if err := req.ParseForm(); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DataQualityService_ArchiveQualityAgentSession_0); err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.ArchiveQualityAgentSession(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_DataQualityService_WakeQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq WakeQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := client.WakeQualityAgentSession(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_WakeQualityAgentSession_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq WakeQualityAgentSessionRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := server.WakeQualityAgentSession(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -4331,96 +4412,6 @@ func local_request_DataQualityService_GetQualityAgentEnrollmentSummary_0(ctx con
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "parent", err)
 	}
 	msg, err := server.GetQualityAgentEnrollmentSummary(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_DataQualityService_UpdateQualityAgentEnrollment_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq UpdateQualityAgentEnrollmentRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["enrollment.name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "enrollment.name")
-	}
-	err = runtime.PopulateFieldFromPath(&protoReq, "enrollment.name", val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "enrollment.name", err)
-	}
-	msg, err := client.UpdateQualityAgentEnrollment(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_UpdateQualityAgentEnrollment_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq UpdateQualityAgentEnrollmentRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["enrollment.name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "enrollment.name")
-	}
-	err = runtime.PopulateFieldFromPath(&protoReq, "enrollment.name", val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "enrollment.name", err)
-	}
-	msg, err := server.UpdateQualityAgentEnrollment(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_DataQualityService_RetryQualityAgentEnrollment_0(ctx context.Context, marshaler runtime.Marshaler, client DataQualityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq RetryQualityAgentEnrollmentRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := client.RetryQualityAgentEnrollment(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_DataQualityService_RetryQualityAgentEnrollment_0(ctx context.Context, marshaler runtime.Marshaler, server DataQualityServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq RetryQualityAgentEnrollmentRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["name"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
-	}
-	protoReq.Name, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
-	}
-	msg, err := server.RetryQualityAgentEnrollment(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -5049,106 +5040,6 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_BatchUpdateQualitySuggestions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_CreateQualitySuggestionJob_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualitySuggestionJobs"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_CreateQualitySuggestionJob_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_CreateQualitySuggestionJob_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualitySuggestionJob_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestionJobs/*}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_GetQualitySuggestionJob_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_GetQualitySuggestionJob_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualitySuggestionJobs_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualitySuggestionJobs"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_ListQualitySuggestionJobs_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_ListQualitySuggestionJobs_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_CancelQualitySuggestionJob_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestionJobs/*}:cancel"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_CancelQualitySuggestionJob_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_CancelQualitySuggestionJob_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualitySuggestionJobTargetDebug_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJobTargetDebug", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestionJobs/*}:debug"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_GetQualitySuggestionJobTargetDebug_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_GetQualitySuggestionJobTargetDebug_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListColumnProfiles_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -5830,6 +5721,206 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_CreateQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_SendQualityAgentMessage_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/SendQualityAgentMessage", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgents/*}:message"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_SendQualityAgentMessage_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_SendQualityAgentMessage_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentConversationMessages_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualityAgentConversationMessages", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*/qualityAgents/*}/conversation"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_ListQualityAgentConversationMessages_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ListQualityAgentConversationMessages_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentReports_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualityAgentReports", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*/qualityAgents/*}/reports"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_ListQualityAgentReports_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ListQualityAgentReports_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualityAgentReport_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualityAgentReport", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentReports/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_GetQualityAgentReport_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_GetQualityAgentReport_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentAttentions_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualityAgentAttentions", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*/qualityAgents/*}/attentions"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_ListQualityAgentAttentions_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ListQualityAgentAttentions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_ReplyQualityAgentAttention_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentAttentions/*}:reply"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_ReplyQualityAgentAttention_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ReplyQualityAgentAttention_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_DismissQualityAgentAttention_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentAttentions/*}:dismiss"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_DismissQualityAgentAttention_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_DismissQualityAgentAttention_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPatch, pattern_DataQualityService_UpdateQualityAgent_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/UpdateQualityAgent", runtime.WithHTTPPathPattern("/v1/{quality_agent.name=workspaces/*/qualityAgents/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_UpdateQualityAgent_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_UpdateQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_StartQualityAgent_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/StartQualityAgent", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgents/*}:start"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_StartQualityAgent_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_StartQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_PauseQualityAgent_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/PauseQualityAgent", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgents/*}:pause"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DataQualityService_PauseQualityAgent_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_PauseQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgents_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -5970,26 +6061,6 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityLLMUsage_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_CreateQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/CreateQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualityAgentSessions"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_CreateQualityAgentSession_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_CreateQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentSessions_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -6030,26 +6101,6 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_PauseQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/PauseQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentSessions/*}:pause"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_PauseQualityAgentSession_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_PauseQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_DataQualityService_ResumeQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -6069,46 +6120,6 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_ResumeQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodDelete, pattern_DataQualityService_ArchiveQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ArchiveQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentSessions/*}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_ArchiveQualityAgentSession_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_ArchiveQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_WakeQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/WakeQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentSessions/*}:wake"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_WakeQualityAgentSession_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_WakeQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentSessionMessages_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -6209,46 +6220,6 @@ func RegisterDataQualityServiceHandlerServer(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_GetQualityAgentEnrollmentSummary_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPatch, pattern_DataQualityService_UpdateQualityAgentEnrollment_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/UpdateQualityAgentEnrollment", runtime.WithHTTPPathPattern("/v1/{enrollment.name=workspaces/*/qualityAgentEnrollments/*}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_UpdateQualityAgentEnrollment_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_UpdateQualityAgentEnrollment_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_RetryQualityAgentEnrollment_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/RetryQualityAgentEnrollment", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentEnrollments/*}:retry"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_DataQualityService_RetryQualityAgentEnrollment_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_RetryQualityAgentEnrollment_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
@@ -6816,91 +6787,6 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_BatchUpdateQualitySuggestions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_CreateQualitySuggestionJob_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/CreateQualitySuggestionJob", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualitySuggestionJobs"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_CreateQualitySuggestionJob_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_CreateQualitySuggestionJob_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualitySuggestionJob_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJob", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestionJobs/*}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_GetQualitySuggestionJob_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_GetQualitySuggestionJob_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualitySuggestionJobs_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualitySuggestionJobs", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualitySuggestionJobs"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_ListQualitySuggestionJobs_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_ListQualitySuggestionJobs_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_CancelQualitySuggestionJob_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/CancelQualitySuggestionJob", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestionJobs/*}:cancel"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_CancelQualitySuggestionJob_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_CancelQualitySuggestionJob_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualitySuggestionJobTargetDebug_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualitySuggestionJobTargetDebug", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualitySuggestionJobs/*}:debug"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_GetQualitySuggestionJobTargetDebug_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_GetQualitySuggestionJobTargetDebug_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListColumnProfiles_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -7480,6 +7366,176 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_CreateQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_SendQualityAgentMessage_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/SendQualityAgentMessage", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgents/*}:message"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_SendQualityAgentMessage_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_SendQualityAgentMessage_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentConversationMessages_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualityAgentConversationMessages", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*/qualityAgents/*}/conversation"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_ListQualityAgentConversationMessages_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ListQualityAgentConversationMessages_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentReports_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualityAgentReports", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*/qualityAgents/*}/reports"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_ListQualityAgentReports_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ListQualityAgentReports_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_GetQualityAgentReport_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/GetQualityAgentReport", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentReports/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_GetQualityAgentReport_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_GetQualityAgentReport_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentAttentions_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ListQualityAgentAttentions", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*/qualityAgents/*}/attentions"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_ListQualityAgentAttentions_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ListQualityAgentAttentions_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_ReplyQualityAgentAttention_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ReplyQualityAgentAttention", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentAttentions/*}:reply"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_ReplyQualityAgentAttention_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_ReplyQualityAgentAttention_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_DismissQualityAgentAttention_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/DismissQualityAgentAttention", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentAttentions/*}:dismiss"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_DismissQualityAgentAttention_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_DismissQualityAgentAttention_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPatch, pattern_DataQualityService_UpdateQualityAgent_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/UpdateQualityAgent", runtime.WithHTTPPathPattern("/v1/{quality_agent.name=workspaces/*/qualityAgents/*}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_UpdateQualityAgent_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_UpdateQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_StartQualityAgent_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/StartQualityAgent", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgents/*}:start"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_StartQualityAgent_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_StartQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
+	mux.Handle(http.MethodPost, pattern_DataQualityService_PauseQualityAgent_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/PauseQualityAgent", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgents/*}:pause"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DataQualityService_PauseQualityAgent_0(annotatedContext, inboundMarshaler, client, req, pathParams)
+		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+		if err != nil {
+			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		forward_DataQualityService_PauseQualityAgent_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgents_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -7599,23 +7655,6 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityLLMUsage_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_CreateQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/CreateQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{parent=workspaces/*}/qualityAgentSessions"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_CreateQualityAgentSession_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_CreateQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentSessions_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -7650,23 +7689,6 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_PauseQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/PauseQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentSessions/*}:pause"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_PauseQualityAgentSession_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_PauseQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_DataQualityService_ResumeQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -7683,40 +7705,6 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 			return
 		}
 		forward_DataQualityService_ResumeQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodDelete, pattern_DataQualityService_ArchiveQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/ArchiveQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentSessions/*}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_ArchiveQualityAgentSession_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_ArchiveQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_WakeQualityAgentSession_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/WakeQualityAgentSession", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentSessions/*}:wake"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_WakeQualityAgentSession_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_WakeQualityAgentSession_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodGet, pattern_DataQualityService_ListQualityAgentSessionMessages_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -7803,227 +7791,191 @@ func RegisterDataQualityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_DataQualityService_GetQualityAgentEnrollmentSummary_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPatch, pattern_DataQualityService_UpdateQualityAgentEnrollment_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/UpdateQualityAgentEnrollment", runtime.WithHTTPPathPattern("/v1/{enrollment.name=workspaces/*/qualityAgentEnrollments/*}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_UpdateQualityAgentEnrollment_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_UpdateQualityAgentEnrollment_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_DataQualityService_RetryQualityAgentEnrollment_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/metaxisdata.v1.DataQualityService/RetryQualityAgentEnrollment", runtime.WithHTTPPathPattern("/v1/{name=workspaces/*/qualityAgentEnrollments/*}:retry"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_DataQualityService_RetryQualityAgentEnrollment_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_DataQualityService_RetryQualityAgentEnrollment_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	return nil
 }
 
 var (
-	pattern_DataQualityService_ListQualityRules_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
-	pattern_DataQualityService_GetQualityRule_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
-	pattern_DataQualityService_CreateQualityRule_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
-	pattern_DataQualityService_BatchCreateQualityRules_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "batchCreate"))
-	pattern_DataQualityService_BatchUpdateQualityRules_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "batchUpdate"))
-	pattern_DataQualityService_UpdateQualityRule_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "rule.name"}, ""))
-	pattern_DataQualityService_DeleteQualityRule_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
-	pattern_DataQualityService_ListQualityRuleTemplates_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRuleTemplates"}, ""))
-	pattern_DataQualityService_GetQualityRuleTemplate_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuleTemplates", "name"}, ""))
-	pattern_DataQualityService_CreateQualityRuleTemplate_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRuleTemplates"}, ""))
-	pattern_DataQualityService_UpdateQualityRuleTemplate_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuleTemplates", "quality_rule_template.name"}, ""))
-	pattern_DataQualityService_DeleteQualityRuleTemplate_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuleTemplates", "name"}, ""))
-	pattern_DataQualityService_ListQualityCodeTables_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityCodeTables"}, ""))
-	pattern_DataQualityService_GetQualityCodeTable_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityCodeTables", "name"}, ""))
-	pattern_DataQualityService_CreateQualityCodeTable_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityCodeTables"}, ""))
-	pattern_DataQualityService_UpdateQualityCodeTable_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityCodeTables", "quality_code_table.name"}, ""))
-	pattern_DataQualityService_DeleteQualityCodeTable_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityCodeTables", "name"}, ""))
-	pattern_DataQualityService_PreviewQualityRule_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "preview"))
-	pattern_DataQualityService_RunQualityRules_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "run"))
-	pattern_DataQualityService_ListQualityExecutions_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityExecutions"}, ""))
-	pattern_DataQualityService_GetQualityExecution_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityExecutions", "name"}, ""))
-	pattern_DataQualityService_GetQualityRuleTrend_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, "trend"))
-	pattern_DataQualityService_ListQualityRuns_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRuns"}, ""))
-	pattern_DataQualityService_GetQualityRun_0                      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuns", "name"}, ""))
-	pattern_DataQualityService_ListQualityIssues_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityIssues"}, ""))
-	pattern_DataQualityService_GetQualityIssue_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "name"}, ""))
-	pattern_DataQualityService_UpdateQualityIssue_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "issue.name"}, ""))
-	pattern_DataQualityService_ListQualitySuggestions_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, ""))
-	pattern_DataQualityService_GetQualitySuggestion_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, ""))
-	pattern_DataQualityService_UpdateQualitySuggestion_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, "decide"))
-	pattern_DataQualityService_BatchUpdateQualitySuggestions_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "batchDecide"))
-	pattern_DataQualityService_CreateQualitySuggestionJob_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestionJobs"}, ""))
-	pattern_DataQualityService_GetQualitySuggestionJob_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestionJobs", "name"}, ""))
-	pattern_DataQualityService_ListQualitySuggestionJobs_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestionJobs"}, ""))
-	pattern_DataQualityService_CancelQualitySuggestionJob_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestionJobs", "name"}, "cancel"))
-	pattern_DataQualityService_GetQualitySuggestionJobTargetDebug_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestionJobs", "name"}, "debug"))
-	pattern_DataQualityService_ListColumnProfiles_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, ""))
-	pattern_DataQualityService_ListColumnLabels_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, ""))
-	pattern_DataQualityService_UpdateColumnLabel_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, "update"))
-	pattern_DataQualityService_ProfileColumns_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, "profile"))
-	pattern_DataQualityService_SuggestQualityRule_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestRule"))
-	pattern_DataQualityService_SuggestColumnLabels_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestLabels"))
-	pattern_DataQualityService_RecommendQualityChecks_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "recommendChecks"))
-	pattern_DataQualityService_GetQualityOverview_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityOverview"}, ""))
-	pattern_DataQualityService_GetQualityConsumptionCoverage_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityConsumptionCoverage"}, ""))
-	pattern_DataQualityService_ListQualityTargets_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, ""))
-	pattern_DataQualityService_GetQualityTarget_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "get"))
-	pattern_DataQualityService_GetQualityTargetImpact_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "impact"))
-	pattern_DataQualityService_AcknowledgeQualityTargetSchema_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "acknowledgeSchemaChange"))
-	pattern_DataQualityService_ExportQualityReport_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "exportReport"))
-	pattern_DataQualityService_UpdateQualityTargetSchedule_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "updateSchedule"))
-	pattern_DataQualityService_GetQualityTargetSchedule_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "getSchedule"))
-	pattern_DataQualityService_GetQualityContract_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "get"))
-	pattern_DataQualityService_ListQualityPlans_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityPlans"}, ""))
-	pattern_DataQualityService_ListQualityCoverageGaps_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityCoverageGaps"}, ""))
-	pattern_DataQualityService_UpdateQualityContract_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "update"))
-	pattern_DataQualityService_PublishQualityContract_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "publish"))
-	pattern_DataQualityService_CreateQualityInvestigation_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityInvestigations"}, ""))
-	pattern_DataQualityService_GetQualityInvestigation_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityInvestigations", "name"}, ""))
-	pattern_DataQualityService_ListQualityInvestigations_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityInvestigations"}, ""))
-	pattern_DataQualityService_GetQualityActionPolicy_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityActionPolicy"}, ""))
-	pattern_DataQualityService_CreateQualityMemory_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityMemories"}, ""))
-	pattern_DataQualityService_ListQualityMemories_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityMemories"}, ""))
-	pattern_DataQualityService_ConfirmQualityMemory_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityMemories", "name"}, "confirm"))
-	pattern_DataQualityService_DeleteQualityMemory_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityMemories", "name"}, ""))
-	pattern_DataQualityService_StageQualityPlan_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "stagePlan"))
-	pattern_DataQualityService_CreateQualityChangeRequest_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityChangeRequests"}, ""))
-	pattern_DataQualityService_GetQualityChangeRequest_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityChangeRequests", "name"}, ""))
-	pattern_DataQualityService_ListQualityChangeRequests_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityChangeRequests"}, ""))
-	pattern_DataQualityService_CreateQualityAgent_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgents"}, ""))
-	pattern_DataQualityService_ListQualityAgents_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgents"}, ""))
-	pattern_DataQualityService_DisableQualityAgent_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "disable"))
-	pattern_DataQualityService_RotateQualityAgentToken_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "rotateToken"))
-	pattern_DataQualityService_DecideQualityChangeRequest_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityChangeRequests", "name"}, "decide"))
-	pattern_DataQualityService_ListQualityContractRevisions_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContractRevisions"}, ""))
-	pattern_DataQualityService_GetQualityContractRevision_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContractRevisions"}, "get"))
-	pattern_DataQualityService_GetQualityLLMUsage_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityLLMUsage"}, ""))
-	pattern_DataQualityService_CreateQualityAgentSession_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentSessions"}, ""))
-	pattern_DataQualityService_ListQualityAgentSessions_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentSessions"}, ""))
-	pattern_DataQualityService_GetQualityAgentSession_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, ""))
-	pattern_DataQualityService_PauseQualityAgentSession_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, "pause"))
-	pattern_DataQualityService_ResumeQualityAgentSession_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, "resume"))
-	pattern_DataQualityService_ArchiveQualityAgentSession_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, ""))
-	pattern_DataQualityService_WakeQualityAgentSession_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, "wake"))
-	pattern_DataQualityService_ListQualityAgentSessionMessages_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "workspaces", "qualityAgentSessions", "parent", "messages"}, ""))
-	pattern_DataQualityService_GetQualityAgentRunnerStatus_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentRunnerStatus"}, ""))
-	pattern_DataQualityService_GetQualityAgentMetrics_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentMetrics"}, ""))
-	pattern_DataQualityService_ListQualityAgentEnrollments_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentEnrollments"}, ""))
-	pattern_DataQualityService_GetQualityAgentEnrollmentSummary_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentEnrollments"}, "summary"))
-	pattern_DataQualityService_UpdateQualityAgentEnrollment_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentEnrollments", "enrollment.name"}, ""))
-	pattern_DataQualityService_RetryQualityAgentEnrollment_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentEnrollments", "name"}, "retry"))
+	pattern_DataQualityService_ListQualityRules_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
+	pattern_DataQualityService_GetQualityRule_0                       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
+	pattern_DataQualityService_CreateQualityRule_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, ""))
+	pattern_DataQualityService_BatchCreateQualityRules_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "batchCreate"))
+	pattern_DataQualityService_BatchUpdateQualityRules_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "batchUpdate"))
+	pattern_DataQualityService_UpdateQualityRule_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "rule.name"}, ""))
+	pattern_DataQualityService_DeleteQualityRule_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, ""))
+	pattern_DataQualityService_ListQualityRuleTemplates_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRuleTemplates"}, ""))
+	pattern_DataQualityService_GetQualityRuleTemplate_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuleTemplates", "name"}, ""))
+	pattern_DataQualityService_CreateQualityRuleTemplate_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRuleTemplates"}, ""))
+	pattern_DataQualityService_UpdateQualityRuleTemplate_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuleTemplates", "quality_rule_template.name"}, ""))
+	pattern_DataQualityService_DeleteQualityRuleTemplate_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuleTemplates", "name"}, ""))
+	pattern_DataQualityService_ListQualityCodeTables_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityCodeTables"}, ""))
+	pattern_DataQualityService_GetQualityCodeTable_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityCodeTables", "name"}, ""))
+	pattern_DataQualityService_CreateQualityCodeTable_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityCodeTables"}, ""))
+	pattern_DataQualityService_UpdateQualityCodeTable_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityCodeTables", "quality_code_table.name"}, ""))
+	pattern_DataQualityService_DeleteQualityCodeTable_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityCodeTables", "name"}, ""))
+	pattern_DataQualityService_PreviewQualityRule_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "preview"))
+	pattern_DataQualityService_RunQualityRules_0                      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRules"}, "run"))
+	pattern_DataQualityService_ListQualityExecutions_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityExecutions"}, ""))
+	pattern_DataQualityService_GetQualityExecution_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityExecutions", "name"}, ""))
+	pattern_DataQualityService_GetQualityRuleTrend_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRules", "name"}, "trend"))
+	pattern_DataQualityService_ListQualityRuns_0                      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityRuns"}, ""))
+	pattern_DataQualityService_GetQualityRun_0                        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityRuns", "name"}, ""))
+	pattern_DataQualityService_ListQualityIssues_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityIssues"}, ""))
+	pattern_DataQualityService_GetQualityIssue_0                      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "name"}, ""))
+	pattern_DataQualityService_UpdateQualityIssue_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityIssues", "issue.name"}, ""))
+	pattern_DataQualityService_ListQualitySuggestions_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, ""))
+	pattern_DataQualityService_GetQualitySuggestion_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, ""))
+	pattern_DataQualityService_UpdateQualitySuggestion_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualitySuggestions", "name"}, "decide"))
+	pattern_DataQualityService_BatchUpdateQualitySuggestions_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "batchDecide"))
+	pattern_DataQualityService_ListColumnProfiles_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, ""))
+	pattern_DataQualityService_ListColumnLabels_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, ""))
+	pattern_DataQualityService_UpdateColumnLabel_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnLabels"}, "update"))
+	pattern_DataQualityService_ProfileColumns_0                       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "columnProfiles"}, "profile"))
+	pattern_DataQualityService_SuggestQualityRule_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestRule"))
+	pattern_DataQualityService_SuggestColumnLabels_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "suggestLabels"))
+	pattern_DataQualityService_RecommendQualityChecks_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualitySuggestions"}, "recommendChecks"))
+	pattern_DataQualityService_GetQualityOverview_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityOverview"}, ""))
+	pattern_DataQualityService_GetQualityConsumptionCoverage_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityConsumptionCoverage"}, ""))
+	pattern_DataQualityService_ListQualityTargets_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, ""))
+	pattern_DataQualityService_GetQualityTarget_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "get"))
+	pattern_DataQualityService_GetQualityTargetImpact_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "impact"))
+	pattern_DataQualityService_AcknowledgeQualityTargetSchema_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "acknowledgeSchemaChange"))
+	pattern_DataQualityService_ExportQualityReport_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "exportReport"))
+	pattern_DataQualityService_UpdateQualityTargetSchedule_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "updateSchedule"))
+	pattern_DataQualityService_GetQualityTargetSchedule_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityTargets"}, "getSchedule"))
+	pattern_DataQualityService_GetQualityContract_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "get"))
+	pattern_DataQualityService_ListQualityPlans_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityPlans"}, ""))
+	pattern_DataQualityService_ListQualityCoverageGaps_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityCoverageGaps"}, ""))
+	pattern_DataQualityService_UpdateQualityContract_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "update"))
+	pattern_DataQualityService_PublishQualityContract_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "publish"))
+	pattern_DataQualityService_CreateQualityInvestigation_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityInvestigations"}, ""))
+	pattern_DataQualityService_GetQualityInvestigation_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityInvestigations", "name"}, ""))
+	pattern_DataQualityService_ListQualityInvestigations_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityInvestigations"}, ""))
+	pattern_DataQualityService_GetQualityActionPolicy_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityActionPolicy"}, ""))
+	pattern_DataQualityService_CreateQualityMemory_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityMemories"}, ""))
+	pattern_DataQualityService_ListQualityMemories_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityMemories"}, ""))
+	pattern_DataQualityService_ConfirmQualityMemory_0                 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityMemories", "name"}, "confirm"))
+	pattern_DataQualityService_DeleteQualityMemory_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityMemories", "name"}, ""))
+	pattern_DataQualityService_StageQualityPlan_0                     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContracts"}, "stagePlan"))
+	pattern_DataQualityService_CreateQualityChangeRequest_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityChangeRequests"}, ""))
+	pattern_DataQualityService_GetQualityChangeRequest_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityChangeRequests", "name"}, ""))
+	pattern_DataQualityService_ListQualityChangeRequests_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityChangeRequests"}, ""))
+	pattern_DataQualityService_CreateQualityAgent_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgents"}, ""))
+	pattern_DataQualityService_SendQualityAgentMessage_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "message"))
+	pattern_DataQualityService_ListQualityAgentConversationMessages_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "workspaces", "qualityAgents", "parent", "conversation"}, ""))
+	pattern_DataQualityService_ListQualityAgentReports_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "workspaces", "qualityAgents", "parent", "reports"}, ""))
+	pattern_DataQualityService_GetQualityAgentReport_0                = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentReports", "name"}, ""))
+	pattern_DataQualityService_ListQualityAgentAttentions_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "workspaces", "qualityAgents", "parent", "attentions"}, ""))
+	pattern_DataQualityService_ReplyQualityAgentAttention_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentAttentions", "name"}, "reply"))
+	pattern_DataQualityService_DismissQualityAgentAttention_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentAttentions", "name"}, "dismiss"))
+	pattern_DataQualityService_UpdateQualityAgent_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "quality_agent.name"}, ""))
+	pattern_DataQualityService_StartQualityAgent_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "start"))
+	pattern_DataQualityService_PauseQualityAgent_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "pause"))
+	pattern_DataQualityService_ListQualityAgents_0                    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgents"}, ""))
+	pattern_DataQualityService_DisableQualityAgent_0                  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "disable"))
+	pattern_DataQualityService_RotateQualityAgentToken_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgents", "name"}, "rotateToken"))
+	pattern_DataQualityService_DecideQualityChangeRequest_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityChangeRequests", "name"}, "decide"))
+	pattern_DataQualityService_ListQualityContractRevisions_0         = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContractRevisions"}, ""))
+	pattern_DataQualityService_GetQualityContractRevision_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityContractRevisions"}, "get"))
+	pattern_DataQualityService_GetQualityLLMUsage_0                   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityLLMUsage"}, ""))
+	pattern_DataQualityService_ListQualityAgentSessions_0             = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentSessions"}, ""))
+	pattern_DataQualityService_GetQualityAgentSession_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, ""))
+	pattern_DataQualityService_ResumeQualityAgentSession_0            = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3}, []string{"v1", "workspaces", "qualityAgentSessions", "name"}, "resume"))
+	pattern_DataQualityService_ListQualityAgentSessionMessages_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 2, 2, 1, 0, 4, 4, 5, 3, 2, 4}, []string{"v1", "workspaces", "qualityAgentSessions", "parent", "messages"}, ""))
+	pattern_DataQualityService_GetQualityAgentRunnerStatus_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentRunnerStatus"}, ""))
+	pattern_DataQualityService_GetQualityAgentMetrics_0               = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentMetrics"}, ""))
+	pattern_DataQualityService_ListQualityAgentEnrollments_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentEnrollments"}, ""))
+	pattern_DataQualityService_GetQualityAgentEnrollmentSummary_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 2, 5, 2, 2, 3}, []string{"v1", "workspaces", "parent", "qualityAgentEnrollments"}, "summary"))
 )
 
 var (
-	forward_DataQualityService_ListQualityRules_0                   = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityRule_0                     = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityRule_0                  = runtime.ForwardResponseMessage
-	forward_DataQualityService_BatchCreateQualityRules_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_BatchUpdateQualityRules_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityRule_0                  = runtime.ForwardResponseMessage
-	forward_DataQualityService_DeleteQualityRule_0                  = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityRuleTemplates_0           = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityRuleTemplate_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityRuleTemplate_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityRuleTemplate_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_DeleteQualityRuleTemplate_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityCodeTables_0              = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityCodeTable_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityCodeTable_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityCodeTable_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_DeleteQualityCodeTable_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_PreviewQualityRule_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_RunQualityRules_0                    = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityExecutions_0              = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityExecution_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityRuleTrend_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityRuns_0                    = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityRun_0                      = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityIssues_0                  = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityIssue_0                    = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityIssue_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualitySuggestions_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualitySuggestion_0               = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualitySuggestion_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_BatchUpdateQualitySuggestions_0      = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualitySuggestionJob_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualitySuggestionJob_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualitySuggestionJobs_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_CancelQualitySuggestionJob_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualitySuggestionJobTargetDebug_0 = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListColumnProfiles_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListColumnLabels_0                   = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateColumnLabel_0                  = runtime.ForwardResponseMessage
-	forward_DataQualityService_ProfileColumns_0                     = runtime.ForwardResponseMessage
-	forward_DataQualityService_SuggestQualityRule_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_SuggestColumnLabels_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_RecommendQualityChecks_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityOverview_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityConsumptionCoverage_0      = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityTargets_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityTarget_0                   = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityTargetImpact_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_AcknowledgeQualityTargetSchema_0     = runtime.ForwardResponseMessage
-	forward_DataQualityService_ExportQualityReport_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityTargetSchedule_0        = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityTargetSchedule_0           = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityContract_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityPlans_0                   = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityCoverageGaps_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityContract_0              = runtime.ForwardResponseMessage
-	forward_DataQualityService_PublishQualityContract_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityInvestigation_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityInvestigation_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityInvestigations_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityActionPolicy_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityMemory_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityMemories_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_ConfirmQualityMemory_0               = runtime.ForwardResponseMessage
-	forward_DataQualityService_DeleteQualityMemory_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_StageQualityPlan_0                   = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityChangeRequest_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityChangeRequest_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityChangeRequests_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityAgent_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityAgents_0                  = runtime.ForwardResponseMessage
-	forward_DataQualityService_DisableQualityAgent_0                = runtime.ForwardResponseMessage
-	forward_DataQualityService_RotateQualityAgentToken_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_DecideQualityChangeRequest_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityContractRevisions_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityContractRevision_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityLLMUsage_0                 = runtime.ForwardResponseMessage
-	forward_DataQualityService_CreateQualityAgentSession_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityAgentSessions_0           = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityAgentSession_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_PauseQualityAgentSession_0           = runtime.ForwardResponseMessage
-	forward_DataQualityService_ResumeQualityAgentSession_0          = runtime.ForwardResponseMessage
-	forward_DataQualityService_ArchiveQualityAgentSession_0         = runtime.ForwardResponseMessage
-	forward_DataQualityService_WakeQualityAgentSession_0            = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityAgentSessionMessages_0    = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityAgentRunnerStatus_0        = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityAgentMetrics_0             = runtime.ForwardResponseMessage
-	forward_DataQualityService_ListQualityAgentEnrollments_0        = runtime.ForwardResponseMessage
-	forward_DataQualityService_GetQualityAgentEnrollmentSummary_0   = runtime.ForwardResponseMessage
-	forward_DataQualityService_UpdateQualityAgentEnrollment_0       = runtime.ForwardResponseMessage
-	forward_DataQualityService_RetryQualityAgentEnrollment_0        = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityRules_0                     = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityRule_0                       = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityRule_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_BatchCreateQualityRules_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_BatchUpdateQualityRules_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityRule_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_DeleteQualityRule_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityRuleTemplates_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityRuleTemplate_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityRuleTemplate_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityRuleTemplate_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_DeleteQualityRuleTemplate_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityCodeTables_0                = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityCodeTable_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityCodeTable_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityCodeTable_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_DeleteQualityCodeTable_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_PreviewQualityRule_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_RunQualityRules_0                      = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityExecutions_0                = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityExecution_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityRuleTrend_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityRuns_0                      = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityRun_0                        = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityIssues_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityIssue_0                      = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityIssue_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualitySuggestions_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualitySuggestion_0                 = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualitySuggestion_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_BatchUpdateQualitySuggestions_0        = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListColumnProfiles_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListColumnLabels_0                     = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateColumnLabel_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_ProfileColumns_0                       = runtime.ForwardResponseMessage
+	forward_DataQualityService_SuggestQualityRule_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_SuggestColumnLabels_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_RecommendQualityChecks_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityOverview_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityConsumptionCoverage_0        = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityTargets_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityTarget_0                     = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityTargetImpact_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_AcknowledgeQualityTargetSchema_0       = runtime.ForwardResponseMessage
+	forward_DataQualityService_ExportQualityReport_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityTargetSchedule_0          = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityTargetSchedule_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityContract_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityPlans_0                     = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityCoverageGaps_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityContract_0                = runtime.ForwardResponseMessage
+	forward_DataQualityService_PublishQualityContract_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityInvestigation_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityInvestigation_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityInvestigations_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityActionPolicy_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityMemory_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityMemories_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_ConfirmQualityMemory_0                 = runtime.ForwardResponseMessage
+	forward_DataQualityService_DeleteQualityMemory_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_StageQualityPlan_0                     = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityChangeRequest_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityChangeRequest_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityChangeRequests_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_CreateQualityAgent_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_SendQualityAgentMessage_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgentConversationMessages_0 = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgentReports_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityAgentReport_0                = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgentAttentions_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_ReplyQualityAgentAttention_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_DismissQualityAgentAttention_0         = runtime.ForwardResponseMessage
+	forward_DataQualityService_UpdateQualityAgent_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_StartQualityAgent_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_PauseQualityAgent_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgents_0                    = runtime.ForwardResponseMessage
+	forward_DataQualityService_DisableQualityAgent_0                  = runtime.ForwardResponseMessage
+	forward_DataQualityService_RotateQualityAgentToken_0              = runtime.ForwardResponseMessage
+	forward_DataQualityService_DecideQualityChangeRequest_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityContractRevisions_0         = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityContractRevision_0           = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityLLMUsage_0                   = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgentSessions_0             = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityAgentSession_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_ResumeQualityAgentSession_0            = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgentSessionMessages_0      = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityAgentRunnerStatus_0          = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityAgentMetrics_0               = runtime.ForwardResponseMessage
+	forward_DataQualityService_ListQualityAgentEnrollments_0          = runtime.ForwardResponseMessage
+	forward_DataQualityService_GetQualityAgentEnrollmentSummary_0     = runtime.ForwardResponseMessage
 )
