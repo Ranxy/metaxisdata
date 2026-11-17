@@ -94,6 +94,17 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: "quality-agents",
+        name: "QualityAgentsSettings",
+        component: () =>
+          import("@/pages/settings/QualityAgentsSettingsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.settings.get",
+        },
+      },
+      {
         path: "data-quality",
         name: "DataQualitySettings",
         component: () => import("@/pages/settings/DataQualitySettingsPage.vue"),
@@ -281,44 +292,55 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        // One long-lived agent conversation per target. The list is the
-        // workspace's view of every session; a row opens the transcript.
+        // The agents the caller may see: administrators see every agent, an owner
+        // sees the ones they own. The per-target sessions are internal and have no
+        // product page.
+        path: "agents",
+        name: "QualityAgents",
+        component: () => import("@/pages/data-quality/QualityAgentsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.agents.list",
+        },
+      },
+      {
+        path: "agents/:agentId",
+        name: "QualityAgent",
+        component: () => import("@/pages/data-quality/QualityAgentPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.agents.get",
+        },
+      },
+      {
+        // Hidden administrator diagnostics: the raw work threads and their
+        // transcripts for one agent, plus the audited resume action. No product
+        // navigation points here except the admin-only link on the agent home.
+        path: "agents/:agentId/diagnostics",
+        name: "QualityAgentDiagnostics",
+        component: () =>
+          import("@/pages/data-quality/QualityAgentDiagnosticsPage.vue"),
+        meta: {
+          requiresAuth: true,
+          layout: "default",
+          permission: "metaxisdata.dataQuality.agents.manage",
+        },
+      },
+      {
+        // Old bookmarks: the session work log and the enrollment console are no
+        // longer product surfaces. Send them to the agent list instead of a dead end.
         path: "agent",
-        name: "DataQualityAgent",
-        component: () =>
-          import("@/pages/data-quality/DataQualityAgentSessionsPage.vue"),
-        meta: {
-          requiresAuth: true,
-          layout: "default",
-          permission: "metaxisdata.dataQuality.rules.list",
-        },
+        redirect: { name: "QualityAgents" },
       },
       {
-        // The runner's enrollment queue: which targets are discovered, waiting,
-        // admitted or excluded. Declared before the session's repeatable param so
-        // the static segment wins the match.
         path: "agent/enrollment",
-        name: "DataQualityAgentEnrollment",
-        component: () =>
-          import("@/pages/data-quality/DataQualityAgentEnrollmentPage.vue"),
-        meta: {
-          requiresAuth: true,
-          layout: "default",
-          permission: "metaxisdata.dataQuality.rules.list",
-        },
+        redirect: { name: "QualityAgents" },
       },
       {
-        // The session's resource name is carried whole, one path segment per
-        // name segment: a Get needs the real workspace, not the `-` shorthand.
         path: "agent/:sessionId+",
-        name: "DataQualityAgentSession",
-        component: () =>
-          import("@/pages/data-quality/DataQualityAgentSessionPage.vue"),
-        meta: {
-          requiresAuth: true,
-          layout: "default",
-          permission: "metaxisdata.dataQuality.rules.list",
-        },
+        redirect: { name: "QualityAgents" },
       },
       {
         // Every check across targets, for audit and search. It is a directory,

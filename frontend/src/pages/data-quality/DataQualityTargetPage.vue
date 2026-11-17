@@ -107,13 +107,6 @@
           <Plus class="mr-2 h-4 w-4" />
           {{ t("dataQuality.workspace.addRule") }}
         </Button>
-        <Button
-          v-if="canSuggest"
-          @click="focusCopilot"
-        >
-          <Sparkles class="mr-2 h-4 w-4" />
-          {{ t("dataQuality.copilot.title") }}
-        </Button>
       </template>
     </PageHeader>
 
@@ -448,32 +441,6 @@
               :target-guid="targetGuid"
             />
 
-            <!-- One long-lived agent conversation per table; the full transcript
-                 lives on the agent sessions page this card links to. -->
-            <AgentSessionCard
-              :target-guid="targetGuid"
-              :meta-type="effectiveMetaType"
-              :can-update="canUpdate"
-            />
-
-            <QualityKnowledgeCard
-              :target-guid="targetGuid"
-              :can-confirm="canUpdate"
-            />
-
-            <TargetCopilotPanel
-              v-if="canSuggest"
-              ref="copilot"
-              :target-guid="targetGuid"
-              :meta-type="effectiveMetaType"
-              :can-suggest="canSuggest"
-              :recommend-columns="recommendColumns"
-              :can-profile="canProfile"
-              :disabled-reason="orphaned ? t('dataQuality.copilot.unavailable') : undefined"
-              @drafted="onDrafted"
-              @recommended="onDraftsSuggested"
-            />
-
             <Card v-if="canListIssues">
               <CardHeader class="border-b">
                 <CardTitle class="text-base">
@@ -775,14 +742,11 @@ import {
 import { getWorkspaceProfileSetting } from "@/api/setting";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PageState from "@/components/common/PageState.vue";
-import AgentSessionCard from "@/components/data-quality/AgentSessionCard.vue";
 import QualityCheckDrawer from "@/components/data-quality/QualityCheckDrawer.vue";
-import QualityKnowledgeCard from "@/components/data-quality/QualityKnowledgeCard.vue";
 import SuggestLabelsButton from "@/components/data-quality/SuggestLabelsButton.vue";
 import TargetChangeRequestsCard from "@/components/data-quality/TargetChangeRequestsCard.vue";
 import TargetCheckRow from "@/components/data-quality/TargetCheckRow.vue";
 import TargetContractCard from "@/components/data-quality/TargetContractCard.vue";
-import TargetCopilotPanel from "@/components/data-quality/TargetCopilotPanel.vue";
 import TargetCoverageCard from "@/components/data-quality/TargetCoverageCard.vue";
 import TargetDraftCard from "@/components/data-quality/TargetDraftCard.vue";
 import TargetPlanCard from "@/components/data-quality/TargetPlanCard.vue";
@@ -830,7 +794,6 @@ import {
   QualitySeverity,
   QualityStatus,
   type QualitySuggestion,
-  type QualitySuggestionQueueSummary,
   QualitySuggestionStatus,
   type QualityTargetSummary,
   QualityTargetSummarySchema,
@@ -956,7 +919,6 @@ const {
   closeCheck,
   onCheckOpenChange,
 } = useTargetWorkspaceDialogs({ rules, loading, canCreate });
-const copilot = ref<InstanceType<typeof TargetCopilotPanel>>();
 
 /**
  * The metadata type the target is read as: the query wins, then the summary the
@@ -1077,11 +1039,6 @@ const pendingLabelSuggestions = computed(() =>
   suggestions.value.filter(isLabelSuggestion)
 );
 
-/** Generation passes read at most 50 columns per request, like the asset tab. */
-const recommendColumns = computed(() =>
-  targetColumns.value.slice(0, 50).map((column) => column.name)
-);
-
 const draftStripVisible = computed(
   () => canSuggest.value && pendingDrafts.value.length > 0
 );
@@ -1196,10 +1153,6 @@ function issueTo(issue: QualityIssue) {
     name: "DataQualityIssueDetail",
     params: { issueId: issue.name.split("/") },
   };
-}
-
-function focusCopilot() {
-  copilot.value?.focus();
 }
 
 /** Guards against a slow read of the previous target landing on this one. */
@@ -1399,27 +1352,6 @@ async function load() {
   }
 }
 
-/** The copilot's drafts join the local queue without re-reading the full page. */
-function onDrafted(
-  drafted: QualitySuggestion[],
-  _summary: QualitySuggestionQueueSummary | undefined,
-  names: string[]
-) {
-  const known = new Set(suggestions.value.map((item) => item.name));
-  const added = drafted.filter((item) => !known.has(item.name));
-  suggestions.value = [...added, ...suggestions.value];
-  summary.value.pendingDraftCount += added.length;
-  // Refreshed proposals keep their identity and are not "new"; only the drafts
-  // this pass actually added get the highlight.
-  const addedNames = new Set(added.map((item) => item.name));
-  newNames.value = new Set(names.filter((name) => addedNames.has(name)));
-}
-
-/**
- * A generation pass reconciles the target's pending queue server-side, so the
- * page reads it back rather than trusting the response: the strip and the
- * centre's counts must agree with what is actually pending.
- */
 function onDraftsSuggested() {
   void loadDrafts();
 }

@@ -7,6 +7,7 @@ import {
   NotificationType,
   type OpenLineageDetail,
   OpenLineageFailureKind,
+  type QualityAgentAttentionDetail,
   type SchemaSyncDetail,
   SyncTrigger,
 } from "@/types/proto-es/v1/notification_service_pb";
@@ -242,6 +243,27 @@ function dataQualityText(detail: DataQualityDetail): NotificationText {
   }
 }
 
+/** One agent escalation: the owner's title and question, linked to the agent home. */
+function qualityAgentAttentionText(
+  detail: QualityAgentAttentionDetail
+): NotificationText {
+  const agentID = detail.agent.split("/").pop() ?? "";
+  const question = detail.question.trim();
+  return {
+    titleKey:
+      question === ""
+        ? "notifications.qualityAgentTitle"
+        : "notifications.qualityAgentTitleWithQuestion",
+    titleParams: {
+      title: detail.title || "Quality agent",
+      question,
+    },
+    messageKey: "notifications.qualityAgentMessage",
+    messageParams: { agent: agentID },
+    href: agentID === "" ? undefined : `/data-quality/agents/${agentID}`,
+  };
+}
+
 /**
  * Describes one notification in the reader's language. A type or a detail this
  * build does not know degrades to a generic line instead of an empty row, so a
@@ -264,6 +286,11 @@ export function describeNotification(
     case NotificationType.DATA_QUALITY:
       if (notification.detail.case === "dataQuality") {
         return dataQualityText(notification.detail.value);
+      }
+      break;
+    case NotificationType.DATA_QUALITY_AGENT:
+      if (notification.detail.case === "qualityAgentAttention") {
+        return qualityAgentAttentionText(notification.detail.value);
       }
       break;
     default:
