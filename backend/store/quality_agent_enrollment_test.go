@@ -93,23 +93,40 @@ func TestAdmissibleEnrollmentQueryPinsTheRoundRobinPredicate(t *testing.T) {
 }
 
 // The scope statements must leave a human's pause and a needs-human block alone, and
-// their placeholders must match the arguments the reconciler passes.
+// their placeholders must match the arguments the reconciler passes. The session
+// statement takes no database list: every placeholder it numbers must be referenced.
 func TestReconcileScopeQueryPinsSafetyPredicates(t *testing.T) {
 	t.Parallel()
 
 	for _, fragment := range []string{
-		"state <> $5",
-		"(s.state <> $4 OR s.blocked_code IN ('', 'out-of-scope', 'agent-disabled'))",
+		"state <> $4",
+		"(s.state <> $3 OR s.blocked_code IN ('', 'out-of-scope', 'agent-disabled'))",
 	} {
 		require.Contains(t, blockOutOfScopeSessionsQuery, fragment)
 	}
 	requirePlaceholdersMatchArgs(t, blockOutOfScopeSessionsQuery, []any{
-		"ws", []string{"instances/i/databases/d"}, int16(5), int16(3), int16(2),
+		"ws", int16(5), int16(3), int16(2),
 	})
 	requirePlaceholdersMatchArgs(t, reconcileOutOfScopeEnrollmentsQuery, []any{
 		"ws", []string{"instances/i/databases/d"}, int16(5), int16(4),
 	})
 	requirePlaceholdersMatchArgs(t, restoreInScopeEnrollmentsQuery, []any{
 		"ws", []string{"instances/i/databases/d"}, int16(1), int16(5),
+	})
+}
+
+// The recoverable read joins quality_agent_session, which repeats the queue's column
+// names: an unqualified projection makes PostgreSQL report the id column as ambiguous
+// (SQLSTATE 42702) and the whole read fails. Pin the qualification and its order.
+func TestRecoverableEnrollmentQueryQualifiesTheJoinedProjection(t *testing.T) {
+	t.Parallel()
+
+	require.Contains(t, recoverableQualityAgentEnrollmentsQuery,
+		"JOIN quality_agent_session s ON s.id = e.session_id")
+	require.Equal(t,
+		strings.Join(strings.Fields(qualifyColumnList(qualityAgentEnrollmentColumns, "e.")), " "),
+		strings.Join(strings.Fields(qualityAgentEnrollmentColumnsForJoin), " "))
+	requirePlaceholdersMatchArgs(t, recoverableQualityAgentEnrollmentsQuery, []any{
+		"ws", int16(2), int16(3), 20,
 	})
 }

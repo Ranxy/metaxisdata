@@ -20,15 +20,23 @@ var placeholderRe = regexp.MustCompile(`\$(\d+)`)
 func requirePlaceholdersMatchArgs(t *testing.T, query string, args []any) {
 	t.Helper()
 
+	seen := make(map[int]bool)
 	maxIndex := 0
 	for _, match := range placeholderRe.FindAllStringSubmatch(query, -1) {
 		index, err := strconv.Atoi(match[1])
 		require.NoError(t, err)
+		seen[index] = true
 		if index > maxIndex {
 			maxIndex = index
 		}
 	}
 	require.Equalf(t, len(args), maxIndex, "query placeholders and args disagree:\n%s\n%v", query, args)
+	// A gap means a parameter is passed but never referenced; PostgreSQL infers no type
+	// for it and rejects the statement (SQLSTATE 42P18, "could not determine data type
+	// of parameter $N").
+	for index := 1; index <= maxIndex; index++ {
+		require.Truef(t, seen[index], "query skips placeholder $%d:\n%s", index, query)
+	}
 }
 
 func TestBuildSublevelMetaRegistryResourceQueryScopesByGUID(t *testing.T) {

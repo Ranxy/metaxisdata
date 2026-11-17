@@ -48,6 +48,18 @@ const qualityAgentEnrollmentColumns = `id, resource_id, workspace_id, target_gui
 	triage_count, last_triaged_at, next_review_at, discovered_at, last_seen_at,
 	excluded_by, excluded_at, revision, created_at, updated_at`
 
+// qualityAgentEnrollmentColumnsForJoin is qualityAgentEnrollmentColumns qualified with
+// the enrollment alias. The qualification is load-bearing: the recoverable read joins
+// quality_agent_session, which repeats the queue's id, state, created_at and other
+// column names, so an unqualified projection is ambiguous to PostgreSQL (SQLSTATE
+// 42702) and the whole read fails. Keep the column order identical to
+// qualityAgentEnrollmentColumns; scanQualityAgentEnrollment depends on it.
+const qualityAgentEnrollmentColumnsForJoin = `e.id, e.resource_id, e.workspace_id,
+	e.target_guid, e.target_type, e.database_ref, e.state, e.mode, e.priority,
+	e.priority_reason, e.blocked_reason, e.session_id, e.triage_count, e.last_triaged_at,
+	e.next_review_at, e.discovered_at, e.last_seen_at, e.excluded_by, e.excluded_at,
+	e.revision, e.created_at, e.updated_at`
+
 // QualityAgentEnrollmentUpsert is one discovered object. The store mints a resource id
 // for a row it inserts; an existing row keeps its id.
 type QualityAgentEnrollmentUpsert struct {
@@ -171,19 +183,21 @@ const reconcileOutOfScopeEnrollmentsQuery = `
 
 // blockOutOfScopeSessionsQuery blocks only sessions the queue may safely park: a human
 // pause and a needs-human block keep their state, so re-adding the database cannot undo
-// them. $2 is the settings database list, used by the surrounding restore statement only.
+// them. It takes no database list: the enrollment rows were already marked OUT_OF_SCOPE
+// by the preceding statement, and a parameter that the statement never references would
+// be rejected by PostgreSQL as an untyped parameter (SQLSTATE 42P18).
 const blockOutOfScopeSessionsQuery = `
 		UPDATE quality_agent_session s
-		SET state = $4, blocked_code = 'out-of-scope',
+		SET state = $3, blocked_code = 'out-of-scope',
 			blocked_reason = 'the session''s database is no longer in the runner''s allowlist',
 			next_wake_at = NULL, lease_until = NULL,
 			revision = revision + 1, updated_at = NOW()
 		WHERE s.workspace_id = $1 AND s.archived_at IS NULL
-			AND s.state <> $5
-			AND (s.state <> $4 OR s.blocked_code IN ('', 'out-of-scope', 'agent-disabled'))
+			AND s.state <> $4
+			AND (s.state <> $3 OR s.blocked_code IN ('', 'out-of-scope', 'agent-disabled'))
 			AND s.id IN (
 				SELECT e.session_id FROM quality_agent_enrollment e
-				WHERE e.workspace_id = $1 AND e.state = $3 AND e.session_id IS NOT NULL
+				WHERE e.workspace_id = $1 AND e.state = $2 AND e.session_id IS NOT NULL
 			)`
 
 // restoreInScopeEnrollmentsQuery puts the rows of a database that came back in scope
@@ -196,14 +210,18 @@ const restoreInScopeEnrollmentsQuery = `
 // ReconcileQualityAgentEnrollmentScope aligns the queue with the settings' database
 // list: rows outside the list become OUT_OF_SCOPE and their sessions are blocked with
 // the reversible out-of-scope code; rows that came back become PENDING again, so
-// admission can resume them without a person.
+// admission can resume them without a person. An empty list means no database is in
+// scope, so every row is parked.
 func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, workspaceID string, keepDatabases []string) (outOfScope, restored int64, err error) {
 	tx, err := s.GetDB().BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "failed to begin the enrollment scope transaction")
 	}
 	defer func() { _ = tx.Rollback() }()
-	keep := pq.Array(keepDatabases)
+	// pq encodes a nil slice as NULL, and `= ANY(NULL)` matches no row, so normalize the
+	// empty allowlist to an empty array; otherwise clearing the scope would be a no-op
+	// instead of parking the queue.
+	keep := pq.Array(append([]string{}, keepDatabases...))
 	outResult, err := tx.ExecContext(ctx, reconcileOutOfScopeEnrollmentsQuery,
 		workspaceID, keep,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
@@ -217,7 +235,6 @@ func (s *Store) ReconcileQualityAgentEnrollmentScope(ctx context.Context, worksp
 	}
 	if _, err := tx.ExecContext(ctx, blockOutOfScopeSessionsQuery,
 		workspaceID,
-		keep,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_OUT_OF_SCOPE),
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_PAUSED)); err != nil {
@@ -896,6 +913,18 @@ func (s *Store) ListQualityAgentSessionResourceIDs(ctx context.Context, workspac
 	return names, nil
 }
 
+// recoverableQualityAgentEnrollmentsQuery is the recovery read: active enrollments
+// whose session a reversible condition blocked. The projection must stay qualified with
+// the enrollment alias because the join partner repeats the queue's column names.
+const recoverableQualityAgentEnrollmentsQuery = `
+		SELECT ` + qualityAgentEnrollmentColumnsForJoin + ` FROM quality_agent_enrollment e
+		JOIN quality_agent_session s ON s.id = e.session_id
+		WHERE e.workspace_id = $1 AND e.state = $2
+			AND s.archived_at IS NULL AND s.state = $3
+			AND s.blocked_code IN ('out-of-scope', 'agent-disabled')
+		ORDER BY e.priority DESC, e.target_guid ASC
+		LIMIT $4`
+
 // ListRecoverableQualityAgentEnrollments lists active enrollments whose session was
 // blocked by a reversible condition (the database left the scope or the agent was
 // disabled). The enrollment runner re-enables them once the condition clears.
@@ -903,14 +932,7 @@ func (s *Store) ListRecoverableQualityAgentEnrollments(ctx context.Context, work
 	if limit <= 0 {
 		limit = 1
 	}
-	rows, err := s.GetDB().QueryContext(ctx, `
-		SELECT `+qualityAgentEnrollmentColumns+` FROM quality_agent_enrollment e
-		JOIN quality_agent_session s ON s.id = e.session_id
-		WHERE e.workspace_id = $1 AND e.state = $2
-			AND s.archived_at IS NULL AND s.state = $3
-			AND s.blocked_code IN ('out-of-scope', 'agent-disabled')
-		ORDER BY e.priority DESC, e.target_guid ASC
-		LIMIT $4`,
+	rows, err := s.GetDB().QueryContext(ctx, recoverableQualityAgentEnrollmentsQuery,
 		workspaceID,
 		int16(storepb.QualityAgentEnrollmentState_QUALITY_AGENT_ENROLLMENT_STATE_ACTIVE),
 		int16(storepb.QualityAgentSessionState_QUALITY_AGENT_SESSION_STATE_BLOCKED),
