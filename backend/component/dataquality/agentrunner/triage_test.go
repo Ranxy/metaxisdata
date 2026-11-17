@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Ranxy/metaxisdata/backend/component/tools/quality"
 	storepb "github.com/Ranxy/metaxisdata/backend/generated-go/store"
 )
 
@@ -67,7 +68,7 @@ func TestDraftChecksToolBoundsColumnsAndReturnsTitles(t *testing.T) {
 	args := `{"intent":"watch order integrity","columns":["a","b","c","d","e","f","g","h","i","j"]}`
 	result, err := engine.executeTool(context.Background(), testSession(), "draft_checks", args, nil)
 	require.NoError(t, err)
-	require.Len(t, gotColumns, maxTriageDraftColumns)
+	require.Len(t, gotColumns, quality.MaxTriageDraftColumns)
 	require.Equal(t, "watch order integrity", gotIntent)
 	require.Contains(t, result, `"queued":2`)
 	require.Contains(t, result, "orders id unique")

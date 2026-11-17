@@ -22,7 +22,6 @@ import (
 	"github.com/Ranxy/metaxisdata/backend/generated-go/v1/v1connect"
 	"github.com/Ranxy/metaxisdata/backend/metrics"
 	"github.com/Ranxy/metaxisdata/backend/plugin/lineage"
-	"github.com/Ranxy/metaxisdata/backend/plugin/lineage/model"
 	"github.com/Ranxy/metaxisdata/backend/store"
 )
 
@@ -321,38 +320,6 @@ func metaGUIScope(metaGUID string) string {
 	return metaGUID[:index]
 }
 
-// isMySQLEngine reports whether names are addressed as database.table rather
-// than schema.table. Keep it in sync with the engines the MySQL driver serves.
-func isMySQLEngine(engine storepb.Engine) bool {
-	switch engine {
-	case storepb.Engine_MYSQL, storepb.Engine_TIDB, storepb.Engine_MARIADB, storepb.Engine_OCEANBASE:
-		return true
-	default:
-		return false
-	}
-}
-
-func resolveObjectIdentifier(name string, scopePrefix string, isMySQL bool) model.ObjectIdentifier {
-	objID := model.StrToObjectIdentifier(name)
-
-	if isMySQL && objID.Database == "" && objID.Schema != "" {
-		objID.Database = objID.Schema
-		objID.Schema = ""
-	}
-
-	parts := strings.Split(scopePrefix, ";")
-	objID.InstanceID = scopeInstanceID(scopePrefix)
-
-	if objID.Database == "" && len(parts) >= 2 && parts[1] != "" {
-		objID.Database = parts[1]
-	}
-	if objID.Schema == "" && len(parts) >= 3 && parts[2] != "" {
-		objID.Schema = parts[2]
-	}
-
-	return objID
-}
-
 // ---- Context building ----
 
 func (s *ExplainSQLService) buildContextFromLineage(ctx context.Context, metaGUID string, metaType storepb.MetaType) (*explainSchemaContext, error) {
@@ -477,129 +444,6 @@ func isTableLikeType(mt storepb.MetaType) bool {
 	default:
 		return false
 	}
-}
-
-// ---- Tool execution ----
-
-func (s *ExplainSQLService) toolGetObjectSchema(ctx context.Context, tc llm.ToolCall, scopePrefix, instanceID string) ([]llm.ToolResult, error) {
-	var args struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments for get_object_schema: %w", err)
-	}
-
-	engine, err := s.getScopeEngine(ctx, instanceID)
-	if err != nil {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "failed to resolve engine: %s"}`, err.Error())}}, nil
-	}
-
-	objID := resolveObjectIdentifier(args.Name, scopePrefix, isMySQLEngine(engine))
-	guid := objID.GUID()
-
-	list, err := s.store.ListMetaRegistry(ctx, &store.FindMetaRegistryResourceMessage{
-		GUID: &guid,
-	})
-	if err != nil {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "failed to look up object: %s"}`, err.Error())}}, nil
-	}
-	if len(list) == 0 || list[0].Metadata == nil {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
-	}
-
-	obj := buildExplainSchemaContext([]*storepb.StoredMetadata{list[0].Metadata}, []string{guid})
-	if len(obj.Objects) == 0 {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "no object found matching '%s'"}`, args.Name)}}, nil
-	}
-
-	o := obj.Objects[0]
-	sqlPreview := o.SQLText
-	if len(sqlPreview) > 500 {
-		sqlPreview = sqlPreview[:500] + "..."
-	}
-
-	resultJSON, _ := json.Marshal([]map[string]any{{
-		"name":        o.Name,
-		"type":        o.MetaType.String(),
-		"schema":      o.SchemaName,
-		"database":    o.DBName,
-		"columns":     o.Columns,
-		"indexes":     o.Indexes,
-		"sql_preview": sqlPreview,
-	}})
-
-	return []llm.ToolResult{{ToolCallID: tc.ID, Content: string(resultJSON)}}, nil
-}
-
-func (s *ExplainSQLService) toolSearchObjects(ctx context.Context, tc llm.ToolCall, scopePrefix string) ([]llm.ToolResult, error) {
-	var args struct {
-		Keyword string `json:"keyword"`
-	}
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments for search_objects: %w", err)
-	}
-	if strings.TrimSpace(args.Keyword) == "" {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"error": "keyword is required"}`}}, nil
-	}
-
-	// An empty scope_prefix means no instance was selected; the search then runs
-	// across all instances instead of matching nothing.
-	list, err := s.store.SearchMetaRegistryResource(ctx, &store.SearchMetaRegistryResourceMessage{
-		SearchStr:  args.Keyword,
-		GUIDPrefix: &scopePrefix,
-		Limit:      20,
-	})
-	if err != nil {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: fmt.Sprintf(`{"error": "search failed: %s"}`, err.Error())}}, nil
-	}
-	if len(list) == 0 {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"objects": []}`}}, nil
-	}
-
-	type objSummary struct {
-		Name     string `json:"name"`
-		Type     string `json:"type"`
-		Schema   string `json:"schema,omitempty"`
-		Database string `json:"database,omitempty"`
-	}
-
-	matches := make([]objSummary, 0, len(list))
-	for _, item := range list {
-		if item.Metadata == nil {
-			continue
-		}
-		obj := buildExplainSchemaContext([]*storepb.StoredMetadata{item.Metadata}, []string{item.GUID})
-		if len(obj.Objects) == 0 {
-			continue
-		}
-		matches = append(matches, objSummary{
-			Name:     obj.Objects[0].Name,
-			Type:     obj.Objects[0].MetaType.String(),
-			Schema:   obj.Objects[0].SchemaName,
-			Database: obj.Objects[0].DBName,
-		})
-	}
-
-	if len(matches) == 0 {
-		return []llm.ToolResult{{ToolCallID: tc.ID, Content: `{"objects": []}`}}, nil
-	}
-
-	resultJSON, _ := json.Marshal(map[string]any{"objects": matches})
-	return []llm.ToolResult{{ToolCallID: tc.ID, Content: string(resultJSON)}}, nil
-}
-
-func (s *ExplainSQLService) getScopeEngine(ctx context.Context, instanceID string) (storepb.Engine, error) {
-	if instanceID == "" {
-		return storepb.Engine_ENGINE_UNSPECIFIED, errors.New("no instance selected")
-	}
-	inst, err := s.store.GetInstance(ctx, &store.FindInstanceMessage{ResourceID: &instanceID})
-	if err != nil {
-		return storepb.Engine_ENGINE_UNSPECIFIED, err
-	}
-	if inst == nil || inst.Metadata == nil {
-		return storepb.Engine_ENGINE_UNSPECIFIED, fmt.Errorf("instance not found: %s", instanceID)
-	}
-	return inst.Metadata.Engine, nil
 }
 
 // allowedLLMProfiles returns the workspace's LLM provider allowlist. An empty
