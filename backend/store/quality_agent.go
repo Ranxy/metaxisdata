@@ -161,6 +161,27 @@ func (s *Store) GetQualityAgentByPrincipalID(ctx context.Context, principalID in
 	return agent, nil
 }
 
+// UpdateQualityAgentIdentity replaces the display name and description of one
+// agent. The principal and its tokens are untouched.
+func (s *Store) UpdateQualityAgentIdentity(ctx context.Context, resourceID, displayName, description string) (*QualityAgentMessage, error) {
+	displayName = strings.TrimSpace(displayName)
+	description = strings.TrimSpace(description)
+	if displayName == "" {
+		return nil, common.Errorf(common.Invalid, "an agent needs a display name")
+	}
+	message, err := scanQualityAgent(s.GetDB().QueryRowContext(ctx, `
+		UPDATE quality_agent SET display_name = $2, description = $3, updated_at = NOW()
+		WHERE resource_id = $1
+		RETURNING `+qualityAgentColumns, resourceID, displayName, description))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to update the quality agent identity")
+	}
+	return message, nil
+}
+
 // DisableQualityAgent disables the agent row and soft-deletes its principal, which
 // is what makes every token the agent holds stop authenticating.
 func (s *Store) DisableQualityAgent(ctx context.Context, resourceID string) (*QualityAgentMessage, error) {
