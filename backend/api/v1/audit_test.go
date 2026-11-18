@@ -230,3 +230,34 @@ type failingStreamingConn struct {
 func (*failingStreamingConn) Receive(_ any) error {
 	return connect.NewError(connect.CodeCanceled, nil)
 }
+
+func TestRedactAuditResponseKeepsProseOutOfTheLedger(t *testing.T) {
+	t.Parallel()
+
+	message := &v1pb.QualityAgentSessionMessage{
+		Name:    "workspaces/ws/qualityAgentSessions/s/messages/1",
+		Seq:     1,
+		Content: "customer secret pasted into the chat",
+		ToolCalls: []*v1pb.QualityToolCall{
+			{Id: "call-1", Name: "get_scope_summary", Arguments: `{"secret":"x"}`},
+		},
+	}
+	redacted, ok := redactAuditResponse(message).(*v1pb.QualityAgentSessionMessage)
+	require.True(t, ok)
+	require.Empty(t, redacted.GetContent())
+	require.Empty(t, redacted.GetToolCalls())
+	require.Equal(t, "customer secret pasted into the chat", message.GetContent(), "the response returned to the client is not mutated")
+
+	list := &v1pb.ListQualityAgentSessionMessagesResponse{
+		QualityAgentSessionMessages: []*v1pb.QualityAgentSessionMessage{message},
+	}
+	redactedList, ok := redactAuditResponse(list).(*v1pb.ListQualityAgentSessionMessagesResponse)
+	require.True(t, ok)
+	require.Empty(t, redactedList.GetQualityAgentSessionMessages()[0].GetContent())
+
+	attention := &v1pb.QualityAgentAttention{Title: "owner-only title", Question: "owner-only question"}
+	redactedAttention, ok := redactAuditResponse(attention).(*v1pb.QualityAgentAttention)
+	require.True(t, ok)
+	require.Empty(t, redactedAttention.GetTitle())
+	require.Empty(t, redactedAttention.GetQuestion())
+}

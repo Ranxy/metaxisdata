@@ -432,7 +432,8 @@ type DataQualityServiceClient interface {
 	UpdateQualityAgent(ctx context.Context, in *UpdateQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
 	StartQualityAgent(ctx context.Context, in *StartQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
-	// Pause an ACTIVE agent. Administrator only.
+	// Pause an ACTIVE agent. The owner and administrators may pause; only an
+	// administrator may edit the configuration.
 	PauseQualityAgent(ctx context.Context, in *PauseQualityAgentRequest, opts ...grpc.CallOption) (*QualityAgent, error)
 	// List the workspace's agents. Administrators see every agent; other members
 	// see the agents they own.
@@ -1787,7 +1788,8 @@ type DataQualityServiceServer interface {
 	UpdateQualityAgent(context.Context, *UpdateQualityAgentRequest) (*QualityAgent, error)
 	// Activate a DRAFT or PAUSED agent. Administrator only.
 	StartQualityAgent(context.Context, *StartQualityAgentRequest) (*QualityAgent, error)
-	// Pause an ACTIVE agent. Administrator only.
+	// Pause an ACTIVE agent. The owner and administrators may pause; only an
+	// administrator may edit the configuration.
 	PauseQualityAgent(context.Context, *PauseQualityAgentRequest) (*QualityAgent, error)
 	// List the workspace's agents. Administrators see every agent; other members
 	// see the agents they own.

@@ -54,6 +54,9 @@ func (s *DataQualityService) CreateQualityAgent(ctx context.Context, req *connec
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateQualityAgentOwner(ctx, config.OwnerPrincipalID); err != nil {
+		return nil, err
+	}
 	resourceID, err := common.RandomString(12)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate the agent id")

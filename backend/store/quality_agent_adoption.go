@@ -43,9 +43,15 @@ func (s *Store) RecordQualityAgentAdoption(ctx context.Context, message *Quality
 		INSERT INTO quality_agent_adoption
 			(agent_id, suggestion_id, outcome, rule_resource_id, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (suggestion_id) DO NOTHING`,
+		ON CONFLICT (agent_id, suggestion_id) DO UPDATE SET
+			outcome = EXCLUDED.outcome,
+			rule_resource_id = EXCLUDED.rule_resource_id,
+			reason = EXCLUDED.reason,
+			created_at = EXCLUDED.created_at
+		WHERE quality_agent_adoption.outcome <> $7`,
 		message.AgentID, message.SuggestionID, int16(message.Outcome),
-		message.RuleResourceID, message.Reason, message.CreatedAt); err != nil {
+		message.RuleResourceID, message.Reason, message.CreatedAt,
+		int16(QualityAgentAdoptionOutcomeAdopted)); err != nil {
 		return errors.Wrap(err, "failed to record the quality agent adoption")
 	}
 	return nil

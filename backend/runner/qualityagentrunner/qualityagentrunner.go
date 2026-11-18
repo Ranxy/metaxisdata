@@ -205,7 +205,7 @@ func (r *Runner) reportAgent(ctx context.Context, workspaceID string, config *st
 // escalateAnomaly opens one owner attention when a report has failures or new
 // issues. The report itself is the reference; the notification is the doorbell.
 func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, config *store.QualityAgentConfigMessage, report *store.QualityAgentReportMessage, snapshot *store.QualityAgentReportSnapshot) {
-	if config.OwnerPrincipalID == nil || r.notifier == nil {
+	if r.notifier == nil {
 		return
 	}
 	if snapshot.FailedCount == 0 && snapshot.NewIssueCount == 0 {
@@ -236,10 +236,13 @@ func (r *Runner) escalateAnomaly(ctx context.Context, workspaceID string, config
 		Title:     attention.Title,
 		Question:  attention.Question,
 	}
-	sendErr := r.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID,
-		"dqagent:"+attention.ResourceID, detail)
-	if sendErr != nil {
-		slog.Warn("failed to send a report anomaly notification", log.WithError(sendErr))
+	dedupeKey := "dqagent:" + attention.ResourceID
+	if config.OwnerPrincipalID != nil {
+		if sendErr := r.notifier.SendQualityAgentAttention(ctx, *config.OwnerPrincipalID, dedupeKey, detail); sendErr != nil {
+			slog.Warn("failed to send a report anomaly notification", log.WithError(sendErr))
+		}
+	} else if sendErr := r.notifier.SendQualityAgentAttentionToAdmins(ctx, dedupeKey, detail); sendErr != nil {
+		slog.Warn("failed to send a report anomaly notification to admins", log.WithError(sendErr))
 	}
 }
 
