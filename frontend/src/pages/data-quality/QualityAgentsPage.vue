@@ -82,7 +82,7 @@
               variant="outline"
               as-child
             >
-              <RouterLink :to="agentRoute(agent.name)">
+              <RouterLink :to="qualityAgentRoute(agent.name)">
                 {{ t("qualityAgents.open") }}
               </RouterLink>
             </Button>
@@ -116,6 +116,7 @@ import {
   type QualityAgent,
   QualityAgentState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
+import { qualityAgentRoute } from "@/utils/qualityAgent";
 
 const { t } = useI18n();
 const { formatError } = useErrorMessage();
@@ -167,14 +168,6 @@ function capabilityLabel(id: string): string {
     default:
       return id;
   }
-}
-
-function agentRoute(name: string) {
-  const parts = name.split("/");
-  return {
-    name: "QualityAgent",
-    params: { workspace: parts[1], agentId: parts[3] },
-  };
 }
 
 function ownerLabel(owner: string): string {

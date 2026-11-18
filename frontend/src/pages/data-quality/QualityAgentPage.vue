@@ -15,7 +15,7 @@
           </RouterLink>
         </Button>
         <Button
-          v-if="canManage && agent && agent.state === QualityAgentState.ACTIVE"
+          v-if="(canManage || canChat) && agent && agent.state === QualityAgentState.ACTIVE"
           size="sm"
           :disabled="busy"
           @click="pause"
@@ -23,7 +23,7 @@
           {{ t("qualityAgents.pause") }}
         </Button>
         <Button
-          v-if="canManage && agent && (agent.state === QualityAgentState.PAUSED || agent.state === QualityAgentState.DRAFT)"
+          v-if="(canManage || canChat) && agent && (agent.state === QualityAgentState.PAUSED || agent.state === QualityAgentState.DRAFT)"
           size="sm"
           :disabled="busy"
           @click="start"
@@ -131,7 +131,7 @@
                 class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 :placeholder="t('qualityAgent.messagePlaceholder')"
                 :disabled="sending"
-                @keydown.enter.exact.prevent="send"
+                @keydown.enter.exact.prevent="onComposerEnter"
               />
               <div class="flex justify-end">
                 <Button
@@ -349,7 +349,12 @@
         <DialogHeader>
           <DialogTitle>{{ t("qualityAgent.reportDialogTitle") }}</DialogTitle>
         </DialogHeader>
-        <pre class="whitespace-pre-wrap break-words text-xs">{{ selectedReport?.bodyMarkdown ?? "" }}</pre>
+        <AsyncMarkdown
+          v-if="selectedReport?.bodyMarkdown"
+          mode="chat"
+          :content="selectedReport.bodyMarkdown"
+          :final="true"
+        />
       </DialogContent>
     </Dialog>
   </div>
@@ -372,6 +377,7 @@ import {
   sendQualityAgentMessage,
   startQualityAgent,
 } from "@/api/data-quality";
+import { AsyncMarkdown } from "@/components/common/AsyncMarkdown";
 import PageState from "@/components/common/PageState.vue";
 import PageHeader from "@/components/layout/PageHeader.vue";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -404,6 +410,7 @@ import {
   QualityAgentState,
 } from "@/types/proto-es/v1/data_quality_service_pb";
 import { formatDateTime } from "@/utils/datetime";
+import { qualityAgentName } from "@/utils/qualityAgent";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -449,8 +456,8 @@ const visibleMessages = computed(() =>
       message.content.trim() !== ""
   )
 );
-const agentName = computed(
-  () => `workspaces/-/qualityAgents/${String(route.params.agentId)}`
+const agentName = computed(() =>
+  qualityAgentName(String(route.params.workspace), String(route.params.agentId))
 );
 
 function stateLabel(state: QualityAgentState | undefined): string {
@@ -606,11 +613,16 @@ async function send() {
   }
 }
 
-/** Poll briefly for the agent's reply after a message. */
+/** Poll for the agent's reply after a message. One request at a time, deduped by name. */
 function schedulePoll() {
   clearPoll();
   let attempts = 0;
+  let inFlight = false;
   pollTimer = window.setInterval(async () => {
+    if (inFlight) {
+      return;
+    }
+    inFlight = true;
     attempts++;
     try {
       const last = messages.value.reduce(
@@ -619,25 +631,35 @@ function schedulePoll() {
       );
       const response = await listQualityAgentConversationMessages(
         agentName.value,
-        {
-          afterSeq: last,
-          pageSize: 200,
-        }
+        { afterSeq: last, pageSize: 200 }
       );
       if (response.qualityAgentConversationMessages.length > 0) {
-        messages.value = [
-          ...messages.value,
-          ...response.qualityAgentConversationMessages,
-        ];
-        await scrollToBottom();
+        const known = new Set(messages.value.map((message) => message.name));
+        const fresh = response.qualityAgentConversationMessages.filter(
+          (message) => !known.has(message.name)
+        );
+        if (fresh.length > 0) {
+          messages.value = [...messages.value, ...fresh];
+          await scrollToBottom();
+        }
       }
     } catch {
       // Polling is best effort; the next manual refresh still shows the reply.
+    } finally {
+      inFlight = false;
     }
-    if (attempts >= 20) {
+    // A model wake can take up to the session deadline; poll for five minutes.
+    if (attempts >= 150) {
       clearPoll();
     }
   }, 2000);
+}
+
+function onComposerEnter(event: KeyboardEvent) {
+  if (event.isComposing) {
+    return;
+  }
+  void send();
 }
 
 function clearPoll() {
